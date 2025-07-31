@@ -55,6 +55,7 @@ from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
+from ._utils.time_utils import timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
 
@@ -364,7 +365,7 @@ class _Volume(_Object, type_prefix="vo"):
         creation_info = metadata.creation_info
         return VolumeInfo(
             name=metadata.name or None,
-            created_at=datetime.fromtimestamp(creation_info.created_at) if creation_info.created_at else None,
+            created_at=timestamp_to_localized_dt(creation_info.created_at),
             created_by=creation_info.created_by or None,
         )
 

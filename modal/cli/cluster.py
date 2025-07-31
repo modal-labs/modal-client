@@ -8,7 +8,7 @@ from modal._object import _get_environment_name
 from modal._output import make_console
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
-from modal._utils.time_utils import timestamp_to_local
+from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, display_table, is_tty
 from modal.client import _Client
 from modal.config import config
@@ -42,7 +42,7 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
             [
                 c.cluster_id,
                 c.app_id,
-                timestamp_to_local(c.started_at, json) if c.started_at else "Pending",
+                timestamp_to_localized_str(c.started_at, json) if c.started_at else "Pending",
                 str(len(c.task_ids)),
             ]
         )

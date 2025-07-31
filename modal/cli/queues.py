@@ -8,7 +8,7 @@ from modal._output import make_console
 from modal._resolver import Resolver
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal._utils.time_utils import timestamp_to_local
+from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -71,7 +71,7 @@ async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     rows = [
         (
             q.name,
-            timestamp_to_local(q.created_at, json),
+            timestamp_to_localized_str(q.created_at, json),
             str(q.num_partitions),
             str(q.total_size) if q.total_size <= max_total_size else f">{max_total_size}",
         )

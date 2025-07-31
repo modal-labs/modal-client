@@ -17,6 +17,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
+from ._utils.time_utils import timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
 from .exception import RequestSizeError
@@ -248,7 +249,7 @@ class _Dict(_Object, type_prefix="di"):
         creation_info = metadata.creation_info
         return DictInfo(
             name=metadata.name or None,
-            created_at=datetime.fromtimestamp(creation_info.created_at),
+            created_at=timestamp_to_localized_dt(creation_info.created_at),
             created_by=creation_info.created_by or None,
         )
 

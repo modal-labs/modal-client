@@ -15,7 +15,7 @@ from typer import Argument
 from modal._output import make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal._utils.time_utils import timestamp_to_local
+from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
@@ -38,8 +38,8 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
         rows.append(
             [
                 item.label,
-                timestamp_to_local(item.created_at, json),
-                timestamp_to_local(item.last_used_at, json) if item.last_used_at else "-",
+                timestamp_to_localized_str(item.created_at, json),
+                timestamp_to_localized_str(item.last_used_at, json) if item.last_used_at else "-",
             ]
         )
 
