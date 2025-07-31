@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.1.dev38 (2025-07-31)
+
+- `uv_pip_install` now uses the more portable `command -v python` to detect your python installation. Running the same code with `uv_pip_install` will trigger an image rebuild.
+
+
 #### 1.1.1.dev28 (2025-07-28)
 
 - Added a `.name` property and a `.info()` method to `modal.Dict`, `modal.Queue`, `modal.Volume`, and `modal.Secret` objects.
