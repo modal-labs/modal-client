@@ -67,7 +67,7 @@ class _DictManager:
         print([d.name for d in dicts])
         ```
 
-        Dicts will be retreived from the default environment, or one can be specified:
+        Dicts will be retreived from the default environment, or another one can be specified:
 
         ```python notest
         dev_dicts = modal.Dict.objects.list(environment_name="dev")
@@ -76,12 +76,12 @@ class _DictManager:
         Results are paginated; you can retrieve all Dicts iteratively:
 
         ```python
-        all_dicts = modal.Dict.objects.list()
+        dicts = modal.Dict.objects.list()
         while True:
             # Retrieve the next page
-            new_dicts = modal.Dict.objects.list(created_before=all_dicts[-1].info().created_at)
+            new_dicts = modal.Dict.objects.list(created_before=dicts[-1].info().created_at)
             if new_dicts:
-                all_dicts.extend(new_dicts)
+                dicts.extend(new_dicts)
             else:
                 break
         ```
