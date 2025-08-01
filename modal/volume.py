@@ -377,7 +377,7 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def commit(self):
-        """Commit changes to the volume.
+        """Commit changes to a mounted volume.
 
         If successful, the changes made are now persisted in durable storage and available to other containers accessing
         the volume.
