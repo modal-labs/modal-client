@@ -25,6 +25,7 @@ from typing import (
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal.exception
@@ -32,7 +33,14 @@ import modal_proto.api_pb2
 from modal.exception import InvalidError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
-from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
+from ._object import (
+    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    _get_environment_name,
+    _list_pagination,
+    _Object,
+    live_method,
+    live_method_gen,
+)
 from ._resolver import Resolver
 from ._utils.async_utils import (
     TaskContext,
@@ -106,6 +114,30 @@ class VolumeInfo:
     created_by: Optional[str]
 
 
+class _VolumeManager:
+    """Namespace with methods for managing named Volume objects."""
+
+    @staticmethod
+    async def list(
+        *,
+        max_objects: int = 100,  # Paginate requests to this size
+        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        environment_name: str = "",  # Uses default environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> list["_Volume"]:
+        """Return a list of hydrated Volume objects."""
+        client = await _Client.from_env() if client is None else client
+        pagination = _list_pagination(max_objects, created_before)
+        req = api_pb2.VolumeListRequest(environment_name=environment_name, pagination=pagination)
+        resp = await retry_transient_errors(client.stub.VolumeList, req)
+        return [
+            _Volume._new_hydrated(item.volume_id, client, item.metadata, is_another_app=True) for item in resp.items
+        ]
+
+
+VolumeManager = synchronize_api(_VolumeManager)
+
+
 class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
@@ -152,6 +184,14 @@ class _Volume(_Object, type_prefix="vo"):
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
     _read_only: bool = False
 
+    @classproperty
+    def objects(cls) -> _VolumeManager:
+        return _VolumeManager
+
+    @property
+    def name(self) -> Optional[str]:
+        return self._name
+
     def read_only(self) -> "_Volume":
         """Configure Volume to mount as read-only.
 
@@ -180,10 +220,6 @@ class _Volume(_Object, type_prefix="vo"):
 
         obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, deps=lambda: [self])
         return obj
-
-    @property
-    def name(self) -> Optional[str]:
-        return self._name
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         if metadata:
