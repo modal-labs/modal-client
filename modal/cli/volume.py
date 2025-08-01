@@ -13,11 +13,9 @@ from typer import Argument, Option, Typer
 import modal
 from modal._output import OutputManager, ProgressHandler, make_console
 from modal._utils.async_utils import synchronizer
-from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
-from modal.client import _Client
 from modal.environments import ensure_env
 from modal.volume import _AbstractVolumeUploadContextManager, _Volume
 from modal_proto import api_pb2
@@ -110,14 +108,13 @@ async def get(
 @synchronizer.create_blocking
 async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
-    client = await _Client.from_env()
-    response = await retry_transient_errors(client.stub.VolumeList, api_pb2.VolumeListRequest(environment_name=env))
-    env_part = f" in environment '{env}'" if env else ""
-    column_names = ["Name", "Created at"]
+    volumes = await _Volume.objects.list(environment_name=env)  # TODO expose pagination in the request
     rows = []
-    for item in response.items:
-        rows.append([item.label, timestamp_to_localized_str(item.created_at, json)])
-    display_table(column_names, rows, json, title=f"Volumes{env_part}")
+    for obj in volumes:
+        info = await obj.info()
+        rows.append((info.name, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by))
+
+    display_table(["Name", "Created at", "Created by"], rows, json)
 
 
 @volume_cli.command(

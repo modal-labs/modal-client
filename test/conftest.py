@@ -1961,14 +1961,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(response)
 
     async def VolumeList(self, stream):
-        req = await stream.recv_message()
-        items = []
-        for (name, env_name), volume_id in self.deployed_volumes.items():
-            if env_name != req.environment_name:
+        request: api_pb2.VolumeListRequest = await stream.recv_message()
+        volumes = []
+        for (name, environment_name), obj_id in self.deployed_volumes.items():
+            if request.environment_name and environment_name != request.environment_name:
                 continue
-            items.append(api_pb2.VolumeListItem(label=name, volume_id=volume_id, created_at=1))
-        resp = api_pb2.VolumeListResponse(items=items, environment_name=req.environment_name)
-        await stream.send_message(resp)
+            creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
+            metadata = api_pb2.VolumeMetadata(name=name, creation_info=creation_info)
+            volumes.append(api_pb2.VolumeListItem(label=name, volume_id=obj_id, metadata=metadata))
+            if request.pagination.max_objects and len(volumes) >= request.pagination.max_objects:
+                break
+        await stream.send_message(api_pb2.VolumeListResponse(items=volumes))
 
     async def VolumeHeartbeat(self, stream):
         await stream.recv_message()
