@@ -1,15 +1,14 @@
 # Copyright Modal Labs 2022
 import os
 import sys
-from typing import cast
+from typing import Any, cast
 
 import rich
 from rich.table import Table
 
 import modal
+from modal.experimental import notebook_base_image
 from modal.image import SUPPORTED_PYTHON_SERIES, ImageBuilderVersion
-
-from .notebook_base_image import notebook_base_image
 
 
 def dummy():
@@ -19,6 +18,7 @@ def dummy():
 if __name__ == "__main__":
     _, name = sys.argv
 
+    constructor: Any  # todo: notebook_base_image has messed up type inference
     if name in ("debian_slim", "micromamba"):
         constructor = getattr(modal.Image, name)
     elif name == "notebook":
