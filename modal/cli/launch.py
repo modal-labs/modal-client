@@ -3,7 +3,6 @@ import asyncio
 import inspect
 import json
 import os
-import random
 import subprocess
 import tempfile
 from pathlib import Path
@@ -115,24 +114,25 @@ def vscode(
     _launch_program("vscode", "vscode.py", detach, args)
 
 
-@launch_cli.command(name="workspace", help="Start an instance on Modal, with direct SSH access.")
-def workspace(
-    name: str,  # Name of the workspace instance.
+@launch_cli.command(name="machine", help="Start an instance on Modal, with direct SSH access.")
+def machine(
+    name: str,  # Name of the machine App.
     cpu: int = 8,  # Reservation of CPU cores (can burst above this value).
     memory: int = 32768,  # Reservation of memory in MiB (can burst above this value).
     gpu: Optional[str] = None,  # GPU type and count, e.g. "t4" or "h100:2".
     image: Optional[str] = None,  # Image tag to use from registry. Defaults to the notebook base image.
     timeout: int = 3600 * 24,  # Timeout in seconds for the instance.
-    volume: str = "workspace-vol",  # Attach a persisted `modal.Volume` at /workspace (created if missing).
+    volume: str = "machine-vol",  # Attach a persisted `modal.Volume` at /workspace (created if missing).
 ):
     tempdir = Path(tempfile.gettempdir())
-    key_path = tempdir / f"modal-workspace-{random.randint(1, 1000000)}.pem"
-    # Generate a new SSH key pair for this workspace instance.
-    subprocess.run(
-        ["ssh-keygen", "-t", "ed25519", "-f", str(key_path), "-N", ""],
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
+    key_path = tempdir / "modal-machine-keyfile.pem"
+    # Generate a new SSH key pair for this machine instance.
+    if not key_path.exists():
+        subprocess.run(
+            ["ssh-keygen", "-t", "ed25519", "-f", str(key_path), "-N", ""],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
     # Add the key with expiry 1d to ssh agent.
     subprocess.run(
         ["ssh-add", "-t", "1d", str(key_path)],
@@ -153,7 +153,7 @@ def workspace(
         "volume": volume,
     }
     _launch_program(
-        "instance",
+        "machine",
         "launch_instance_ssh.py",
         True,
         args,
