@@ -47,7 +47,35 @@ class _SecretManager:
         environment_name: str = "",  # Uses default environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
     ) -> list["_Secret"]:
-        """Return a list of hydrated Secret objects."""
+        """Return a list of hydrated Secret objects.
+
+        **Examples:**
+
+        ```python
+        secrets = modal.Secret.objects.list()
+        print([s.name for s in secrets])
+        ```
+
+        Secrets will be retreived from the default environment, or another one can be specified:
+
+        ```python notest
+        dev_secrets = modal.Secret.objects.list(environment_name="dev")
+        ```
+
+        Results are paginated; you can retrieve all Secrets iteratively:
+
+        ```python
+        secrets = modal.Secret.objects.list()
+        while True:
+            # Retrieve the next page
+            new_secrets = modal.Secret.objects.list(created_before=secrets[-1].info().created_at)
+            if new_secrets:
+                secrets.extend(new_secrets)
+            else:
+                break
+        ```
+
+        """
         client = await _Client.from_env() if client is None else client
         pagination = _list_pagination(max_objects, created_before)
         req = api_pb2.SecretListRequest(environment_name=environment_name, pagination=pagination)
