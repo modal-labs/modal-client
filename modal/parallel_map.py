@@ -88,7 +88,8 @@ if typing.TYPE_CHECKING:
 
 class InputPreprocessor:
     """
-    Preprocesses inputs to be sent to the server.
+    Consumes unregistered, user provided inputs from a raw-input queue
+    Registers each of them with the control-plane, and puts them in a processed-input queue.
     """
 
     def __init__(
@@ -98,15 +99,14 @@ class InputPreprocessor:
         raw_input_queue: _SynchronizedQueue,
         processed_input_queue: asyncio.Queue,
         function: "modal.functions._Function",
-        created_callback: Optional[Callable[[int], None]],
-        done_callback: Optional[Callable[[int], None]],
+        created_callback: Callable[[int], None],
+        done_callback: Callable[[], None],
     ):
         self.client = client
         self.function = function
         self.inputs_created = 0
         self.raw_input_queue = raw_input_queue
         self.processed_input_queue = processed_input_queue
-        self.processed_all_inputs = False
         self.created_callback = created_callback
         self.done_callback = done_callback
 
@@ -117,8 +117,8 @@ class InputPreprocessor:
                 break
             yield raw_input  # args, kwargs
 
-    def create_input(self):
-        async def create_input_inner(argskwargs):
+    def create_input_factory(self):
+        async def create_input(argskwargs):
             idx = self.inputs_created
             self.inputs_created += 1
             self.created_callback(self.inputs_created)
@@ -132,27 +132,26 @@ class InputPreprocessor:
                 method_name=self.function._use_method_name,
             )
 
-        return create_input_inner
+        return create_input
 
     async def drain_input_generator(self):
         # Parallelize uploading blobs
         async with aclosing(
-            async_map_ordered(self.input_iter(), self.create_input(), concurrency=BLOB_MAX_PARALLELISM)
+            async_map_ordered(self.input_iter(), self.create_input_factory(), concurrency=BLOB_MAX_PARALLELISM)
         ) as streamer:
             async for item in streamer:
                 await self.processed_input_queue.put(item)
 
         # close queue iterator
         await self.processed_input_queue.put(None)
-        self.processed_all_inputs = True
-        if self.done_callback is not None:
-            self.done_callback(self.inputs_created)
+        self.done_callback()
         yield
 
 
 class InputPumper:
     """
-    Pumps inputs to the server.
+    Reads inputs from a queue of FunctionPutInputsItems, and sends them to the server.
+    Also reads inputs from a queue of FunctionRetryInputsItems, and sends them to the server.
     """
 
     def __init__(
@@ -191,7 +190,7 @@ class InputPumper:
                 f" push is {self.input_queue.qsize()}. "
             )
 
-            resp = await self.send_inputs(self.client.stub.FunctionPutInputs, request)
+            resp = await self._send_inputs(self.client.stub.FunctionPutInputs, request)
             self.inputs_sent += len(items)
             # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
             self.map_items_manager.handle_put_inputs_response(resp.inputs)
@@ -212,7 +211,7 @@ class InputPumper:
                 function_call_jwt=self.function_call_jwt,
                 inputs=inputs,
             )
-            resp = await self.send_inputs(self.client.stub.FunctionRetryInputs, request)
+            resp = await self._send_inputs(self.client.stub.FunctionRetryInputs, request)
             # Update the state to WAITING_FOR_OUTPUT, and update the input_jwt in the context
             # to the new value in the response.
             self.map_items_manager.handle_retry_response(resp.input_jwts)
@@ -220,7 +219,7 @@ class InputPumper:
             self.inputs_retried += len(inputs)
         yield
 
-    async def send_inputs(
+    async def _send_inputs(
         self,
         fn: "modal.client.UnaryUnaryWrapper",
         request: typing.Union[api_pb2.FunctionPutInputsRequest, api_pb2.FunctionRetryInputsRequest],
@@ -295,7 +294,7 @@ async def _map_invocation(
         processed_input_queue=input_queue,
         function=function,
         created_callback=lambda x: update_state(set_inputs_created=x),
-        done_callback=lambda _: update_state(set_have_all_inputs=True),
+        done_callback=lambda: update_state(set_have_all_inputs=True),
     )
 
     input_pumper = InputPumper(
@@ -470,8 +469,8 @@ async def _map_invocation(
         def log_stats():
             logger.debug(
                 f"Map stats: sync_client_retries_enabled={sync_client_retries_enabled} "
-                f"have_all_inputs={input_preprocessor.processed_all_inputs} "
-                f"inputs_created={input_preprocessor.inputs_created} "
+                f"have_all_inputs={have_all_inputs} "
+                f"inputs_created={inputs_created} "
                 f"input_sent={input_pumper.inputs_sent} "
                 f"inputs_retried={input_pumper.inputs_retried} "
                 f"outputs_received={outputs_received} "
