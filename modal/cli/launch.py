@@ -30,7 +30,7 @@ launch_cli = Typer(
 
 
 def _launch_program(
-    name: str, filename: str, detach: bool, args: dict[str, Any], *, description: str | None = None
+    name: str, filename: str, detach: bool, args: dict[str, Any], *, description: Optional[str] = None
 ) -> None:
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
@@ -121,7 +121,7 @@ def workspace(
     cpu: int = 8,  # Reservation of CPU cores (can burst above this value).
     memory: int = 32768,  # Reservation of memory in MiB (can burst above this value).
     gpu: Optional[str] = None,  # GPU type and count, e.g. "t4" or "h100:2".
-    image: str | None = None,  # Image tag to use from registry. Defaults to the notebook base image.
+    image: Optional[str] = None,  # Image tag to use from registry. Defaults to the notebook base image.
     timeout: int = 3600 * 24,  # Timeout in seconds for the instance.
     volume: str = "workspace-vol",  # Attach a persisted `modal.Volume` at /workspace (created if missing).
 ):
