@@ -929,7 +929,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.DictLenResponse(len=len(self.dicts[request.dict_id])))
 
     async def DictList(self, stream):
-        dicts = [api_pb2.DictListResponse.DictInfo(name=name, created_at=1) for name, _ in self.deployed_dicts]
+        request: api_pb2.DictListRequest = await stream.recv_message()
+        dicts = []
+        for (name, environment_name), obj_id in self.deployed_dicts.items():
+            if request.environment_name and environment_name != request.environment_name:
+                continue
+            creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
+            metadata = api_pb2.DictMetadata(name=name, creation_info=creation_info)
+            dicts.append(api_pb2.DictListResponse.DictInfo(name=name, dict_id=obj_id, metadata=metadata))
+            if request.pagination.max_objects and len(dicts) >= request.pagination.max_objects:
+                break
         await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
 
     async def DictUpdate(self, stream):
@@ -1591,7 +1600,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def QueueList(self, stream):
         # TODO Note that the actual self.queue holding the data assumes we have a single queue
         # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
-        queues = [api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1) for name, _ in self.deployed_queues]
+        request: api_pb2.QueueListRequest = await stream.recv_message()
+        queues = []
+        for (name, environment_name), obj_id in self.deployed_queues.items():
+            if request.environment_name and environment_name != request.environment_name:
+                continue
+            creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
+            metadata = api_pb2.QueueMetadata(name=name, creation_info=creation_info)
+            queues.append(api_pb2.QueueListResponse.QueueInfo(name=name, queue_id=obj_id, metadata=metadata))
+            if request.pagination.max_objects and len(queues) >= request.pagination.max_objects:
+                break
         await stream.send_message(api_pb2.QueueListResponse(queues=queues))
 
     async def QueueNextItems(self, stream):
@@ -1780,10 +1798,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SecretGetOrCreateResponse(secret_id=secret_id, metadata=metadata))
 
     async def SecretList(self, stream):
-        await stream.recv_message()
-        # Note: being lazy and not implementing the env filtering
-        items = [api_pb2.SecretListItem(label=name) for name, env in self.deployed_secrets]
-        await stream.send_message(api_pb2.SecretListResponse(items=items))
+        req: api_pb2.SecretListRequest = await stream.recv_message()
+
+        secrets = []
+        for (name, environment_name), obj_id in self.deployed_secrets.items():
+            if req.environment_name and environment_name != req.environment_name:
+                continue
+            creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
+            metadata = api_pb2.SecretMetadata(name=name, creation_info=creation_info)
+            secrets.append(api_pb2.SecretListItem(label=name, secret_id=obj_id, metadata=metadata))
+            if req.pagination.max_objects and len(secrets) >= req.pagination.max_objects:
+                break
+        await stream.send_message(api_pb2.SecretListResponse(items=secrets))
 
     ### Snapshot
 
@@ -1943,14 +1969,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(response)
 
     async def VolumeList(self, stream):
-        req = await stream.recv_message()
-        items = []
-        for (name, env_name), volume_id in self.deployed_volumes.items():
-            if env_name != req.environment_name:
+        request: api_pb2.VolumeListRequest = await stream.recv_message()
+        volumes = []
+        for (name, environment_name), obj_id in self.deployed_volumes.items():
+            if request.environment_name and environment_name != request.environment_name:
                 continue
-            items.append(api_pb2.VolumeListItem(label=name, volume_id=volume_id, created_at=1))
-        resp = api_pb2.VolumeListResponse(items=items, environment_name=req.environment_name)
-        await stream.send_message(resp)
+            creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
+            metadata = api_pb2.VolumeMetadata(name=name, creation_info=creation_info)
+            volumes.append(api_pb2.VolumeListItem(label=name, volume_id=obj_id, metadata=metadata))
+            if request.pagination.max_objects and len(volumes) >= request.pagination.max_objects:
+                break
+        await stream.send_message(api_pb2.VolumeListResponse(items=volumes))
 
     async def VolumeHeartbeat(self, stream):
         await stream.recv_message()

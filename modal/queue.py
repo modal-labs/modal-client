@@ -5,15 +5,23 @@ import warnings
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
+from ._object import (
+    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    _get_environment_name,
+    _list_pagination,
+    _Object,
+    live_method,
+    live_method_gen,
+)
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
@@ -35,6 +43,56 @@ class QueueInfo:
     name: Optional[str]
     created_at: datetime
     created_by: Optional[str]
+
+
+class _QueueManager:
+    """Namespace with methods for managing named Queue objects."""
+
+    @staticmethod
+    async def list(
+        *,
+        max_objects: int = 100,  # Paginate requests to this size
+        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        environment_name: str = "",  # Uses default environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> list["_Queue"]:
+        """Return a list of hydrated Queue objects.
+
+        **Examples:**
+
+        ```python
+        queues = modal.Queue.objects.list()
+        print([q.name for q in queues])
+        ```
+
+        Queues will be retreived from the default environment, or another one can be specified:
+
+        ```python notest
+        dev_queues = modal.Queue.objects.list(environment_name="dev")
+        ```
+
+        Results are paginated; you can retrieve all Queues iteratively:
+
+        ```python
+        queues = modal.Queue.objects.list()
+        while True:
+            # Retrieve the next page
+            new_queues = modal.Queue.objects.list(created_before=queues[-1].info().created_at)
+            if new_queues:
+                queues.extend(new_queues)
+            else:
+                break
+        ```
+
+        """
+        client = await _Client.from_env() if client is None else client
+        pagination = _list_pagination(max_objects, created_before)
+        req = api_pb2.QueueListRequest(environment_name=environment_name, pagination=pagination)
+        resp = await retry_transient_errors(client.stub.QueueList, req)
+        return [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in resp.queues]
+
+
+QueueManager = synchronize_api(_QueueManager)
 
 
 class _Queue(_Object, type_prefix="qu"):
@@ -115,6 +173,10 @@ class _Queue(_Object, type_prefix="qu"):
     def __init__(self):
         """mdmd:hidden"""
         raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
+
+    @classproperty
+    def objects(cls) -> _QueueManager:
+        return _QueueManager
 
     @property
     def name(self) -> Optional[str]:

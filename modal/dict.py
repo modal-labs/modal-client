@@ -2,15 +2,23 @@
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError
+from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
+from ._object import (
+    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    _get_environment_name,
+    _list_pagination,
+    _Object,
+    live_method,
+    live_method_gen,
+)
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
@@ -29,7 +37,7 @@ def _serialize_dict(data):
 
 @dataclass
 class DictInfo:
-    """Information about the Dict object."""
+    """Information about a Dict object."""
 
     # This dataclass should be limited to information that is unchanging over the lifetime of the Dict,
     # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
@@ -37,6 +45,56 @@ class DictInfo:
     name: Optional[str]
     created_at: datetime
     created_by: Optional[str]
+
+
+class _DictManager:
+    """Namespace with methods for managing named Dict objects."""
+
+    @staticmethod
+    async def list(
+        *,
+        max_objects: int = 100,  # Paginate requests to this size
+        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        environment_name: str = "",  # Uses default environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> list["_Dict"]:
+        """Return a list of hydrated Dict objects.
+
+        **Examples:**
+
+        ```python
+        dicts = modal.Dict.objects.list()
+        print([d.name for d in dicts])
+        ```
+
+        Dicts will be retreived from the default environment, or another one can be specified:
+
+        ```python notest
+        dev_dicts = modal.Dict.objects.list(environment_name="dev")
+        ```
+
+        Results are paginated; you can retrieve all Dicts iteratively:
+
+        ```python
+        dicts = modal.Dict.objects.list()
+        while True:
+            # Retrieve the next page
+            new_dicts = modal.Dict.objects.list(created_before=dicts[-1].info().created_at)
+            if new_dicts:
+                dicts.extend(new_dicts)
+            else:
+                break
+        ```
+
+        """
+        client = await _Client.from_env() if client is None else client
+        pagination = _list_pagination(max_objects, created_before)
+        req = api_pb2.DictListRequest(environment_name=environment_name, pagination=pagination)
+        resp = await retry_transient_errors(client.stub.DictList, req)
+        return [_Dict._new_hydrated(item.dict_id, client, item.metadata, is_another_app=True) for item in resp.dicts]
+
+
+DictManager = synchronize_api(_DictManager)
 
 
 class _Dict(_Object, type_prefix="di"):
@@ -89,6 +147,10 @@ class _Dict(_Object, type_prefix="di"):
         raise RuntimeError(
             "`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead"
         )
+
+    @classproperty
+    def objects(cls) -> _DictManager:
+        return _DictManager
 
     @property
     def name(self) -> Optional[str]:
