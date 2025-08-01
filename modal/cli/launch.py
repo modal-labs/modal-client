@@ -6,8 +6,10 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+import rich.panel
 from typer import Typer
 
+from .._output import make_console
 from ..exception import _CliUserExecutionError
 from ..output import enable_output
 from ..runner import run_app
@@ -61,6 +63,17 @@ def jupyter(
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
     detach: bool = False,  # Run the app in "detached" mode to persist after local client disconnects
 ):
+    console = make_console()
+    console.print(
+        rich.panel.Panel(
+            (
+                "[link=https://modal.com/notebooks]Try Modal Notebooks! "
+                "modal.com/notebooks[/link]\n"
+                "Notebooks have a new UI, saved content, real-time collaboration and more."
+            ),
+        ),
+        style="bold cyan",
+    )
     args = {
         "cpu": cpu,
         "memory": memory,
