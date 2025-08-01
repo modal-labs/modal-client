@@ -6,37 +6,13 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.1.1.dev38 (2025-07-31)
+### 1.1.1 (2025-08-01)
 
-- `uv_pip_install` now uses the more portable `command -v python` to detect your python installation. Running the same code with `uv_pip_install` will trigger an image rebuild.
-
-
-#### 1.1.1.dev28 (2025-07-28)
-
-- Added a `.name` property and a `.info()` method to `modal.Dict`, `modal.Queue`, `modal.Volume`, and `modal.Secret` objects.
-
-
-#### 1.1.1.dev26 (2025-07-28)
-
-- Uses terminal output in Jupyter to improve rendering
-
-
-#### 1.1.1.dev13 (2025-07-22)
-
-- Surface task result exceptions during image build termination events to prevent ambiguous termination conditions.
-
-
-#### 1.1.1.dev4 (2025-07-18)
-
-- Added a `name` parameter to `Sandbox.create()`
-- Added a `Sandbox.from_name()` static method.
-- Added a `name` parameter to `Sandbox._experimental_from_snapshot()`
-
-
-#### 1.1.1.dev3 (2025-07-18)
-
-Sandboxes now support `experimental_options`, which can be used to test out experimental functionality that depends only on server-side configuration.
-
+- We're introducing the concept of "named Sandboxes" for usecases where Sandboxes need to have unique ownership over a resource. A named Sandbox can be created by passing `name=` to `modal.Sandbox.create()`, and it can be retrieved with the new `modal.Sandbox.from_name()` constructor. Only one running Sandbox can use a given name (scoped within the App that is managing the Sandbox) at any time, so trying to create a Sandbox with a name that is already taken will fail. Sandboxes release their name when they terminate. See the [guide](https://modal.com/docs/guide/sandbox#named-sandboxes) for more information about using this new feature.
+- We've made an internal change to the `modal.Image.uv_pip_install` method to make it more portable across different base Images. As a consequence, Images built with this method on 1.1.0 will need to rebuild the next time they are used.
+- We've added a `.name` property and `.info()` method to `modal.Dict`, `modal.Queue`, `modal.Volume`, and `modal.Secret` objects.
+- Sandboxes now support `experimental_options` configuration for enabling preview functionality.
+- We've Improved Modal's rich output when used in a Jupyter notebook.
 
 ### 1.1.0 (2025-07-17)
 
