@@ -1798,10 +1798,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SecretGetOrCreateResponse(secret_id=secret_id, metadata=metadata))
 
     async def SecretList(self, stream):
-        await stream.recv_message()
-        # Note: being lazy and not implementing the env filtering
-        items = [api_pb2.SecretListItem(label=name) for name, env in self.deployed_secrets]
-        await stream.send_message(api_pb2.SecretListResponse(items=items))
+        req: api_pb2.SecretListRequest = await stream.recv_message()
+
+        secrets = []
+        for (name, environment_name), obj_id in self.deployed_secrets.items():
+            if req.environment_name and environment_name != req.environment_name:
+                continue
+            creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
+            metadata = api_pb2.SecretMetadata(name=name, creation_info=creation_info)
+            secrets.append(api_pb2.SecretListItem(label=name, secret_id=obj_id, metadata=metadata))
+            if req.pagination.max_objects and len(secrets) >= req.pagination.max_objects:
+                break
+        await stream.send_message(api_pb2.SecretListResponse(items=secrets))
 
     ### Snapshot
 
