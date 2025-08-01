@@ -3,6 +3,9 @@ import asyncio
 import inspect
 import json
 import os
+import random
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
@@ -26,7 +29,9 @@ launch_cli = Typer(
 )
 
 
-def _launch_program(name: str, filename: str, detach: bool, args: dict[str, Any]) -> None:
+def _launch_program(
+    name: str, filename: str, detach: bool, args: dict[str, Any], *, description: str | None = None
+) -> None:
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
     program_path = str(Path(__file__).parent / "programs" / filename)
@@ -35,7 +40,7 @@ def _launch_program(name: str, filename: str, detach: bool, args: dict[str, Any]
     entrypoint = module.main
 
     app = _get_runnable_app(entrypoint)
-    app.set_description(base_cmd)
+    app.set_description(description if description else base_cmd)
 
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.
     func = entrypoint.info.raw_f
@@ -108,3 +113,48 @@ def vscode(
         "volume": volume,
     }
     _launch_program("vscode", "vscode.py", detach, args)
+
+
+@launch_cli.command(name="workspace", help="Start an instance on Modal, with direct SSH access.")
+def workspace(
+    name: str,  # Name of the workspace instance.
+    cpu: int = 8,  # Reservation of CPU cores (can burst above this value).
+    memory: int = 32768,  # Reservation of memory in MiB (can burst above this value).
+    gpu: Optional[str] = None,  # GPU type and count, e.g. "t4" or "h100:2".
+    image: str | None = None,  # Image tag to use from registry. Defaults to the notebook base image.
+    timeout: int = 3600 * 24,  # Timeout in seconds for the instance.
+    volume: str = "workspace-vol",  # Attach a persisted `modal.Volume` at /workspace (created if missing).
+):
+    tempdir = Path(tempfile.gettempdir())
+    key_path = tempdir / f"modal-workspace-{random.randint(1, 1000000)}.pem"
+    # Generate a new SSH key pair for this workspace instance.
+    subprocess.run(
+        ["ssh-keygen", "-t", "ed25519", "-f", str(key_path), "-N", ""],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    # Add the key with expiry 1d to ssh agent.
+    subprocess.run(
+        ["ssh-add", "-t", "1d", str(key_path)],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    os.environ["SSH_PUBLIC_KEY"] = Path(str(key_path) + ".pub").read_text()
+
+    args = {
+        "cpu": cpu,
+        "memory": memory,
+        "gpu": gpu,
+        "image": image,
+        "timeout": timeout,
+        "volume": volume,
+    }
+    _launch_program(
+        "instance",
+        "launch_instance_ssh.py",
+        True,
+        args,
+        description=name,
+    )
