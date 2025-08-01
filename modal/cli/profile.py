@@ -19,6 +19,7 @@ profile_cli = typer.Typer(name="profile", help="Switch between Modal profiles.",
 @profile_cli.command(help="Change the active Modal profile.")
 def activate(profile: str = typer.Argument(..., help="Modal profile to activate.")):
     config_set_active_profile(profile)
+    typer.echo(f"Active profile: {profile}")
 
 
 @profile_cli.command(help="Print the currently active Modal profile.")
