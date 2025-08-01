@@ -6,10 +6,11 @@ from typing import Optional, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from synchronicity import classproperty
 
 from modal_proto import api_pb2
 
-from ._object import _get_environment_name, _Object, live_method
+from ._object import _get_environment_name, _list_pagination, _Object, live_method
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
@@ -35,6 +36,30 @@ class SecretInfo:
     created_by: Optional[str]
 
 
+class _SecretManager:
+    """Namespace with methods for managing named Secret objects."""
+
+    @staticmethod
+    async def list(
+        *,
+        max_objects: int = 100,  # Paginate requests to this size
+        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        environment_name: str = "",  # Uses default environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> list["_Secret"]:
+        """Return a list of hydrated Secret objects."""
+        client = await _Client.from_env() if client is None else client
+        pagination = _list_pagination(max_objects, created_before)
+        req = api_pb2.SecretListRequest(environment_name=environment_name, pagination=pagination)
+        resp = await retry_transient_errors(client.stub.SecretList, req)
+        return [
+            _Secret._new_hydrated(item.secret_id, client, item.metadata, is_another_app=True) for item in resp.items
+        ]
+
+
+SecretManager = synchronize_api(_SecretManager)
+
+
 class _Secret(_Object, type_prefix="st"):
     """Secrets provide a dictionary of environment variables for images.
 
@@ -46,6 +71,10 @@ class _Secret(_Object, type_prefix="st"):
     """
 
     _metadata: Optional[api_pb2.SecretMetadata] = None
+
+    @classproperty
+    def objects(cls) -> _SecretManager:
+        return _SecretManager
 
     @property
     def name(self) -> Optional[str]:
