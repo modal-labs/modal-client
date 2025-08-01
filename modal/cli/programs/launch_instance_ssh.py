@@ -84,7 +84,7 @@ def main():
   • CPU:     [yellow]{args.get("cpu")} cores[/yellow]
   • Memory:  [yellow]{args.get("memory")} MiB[/yellow]
   • Timeout: [yellow]{args.get("timeout")} seconds[/yellow]
-  • GPU:     [green]{args.get("gpu", "None")}[/green]""",
+  • GPU:     [green]{args.get("gpu", "N/A").upper()}[/green]""",
             title="SSH Connection",
             expand=False,
         ),
