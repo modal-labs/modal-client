@@ -1600,7 +1600,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def QueueList(self, stream):
         # TODO Note that the actual self.queue holding the data assumes we have a single queue
         # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
-        queues = [api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1) for name, _ in self.deployed_queues]
+        request: api_pb2.QueueListRequest = await stream.recv_message()
+        queues = []
+        for (name, environment_name), obj_id in self.deployed_queues.items():
+            if request.environment_name and environment_name != request.environment_name:
+                continue
+            creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
+            metadata = api_pb2.QueueMetadata(name=name, creation_info=creation_info)
+            queues.append(api_pb2.QueueListResponse.QueueInfo(name=name, queue_id=obj_id, metadata=metadata))
+            if request.pagination.max_objects and len(queues) >= request.pagination.max_objects:
+                break
         await stream.send_message(api_pb2.QueueListResponse(queues=queues))
 
     async def QueueNextItems(self, stream):

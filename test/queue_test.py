@@ -148,3 +148,16 @@ def test_queue_namespace_deprecated(servicer, client):
     # Filter out any unrelated warnings
     namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
     assert len(namespace_warnings) == 0
+
+
+def test_queue_list(servicer, client):
+    for i in range(5):
+        Queue.from_name(f"test-queue-{i}", create_if_missing=True).hydrate(client)
+
+    queue_list = Queue.objects.list(client=client)
+    assert len(queue_list) == 5
+    assert all(q.name.startswith("test-queue-") for q in queue_list)
+    assert all(q.info().created_by == servicer.default_username for q in queue_list)
+
+    queue_list = Queue.objects.list(max_objects=2, client=client)
+    assert len(queue_list) == 2

@@ -65,19 +65,30 @@ async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
 
     max_total_size = 100_000
     client = await _Client.from_env()
-    request = api_pb2.QueueListRequest(environment_name=env, total_size_limit=max_total_size + 1)
-    response = await retry_transient_errors(client.stub.QueueList, request)
 
-    rows = [
-        (
-            q.name,
-            timestamp_to_localized_str(q.created_at, json),
-            str(q.num_partitions),
-            str(q.total_size) if q.total_size <= max_total_size else f">{max_total_size}",
+    # Note that we need to continue using the gRPC API directly here rather than using Queue.objects.list.
+    # There is some metadata that historically appears in the CLI output (num_partitions, total_size) that
+    # doesn't make sense to transmit as hydration metadata, because the values can change over time and
+    # the metadata retrieved at hydration time could get stale. Alternatively, we could rewrite this using
+    # only public API by sequentially retrieving the queues and then querying their dynamic metadata, but
+    # that would require multiple round trips and would add lag to the CLI.
+    # TODO: expose pagination in the request
+    request = api_pb2.QueueListRequest(environment_name=env, total_size_limit=max_total_size + 1)
+    resp = await retry_transient_errors(client.stub.QueueList, request)
+    queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in resp.queues]
+    rows = []
+    for obj, resp_data in zip(queues, resp.queues):
+        info = await obj.info()
+        rows.append(
+            (
+                obj.name,
+                timestamp_to_localized_str(info.created_at.timestamp(), json),
+                info.created_by,
+                str(resp_data.num_partitions),
+                str(resp_data.total_size) if resp_data.total_size <= max_total_size else f">{max_total_size}",
+            )
         )
-        for q in response.queues
-    ]
-    display_table(["Name", "Created at", "Partitions", "Total size"], rows, json)
+    display_table(["Name", "Created at", "Created by", "Partitions", "Total size"], rows, json)
 
 
 @queue_cli.command(name="clear", rich_help_panel="Management")
