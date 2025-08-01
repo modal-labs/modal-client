@@ -67,7 +67,8 @@ def jupyter(
     console.print(
         rich.panel.Panel(
             (
-                "[underline]Try Modal Notebooks! [link=https://modal.com/notebooks]modal.com/notebooks[/link][/underline]\n"
+                "[link=https://modal.com/notebooks]Try Modal Notebooks! "
+                "modal.com/notebooks[/link]\n"
                 "Notebooks have a new UI, saved content, real-time collaboration and more."
             ),
         ),
