@@ -303,6 +303,7 @@ async def notebook_base_image(*, python_version: Optional[str] = None, force_bui
     ]
 
     # TODO: Also install the CUDA Toolkit, so `nvcc` is available.
+    # https://github.com/charlesfrye/cuda-modal/blob/7fef8db12402986cf42d9c8cca8c63d1da6d7700/cuda/use_cuda.py#L158-L188
 
     def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
         return DockerfileSpec(commands=["FROM base", *(f"RUN {cmd}" for cmd in commands)], context_files={})
