@@ -80,7 +80,6 @@ def run_marimo(q: Queue):
                 "/root/marimo",  # workspace directory
             ],
             env={**os.environ, "SHELL": "/bin/bash"},
-            # stderr=subprocess.DEVNULL,
         )
 
     q.put("done")
