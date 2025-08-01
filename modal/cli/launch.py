@@ -142,6 +142,7 @@ def workspace(
     )
 
     os.environ["SSH_PUBLIC_KEY"] = Path(str(key_path) + ".pub").read_text()
+    os.environ["MODAL_LOGS_TIMEOUT"] = "0"  # hack to work with --detach
 
     args = {
         "cpu": cpu,
