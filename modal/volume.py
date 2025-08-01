@@ -125,7 +125,35 @@ class _VolumeManager:
         environment_name: str = "",  # Uses default environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
     ) -> list["_Volume"]:
-        """Return a list of hydrated Volume objects."""
+        """Return a list of hydrated Volume objects.
+
+        **Examples:**
+
+        ```python
+        volumes = modal.Volume.objects.list()
+        print([v.name for v in volumes])
+        ```
+
+        Volumes will be retreived from the default environment, or another one can be specified:
+
+        ```python notest
+        dev_volumes = modal.Volume.objects.list(environment_name="dev")
+        ```
+
+        Results are paginated; you can retrieve all Volumes iteratively:
+
+        ```python
+        volumes = modal.Volume.objects.list()
+        while True:
+            # Retrieve the next page
+            new_volumes = modal.Volume.objects.list(created_before=volumes[-1].info().created_at)
+            if new_volumes:
+                volumes.extend(new_volumes)
+            else:
+                break
+        ```
+
+        """
         client = await _Client.from_env() if client is None else client
         pagination = _list_pagination(max_objects, created_before)
         req = api_pb2.VolumeListRequest(environment_name=environment_name, pagination=pagination)
