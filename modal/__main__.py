@@ -37,7 +37,6 @@ def main():
 
         from grpclib import GRPCError, Status
         from rich.panel import Panel
-        from rich.text import Text
 
         if isinstance(exc, GRPCError):
             status_map = {
@@ -69,7 +68,7 @@ def main():
                 content = f"{content}\n\nNote: {' '.join(notes)}"
 
         console = make_console(stderr=True)
-        panel = Panel(Text(content), title=title, title_align="left", border_style="red")
+        panel = Panel(content, title=title, title_align="left", border_style="red")
         console.print(panel, highlight=False)
         sys.exit(1)
 
