@@ -202,6 +202,8 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         without missing any files that should be included. This is for example not
         safe when we have inverted/negated ignore patterns (e.g. "!**/*.py").
         """
+        if self._delayed_init:
+            self._delayed_init()
         return not any(pattern.exclusion for pattern in self.patterns)
 
     def __call__(self, file_path: Path) -> bool:

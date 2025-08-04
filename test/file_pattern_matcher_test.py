@@ -371,3 +371,15 @@ def test_can_prune_directories(patterns, expected):
 def test_can_prune_directories_negated():
     matcher_negated = ~FilePatternMatcher("*.py")
     assert matcher_negated.can_prune_directories() is False
+
+
+@pytest.mark.usefixtures("tmp_cwd")
+def test_can_prune_directories_delayed_init():
+    """Test that can_prune_directories works correctly when using from_file with delayed initialization."""
+
+    ignore_file = Path(".gitignore")
+    ignore_file.write_text("*.tmp\nnode_modules\ndist/**")
+
+    matcher = FilePatternMatcher.from_file(ignore_file)
+
+    assert matcher.can_prune_directories()
