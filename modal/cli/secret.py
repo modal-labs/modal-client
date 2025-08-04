@@ -165,19 +165,17 @@ async def delete(
     yes: bool = YES_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
-    """TODO"""
+    """Delete a named secret."""
     env = ensure_env(env)
-    secret = await _Secret.from_name(secret_name, environment_name=env).hydrate()
+    # Lookup first so we validate the name before asking for confirmation
+    await _Secret.from_name(secret_name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Secret '{secret_name}'?",
             default=False,
             abort=True,
         )
-    client = await _Client.from_env()
-
-    # TODO: replace with API on `modal.Secret` when we add it
-    await client.stub.SecretDelete(api_pb2.SecretDeleteRequest(secret_id=secret.object_id))
+    await _Secret.objects.delete(secret_name, environment_name=env)
 
 
 def get_text_from_editor(key) -> str:

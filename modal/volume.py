@@ -171,6 +171,31 @@ class _VolumeManager:
         volumes = [_Volume._new_hydrated(item.volume_id, client, item.metadata, is_another_app=True) for item in items]
         return volumes[:max_objects] if max_objects is not None else volumes
 
+    @staticmethod
+    async def delete(
+        name: str,  # Name of the Volume to delete
+        *,
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ):
+        """Delete a named Volume.
+
+        **Examples:**
+
+        ```python
+        await modal.Volume.objects.delete("my-volume")
+        ```
+
+        Volumes will be deleted from the active environment, or another one can be specified:
+
+        ```python
+        await modal.Volume.objects.delete("my-volume", environment_name="dev")
+        ```
+        """
+        obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
+        req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.VolumeDelete, req)
+
 
 VolumeManager = synchronize_api(_VolumeManager)
 
@@ -719,6 +744,7 @@ class _Volume(_Object, type_prefix="vo"):
 
     @staticmethod
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        # TODO deprecate or at least warn!
         obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.VolumeDelete, req)

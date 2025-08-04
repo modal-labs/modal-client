@@ -104,6 +104,33 @@ class _DictManager:
         dicts = [_Dict._new_hydrated(item.dict_id, client, item.metadata, is_another_app=True) for item in items]
         return dicts[:max_objects] if max_objects is not None else dicts
 
+    @staticmethod
+    async def delete(
+        name: str,  # Name of the Dict to delete
+        *,
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ):
+        """Delete a named Dict.
+
+        Warning: Deleting is irreversible and will affect any Apps currently using the Dict.
+
+        **Examples:**
+
+        ```python
+        await modal.Dict.objects.delete("my-dict")
+        ```
+
+        Dicts will be deleted from the active environment, or another one can be specified:
+
+        ```python
+        await modal.Dict.objects.delete("my-dict", environment_name="dev")
+        ```
+        """
+        obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
+        req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.DictDelete, req)
+
 
 DictManager = synchronize_api(_DictManager)
 
@@ -311,6 +338,7 @@ class _Dict(_Object, type_prefix="di"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ):
+        # TODO deprecate or at least warn!
         obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.DictDelete, req)

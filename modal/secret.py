@@ -94,6 +94,31 @@ class _SecretManager:
         secrets = [_Secret._new_hydrated(item.secret_id, client, item.metadata, is_another_app=True) for item in items]
         return secrets[:max_objects] if max_objects is not None else secrets
 
+    @staticmethod
+    async def delete(
+        name: str,  # Name of the Secret to delete
+        *,
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ):
+        """Delete a named Secret.
+
+        **Examples:**
+
+        ```python
+        await modal.Secret.objects.delete("my-secret")
+        ```
+
+        Secrets will be deleted from the active environment, or another one can be specified:
+
+        ```python
+        await modal.Secret.objects.delete("my-secret", environment_name="dev")
+        ```
+        """
+        obj = await _Secret.from_name(name, environment_name=environment_name).hydrate(client)
+        req = api_pb2.SecretDeleteRequest(secret_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.SecretDelete, req)
+
 
 SecretManager = synchronize_api(_SecretManager)
 

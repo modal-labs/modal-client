@@ -47,7 +47,7 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 @synchronizer.create_blocking
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Delete a named Queue and all of its data."""
-    # Lookup first to validate the name, even though delete is a staticmethod
+    # Lookup first so we validate the name before asking for confirmation
     await _Queue.from_name(name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
@@ -55,7 +55,7 @@ async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_
             default=False,
             abort=True,
         )
-    await _Queue.delete(name, environment_name=env)
+    await _Queue.objects.delete(name, environment_name=env)
 
 
 @queue_cli.command(name="list", rich_help_panel="Management")

@@ -102,6 +102,31 @@ class _QueueManager:
         queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in items]
         return queues[:max_objects] if max_objects is not None else queues
 
+    @staticmethod
+    async def delete(
+        name: str,  # Name of the Queue to delete
+        *,
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ):
+        """Delete a named Queue.
+
+        **Examples:**
+
+        ```python
+        await modal.Queue.objects.delete("my-queue")
+        ```
+
+        Queues will be deleted from the active environment, or another one can be specified:
+
+        ```python
+        await modal.Queue.objects.delete("my-queue", environment_name="dev")
+        ```
+        """
+        obj = await _Queue.from_name(name, environment_name=environment_name).hydrate(client)
+        req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.QueueDelete, req)
+
 
 QueueManager = synchronize_api(_QueueManager)
 
@@ -323,6 +348,7 @@ class _Queue(_Object, type_prefix="qu"):
 
     @staticmethod
     async def delete(name: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        # TODO deprecate or at least warn!
         obj = await _Queue.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.QueueDelete, req)

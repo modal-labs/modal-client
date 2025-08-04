@@ -65,7 +65,7 @@ async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_O
 @synchronizer.create_blocking
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Delete a named Dict and all of its data."""
-    # Lookup first to validate the name, even though delete is a staticmethod
+    # Lookup first so we validate the name before asking for confirmation
     await _Dict.from_name(name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
@@ -73,7 +73,7 @@ async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_
             default=False,
             abort=True,
         )
-    await _Dict.delete(name, environment_name=env)
+    await _Dict.objects.delete(name, environment_name=env)
 
 
 @dict_cli.command(name="get", rich_help_panel="Inspection")

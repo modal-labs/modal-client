@@ -283,7 +283,7 @@ async def delete(
     yes: bool = YES_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
-    # Lookup first to validate the name, even though delete is a staticmethod
+    # Lookup first so we validate the name before asking for confirmation
     await _Volume.from_name(volume_name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
@@ -292,7 +292,7 @@ async def delete(
             abort=True,
         )
 
-    await _Volume.delete(volume_name, environment_name=env)
+    await _Volume.objects.delete(volume_name, environment_name=env)
 
 
 @volume_cli.command(
