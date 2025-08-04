@@ -9,11 +9,12 @@ import warnings
 from collections.abc import AsyncGenerator, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Union
 
 import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from sortedcontainers import SortedList
 from synchronicity.combined_types import MethodWithAio
 
 from modal_proto import api_pb2
@@ -350,6 +351,56 @@ class _Invocation:
                 # and produces less data in the second run than what was already sent.
                 if items_total is not None and items_received >= items_total:
                     break
+
+    async def enumerate(self, start_index: int = 0, end_index: int = None):
+        """Enumerate over the results of the function call."""
+        failure_count = 0
+        missing_outputs = SortedList([i for i in range(start_index, end_index)])
+        while True:
+            new_outputs_found = 0
+            current_index = start_index
+            while current_index < end_index:
+                request = api_pb2.FunctionGetOutputsRequest(
+                    function_call_id=self.function_call_id,
+                    timeout=0,
+                    last_entry_id="0-0",
+                    clear_on_success=False,
+                    requested_at=time.time(),
+                    start_idx=current_index,
+                )
+                response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
+                    self.stub.FunctionGetOutputs,
+                    request,
+                    attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                )
+                outputs: list[api_pb2.FunctionGetOutputsItem] = response.outputs
+                for output in outputs:
+                    if output.idx not in missing_outputs:
+                        continue
+                    yield output.idx, output.result
+                    missing_outputs.remove(output.idx)
+                    new_outputs_found += 1
+                    assert output.idx > current_index
+                    current_index = output.idx
+
+                index = missing_outputs.bisect_right(current_index)
+                if index < len(missing_outputs):
+                    current_index = missing_outputs[index]
+                else:
+                    current_index = end_index
+                if len(missing_outputs) == 0:
+                    break
+
+            if new_outputs_found == 0:
+                failure_count += 1
+                await asyncio.sleep(2**failure_count * 0.1)
+            else:
+                failure_count = 0
+
+    async def iter(self, start_index: int = 0, end_index: int = None):
+        """Iterate over the results of the function call."""
+        async for _, item in self.enumerate(start_index, end_index):
+            yield item
 
 
 class _InputPlaneInvocation:
@@ -1836,6 +1887,14 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         The returned coroutine is not cancellation-safe.
         """
         return await self._invocation().poll_function(timeout=timeout)
+
+    async def iter(self, start_index: int = 0, end_index: int = None) -> AsyncIterator[ReturnType]:
+        """Iterate over the results of the function call."""
+        return self._invocation().iter(start_index, end_index)
+
+    async def enumerate(self, start_index: int = 0, end_index: int = None) -> AsyncIterator[tuple[int, ReturnType]]:
+        """Enumerate over the results of the function call."""
+        return self._invocation().enumerate(start_index, end_index)
 
     async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
