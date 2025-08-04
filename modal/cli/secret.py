@@ -3,6 +3,7 @@ import json
 import os
 import platform
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional
@@ -37,12 +38,23 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
     # the metadata retrieved at hydration time could get stale. Alternatively, we could rewrite this using
     # only public API by sequentially retrieving the secrets and then querying their dynamic metadata, but
     # that would require multiple round trips and would add lag to the CLI.
-    # TODO: expose pagination in the request
-    resp = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
-    secrets = [_Secret._new_hydrated(item.secret_id, client, item.metadata, is_another_app=True) for item in resp.items]
+    async def retrieve_page(created_before: float) -> list[api_pb2.SecretListItem]:
+        pagination = api_pb2.ListPagination(max_objects=100, created_before=created_before)
+        req = api_pb2.SecretListRequest(environment_name=env, pagination=pagination)
+        resp = await retry_transient_errors(client.stub.SecretList, req)
+        return list(resp.items)
+
+    items = await retrieve_page(datetime.now().timestamp())
+    if items:
+        while True:
+            new_items = await retrieve_page(items[-1].metadata.creation_info.created_at)
+            if not new_items:
+                break
+            items.extend(new_items)
+    secrets = [_Secret._new_hydrated(item.secret_id, client, item.metadata, is_another_app=True) for item in items]
 
     rows = []
-    for obj, resp_data in zip(secrets, resp.items):
+    for obj, resp_data in zip(secrets, items):
         info = await obj.info()
         rows.append(
             [
@@ -53,7 +65,7 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
             ]
         )
 
-    env_part = f" in environment '{env}'" if resp.environment_name else ""
+    env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Created at", "Created by", "Last used at"]
     display_table(column_names, rows, json, title=f"Secrets{env_part}")
 

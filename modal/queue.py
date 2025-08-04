@@ -17,7 +17,6 @@ from modal_proto import api_pb2
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
-    _list_pagination,
     _Object,
     live_method,
     live_method_gen,
@@ -28,7 +27,7 @@ from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
-from ._utils.time_utils import timestamp_to_localized_dt
+from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .exception import InvalidError, RequestSizeError
 
@@ -51,7 +50,7 @@ class _QueueManager:
     @staticmethod
     async def list(
         *,
-        max_objects: int = 100,  # Paginate requests to this size
+        max_objects: Optional[int] = None,  # Limit requests to this size
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
@@ -73,23 +72,33 @@ class _QueueManager:
 
         Results are paginated; you can retrieve all Queues iteratively:
 
-        ```python
-        queues = modal.Queue.objects.list()
-        while True:
-            # Retrieve the next page
-            new_queues = modal.Queue.objects.list(created_before=queues[-1].info().created_at)
-            if new_queues:
-                queues.extend(new_queues)
-            else:
-                break
-        ```
-
         """
         client = await _Client.from_env() if client is None else client
-        pagination = _list_pagination(max_objects, created_before)
-        req = api_pb2.QueueListRequest(environment_name=environment_name, pagination=pagination)
-        resp = await retry_transient_errors(client.stub.QueueList, req)
-        return [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in resp.queues]
+
+        async def retrieve_page(page_size: int, created_before: float) -> list[api_pb2.QueueListResponse.QueueInfo]:
+            pagination = api_pb2.ListPagination(max_objects=page_size, created_before=created_before)
+            req = api_pb2.QueueListRequest(environment_name=environment_name, pagination=pagination)
+            resp = await retry_transient_errors(client.stub.QueueList, req)
+            return resp.queues
+
+        items = await retrieve_page(max_objects, as_timestamp(created_before))
+        if not items:
+            return []
+
+        while True:
+            if max_objects is not None and len(items) >= max_objects:
+                break
+
+            new_items = await retrieve_page(100, items[-1].metadata.creation_info.created_at)
+            if not new_items:
+                break
+            items.extend(new_items)
+
+        queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in items]
+        if max_objects is None:
+            return queues
+        else:
+            return queues[:max_objects]
 
 
 QueueManager = synchronize_api(_QueueManager)

@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2024
+from datetime import datetime
 from typing import Optional
 
 import typer
@@ -72,12 +73,24 @@ async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     # the metadata retrieved at hydration time could get stale. Alternatively, we could rewrite this using
     # only public API by sequentially retrieving the queues and then querying their dynamic metadata, but
     # that would require multiple round trips and would add lag to the CLI.
-    # TODO: expose pagination in the request
-    request = api_pb2.QueueListRequest(environment_name=env, total_size_limit=max_total_size + 1)
-    resp = await retry_transient_errors(client.stub.QueueList, request)
-    queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in resp.queues]
+
+    async def retrieve_page(created_before: float) -> list[api_pb2.QueueListResponse.QueueInfo]:
+        pagination = api_pb2.ListPagination(max_objects=100, created_before=created_before)
+        req = api_pb2.QueueListRequest(environment_name=env, pagination=pagination)
+        resp = await retry_transient_errors(client.stub.QueueList, req)
+        return list(resp.queues)
+
+    items = await retrieve_page(datetime.now().timestamp())
+    if items:
+        while True:
+            new_items = await retrieve_page(items[-1].metadata.creation_info.created_at)
+            if not new_items:
+                break
+            items.extend(new_items)
+    queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in items]
+
     rows = []
-    for obj, resp_data in zip(queues, resp.queues):
+    for obj, resp_data in zip(queues, items):
         info = await obj.info()
         rows.append(
             (

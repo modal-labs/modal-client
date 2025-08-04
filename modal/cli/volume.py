@@ -108,7 +108,7 @@ async def get(
 @synchronizer.create_blocking
 async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
-    volumes = await _Volume.objects.list(environment_name=env)  # TODO expose pagination in the request
+    volumes = await _Volume.objects.list(environment_name=env)
     rows = []
     for obj in volumes:
         info = await obj.info()

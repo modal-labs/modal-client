@@ -36,7 +36,6 @@ from modal_proto import api_pb2
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
-    _list_pagination,
     _Object,
     live_method,
     live_method_gen,
@@ -63,7 +62,7 @@ from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
-from ._utils.time_utils import timestamp_to_localized_dt
+from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
 
@@ -120,7 +119,7 @@ class _VolumeManager:
     @staticmethod
     async def list(
         *,
-        max_objects: int = 100,  # Paginate requests to this size
+        max_objects: Optional[int] = None,  # Limit requests to this size
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
@@ -140,27 +139,33 @@ class _VolumeManager:
         dev_volumes = modal.Volume.objects.list(environment_name="dev")
         ```
 
-        Results are paginated; you can retrieve all Volumes iteratively:
-
-        ```python
-        volumes = modal.Volume.objects.list()
-        while True:
-            # Retrieve the next page
-            new_volumes = modal.Volume.objects.list(created_before=volumes[-1].info().created_at)
-            if new_volumes:
-                volumes.extend(new_volumes)
-            else:
-                break
-        ```
-
         """
         client = await _Client.from_env() if client is None else client
-        pagination = _list_pagination(max_objects, created_before)
-        req = api_pb2.VolumeListRequest(environment_name=environment_name, pagination=pagination)
-        resp = await retry_transient_errors(client.stub.VolumeList, req)
-        return [
-            _Volume._new_hydrated(item.volume_id, client, item.metadata, is_another_app=True) for item in resp.items
-        ]
+
+        async def retrieve_page(page_size: int, created_before: float) -> list[api_pb2.VolumeListItem]:
+            pagination = api_pb2.ListPagination(max_objects=page_size, created_before=created_before)
+            req = api_pb2.VolumeListRequest(environment_name=environment_name, pagination=pagination)
+            resp = await retry_transient_errors(client.stub.VolumeList, req)
+            return resp.items
+
+        items = await retrieve_page(max_objects, as_timestamp(created_before))
+        if not items:
+            return []
+
+        while True:
+            if max_objects is not None and len(items) >= max_objects:
+                break
+
+            new_items = await retrieve_page(100, items[-1].metadata.creation_info.created_at)
+            if not new_items:
+                break
+            items.extend(new_items)
+
+        volumes = [_Volume._new_hydrated(item.volume_id, client, item.metadata, is_another_app=True) for item in items]
+        if max_objects is None:
+            return volumes
+        else:
+            return volumes[:max_objects]
 
 
 VolumeManager = synchronize_api(_VolumeManager)

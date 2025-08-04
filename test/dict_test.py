@@ -104,6 +104,8 @@ def test_dict_list(servicer, client):
     for i in range(5):
         Dict.from_name(f"test-dict-{i}", create_if_missing=True).hydrate(client)
 
+    print(servicer.deployed_dicts)
+
     dict_list = Dict.objects.list(client=client)
     assert len(dict_list) == 5
     assert all(d.name.startswith("test-dict-") for d in dict_list)

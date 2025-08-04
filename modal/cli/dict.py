@@ -38,7 +38,7 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     """List all named Dicts."""
     env = ensure_env(env)
-    dicts = await _Dict.objects.list(environment_name=env)  # TODO expose pagination in the request
+    dicts = await _Dict.objects.list(environment_name=env)
     rows = []
     for obj in dicts:
         info = await obj.info()

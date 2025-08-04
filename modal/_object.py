@@ -2,20 +2,17 @@
 import typing
 import uuid
 from collections.abc import Awaitable, Hashable, Sequence
-from datetime import datetime
 from functools import wraps
-from typing import Callable, ClassVar, Optional, Union
+from typing import Callable, ClassVar, Optional
 
 from google.protobuf.message import Message
 from typing_extensions import Self
 
 from modal._traceback import suppress_tb_frames
-from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing
 from ._utils.deprecation import deprecation_warning
-from ._utils.time_utils import as_timestamp
 from .client import _Client
 from .config import config, logger
 from .exception import ExecutionError, InvalidError
@@ -307,9 +304,3 @@ def live_method_gen(method):
                 yield item
 
     return wrapped
-
-
-def _list_pagination(max_objects: int, created_before: Optional[Union[datetime, str]]) -> api_pb2.ListPagination:
-    if max_objects > 100:
-        raise InvalidError("max_objects cannot exceed 100")
-    return api_pb2.ListPagination(max_objects=max_objects, created_before=as_timestamp(created_before))
