@@ -1819,6 +1819,7 @@ message FunctionOptions {
   optional uint32 max_concurrent_inputs = 14;
   optional uint32 batch_max_size = 15;
   optional uint64 batch_linger_ms = 16;
+  optional SchedulerPlacement scheduler_placement = 17;
 }
 
 message FunctionPrecreateRequest {
@@ -1870,8 +1871,8 @@ message FunctionPutOutputsItem {
   double output_created_at = 4;
   DataFormat data_format = 7; // for result.data_oneof
   uint32 retry_count = 8;
-  string function_call_id = 9; // injected by the worker 
-  optional int32 function_map_idx = 10; // injected by the worker 
+  string function_call_id = 9; // injected by the worker
+  optional int32 function_map_idx = 10; // injected by the worker
 }
 
 message FunctionPutOutputsRequest {
@@ -2119,7 +2120,7 @@ message MapAwaitResponse {
 message MapCheckInputsRequest {
   string last_entry_id = 1;
   float timeout = 2;
-  repeated string attempt_tokens = 3;  
+  repeated string attempt_tokens = 3;
 }
 
 message MapCheckInputsResponse {
