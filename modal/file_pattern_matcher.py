@@ -11,6 +11,7 @@ then asking it whether file paths match any of its patterns.
 
 import os
 from abc import abstractmethod
+from functools import cached_property
 from pathlib import Path
 from typing import Callable, Optional, Sequence, Union
 
@@ -99,11 +100,11 @@ class FilePatternMatcher(_AbstractPatternMatcher):
     ```
     """
 
-    patterns: list[Pattern]
-    _delayed_init: Callable[[], None] = None
+    _file_path: Optional[Union[str, Path]]
+    _pattern_strings: Optional[Sequence[str]]
 
-    def _set_patterns(self, patterns: Sequence[str]) -> None:
-        self.patterns = []
+    def _parse_patterns(self, patterns: Sequence[str]) -> list[Pattern]:
+        parsed_patterns = []
         for pattern in list(patterns):
             pattern = pattern.strip().strip(os.path.sep)
             if not pattern:
@@ -118,7 +119,8 @@ class FilePatternMatcher(_AbstractPatternMatcher):
             # In Python, we can proceed without explicit syntax checking
             new_pattern.cleaned_pattern = pattern
             new_pattern.dirs = pattern.split(os.path.sep)
-            self.patterns.append(new_pattern)
+            parsed_patterns.append(new_pattern)
+        return parsed_patterns
 
     def __init__(self, *pattern: str) -> None:
         """Initialize a new FilePatternMatcher instance.
@@ -129,7 +131,8 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         Raises:
             ValueError: If an illegal exclusion pattern is provided.
         """
-        self._set_patterns(pattern)
+        self._pattern_strings = pattern
+        self._file_path = None
 
     @classmethod
     def from_file(cls, file_path: Union[str, Path]) -> "FilePatternMatcher":
@@ -148,14 +151,10 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         ```
 
         """
-        uninitialized = cls.__new__(cls)
-
-        def _delayed_init():
-            uninitialized._set_patterns(Path(file_path).read_text("utf8").splitlines())
-            uninitialized._delayed_init = None
-
-        uninitialized._delayed_init = _delayed_init
-        return uninitialized
+        instance = cls.__new__(cls)
+        instance._file_path = file_path
+        instance._pattern_strings = None
+        return instance
 
     def _matches(self, file_path: str) -> bool:
         """Check if the file path or any of its parent directories match the patterns.
@@ -194,6 +193,18 @@ class FilePatternMatcher(_AbstractPatternMatcher):
 
         return matched
 
+    @cached_property
+    def patterns(self) -> list[Pattern]:
+        """Get the patterns, loading from file if necessary."""
+        if self._file_path is not None:
+            # Lazy load from file
+            pattern_strings = Path(self._file_path).read_text("utf8").splitlines()
+        else:
+            # Use patterns provided in __init__
+            pattern_strings = list(self._pattern_strings)
+
+        return self._parse_patterns(pattern_strings)
+
     def can_prune_directories(self) -> bool:
         """
         Returns True if this pattern matcher allows safe early directory pruning.
@@ -205,8 +216,6 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         return not any(pattern.exclusion for pattern in self.patterns)
 
     def __call__(self, file_path: Path) -> bool:
-        if self._delayed_init:
-            self._delayed_init()
         return self._matches(str(file_path))
 
 

@@ -350,6 +350,7 @@ def test_from_file(as_type):
     ignore_file.write_text("**/*.txt")
 
     lff = FilePatternMatcher.from_file(as_type(ignore_file))
+    assert lff.can_prune_directories()
     assert lff(Path("top/data.txt"))
     assert not lff(Path("top/data.py"))
 
