@@ -55,7 +55,7 @@ class _DictManager:
         *,
         max_objects: int = 100,  # Paginate requests to this size
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
-        environment_name: str = "",  # Uses default environment if not specified
+        environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
     ) -> list["_Dict"]:
         """Return a list of hydrated Dict objects.
@@ -67,7 +67,7 @@ class _DictManager:
         print([d.name for d in dicts])
         ```
 
-        Dicts will be retreived from the default environment, or another one can be specified:
+        Dicts will be retreived from the active environment, or another one can be specified:
 
         ```python notest
         dev_dicts = modal.Dict.objects.list(environment_name="dev")

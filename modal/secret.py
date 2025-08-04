@@ -44,7 +44,7 @@ class _SecretManager:
         *,
         max_objects: int = 100,  # Paginate requests to this size
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
-        environment_name: str = "",  # Uses default environment if not specified
+        environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
     ) -> list["_Secret"]:
         """Return a list of hydrated Secret objects.
@@ -56,7 +56,7 @@ class _SecretManager:
         print([s.name for s in secrets])
         ```
 
-        Secrets will be retreived from the default environment, or another one can be specified:
+        Secrets will be retreived from the active environment, or another one can be specified:
 
         ```python notest
         dev_secrets = modal.Secret.objects.list(environment_name="dev")

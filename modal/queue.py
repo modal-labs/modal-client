@@ -53,7 +53,7 @@ class _QueueManager:
         *,
         max_objects: int = 100,  # Paginate requests to this size
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
-        environment_name: str = "",  # Uses default environment if not specified
+        environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
     ) -> list["_Queue"]:
         """Return a list of hydrated Queue objects.
@@ -65,7 +65,7 @@ class _QueueManager:
         print([q.name for q in queues])
         ```
 
-        Queues will be retreived from the default environment, or another one can be specified:
+        Queues will be retreived from the active environment, or another one can be specified:
 
         ```python notest
         dev_queues = modal.Queue.objects.list(environment_name="dev")
