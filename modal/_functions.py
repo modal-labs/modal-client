@@ -1548,7 +1548,7 @@ Use the `Function.get_web_url()` method instead.
 
     @live_method
     async def _spawn_map(self, input_queue: _SynchronizedQueue) -> "_FunctionCall":
-        self._check_no_web_url("map")
+        self._check_no_web_url("spawn_map")
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.spawn_map(...)`.")
 
