@@ -88,8 +88,7 @@ if typing.TYPE_CHECKING:
 
 class InputPreprocessor:
     """
-    Consumes unregistered, user provided inputs from a raw-input queue
-    Registers each of them with the control-plane, and puts them in a processed-input queue.
+    Constructs FunctionPutInputsItem objects from the raw-input queue, and puts them in the processed-input queue.
     """
 
     def __init__(
