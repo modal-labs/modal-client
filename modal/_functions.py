@@ -240,6 +240,7 @@ class _Invocation:
                 requested_at=time.time(),
                 input_jwts=input_jwts,
                 start_idx=index,
+                end_idx=index,
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -1835,10 +1836,9 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return _Invocation(self.client.stub, self.object_id, self.client)
 
     async def get(self, timeout: Optional[float] = None, *, index: int = 0) -> ReturnType:
-        """Get the result of the function call.
-
-        Calling `get` with an `index` will return the index-th output of the function call.
-        A non-zero index is useful when your function has multiple outputs, like via `Function.spawn_map`.
+        """Get the result of the index-th input of the function call.
+        `.spawn()` calls have a single output, so only specifying `index=0` is valid.
+        A non-zero index is useful when your function has multiple outputs, like via `.spawn_map()`.
 
         This function waits indefinitely by default. It takes an optional
         `timeout` argument that specifies the maximum number of seconds to wait,
