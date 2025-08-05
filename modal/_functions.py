@@ -1130,7 +1130,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     target_concurrent_inputs=options.target_concurrent_inputs,
                     batch_max_size=options.batch_max_size,
                     batch_linger_ms=options.batch_wait_ms,
-                    scheduler_placement=options.schedular_placement,
+                    scheduler_placement=options.scheduler_placement,
                 )
             else:
                 options_pb = None

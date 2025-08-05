@@ -93,7 +93,7 @@ class _ServiceOptions:
     target_concurrent_inputs: Optional[int] = None
     batch_max_size: Optional[int] = None
     batch_wait_ms: Optional[int] = None
-    schedular_placement: Optional[api_pb2.SchedulerPlacement] = None
+    scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
 
     def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
         """Implement protobuf-like MergeFrom semantics for this dataclass.
@@ -762,7 +762,7 @@ More information on class parameterization can be found here: https://modal.com/
             buffer_containers=buffer_containers,
             scaledown_window=scaledown_window,
             timeout_secs=timeout,
-            schedular_placement=scheduler_placement,
+            scheduler_placement=scheduler_placement,
             # Note: set both for backwards / forwards compatibility
             # But going forward `.with_concurrency` is the preferred method with distinct parameterization
             max_concurrent_inputs=allow_concurrent_inputs,
