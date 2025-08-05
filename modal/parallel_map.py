@@ -151,7 +151,6 @@ class InputPreprocessor:
 class InputPumper:
     """
     Reads inputs from a queue of FunctionPutInputsItems, and sends them to the server.
-    Also reads inputs from a queue of FunctionRetryInputsItems, and sends them to the server.
     """
 
     def __init__(
@@ -159,27 +158,23 @@ class InputPumper:
         client: "modal.client._Client",
         *,
         input_queue: asyncio.Queue,
-        retry_queue: TimestampPriorityQueue,
         function: "modal.functions._Function",
-        map_items_manager: "_MapItemsManager",
-        function_call_jwt: str,
         function_call_id: str,
+        map_items_manager: Optional["_MapItemsManager"] = None,
     ):
         self.client = client
         self.function = function
         self.map_items_manager = map_items_manager
-        self.retry_queue = retry_queue
         self.input_queue = input_queue
         self.inputs_sent = 0
-        self.inputs_retried = 0
-        self.function_call_jwt = function_call_jwt
         self.function_call_id = function_call_id
 
     async def pump_inputs(self):
         assert self.client.stub
         async for items in queue_batch_iterator(self.input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
             # Add items to the manager. Their state will be SENDING.
-            await self.map_items_manager.add_items(items)
+            if self.map_items_manager is not None:
+                await self.map_items_manager.add_items(items)
             request = api_pb2.FunctionPutInputsRequest(
                 function_id=self.function.object_id,
                 inputs=items,
@@ -193,30 +188,12 @@ class InputPumper:
             resp = await self._send_inputs(self.client.stub.FunctionPutInputs, request)
             self.inputs_sent += len(items)
             # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
-            self.map_items_manager.handle_put_inputs_response(resp.inputs)
+            if self.map_items_manager is not None:
+                self.map_items_manager.handle_put_inputs_response(resp.inputs)
             logger.debug(
                 f"Successfully pushed {len(items)} inputs to server. "
                 f"Num queued inputs awaiting push is {self.input_queue.qsize()}."
             )
-        yield
-
-    async def retry_inputs(self):
-        async for retriable_idxs in queue_batch_iterator(self.retry_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
-            # For each index, use the context in the manager to create a FunctionRetryInputsItem.
-            # This will also update the context state to RETRYING.
-            inputs: list[api_pb2.FunctionRetryInputsItem] = await self.map_items_manager.prepare_items_for_retry(
-                retriable_idxs
-            )
-            request = api_pb2.FunctionRetryInputsRequest(
-                function_call_jwt=self.function_call_jwt,
-                inputs=inputs,
-            )
-            resp = await self._send_inputs(self.client.stub.FunctionRetryInputs, request)
-            # Update the state to WAITING_FOR_OUTPUT, and update the input_jwt in the context
-            # to the new value in the response.
-            self.map_items_manager.handle_retry_response(resp.input_jwts)
-            logger.debug(f"Successfully pushed retry for {len(inputs)} to server.")
-            self.inputs_retried += len(inputs)
         yield
 
     async def _send_inputs(
@@ -239,6 +216,49 @@ class InputPumper:
             additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             retry_warning_message=retry_warning_message,
         )
+
+
+class SyncInputPumper(InputPumper):
+    def __init__(
+        self,
+        client: "modal.client._Client",
+        *,
+        input_queue: asyncio.Queue,
+        retry_queue: TimestampPriorityQueue,
+        function: "modal.functions._Function",
+        function_call_jwt: str,
+        function_call_id: str,
+        map_items_manager: "_MapItemsManager",
+    ):
+        super().__init__(
+            client,
+            input_queue=input_queue,
+            function=function,
+            function_call_id=function_call_id,
+            map_items_manager=map_items_manager,
+        )
+        self.retry_queue = retry_queue
+        self.inputs_retried = 0
+        self.function_call_jwt = function_call_jwt
+
+    async def retry_inputs(self):
+        async for retriable_idxs in queue_batch_iterator(self.retry_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+            # For each index, use the context in the manager to create a FunctionRetryInputsItem.
+            # This will also update the context state to RETRYING.
+            inputs: list[api_pb2.FunctionRetryInputsItem] = await self.map_items_manager.prepare_items_for_retry(
+                retriable_idxs
+            )
+            request = api_pb2.FunctionRetryInputsRequest(
+                function_call_jwt=self.function_call_jwt,
+                inputs=inputs,
+            )
+            resp = await self._send_inputs(self.client.stub.FunctionRetryInputs, request)
+            # Update the state to WAITING_FOR_OUTPUT, and update the input_jwt in the context
+            # to the new value in the response.
+            self.map_items_manager.handle_retry_response(resp.input_jwts)
+            logger.debug(f"Successfully pushed retry for {len(inputs)} to server.")
+            self.inputs_retried += len(inputs)
+        yield
 
 
 async def _map_invocation(
@@ -297,7 +317,7 @@ async def _map_invocation(
         done_callback=lambda: update_state(set_have_all_inputs=True),
     )
 
-    input_pumper = InputPumper(
+    input_pumper = SyncInputPumper(
         client=client,
         input_queue=input_queue,
         retry_queue=retry_queue,
