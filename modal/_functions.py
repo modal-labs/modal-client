@@ -354,8 +354,7 @@ class _Invocation:
 
 class _InputPlaneInvocation:
     """Internal client representation of a single-input call to a Modal Function using the input
-    plane server API. As of 4/22/2025, this class is experimental and not used in production.
-    It is OK to make breaking changes to this class."""
+    plane server API."""
 
     stub: ModalClientModal
 
