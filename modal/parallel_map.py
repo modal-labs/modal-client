@@ -274,7 +274,7 @@ class AsyncInputPumper(InputPumper):
 
 async def _spawn_map_invocation(
     function: "modal.functions._Function", raw_input_queue: _SynchronizedQueue, client: "modal.client._Client"
-) -> "modal.functions._FunctionCall":
+) -> str:
     assert client.stub
     request = api_pb2.FunctionMapRequest(
         function_id=function.object_id,
@@ -340,7 +340,7 @@ async def _spawn_map_invocation(
     )
     log_debug_stats_task.cancel()
     await log_debug_stats_task
-    return await modal.functions._FunctionCall.from_id(function_call_id, client)
+    return function_call_id
 
 
 async def _map_invocation(

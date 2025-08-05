@@ -1547,17 +1547,19 @@ Use the `Function.get_web_url()` method instead.
                     yield item
 
     @live_method
-    async def _spawn_map(self, input_queue: _SynchronizedQueue) -> "_FunctionCall":
+    async def _spawn_map(self, input_queue: _SynchronizedQueue) -> "_FunctionCall[ReturnType]":
         self._check_no_web_url("spawn_map")
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.spawn_map(...)`.")
 
         assert self._function_name
-        return await _spawn_map_invocation(
+        function_call_id = await _spawn_map_invocation(
             self,
             input_queue,
             self.client,
         )
+        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(function_call_id, self.client, None)
+        return fc
 
     async def _call_function(self, args, kwargs) -> ReturnType:
         invocation: Union[_Invocation, _InputPlaneInvocation]
