@@ -260,6 +260,89 @@ class SyncInputPumper(InputPumper):
         yield
 
 
+class AsyncInputPumper(InputPumper):
+    def __init__(
+        self,
+        client: "modal.client._Client",
+        *,
+        input_queue: asyncio.Queue,
+        function: "modal.functions._Function",
+        function_call_id: str,
+    ):
+        super().__init__(client, input_queue=input_queue, function=function, function_call_id=function_call_id)
+
+
+async def _spawn_map_invocation(
+    function: "modal.functions._Function", raw_input_queue: _SynchronizedQueue, client: "modal.client._Client"
+) -> str:
+    assert client.stub
+    request = api_pb2.FunctionMapRequest(
+        function_id=function.object_id,
+        parent_input_id=current_input_id() or "",
+        function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
+        function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
+    )
+    response: api_pb2.FunctionMapResponse = await retry_transient_errors(client.stub.FunctionMap, request)
+    function_call_id = response.function_call_id
+
+    have_all_inputs = False
+    inputs_created = 0
+
+    def set_inputs_created(set_inputs_created):
+        nonlocal inputs_created
+        assert set_inputs_created is None or set_inputs_created > inputs_created
+        inputs_created = set_inputs_created
+
+    def set_have_all_inputs():
+        nonlocal have_all_inputs
+        have_all_inputs = True
+
+    input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
+    input_preprocessor = InputPreprocessor(
+        client=client,
+        raw_input_queue=raw_input_queue,
+        processed_input_queue=input_queue,
+        function=function,
+        created_callback=set_inputs_created,
+        done_callback=set_have_all_inputs,
+    )
+
+    input_pumper = AsyncInputPumper(
+        client=client,
+        input_queue=input_queue,
+        function=function,
+        function_call_id=function_call_id,
+    )
+
+    def log_stats():
+        logger.debug(
+            f"have_all_inputs={have_all_inputs} inputs_created={inputs_created} inputs_sent={input_pumper.inputs_sent} "
+        )
+
+    async def log_task():
+        while True:
+            log_stats()
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                # Log final stats before exiting
+                log_stats()
+                break
+
+    async def consume_generator(gen):
+        async for _ in gen:
+            pass
+
+    log_debug_stats_task = asyncio.create_task(log_task())
+    await asyncio.gather(
+        consume_generator(input_preprocessor.drain_input_generator()),
+        consume_generator(input_pumper.pump_inputs()),
+    )
+    log_debug_stats_task.cancel()
+    await log_debug_stats_task
+    return function_call_id
+
+
 async def _map_invocation(
     function: "modal.functions._Function",
     raw_input_queue: _SynchronizedQueue,
@@ -1060,6 +1143,54 @@ def _map_sync(
         nested_async_message=(
             "You can't iter(Function.map()) from an async function. Use async for ... in Function.map.aio() instead."
         ),
+    )
+
+
+async def _experimental_spawn_map_async(self, *input_iterators, kwargs={}) -> "modal.functions._FunctionCall":
+    async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
+    return await _spawn_map_helper(self, async_input_gen, kwargs)
+
+
+async def _spawn_map_helper(
+    self: "modal.functions.Function", async_input_gen, kwargs={}
+) -> "modal.functions._FunctionCall":
+    raw_input_queue: Any = SynchronizedQueue()  # type: ignore
+    await raw_input_queue.init.aio()
+
+    async def feed_queue():
+        async with aclosing(async_input_gen) as streamer:
+            async for args in streamer:
+                await raw_input_queue.put.aio((args, kwargs))
+        await raw_input_queue.put.aio(None)  # end-of-input sentinel
+
+    fc, _ = await asyncio.gather(self._spawn_map.aio(raw_input_queue), feed_queue())
+    return fc
+
+
+def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal.functions._FunctionCall":
+    """Spawn parallel execution over a set of inputs, exiting as soon as the inputs are created (without waiting
+    for the map to complete).
+
+    Takes one iterator argument per argument in the function being mapped over.
+
+    Example:
+    ```python
+    @app.function()
+    def my_func(a):
+        return a ** 2
+
+
+    @app.local_entrypoint()
+    def main():
+        fc = my_func.spawn_map([1, 2, 3, 4])
+    ```
+
+    Returns a FunctionCall object that can be used to retrieve results
+    """
+
+    return run_coroutine_in_temporary_event_loop(
+        _experimental_spawn_map_async(self, *input_iterators, kwargs=kwargs),
+        "You can't run Function.spawn_map() from an async function. Use Function.spawn_map.aio() instead.",
     )
 
 
