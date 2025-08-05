@@ -30,7 +30,7 @@ from modal._serialization import deserialize, serialize, serialize_data_format
 from modal._traceback import extract_traceback, print_exception
 from modal._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from modal._utils.function_utils import _stream_function_call_data
+from modal._utils.function_utils import _create_input, _stream_function_call_data
 from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.package_utils import parse_major_minor_version
 from modal.client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
@@ -486,7 +486,26 @@ class _ContainerIOManager:
         if self.input_plane_server_url:
             stub = await self._client.get_stub(self.input_plane_server_url)
 
-        async for data in _stream_function_call_data(self._client, stub, function_call_id, "data_in"):
+        input_item = await _create_input(
+            None,  # what to put here?
+            None,  # what to put here?
+            self._client.stub,
+            max_object_size_bytes=MAX_OBJECT_SIZE_BYTES,  # is this correct?
+            method_name=function_call_id,  # is this correct?
+        )
+
+        request = api_pb2.AttemptStartRequest(
+            function_id=function_call_id,
+            parent_input_id=self.current_input_id or "",
+            input=input_item,
+        )
+
+        # metadata = await client.get_input_plane_metadata(input_plane_region)
+        # Do we need to pass in metadata here?
+        response = await retry_transient_errors(stub.AttemptStart, request)
+        attempt_token = response.attempt_token
+
+        async for data in _stream_function_call_data(self._client, stub, function_call_id, "data_in", attempt_token):
             yield data
 
     async def put_data_out(
