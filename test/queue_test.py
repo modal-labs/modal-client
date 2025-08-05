@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 import queue
+import sys
 import time
 
 from modal import Queue
@@ -153,6 +154,8 @@ def test_queue_namespace_deprecated(servicer, client):
 def test_queue_list(servicer, client):
     for i in range(5):
         Queue.from_name(f"test-queue-{i}", create_if_missing=True).hydrate(client)
+    if sys.platform == "win32":
+        time.sleep(1 / 32)
 
     queue_list = Queue.objects.list(client=client)
     assert len(queue_list) == 5

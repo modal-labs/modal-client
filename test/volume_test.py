@@ -580,6 +580,8 @@ def test_remove_file_not_found(set_env_client):
 def test_volume_list(servicer, client):
     for i in range(5):
         modal.Volume.from_name(f"test-volume-{i}", create_if_missing=True).hydrate(client)
+    if sys.platform == "win32":
+        time.sleep(1 / 32)
 
     volume_list = modal.Volume.objects.list(client=client)
     assert len(volume_list) == 5

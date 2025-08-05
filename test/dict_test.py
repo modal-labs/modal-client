@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import pytest
+import sys
 import time
 
 from modal import Dict
@@ -103,6 +104,8 @@ def test_dict_namespace_deprecated(servicer, client):
 def test_dict_list(servicer, client):
     for i in range(5):
         Dict.from_name(f"test-dict-{i}", create_if_missing=True).hydrate(client)
+    if sys.platform == "win32":
+        time.sleep(1 / 32)
 
     print(servicer.deployed_dicts)
 
