@@ -2610,6 +2610,9 @@ message Sandbox {
 
   // Experimental options
   map<string, bool> experimental_options = 31;
+
+  optional bool enable_sandbox_v2 = 32;
+  optional string token = 33;
 }
 
 message SandboxCreateRequest {
@@ -2659,6 +2662,14 @@ message SandboxGetTaskIdRequest {
 message SandboxGetTaskIdResponse {
   optional string task_id = 1; // This is None if the sandbox was terminated before a task could be scheduled.
   optional GenericResult task_result = 2; // If the task has already exited, this is the result.
+}
+
+message SandboxGetTokenRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetTokenResponse {
+  optional string token = 1;
 }
 
 message SandboxGetTunnelsRequest {
@@ -3551,6 +3562,7 @@ service ModalClient {
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
+  rpc SandboxGetToken(SandboxGetTokenRequest) returns (SandboxGetTokenResponse);
   rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse);

@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
+import ssl
 import time
 from collections.abc import AsyncGenerator, Sequence
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
@@ -100,6 +101,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stdin: _StreamWriter
     _task_id: Optional[str] = None
     _tunnels: Optional[dict[int, Tunnel]] = None
+    _token: Optional[str] = None
     _enable_snapshot: bool = False
 
     @staticmethod
@@ -599,6 +601,16 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self._tunnels
 
+    # TODO: Make sure this is truly private.
+    async def _get_token(self) -> str | None:
+        if self._token is not None:
+            return self._token
+        req = api_pb2.SandboxGetTokenRequest(sandbox_id=self.object_id)
+        resp = await retry_transient_errors(self._client.stub.SandboxGetToken, req)
+
+        self._token = resp.token
+        return self._token
+
     async def reload_volumes(self) -> None:
         """Reload all Volumes mounted in the Sandbox.
 
@@ -710,6 +722,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             print(line)
         ```
         """
+        if await self._get_token() is not None:
+            await self._exec_v2(args, pty_info, stdout, stderr, timeout, workdir, secrets, text, bufsize, _pty_info)
+            # TODO: Return a process object that waits for the sandbox daemon to exit.
 
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
@@ -741,6 +756,47 @@ class _Sandbox(_Object, type_prefix="sb"):
             exec_deadline=exec_deadline,
             by_line=by_line,
         )
+
+    async def _exec_v2(
+        self,
+        args: Sequence[str],
+        pty_info: Optional[api_pb2.PTYInfo],
+        stdout: StreamType,
+        stderr: StreamType,
+        timeout: Optional[int],
+        workdir: Optional[str],
+        secrets: Sequence[_Secret],
+        text: bool,
+        bufsize: Literal[-1, 1],
+        _pty_info: Optional[api_pb2.PTYInfo],
+    ):
+        sandbox_daemon_tunnel = (await self.tunnels())[1234].url
+        import httpx
+
+        # For now, just send a basic request to the sandbox daemon using a custom SSL context.
+        # TODO: Figure out how to do local testing without this.
+        context = ssl.create_default_context()
+        print(os.path.join("/home", "ec2-user", "modal", "fixtures", "local_ca_cert.pem"))
+        context.load_verify_locations(
+            cafile=os.path.join("/home", "ec2-user", "modal", "fixtures", "local_ca_cert.pem")
+        )
+
+        async with httpx.AsyncClient(
+            http2=True,
+            follow_redirects=True,
+            timeout=25.0,
+            verify=context,
+        ) as client:
+            # Retry in case the sandbox daemon hasn't started yet.
+            deadline = time.monotonic() + 15.0  # total of ~15s to wait
+            while True:
+                try:
+                    await client.post(sandbox_daemon_tunnel, json={"type": "exec", "args": args})
+                    break  # Success
+                except httpx.RequestError:
+                    if time.monotonic() > deadline:
+                        raise  # Give up after deadline
+                    await asyncio.sleep(0.5)  # Wait and retry
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
         await self._get_task_id()
