@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Union
 import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
-from sortedcontainers import SortedList
 from synchronicity.combined_types import MethodWithAio
 
 from modal_proto import api_pb2
@@ -355,11 +354,22 @@ class _Invocation:
     async def enumerate(self, start_index: int = 0, end_index: int = None):
         """Enumerate over the results of the function call."""
         failure_count = 0
-        missing_outputs = SortedList([i for i in range(start_index, end_index)])
+        total_outputs_found = 0
+        seen_outputs = [False] * (end_index - start_index + 1)
+
+        def translate_index(idx: int) -> int:
+            return idx - start_index
+
         while True:
             new_outputs_found = 0
             current_index = start_index
             while current_index < end_index:
+                # Skip over outputs that have already been seen
+                while seen_outputs[translate_index(current_index)]:
+                    current_index += 1
+                    if current_index >= end_index:
+                        break
+
                 request = api_pb2.FunctionGetOutputsRequest(
                     function_call_id=self.function_call_id,
                     timeout=0,
@@ -373,24 +383,27 @@ class _Invocation:
                     request,
                     attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD,
                 )
-                outputs: list[api_pb2.FunctionGetOutputsItem] = response.outputs
-                for output in outputs:
-                    if output.idx not in missing_outputs:
-                        continue
-                    yield output.idx, output.result
-                    missing_outputs.remove(output.idx)
-                    new_outputs_found += 1
-                    assert output.idx > current_index
-                    current_index = output.idx
 
-                index = missing_outputs.bisect_right(current_index)
-                if index < len(missing_outputs):
-                    current_index = missing_outputs[index]
-                else:
-                    current_index = end_index
-                if len(missing_outputs) == 0:
+                outputs: list[api_pb2.FunctionGetOutputsItem] = response.outputs
+                # No more outputs to fetch
+                if len(outputs) == 0:
                     break
 
+                for output in outputs:
+                    if seen_outputs[translate_index(output.idx)]:
+                        continue
+                    seen_outputs[translate_index(output.idx)] = True
+                    result = await _process_result(output.result, output.data_format, self.stub, self.client)
+                    yield output.idx, result
+                    new_outputs_found += 1
+                    total_outputs_found += 1
+                    current_index = max(current_index, output.idx + 1)
+
+                # We found all the outputs we were looking for
+                if total_outputs_found == (end_index - start_index) + 1:
+                    return
+
+            # If we didn't find any new outputs, we need to back off and retry
             if new_outputs_found == 0:
                 failure_count += 1
                 await asyncio.sleep(2**failure_count * 0.1)
