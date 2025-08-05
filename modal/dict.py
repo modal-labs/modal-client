@@ -72,6 +72,13 @@ class _DictManager:
         dev_dicts = modal.Dict.objects.list(environment_name="dev")
         ```
 
+        By default, all named Dict are returned, newest to oldest. It's also possible to limit the
+        number of results and to filter by creation date:
+
+        ```python
+        dicts = modal.Dict.objects.list(max_objects=10, created_before="2025-01-01")
+        ```
+
         """
         client = await _Client.from_env() if client is None else client
 

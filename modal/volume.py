@@ -139,6 +139,13 @@ class _VolumeManager:
         dev_volumes = modal.Volume.objects.list(environment_name="dev")
         ```
 
+        By default, all named Volumes are returned, newest to oldest. It's also possible to limit the
+        number of results and to filter by creation date:
+
+        ```python
+        volumes = modal.Volume.objects.list(max_objects=10, created_before="2025-01-01")
+        ```
+
         """
         client = await _Client.from_env() if client is None else client
 

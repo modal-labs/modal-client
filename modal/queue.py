@@ -70,7 +70,12 @@ class _QueueManager:
         dev_queues = modal.Queue.objects.list(environment_name="dev")
         ```
 
-        Results are paginated; you can retrieve all Queues iteratively:
+        By default, all named Queues are returned, newest to oldest. It's also possible to limit the
+        number of results and to filter by creation date:
+
+        ```python
+        queues = modal.Queue.objects.list(max_objects=10, created_before="2025-01-01")
+        ```
 
         """
         client = await _Client.from_env() if client is None else client
