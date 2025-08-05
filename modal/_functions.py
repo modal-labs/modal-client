@@ -1888,13 +1888,17 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         """
         return await self._invocation().poll_function(timeout=timeout)
 
+    @live_method_gen
     async def iter(self, start_index: int = 0, end_index: int = None) -> AsyncIterator[ReturnType]:
         """Iterate over the results of the function call."""
-        return self._invocation().iter(start_index, end_index)
+        async for item in self._invocation().iter(start_index, end_index):
+            yield item
 
+    @live_method_gen
     async def enumerate(self, start_index: int = 0, end_index: int = None) -> AsyncIterator[tuple[int, ReturnType]]:
         """Enumerate over the results of the function call."""
-        return self._invocation().enumerate(start_index, end_index)
+        async for item in self._invocation().enumerate(start_index, end_index):
+            yield item
 
     async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
