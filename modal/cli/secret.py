@@ -11,7 +11,7 @@ from typing import Optional
 import click
 import typer
 from rich.syntax import Syntax
-from typer import Argument
+from typer import Argument, Option
 
 from modal._output import make_console
 from modal._utils.async_utils import synchronizer
@@ -158,26 +158,23 @@ def some_function():
     console.print(Syntax(example_code, "python"))
 
 
-@secret_cli.command("delete", help="Delete a named secret.")
+@secret_cli.command("delete", help="Delete a named Secret.")
 @synchronizer.create_blocking
 async def delete(
-    secret_name: str = Argument(help="Name of the modal.Secret to be deleted. Case sensitive"),
+    name: str = Argument(help="Name of the modal.Secret to be deleted. Case sensitive"),
+    *,
+    allow_missing: bool = Option(False, "--allow-missing", help="Don't error if the Secret doesn't exist."),
     yes: bool = YES_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
-    """TODO"""
     env = ensure_env(env)
-    secret = await _Secret.from_name(secret_name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
-            f"Are you sure you want to irrevocably delete the modal.Secret '{secret_name}'?",
+            f"Are you sure you want to irrevocably delete the modal.Secret '{name}'?",
             default=False,
             abort=True,
         )
-    client = await _Client.from_env()
-
-    # TODO: replace with API on `modal.Secret` when we add it
-    await client.stub.SecretDelete(api_pb2.SecretDeleteRequest(secret_id=secret.object_id))
+    await _Secret.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
 def get_text_from_editor(key) -> str:

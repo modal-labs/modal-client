@@ -29,7 +29,7 @@ from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
-from .exception import InvalidError, RequestSizeError
+from .exception import InvalidError, NotFoundError, RequestSizeError
 
 
 @dataclass
@@ -101,6 +101,40 @@ class _QueueManager:
 
         queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in items]
         return queues[:max_objects] if max_objects is not None else queues
+
+    @staticmethod
+    async def delete(
+        name: str,  # Name of the Queue to delete
+        *,
+        allow_missing: bool = False,  # If True, don't raise an error if the Queue doesn't exist
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ):
+        """Delete a named Queue.
+
+        Warning: This deletes an *entire Queue*, not just a specific entry or partition.
+        Deletion is irreversible and will affect any Apps currently using the Queue.
+
+        **Examples:**
+
+        ```python notest
+        await modal.Queue.objects.delete("my-queue")
+        ```
+
+        Queues will be deleted from the active environment, or another one can be specified:
+
+        ```python notest
+        await modal.Queue.objects.delete("my-queue", environment_name="dev")
+        ```
+        """
+        try:
+            obj = await _Queue.from_name(name, environment_name=environment_name).hydrate(client)
+        except NotFoundError:
+            if not allow_missing:
+                raise
+        else:
+            req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
+            await retry_transient_errors(obj._client.stub.QueueDelete, req)
 
 
 QueueManager = synchronize_api(_QueueManager)
@@ -323,9 +357,20 @@ class _Queue(_Object, type_prefix="qu"):
 
     @staticmethod
     async def delete(name: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = await _Queue.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.QueueDelete, req)
+        """mdmd:hidden
+        Delete a named Queue.
+
+        Warning: This deletes an *entire Queue*, not just a specific entry or partition.
+        Deletion is irreversible and will affect any Apps currently using the Queue.
+
+        DEPRECATED: This method is deprecated; we recommend using `modal.Queue.objects.delete` instead.
+
+        """
+        deprecation_warning(
+            (2025, 8, 6),
+            "`modal.Queue.delete` is deprecated; we recommend using `modal.Queue.objects.delete` instead.",
+        )
+        await _Queue.objects.delete(name, environment_name=environment_name, client=client)
 
     @live_method
     async def info(self) -> QueueInfo:

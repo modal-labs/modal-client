@@ -30,7 +30,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 import modal.exception
 import modal_proto.api_pb2
-from modal.exception import InvalidError, VolumeUploadTimeoutError
+from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
 from ._object import (
@@ -170,6 +170,40 @@ class _VolumeManager:
 
         volumes = [_Volume._new_hydrated(item.volume_id, client, item.metadata, is_another_app=True) for item in items]
         return volumes[:max_objects] if max_objects is not None else volumes
+
+    @staticmethod
+    async def delete(
+        name: str,  # Name of the Volume to delete
+        *,
+        allow_missing: bool = False,  # If True, don't raise an error if the Volume doesn't exist
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ):
+        """Delete a named Volume.
+
+        Warning: This deletes an *entire Volume*, not just a specific file.
+        Deletion is irreversible and will affect any Apps currently using the Volume.
+
+        **Examples:**
+
+        ```python notest
+        await modal.Volume.objects.delete("my-volume")
+        ```
+
+        Volumes will be deleted from the active environment, or another one can be specified:
+
+        ```python notest
+        await modal.Volume.objects.delete("my-volume", environment_name="dev")
+        ```
+        """
+        try:
+            obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
+        except NotFoundError:
+            if not allow_missing:
+                raise
+        else:
+            req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
+            await retry_transient_errors(obj._client.stub.VolumeDelete, req)
 
 
 VolumeManager = synchronize_api(_VolumeManager)
@@ -719,9 +753,20 @@ class _Volume(_Object, type_prefix="vo"):
 
     @staticmethod
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.VolumeDelete, req)
+        """mdmd:hidden
+        Delete a named Volume.
+
+        Warning: This deletes an *entire Volume*, not just a specific file.
+        Deletion is irreversible and will affect any Apps currently using the Volume.
+
+        DEPRECATED: This method is deprecated; we recommend using `modal.Volume.objects.delete` instead.
+
+        """
+        deprecation_warning(
+            (2025, 8, 6),
+            "`modal.Volume.delete` is deprecated; we recommend using `modal.Volume.objects.delete` instead.",
+        )
+        await _Volume.objects.delete(name, environment_name=environment_name, client=client)
 
     @staticmethod
     async def rename(

@@ -274,25 +274,26 @@ async def cp(
 
 @volume_cli.command(
     name="delete",
-    help="Delete a named, persistent modal.Volume.",
+    help="Delete a named Volume and all of its data.",
     rich_help_panel="Management",
 )
 @synchronizer.create_blocking
 async def delete(
-    volume_name: str = Argument(help="Name of the modal.Volume to be deleted. Case sensitive"),
+    name: str = Argument(help="Name of the modal.Volume to be deleted. Case sensitive"),
+    *,
+    allow_missing: bool = Option(False, "--allow-missing", help="Don't error if the Volume doesn't exist."),
     yes: bool = YES_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
-    # Lookup first to validate the name, even though delete is a staticmethod
-    await _Volume.from_name(volume_name, environment_name=env).hydrate()
+    env = ensure_env(env)
     if not yes:
         typer.confirm(
-            f"Are you sure you want to irrevocably delete the modal.Volume '{volume_name}'?",
+            f"Are you sure you want to irrevocably delete the modal.Volume '{name}'?",
             default=False,
             abort=True,
         )
 
-    await _Volume.delete(volume_name, environment_name=env)
+    await _Volume.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
 @volume_cli.command(

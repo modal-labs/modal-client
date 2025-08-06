@@ -37,9 +37,10 @@ def test_dict_named(servicer, client):
     d["foo"] = None
     assert d["foo"] is None
 
-    Dict.delete("my-amazing-dict", client=client)
+    Dict.objects.delete("my-amazing-dict", client=client)
     with pytest.raises(NotFoundError):
         Dict.from_name("my-amazing-dict").hydrate(client)
+    Dict.objects.delete("my-amazing-dict", client=client, allow_missing=True)
 
 
 def test_dict_ephemeral(servicer, client):
