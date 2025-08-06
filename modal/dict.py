@@ -261,7 +261,13 @@ class _Dict(_Object, type_prefix="di"):
         async with TaskContext() as tc:
             request = api_pb2.DictHeartbeatRequest(dict_id=response.dict_id)
             tc.infinite_loop(lambda: client.stub.DictHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.dict_id, client, response.metadata, is_another_app=True)
+            yield cls._new_hydrated(
+                response.dict_id,
+                client,
+                response.metadata,
+                is_another_app=True,
+                rep="modal.Dict.ephemeral()",
+            )
 
     @staticmethod
     def from_name(

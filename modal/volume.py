@@ -408,7 +408,13 @@ class _Volume(_Object, type_prefix="vo"):
         async with TaskContext() as tc:
             request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
             tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.volume_id, client, response.metadata, is_another_app=True)
+            yield cls._new_hydrated(
+                response.volume_id,
+                client,
+                response.metadata,
+                is_another_app=True,
+                rep="modal.Volume.ephemeral()",
+            )
 
     @staticmethod
     async def lookup(
