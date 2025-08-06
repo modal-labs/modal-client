@@ -2610,6 +2610,8 @@ message Sandbox {
 
   // Experimental options
   map<string, bool> experimental_options = 31;
+
+  repeated string preload_path_prefixes = 32; // Internal use only.
 }
 
 message SandboxCreateRequest {
@@ -3416,8 +3418,6 @@ service ModalClient {
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 
   // Input Plane
-  // These RPCs are experimental, not deployed to production, and can be changed / removed
-  // without needing to worry about backwards compatibility.
   rpc AttemptAwait(AttemptAwaitRequest) returns (AttemptAwaitResponse);
   rpc AttemptRetry(AttemptRetryRequest) returns (AttemptRetryResponse);
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);

@@ -86,6 +86,263 @@ if typing.TYPE_CHECKING:
     import modal.functions
 
 
+class InputPreprocessor:
+    """
+    Constructs FunctionPutInputsItem objects from the raw-input queue, and puts them in the processed-input queue.
+    """
+
+    def __init__(
+        self,
+        client: "modal.client._Client",
+        *,
+        raw_input_queue: _SynchronizedQueue,
+        processed_input_queue: asyncio.Queue,
+        function: "modal.functions._Function",
+        created_callback: Callable[[int], None],
+        done_callback: Callable[[], None],
+    ):
+        self.client = client
+        self.function = function
+        self.inputs_created = 0
+        self.raw_input_queue = raw_input_queue
+        self.processed_input_queue = processed_input_queue
+        self.created_callback = created_callback
+        self.done_callback = done_callback
+
+    async def input_iter(self):
+        while 1:
+            raw_input = await self.raw_input_queue.get()
+            if raw_input is None:  # end of input sentinel
+                break
+            yield raw_input  # args, kwargs
+
+    def create_input_factory(self):
+        async def create_input(argskwargs):
+            idx = self.inputs_created
+            self.inputs_created += 1
+            self.created_callback(self.inputs_created)
+            (args, kwargs) = argskwargs
+            return await _create_input(
+                args,
+                kwargs,
+                self.client.stub,
+                max_object_size_bytes=self.function._max_object_size_bytes,
+                idx=idx,
+                method_name=self.function._use_method_name,
+            )
+
+        return create_input
+
+    async def drain_input_generator(self):
+        # Parallelize uploading blobs
+        async with aclosing(
+            async_map_ordered(self.input_iter(), self.create_input_factory(), concurrency=BLOB_MAX_PARALLELISM)
+        ) as streamer:
+            async for item in streamer:
+                await self.processed_input_queue.put(item)
+
+        # close queue iterator
+        await self.processed_input_queue.put(None)
+        self.done_callback()
+        yield
+
+
+class InputPumper:
+    """
+    Reads inputs from a queue of FunctionPutInputsItems, and sends them to the server.
+    """
+
+    def __init__(
+        self,
+        client: "modal.client._Client",
+        *,
+        input_queue: asyncio.Queue,
+        function: "modal.functions._Function",
+        function_call_id: str,
+        map_items_manager: Optional["_MapItemsManager"] = None,
+    ):
+        self.client = client
+        self.function = function
+        self.map_items_manager = map_items_manager
+        self.input_queue = input_queue
+        self.inputs_sent = 0
+        self.function_call_id = function_call_id
+
+    async def pump_inputs(self):
+        assert self.client.stub
+        async for items in queue_batch_iterator(self.input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+            # Add items to the manager. Their state will be SENDING.
+            if self.map_items_manager is not None:
+                await self.map_items_manager.add_items(items)
+            request = api_pb2.FunctionPutInputsRequest(
+                function_id=self.function.object_id,
+                inputs=items,
+                function_call_id=self.function_call_id,
+            )
+            logger.debug(
+                f"Pushing {len(items)} inputs to server. Num queued inputs awaiting"
+                f" push is {self.input_queue.qsize()}. "
+            )
+
+            resp = await self._send_inputs(self.client.stub.FunctionPutInputs, request)
+            self.inputs_sent += len(items)
+            # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
+            if self.map_items_manager is not None:
+                self.map_items_manager.handle_put_inputs_response(resp.inputs)
+            logger.debug(
+                f"Successfully pushed {len(items)} inputs to server. "
+                f"Num queued inputs awaiting push is {self.input_queue.qsize()}."
+            )
+        yield
+
+    async def _send_inputs(
+        self,
+        fn: "modal.client.UnaryUnaryWrapper",
+        request: typing.Union[api_pb2.FunctionPutInputsRequest, api_pb2.FunctionRetryInputsRequest],
+    ) -> typing.Union[api_pb2.FunctionPutInputsResponse, api_pb2.FunctionRetryInputsResponse]:
+        # with 8 retries we log the warning below about every 30 seconds which isn't too spammy.
+        retry_warning_message = RetryWarningMessage(
+            message=f"Warning: map progress for function {self.function._function_name} is limited."
+            " Common bottlenecks include slow iteration over results, or function backlogs.",
+            warning_interval=8,
+            errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
+        )
+        return await retry_transient_errors(
+            fn,
+            request,
+            max_retries=None,
+            max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
+            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            retry_warning_message=retry_warning_message,
+        )
+
+
+class SyncInputPumper(InputPumper):
+    def __init__(
+        self,
+        client: "modal.client._Client",
+        *,
+        input_queue: asyncio.Queue,
+        retry_queue: TimestampPriorityQueue,
+        function: "modal.functions._Function",
+        function_call_jwt: str,
+        function_call_id: str,
+        map_items_manager: "_MapItemsManager",
+    ):
+        super().__init__(
+            client,
+            input_queue=input_queue,
+            function=function,
+            function_call_id=function_call_id,
+            map_items_manager=map_items_manager,
+        )
+        self.retry_queue = retry_queue
+        self.inputs_retried = 0
+        self.function_call_jwt = function_call_jwt
+
+    async def retry_inputs(self):
+        async for retriable_idxs in queue_batch_iterator(self.retry_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+            # For each index, use the context in the manager to create a FunctionRetryInputsItem.
+            # This will also update the context state to RETRYING.
+            inputs: list[api_pb2.FunctionRetryInputsItem] = await self.map_items_manager.prepare_items_for_retry(
+                retriable_idxs
+            )
+            request = api_pb2.FunctionRetryInputsRequest(
+                function_call_jwt=self.function_call_jwt,
+                inputs=inputs,
+            )
+            resp = await self._send_inputs(self.client.stub.FunctionRetryInputs, request)
+            # Update the state to WAITING_FOR_OUTPUT, and update the input_jwt in the context
+            # to the new value in the response.
+            self.map_items_manager.handle_retry_response(resp.input_jwts)
+            logger.debug(f"Successfully pushed retry for {len(inputs)} to server.")
+            self.inputs_retried += len(inputs)
+        yield
+
+
+class AsyncInputPumper(InputPumper):
+    def __init__(
+        self,
+        client: "modal.client._Client",
+        *,
+        input_queue: asyncio.Queue,
+        function: "modal.functions._Function",
+        function_call_id: str,
+    ):
+        super().__init__(client, input_queue=input_queue, function=function, function_call_id=function_call_id)
+
+
+async def _spawn_map_invocation(
+    function: "modal.functions._Function", raw_input_queue: _SynchronizedQueue, client: "modal.client._Client"
+) -> str:
+    assert client.stub
+    request = api_pb2.FunctionMapRequest(
+        function_id=function.object_id,
+        parent_input_id=current_input_id() or "",
+        function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
+        function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
+    )
+    response: api_pb2.FunctionMapResponse = await retry_transient_errors(client.stub.FunctionMap, request)
+    function_call_id = response.function_call_id
+
+    have_all_inputs = False
+    inputs_created = 0
+
+    def set_inputs_created(set_inputs_created):
+        nonlocal inputs_created
+        assert set_inputs_created is None or set_inputs_created > inputs_created
+        inputs_created = set_inputs_created
+
+    def set_have_all_inputs():
+        nonlocal have_all_inputs
+        have_all_inputs = True
+
+    input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
+    input_preprocessor = InputPreprocessor(
+        client=client,
+        raw_input_queue=raw_input_queue,
+        processed_input_queue=input_queue,
+        function=function,
+        created_callback=set_inputs_created,
+        done_callback=set_have_all_inputs,
+    )
+
+    input_pumper = AsyncInputPumper(
+        client=client,
+        input_queue=input_queue,
+        function=function,
+        function_call_id=function_call_id,
+    )
+
+    def log_stats():
+        logger.debug(
+            f"have_all_inputs={have_all_inputs} inputs_created={inputs_created} inputs_sent={input_pumper.inputs_sent} "
+        )
+
+    async def log_task():
+        while True:
+            log_stats()
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                # Log final stats before exiting
+                log_stats()
+                break
+
+    async def consume_generator(gen):
+        async for _ in gen:
+            pass
+
+    log_debug_stats_task = asyncio.create_task(log_task())
+    await asyncio.gather(
+        consume_generator(input_preprocessor.drain_input_generator()),
+        consume_generator(input_pumper.pump_inputs()),
+    )
+    log_debug_stats_task.cancel()
+    await log_debug_stats_task
+    return function_call_id
+
+
 async def _map_invocation(
     function: "modal.functions._Function",
     raw_input_queue: _SynchronizedQueue,
@@ -117,8 +374,6 @@ async def _map_invocation(
     have_all_inputs = False
     map_done_event = asyncio.Event()
     inputs_created = 0
-    inputs_sent = 0
-    inputs_retried = 0
     outputs_completed = 0
     outputs_received = 0
     retried_outputs = 0
@@ -135,25 +390,24 @@ async def _map_invocation(
         retry_policy, function_call_invocation_type, retry_queue, sync_client_retries_enabled, max_inputs_outstanding
     )
 
-    async def create_input(argskwargs):
-        idx = inputs_created
-        update_state(set_inputs_created=inputs_created + 1)
-        (args, kwargs) = argskwargs
-        return await _create_input(
-            args,
-            kwargs,
-            client.stub,
-            max_object_size_bytes=function._max_object_size_bytes,
-            idx=idx,
-            method_name=function._use_method_name,
-        )
+    input_preprocessor = InputPreprocessor(
+        client=client,
+        raw_input_queue=raw_input_queue,
+        processed_input_queue=input_queue,
+        function=function,
+        created_callback=lambda x: update_state(set_inputs_created=x),
+        done_callback=lambda: update_state(set_have_all_inputs=True),
+    )
 
-    async def input_iter():
-        while 1:
-            raw_input = await raw_input_queue.get()
-            if raw_input is None:  # end of input sentinel
-                break
-            yield raw_input  # args, kwargs
+    input_pumper = SyncInputPumper(
+        client=client,
+        input_queue=input_queue,
+        retry_queue=retry_queue,
+        function=function,
+        map_items_manager=map_items_manager,
+        function_call_jwt=function_call_jwt,
+        function_call_id=function_call_id,
+    )
 
     def update_state(set_have_all_inputs=None, set_inputs_created=None, set_outputs_completed=None):
         # This should be the only method that needs nonlocal of the following vars
@@ -174,84 +428,6 @@ async def _map_invocation(
         if have_all_inputs and outputs_completed >= inputs_created:
             # map is done
             map_done_event.set()
-
-    async def drain_input_generator():
-        # Parallelize uploading blobs
-        async with aclosing(
-            async_map_ordered(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM)
-        ) as streamer:
-            async for item in streamer:
-                await input_queue.put(item)
-
-        # close queue iterator
-        await input_queue.put(None)
-        update_state(set_have_all_inputs=True)
-        yield
-
-    async def pump_inputs():
-        assert client.stub
-        nonlocal inputs_sent
-        async for items in queue_batch_iterator(input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
-            # Add items to the manager. Their state will be SENDING.
-            await map_items_manager.add_items(items)
-            request = api_pb2.FunctionPutInputsRequest(
-                function_id=function.object_id,
-                inputs=items,
-                function_call_id=function_call_id,
-            )
-            logger.debug(
-                f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
-            )
-
-            resp = await send_inputs(client.stub.FunctionPutInputs, request)
-            inputs_sent += len(items)
-            # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
-            map_items_manager.handle_put_inputs_response(resp.inputs)
-            logger.debug(
-                f"Successfully pushed {len(items)} inputs to server. "
-                f"Num queued inputs awaiting push is {input_queue.qsize()}."
-            )
-        yield
-
-    async def retry_inputs():
-        nonlocal inputs_retried
-        async for retriable_idxs in queue_batch_iterator(retry_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
-            # For each index, use the context in the manager to create a FunctionRetryInputsItem.
-            # This will also update the context state to RETRYING.
-            inputs: list[api_pb2.FunctionRetryInputsItem] = await map_items_manager.prepare_items_for_retry(
-                retriable_idxs
-            )
-            request = api_pb2.FunctionRetryInputsRequest(
-                function_call_jwt=function_call_jwt,
-                inputs=inputs,
-            )
-            resp = await send_inputs(client.stub.FunctionRetryInputs, request)
-            # Update the state to WAITING_FOR_OUTPUT, and update the input_jwt in the context
-            # to the new value in the response.
-            map_items_manager.handle_retry_response(resp.input_jwts)
-            logger.debug(f"Successfully pushed retry for {len(inputs)} to server.")
-            inputs_retried += len(inputs)
-        yield
-
-    async def send_inputs(
-        fn: "modal.client.UnaryUnaryWrapper",
-        request: typing.Union[api_pb2.FunctionPutInputsRequest, api_pb2.FunctionRetryInputsRequest],
-    ) -> typing.Union[api_pb2.FunctionPutInputsResponse, api_pb2.FunctionRetryInputsResponse]:
-        # with 8 retries we log the warning below about every 30 seconds which isn't too spammy.
-        retry_warning_message = RetryWarningMessage(
-            message=f"Warning: map progress for function {function._function_name} is limited."
-            " Common bottlenecks include slow iteration over results, or function backlogs.",
-            warning_interval=8,
-            errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
-        )
-        return await retry_transient_errors(
-            fn,
-            request,
-            max_retries=None,
-            max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
-            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-            retry_warning_message=retry_warning_message,
-        )
 
     async def get_all_outputs():
         assert client.stub
@@ -395,8 +571,11 @@ async def _map_invocation(
         def log_stats():
             logger.debug(
                 f"Map stats: sync_client_retries_enabled={sync_client_retries_enabled} "
-                f"have_all_inputs={have_all_inputs} inputs_created={inputs_created} input_sent={inputs_sent} "
-                f"inputs_retried={inputs_retried} outputs_received={outputs_received} "
+                f"have_all_inputs={have_all_inputs} "
+                f"inputs_created={inputs_created} "
+                f"input_sent={input_pumper.inputs_sent} "
+                f"inputs_retried={input_pumper.inputs_retried} "
+                f"outputs_received={outputs_received} "
                 f"successful_completions={successful_completions} failed_completions={failed_completions} "
                 f"no_context_duplicates={no_context_duplicates} old_retry_duplicates={stale_retry_duplicates} "
                 f"already_complete_duplicates={already_complete_duplicates} "
@@ -415,7 +594,12 @@ async def _map_invocation(
 
     log_debug_stats_task = asyncio.create_task(log_debug_stats())
     async with aclosing(
-        async_merge(drain_input_generator(), pump_inputs(), poll_outputs(), retry_inputs())
+        async_merge(
+            input_preprocessor.drain_input_generator(),
+            input_pumper.pump_inputs(),
+            input_pumper.retry_inputs(),
+            poll_outputs(),
+        )
     ) as streamer:
         async for response in streamer:
             if response is not None:  # type: ignore[unreachable]
@@ -959,6 +1143,54 @@ def _map_sync(
         nested_async_message=(
             "You can't iter(Function.map()) from an async function. Use async for ... in Function.map.aio() instead."
         ),
+    )
+
+
+async def _experimental_spawn_map_async(self, *input_iterators, kwargs={}) -> "modal.functions._FunctionCall":
+    async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
+    return await _spawn_map_helper(self, async_input_gen, kwargs)
+
+
+async def _spawn_map_helper(
+    self: "modal.functions.Function", async_input_gen, kwargs={}
+) -> "modal.functions._FunctionCall":
+    raw_input_queue: Any = SynchronizedQueue()  # type: ignore
+    await raw_input_queue.init.aio()
+
+    async def feed_queue():
+        async with aclosing(async_input_gen) as streamer:
+            async for args in streamer:
+                await raw_input_queue.put.aio((args, kwargs))
+        await raw_input_queue.put.aio(None)  # end-of-input sentinel
+
+    fc, _ = await asyncio.gather(self._spawn_map.aio(raw_input_queue), feed_queue())
+    return fc
+
+
+def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal.functions._FunctionCall":
+    """Spawn parallel execution over a set of inputs, exiting as soon as the inputs are created (without waiting
+    for the map to complete).
+
+    Takes one iterator argument per argument in the function being mapped over.
+
+    Example:
+    ```python
+    @app.function()
+    def my_func(a):
+        return a ** 2
+
+
+    @app.local_entrypoint()
+    def main():
+        fc = my_func.spawn_map([1, 2, 3, 4])
+    ```
+
+    Returns a FunctionCall object that can be used to retrieve results
+    """
+
+    return run_coroutine_in_temporary_event_loop(
+        _experimental_spawn_map_async(self, *input_iterators, kwargs=kwargs),
+        "You can't run Function.spawn_map() from an async function. Use Function.spawn_map.aio() instead.",
     )
 
 
