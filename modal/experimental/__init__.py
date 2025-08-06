@@ -213,6 +213,24 @@ async def raw_registry_image(
     )
 
 
+def _install_cuda_command() -> str:
+    """Command to install CUDA Toolkit (nvcc) inside a container."""
+    arch = "x86_64"  # instruction set architecture for the CPU, all Modal machines are x86_64
+    distro = "debian12"  # the distribution and version number of our OS (GNU/Linux)
+    filename = "cuda-keyring_1.1-1_all.deb"  # NVIDIA signing key file
+    cuda_keyring_url = f"https://developer.download.nvidia.com/compute/cuda/repos/{distro}/{arch}/{filename}"
+
+    major, minor = 12, 8
+    max_cuda_version = f"{major}-{minor}"
+
+    return (
+        f"wget {cuda_keyring_url} && "
+        + f"dpkg -i {filename} && "
+        + f"rm -f {filename} && "
+        + f"apt-get update && apt-get install -y cuda-nvcc-{max_cuda_version}"
+    )
+
+
 @synchronizer.create_blocking
 async def notebook_base_image(*, python_version: Optional[str] = None, force_build: bool = False) -> _Image:
     """Default image used for Modal notebook kernels, with common libraries.
@@ -293,7 +311,8 @@ async def notebook_base_image(*, python_version: Optional[str] = None, force_bui
 
     commands: list[str] = [
         "apt-get update",
-        "apt-get install -y libpq-dev pkg-config cmake git curl wget unzip zip libsqlite3-dev openssh-server",
+        "apt-get install -y libpq-dev pkg-config cmake git curl wget unzip zip libsqlite3-dev openssh-server vim",
+        _install_cuda_command(),
         # Install uv since it's faster than pip for installing packages.
         "pip install uv",
         # https://github.com/astral-sh/uv/issues/11480
@@ -306,7 +325,14 @@ async def notebook_base_image(*, python_version: Optional[str] = None, force_bui
     # https://github.com/charlesfrye/cuda-modal/blob/7fef8db12402986cf42d9c8cca8c63d1da6d7700/cuda/use_cuda.py#L158-L188
 
     def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-        return DockerfileSpec(commands=["FROM base", *(f"RUN {cmd}" for cmd in commands)], context_files={})
+        return DockerfileSpec(
+            commands=[
+                "FROM base",
+                *(f"RUN {cmd}" for cmd in commands),
+                "ENV PATH=/usr/local/cuda/bin:$PATH",
+            ],
+            context_files={},
+        )
 
     return _Image._from_args(
         base_images={"base": base_image},
