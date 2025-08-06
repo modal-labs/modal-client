@@ -1824,6 +1824,7 @@ message FunctionOptions {
   optional uint32 batch_max_size = 15;
   optional uint64 batch_linger_ms = 16;
   optional SchedulerPlacement scheduler_placement = 17;
+  optional string cloud_provider_str = 18;
 }
 
 message FunctionPrecreateRequest {
