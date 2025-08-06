@@ -157,7 +157,12 @@ def test_class_with_options(client, servicer):
     unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
     with servicer.intercept() as ctx:
         foo = Foo.with_options(  # type: ignore
-            cpu=48, retries=5, volumes={"/vol": unhydrated_volume}, secrets=[unhydrated_secret], region="us-east-1"
+            cpu=48,
+            retries=5,
+            volumes={"/vol": unhydrated_volume},
+            secrets=[unhydrated_secret],
+            region="us-east-1",
+            cloud="aws",
         )()
         assert len(ctx.calls) == 0  # no rpcs in with_options
 
@@ -169,6 +174,7 @@ def test_class_with_options(client, servicer):
             assert function_bind_params.function_options.retry_policy.retries == 5
             assert function_bind_params.function_options.resources.milli_cpu == 48000
             assert function_bind_params.function_options.scheduler_placement.regions == ["us-east-1"]
+            assert function_bind_params.function_options.cloud_provider_str == "aws"
 
             assert len(ctx.get_requests("VolumeGetOrCreate")) == 1
             assert len(ctx.get_requests("SecretGetOrCreate")) == 1
