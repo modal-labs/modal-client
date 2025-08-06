@@ -113,17 +113,18 @@ class _DictManager:
     ):
         """Delete a named Dict.
 
-        Warning: Deleting is irreversible and will affect any Apps currently using the Dict.
+        Warning: This deletes an *entire Dict*, not just a specific key.
+        Deletion is irreversible and will affect any Apps currently using the Dict.
 
         **Examples:**
 
-        ```python
+        ```python notest
         await modal.Dict.objects.delete("my-dict")
         ```
 
         Dicts will be deleted from the active environment, or another one can be specified:
 
-        ```python
+        ```python notest
         await modal.Dict.objects.delete("my-dict", environment_name="dev")
         ```
         """
@@ -338,10 +339,18 @@ class _Dict(_Object, type_prefix="di"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ):
-        # TODO deprecate or at least warn!
-        obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.DictDelete, req)
+        """mdmd:hidden
+        Delete a named Dict object.
+
+        Warning: This deletes an *entire Dict*, not just a specific key.
+        Deletion is irreversible and will affect any Apps currently using the Dict.
+
+        DEPRECATED: This method is deprecated; we recommend using `modal.Dict.objects.delete` instead.
+        """
+        deprecation_warning(
+            (2025, 8, 6), "`modal.Dict.delete` is deprecated; we recommend using `modal.Dict.objects.delete` instead."
+        )
+        await _Dict.objects.delete(name, environment_name=environment_name, client=client)
 
     @live_method
     async def info(self) -> DictInfo:

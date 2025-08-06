@@ -180,15 +180,18 @@ class _VolumeManager:
     ):
         """Delete a named Volume.
 
+        Warning: This deletes an *entire Volume*, not just a specific file.
+        Deletion is irreversible and will affect any Apps currently using the Volume.
+
         **Examples:**
 
-        ```python
+        ```python notest
         await modal.Volume.objects.delete("my-volume")
         ```
 
         Volumes will be deleted from the active environment, or another one can be specified:
 
-        ```python
+        ```python notest
         await modal.Volume.objects.delete("my-volume", environment_name="dev")
         ```
         """
@@ -744,10 +747,20 @@ class _Volume(_Object, type_prefix="vo"):
 
     @staticmethod
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        # TODO deprecate or at least warn!
-        obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.VolumeDelete, req)
+        """mdmd:hidden
+        Delete a named Volume.
+
+        Warning: This deletes an *entire Volume*, not just a specific file.
+        Deletion is irreversible and will affect any Apps currently using the Volume.
+
+        DEPRECATED: This method is deprecated; we recommend using `modal.Volume.objects.delete` instead.
+
+        """
+        deprecation_warning(
+            (2025, 8, 6),
+            "`modal.Volume.delete` is deprecated; we recommend using `modal.Volume.objects.delete` instead.",
+        )
+        await _Volume.objects.delete(name, environment_name=environment_name, client=client)
 
     @staticmethod
     async def rename(

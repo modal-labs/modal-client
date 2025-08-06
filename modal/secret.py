@@ -103,15 +103,17 @@ class _SecretManager:
     ):
         """Delete a named Secret.
 
+        Warning: Deletion is irreversible and will affect any Apps currently using the Secret.
+
         **Examples:**
 
-        ```python
+        ```python notest
         await modal.Secret.objects.delete("my-secret")
         ```
 
         Secrets will be deleted from the active environment, or another one can be specified:
 
-        ```python
+        ```python notest
         await modal.Secret.objects.delete("my-secret", environment_name="dev")
         ```
         """

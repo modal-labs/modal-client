@@ -111,15 +111,18 @@ class _QueueManager:
     ):
         """Delete a named Queue.
 
+        Warning: This deletes an *entire Queue*, not just a specific entry or partition.
+        Deletion is irreversible and will affect any Apps currently using the Queue.
+
         **Examples:**
 
-        ```python
+        ```python notest
         await modal.Queue.objects.delete("my-queue")
         ```
 
         Queues will be deleted from the active environment, or another one can be specified:
 
-        ```python
+        ```python notest
         await modal.Queue.objects.delete("my-queue", environment_name="dev")
         ```
         """
@@ -348,10 +351,20 @@ class _Queue(_Object, type_prefix="qu"):
 
     @staticmethod
     async def delete(name: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        # TODO deprecate or at least warn!
-        obj = await _Queue.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.QueueDelete, req)
+        """mdmd:hidden
+        Delete a named Queue.
+
+        Warning: This deletes an *entire Queue*, not just a specific entry or partition.
+        Deletion is irreversible and will affect any Apps currently using the Queue.
+
+        DEPRECATED: This method is deprecated; we recommend using `modal.Queue.objects.delete` instead.
+
+        """
+        deprecation_warning(
+            (2025, 8, 6),
+            "`modal.Queue.delete` is deprecated; we recommend using `modal.Queue.objects.delete` instead.",
+        )
+        await _Queue.objects.delete(name, environment_name=environment_name, client=client)
 
     @live_method
     async def info(self) -> QueueInfo:
