@@ -791,7 +791,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             deadline = time.monotonic() + 15.0  # total of ~15s to wait
             while True:
                 try:
-                    await client.post(sandbox_daemon_tunnel, json={"type": "exec", "args": args})
+                    await client.post(sandbox_daemon_tunnel + "/exec", json={"type": "exec", "args": args})
                     break  # Success
                 except httpx.RequestError:
                     if time.monotonic() > deadline:
