@@ -108,3 +108,28 @@ def vscode(
         "volume": volume,
     }
     _launch_program("vscode", "vscode.py", detach, args)
+
+
+@launch_cli.command(name="marimo", help="Start a remote Marimo notebook on Modal.")
+def marimo(
+    cpu: int = 8,
+    memory: int = 32768,
+    gpu: Optional[str] = None,
+    image: str = "debian:12",
+    timeout: int = 3600,
+    add_python: Optional[str] = "3.12",
+    mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
+    volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
+    detach: bool = False,  # Run the app in "detached" mode to persist after local client disconnects
+):
+    args = {
+        "cpu": cpu,
+        "memory": memory,
+        "gpu": gpu,
+        "timeout": timeout,
+        "image": image,
+        "add_python": add_python,
+        "mount": mount,
+        "volume": volume,
+    }
+    _launch_program("marimo", "run_marimo.py", detach, args)
