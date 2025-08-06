@@ -99,7 +99,16 @@ class _QueueManager:
                 break
             finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
 
-        queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in items]
+        queues = [
+            _Queue._new_hydrated(
+                item.queue_id,
+                client,
+                item.metadata,
+                is_another_app=True,
+                rep=_Queue._repr(item.name, environment_name),
+            )
+            for item in items
+        ]
         return queues[:max_objects] if max_objects is not None else queues
 
     @staticmethod
@@ -314,7 +323,8 @@ class _Queue(_Object, type_prefix="qu"):
             response = await resolver.client.stub.QueueGetOrCreate(req)
             self._hydrate(response.queue_id, resolver.client, response.metadata)
 
-        return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True, name=name)
+        rep = _Queue._repr(name, environment_name)
+        return _Queue._from_loader(_load, rep, is_another_app=True, hydrate_lazily=True, name=name)
 
     @staticmethod
     async def lookup(
