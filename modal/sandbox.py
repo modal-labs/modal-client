@@ -722,9 +722,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             print(line)
         ```
         """
-        if await self._get_token() is not None:
-            await self._exec_v2(args, pty_info, stdout, stderr, timeout, workdir, secrets, text, bufsize, _pty_info)
-            # TODO: Return a process object that waits for the sandbox daemon to exit.
 
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
@@ -734,28 +731,69 @@ class _Sandbox(_Object, type_prefix="sb"):
         secret_coros = [secret.hydrate(client=self._client) for secret in secrets]
         await TaskContext.gather(*secret_coros)
 
-        task_id = await self._get_task_id()
-        req = api_pb2.ContainerExecRequest(
-            task_id=task_id,
-            command=args,
-            pty_info=_pty_info or pty_info,
-            runtime_debug=config.get("function_runtime_debug"),
-            timeout_secs=timeout or 0,
-            workdir=workdir,
-            secret_ids=[secret.object_id for secret in secrets],
-        )
-        resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
-        by_line = bufsize == 1
-        exec_deadline = time.monotonic() + int(timeout) + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
-        return _ContainerProcess(
-            resp.exec_id,
-            self._client,
-            stdout=stdout,
-            stderr=stderr,
-            text=text,
-            exec_deadline=exec_deadline,
-            by_line=by_line,
-        )
+        if await self._get_token() is not None:
+            exec_id = await self._exec_v2(
+                args,
+                pty_info,
+                stdout,
+                stderr,
+                timeout,
+                workdir,
+                secrets,
+                text,
+                bufsize,
+                _pty_info,
+                [secret.object_id for secret in secrets],
+            )
+            by_line = bufsize == 1
+            exec_deadline = time.monotonic() + int(timeout) if timeout else None
+
+            # task_id = await self._get_task_id()
+            # req = api_pb2.ContainerExecRequest(
+            #    task_id=task_id,
+            #    command=args,
+            #    pty_info=_pty_info or pty_info,
+            #    runtime_debug=config.get("function_runtime_debug"),
+            #    timeout_secs=timeout or 0,
+            #    workdir=workdir,
+            #    secret_ids=[secret.object_id for secret in secrets],
+            # )
+            # resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
+            # exec_id = resp.exec_id
+            return _ContainerProcess(
+                process_id=exec_id,
+                client=self._client,
+                stdout=stdout,
+                stderr=stderr,
+                text=text,
+                exec_deadline=exec_deadline,
+                by_line=by_line,
+                impl="v2",
+            )
+        else:
+            task_id = await self._get_task_id()
+            req = api_pb2.ContainerExecRequest(
+                task_id=task_id,
+                command=args,
+                pty_info=_pty_info or pty_info,
+                runtime_debug=config.get("function_runtime_debug"),
+                timeout_secs=timeout or 0,
+                workdir=workdir,
+                secret_ids=[secret.object_id for secret in secrets],
+            )
+            resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
+            by_line = bufsize == 1
+            exec_deadline = time.monotonic() + int(timeout) + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
+            return _ContainerProcess(
+                resp.exec_id,
+                self._client,
+                stdout=stdout,
+                stderr=stderr,
+                text=text,
+                exec_deadline=exec_deadline,
+                by_line=by_line,
+                impl="v1",
+            )
 
     async def _exec_v2(
         self,
@@ -769,6 +807,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         text: bool,
         bufsize: Literal[-1, 1],
         _pty_info: Optional[api_pb2.PTYInfo],
+        secret_ids: Sequence[str],
     ):
         sandbox_daemon_tunnel = (await self.tunnels())[1234].url
         import httpx
@@ -791,12 +830,15 @@ class _Sandbox(_Object, type_prefix="sb"):
             deadline = time.monotonic() + 15.0  # total of ~15s to wait
             while True:
                 try:
-                    await client.post(sandbox_daemon_tunnel + "/exec", json={"type": "exec", "args": args})
+                    exec_resp = await client.post(sandbox_daemon_tunnel + "/exec", json={"type": "exec", "args": args})
+                    exec_id = exec_resp.json()["exec_id"]
                     break  # Success
                 except httpx.RequestError:
                     if time.monotonic() > deadline:
                         raise  # Give up after deadline
                     await asyncio.sleep(0.5)  # Wait and retry
+
+        return exec_id
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
         await self._get_task_id()

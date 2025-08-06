@@ -82,7 +82,7 @@ async def _container_process_logs_iterator(
 T = TypeVar("T", str, bytes)
 
 
-class _StreamReader(Generic[T]):
+class _StreamReaderV1(Generic[T]):
     """Retrieve logs from a stream (`stdout` or `stderr`).
 
     As an asynchronous iterable, the object supports the `for` and `async for`
@@ -350,6 +350,358 @@ class _StreamReader(Generic[T]):
         """mdmd:hidden"""
         if self._stream:
             await self._stream.aclose()
+
+
+class _StreamReaderV2(Generic[T]):
+    """Retrieve logs from a stream (`stdout` or `stderr`).
+
+    As an asynchronous iterable, the object supports the `for` and `async for`
+    statements. Just loop over the object to read in chunks.
+
+    **Usage**
+
+    ```python fixture:running_app
+    from modal import Sandbox
+
+    sandbox = Sandbox.create(
+        "bash",
+        "-c",
+        "for i in $(seq 1 10); do echo foo; sleep 0.1; done",
+        app=running_app,
+    )
+    for message in sandbox.stdout:
+        print(f"Message: {message}")
+    ```
+    """
+
+    _stream: Optional[AsyncGenerator[Optional[bytes], None]]
+
+    def __init__(
+        self,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        client: _Client,
+        stream_type: StreamType = StreamType.PIPE,
+        text: bool = True,
+        by_line: bool = False,
+        deadline: Optional[float] = None,
+    ) -> None:
+        """mdmd:hidden"""
+        self._file_descriptor = file_descriptor
+        self._object_type = object_type
+        self._object_id = object_id
+        self._client = client
+        self._stream = None
+        self._last_entry_id: str = ""
+        self._line_buffer = b""
+        self._deadline = deadline
+
+        # Sandbox logs are streamed to the client as strings, so StreamReaders reading
+        # them must have text mode enabled.
+        if object_type == "sandbox" and not text:
+            raise ValueError("Sandbox streams must have text mode enabled.")
+
+        # line-buffering is only supported when text=True
+        if by_line and not text:
+            raise ValueError("line-buffering is only supported when text=True")
+
+        self._text = text
+        self._by_line = by_line
+
+        # Whether the reader received an EOF. Once EOF is True, it returns
+        # an empty string for any subsequent reads (including async for)
+        self.eof = False
+
+        if not isinstance(stream_type, StreamType):
+            raise TypeError(f"stream_type must be of type StreamType, got {type(stream_type)}")
+
+        # We only support piping sandbox logs because they're meant to be durable logs stored
+        # on the user's application.
+        if object_type == "sandbox" and stream_type != StreamType.PIPE:
+            raise ValueError("Sandbox streams must be piped.")
+        self._stream_type = stream_type
+
+        if self._object_type == "container_process":
+            # Container process streams need to be consumed as they are produced,
+            # otherwise the process will block. Use a buffer to store the stream
+            # until the client consumes it.
+            self._container_process_buffer: list[Optional[bytes]] = []
+            self._consume_container_process_task = asyncio.create_task(self._consume_container_process_stream())
+
+    @property
+    def file_descriptor(self) -> int:
+        """Possible values are `1` for stdout and `2` for stderr."""
+        return self._file_descriptor
+
+    async def read(self) -> T:
+        """Fetch the entire contents of the stream until EOF.
+
+        **Usage**
+
+        ```python fixture:running_app
+        from modal import Sandbox
+
+        sandbox = Sandbox.create("echo", "hello", app=running_app)
+        sandbox.wait()
+
+        print(sandbox.stdout.read())
+        ```
+        """
+        data_str = ""
+        data_bytes = b""
+        async for message in self._get_logs():
+            if message is None:
+                break
+            if self._text:
+                data_str += message.decode("utf-8")
+            else:
+                data_bytes += message
+
+        if self._text:
+            return cast(T, data_str)
+        else:
+            return cast(T, data_bytes)
+
+    async def _consume_container_process_stream(self):
+        """Consume the container process stream and store messages in the buffer."""
+        if self._stream_type == StreamType.DEVNULL:
+            return
+
+        completed = False
+        retries_remaining = 10
+        last_index = 0
+        while not completed:
+            if self._deadline and time.monotonic() >= self._deadline:
+                break
+            try:
+                iterator = _container_process_logs_iterator(
+                    self._object_id, self._file_descriptor, self._client, last_index, self._deadline
+                )
+                async for message, batch_index in iterator:
+                    if self._stream_type == StreamType.STDOUT and message:
+                        print(message.decode("utf-8"), end="")
+                    elif self._stream_type == StreamType.PIPE:
+                        self._container_process_buffer.append(message)
+
+                    if message is None:
+                        completed = True
+                        break
+                    else:
+                        last_index = batch_index
+
+            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
+                        continue
+                    elif isinstance(exc, ClientClosed):
+                        # If the client was closed, the user has triggered a cleanup.
+                        break
+                raise exc
+
+    async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
+        """Streams the container process buffer to the reader."""
+        entry_id = 0
+        if self._last_entry_id:
+            entry_id = int(self._last_entry_id) + 1
+
+        while True:
+            if entry_id >= len(self._container_process_buffer):
+                await asyncio.sleep(0.1)
+                continue
+
+            item = self._container_process_buffer[entry_id]
+
+            yield (item, str(entry_id))
+            if item is None:
+                break
+
+            entry_id += 1
+
+    async def _get_logs(self, skip_empty_messages: bool = True) -> AsyncGenerator[Optional[bytes], None]:
+        """Streams sandbox or process logs from the server to the reader.
+
+        Logs returned by this method may contain partial or multiple lines at a time.
+
+        When the stream receives an EOF, it yields None. Once an EOF is received,
+        subsequent invocations will not yield logs.
+        """
+        if self._stream_type != StreamType.PIPE:
+            raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+
+        if self.eof:
+            yield None
+            return
+
+        completed = False
+
+        retries_remaining = 10
+        while not completed:
+            try:
+                if self._object_type == "sandbox":
+                    iterator = _sandbox_logs_iterator(
+                        self._object_id, self._file_descriptor, self._last_entry_id, self._client
+                    )
+                else:
+                    iterator = self._stream_container_process()
+
+                async for message, entry_id in iterator:
+                    self._last_entry_id = entry_id
+                    # Empty messages are sent when the process boots up. Don't yield them unless
+                    # we're using the empty message to signal process liveness.
+                    if skip_empty_messages and message == b"":
+                        continue
+
+                    if message is None:
+                        completed = True
+                        self.eof = True
+                    yield message
+
+            except (GRPCError, StreamTerminatedError) as exc:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
+                        continue
+                raise
+
+    async def _get_logs_by_line(self) -> AsyncGenerator[Optional[bytes], None]:
+        """Process logs from the server and yield complete lines only."""
+        async for message in self._get_logs():
+            if message is None:
+                if self._line_buffer:
+                    yield self._line_buffer
+                    self._line_buffer = b""
+                yield None
+            else:
+                assert isinstance(message, bytes)
+                self._line_buffer += message
+                while b"\n" in self._line_buffer:
+                    line, self._line_buffer = self._line_buffer.split(b"\n", 1)
+                    yield line + b"\n"
+
+    def _ensure_stream(self) -> AsyncGenerator[Optional[bytes], None]:
+        if not self._stream:
+            if self._by_line:
+                self._stream = self._get_logs_by_line()
+            else:
+                self._stream = self._get_logs()
+        return self._stream
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        """mdmd:hidden"""
+        self._ensure_stream()
+        return self
+
+    async def __anext__(self) -> T:
+        """mdmd:hidden"""
+        stream = self._ensure_stream()
+
+        value = await stream.__anext__()
+
+        # The stream yields None if it receives an EOF batch.
+        if value is None:
+            raise StopAsyncIteration
+
+        if self._text:
+            return cast(T, value.decode("utf-8"))
+        else:
+            return cast(T, value)
+
+    async def aclose(self):
+        """mdmd:hidden"""
+        if self._stream:
+            await self._stream.aclose()
+
+
+class _StreamReader(Generic[T]):
+    """Retrieve logs from a stream (`stdout` or `stderr`).
+
+    As an asynchronous iterable, the object supports the `for` and `async for`
+    statements. Just loop over the object to read in chunks.
+
+    **Usage**
+
+    ```python fixture:running_app
+    from modal import Sandbox
+
+    sandbox = Sandbox.create(
+        "bash",
+        "-c",
+        "for i in $(seq 1 10); do echo foo; sleep 0.1; done",
+        app=running_app,
+    )
+    for message in sandbox.stdout:
+        print(f"Message: {message}")
+    ```
+    """
+
+    _impl: _StreamReaderV1[T] | _StreamReaderV2[T]
+
+    def __init__(
+        self,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        client: _Client,
+        stream_type: StreamType = StreamType.PIPE,
+        text: bool = True,
+        by_line: bool = False,
+        deadline: Optional[float] = None,
+        impl: str = "v1",  # TODO: Make this an enum, or swap some other way.
+    ) -> None:
+        """mdmd:hidden"""
+        if impl == "v1":
+            self._impl = _StreamReaderV1(
+                file_descriptor, object_id, object_type, client, stream_type, text, by_line, deadline
+            )
+        elif impl == "v2":
+            self._impl = _StreamReaderV2(
+                file_descriptor, object_id, object_type, client, stream_type, text, by_line, deadline
+            )
+        else:
+            raise InvalidError(f"Invalid implementation: {impl}")
+
+    @property
+    def file_descriptor(self) -> int:
+        """Possible values are `1` for stdout and `2` for stderr."""
+        return self._impl.file_descriptor
+
+    async def read(self) -> T:
+        """Fetch the entire contents of the stream until EOF.
+
+        **Usage**
+
+        ```python fixture:running_app
+        from modal import Sandbox
+
+        sandbox = Sandbox.create("echo", "hello", app=running_app)
+        sandbox.wait()
+
+        print(sandbox.stdout.read())
+        ```
+        """
+        return await self._impl.read()
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        """mdmd:hidden"""
+        return self._impl.__aiter__()
+
+    async def __anext__(self) -> T:
+        """mdmd:hidden"""
+        return await self._impl.__anext__()
+
+    async def aclose(self):
+        """mdmd:hidden"""
+        await self._impl.aclose()
 
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
