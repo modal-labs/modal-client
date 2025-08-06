@@ -7,7 +7,7 @@ import time
 from unittest import mock
 
 from modal import App, Secret
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_old_py
@@ -96,6 +96,11 @@ def test_secret_from_name(servicer, client):
     app.function(secrets=[secret])(dummy)
     with app.run(client=client):
         assert secret.object_id == secret_id
+
+    Secret.objects.delete("my-secret", client=client)
+    with pytest.raises(NotFoundError):
+        Secret.from_name("my-secret").hydrate(client)
+    Secret.objects.delete("my-secret", client=client, allow_missing=True)
 
 
 def test_secret_namespace_deprecated(servicer, client):
