@@ -732,6 +732,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         await TaskContext.gather(*secret_coros)
 
         if await self._get_token() is not None:
+            sandbox_daemon_tunnel = (await self.tunnels())[1234].url
             exec_id = await self._exec_v2(
                 args,
                 pty_info,
@@ -744,6 +745,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 bufsize,
                 _pty_info,
                 [secret.object_id for secret in secrets],
+                sandbox_daemon_tunnel,
             )
             by_line = bufsize == 1
             exec_deadline = time.monotonic() + int(timeout) if timeout else None
@@ -769,6 +771,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 exec_deadline=exec_deadline,
                 by_line=by_line,
                 impl="v2",
+                tunnel_url=sandbox_daemon_tunnel,
             )
         else:
             task_id = await self._get_task_id()
@@ -808,8 +811,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         bufsize: Literal[-1, 1],
         _pty_info: Optional[api_pb2.PTYInfo],
         secret_ids: Sequence[str],
+        sandbox_daemon_tunnel: str,
     ):
-        sandbox_daemon_tunnel = (await self.tunnels())[1234].url
         import httpx
 
         # For now, just send a basic request to the sandbox daemon using a custom SSL context.

@@ -200,6 +200,7 @@ class _ContainerProcessV2(Generic[T]):
     _text: bool
     _by_line: bool
     _returncode: Optional[int] = None
+    _tunnel_url: Optional[str] = None
 
     def __init__(
         self,
@@ -210,12 +211,14 @@ class _ContainerProcessV2(Generic[T]):
         exec_deadline: Optional[float] = None,
         text: bool = True,
         by_line: bool = False,
+        tunnel_url: Optional[str] = None,
     ) -> None:
         self._process_id = process_id
         self._client = client
         self._exec_deadline = exec_deadline
         self._text = text
         self._by_line = by_line
+        self._tunnel_url = tunnel_url
         self._stdout = _StreamReader[T](
             api_pb2.FILE_DESCRIPTOR_STDOUT,
             process_id,
@@ -226,6 +229,7 @@ class _ContainerProcessV2(Generic[T]):
             by_line=by_line,
             deadline=exec_deadline,
             impl="v2",
+            tunnel_url=tunnel_url,
         )
         self._stderr = _StreamReader[T](
             api_pb2.FILE_DESCRIPTOR_STDERR,
@@ -237,6 +241,7 @@ class _ContainerProcessV2(Generic[T]):
             by_line=by_line,
             deadline=exec_deadline,
             impl="v2",
+            tunnel_url=tunnel_url,
         )
         self._stdin = _StreamWriter(process_id, "container_process", self._client)
 
@@ -380,11 +385,21 @@ class _ContainerProcess(Generic[T]):
         text: bool = True,
         by_line: bool = False,
         impl: str = "v1",  # TODO: Make this an enum, or swap some other way.
+        tunnel_url: Optional[str] = None,
     ) -> None:
         if impl == "v1":
             self._impl = _ContainerProcessV1(process_id, client, stdout, stderr, exec_deadline, text, by_line)
         elif impl == "v2":
-            self._impl = _ContainerProcessV2(process_id, client, stdout, stderr, exec_deadline, text, by_line)
+            self._impl = _ContainerProcessV2(
+                process_id,
+                client,
+                stdout,
+                stderr,
+                exec_deadline,
+                text,
+                by_line,
+                tunnel_url,
+            )
         else:
             raise InvalidError(f"Invalid implementation: {impl}")
 

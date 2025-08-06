@@ -374,8 +374,6 @@ class _StreamReaderV2(Generic[T]):
     ```
     """
 
-    _stream: Optional[AsyncGenerator[Optional[bytes], None]]
-
     def __init__(
         self,
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
@@ -386,6 +384,7 @@ class _StreamReaderV2(Generic[T]):
         text: bool = True,
         by_line: bool = False,
         deadline: Optional[float] = None,
+        tunnel_url: str = None,
     ) -> None:
         """mdmd:hidden"""
         self._file_descriptor = file_descriptor
@@ -396,6 +395,7 @@ class _StreamReaderV2(Generic[T]):
         self._last_entry_id: str = ""
         self._line_buffer = b""
         self._deadline = deadline
+        self._tunnel_url = tunnel_url
 
         # Sandbox logs are streamed to the client as strings, so StreamReaders reading
         # them must have text mode enabled.
@@ -421,13 +421,6 @@ class _StreamReaderV2(Generic[T]):
         if object_type == "sandbox" and stream_type != StreamType.PIPE:
             raise ValueError("Sandbox streams must be piped.")
         self._stream_type = stream_type
-
-        if self._object_type == "container_process":
-            # Container process streams need to be consumed as they are produced,
-            # otherwise the process will block. Use a buffer to store the stream
-            # until the client consumes it.
-            self._container_process_buffer: list[Optional[bytes]] = []
-            self._consume_container_process_task = asyncio.create_task(self._consume_container_process_stream())
 
     @property
     def file_descriptor(self) -> int:
@@ -463,118 +456,27 @@ class _StreamReaderV2(Generic[T]):
         else:
             return cast(T, data_bytes)
 
-    async def _consume_container_process_stream(self):
-        """Consume the container process stream and store messages in the buffer."""
-        if self._stream_type == StreamType.DEVNULL:
-            return
-
-        completed = False
-        retries_remaining = 10
-        last_index = 0
-        while not completed:
-            if self._deadline and time.monotonic() >= self._deadline:
-                break
-            try:
-                iterator = _container_process_logs_iterator(
-                    self._object_id, self._file_descriptor, self._client, last_index, self._deadline
-                )
-                async for message, batch_index in iterator:
-                    if self._stream_type == StreamType.STDOUT and message:
-                        print(message.decode("utf-8"), end="")
-                    elif self._stream_type == StreamType.PIPE:
-                        self._container_process_buffer.append(message)
-
-                    if message is None:
-                        completed = True
-                        break
-                    else:
-                        last_index = batch_index
-
-            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
-                if retries_remaining > 0:
-                    retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
-                    elif isinstance(exc, StreamTerminatedError):
-                        continue
-                    elif isinstance(exc, ClientClosed):
-                        # If the client was closed, the user has triggered a cleanup.
-                        break
-                raise exc
-
-    async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
-        """Streams the container process buffer to the reader."""
-        entry_id = 0
-        if self._last_entry_id:
-            entry_id = int(self._last_entry_id) + 1
-
-        while True:
-            if entry_id >= len(self._container_process_buffer):
-                await asyncio.sleep(0.1)
-                continue
-
-            item = self._container_process_buffer[entry_id]
-
-            yield (item, str(entry_id))
-            if item is None:
-                break
-
-            entry_id += 1
-
-    async def _get_logs(self, skip_empty_messages: bool = True) -> AsyncGenerator[Optional[bytes], None]:
-        """Streams sandbox or process logs from the server to the reader.
-
-        Logs returned by this method may contain partial or multiple lines at a time.
-
-        When the stream receives an EOF, it yields None. Once an EOF is received,
-        subsequent invocations will not yield logs.
-        """
-        if self._stream_type != StreamType.PIPE:
-            raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
-
-        if self.eof:
+    async def _get_logs(self) -> AsyncGenerator[Optional[bytes], None]:
+        if self._file_descriptor != api_pb2.FILE_DESCRIPTOR_STDOUT:
             yield None
             return
 
-        completed = False
+        import httpx
 
-        retries_remaining = 10
-        while not completed:
-            try:
-                if self._object_type == "sandbox":
-                    iterator = _sandbox_logs_iterator(
-                        self._object_id, self._file_descriptor, self._last_entry_id, self._client
-                    )
-                else:
-                    iterator = self._stream_container_process()
+        url = f"{self._tunnel_url}/exec/stdout/read"
 
-                async for message, entry_id in iterator:
-                    self._last_entry_id = entry_id
-                    # Empty messages are sent when the process boots up. Don't yield them unless
-                    # we're using the empty message to signal process liveness.
-                    if skip_empty_messages and message == b"":
-                        continue
-
-                    if message is None:
-                        completed = True
-                        self.eof = True
-                    yield message
-
-            except (GRPCError, StreamTerminatedError) as exc:
-                if retries_remaining > 0:
-                    retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
-                    elif isinstance(exc, StreamTerminatedError):
-                        continue
-                raise
+        async with httpx.AsyncClient(verify=False) as client:
+            async with client.stream(
+                "POST",
+                url,
+                json={"exec_id": self._object_id, "timeout": 15},
+            ) as resp:
+                async for chunk in resp.aiter_bytes():
+                    if chunk:
+                        yield chunk
+            yield None
 
     async def _get_logs_by_line(self) -> AsyncGenerator[Optional[bytes], None]:
-        """Process logs from the server and yield complete lines only."""
         async for message in self._get_logs():
             if message is None:
                 if self._line_buffer:
@@ -582,13 +484,12 @@ class _StreamReaderV2(Generic[T]):
                     self._line_buffer = b""
                 yield None
             else:
-                assert isinstance(message, bytes)
                 self._line_buffer += message
                 while b"\n" in self._line_buffer:
                     line, self._line_buffer = self._line_buffer.split(b"\n", 1)
                     yield line + b"\n"
 
-    def _ensure_stream(self) -> AsyncGenerator[Optional[bytes], None]:
+    def _ensure_stream(self):
         if not self._stream:
             if self._by_line:
                 self._stream = self._get_logs_by_line()
@@ -657,6 +558,7 @@ class _StreamReader(Generic[T]):
         by_line: bool = False,
         deadline: Optional[float] = None,
         impl: str = "v1",  # TODO: Make this an enum, or swap some other way.
+        tunnel_url: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
         if impl == "v1":
@@ -665,7 +567,15 @@ class _StreamReader(Generic[T]):
             )
         elif impl == "v2":
             self._impl = _StreamReaderV2(
-                file_descriptor, object_id, object_type, client, stream_type, text, by_line, deadline
+                file_descriptor,
+                object_id,
+                object_type,
+                client,
+                stream_type,
+                text,
+                by_line,
+                deadline,
+                tunnel_url,
             )
         else:
             raise InvalidError(f"Invalid implementation: {impl}")
