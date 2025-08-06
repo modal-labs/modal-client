@@ -1147,7 +1147,7 @@ message DictListRequest {
 message DictListResponse {
   message DictInfo {
     string name = 1;
-    double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.1
+    double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.2
     string dict_id = 3;
     DictMetadata metadata = 4;
   }
@@ -1819,6 +1819,7 @@ message FunctionOptions {
   optional uint32 max_concurrent_inputs = 14;
   optional uint32 batch_max_size = 15;
   optional uint64 batch_linger_ms = 16;
+  optional SchedulerPlacement scheduler_placement = 17;
 }
 
 message FunctionPrecreateRequest {
@@ -2459,7 +2460,7 @@ message QueueListRequest {
 message QueueListResponse {
   message QueueInfo {
     string name = 1;
-    double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.1
+    double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.2
     int32 num_partitions = 3;
     int32 total_size = 4;
     string queue_id = 5;
@@ -2609,6 +2610,8 @@ message Sandbox {
 
   // Experimental options
   map<string, bool> experimental_options = 31;
+
+  repeated string preload_path_prefixes = 32; // Internal use only.
 }
 
 message SandboxCreateRequest {
@@ -2868,7 +2871,7 @@ message SecretGetOrCreateResponse {
 
 message SecretListItem {
   string label = 1;
-  double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.1
+  double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.2
   double last_used_at = 3;
   string environment_name = 4;  // Unused by client
   string secret_id = 5;
@@ -3235,7 +3238,7 @@ message VolumeListFilesResponse {
 message VolumeListItem {
   string label = 1;  // app name of object entity app
   string volume_id = 2;
-  double created_at = 3;  // Superseded by metadata, used by clients up to 1.1.1
+  double created_at = 3;  // Superseded by metadata, used by clients up to 1.1.2
   VolumeMetadata metadata = 4;
 }
 
@@ -3415,8 +3418,6 @@ service ModalClient {
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 
   // Input Plane
-  // These RPCs are experimental, not deployed to production, and can be changed / removed
-  // without needing to worry about backwards compatibility.
   rpc AttemptAwait(AttemptAwaitRequest) returns (AttemptAwaitResponse);
   rpc AttemptRetry(AttemptRetryRequest) returns (AttemptRetryResponse);
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);

@@ -1199,6 +1199,18 @@ def test_spawn_map_sync(client, servicer):
         assert deserialize(function_map.pipelined_inputs[0].input.args, client) == ((1,), {})
 
 
+def test_experimental_spawn_map_sync(client, servicer):
+    dummy_function = app.function()(dummy)
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            fc = dummy_function.experimental_spawn_map([1, 2, 3])
+
+        # Verify the correct invocation type was used
+        function_put_inputs = ctx.pop_request("FunctionPutInputs")
+        assert function_put_inputs is not None
+        assert type(fc) is modal.FunctionCall
+
+
 def test_warn_on_local_volume_mount(client, servicer):
     vol = modal.Volume.from_name("my-vol")
     dummy_function = app.function(volumes={"/foo": vol})(dummy)

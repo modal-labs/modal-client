@@ -230,6 +230,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_apps = 0
         self.classes = []
         self.environments = {"main": "en-1"}
+        self.resource_creation_timestamps = {}
 
         self.task_result = None
 
@@ -900,7 +901,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
             raise GRPCError(Status.NOT_FOUND, f"Dict {k} not found")
-        creation_info = api_pb2.CreationInfo(created_by=self.default_username)
+        self.resource_creation_timestamps[dict_id] = timestamp = datetime.datetime.now().timestamp()
+        creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
         metadata = api_pb2.DictMetadata(name=request.deployment_name, creation_info=creation_info)
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id, metadata=metadata))
 
@@ -929,7 +931,22 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.DictLenResponse(len=len(self.dicts[request.dict_id])))
 
     async def DictList(self, stream):
-        dicts = [api_pb2.DictListResponse.DictInfo(name=name, created_at=1) for name, _ in self.deployed_dicts]
+        request: api_pb2.DictListRequest = await stream.recv_message()
+        dicts = []
+        for (name, environment_name), obj_id in self.deployed_dicts.items():
+            timestamp = self.resource_creation_timestamps[obj_id]
+            if request.environment_name and environment_name != request.environment_name:
+                continue
+            elif timestamp >= request.pagination.created_before:
+                continue
+
+            creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
+            metadata = api_pb2.DictMetadata(name=name, creation_info=creation_info)
+            dicts.append(api_pb2.DictListResponse.DictInfo(name=name, dict_id=obj_id, metadata=metadata))
+            if request.pagination.max_objects and len(dicts) >= request.pagination.max_objects:
+                break
+
+        dicts = sorted(dicts, key=lambda x: x.metadata.creation_info.created_at, reverse=True)
         await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
 
     async def DictUpdate(self, stream):
@@ -1547,7 +1564,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             queue_id = f"qu-{self.n_queues}"
         else:
             raise GRPCError(Status.NOT_FOUND, f"Queue {k} not found")
-        creation_info = api_pb2.CreationInfo(created_by=self.default_username)
+
+        self.resource_creation_timestamps[queue_id] = timestamp = datetime.datetime.now().timestamp()
+        creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
         metadata = api_pb2.QueueMetadata(name=request.deployment_name, creation_info=creation_info)
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id, metadata=metadata))
 
@@ -1591,7 +1610,22 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def QueueList(self, stream):
         # TODO Note that the actual self.queue holding the data assumes we have a single queue
         # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
-        queues = [api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1) for name, _ in self.deployed_queues]
+        request: api_pb2.QueueListRequest = await stream.recv_message()
+        queues = []
+        for (name, environment_name), obj_id in self.deployed_queues.items():
+            timestamp = self.resource_creation_timestamps[obj_id]
+            if request.environment_name and environment_name != request.environment_name:
+                continue
+            elif timestamp >= request.pagination.created_before:
+                continue
+
+            creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
+            metadata = api_pb2.QueueMetadata(name=name, creation_info=creation_info)
+            queues.append(api_pb2.QueueListResponse.QueueInfo(name=name, queue_id=obj_id, metadata=metadata))
+            if request.pagination.max_objects and len(queues) >= request.pagination.max_objects:
+                break
+
+        queues = sorted(queues, key=lambda x: x.metadata.creation_info.created_at, reverse=True)
         await stream.send_message(api_pb2.QueueListResponse(queues=queues))
 
     async def QueueNextItems(self, stream):
@@ -1775,15 +1809,30 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.secrets[secret_id] = request.env_dict
             self.deployed_secrets[k] = secret_id
 
-        creation_info = api_pb2.CreationInfo(created_by=self.default_username)
+        self.resource_creation_timestamps[secret_id] = timestamp = datetime.datetime.now().timestamp()
+        creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
         metadata = api_pb2.SecretMetadata(name=request.deployment_name, creation_info=creation_info)
         await stream.send_message(api_pb2.SecretGetOrCreateResponse(secret_id=secret_id, metadata=metadata))
 
     async def SecretList(self, stream):
-        await stream.recv_message()
-        # Note: being lazy and not implementing the env filtering
-        items = [api_pb2.SecretListItem(label=name) for name, env in self.deployed_secrets]
-        await stream.send_message(api_pb2.SecretListResponse(items=items))
+        req: api_pb2.SecretListRequest = await stream.recv_message()
+
+        secrets = []
+        for (name, environment_name), obj_id in self.deployed_secrets.items():
+            timestamp = self.resource_creation_timestamps[obj_id]
+            if req.environment_name and environment_name != req.environment_name:
+                continue
+            elif timestamp >= req.pagination.created_before:
+                continue
+
+            creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
+            metadata = api_pb2.SecretMetadata(name=name, creation_info=creation_info)
+            secrets.append(api_pb2.SecretListItem(label=name, secret_id=obj_id, metadata=metadata))
+            if req.pagination.max_objects and len(secrets) >= req.pagination.max_objects:
+                break
+
+        secrets = sorted(secrets, key=lambda x: x.metadata.creation_info.created_at, reverse=True)
+        await stream.send_message(api_pb2.SecretListResponse(items=secrets))
 
     ### Snapshot
 
@@ -1935,7 +1984,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
 
-        creation_info = api_pb2.CreationInfo(created_by=self.default_username)
+        self.resource_creation_timestamps[volume_id] = timestamp = datetime.datetime.now().timestamp()
+        creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
         metadata = api_pb2.VolumeMetadata(
             name=request.deployment_name, creation_info=creation_info, version=request.version
         )
@@ -1943,14 +1993,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(response)
 
     async def VolumeList(self, stream):
-        req = await stream.recv_message()
-        items = []
-        for (name, env_name), volume_id in self.deployed_volumes.items():
-            if env_name != req.environment_name:
+        request: api_pb2.VolumeListRequest = await stream.recv_message()
+        volumes = []
+        for (name, environment_name), obj_id in self.deployed_volumes.items():
+            timestamp = self.resource_creation_timestamps[obj_id]
+            if request.environment_name and environment_name != request.environment_name:
                 continue
-            items.append(api_pb2.VolumeListItem(label=name, volume_id=volume_id, created_at=1))
-        resp = api_pb2.VolumeListResponse(items=items, environment_name=req.environment_name)
-        await stream.send_message(resp)
+            elif timestamp >= request.pagination.created_before:
+                continue
+
+            creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
+            metadata = api_pb2.VolumeMetadata(name=name, creation_info=creation_info)
+            volumes.append(api_pb2.VolumeListItem(label=name, volume_id=obj_id, metadata=metadata))
+            if request.pagination.max_objects and len(volumes) >= request.pagination.max_objects:
+                break
+
+        volumes = sorted(volumes, key=lambda x: x.metadata.creation_info.created_at, reverse=True)
+        await stream.send_message(api_pb2.VolumeListResponse(items=volumes))
 
     async def VolumeHeartbeat(self, stream):
         await stream.recv_message()
