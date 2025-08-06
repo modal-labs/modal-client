@@ -39,7 +39,6 @@ from modal.exception import ClientClosed, InputCancellation, InvalidError, Seria
 from modal_proto import api_pb2
 
 if TYPE_CHECKING:
-    import modal._runtime.asgi
     import modal._runtime.user_code_imports
 
 

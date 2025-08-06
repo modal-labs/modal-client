@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 import queue
+import sys
 import time
 
 from modal import Queue
@@ -37,9 +38,10 @@ def test_queue_named(servicer, client):
     assert 1.0 < time.time() - t0 < 2.0
     assert [v for v in q.iterate(item_poll_timeout=0.0)] == [1, 2, 3]
 
-    Queue.delete("some-random-queue", client=client)
+    Queue.objects.delete("some-random-queue", client=client)
     with pytest.raises(NotFoundError):
         Queue.from_name("some-random-queue").hydrate(client)
+    Queue.objects.delete("some-random-queue", client=client, allow_missing=True)
 
 
 def test_queue_ephemeral(servicer, client):
@@ -148,3 +150,18 @@ def test_queue_namespace_deprecated(servicer, client):
     # Filter out any unrelated warnings
     namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
     assert len(namespace_warnings) == 0
+
+
+def test_queue_list(servicer, client):
+    for i in range(5):
+        Queue.from_name(f"test-queue-{i}", create_if_missing=True).hydrate(client)
+    if sys.platform == "win32":
+        time.sleep(1 / 32)
+
+    queue_list = Queue.objects.list(client=client)
+    assert len(queue_list) == 5
+    assert all(q.name.startswith("test-queue-") for q in queue_list)
+    assert all(q.info().created_by == servicer.default_username for q in queue_list)
+
+    queue_list = Queue.objects.list(max_objects=2, client=client)
+    assert len(queue_list) == 2

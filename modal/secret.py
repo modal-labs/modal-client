@@ -6,6 +6,7 @@ from typing import Optional, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from synchronicity import classproperty
 
 from modal_proto import api_pb2
 
@@ -16,7 +17,7 @@ from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
-from ._utils.time_utils import timestamp_to_localized_dt
+from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .exception import InvalidError, NotFoundError
 
@@ -35,6 +36,101 @@ class SecretInfo:
     created_by: Optional[str]
 
 
+class _SecretManager:
+    """Namespace with methods for managing named Secret objects."""
+
+    @staticmethod
+    async def list(
+        *,
+        max_objects: Optional[int] = None,  # Limit requests to this size
+        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        environment_name: str = "",  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> list["_Secret"]:
+        """Return a list of hydrated Secret objects.
+
+        **Examples:**
+
+        ```python
+        secrets = modal.Secret.objects.list()
+        print([s.name for s in secrets])
+        ```
+
+        Secrets will be retreived from the active environment, or another one can be specified:
+
+        ```python notest
+        dev_secrets = modal.Secret.objects.list(environment_name="dev")
+        ```
+
+        By default, all named Secrets are returned, newest to oldest. It's also possible to limit the
+        number of results and to filter by creation date:
+
+        ```python
+        secrets = modal.Secret.objects.list(max_objects=10, created_before="2025-01-01")
+        ```
+
+        """
+        client = await _Client.from_env() if client is None else client
+        if max_objects is not None and max_objects < 0:
+            raise InvalidError("max_objects cannot be negative")
+
+        items: list[api_pb2.SecretListItem] = []
+
+        async def retrieve_page(created_before: float) -> bool:
+            max_page_size = 100 if max_objects is None else min(100, max_objects - len(items))
+            pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
+            req = api_pb2.SecretListRequest(environment_name=environment_name, pagination=pagination)
+            resp = await retry_transient_errors(client.stub.SecretList, req)
+            items.extend(resp.items)
+            finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
+            return finished
+
+        finished = await retrieve_page(as_timestamp(created_before))
+        while True:
+            if finished:
+                break
+            finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
+
+        secrets = [_Secret._new_hydrated(item.secret_id, client, item.metadata, is_another_app=True) for item in items]
+        return secrets[:max_objects] if max_objects is not None else secrets
+
+    @staticmethod
+    async def delete(
+        name: str,  # Name of the Secret to delete
+        *,
+        allow_missing: bool = False,  # If True, don't raise an error if the Secret doesn't exist
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ):
+        """Delete a named Secret.
+
+        Warning: Deletion is irreversible and will affect any Apps currently using the Secret.
+
+        **Examples:**
+
+        ```python notest
+        await modal.Secret.objects.delete("my-secret")
+        ```
+
+        Secrets will be deleted from the active environment, or another one can be specified:
+
+        ```python notest
+        await modal.Secret.objects.delete("my-secret", environment_name="dev")
+        ```
+        """
+        try:
+            obj = await _Secret.from_name(name, environment_name=environment_name).hydrate(client)
+        except NotFoundError:
+            if not allow_missing:
+                raise
+        else:
+            req = api_pb2.SecretDeleteRequest(secret_id=obj.object_id)
+            await retry_transient_errors(obj._client.stub.SecretDelete, req)
+
+
+SecretManager = synchronize_api(_SecretManager)
+
+
 class _Secret(_Object, type_prefix="st"):
     """Secrets provide a dictionary of environment variables for images.
 
@@ -46,6 +142,10 @@ class _Secret(_Object, type_prefix="st"):
     """
 
     _metadata: Optional[api_pb2.SecretMetadata] = None
+
+    @classproperty
+    def objects(cls) -> _SecretManager:
+        return _SecretManager
 
     @property
     def name(self) -> Optional[str]:

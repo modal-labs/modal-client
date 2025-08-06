@@ -25,14 +25,21 @@ from typing import (
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal.exception
 import modal_proto.api_pb2
-from modal.exception import InvalidError, VolumeUploadTimeoutError
+from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
-from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
+from ._object import (
+    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    _get_environment_name,
+    _Object,
+    live_method,
+    live_method_gen,
+)
 from ._resolver import Resolver
 from ._utils.async_utils import (
     TaskContext,
@@ -55,7 +62,7 @@ from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
-from ._utils.time_utils import timestamp_to_localized_dt
+from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
 
@@ -106,6 +113,102 @@ class VolumeInfo:
     created_by: Optional[str]
 
 
+class _VolumeManager:
+    """Namespace with methods for managing named Volume objects."""
+
+    @staticmethod
+    async def list(
+        *,
+        max_objects: Optional[int] = None,  # Limit requests to this size
+        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        environment_name: str = "",  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> list["_Volume"]:
+        """Return a list of hydrated Volume objects.
+
+        **Examples:**
+
+        ```python
+        volumes = modal.Volume.objects.list()
+        print([v.name for v in volumes])
+        ```
+
+        Volumes will be retreived from the active environment, or another one can be specified:
+
+        ```python notest
+        dev_volumes = modal.Volume.objects.list(environment_name="dev")
+        ```
+
+        By default, all named Volumes are returned, newest to oldest. It's also possible to limit the
+        number of results and to filter by creation date:
+
+        ```python
+        volumes = modal.Volume.objects.list(max_objects=10, created_before="2025-01-01")
+        ```
+
+        """
+        client = await _Client.from_env() if client is None else client
+        if max_objects is not None and max_objects < 0:
+            raise InvalidError("max_objects cannot be negative")
+
+        items: list[api_pb2.VolumeListItem] = []
+
+        async def retrieve_page(created_before: float) -> bool:
+            max_page_size = 100 if max_objects is None else min(100, max_objects - len(items))
+            pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
+            req = api_pb2.VolumeListRequest(environment_name=environment_name, pagination=pagination)
+            resp = await retry_transient_errors(client.stub.VolumeList, req)
+            items.extend(resp.items)
+            finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
+            return finished
+
+        finished = await retrieve_page(as_timestamp(created_before))
+        while True:
+            if finished:
+                break
+            finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
+
+        volumes = [_Volume._new_hydrated(item.volume_id, client, item.metadata, is_another_app=True) for item in items]
+        return volumes[:max_objects] if max_objects is not None else volumes
+
+    @staticmethod
+    async def delete(
+        name: str,  # Name of the Volume to delete
+        *,
+        allow_missing: bool = False,  # If True, don't raise an error if the Volume doesn't exist
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ):
+        """Delete a named Volume.
+
+        Warning: This deletes an *entire Volume*, not just a specific file.
+        Deletion is irreversible and will affect any Apps currently using the Volume.
+
+        **Examples:**
+
+        ```python notest
+        await modal.Volume.objects.delete("my-volume")
+        ```
+
+        Volumes will be deleted from the active environment, or another one can be specified:
+
+        ```python notest
+        await modal.Volume.objects.delete("my-volume", environment_name="dev")
+        ```
+        """
+        try:
+            obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
+        except NotFoundError:
+            if not allow_missing:
+                raise
+        else:
+            req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
+            await retry_transient_errors(obj._client.stub.VolumeDelete, req)
+
+
+VolumeManager = synchronize_api(_VolumeManager)
+
+
 class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
@@ -152,6 +255,14 @@ class _Volume(_Object, type_prefix="vo"):
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
     _read_only: bool = False
 
+    @classproperty
+    def objects(cls) -> _VolumeManager:
+        return _VolumeManager
+
+    @property
+    def name(self) -> Optional[str]:
+        return self._name
+
     def read_only(self) -> "_Volume":
         """Configure Volume to mount as read-only.
 
@@ -180,10 +291,6 @@ class _Volume(_Object, type_prefix="vo"):
 
         obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, deps=lambda: [self])
         return obj
-
-    @property
-    def name(self) -> Optional[str]:
-        return self._name
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         if metadata:
@@ -646,9 +753,20 @@ class _Volume(_Object, type_prefix="vo"):
 
     @staticmethod
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.VolumeDelete, req)
+        """mdmd:hidden
+        Delete a named Volume.
+
+        Warning: This deletes an *entire Volume*, not just a specific file.
+        Deletion is irreversible and will affect any Apps currently using the Volume.
+
+        DEPRECATED: This method is deprecated; we recommend using `modal.Volume.objects.delete` instead.
+
+        """
+        deprecation_warning(
+            (2025, 8, 6),
+            "`modal.Volume.delete` is deprecated; we recommend using `modal.Volume.objects.delete` instead.",
+        )
+        await _Volume.objects.delete(name, environment_name=environment_name, client=client)
 
     @staticmethod
     async def rename(
