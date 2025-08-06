@@ -27,7 +27,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
-from .exception import InvalidError, RequestSizeError
+from .exception import InvalidError, NotFoundError, RequestSizeError
 
 
 def _serialize_dict(data):
@@ -108,6 +108,7 @@ class _DictManager:
     async def delete(
         name: str,  # Name of the Dict to delete
         *,
+        allow_missing: bool = False,  # If True, don't raise an error if the Dict doesn't exist
         environment_name: Optional[str] = None,  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
     ):
@@ -128,9 +129,14 @@ class _DictManager:
         await modal.Dict.objects.delete("my-dict", environment_name="dev")
         ```
         """
-        obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.DictDelete, req)
+        try:
+            obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
+        except NotFoundError:
+            if not allow_missing:
+                raise
+        else:
+            req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
+            await retry_transient_errors(obj._client.stub.DictDelete, req)
 
 
 DictManager = synchronize_api(_DictManager)

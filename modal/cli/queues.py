@@ -45,17 +45,22 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 
 @queue_cli.command(name="delete", rich_help_panel="Management")
 @synchronizer.create_blocking
-async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
+async def delete(
+    name: str,
+    *,
+    allow_missing: bool = Option(False, "--allow-missing", help="Don't error if the Queue doesn't exist."),
+    yes: bool = YES_OPTION,
+    env: Optional[str] = ENV_OPTION,
+):
     """Delete a named Queue and all of its data."""
-    # Lookup first so we validate the name before asking for confirmation
-    await _Queue.from_name(name, environment_name=env).hydrate()
+    env = ensure_env(env)
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Queue '{name}'?",
             default=False,
             abort=True,
         )
-    await _Queue.objects.delete(name, environment_name=env)
+    await _Queue.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
 @queue_cli.command(name="list", rich_help_panel="Management")

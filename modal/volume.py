@@ -30,7 +30,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 import modal.exception
 import modal_proto.api_pb2
-from modal.exception import InvalidError, VolumeUploadTimeoutError
+from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
 from ._object import (
@@ -175,6 +175,7 @@ class _VolumeManager:
     async def delete(
         name: str,  # Name of the Volume to delete
         *,
+        allow_missing: bool = False,  # If True, don't raise an error if the Volume doesn't exist
         environment_name: Optional[str] = None,  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
     ):
@@ -195,9 +196,14 @@ class _VolumeManager:
         await modal.Volume.objects.delete("my-volume", environment_name="dev")
         ```
         """
-        obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.VolumeDelete, req)
+        try:
+            obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
+        except NotFoundError:
+            if not allow_missing:
+                raise
+        else:
+            req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
+            await retry_transient_errors(obj._client.stub.VolumeDelete, req)
 
 
 VolumeManager = synchronize_api(_VolumeManager)

@@ -29,7 +29,7 @@ from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
-from .exception import InvalidError, RequestSizeError
+from .exception import InvalidError, NotFoundError, RequestSizeError
 
 
 @dataclass
@@ -106,6 +106,7 @@ class _QueueManager:
     async def delete(
         name: str,  # Name of the Queue to delete
         *,
+        allow_missing: bool = False,  # If True, don't raise an error if the Queue doesn't exist
         environment_name: Optional[str] = None,  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
     ):
@@ -126,9 +127,14 @@ class _QueueManager:
         await modal.Queue.objects.delete("my-queue", environment_name="dev")
         ```
         """
-        obj = await _Queue.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.QueueDelete, req)
+        try:
+            obj = await _Queue.from_name(name, environment_name=environment_name).hydrate(client)
+        except NotFoundError:
+            if not allow_missing:
+                raise
+        else:
+            req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
+            await retry_transient_errors(obj._client.stub.QueueDelete, req)
 
 
 QueueManager = synchronize_api(_QueueManager)

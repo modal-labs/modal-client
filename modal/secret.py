@@ -98,6 +98,7 @@ class _SecretManager:
     async def delete(
         name: str,  # Name of the Secret to delete
         *,
+        allow_missing: bool = False,  # If True, don't raise an error if the Secret doesn't exist
         environment_name: Optional[str] = None,  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
     ):
@@ -117,9 +118,14 @@ class _SecretManager:
         await modal.Secret.objects.delete("my-secret", environment_name="dev")
         ```
         """
-        obj = await _Secret.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.SecretDeleteRequest(secret_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.SecretDelete, req)
+        try:
+            obj = await _Secret.from_name(name, environment_name=environment_name).hydrate(client)
+        except NotFoundError:
+            if not allow_missing:
+                raise
+        else:
+            req = api_pb2.SecretDeleteRequest(secret_id=obj.object_id)
+            await retry_transient_errors(obj._client.stub.SecretDelete, req)
 
 
 SecretManager = synchronize_api(_SecretManager)
