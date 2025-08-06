@@ -94,6 +94,7 @@ class _ServiceOptions:
     batch_max_size: Optional[int] = None
     batch_wait_ms: Optional[int] = None
     scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+    cloud: Optional[str] = None
 
     def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
         """Implement protobuf-like MergeFrom semantics for this dataclass.
@@ -687,6 +688,7 @@ More information on class parameterization can be found here: https://modal.com/
         scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         timeout: Optional[int] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         # The following parameters are deprecated
         concurrency_limit: Optional[int] = None,  # Now called `max_containers`
         container_idle_timeout: Optional[int] = None,  # Now called `scaledown_window`
@@ -763,6 +765,7 @@ More information on class parameterization can be found here: https://modal.com/
             scaledown_window=scaledown_window,
             timeout_secs=timeout,
             scheduler_placement=scheduler_placement,
+            cloud=cloud,
             # Note: set both for backwards / forwards compatibility
             # But going forward `.with_concurrency` is the preferred method with distinct parameterization
             max_concurrent_inputs=allow_concurrent_inputs,
