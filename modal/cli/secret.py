@@ -32,25 +32,28 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
     env = ensure_env(env)
     client = await _Client.from_env()
 
+    items: list[api_pb2.SecretListItem] = []
+
     # Note that we need to continue using the gRPC API directly here rather than using Secret.objects.list.
     # There is some metadata that historically appears in the CLI output (last_used_at) that
     # doesn't make sense to transmit as hydration metadata, because the value can change over time and
     # the metadata retrieved at hydration time could get stale. Alternatively, we could rewrite this using
     # only public API by sequentially retrieving the secrets and then querying their dynamic metadata, but
     # that would require multiple round trips and would add lag to the CLI.
-    async def retrieve_page(created_before: float) -> list[api_pb2.SecretListItem]:
-        pagination = api_pb2.ListPagination(max_objects=100, created_before=created_before)
+    async def retrieve_page(created_before: float) -> bool:
+        max_page_size = 100
+        pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
         req = api_pb2.SecretListRequest(environment_name=env, pagination=pagination)
         resp = await retry_transient_errors(client.stub.SecretList, req)
-        return list(resp.items)
+        items.extend(resp.items)
+        return len(resp.items) < max_page_size
 
-    items = await retrieve_page(datetime.now().timestamp())
-    if items:
-        while True:
-            new_items = await retrieve_page(items[-1].metadata.creation_info.created_at)
-            if not new_items:
-                break
-            items.extend(new_items)
+    finished = await retrieve_page(datetime.now().timestamp())
+    while True:
+        if finished:
+            break
+        finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
+
     secrets = [_Secret._new_hydrated(item.secret_id, client, item.metadata, is_another_app=True) for item in items]
 
     rows = []

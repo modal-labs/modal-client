@@ -63,9 +63,10 @@ async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_
 async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     """List all named Queues."""
     env = ensure_env(env)
-
-    max_total_size = 100_000
     client = await _Client.from_env()
+    max_total_size = 100_000  # Limit on the *Queue size* that we report
+
+    items: list[api_pb2.QueueListResponse.QueueInfo] = []
 
     # Note that we need to continue using the gRPC API directly here rather than using Queue.objects.list.
     # There is some metadata that historically appears in the CLI output (num_partitions, total_size) that
@@ -73,20 +74,20 @@ async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     # the metadata retrieved at hydration time could get stale. Alternatively, we could rewrite this using
     # only public API by sequentially retrieving the queues and then querying their dynamic metadata, but
     # that would require multiple round trips and would add lag to the CLI.
-
-    async def retrieve_page(created_before: float) -> list[api_pb2.QueueListResponse.QueueInfo]:
-        pagination = api_pb2.ListPagination(max_objects=100, created_before=created_before)
-        req = api_pb2.QueueListRequest(environment_name=env, pagination=pagination)
+    async def retrieve_page(created_before: float) -> bool:
+        max_page_size = 100
+        pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
+        req = api_pb2.QueueListRequest(environment_name=env, pagination=pagination, total_size_limit=max_total_size)
         resp = await retry_transient_errors(client.stub.QueueList, req)
-        return list(resp.queues)
+        items.extend(resp.queues)
+        return len(resp.queues) < max_page_size
 
-    items = await retrieve_page(datetime.now().timestamp())
-    if items:
-        while True:
-            new_items = await retrieve_page(items[-1].metadata.creation_info.created_at)
-            if not new_items:
-                break
-            items.extend(new_items)
+    finished = await retrieve_page(datetime.now().timestamp())
+    while True:
+        if finished:
+            break
+        finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
+
     queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in items]
 
     rows = []
@@ -143,7 +144,7 @@ async def peek(
 
 @queue_cli.command(name="len", rich_help_panel="Inspection")
 @synchronizer.create_blocking
-async def len(
+async def len_(
     name: str,
     partition: Optional[str] = PARTITION_OPTION,
     total: bool = Option(False, "-t", "--total", help="Compute the sum of the queue lengths across all partitions"),

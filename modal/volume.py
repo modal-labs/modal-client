@@ -148,31 +148,28 @@ class _VolumeManager:
 
         """
         client = await _Client.from_env() if client is None else client
+        if max_objects is not None and max_objects < 0:
+            raise InvalidError("max_objects cannot be negative")
 
-        async def retrieve_page(page_size: int, created_before: float) -> list[api_pb2.VolumeListItem]:
-            pagination = api_pb2.ListPagination(max_objects=page_size, created_before=created_before)
+        items: list[api_pb2.VolumeListItem] = []
+
+        async def retrieve_page(created_before: float) -> bool:
+            max_page_size = 100 if max_objects is None else min(100, max_objects - len(items))
+            pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
             req = api_pb2.VolumeListRequest(environment_name=environment_name, pagination=pagination)
             resp = await retry_transient_errors(client.stub.VolumeList, req)
-            return resp.items
+            items.extend(resp.items)
+            finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
+            return finished
 
-        items = await retrieve_page(max_objects, as_timestamp(created_before))
-        if not items:
-            return []
-
+        finished = await retrieve_page(as_timestamp(created_before))
         while True:
-            if max_objects is not None and len(items) >= max_objects:
+            if finished:
                 break
-
-            new_items = await retrieve_page(100, items[-1].metadata.creation_info.created_at)
-            if not new_items:
-                break
-            items.extend(new_items)
+            finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
 
         volumes = [_Volume._new_hydrated(item.volume_id, client, item.metadata, is_another_app=True) for item in items]
-        if max_objects is None:
-            return volumes
-        else:
-            return volumes[:max_objects]
+        return volumes[:max_objects] if max_objects is not None else volumes
 
 
 VolumeManager = synchronize_api(_VolumeManager)

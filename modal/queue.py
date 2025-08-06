@@ -79,31 +79,28 @@ class _QueueManager:
 
         """
         client = await _Client.from_env() if client is None else client
+        if max_objects is not None and max_objects < 0:
+            raise InvalidError("max_objects cannot be negative")
 
-        async def retrieve_page(page_size: int, created_before: float) -> list[api_pb2.QueueListResponse.QueueInfo]:
-            pagination = api_pb2.ListPagination(max_objects=page_size, created_before=created_before)
+        items: list[api_pb2.QueueListResponse.QueueInfo] = []
+
+        async def retrieve_page(created_before: float) -> bool:
+            max_page_size = 100 if max_objects is None else min(100, max_objects - len(items))
+            pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
             req = api_pb2.QueueListRequest(environment_name=environment_name, pagination=pagination)
             resp = await retry_transient_errors(client.stub.QueueList, req)
-            return resp.queues
+            items.extend(resp.queues)
+            finished = (len(resp.queues) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
+            return finished
 
-        items = await retrieve_page(max_objects, as_timestamp(created_before))
-        if not items:
-            return []
-
+        finished = await retrieve_page(as_timestamp(created_before))
         while True:
-            if max_objects is not None and len(items) >= max_objects:
+            if finished:
                 break
-
-            new_items = await retrieve_page(100, items[-1].metadata.creation_info.created_at)
-            if not new_items:
-                break
-            items.extend(new_items)
+            finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
 
         queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in items]
-        if max_objects is None:
-            return queues
-        else:
-            return queues[:max_objects]
+        return queues[:max_objects] if max_objects is not None else queues
 
 
 QueueManager = synchronize_api(_QueueManager)
