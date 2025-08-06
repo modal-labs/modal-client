@@ -2610,6 +2610,8 @@ message Sandbox {
 
   // Experimental options
   map<string, bool> experimental_options = 31;
+
+  repeated string preload_path_prefixes = 32; // Internal use only.
 }
 
 message SandboxCreateRequest {
