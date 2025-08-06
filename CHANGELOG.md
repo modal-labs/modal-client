@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.2.dev12 (2025-08-06)
+
+- Added a `.options` namespace to Modal resource object types (`modal.Dict`, `modal.Queue`, `modal.Volume`, and `modal.Secret`).
+
+
 #### 1.1.2.dev3 (2025-08-04)
 
 - Fixed a bug that would cause e.g. some image builds to fail with `'FilePatternMatcher' object has no attribute 'patterns'` when using a `FilePatternMatcher.from_file` ignore pattern.
