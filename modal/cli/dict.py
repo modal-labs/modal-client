@@ -63,17 +63,21 @@ async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_O
 
 @dict_cli.command(name="delete", rich_help_panel="Management")
 @synchronizer.create_blocking
-async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
+async def delete(
+    name: str,
+    *,
+    allow_missing: bool = Option(False, "--allow-missing", help="Don't error if the Dict doesn't exist."),
+    yes: bool = YES_OPTION,
+    env: Optional[str] = ENV_OPTION,
+):
     """Delete a named Dict and all of its data."""
-    # Lookup first to validate the name, even though delete is a staticmethod
-    await _Dict.from_name(name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Dict '{name}'?",
             default=False,
             abort=True,
         )
-    await _Dict.delete(name, environment_name=env)
+    await _Dict.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
 @dict_cli.command(name="get", rich_help_panel="Inspection")

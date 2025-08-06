@@ -451,9 +451,8 @@ async def test_volume_copy_2(client, tmp_path, servicer, version):
     assert returned_file_data[Path("test_dir/file2.txt")].data == b"test copy"
 
 
-@pytest.mark.parametrize("delete_as_instance_method", [True, False])
 @pytest.mark.parametrize("version", VERSIONS)
-def test_persisted(servicer, client, delete_as_instance_method, version):
+def test_from_name(servicer, client, version):
     # Lookup should fail since it doesn't exist
     with pytest.raises(NotFoundError):
         modal.Volume.from_name("xyz", version=version).hydrate(client)
@@ -464,12 +463,11 @@ def test_persisted(servicer, client, delete_as_instance_method, version):
     # Lookup should succeed now
     modal.Volume.from_name("xyz", version=version).hydrate(client)
 
-    # Delete it
-    modal.Volume.delete("xyz", client=client)
-
+    modal.Volume.objects.delete("xyz", client=client)
     # Lookup should fail again
     with pytest.raises(NotFoundError):
         modal.Volume.from_name("xyz", version=version).hydrate(client)
+    modal.Volume.objects.delete("xyz", client=client, allow_missing=True)
 
 
 def test_ephemeral(servicer, client):

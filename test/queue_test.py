@@ -38,9 +38,10 @@ def test_queue_named(servicer, client):
     assert 1.0 < time.time() - t0 < 2.0
     assert [v for v in q.iterate(item_poll_timeout=0.0)] == [1, 2, 3]
 
-    Queue.delete("some-random-queue", client=client)
+    Queue.objects.delete("some-random-queue", client=client)
     with pytest.raises(NotFoundError):
         Queue.from_name("some-random-queue").hydrate(client)
+    Queue.objects.delete("some-random-queue", client=client, allow_missing=True)
 
 
 def test_queue_ephemeral(servicer, client):
