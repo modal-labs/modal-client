@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2022
 import os
 import pytest
+import sys
 import tempfile
+import time
 from unittest import mock
 
 from modal import App, Secret
@@ -116,3 +118,15 @@ def test_secret_namespace_deprecated(servicer, client):
     # Should warn about both the deprecated lookup method and the deprecated namespace parameter
     assert len(record) >= 2
     assert any(isinstance(w.message, DeprecationError) for w in record)
+
+
+def test_secret_list(servicer, client):
+    for i in range(5):
+        Secret.create_deployed(f"test-secret-{i}", {"FOO": "123"}, client=client)
+    if sys.platform == "win32":
+        time.sleep(1 / 32)
+
+    secrets = Secret.objects.list(client=client)
+    assert len(secrets) == 5
+    assert all(s.name.startswith("test-secret-") for s in secrets)
+    assert all(s.info().created_by == servicer.default_username for s in secrets)

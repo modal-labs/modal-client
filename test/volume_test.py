@@ -575,3 +575,18 @@ def test_remove_file_not_found(set_env_client):
     vol = modal.Volume.from_name("my_vol", create_if_missing=True)
     with pytest.raises(FileNotFoundError):
         vol.remove_file("a")
+
+
+def test_volume_list(servicer, client):
+    for i in range(5):
+        modal.Volume.from_name(f"test-volume-{i}", create_if_missing=True).hydrate(client)
+    if sys.platform == "win32":
+        time.sleep(1 / 32)
+
+    volume_list = modal.Volume.objects.list(client=client)
+    assert len(volume_list) == 5
+    assert all(v.name.startswith("test-volume-") for v in volume_list)
+    assert all(v.info().created_by == servicer.default_username for v in volume_list)
+
+    volume_list = modal.Volume.objects.list(max_objects=2, client=client)
+    assert len(volume_list) == 2
