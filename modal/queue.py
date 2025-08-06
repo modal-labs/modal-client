@@ -5,22 +5,29 @@ import warnings
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
+from ._object import (
+    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    _get_environment_name,
+    _Object,
+    live_method,
+    live_method_gen,
+)
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
-from ._utils.time_utils import timestamp_to_localized_dt
+from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .exception import InvalidError, RequestSizeError
 
@@ -35,6 +42,68 @@ class QueueInfo:
     name: Optional[str]
     created_at: datetime
     created_by: Optional[str]
+
+
+class _QueueManager:
+    """Namespace with methods for managing named Queue objects."""
+
+    @staticmethod
+    async def list(
+        *,
+        max_objects: Optional[int] = None,  # Limit requests to this size
+        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        environment_name: str = "",  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> list["_Queue"]:
+        """Return a list of hydrated Queue objects.
+
+        **Examples:**
+
+        ```python
+        queues = modal.Queue.objects.list()
+        print([q.name for q in queues])
+        ```
+
+        Queues will be retreived from the active environment, or another one can be specified:
+
+        ```python notest
+        dev_queues = modal.Queue.objects.list(environment_name="dev")
+        ```
+
+        By default, all named Queues are returned, newest to oldest. It's also possible to limit the
+        number of results and to filter by creation date:
+
+        ```python
+        queues = modal.Queue.objects.list(max_objects=10, created_before="2025-01-01")
+        ```
+
+        """
+        client = await _Client.from_env() if client is None else client
+        if max_objects is not None and max_objects < 0:
+            raise InvalidError("max_objects cannot be negative")
+
+        items: list[api_pb2.QueueListResponse.QueueInfo] = []
+
+        async def retrieve_page(created_before: float) -> bool:
+            max_page_size = 100 if max_objects is None else min(100, max_objects - len(items))
+            pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
+            req = api_pb2.QueueListRequest(environment_name=environment_name, pagination=pagination)
+            resp = await retry_transient_errors(client.stub.QueueList, req)
+            items.extend(resp.queues)
+            finished = (len(resp.queues) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
+            return finished
+
+        finished = await retrieve_page(as_timestamp(created_before))
+        while True:
+            if finished:
+                break
+            finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
+
+        queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in items]
+        return queues[:max_objects] if max_objects is not None else queues
+
+
+QueueManager = synchronize_api(_QueueManager)
 
 
 class _Queue(_Object, type_prefix="qu"):
@@ -115,6 +184,10 @@ class _Queue(_Object, type_prefix="qu"):
     def __init__(self):
         """mdmd:hidden"""
         raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
+
+    @classproperty
+    def objects(cls) -> _QueueManager:
+        return _QueueManager
 
     @property
     def name(self) -> Optional[str]:

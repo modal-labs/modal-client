@@ -80,7 +80,17 @@ class {name}{bases_str}
     rec_update_attributes(obj)
 
     for member_name, member in entries.items():
-        if isinstance(member, classmethod) or isinstance(member, staticmethod):
+        if isinstance(member, synchronicity.synchronizer.classproperty):
+            member_obj = getattr(obj, member_name)
+            if not inspect.isclass(member_obj):
+                # A little hacky; right now we are only using classproperty for the .objects manager classes
+                # I'm adding this constraint to avoid refactoring this to support more recursive calling
+                print(f"* Skipping {member_name}; we currnetly assume classproperty is a class")
+                continue
+            parts.append(f"{member_title_level} {member_name}\n\n")
+            parts.append(class_str(member_name, member_obj, title_level=title_level + "#"))
+            continue
+        elif isinstance(member, classmethod) or isinstance(member, staticmethod):
             # get the original function definition instead of the descriptor object
             member = getattr(obj, member_name)
         elif isinstance(member, property):

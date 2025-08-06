@@ -3,6 +3,7 @@ import json
 import os
 import platform
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional
@@ -30,20 +31,45 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
     env = ensure_env(env)
     client = await _Client.from_env()
-    response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
-    column_names = ["Name", "Created at", "Last used at"]
-    rows = []
 
-    for item in response.items:
+    items: list[api_pb2.SecretListItem] = []
+
+    # Note that we need to continue using the gRPC API directly here rather than using Secret.objects.list.
+    # There is some metadata that historically appears in the CLI output (last_used_at) that
+    # doesn't make sense to transmit as hydration metadata, because the value can change over time and
+    # the metadata retrieved at hydration time could get stale. Alternatively, we could rewrite this using
+    # only public API by sequentially retrieving the secrets and then querying their dynamic metadata, but
+    # that would require multiple round trips and would add lag to the CLI.
+    async def retrieve_page(created_before: float) -> bool:
+        max_page_size = 100
+        pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
+        req = api_pb2.SecretListRequest(environment_name=env, pagination=pagination)
+        resp = await retry_transient_errors(client.stub.SecretList, req)
+        items.extend(resp.items)
+        return len(resp.items) < max_page_size
+
+    finished = await retrieve_page(datetime.now().timestamp())
+    while True:
+        if finished:
+            break
+        finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
+
+    secrets = [_Secret._new_hydrated(item.secret_id, client, item.metadata, is_another_app=True) for item in items]
+
+    rows = []
+    for obj, resp_data in zip(secrets, items):
+        info = await obj.info()
         rows.append(
             [
-                item.label,
-                timestamp_to_localized_str(item.created_at, json),
-                timestamp_to_localized_str(item.last_used_at, json) if item.last_used_at else "-",
+                obj.name,
+                timestamp_to_localized_str(info.created_at.timestamp(), json),
+                info.created_by,
+                timestamp_to_localized_str(resp_data.last_used_at, json) if resp_data.last_used_at else "-",
             ]
         )
 
     env_part = f" in environment '{env}'" if env else ""
+    column_names = ["Name", "Created at", "Created by", "Last used at"]
     display_table(column_names, rows, json, title=f"Secrets{env_part}")
 
 
