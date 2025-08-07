@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.2.dev23 (2025-08-07)
+
+- `Cls.with_options` now supports `region` and `cloud` keyword arguments to override `region` or `cloud` during runtime.
+
+
 #### 1.1.2.dev16 (2025-08-06)
 
 - Added `.objects.delete()` methods
