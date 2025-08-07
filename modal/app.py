@@ -612,7 +612,7 @@ class _App:
     @warn_on_renamed_autoscaler_settings
     def function(
         self,
-        _warn_parentheses_missing: Any = None,
+        _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -841,7 +841,7 @@ class _App:
     @warn_on_renamed_autoscaler_settings
     def cls(
         self,
-        _warn_parentheses_missing: Optional[bool] = None,
+        _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container

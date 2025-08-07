@@ -381,7 +381,7 @@ class _Volume(_Object, type_prefix="vo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
-        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
     ) -> AsyncGenerator["_Volume", None]:
         """Creates a new ephemeral volume within a context manager:
 

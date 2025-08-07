@@ -263,7 +263,7 @@ class _Queue(_Object, type_prefix="qu"):
         cls: type["_Queue"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
     ) -> AsyncIterator["_Queue"]:
         """Creates a new ephemeral queue within a context manager:
 
