@@ -227,7 +227,7 @@ class _Dict(_Object, type_prefix="di"):
         data: Optional[dict] = None,  # DEPRECATED
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
     ) -> AsyncIterator["_Dict"]:
         """Creates a new ephemeral Dict within a context manager:
 
