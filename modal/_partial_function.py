@@ -282,7 +282,7 @@ class _MethodDecoratorType:
 
 # TODO(elias): fix support for coroutine type unwrapping for methods (static typing)
 def _method(
-    _warn_parentheses_missing=None,
+    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     # Set this to True if it's a non-generator function returning
     # a [sync/async] generator object
@@ -337,7 +337,7 @@ def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> lis
 
 
 def _fastapi_endpoint(
-    _warn_parentheses_missing=None,
+    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
@@ -400,7 +400,7 @@ def _fastapi_endpoint(
 
 
 def _web_endpoint(
-    _warn_parentheses_missing=None,
+    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
@@ -468,7 +468,7 @@ def _web_endpoint(
 
 
 def _asgi_app(
-    _warn_parentheses_missing=None,
+    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
@@ -525,7 +525,7 @@ def _asgi_app(
 
 
 def _wsgi_app(
-    _warn_parentheses_missing=None,
+    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
@@ -645,7 +645,7 @@ def _web_server(
 
 
 def _enter(
-    _warn_parentheses_missing=None,
+    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     snap: bool = False,
 ) -> Callable[[Union[_PartialFunction, NullaryMethod]], _PartialFunction]:
@@ -696,7 +696,7 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[NullaryMethod], _PartialF
 
 
 def _batched(
-    _warn_parentheses_missing=None,
+    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     max_batch_size: int,
     wait_ms: int,
@@ -758,7 +758,7 @@ def _batched(
 
 
 def _concurrent(
-    _warn_parentheses_missing=None,
+    _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
     max_inputs: int,  # Hard limit on each container's input concurrency
     target_inputs: Optional[int] = None,  # Input concurrency that Modal's autoscaler should target
