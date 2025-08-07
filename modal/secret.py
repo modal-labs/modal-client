@@ -91,7 +91,16 @@ class _SecretManager:
                 break
             finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
 
-        secrets = [_Secret._new_hydrated(item.secret_id, client, item.metadata, is_another_app=True) for item in items]
+        secrets = [
+            _Secret._new_hydrated(
+                item.secret_id,
+                client,
+                item.metadata,
+                is_another_app=True,
+                rep=_Secret._repr(item.label, environment_name),
+            )
+            for item in items
+        ]
         return secrets[:max_objects] if max_objects is not None else secrets
 
     @staticmethod
@@ -334,7 +343,8 @@ class _Secret(_Object, type_prefix="st"):
                     raise
             self._hydrate(response.secret_id, resolver.client, response.metadata)
 
-        return _Secret._from_loader(_load, "Secret()", hydrate_lazily=True, name=name)
+        rep = _Secret._repr(name, environment_name)
+        return _Secret._from_loader(_load, rep, hydrate_lazily=True, name=name)
 
     @staticmethod
     async def lookup(

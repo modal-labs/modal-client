@@ -168,7 +168,16 @@ class _VolumeManager:
                 break
             finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
 
-        volumes = [_Volume._new_hydrated(item.volume_id, client, item.metadata, is_another_app=True) for item in items]
+        volumes = [
+            _Volume._new_hydrated(
+                item.volume_id,
+                client,
+                item.metadata,
+                is_another_app=True,
+                rep=_Volume._repr(item.label, environment_name),
+            )
+            for item in items
+        ]
         return volumes[:max_objects] if max_objects is not None else volumes
 
     @staticmethod
@@ -362,7 +371,8 @@ class _Volume(_Object, type_prefix="vo"):
             response = await resolver.client.stub.VolumeGetOrCreate(req)
             self._hydrate(response.volume_id, resolver.client, response.metadata)
 
-        return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, name=name)
+        rep = _Volume._repr(name, environment_name)
+        return _Volume._from_loader(_load, rep, hydrate_lazily=True, name=name)
 
     @classmethod
     @asynccontextmanager
@@ -398,7 +408,13 @@ class _Volume(_Object, type_prefix="vo"):
         async with TaskContext() as tc:
             request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
             tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.volume_id, client, response.metadata, is_another_app=True)
+            yield cls._new_hydrated(
+                response.volume_id,
+                client,
+                response.metadata,
+                is_another_app=True,
+                rep="modal.Volume.ephemeral()",
+            )
 
     @staticmethod
     async def lookup(

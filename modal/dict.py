@@ -101,7 +101,16 @@ class _DictManager:
                 break
             finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
 
-        dicts = [_Dict._new_hydrated(item.dict_id, client, item.metadata, is_another_app=True) for item in items]
+        dicts = [
+            _Dict._new_hydrated(
+                item.dict_id,
+                client,
+                item.metadata,
+                is_another_app=True,
+                rep=_Dict._repr(item.name, environment_name),
+            )
+            for item in items
+        ]
         return dicts[:max_objects] if max_objects is not None else dicts
 
     @staticmethod
@@ -252,7 +261,13 @@ class _Dict(_Object, type_prefix="di"):
         async with TaskContext() as tc:
             request = api_pb2.DictHeartbeatRequest(dict_id=response.dict_id)
             tc.infinite_loop(lambda: client.stub.DictHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.dict_id, client, response.metadata, is_another_app=True)
+            yield cls._new_hydrated(
+                response.dict_id,
+                client,
+                response.metadata,
+                is_another_app=True,
+                rep="modal.Dict.ephemeral()",
+            )
 
     @staticmethod
     def from_name(
@@ -295,7 +310,8 @@ class _Dict(_Object, type_prefix="di"):
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, response.metadata)
 
-        return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True, name=name)
+        rep = _Dict._repr(name, environment_name)
+        return _Dict._from_loader(_load, rep, is_another_app=True, hydrate_lazily=True, name=name)
 
     @staticmethod
     async def lookup(

@@ -1276,7 +1276,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        rep = f"Function.from_name('{app_name}', '{name}')"
+        environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
+        rep = f"modal.Function.from_name('{app_name}', '{name}'{environment_rep})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
     @classmethod

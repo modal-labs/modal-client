@@ -657,7 +657,8 @@ More information on class parameterization can be found here: https://modal.com/
             await resolver.load(self._class_service_function)
             self._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
-        rep = f"Cls.from_name({app_name!r}, {name!r})"
+        environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
+        rep = f"Cls.from_name({app_name!r}, {name!r}{environment_rep})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
         class_service_name = f"{name}.*"  # special name of the base service function for the class
