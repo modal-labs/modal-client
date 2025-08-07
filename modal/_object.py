@@ -192,8 +192,19 @@ class _Object:
         return cls._get_type_from_id(object_id) == cls
 
     @classmethod
+    def _repr(cls, name: str, environment_name: Optional[str] = None) -> str:
+        public_cls = cls.__name__.strip("_")
+        environment_repr = f", environment_name={environment_name!r}" if environment_name else ""
+        return f"modal.{public_cls}.from_name({name!r}{environment_repr})"
+
+    @classmethod
     def _new_hydrated(
-        cls, object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False
+        cls,
+        object_id: str,
+        client: _Client,
+        handle_metadata: Optional[Message],
+        is_another_app: bool = False,
+        rep: Optional[str] = None,
     ) -> Self:
         obj_cls: type[Self]
         if cls._type_prefix is not None:
@@ -210,7 +221,7 @@ class _Object:
 
         # Instantiate provider
         obj = _Object.__new__(obj_cls)
-        rep = f"Object({object_id})"  # TODO(erikbern): dumb
+        rep = rep or f"modal.{obj_cls.__name__.strip('_')}.from_id({object_id!r})"
         obj._init(rep, is_another_app=is_another_app)
         obj._hydrate(object_id, client, handle_metadata)
 
