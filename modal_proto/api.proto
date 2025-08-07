@@ -1851,6 +1851,7 @@ message FunctionPutInputsRequest {
   string function_id = 1;
   string function_call_id = 3;
   repeated FunctionPutInputsItem inputs = 4;
+  optional int32 total_number_of_inputs = 6; // Only set on the final input.
 }
 
 message FunctionPutInputsResponse {
