@@ -9,7 +9,7 @@ import warnings
 from collections.abc import AsyncGenerator, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Union
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -350,6 +350,70 @@ class _Invocation:
                 # and produces less data in the second run than what was already sent.
                 if items_total is not None and items_received >= items_total:
                     break
+
+    async def enumerate(self, start_index: int = 0, end_index: int = None):
+        """Enumerate over the results of the function call."""
+        failure_count = 0
+        total_outputs_found = 0
+        seen_outputs = [False] * (end_index - start_index + 1)
+
+        def translate_index(idx: int) -> int:
+            return idx - start_index
+
+        while True:
+            new_outputs_found = 0
+            current_index = start_index
+            while current_index < end_index:
+                # Skip over outputs that have already been seen
+                while seen_outputs[translate_index(current_index)]:
+                    current_index += 1
+                    if current_index >= end_index:
+                        break
+
+                request = api_pb2.FunctionGetOutputsRequest(
+                    function_call_id=self.function_call_id,
+                    timeout=0,
+                    last_entry_id="0-0",
+                    clear_on_success=False,
+                    requested_at=time.time(),
+                    start_idx=current_index,
+                )
+                response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
+                    self.stub.FunctionGetOutputs,
+                    request,
+                    attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                )
+
+                outputs: list[api_pb2.FunctionGetOutputsItem] = response.outputs
+                # No more outputs to fetch
+                if len(outputs) == 0:
+                    break
+
+                for output in outputs:
+                    if seen_outputs[translate_index(output.idx)]:
+                        continue
+                    seen_outputs[translate_index(output.idx)] = True
+                    result = await _process_result(output.result, output.data_format, self.stub, self.client)
+                    yield output.idx, result
+                    new_outputs_found += 1
+                    total_outputs_found += 1
+                    current_index = max(current_index, output.idx + 1)
+
+                # We found all the outputs we were looking for
+                if total_outputs_found == (end_index - start_index) + 1:
+                    return
+
+            # If we didn't find any new outputs, we need to back off and retry
+            if new_outputs_found == 0:
+                failure_count += 1
+                await asyncio.sleep(2**failure_count * 0.1)
+            else:
+                failure_count = 0
+
+    async def iter(self, start_index: int = 0, end_index: int = None):
+        """Iterate over the results of the function call."""
+        async for _, item in self.enumerate(start_index, end_index):
+            yield item
 
 
 class _InputPlaneInvocation:
@@ -1838,6 +1902,18 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         The returned coroutine is not cancellation-safe.
         """
         return await self._invocation().poll_function(timeout=timeout)
+
+    @live_method_gen
+    async def iter(self, start_index: int = 0, end_index: int = None) -> AsyncIterator[ReturnType]:
+        """Iterate over the results of the function call."""
+        async for item in self._invocation().iter(start_index, end_index):
+            yield item
+
+    @live_method_gen
+    async def enumerate(self, start_index: int = 0, end_index: int = None) -> AsyncIterator[tuple[int, ReturnType]]:
+        """Enumerate over the results of the function call."""
+        async for item in self._invocation().enumerate(start_index, end_index):
+            yield item
 
     async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
