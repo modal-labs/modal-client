@@ -22,8 +22,7 @@ launch_cli = Typer(
     no_args_is_help=True,
     help="""
     Open a serverless app instance on Modal.
-
-    This command is in preview and may change in the future.
+    >⚠️  modal launch is experimental and may change in the future.
     """,
 )
 
@@ -31,6 +30,14 @@ launch_cli = Typer(
 def _launch_program(
     name: str, filename: str, detach: bool, args: dict[str, Any], *, description: Optional[str] = None
 ) -> None:
+    console = make_console()
+    console.print(
+        rich.panel.Panel(
+            f"⚠️  modal launch {name} is experimental and may change in the future",
+        ),
+        style="bold yellow",
+    )
+
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
     program_path = str(Path(__file__).parent / "programs" / filename)
