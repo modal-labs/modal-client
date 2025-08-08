@@ -13,7 +13,7 @@ from unittest import mock
 
 import modal
 from modal._utils.blob_utils import BLOCK_SIZE
-from modal.exception import DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
@@ -588,3 +588,11 @@ def test_volume_list(servicer, client):
 
     volume_list = modal.Volume.objects.list(max_objects=2, client=client)
     assert len(volume_list) == 2
+
+
+def test_volume_create(servicer, client):
+    modal.Volume.objects.create(name="test-volume-create", client=client)
+    modal.Volume.from_name("test-volume-create").hydrate(client)
+    with pytest.raises(AlreadyExistsError):
+        modal.Volume.objects.create(name="test-volume-create", client=client)
+    modal.Volume.objects.create(name="test-volume-create", allow_existing=True, client=client)

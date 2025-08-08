@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Optional, Union
 
 from google.protobuf.message import Message
-from grpclib import GRPCError
+from grpclib import GRPCError, Status
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -27,7 +27,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
-from .exception import InvalidError, NotFoundError, RequestSizeError
+from .exception import AlreadyExistsError, InvalidError, NotFoundError, RequestSizeError
 
 
 def _serialize_dict(data):
@@ -48,6 +48,59 @@ class DictInfo:
 
 class _DictManager:
     """Namespace with methods for managing named Dict objects."""
+
+    @staticmethod
+    async def create(
+        name: str,  # Name to use for the new Dict
+        *,
+        allow_existing: bool = False,  # If True, no-op when the Dict already exists
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> None:
+        """Create a new Dict object.
+
+        **Examples:**
+
+        ```python notest
+        modal.Dict.objects.create("my-dict")
+        ```
+
+        Dicts will be created in the active environment, or another one can be specified:
+
+        ```python notest
+        modal.Dict.objects.create("my-dict", environment_name="dev")
+        ```
+
+        By default, an error will be raised if the Dict already exists, but passing
+        `allow_existing=True` will make the creation attempt a no-op in this case.
+
+        ```python notest
+        modal.Dict.objects.create("my-dict", allow_existing=True)
+        ```
+
+        Note that this method does not return a local instance of the Dict. You can use
+        `modal.Dict.from_name` to perform a lookup after creation.
+
+        """
+        client = await _Client.from_env() if client is None else client
+        object_creation_type = (
+            api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+            if allow_existing
+            else api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
+        )
+        req = api_pb2.DictGetOrCreateRequest(
+            deployment_name=name,
+            environment_name=_get_environment_name(environment_name),
+            object_creation_type=object_creation_type,
+        )
+        try:
+            await retry_transient_errors(client.stub.DictGetOrCreate, req)
+        except GRPCError as exc:
+            if exc.status == Status.ALREADY_EXISTS:
+                if not allow_existing:
+                    raise AlreadyExistsError(exc.message)
+            else:
+                raise
 
     @staticmethod
     async def list(
@@ -89,7 +142,9 @@ class _DictManager:
         async def retrieve_page(created_before: float) -> bool:
             max_page_size = 100 if max_objects is None else min(100, max_objects - len(items))
             pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
-            req = api_pb2.DictListRequest(environment_name=environment_name, pagination=pagination)
+            req = api_pb2.DictListRequest(
+                environment_name=_get_environment_name(environment_name), pagination=pagination
+            )
             resp = await retry_transient_errors(client.stub.DictList, req)
             items.extend(resp.dicts)
             finished = (len(resp.dicts) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
