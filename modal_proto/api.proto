@@ -1510,6 +1510,16 @@ message FunctionCallCancelRequest {
   optional string function_id = 3; // Only provided for sync input cancellation on the input plane. Async input cancellation does not provide this field this.
 }
 
+message FunctionCallFromIdRequest {
+  string function_call_id = 1;
+}
+
+// Everything you need to build a FunctionCallHandler.
+message FunctionCallFromIdResponse {
+  string function_call_id = 1;
+  int32 num_inputs = 2;
+}
+
 message FunctionCallGetDataRequest {
   oneof call_info {
     string function_call_id = 1;
@@ -3500,6 +3510,7 @@ service ModalClient {
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallFromId(FunctionCallFromIdRequest) returns (FunctionCallFromIdResponse);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
