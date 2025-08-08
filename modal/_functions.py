@@ -9,7 +9,7 @@ import warnings
 from collections.abc import AsyncGenerator, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Tuple, Union
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -359,6 +359,42 @@ class _Invocation:
                 # and produces less data in the second run than what was already sent.
                 if items_total is not None and items_received >= items_total:
                     break
+
+    async def iter(self, end_index: int, start_index: int = 0):
+        """Iterate over the results of the function call."""
+        limit = 50
+        current_index = start_index
+        while current_index <= end_index:
+            batch_end_index = min(current_index + limit - 1, end_index)
+            request = api_pb2.FunctionGetOutputsRequest(
+                function_call_id=self.function_call_id,
+                timeout=0,
+                last_entry_id="0-0",
+                clear_on_success=False,
+                requested_at=time.time(),
+                start_idx=current_index,
+                end_idx=batch_end_index,
+            )
+            response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
+                self.stub.FunctionGetOutputs,
+                request,
+                attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD,
+            )
+
+            outputs = list(response.outputs)
+            outputs.sort(key=lambda x: x.idx)
+            for output in outputs:
+                if output.idx != current_index:
+                    continue
+                result = await _process_result(output.result, output.data_format, self.stub, self.client)
+                yield output.idx, result
+                current_index += 1
+
+            # We're missing current_index, so we need to poll the function for the next result
+            if len(outputs) < (batch_end_index - current_index + 1):
+                result = await self.poll_function(index=current_index)
+                yield current_index, result
+                current_index += 1
 
 
 class _InputPlaneInvocation:
@@ -1847,6 +1883,12 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         The returned coroutine is not cancellation-safe.
         """
         return await self._invocation().poll_function(timeout=timeout, index=index)
+
+    @live_method_gen
+    async def iter(self, end_index: int, start_index: int = 0) -> AsyncIterator[Tuple[int, ReturnType]]:
+        """Iterate over the results of the function call."""
+        async for item in self._invocation().iter(end_index=end_index, start_index=start_index):
+            yield item
 
     async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
