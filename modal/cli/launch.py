@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import rich.panel
+from rich.markdown import Markdown
 from typer import Typer
 
 from .._output import make_console
@@ -33,9 +34,9 @@ def _launch_program(
     console = make_console()
     console.print(
         rich.panel.Panel(
-            f"⚠️  modal launch {name} is experimental and may change in the future",
+            Markdown(f"⚠️  `modal launch {name}` is **experimental** and may change in the future."),
+            border_style="yellow",
         ),
-        style="bold yellow",
     )
 
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
