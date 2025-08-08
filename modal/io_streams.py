@@ -457,24 +457,104 @@ class _StreamReaderV2(Generic[T]):
             return cast(T, data_bytes)
 
     async def _get_logs(self) -> AsyncGenerator[Optional[bytes], None]:
-        if self._file_descriptor != api_pb2.FILE_DESCRIPTOR_STDOUT:
+        # Support stdout and stderr via the sandbox daemon tunnel.
+        if self._file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            stream_name = "stdout"
+        elif self._file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
+            stream_name = "stderr"
+        else:
+            # Unsupported descriptor for the tunnel-backed reader.
             yield None
             return
 
         import httpx
 
-        url = f"{self._tunnel_url}/exec/stdout/read"
+        read_url = f"{self._tunnel_url}/exec/{stream_name}/read"
+        drain_url = f"{self._tunnel_url}/exec/{stream_name}/drain"
 
-        async with httpx.AsyncClient(verify=False) as client:
-            async with client.stream(
-                "POST",
-                url,
-                json={"exec_id": self._object_id, "timeout": 15},
-            ) as resp:
-                async for chunk in resp.aiter_bytes():
-                    if chunk:
-                        yield chunk
-            yield None
+        # Tracks the next offset we need to request from the server.
+        offset = 0
+
+        # Queue for offsets that have been fully processed by the caller and need to be ack-ed via /drain.
+        ack_queue: asyncio.Queue[Optional[int]] = asyncio.Queue()
+
+        async def _send_acks(client: "httpx.AsyncClient") -> None:
+            """Background coroutine that streams acknowledged offsets to the daemon.
+
+            It is fault-tolerant: if the drain connection drops, it will reconnect
+            and re-emit the latest offset so the server can continue draining.
+            """
+
+            latest_sent: int | None = None
+            done = False
+
+            while not done:
+
+                async def _ack_gen():
+                    nonlocal latest_sent, done
+                    # First (re)send the most recent offset so the server doesn't miss it.
+                    if latest_sent is not None:
+                        yield f"{latest_sent}\n".encode()
+
+                    while True:
+                        off = await ack_queue.get()
+                        if off is None:
+                            done = True
+                            yield f"{off}\n".encode()
+                            return
+                        latest_sent = off
+                        yield f"{off}\n".encode()
+
+                try:
+                    async with client.stream("POST", drain_url, data=_ack_gen()) as resp:
+                        # Wait until the server closes the connection or an error happens.
+                        await resp.aread()
+                except (httpx.HTTPError, httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError):
+                    # Transient error – retry after short delay. Keep `latest_sent` so we can
+                    # re-ack once we reconnect.
+                    if done:
+                        break
+                    await asyncio.sleep(1.0)
+                    continue
+                # Normal EOF (exec finished): loop will exit because `done` should be True after sentinel.
+
+        async with httpx.AsyncClient(http2=True, verify=False, timeout=None) as client:
+            # Fire-and-forget task that keeps the drain connection open.
+            drain_task = asyncio.create_task(_send_acks(client))
+
+            # Continue attempting to read until the server signals EOF (empty response body) or an error occurs
+            # after which we retry with the current offset.
+            while True:
+                try:
+                    async with client.stream(
+                        "POST",
+                        read_url,
+                        json={
+                            "exec_id": self._object_id,
+                            "timeout": 15,
+                            "offset": offset,
+                        },
+                    ) as resp:
+                        async for chunk in resp.aiter_bytes():
+                            if not chunk:
+                                continue
+                            offset += len(chunk)
+                            # Send ack (non-blocking – worst case it waits until queue space available)
+                            await ack_queue.put(offset)
+                            yield chunk
+                    # If the server cleanly closes the stream, we're done – send sentinel None.
+                    break
+                except (httpx.HTTPError, httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError):
+                    # Transient network error – retry with the current offset after a short delay.
+                    await asyncio.sleep(1.0)
+                    continue
+
+            # Signal the drain task to finish and wait for it.
+            await ack_queue.put(None)
+            await drain_task
+
+        # Emit EOF sentinel for the outer reader helpers.
+        yield None
 
     async def _get_logs_by_line(self) -> AsyncGenerator[Optional[bytes], None]:
         async for message in self._get_logs():
