@@ -8,7 +8,7 @@ from rich.text import Text
 
 from modal import environments
 from modal._utils.name_utils import check_environment_name
-from modal.cli.utils import _show_help_without_subcommand, display_table
+from modal.cli.utils import display_table
 from modal.config import config
 from modal.exception import InvalidError
 
@@ -24,8 +24,7 @@ production, to prevent overwriting production apps when developing new features
 while still being able to deploy changes to a live environment.
 """
 
-environment_cli = typer.Typer(name="environment", help=ENVIRONMENT_HELP_TEXT, no_args_is_help=False)
-environment_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
+environment_cli = typer.Typer(name="environment", help=ENVIRONMENT_HELP_TEXT, no_args_is_help=True)
 
 
 class RenderableBool(Text):

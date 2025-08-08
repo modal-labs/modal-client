@@ -9,7 +9,7 @@ from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.utils import ENV_OPTION, _show_help_without_subcommand, display_table, is_tty, stream_app_logs
+from modal.cli.utils import ENV_OPTION, display_table, is_tty, stream_app_logs
 from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
@@ -17,8 +17,7 @@ from modal.environments import ensure_env
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
-container_cli = typer.Typer(name="container", help="Manage and connect to running containers.", no_args_is_help=False)
-container_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
+container_cli = typer.Typer(name="container", help="Manage and connect to running containers.", no_args_is_help=True)
 
 
 @container_cli.command("list")

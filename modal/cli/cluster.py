@@ -9,7 +9,7 @@ from modal._output import make_console
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.utils import ENV_OPTION, _show_help_without_subcommand, display_table, is_tty
+from modal.cli.utils import ENV_OPTION, display_table, is_tty
 from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
@@ -18,9 +18,8 @@ from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
 cluster_cli = typer.Typer(
-    name="cluster", help="Manage and connect to running multi-node clusters.", no_args_is_help=False
+    name="cluster", help="Manage and connect to running multi-node clusters.", no_args_is_help=True
 )
-cluster_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
 
 
 @cluster_cli.command("list")

@@ -16,13 +16,12 @@ from modal.environments import ensure_env
 from modal_proto import api_pb2
 
 from .._utils.time_utils import timestamp_to_localized_str
-from .utils import ENV_OPTION, _show_help_without_subcommand, display_table, get_app_id_from_name, stream_app_logs
+from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs
 
 APP_IDENTIFIER = Argument("", help="App name or ID")
 NAME_OPTION = typer.Option("", "-n", "--name", help="Deprecated: Pass App name as a positional argument")
 
-app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=False)
-app_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
+app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
 
 APP_STATE_TO_MESSAGE = {
     api_pb2.APP_STATE_DEPLOYED: Text("deployed", style="green"),
@@ -81,9 +80,8 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
     display_table(columns, rows, json, title=f"Apps{env_part}")
 
 
-@app_cli.command("logs", no_args_is_help=False)
+@app_cli.command("logs", no_args_is_help=True)
 def logs(
-    ctx: typer.Context,
     app_identifier: str = APP_IDENTIFIER,
     *,
     env: Optional[str] = ENV_OPTION,
@@ -106,15 +104,13 @@ def logs(
     ```
 
     """
-    _show_help_without_subcommand(ctx)
     app_id = get_app_id(app_identifier, env)
     stream_app_logs(app_id, show_timestamps=timestamps)
 
 
-@app_cli.command("rollback", no_args_is_help=False, context_settings={"ignore_unknown_options": True})
+@app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})
 @synchronizer.create_blocking
 async def rollback(
-    ctx: typer.Context,
     app_identifier: str = APP_IDENTIFIER,
     version: str = typer.Argument("", help="Target version for rollback."),
     *,
@@ -147,7 +143,6 @@ async def rollback(
     ```
 
     """
-    _show_help_without_subcommand(ctx)
     env = ensure_env(env)
     client = await _Client.from_env()
     app_id = await get_app_id.aio(app_identifier, env, client)
@@ -163,26 +158,23 @@ async def rollback(
     rich.print("[green]✓[/green] Deployment rollback successful!")
 
 
-@app_cli.command("stop", no_args_is_help=False)
+@app_cli.command("stop", no_args_is_help=True)
 @synchronizer.create_blocking
 async def stop(
-    ctx: typer.Context,
     app_identifier: str = APP_IDENTIFIER,
     *,
     env: Optional[str] = ENV_OPTION,
 ):
     """Stop an app."""
-    _show_help_without_subcommand(ctx)
     client = await _Client.from_env()
     app_id = await get_app_id.aio(app_identifier, env)
     req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
     await client.stub.AppStop(req)
 
 
-@app_cli.command("history", no_args_is_help=False)
+@app_cli.command("history", no_args_is_help=True)
 @synchronizer.create_blocking
 async def history(
-    ctx: typer.Context,
     app_identifier: str = APP_IDENTIFIER,
     *,
     env: Optional[str] = ENV_OPTION,
@@ -205,7 +197,6 @@ async def history(
     ```
 
     """
-    _show_help_without_subcommand(ctx)
     env = ensure_env(env)
     client = await _Client.from_env()
     app_id = await get_app_id.aio(app_identifier, env, client)

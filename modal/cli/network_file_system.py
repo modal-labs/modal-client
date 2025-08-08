@@ -18,14 +18,13 @@ from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
-from modal.cli.utils import ENV_OPTION, YES_OPTION, _show_help_without_subcommand, display_table
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
 from modal_proto import api_pb2
 
-nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=False)
-nfs_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
+nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
 
 
 @nfs_cli.command(name="list", help="List the names of all network file systems.", rich_help_panel="Management")

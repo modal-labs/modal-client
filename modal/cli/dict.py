@@ -8,17 +8,16 @@ from modal._output import make_console
 from modal._resolver import Resolver
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.utils import ENV_OPTION, YES_OPTION, _show_help_without_subcommand, display_table
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.dict import _Dict
 from modal.environments import ensure_env
 
 dict_cli = Typer(
     name="dict",
-    no_args_is_help=False,
+    no_args_is_help=True,
     help="Manage `modal.Dict` objects and inspect their contents.",
 )
-dict_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
 
 
 @dict_cli.command(name="create", rich_help_panel="Management")

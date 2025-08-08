@@ -21,7 +21,6 @@ from .profile import profile_cli
 from .queues import queue_cli
 from .secret import secret_cli
 from .token import _new_token, token_cli
-from .utils import _show_help_without_subcommand
 from .volume import volume_cli
 
 
@@ -51,7 +50,13 @@ def modal(
     ctx: typer.Context,
     version: bool = typer.Option(None, "--version", callback=version_callback),
 ):
-    _show_help_without_subcommand(ctx)
+    # TODO: When https://github.com/fastapi/typer/pull/1240 gets shipped, then
+    # - set invoke_without_command=False in the callback decorator
+    # - set no_args_is_help=True in entrypoint_cli_typer
+    if ctx.invoked_subcommand is None:
+        console = make_console()
+        console.print(ctx.get_help())
+        raise typer.Exit()
 
 
 def check_path():

@@ -5,8 +5,6 @@ from modal._output import make_console
 from modal.config import _profile, _store_user_config, config
 from modal.environments import Environment
 
-from .utils import _show_help_without_subcommand
-
 config_cli = typer.Typer(
     name="config",
     help="""
@@ -15,9 +13,8 @@ config_cli = typer.Typer(
     Refer to https://modal.com/docs/reference/modal.config for a full explanation
     of what these options mean, and how to set them.
     """,
-    no_args_is_help=False,
+    no_args_is_help=True,
 )
-config_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
 
 
 @config_cli.command(help="Show current configuration values (debugging command).")

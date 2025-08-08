@@ -17,14 +17,13 @@ from modal._output import make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.utils import ENV_OPTION, YES_OPTION, _show_help_without_subcommand, display_table
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.secret import _Secret
 from modal_proto import api_pb2
 
-secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=False)
-secret_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
+secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=True)
 
 
 @secret_cli.command("list", help="List your published secrets.")

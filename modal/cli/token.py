@@ -5,11 +5,9 @@ from typing import Optional
 import typer
 
 from modal._utils.async_utils import synchronizer
-from modal.cli.utils import _show_help_without_subcommand
 from modal.token_flow import _new_token, _set_token
 
-token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=False)
-token_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
+token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
 
 profile_option = typer.Option(
     None,
