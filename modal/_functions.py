@@ -1555,12 +1555,13 @@ Use the `Function.get_web_url()` method instead.
             raise InvalidError("A generator function cannot be called with `.spawn_map(...)`.")
 
         assert self._function_name
-        function_call_id = await _spawn_map_invocation(
+        function_call_id, num_inputs = await _spawn_map_invocation(
             self,
             input_queue,
             self.client,
         )
-        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(function_call_id, self.client, None)
+        metadata = api_pb2.FunctionCallFromIdResponse(function_call_id=function_call_id, num_inputs=num_inputs)
+        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(function_call_id, self.client, metadata)
         return fc
 
     async def _call_function(self, args, kwargs) -> ReturnType:
@@ -1824,9 +1825,23 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     """
 
     _is_generator: bool = False
+    _num_inputs: Optional[int] = None
 
     def _invocation(self):
         return _Invocation(self.client.stub, self.object_id, self.client)
+
+    async def _hydrate_metadata(self, metadata: Optional[Message]):
+        if not metadata:
+            return
+        assert isinstance(metadata, api_pb2.FunctionCallFromIdResponse)
+        self._num_inputs = metadata.num_inputs
+
+    async def num_inputs(self) -> int:
+        """Get the number of inputs in the function call."""
+        if not self._num_inputs:
+            request = api_pb2.FunctionCallFromIdRequest(function_call_id=self.object_id)
+            await self._hydrate_metadata(await self._client.stub.FunctionCallFromId(request))
+        return self._num_inputs
 
     async def get(self, timeout: Optional[float] = None) -> ReturnType:
         """Get the result of the function call.

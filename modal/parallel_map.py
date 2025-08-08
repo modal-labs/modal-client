@@ -271,10 +271,21 @@ class AsyncInputPumper(InputPumper):
     ):
         super().__init__(client, input_queue=input_queue, function=function, function_call_id=function_call_id)
 
+    async def pump_inputs(self):
+        async for _ in super().pump_inputs():
+            pass
+        request = api_pb2.FunctionFinishInputsRequest(
+            function_id=self.function.object_id,
+            function_call_id=self.function_call_id,
+            num_inputs=self.inputs_sent,
+        )
+        await retry_transient_errors(self.client.stub.FunctionFinishInputs, request, max_retries=None)
+        yield
+
 
 async def _spawn_map_invocation(
     function: "modal.functions._Function", raw_input_queue: _SynchronizedQueue, client: "modal.client._Client"
-) -> str:
+) -> tuple[str, int]:
     assert client.stub
     request = api_pb2.FunctionMapRequest(
         function_id=function.object_id,
@@ -340,7 +351,7 @@ async def _spawn_map_invocation(
     )
     log_debug_stats_task.cancel()
     await log_debug_stats_task
-    return function_call_id
+    return function_call_id, inputs_created
 
 
 async def _map_invocation(
