@@ -54,7 +54,8 @@ def modal(
     # - set invoke_without_command=False in the callback decorator
     # - set no_args_is_help=True in entrypoint_cli_typer
     if ctx.invoked_subcommand is None:
-        print(ctx.get_help())
+        console = make_console()
+        console.print(ctx.get_help())
         raise typer.Exit()
 
 
