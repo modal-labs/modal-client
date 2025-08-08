@@ -33,7 +33,7 @@ def version_callback(value: bool):
 
 
 entrypoint_cli_typer = typer.Typer(
-    no_args_is_help=True,
+    no_args_is_help=False,
     add_completion=False,
     rich_markup_mode="markdown",
     help="""
@@ -45,12 +45,18 @@ entrypoint_cli_typer = typer.Typer(
 )
 
 
-@entrypoint_cli_typer.callback()
+@entrypoint_cli_typer.callback(invoke_without_command=True)
 def modal(
     ctx: typer.Context,
     version: bool = typer.Option(None, "--version", callback=version_callback),
 ):
-    pass
+    # TODO: When https://github.com/fastapi/typer/pull/1240 gets shipped, then
+    # - set invoke_without_command=False in the callback decorator
+    # - set no_args_is_help=True in entrypoint_cli_typer
+    if ctx.invoked_subcommand is None:
+        console = make_console()
+        console.print(ctx.get_help())
+        raise typer.Exit()
 
 
 def check_path():
