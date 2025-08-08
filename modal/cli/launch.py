@@ -21,9 +21,10 @@ from .import_refs import ImportRef, _get_runnable_app, import_file_or_module
 launch_cli = Typer(
     name="launch",
     no_args_is_help=True,
+    rich_markup_mode="markdown",
     help="""
     Open a serverless app instance on Modal.
-    >⚠️  modal launch is experimental and may change in the future.
+    >⚠️  `modal launch` is **experimental** and may change in the future.
     """,
 )
 
