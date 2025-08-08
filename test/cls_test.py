@@ -1341,6 +1341,7 @@ def test_clustered_cls(client, servicer):
         class_function = servicer.function_by_name("ClusteredClass.*")
         assert class_function._experimental_group_size == 3
         assert class_function.i6pn_enabled is True  # clustered implies i6pn
+        assert class_function.resources.rdma == 1
 
         obj = ClusteredClass()
         assert hasattr(obj, "run_task")
@@ -1348,6 +1349,7 @@ def test_clustered_cls(client, servicer):
         regular_function = servicer.function_by_name("RegularClass.*")
         assert regular_function._experimental_group_size == 0  # or not set
         assert regular_function.i6pn_enabled is False
+        assert regular_function.resources.rdma == 0
 
 
 invalid_clustered_app = App()
