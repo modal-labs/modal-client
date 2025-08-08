@@ -1210,6 +1210,11 @@ def test_experimental_spawn_map_sync(client, servicer):
         assert function_put_inputs is not None
         assert type(fc) is modal.FunctionCall
 
+        # The server squares the inputs.
+        assert fc.get(index=0) == 1
+        assert fc.get(index=1) == 4
+        assert fc.get(index=2) == 9
+
 
 def test_warn_on_local_volume_mount(client, servicer):
     vol = modal.Volume.from_name("my-vol")
