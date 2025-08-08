@@ -16,16 +16,18 @@ from ..exception import _CliUserExecutionError
 from ..output import enable_output
 from ..runner import run_app
 from .import_refs import ImportRef, _get_runnable_app, import_file_or_module
+from .utils import _show_help_without_subcommand
 
 launch_cli = Typer(
     name="launch",
-    no_args_is_help=True,
+    no_args_is_help=False,
     help="""
     Open a serverless app instance on Modal.
 
     This command is in preview and may change in the future.
     """,
 )
+launch_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
 
 
 def _launch_program(

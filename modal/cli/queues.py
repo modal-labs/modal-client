@@ -16,11 +16,14 @@ from modal.environments import ensure_env
 from modal.queue import _Queue
 from modal_proto import api_pb2
 
+from .utils import _show_help_without_subcommand
+
 queue_cli = Typer(
     name="queue",
-    no_args_is_help=True,
+    no_args_is_help=False,
     help="Manage `modal.Queue` objects and inspect their contents.",
 )
+queue_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
 
 PARTITION_OPTION = Option(
     None,

@@ -13,7 +13,10 @@ from modal._utils.async_utils import synchronizer
 from modal.config import Config, _lookup_workspace, _profile, config_profiles, config_set_active_profile
 from modal.exception import AuthError
 
-profile_cli = typer.Typer(name="profile", help="Switch between Modal profiles.", no_args_is_help=True)
+from .utils import _show_help_without_subcommand
+
+profile_cli = typer.Typer(name="profile", help="Switch between Modal profiles.", no_args_is_help=False)
+profile_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
 
 
 @profile_cli.command(help="Change the active Modal profile.")

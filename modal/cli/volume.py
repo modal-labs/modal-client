@@ -15,20 +15,21 @@ from modal._output import OutputManager, ProgressHandler, make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
+from modal.cli.utils import ENV_OPTION, YES_OPTION, _show_help_without_subcommand, display_table
 from modal.environments import ensure_env
 from modal.volume import _AbstractVolumeUploadContextManager, _Volume
 from modal_proto import api_pb2
 
 volume_cli = Typer(
     name="volume",
-    no_args_is_help=True,
+    no_args_is_help=False,
     help="""
     Read and edit `modal.Volume` volumes.
 
     Note: users of `modal.NetworkFileSystem` should use the `modal nfs` command instead.
     """,
 )
+volume_cli.callback(invoke_without_command=True)(_show_help_without_subcommand)
 
 
 def humanize_filesize(value: int) -> str:

@@ -96,3 +96,13 @@ Otherwise, raises an error if the workspace has multiple environments.
 ENV_OPTION = typer.Option(None, "-e", "--env", help=ENV_OPTION_HELP)
 
 YES_OPTION = typer.Option(False, "-y", "--yes", help="Run without pausing for confirmation.")
+
+
+def _show_help_without_subcommand(ctx: typer.Context):
+    # TODO: When https://github.com/fastapi/typer/pull/1240 gets shipped, then
+    # - set invoke_without_command=False in the callback decorator or remove the callback decorator
+    # - set no_args_is_help=True
+    if ctx.invoked_subcommand is None:
+        console = make_console()
+        console.print(ctx.get_help())
+        raise typer.Exit()
