@@ -5,7 +5,7 @@ import sys
 import time
 
 from modal import Queue
-from modal.exception import DeprecationError, InvalidError, NotFoundError
+from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_macos, skip_windows
@@ -165,3 +165,11 @@ def test_queue_list(servicer, client):
 
     queue_list = Queue.objects.list(max_objects=2, client=client)
     assert len(queue_list) == 2
+
+
+def test_queue_create(servicer, client):
+    Queue.objects.create(name="test-queue-create", client=client)
+    Queue.from_name("test-queue-create").hydrate(client)
+    with pytest.raises(AlreadyExistsError):
+        Queue.objects.create(name="test-queue-create", client=client)
+    Queue.objects.create(name="test-queue-create", allow_existing=True, client=client)

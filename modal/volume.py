@@ -30,7 +30,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 import modal.exception
 import modal_proto.api_pb2
-from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
 from ._object import (
@@ -117,6 +117,58 @@ class _VolumeManager:
     """Namespace with methods for managing named Volume objects."""
 
     @staticmethod
+    async def create(
+        name: str,
+        *,
+        allow_existing: bool = False,
+        environment_name: Optional[str] = None,
+        client: Optional[_Client] = None,
+    ) -> None:
+        """Create a new Volume object.
+
+        **Examples:**
+
+        ```python notest
+        modal.Volume.objects.create("my-volume")
+        ```
+
+        Volumes will be created in the active environment, or another one can be specified:
+
+        ```python notest
+        modal.Volume.objects.create("my-volume", environment_name="dev")
+        ```
+
+        `allow_existing=True` will make the creation attempt a no-op in this case.
+
+        ```python notest
+        modal.Volume.objects.create("my-volume", allow_existing=True)
+        ```
+
+        Note that this method does not return a local instance of the Volume. You can use
+        `modal.Volume.from_name` to perform a lookup after creation.
+
+        """
+        client = await _Client.from_env() if client is None else client
+        object_creation_type = (
+            api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+            if allow_existing
+            else api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
+        )
+        req = api_pb2.VolumeGetOrCreateRequest(
+            deployment_name=name,
+            environment_name=_get_environment_name(environment_name),
+            object_creation_type=object_creation_type,
+        )
+        try:
+            await retry_transient_errors(client.stub.VolumeGetOrCreate, req)
+        except GRPCError as exc:
+            if exc.status == Status.ALREADY_EXISTS:
+                if not allow_existing:
+                    raise AlreadyExistsError(exc.message)
+            else:
+                raise
+
+    @staticmethod
     async def list(
         *,
         max_objects: Optional[int] = None,  # Limit requests to this size
@@ -156,7 +208,9 @@ class _VolumeManager:
         async def retrieve_page(created_before: float) -> bool:
             max_page_size = 100 if max_objects is None else min(100, max_objects - len(items))
             pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
-            req = api_pb2.VolumeListRequest(environment_name=environment_name, pagination=pagination)
+            req = api_pb2.VolumeListRequest(
+                environment_name=_get_environment_name(environment_name), pagination=pagination
+            )
             resp = await retry_transient_errors(client.stub.VolumeList, req)
             items.extend(resp.items)
             finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)

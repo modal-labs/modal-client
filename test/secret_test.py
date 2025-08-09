@@ -7,7 +7,7 @@ import time
 from unittest import mock
 
 from modal import App, Secret
-from modal.exception import DeprecationError, InvalidError, NotFoundError
+from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_old_py
@@ -135,3 +135,12 @@ def test_secret_list(servicer, client):
     assert len(secrets) == 5
     assert all(s.name.startswith("test-secret-") for s in secrets)
     assert all(s.info().created_by == servicer.default_username for s in secrets)
+
+
+def test_secret_create(servicer, client):
+    env_dict = {"FOO": "123"}
+    Secret.objects.create(name="test-secret-create", env_dict=env_dict, client=client)
+    Secret.from_name("test-secret-create").hydrate(client)
+    with pytest.raises(AlreadyExistsError):
+        Secret.objects.create(name="test-secret-create", env_dict=env_dict, client=client)
+    Secret.objects.create(name="test-secret-create", env_dict=env_dict, allow_existing=True, client=client)
