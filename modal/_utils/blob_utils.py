@@ -445,13 +445,23 @@ _FileUploadSource2 = Callable[[], ContextManager[BinaryIO]]
 
 
 @dataclasses.dataclass
+class FileUploadBlock:
+    # The start (byte offset, inclusive) of the block within the file
+    start: int
+    # The end (byte offset, exclusive) of the block, after having removed any trailing zeroes
+    end: int
+    # Raw (unencoded 32 byte) SHA256 sum of the block, not including trailing zeroes
+    contents_sha256: bytes
+
+
+@dataclasses.dataclass
 class FileUploadSpec2:
     source: _FileUploadSource2
     source_description: Union[str, Path]
 
     path: str
-    # Raw (unencoded 32 byte) SHA256 sum per 8MiB file block
-    blocks_sha256: list[bytes]
+    # 8MiB file blocks
+    blocks: list[FileUploadBlock]
     mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
 
@@ -522,53 +532,102 @@ class FileUploadSpec2:
             source_fp.seek(0, os.SEEK_END)
             size = source_fp.tell()
 
-        blocks_sha256 = await hash_blocks_sha256(source, size, hash_semaphore)
+        blocks = await _gather_blocks(source, size, hash_semaphore)
 
         return FileUploadSpec2(
             source=source,
             source_description=source_description,
             path=mount_filename.as_posix(),
-            blocks_sha256=blocks_sha256,
+            blocks=blocks,
             mode=mode & 0o7777,
             size=size,
         )
 
 
-async def hash_blocks_sha256(
+async def _gather_blocks(
     source: _FileUploadSource2,
     size: int,
     hash_semaphore: asyncio.Semaphore,
-) -> list[bytes]:
+) -> list[FileUploadBlock]:
     def ceildiv(a: int, b: int) -> int:
         return -(a // -b)
 
     num_blocks = ceildiv(size, BLOCK_SIZE)
 
-    def blocking_hash_block_sha256(block_idx: int) -> bytes:
-        sha256_hash = hashlib.sha256()
-        block_start = block_idx * BLOCK_SIZE
-
-        with source() as block_fp:
-            block_fp.seek(block_start)
-
-            num_bytes_read = 0
-            while num_bytes_read < BLOCK_SIZE:
-                chunk = block_fp.read(BLOCK_SIZE - num_bytes_read)
-
-                if not chunk:
-                    break
-
-                num_bytes_read += len(chunk)
-                sha256_hash.update(chunk)
-
-        return sha256_hash.digest()
-
-    async def hash_block_sha256(block_idx: int) -> bytes:
+    async def gather_block(block_idx: int) -> FileUploadBlock:
         async with hash_semaphore:
-            return await asyncio.to_thread(blocking_hash_block_sha256, block_idx)
+            return await asyncio.to_thread(_gather_block, source, block_idx)
 
-    tasks = (hash_block_sha256(idx) for idx in range(num_blocks))
+    tasks = (gather_block(idx) for idx in range(num_blocks))
     return await asyncio.gather(*tasks)
+
+
+def _gather_block(source: _FileUploadSource2, block_idx: int) -> FileUploadBlock:
+    start = block_idx * BLOCK_SIZE
+    end = _find_end_of_block(source, start, start + BLOCK_SIZE)
+    contents_sha256 = _hash_range_sha256(source, start, end)
+    return FileUploadBlock(start=start, end=end, contents_sha256=contents_sha256)
+
+
+def _hash_range_sha256(source: _FileUploadSource2, start, end):
+    sha256_hash = hashlib.sha256()
+    range_size = end - start
+
+    with source() as fp:
+        fp.seek(start)
+
+        num_bytes_read = 0
+        while num_bytes_read < range_size:
+            chunk = fp.read(range_size - num_bytes_read)
+
+            if not chunk:
+                break
+
+            num_bytes_read += len(chunk)
+            sha256_hash.update(chunk)
+
+    return sha256_hash.digest()
+
+
+def _find_end_of_block(source: _FileUploadSource2, start: int, end: int) -> Optional[int]:
+    """Finds the appropriate end of a block, which is the index of the byte just past the last non-zero byte in the
+    block.
+
+    >>> _find_end_of_block(lambda: BytesIO(b"abc123\0\0\0"), 0, 1024)
+    6
+    >>> _find_end_of_block(lambda: BytesIO(b"abc123\0\0\0"), 3, 1024)
+    6
+    >>> _find_end_of_block(lambda: BytesIO(b"abc123\0\0\0"), 0, 3)
+    4
+    >>> _find_end_of_block(lambda: BytesIO(b"abc123\0\0\0a"), 0, 9)
+    6
+    >>> _find_end_of_block(lambda: BytesIO(b"\0\0\0"), 0, 3)
+    0
+    >>> _find_end_of_block(lambda: BytesIO(b"\0\0\0\0\0\0"), 3, 6)
+    3
+    >>> _find_end_of_block(lambda: BytesIO(b""), 0, 1024)
+    0
+    """
+    size = end - start
+    new_end = start
+
+    with source() as block_fp:
+        block_fp.seek(start)
+
+        num_bytes_read = 0
+        while num_bytes_read < size:
+            chunk = block_fp.read(size - num_bytes_read)
+
+            if not chunk:
+                break
+
+            stripped_chunk = chunk.rstrip(b"\0")
+            if stripped_chunk:
+                new_end = start + num_bytes_read + len(stripped_chunk)
+
+            num_bytes_read += len(chunk)
+
+    return new_end
 
 
 def use_md5(url: str) -> bool:

@@ -1122,9 +1122,9 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
             for file_spec in file_specs:
                 blocks = [
                     api_pb2.VolumePutFiles2Request.Block(
-                        contents_sha256=block_sha256, put_response=put_responses.get(block_sha256)
+                        contents_sha256=block.contents_sha256, put_response=put_responses.get(block.contents_sha256)
                     )
-                    for block_sha256 in file_spec.blocks_sha256
+                    for block in file_spec.blocks
                 ]
                 files.append(
                     api_pb2.VolumePutFiles2Request.File(
@@ -1181,7 +1181,7 @@ async def _put_missing_blocks(
         # TODO(dflemstr): Type is `api_pb2.VolumePutFiles2Response.MissingBlock` but synchronicity gets confused
         # by the nested class (?)
         missing_block,
-    ) -> (bytes, bytes):
+    ) -> tuple[bytes, bytes]:
         # Lazily import to keep the eager loading time of this module down
         from ._utils.bytes_io_segment_payload import BytesIOSegmentPayload
 
@@ -1190,9 +1190,7 @@ async def _put_missing_blocks(
         file_spec = file_specs[missing_block.file_index]
         # TODO(dflemstr): What if the underlying file has changed here in the meantime; should we check the
         #  hash again just to be sure?
-        block_sha256 = file_spec.blocks_sha256[missing_block.block_index]
-        block_start = missing_block.block_index * BLOCK_SIZE
-        block_length = min(BLOCK_SIZE, file_spec.size - block_start)
+        block = file_spec.blocks[missing_block.block_index]
 
         if file_spec.path not in file_progresses:
             file_task_id = progress_cb(name=file_spec.path, size=file_spec.size)
@@ -1216,8 +1214,8 @@ async def _put_missing_blocks(
             with file_spec.source() as source_fp:
                 payload = BytesIOSegmentPayload(
                     source_fp,
-                    block_start,
-                    block_length,
+                    block.start,
+                    block.end - block.start,
                     # limit chunk size somewhat to not keep event loop busy for too long
                     chunk_size=256 * 1024,
                     progress_report_cb=task_progress_cb,
@@ -1229,7 +1227,7 @@ async def _put_missing_blocks(
         if len(file_progress.pending_blocks) == 0:
             task_progress_cb(complete=True)
 
-        return block_sha256, resp_data
+        return block.contents_sha256, resp_data
 
     tasks = [asyncio.create_task(put_missing_block(missing_block)) for missing_block in missing_blocks]
     for task_result in asyncio.as_completed(tasks):
