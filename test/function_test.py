@@ -1664,7 +1664,7 @@ def test_function_call_iter(client, servicer):
 
         # Test iterating over all outputs
         results = []
-        for idx, result in fc.iter(4):
+        for idx, result in fc.iter(4, in_order=True):
             results.append((idx, result))
 
         # Verify results are in order and correct
@@ -1675,10 +1675,17 @@ def test_function_call_iter(client, servicer):
 
         # Test iterating over a subset
         subset_results = []
-        for idx, result in fc.iter(start_index=1, end_index=2):
+        for idx, result in fc.iter(start_index=1, end_index=2, in_order=True):
             subset_results.append((idx, result))
 
         # Verify subset results
         assert len(subset_results) == 2
         expected_subset = [(1, 9), (2, 16)]
         assert subset_results == expected_subset
+
+        results = []
+        for idx, result in fc.iter(4, in_order=False):
+            results.append((idx, result))
+
+        results.sort(key=lambda x: x[0])
+        assert results == expected_results

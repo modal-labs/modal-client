@@ -6,6 +6,7 @@ import textwrap
 import time
 import typing
 import warnings
+from collections import deque
 from collections.abc import AsyncGenerator, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -100,6 +101,58 @@ if TYPE_CHECKING:
     import modal.partial_function
 
 MAX_INTERNAL_FAILURE_COUNT = 8
+
+
+@dataclass
+class Interval:
+    start: int
+    end: int
+
+    def __len__(self) -> int:
+        return self.end - self.start + 1
+
+    def __contains__(self, item: int) -> bool:
+        return self.start <= item <= self.end
+
+
+class IntervalTracker:
+    def __init__(self, intervals: list[Interval]):
+        self.intervals = deque(intervals)
+
+    def find_gte(self, item: int):
+        if len(self.intervals) == 0:
+            return None
+        prev_start = -1
+        while cur := self.intervals[0]:
+            # We wrapped around, so the desired interval cannot exist.
+            if cur.start <= prev_start:
+                return None
+            if cur.end >= item:
+                return cur
+            prev_start = cur.start
+            self.intervals.rotate(-1)
+        return None
+
+    def reset(self):
+        prev_start = -1
+        while cur := self.intervals[0]:
+            if cur.start <= prev_start:
+                break
+            prev_start = cur.start
+            self.intervals.rotate(-1)
+
+    def split(self, item: int):
+        if not (cur := self.find_gte(item)):
+            return False
+        if item not in cur:
+            return False
+
+        self.intervals.popleft()
+        if left := Interval(cur.start, item - 1):
+            self.intervals.append(left)
+        if right := Interval(item + 1, cur.end):
+            self.intervals.appendleft(right)
+        return True
 
 
 @dataclasses.dataclass
@@ -360,7 +413,73 @@ class _Invocation:
                 if items_total is not None and items_received >= items_total:
                     break
 
-    async def iter(self, end_index: int, start_index: int = 0):
+    async def _iter_out_of_order(self, end_index: int, start_index: int = 0):
+        """Enumerate over the results of the function call in an out-of-order manner."""
+        MAX_BACKOFF_TIME = 55
+        failure_count = 0
+        total_outputs_found = 0
+        unseen_outputs = IntervalTracker([Interval(start_index, end_index)])
+
+        while True:
+            new_outputs_found = 0
+            current_index = start_index
+            while current_index < end_index:
+                # Skip over outputs that have already been seen
+                if current_interval := unseen_outputs.find_gte(current_index):
+                    if current_index not in current_interval:
+                        current_index = current_interval.start
+                else:
+                    # We've seen all the outputs we were looking for
+                    break
+
+                request = api_pb2.FunctionGetOutputsRequest(
+                    function_call_id=self.function_call_id,
+                    timeout=0,
+                    last_entry_id="0-0",
+                    clear_on_success=False,
+                    requested_at=time.time(),
+                    start_idx=current_index,
+                    end_idx=end_index,
+                )
+                response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
+                    self.stub.FunctionGetOutputs,
+                    request,
+                    attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                )
+
+                outputs: list[api_pb2.FunctionGetOutputsItem] = response.outputs
+                # No more outputs to fetch
+                if len(outputs) == 0:
+                    break
+
+                outputs.sort(key=lambda x: x.idx)
+                for output in outputs:
+                    if not unseen_outputs.split(output.idx):
+                        continue
+                    result = await _process_result(output.result, output.data_format, self.stub, self.client)
+                    yield output.idx, result
+                    new_outputs_found += 1
+                    total_outputs_found += 1
+                    current_index = output.idx + 1
+
+                if new_outputs_found == 0:
+                    # Index is still missing, skip it for now.
+                    current_index += 1
+
+                # We found all the outputs we were looking for
+                if total_outputs_found == (end_index - start_index) + 1:
+                    return
+
+            # If we didn't find any new outputs, we need to back off and retry
+            unseen_outputs.reset()
+            if new_outputs_found == 0:
+                failure_count += 1
+                backoff_time = min(2**failure_count * 1.0, MAX_BACKOFF_TIME)
+                await asyncio.sleep(backoff_time)
+            else:
+                failure_count = 0
+
+    async def _iter_in_order(self, end_index: int, start_index: int = 0):
         """Iterate over the results of the function call."""
         limit = 50
         current_index = start_index
@@ -395,6 +514,15 @@ class _Invocation:
                 result = await self.poll_function(index=current_index)
                 yield current_index, result
                 current_index += 1
+
+    async def iter(self, end_index: int, start_index: int = 0, *, in_order: bool = False):
+        """Iterate over the results of the function call."""
+        if in_order:
+            iter = self._iter_in_order(end_index, start_index)
+        else:
+            iter = self._iter_out_of_order(end_index, start_index)
+        async for idx, result in iter:
+            yield idx, result
 
 
 class _InputPlaneInvocation:
@@ -1885,9 +2013,11 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return await self._invocation().poll_function(timeout=timeout, index=index)
 
     @live_method_gen
-    async def iter(self, end_index: int, start_index: int = 0) -> AsyncIterator[Tuple[int, ReturnType]]:
+    async def iter(
+        self, end_index: int, start_index: int = 0, *, in_order: bool = False
+    ) -> AsyncIterator[Tuple[int, ReturnType]]:
         """Iterate over the results of the function call."""
-        async for item in self._invocation().iter(end_index=end_index, start_index=start_index):
+        async for item in self._invocation().iter(end_index=end_index, start_index=start_index, in_order=in_order):
             yield item
 
     async def get_call_graph(self) -> list[InputInfo]:
