@@ -2223,13 +2223,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     valid_put_response = False
 
                 if block_data is not None and valid_put_response:
-                    # If this is not the last block, it needs to have size BLOCK_SIZE
-                    if block_index + 1 < len(file.blocks):
-                        assert len(block_data) == BLOCK_SIZE
-                    # If this is the last block, it must be at most BLOCK_SIZE
-                    if block_index + 1 == len(file.blocks):
-                        assert len(block_data) <= BLOCK_SIZE
-                    blocks.append(block_data)
+                    assert len(block_data) <= BLOCK_SIZE
+
+                    if block_index == len(file.blocks) - 1:
+                        expanded_data = block_data.ljust(file.size % BLOCK_SIZE, b"\0")
+                    else:
+                        expanded_data = block_data.ljust(BLOCK_SIZE, b"\0")
+
+                    blocks.append(expanded_data)
                 else:
                     missing_block = api_pb2.VolumePutFiles2Response.MissingBlock(
                         file_index=file_index,

@@ -8,6 +8,7 @@ import random
 import re
 import sys
 import time
+from difflib import ndiff
 from pathlib import Path
 from unittest import mock
 
@@ -25,6 +26,12 @@ VERSIONS = [
 
 def dummy():
     pass
+
+
+def assert_eq_large(left, right):
+    assert len(left) == len(right)
+    if left != right:
+        raise AssertionError(ndiff(left.splitlines(), right.splitlines()))
 
 
 def test_volume_info(servicer, client):
@@ -330,7 +337,31 @@ async def test_volume2_upload_large_file(client, tmp_path, servicer, blob_server
 
     assert servicer.volumes[object_id].files.keys() == {"/a"}
     # Volumes version 2 don't use blob entities
-    assert servicer.volumes[object_id].files["/a"].data == data
+    assert_eq_large(servicer.volumes[object_id].files["/a"].data, data)
+
+
+@pytest.mark.asyncio
+async def test_volume2_upload_large_blank_file(client, tmp_path, servicer, blob_server):
+    # Volumes version 2 don't use `modal._utils.blob_utils.LARGE_FILE_LIMIT`
+    # Instead, we need to go over 8MiB to trigger different behavior (ie spilling into multiple blocks), but in this
+    # unit test context there isn't much of a semantic difference.
+
+    # Create a byte buffer that is larger than 8MiB. Each block starts with b"a" followed by zeroes until the next
+    # block boundary, except the last block that just contains b"cdef"
+    data = (b"a" + (b"\0" * (8 * 1024 * 1024 - 1))) * 2 + b"cdef"
+    assert len(data) > BLOCK_SIZE
+
+    local_file_path = tmp_path / "bigfile"
+    local_file_path.write_bytes(data)
+
+    async with modal.Volume.ephemeral(client=client, version=api_pb2.VOLUME_FS_VERSION_V2) as vol:
+        async with vol.batch_upload() as batch:
+            batch.put_file(local_file_path, "/a")
+        object_id = vol.object_id
+
+    assert servicer.volumes[object_id].files.keys() == {"/a"}
+    # Volumes version 2 don't use blob entities
+    assert_eq_large(servicer.volumes[object_id].files["/a"].data, data)
 
 
 @pytest.mark.asyncio
