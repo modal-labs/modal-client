@@ -123,7 +123,7 @@ def vscode(
     _launch_program("vscode", "vscode.py", detach, args)
 
 
-@launch_cli.command(name="machine", help="Start an instance on Modal, with direct SSH access.")
+@launch_cli.command(name="machine", help="Start an instance on Modal, with direct SSH access.", hidden=True)
 def machine(
     name: str,  # Name of the machine App.
     cpu: int = 8,  # Reservation of CPU cores (can burst above this value).
@@ -170,7 +170,7 @@ def machine(
     )
 
 
-@launch_cli.command(name="marimo", help="Start a remote Marimo notebook on Modal.")
+@launch_cli.command(name="marimo", help="Start a remote Marimo notebook on Modal.", hidden=True)
 def marimo(
     cpu: int = 8,
     memory: int = 32768,
