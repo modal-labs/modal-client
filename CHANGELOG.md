@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.2.dev31 (2025-08-11)
+
+- Allow multi-node Class-based functions to use RDMA
+
+
 #### 1.1.2.dev29 (2025-08-11)
 
 - Added `.objects.create()` methods
