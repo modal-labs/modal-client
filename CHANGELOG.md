@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.2.dev29 (2025-08-11)
+
+- Added `.objects.create()` methods
+
+
 #### 1.1.2.dev23 (2025-08-07)
 
 - `Cls.with_options` now supports `region` and `cloud` keyword arguments to override `region` or `cloud` during runtime.
