@@ -931,13 +931,16 @@ class _App:
 
                 if wrapped_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_cls.params.cluster_size
+                    rdma = wrapped_cls.params.rdma
                 else:
                     cluster_size = None
+                    rdma = None
             else:
                 user_cls = wrapped_cls
                 max_concurrent_inputs = allow_concurrent_inputs
                 target_concurrent_inputs = None
                 cluster_size = None
+                rdma = None
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
@@ -1007,6 +1010,7 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
+                rdma=rdma,
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
