@@ -42,7 +42,7 @@ class _SecretManager:
     @staticmethod
     async def create(
         name: str,  # Name to use for the new Secret
-        env_dict: dict[str, str],  # Dictionary of environment variables to set in the Secret
+        env_dict: dict[str, str],  # Key-value pairs to set in the Secret
         *,
         allow_existing: bool = False,  # If True, no-op when the Secret already exists
         environment_name: Optional[str] = None,  # Uses active environment if not specified
@@ -53,14 +53,14 @@ class _SecretManager:
         **Examples:**
 
         ```python notest
-        env_dict = {"FOO": "bar"}
-        modal.Secret.objects.create("my-secret", env_dict)
+        contents = {"MY_KEY": "my-value", "MY_OTHER_KEY": "my-other-value"}
+        modal.Secret.objects.create("my-secret", contents)
         ```
 
         Secrets will be created in the active environment, or another one can be specified:
 
         ```python notest
-        modal.Secret.objects.create("my-secret", env_dict, environment_name="dev")
+        modal.Secret.objects.create("my-secret", contents, environment_name="dev")
         ```
 
         By default, an error will be raised if the Secret already exists, but passing
@@ -68,7 +68,7 @@ class _SecretManager:
         If the `env_dict` data differs from the existing Secret, it will be ignored.
 
         ```python notest
-        modal.Secret.objects.create("my-secret", env_dict, allow_existing=True)
+        modal.Secret.objects.create("my-secret", contents, allow_existing=True)
         ```
 
         Note that this method does not return a local instance of the Secret. You can use
@@ -90,9 +90,8 @@ class _SecretManager:
         try:
             await retry_transient_errors(client.stub.SecretGetOrCreate, req)
         except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS:
-                if not allow_existing:
-                    raise AlreadyExistsError(exc.message)
+            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
+                raise AlreadyExistsError(exc.message)
             else:
                 raise
 

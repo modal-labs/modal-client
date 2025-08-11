@@ -118,11 +118,11 @@ class _VolumeManager:
 
     @staticmethod
     async def create(
-        name: str,
+        name: str,  # Name to use for the new Volume
         *,
-        allow_existing: bool = False,
-        environment_name: Optional[str] = None,
-        client: Optional[_Client] = None,
+        allow_existing: bool = False,  # If True, no-op when the Volume already exists
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
     ) -> None:
         """Create a new Volume object.
 
@@ -162,9 +162,8 @@ class _VolumeManager:
         try:
             await retry_transient_errors(client.stub.VolumeGetOrCreate, req)
         except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS:
-                if not allow_existing:
-                    raise AlreadyExistsError(exc.message)
+            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
+                raise AlreadyExistsError(exc.message)
             else:
                 raise
 

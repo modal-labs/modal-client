@@ -94,9 +94,8 @@ class _QueueManager:
         try:
             await retry_transient_errors(client.stub.QueueGetOrCreate, req)
         except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS:
-                if not allow_existing:
-                    raise AlreadyExistsError(exc.message)
+            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
+                raise AlreadyExistsError(exc.message)
             else:
                 raise
 
