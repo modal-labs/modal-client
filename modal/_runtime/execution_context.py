@@ -86,8 +86,9 @@ def _set_current_context_ids(
     assert len(input_ids) == len(function_call_ids) and input_ids
 
     input_id = input_ids[0]
-    function_call_id = function_call_ids[0]
     input_token = _current_input_id.set(input_id)
+
+    function_call_id = function_call_ids[0]
     function_call_token = _current_function_call_id.set(function_call_id)
 
     attempt_token_token = None
