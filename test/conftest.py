@@ -1297,8 +1297,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         fc_inputs = self.function_call_inputs.setdefault(request.function_call_id, [])
         if fc_inputs and not self.function_is_running:
-            popidx = len(fc_inputs) // 2  # simulate that results don't always come in order
-            (idx, input_id, retry_count), (args, kwargs) = fc_inputs.pop(popidx)
+            if not request.HasField("start_idx"):
+                # Sync outputs don't always come in order.
+                popidx = len(fc_inputs) // 2  # simulate that results don't always come in order
+                (idx, input_id, retry_count), (args, kwargs) = fc_inputs.pop(popidx)
+            else:
+                # Async outputs always fetch a specific output.
+                (idx, input_id, retry_count), (args, kwargs) = fc_inputs[request.start_idx]
             output_exc = None
             try:
                 res = self._function_body(*args, **kwargs)

@@ -217,7 +217,11 @@ class _Invocation:
         return _Invocation(stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
-        self, timeout: Optional[float], clear_on_success: bool, input_jwts: Optional[list[str]] = None
+        self,
+        index: int = 0,
+        timeout: Optional[float] = None,
+        clear_on_success: bool = False,
+        input_jwts: Optional[list[str]] = None,
     ) -> api_pb2.FunctionGetOutputsResponse:
         t0 = time.time()
         if timeout is None:
@@ -235,6 +239,8 @@ class _Invocation:
                 clear_on_success=clear_on_success,
                 requested_at=time.time(),
                 input_jwts=input_jwts,
+                start_idx=index,
+                end_idx=index,
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -268,6 +274,7 @@ class _Invocation:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(
+                index=0,
                 timeout=None,
                 clear_on_success=True,
                 input_jwts=[expected_jwt] if expected_jwt else None,
@@ -311,14 +318,16 @@ class _Invocation:
 
             await self._retry_input()
 
-    async def poll_function(self, timeout: Optional[float] = None):
+    async def poll_function(self, timeout: Optional[float] = None, *, index: int = 0):
         """Waits up to timeout for a result from a function.
 
         If timeout is `None`, waits indefinitely. This function is not
         cancellation-safe.
         """
         response: api_pb2.FunctionGetOutputsResponse = await self.pop_function_call_outputs(
-            timeout=timeout, clear_on_success=False
+            index=index,
+            timeout=timeout,
+            clear_on_success=False,
         )
         if len(response.outputs) == 0 and response.num_unfinished_inputs == 0:
             # if no unfinished inputs and no outputs, then function expired
@@ -1828,8 +1837,10 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     def _invocation(self):
         return _Invocation(self.client.stub, self.object_id, self.client)
 
-    async def get(self, timeout: Optional[float] = None) -> ReturnType:
-        """Get the result of the function call.
+    async def get(self, timeout: Optional[float] = None, *, index: int = 0) -> ReturnType:
+        """Get the result of the index-th input of the function call.
+        `.spawn()` calls have a single output, so only specifying `index=0` is valid.
+        A non-zero index is useful when your function has multiple outputs, like via `.spawn_map()`.
 
         This function waits indefinitely by default. It takes an optional
         `timeout` argument that specifies the maximum number of seconds to wait,
@@ -1837,7 +1848,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         The returned coroutine is not cancellation-safe.
         """
-        return await self._invocation().poll_function(timeout=timeout)
+        return await self._invocation().poll_function(timeout=timeout, index=index)
 
     async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
