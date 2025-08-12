@@ -296,8 +296,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
     ) -> "_Sandbox":
         """
-        Create a new Sandbox to run untrusted, arbitrary code. The Sandbox's corresponding container
-        will be created asynchronously.
+        Create a new Sandbox to run untrusted, arbitrary code.
+
+        The Sandbox's corresponding container will be created asynchronously.
 
         **Usage**
 
