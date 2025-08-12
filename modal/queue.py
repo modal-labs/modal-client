@@ -29,7 +29,7 @@ from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
-from .exception import InvalidError, NotFoundError, RequestSizeError
+from .exception import AlreadyExistsError, InvalidError, NotFoundError, RequestSizeError
 
 
 @dataclass
@@ -48,9 +48,61 @@ class _QueueManager:
     """Namespace with methods for managing named Queue objects."""
 
     @staticmethod
+    async def create(
+        name: str,  # Name to use for the new Queue
+        *,
+        allow_existing: bool = False,  # If True, no-op when the Queue already exists
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> None:
+        """Create a new Queue object.
+
+        **Examples:**
+
+        ```python notest
+        modal.Queue.objects.create("my-queue")
+        ```
+
+        Queues will be created in the active environment, or another one can be specified:
+
+        ```python notest
+        modal.Queue.objects.create("my-queue", environment_name="dev")
+        ```
+
+        By default, an error will be raised if the Queue already exists, but passing
+        `allow_existing=True` will make the creation attempt a no-op in this case.
+
+        ```python notest
+        modal.Queue.objects.create("my-queue", allow_existing=True)
+        ```
+
+        Note that this method does not return a local instance of the Queue. You can use
+        `modal.Queue.from_name` to perform a lookup after creation.
+
+        """
+        client = await _Client.from_env() if client is None else client
+        object_creation_type = (
+            api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+            if allow_existing
+            else api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
+        )
+        req = api_pb2.QueueGetOrCreateRequest(
+            deployment_name=name,
+            environment_name=_get_environment_name(environment_name),
+            object_creation_type=object_creation_type,
+        )
+        try:
+            await retry_transient_errors(client.stub.QueueGetOrCreate, req)
+        except GRPCError as exc:
+            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
+                raise AlreadyExistsError(exc.message)
+            else:
+                raise
+
+    @staticmethod
     async def list(
         *,
-        max_objects: Optional[int] = None,  # Limit requests to this size
+        max_objects: Optional[int] = None,  # Limit results to this size
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
@@ -87,7 +139,9 @@ class _QueueManager:
         async def retrieve_page(created_before: float) -> bool:
             max_page_size = 100 if max_objects is None else min(100, max_objects - len(items))
             pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
-            req = api_pb2.QueueListRequest(environment_name=environment_name, pagination=pagination)
+            req = api_pb2.QueueListRequest(
+                environment_name=_get_environment_name(environment_name), pagination=pagination
+            )
             resp = await retry_transient_errors(client.stub.QueueList, req)
             items.extend(resp.queues)
             finished = (len(resp.queues) < max_page_size) or (max_objects is not None and len(items) >= max_objects)

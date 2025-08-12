@@ -4,7 +4,7 @@ import sys
 import time
 
 from modal import Dict
-from modal.exception import DeprecationError, InvalidError, NotFoundError
+from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 
@@ -117,3 +117,11 @@ def test_dict_list(servicer, client):
 
     dict_list = Dict.objects.list(max_objects=2, client=client)
     assert len(dict_list) == 2
+
+
+def test_dict_create(servicer, client):
+    Dict.objects.create(name="test-dict-create", client=client)
+    Dict.from_name("test-dict-create").hydrate(client)
+    with pytest.raises(AlreadyExistsError):
+        Dict.objects.create(name="test-dict-create", client=client)
+    Dict.objects.create(name="test-dict-create", allow_existing=True, client=client)

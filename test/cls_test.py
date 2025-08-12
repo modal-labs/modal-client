@@ -157,7 +157,12 @@ def test_class_with_options(client, servicer):
     unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
     with servicer.intercept() as ctx:
         foo = Foo.with_options(  # type: ignore
-            cpu=48, retries=5, volumes={"/vol": unhydrated_volume}, secrets=[unhydrated_secret]
+            cpu=48,
+            retries=5,
+            volumes={"/vol": unhydrated_volume},
+            secrets=[unhydrated_secret],
+            region="us-east-1",
+            cloud="aws",
         )()
         assert len(ctx.calls) == 0  # no rpcs in with_options
 
@@ -168,6 +173,8 @@ def test_class_with_options(client, servicer):
             (function_bind_params,) = ctx.get_requests("FunctionBindParams")
             assert function_bind_params.function_options.retry_policy.retries == 5
             assert function_bind_params.function_options.resources.milli_cpu == 48000
+            assert function_bind_params.function_options.scheduler_placement.regions == ["us-east-1"]
+            assert function_bind_params.function_options.cloud_provider_str == "aws"
 
             assert len(ctx.get_requests("VolumeGetOrCreate")) == 1
             assert len(ctx.get_requests("SecretGetOrCreate")) == 1
@@ -1341,6 +1348,7 @@ def test_clustered_cls(client, servicer):
         class_function = servicer.function_by_name("ClusteredClass.*")
         assert class_function._experimental_group_size == 3
         assert class_function.i6pn_enabled is True  # clustered implies i6pn
+        assert class_function.resources.rdma == 1
 
         obj = ClusteredClass()
         assert hasattr(obj, "run_task")
@@ -1348,6 +1356,7 @@ def test_clustered_cls(client, servicer):
         regular_function = servicer.function_by_name("RegularClass.*")
         assert regular_function._experimental_group_size == 0  # or not set
         assert regular_function.i6pn_enabled is False
+        assert regular_function.resources.rdma == 0
 
 
 invalid_clustered_app = App()

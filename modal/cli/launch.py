@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import rich.panel
+from rich.markdown import Markdown
 from typer import Typer
 
 from .._output import make_console
@@ -20,10 +21,10 @@ from .import_refs import ImportRef, _get_runnable_app, import_file_or_module
 launch_cli = Typer(
     name="launch",
     no_args_is_help=True,
+    rich_markup_mode="markdown",
     help="""
     Open a serverless app instance on Modal.
-
-    This command is in preview and may change in the future.
+    >⚠️  `modal launch` is **experimental** and may change in the future.
     """,
 )
 
@@ -31,6 +32,14 @@ launch_cli = Typer(
 def _launch_program(
     name: str, filename: str, detach: bool, args: dict[str, Any], *, description: Optional[str] = None
 ) -> None:
+    console = make_console()
+    console.print(
+        rich.panel.Panel(
+            Markdown(f"⚠️  `modal launch {name}` is **experimental** and may change in the future."),
+            border_style="yellow",
+        ),
+    )
+
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
     program_path = str(Path(__file__).parent / "programs" / filename)
@@ -114,7 +123,7 @@ def vscode(
     _launch_program("vscode", "vscode.py", detach, args)
 
 
-@launch_cli.command(name="machine", help="Start an instance on Modal, with direct SSH access.")
+@launch_cli.command(name="machine", help="Start an instance on Modal, with direct SSH access.", hidden=True)
 def machine(
     name: str,  # Name of the machine App.
     cpu: int = 8,  # Reservation of CPU cores (can burst above this value).
@@ -161,7 +170,7 @@ def machine(
     )
 
 
-@launch_cli.command(name="marimo", help="Start a remote Marimo notebook on Modal.")
+@launch_cli.command(name="marimo", help="Start a remote Marimo notebook on Modal.", hidden=True)
 def marimo(
     cpu: int = 8,
     memory: int = 32768,

@@ -30,7 +30,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 import modal.exception
 import modal_proto.api_pb2
-from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
 from ._object import (
@@ -117,6 +117,57 @@ class _VolumeManager:
     """Namespace with methods for managing named Volume objects."""
 
     @staticmethod
+    async def create(
+        name: str,  # Name to use for the new Volume
+        *,
+        allow_existing: bool = False,  # If True, no-op when the Volume already exists
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> None:
+        """Create a new Volume object.
+
+        **Examples:**
+
+        ```python notest
+        modal.Volume.objects.create("my-volume")
+        ```
+
+        Volumes will be created in the active environment, or another one can be specified:
+
+        ```python notest
+        modal.Volume.objects.create("my-volume", environment_name="dev")
+        ```
+
+        `allow_existing=True` will make the creation attempt a no-op in this case.
+
+        ```python notest
+        modal.Volume.objects.create("my-volume", allow_existing=True)
+        ```
+
+        Note that this method does not return a local instance of the Volume. You can use
+        `modal.Volume.from_name` to perform a lookup after creation.
+
+        """
+        client = await _Client.from_env() if client is None else client
+        object_creation_type = (
+            api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+            if allow_existing
+            else api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
+        )
+        req = api_pb2.VolumeGetOrCreateRequest(
+            deployment_name=name,
+            environment_name=_get_environment_name(environment_name),
+            object_creation_type=object_creation_type,
+        )
+        try:
+            await retry_transient_errors(client.stub.VolumeGetOrCreate, req)
+        except GRPCError as exc:
+            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
+                raise AlreadyExistsError(exc.message)
+            else:
+                raise
+
+    @staticmethod
     async def list(
         *,
         max_objects: Optional[int] = None,  # Limit requests to this size
@@ -156,7 +207,9 @@ class _VolumeManager:
         async def retrieve_page(created_before: float) -> bool:
             max_page_size = 100 if max_objects is None else min(100, max_objects - len(items))
             pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
-            req = api_pb2.VolumeListRequest(environment_name=environment_name, pagination=pagination)
+            req = api_pb2.VolumeListRequest(
+                environment_name=_get_environment_name(environment_name), pagination=pagination
+            )
             resp = await retry_transient_errors(client.stub.VolumeList, req)
             items.extend(resp.items)
             finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
@@ -1122,9 +1175,9 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
             for file_spec in file_specs:
                 blocks = [
                     api_pb2.VolumePutFiles2Request.Block(
-                        contents_sha256=block_sha256, put_response=put_responses.get(block_sha256)
+                        contents_sha256=block.contents_sha256, put_response=put_responses.get(block.contents_sha256)
                     )
-                    for block_sha256 in file_spec.blocks_sha256
+                    for block in file_spec.blocks
                 ]
                 files.append(
                     api_pb2.VolumePutFiles2Request.File(
@@ -1181,7 +1234,7 @@ async def _put_missing_blocks(
         # TODO(dflemstr): Type is `api_pb2.VolumePutFiles2Response.MissingBlock` but synchronicity gets confused
         # by the nested class (?)
         missing_block,
-    ) -> (bytes, bytes):
+    ) -> tuple[bytes, bytes]:
         # Lazily import to keep the eager loading time of this module down
         from ._utils.bytes_io_segment_payload import BytesIOSegmentPayload
 
@@ -1190,9 +1243,7 @@ async def _put_missing_blocks(
         file_spec = file_specs[missing_block.file_index]
         # TODO(dflemstr): What if the underlying file has changed here in the meantime; should we check the
         #  hash again just to be sure?
-        block_sha256 = file_spec.blocks_sha256[missing_block.block_index]
-        block_start = missing_block.block_index * BLOCK_SIZE
-        block_length = min(BLOCK_SIZE, file_spec.size - block_start)
+        block = file_spec.blocks[missing_block.block_index]
 
         if file_spec.path not in file_progresses:
             file_task_id = progress_cb(name=file_spec.path, size=file_spec.size)
@@ -1216,8 +1267,8 @@ async def _put_missing_blocks(
             with file_spec.source() as source_fp:
                 payload = BytesIOSegmentPayload(
                     source_fp,
-                    block_start,
-                    block_length,
+                    block.start,
+                    block.end - block.start,
                     # limit chunk size somewhat to not keep event loop busy for too long
                     chunk_size=256 * 1024,
                     progress_report_cb=task_progress_cb,
@@ -1229,7 +1280,7 @@ async def _put_missing_blocks(
         if len(file_progress.pending_blocks) == 0:
             task_progress_cb(complete=True)
 
-        return block_sha256, resp_data
+        return block.contents_sha256, resp_data
 
     tasks = [asyncio.create_task(put_missing_block(missing_block)) for missing_block in missing_blocks]
     for task_result in asyncio.as_completed(tasks):

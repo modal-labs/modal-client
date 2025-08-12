@@ -891,8 +891,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.DictGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.environment_name)
         if k in self.deployed_dicts:
+            if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+                raise GRPCError(Status.ALREADY_EXISTS, f"Dict {k[0]!r} already exists")
             dict_id = self.deployed_dicts[k]
-        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+        elif request.object_creation_type in (
+            api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING,
+            api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+        ):
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
             self.deployed_dicts[k] = dict_id
@@ -1559,8 +1564,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.QueueGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.environment_name)
         if k in self.deployed_queues:
+            if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
+                raise GRPCError(Status.ALREADY_EXISTS, f"Queue {k[0]!r} already exists")
             queue_id = self.deployed_queues[k]
-        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+        elif request.object_creation_type in (
+            api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING,
+            api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+        ):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
             self.deployed_queues[k] = queue_id
@@ -1806,6 +1816,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if k not in self.deployed_secrets:
                 raise GRPCError(Status.NOT_FOUND, f"Secret {k} not found")
             secret_id = self.deployed_secrets[k]
+        elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+            if k in self.deployed_secrets:
+                secret_id = self.deployed_secrets[k]
         else:
             raise Exception("unsupported creation type")
 
@@ -2228,13 +2241,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     valid_put_response = False
 
                 if block_data is not None and valid_put_response:
-                    # If this is not the last block, it needs to have size BLOCK_SIZE
-                    if block_index + 1 < len(file.blocks):
-                        assert len(block_data) == BLOCK_SIZE
-                    # If this is the last block, it must be at most BLOCK_SIZE
-                    if block_index + 1 == len(file.blocks):
-                        assert len(block_data) <= BLOCK_SIZE
-                    blocks.append(block_data)
+                    assert len(block_data) <= BLOCK_SIZE
+
+                    if block_index == len(file.blocks) - 1:
+                        expanded_data = block_data.ljust(file.size % BLOCK_SIZE, b"\0")
+                    else:
+                        expanded_data = block_data.ljust(BLOCK_SIZE, b"\0")
+
+                    blocks.append(expanded_data)
                 else:
                     missing_block = api_pb2.VolumePutFiles2Response.MissingBlock(
                         file_index=file_index,

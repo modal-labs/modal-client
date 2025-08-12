@@ -1510,6 +1510,16 @@ message FunctionCallCancelRequest {
   optional string function_id = 3; // Only provided for sync input cancellation on the input plane. Async input cancellation does not provide this field this.
 }
 
+message FunctionCallFromIdRequest {
+  string function_call_id = 1;
+}
+
+// Everything you need to build a FunctionCallHandler.
+message FunctionCallFromIdResponse {
+  string function_call_id = 1;
+  int32 num_inputs = 2;
+}
+
 message FunctionCallGetDataRequest {
   oneof call_info {
     string function_call_id = 1;
@@ -1648,6 +1658,12 @@ message FunctionExtended {
   }
 }
 
+message FunctionFinishInputsRequest {
+  string function_id = 1;
+  string function_call_id = 2;
+  uint32 num_inputs = 3;
+}
+
 
 message FunctionGetCallGraphRequest {
   // TODO: use input_id once we switch client submit API to return those.
@@ -1682,6 +1698,7 @@ message FunctionGetInputsItem {
   FunctionCallInvocationType function_call_invocation_type = 6;
   uint32 retry_count = 7;
   optional int32 function_map_idx = 8; // intercepted and only used by the worker.
+  string attempt_token = 9;
 }
 
 message FunctionGetInputsRequest {
@@ -3494,11 +3511,13 @@ service ModalClient {
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallFromId(FunctionCallFromIdRequest) returns (FunctionCallFromIdResponse);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
   rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (google.protobuf.Empty);
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
+  rpc FunctionFinishInputs(FunctionFinishInputsRequest) returns (google.protobuf.Empty); // For map RPCs, to signal that all inputs have been sent
   rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);
