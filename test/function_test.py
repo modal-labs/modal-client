@@ -1657,3 +1657,37 @@ def test_unset_input_limit_does_not_blob_upload(client, servicer, blob_server):
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
     assert len(blobs) == 0
+
+
+def test_function_call_iter(client, servicer):
+    """Test the .iter() method on FunctionCall objects."""
+    dummy_function = app.function()(dummy)
+    with app.run(client=client):
+        # Use experimental_spawn_map to create a FunctionCall with multiple inputs
+        fc = dummy_function.experimental_spawn_map([2, 3, 4, 5, 6])
+
+        # Test iterating over all outputs
+        results = []
+        for idx, result in fc.iter(5):
+            results.append((idx, result))
+
+        expected_results = [(0, 4), (1, 9), (2, 16), (3, 25), (4, 36)]
+        assert results == expected_results
+
+        # Test without specifying end_index
+        results = []
+        for idx, result in fc.iter():
+            results.append((idx, result))
+
+        assert len(results) == 5
+        assert results == expected_results
+
+        # Test iterating over a subset
+        subset_results = []
+        for idx, result in fc.iter(1, 3):
+            subset_results.append((idx, result))
+
+        # Verify subset results
+        assert len(subset_results) == 2
+        expected_subset = [(1, 9), (2, 16)]
+        assert subset_results == expected_subset
