@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 import modal
-from modal._utils.blob_utils import BLOCK_SIZE
+from modal._utils.blob_utils import BLOCK_SIZE, _find_end_of_block
 from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
@@ -145,8 +145,9 @@ async def test_volume_get(servicer, client, tmp_path, version, file_contents_siz
     vol.read_file_into_fileobj(file_path, output)
 
     # Faster assert to avoid huge error when there are large content differences:
-    assert len(output.getvalue()) == file_contents_size
-    assert output.getvalue() == file_contents
+    expected_length = _find_end_of_block(lambda: io.BytesIO(file_contents), 0, file_contents_size)
+    assert len(output.getvalue()) == expected_length
+    assert output.getvalue() == file_contents[:expected_length]
 
     with pytest.raises(FileNotFoundError):
         for _ in vol.read_file("/abc/def/i-dont-exist-at-all"):
