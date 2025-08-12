@@ -1698,6 +1698,7 @@ message FunctionGetInputsItem {
   FunctionCallInvocationType function_call_invocation_type = 6;
   uint32 retry_count = 7;
   optional int32 function_map_idx = 8; // intercepted and only used by the worker.
+  string attempt_token = 9;
 }
 
 message FunctionGetInputsRequest {
