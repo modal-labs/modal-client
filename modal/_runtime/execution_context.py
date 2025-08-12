@@ -81,27 +81,22 @@ def current_attempt_token() -> Optional[str]:
 
 
 def _set_current_context_ids(
-    input_ids: list[str], function_call_ids: list[str], attempt_tokens: list[str] = []
+    input_ids: list[str], function_call_ids: list[str], attempt_tokens: list[str]
 ) -> Callable[[], None]:
-    assert len(input_ids) == len(function_call_ids) and input_ids
+    assert len(input_ids) == len(function_call_ids) == len(attempt_tokens) and input_ids
 
     input_id = input_ids[0]
-    input_token = _current_input_id.set(input_id)
-
     function_call_id = function_call_ids[0]
-    function_call_token = _current_function_call_id.set(function_call_id)
+    attempt_token = attempt_tokens[0]
 
-    attempt_token_token = None
-    if attempt_tokens:
-        assert len(input_ids) == len(attempt_tokens)
-        attempt_token = attempt_tokens[0]
-        attempt_token_token = _current_attempt_token.set(attempt_token)
+    input_token = _current_input_id.set(input_id)
+    function_call_token = _current_function_call_id.set(function_call_id)
+    attempt_token_token = _current_attempt_token.set(attempt_token)
 
     def _reset_current_context_ids():
         _current_input_id.reset(input_token)
         _current_function_call_id.reset(function_call_token)
-        if attempt_token_token:
-            _current_attempt_token.reset(attempt_token_token)
+        _current_attempt_token.reset(attempt_token_token)
 
     return _reset_current_context_ids
 
