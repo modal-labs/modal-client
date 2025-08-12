@@ -483,7 +483,7 @@ class _ContainerIOManager:
             else {"data": data}
         )
 
-    async def get_data_in(self, function_call_id: str, attempt_token: str) -> AsyncIterator[Any]:
+    async def get_data_in(self, function_call_id: str, attempt_token: Optional[str]) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
         stub = self._client.stub
         if self.input_plane_server_url:
@@ -517,9 +517,9 @@ class _ContainerIOManager:
                 chunk.data = message_bytes
             data_chunks.append(chunk)
 
-        req = api_pb2.FunctionCallPutDataRequest(
-            function_call_id=function_call_id, attempt_token=attempt_token, data_chunks=data_chunks
-        )
+        req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
+        if attempt_token:
+            req.attempt_token = attempt_token  # oneof clears function_call_id.
 
         if self.input_plane_server_url:
             stub = await self._client.get_stub(self.input_plane_server_url)

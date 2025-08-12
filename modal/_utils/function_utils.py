@@ -415,8 +415,9 @@ async def _stream_function_call_data(
         req = api_pb2.FunctionCallGetDataRequest(
             function_call_id=function_call_id,
             last_index=last_index,
-            attempt_token=attempt_token,
         )
+        if attempt_token:
+            req.attempt_token = attempt_token  # oneof clears function_call_id.
         try:
             async for chunk in stub_fn.unary_stream(req):
                 if chunk.index <= last_index:
