@@ -65,6 +65,7 @@ class IOContext:
     input_ids: list[str]
     retry_counts: list[int]
     function_call_ids: list[str]
+    attempt_tokens: list[str]
     function_inputs: list[api_pb2.FunctionInput]
     finalized_function: "modal._runtime.user_code_imports.FinalizedFunction"
 
@@ -76,6 +77,7 @@ class IOContext:
         input_ids: list[str],
         retry_counts: list[int],
         function_call_ids: list[str],
+        attempt_tokens: list[str],
         finalized_function: "modal._runtime.user_code_imports.FinalizedFunction",
         function_inputs: list[api_pb2.FunctionInput],
         is_batched: bool,
@@ -84,6 +86,7 @@ class IOContext:
         self.input_ids = input_ids
         self.retry_counts = retry_counts
         self.function_call_ids = function_call_ids
+        self.attempt_tokens = attempt_tokens
         self.finalized_function = finalized_function
         self.function_inputs = function_inputs
         self._is_batched = is_batched
@@ -94,11 +97,11 @@ class IOContext:
         cls,
         client: _Client,
         finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
-        inputs: list[tuple[str, int, str, api_pb2.FunctionInput]],
+        inputs: list[tuple[str, int, str, str, api_pb2.FunctionInput]],
         is_batched: bool,
     ) -> "IOContext":
         assert len(inputs) >= 1 if is_batched else len(inputs) == 1
-        input_ids, retry_counts, function_call_ids, function_inputs = zip(*inputs)
+        input_ids, retry_counts, function_call_ids, attempt_tokens, function_inputs = zip(*inputs)
 
         async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
             # If we got a pointer to a blob, download it from S3.
@@ -120,6 +123,7 @@ class IOContext:
             cast(list[str], input_ids),
             cast(list[int], retry_counts),
             cast(list[str], function_call_ids),
+            cast(list[str], attempt_tokens),
             finalized_function,
             cast(list[api_pb2.FunctionInput], function_inputs),
             is_batched,
@@ -585,7 +589,7 @@ class _ContainerIOManager:
         self,
         batch_max_size: int,
         batch_wait_ms: int,
-    ) -> AsyncIterator[list[tuple[str, int, str, api_pb2.FunctionInput]]]:
+    ) -> AsyncIterator[list[tuple[str, int, str, str, api_pb2.FunctionInput]]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
@@ -620,7 +624,9 @@ class _ContainerIOManager:
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input kill signal input.")
                             return
-                        inputs.append((item.input_id, item.retry_count, item.function_call_id, item.input))
+                        inputs.append(
+                            (item.input_id, item.retry_count, item.function_call_id, item.attempt_token, item.input)
+                        )
                         if item.input.final_input:
                             if request.batch_max_size > 0:
                                 logger.debug(f"Task {self.task_id} Final input not expected in batch input stream")
