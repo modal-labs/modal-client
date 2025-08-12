@@ -250,6 +250,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.bound_functions: dict[tuple[str, bytes], str] = {}
         self.function_params: dict[str, tuple[tuple, dict[str, Any]]] = {}
         self.function_options: dict[str, api_pb2.FunctionOptions] = {}
+        self.function_call_num_inputs: dict[str, int] = {}
         self.fcidx = 0
 
         self.function_serialized = None
@@ -1280,6 +1281,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if self.slow_put_inputs:
             await asyncio.sleep(0.001)
         await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))
+
+    async def FunctionFinishInputs(self, stream):
+        request: api_pb2.FunctionFinishInputsRequest = await stream.recv_message()
+        self.function_call_num_inputs[request.function_call_id] = request.num_inputs
+        await stream.send_message(Empty())
+
+    async def FunctionCallFromId(self, stream):
+        request: api_pb2.FunctionCallFromIdRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.FunctionCallFromIdResponse(num_inputs=self.function_call_num_inputs[request.function_call_id])
+        )
 
     def add_function_call_input(self, function_call_id, item: api_pb2.FunctionPutInputsItem, input_id, retry_count):
         if item.input.WhichOneof("args_oneof") == "args":
