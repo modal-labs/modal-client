@@ -60,14 +60,27 @@ def test_retry_limit(client: Client, servicer: MockClientServicer, monkeypatch):
     assert servicer.attempt_await_failures_remaining == 1
 
 
-@app.function(experimental_options={"input_plane_region": "DEADBEEF"}, retries=Retries(max_retries=2))
-def custom_exception_function():
+@app.function(experimental_options={"input_plane_region": "DEADBEEF"})
+def failing_function():
     raise ValueError()
 
 
-def test_retry_limit2(client: Client, servicer: MockClientServicer):
-    servicer.function_body(custom_exception_function.get_raw_f())
+def test_no_user_retry_policy(client: Client, servicer: MockClientServicer):
+    servicer.function_body(failing_function.get_raw_f())
     with app.run(client=client):
         with pytest.raises(ValueError):
-            custom_exception_function.remote()
+            failing_function.remote()
+    assert servicer.attempted_retries == 0
+
+
+@app.function(experimental_options={"input_plane_region": "DEADBEEF"}, retries=Retries(max_retries=2))
+def failing_function2():
+    raise ValueError()
+
+
+def test_user_retry_policy(client: Client, servicer: MockClientServicer):
+    servicer.function_body(failing_function2.get_raw_f())
+    with app.run(client=client):
+        with pytest.raises(ValueError):
+            failing_function2.remote()
     assert servicer.attempted_retries == 2
