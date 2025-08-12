@@ -198,9 +198,12 @@ def call_function(
                 # Send up to this many outputs at a time.
                 current_function_call_id = execution_context.current_function_call_id()
                 assert current_function_call_id is not None  # Set above.
+                current_attempt_token = execution_context.current_attempt_token()
+                assert current_attempt_token is not None  # Set above, but can be empty string.
                 generator_queue: asyncio.Queue[Any] = await container_io_manager._queue_create.aio(1024)
                 async with container_io_manager.generator_output_sender(
                     current_function_call_id,
+                    current_attempt_token,
                     io_context.finalized_function.data_format,
                     generator_queue,
                 ):
@@ -247,9 +250,12 @@ def call_function(
                 # Send up to this many outputs at a time.
                 current_function_call_id = execution_context.current_function_call_id()
                 assert current_function_call_id is not None  # Set above.
+                current_attempt_token = execution_context.current_attempt_token()
+                assert current_attempt_token is not None  # Set above, but can be empty string.
                 generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)
                 with container_io_manager.generator_output_sender(
                     current_function_call_id,
+                    current_attempt_token,
                     io_context.finalized_function.data_format,
                     generator_queue,
                 ):
