@@ -1564,12 +1564,13 @@ Use the `Function.get_web_url()` method instead.
             raise InvalidError("A generator function cannot be called with `.spawn_map(...)`.")
 
         assert self._function_name
-        function_call_id = await _spawn_map_invocation(
+        function_call_id, num_inputs = await _spawn_map_invocation(
             self,
             input_queue,
             self.client,
         )
-        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(function_call_id, self.client, None)
+        metadata = api_pb2.FunctionCallFromIdResponse(function_call_id=function_call_id, num_inputs=num_inputs)
+        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(function_call_id, self.client, metadata)
         return fc
 
     async def _call_function(self, args, kwargs) -> ReturnType:
@@ -1833,9 +1834,23 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     """
 
     _is_generator: bool = False
+    _num_inputs: Optional[int] = None
 
     def _invocation(self):
         return _Invocation(self.client.stub, self.object_id, self.client)
+
+    def _hydrate_metadata(self, metadata: Optional[Message]):
+        if not metadata:
+            return
+        assert isinstance(metadata, api_pb2.FunctionCallFromIdResponse)
+        self._num_inputs = metadata.num_inputs
+
+    @live_method
+    async def num_inputs(self) -> int:
+        """Get the number of inputs in the function call."""
+        # Should have been hydrated.
+        assert self._num_inputs is not None
+        return self._num_inputs
 
     async def get(self, timeout: Optional[float] = None, *, index: int = 0) -> ReturnType:
         """Get the result of the index-th input of the function call.
@@ -1902,7 +1917,15 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         if client is None:
             client = await _Client.from_env()
 
-        fc: _FunctionCall[Any] = _FunctionCall._new_hydrated(function_call_id, client, None)
+        async def _load(self: _FunctionCall, resolver: Resolver, existing_object_id: Optional[str]):
+            request = api_pb2.FunctionCallFromIdRequest(function_call_id=function_call_id)
+            resp = await retry_transient_errors(resolver.client.stub.FunctionCallFromId, request)
+            self._hydrate(function_call_id, resolver.client, resp)
+
+        rep = f"FunctionCall.from_id({function_call_id!r})"
+        fc: _FunctionCall[Any] = _FunctionCall._from_loader(_load, rep, hydrate_lazily=True)
+        # We already know the object ID, so we can set it directly
+        fc._object_id = function_call_id
         return fc
 
     @staticmethod
