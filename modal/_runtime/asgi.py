@@ -16,7 +16,7 @@ from modal.config import logger
 from modal.exception import ExecutionError, InvalidError
 from modal.experimental import stop_fetching_inputs
 
-from .execution_context import current_function_call_id
+from .execution_context import current_attempt_token, current_function_call_id
 
 FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
@@ -106,6 +106,7 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> tuple[Callable[..., Asyn
             raise ExecutionError("Unpexected state in ASGI scope")
         scope["state"] = state
         function_call_id = current_function_call_id()
+        attempt_token = current_attempt_token()
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
 
         messages_from_app: asyncio.Queue[dict[str, Any]] = asyncio.Queue(1)
@@ -142,7 +143,7 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> tuple[Callable[..., Asyn
             # This initial message, "http.request" or "websocket.connect", should be sent
             # immediately after starting the ASGI app's function call. If it is not received, that
             # indicates a request cancellation or other abnormal circumstance.
-            message_gen = container_io_manager.get_data_in.aio(function_call_id)
+            message_gen = container_io_manager.get_data_in.aio(function_call_id, attempt_token)
             first_message_task = asyncio.create_task(message_gen.__anext__())
 
             try:

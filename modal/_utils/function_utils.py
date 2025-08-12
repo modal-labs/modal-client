@@ -392,8 +392,8 @@ async def _stream_function_call_data(
     attempt_token: Optional[str] = None,
 ) -> AsyncGenerator[Any, None]:
     """Read from the `data_in` or `data_out` stream of a function call."""
-    if function_call_id is None and attempt_token is None:
-        raise ValueError("function_call_id or attempt_token is required for data_out stream")
+    if not function_call_id and not attempt_token:
+        raise ValueError("function_call_id or attempt_token is required to read from a data stream")
 
     if stub is None:
         stub = client.stub

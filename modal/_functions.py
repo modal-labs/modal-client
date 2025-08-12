@@ -464,7 +464,7 @@ class _InputPlaneInvocation:
                 _stream_function_call_data(
                     self.client,
                     self.stub,
-                    "",
+                    function_call_id=None,
                     variant="data_out",
                     attempt_token=self.attempt_token,
                 ),
