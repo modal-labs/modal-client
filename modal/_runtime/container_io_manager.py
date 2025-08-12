@@ -483,18 +483,21 @@ class _ContainerIOManager:
             else {"data": data}
         )
 
-    async def get_data_in(self, function_call_id: str) -> AsyncIterator[Any]:
+    async def get_data_in(self, function_call_id: str, attempt_token: Optional[str]) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
         stub = self._client.stub
         if self.input_plane_server_url:
             stub = await self._client.get_stub(self.input_plane_server_url)
 
-        async for data in _stream_function_call_data(self._client, stub, function_call_id, "data_in"):
+        async for data in _stream_function_call_data(
+            self._client, stub, function_call_id, variant="data_in", attempt_token=attempt_token
+        ):
             yield data
 
     async def put_data_out(
         self,
         function_call_id: str,
+        attempt_token: str,
         start_index: int,
         data_format: int,
         serialized_messages: list[Any],
@@ -515,6 +518,8 @@ class _ContainerIOManager:
             data_chunks.append(chunk)
 
         req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
+        if attempt_token:
+            req.attempt_token = attempt_token  # oneof clears function_call_id.
 
         if self.input_plane_server_url:
             stub = await self._client.get_stub(self.input_plane_server_url)
@@ -524,7 +529,7 @@ class _ContainerIOManager:
 
     @asynccontextmanager
     async def generator_output_sender(
-        self, function_call_id: str, data_format: int, message_rx: asyncio.Queue
+        self, function_call_id: str, attempt_token: str, data_format: int, message_rx: asyncio.Queue
     ) -> AsyncGenerator[None, None]:
         """Runs background task that feeds generator outputs into a function call's `data_out` stream."""
         GENERATOR_STOP_SENTINEL = Sentinel()
@@ -553,7 +558,7 @@ class _ContainerIOManager:
                     else:
                         serialized_messages.append(serialize_data_format(message, data_format))
                         total_size += len(serialized_messages[-1]) + 512  # 512 bytes for estimated framing overhead
-                await self.put_data_out(function_call_id, index, data_format, serialized_messages)
+                await self.put_data_out(function_call_id, attempt_token, index, data_format, serialized_messages)
                 index += len(serialized_messages)
 
         task = asyncio.create_task(generator_output_task())
