@@ -614,7 +614,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         memory: Optional[Union[int, tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
-        timeout: Optional[int] = None,
+        timeout: int = 300,
         min_containers: Optional[int] = None,
         max_containers: Optional[int] = None,
         buffer_containers: Optional[int] = None,
