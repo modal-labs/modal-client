@@ -887,7 +887,25 @@ class _Image(_Object, type_prefix="im"):
         my_image_id = image.object_id
 
         # Reference the image by id
-        built_image = Image.from_id(my_image_id)
+        built_image = modal.Image.from_id(my_image_id)
+        ```
+
+        **Note**
+
+        For defining Modal functions, images are built automatically when deploying or running an App.
+        You do not need to built the image explicity:
+
+        ```python notest
+        app = modal.App()
+        image = modal.Image.debian_slim()
+
+        # No need to explicity build the image for defining a function.
+        # with app.run():
+        #     image.build(app)
+
+        @app.function(image=image)
+        def f():
+            ...
         ```
 
         """
