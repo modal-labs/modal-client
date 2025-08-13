@@ -123,8 +123,8 @@ def test_volume_commit(client, servicer, skip_reload):
 @pytest.mark.parametrize("version", VERSIONS)
 @pytest.mark.parametrize("file_contents_size", [100, 8 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024 + 4711])
 async def test_volume_get(servicer, client, tmp_path, version, file_contents_size):
-    await modal.Volume.create_deployed.aio("my-vol", client=client, version=version)
-    vol = await modal.Volume.from_name("my-vol", version=version).hydrate.aio(client=client)
+    await modal.Volume.objects.create.aio("my-vol", client=client, version=version)
+    vol = await modal.Volume.from_name("my-vol").hydrate.aio(client=client)
 
     file_contents = random.randbytes(file_contents_size)
     file_path = "foo.bin"

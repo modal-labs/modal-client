@@ -525,6 +525,22 @@ class _Volume(_Object, type_prefix="vo"):
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
+        deprecation_warning(
+            (2025, 8, 13),
+            "The undocumented `modal.Volume.create_deployed` method is deprecated and will be removed "
+            "in a future release. It can be replaced with `modal.Volume.objects.create`.",
+        )
+        return await _Volume._create_deployed(deployment_name, namespace, client, environment_name, version)
+
+    @staticmethod
+    async def _create_deployed(
+        deployment_name: str,
+        namespace=None,  # mdmd:line-hidden
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
+    ) -> str:
+        """mdmd:hidden"""
         check_object_name(deployment_name, "Volume")
         warn_if_passing_namespace(namespace, "modal.Volume.create_deployed")
         if client is None:
