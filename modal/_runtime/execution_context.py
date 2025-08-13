@@ -72,22 +72,38 @@ def current_function_call_id() -> Optional[str]:
         return None
 
 
-def _set_current_context_ids(input_ids: list[str], function_call_ids: list[str]) -> Callable[[], None]:
-    assert len(input_ids) == len(function_call_ids) and len(input_ids) > 0
+def current_attempt_token() -> Optional[str]:
+    # This ContextVar isn't useful to expose to users.
+    try:
+        return _current_attempt_token.get()
+    except LookupError:
+        return None
+
+
+def _set_current_context_ids(
+    input_ids: list[str], function_call_ids: list[str], attempt_tokens: list[str]
+) -> Callable[[], None]:
+    assert len(input_ids) == len(function_call_ids) == len(attempt_tokens) and input_ids
+
     input_id = input_ids[0]
     function_call_id = function_call_ids[0]
+    attempt_token = attempt_tokens[0]
+
     input_token = _current_input_id.set(input_id)
     function_call_token = _current_function_call_id.set(function_call_id)
+    attempt_token_token = _current_attempt_token.set(attempt_token)
 
     def _reset_current_context_ids():
         _current_input_id.reset(input_token)
         _current_function_call_id.reset(function_call_token)
+        _current_attempt_token.reset(attempt_token_token)
 
     return _reset_current_context_ids
 
 
 _current_input_id: ContextVar = ContextVar("_current_input_id")
 _current_function_call_id: ContextVar = ContextVar("_current_function_call_id")
+_current_attempt_token: ContextVar = ContextVar("_current_attempt_token")
 
 _is_currently_importing = False  # we set this to True while a container is importing user code
 

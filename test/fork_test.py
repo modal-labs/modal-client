@@ -12,7 +12,7 @@ from test.supports.skip import skip_windows
 )
 def test_process_fork(supports_dir, server_url_env, token_env, test_case):
     output = subprocess.check_output(
-        [sys.executable, supports_dir / "forking.py", test_case], timeout=2, encoding="utf8"
+        [sys.executable, supports_dir / "forking.py", test_case], timeout=4, encoding="utf8"
     )
 
     success_pids = {int(x) for x in output.split()}

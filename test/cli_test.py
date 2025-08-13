@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
 from pathlib import Path
 from pickle import dumps
@@ -44,6 +45,13 @@ assert mod.app == app
 """
 
 dummy_other_module_file = "x = 42"
+
+
+def windows_sleep():
+    # For some time-sensitive operations, we need brief sleeps on Windows so that events
+    # don't appear to have happened at the same time with the low-resolution clock
+    if platform.system() == "Windows":
+        time.sleep(1 / 32)
 
 
 def _run(args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
@@ -98,6 +106,7 @@ def test_secret_create_list_delete(servicer, set_env_client):
     _run(["secret", "create", "foo"], 2, None)
 
     _run(["secret", "create", "foo", "VAR=foo"])
+    windows_sleep()
     assert "foo" in _run(["secret", "list"]).stdout
 
     # Creating the same one again should fail
@@ -109,6 +118,7 @@ def test_secret_create_list_delete(servicer, set_env_client):
     # Create a few more
     _run(["secret", "create", "bar", "VAR=bar"])
     _run(["secret", "create", "buz", "VAR=buz"])
+    windows_sleep()
     assert len(json.loads(_run(["secret", "list", "--json"]).stdout)) == 3
 
     # We can delete it
@@ -826,6 +836,7 @@ def test_volume_ls(servicer, set_env_client):
 def test_volume_create_delete(servicer, server_url_env, set_env_client):
     vol_name = "test-delete-vol"
     _run(["volume", "create", vol_name])
+    windows_sleep()
     assert vol_name in _run(["volume", "list"]).stdout
     _run(["volume", "delete", "--yes", vol_name])
     assert vol_name not in _run(["volume", "list"]).stdout
@@ -835,6 +846,7 @@ def test_volume_rename(servicer, server_url_env, set_env_client):
     old_name, new_name = "foo-vol", "bar-vol"
     _run(["volume", "create", old_name])
     _run(["volume", "rename", "--yes", old_name, new_name])
+    windows_sleep()
     assert new_name in _run(["volume", "list"]).stdout
     assert old_name not in _run(["volume", "list"]).stdout
 
@@ -1047,6 +1059,7 @@ def test_app_rollback(servicer, mock_dir, set_env_client):
 def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
     _run(["dict", "create", "foo-dict"])
     _run(["dict", "create", "bar-dict"])
+    windows_sleep()
     res = _run(["dict", "list"])
     assert "foo-dict" in res.stdout
     assert "bar-dict" in res.stdout
@@ -1091,6 +1104,7 @@ def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
 def test_queue_create_list_delete(servicer, server_url_env, set_env_client):
     _run(["queue", "create", "foo-queue"])
     _run(["queue", "create", "bar-queue"])
+    windows_sleep()
     res = _run(["queue", "list"])
     assert "foo-queue" in res.stdout
     assert "bar-queue" in res.stdout

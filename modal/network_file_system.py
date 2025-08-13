@@ -136,7 +136,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         cls: type["_NetworkFileSystem"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
     ) -> AsyncIterator["_NetworkFileSystem"]:
         """Creates a new ephemeral network filesystem within a context manager:
 
@@ -161,7 +161,13 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         async with TaskContext() as tc:
             request = api_pb2.SharedVolumeHeartbeatRequest(shared_volume_id=response.shared_volume_id)
             tc.infinite_loop(lambda: client.stub.SharedVolumeHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
+            yield cls._new_hydrated(
+                response.shared_volume_id,
+                client,
+                None,
+                is_another_app=True,
+                rep="modal.NetworkFileSystem.ephemeral()",
+            )
 
     @staticmethod
     async def lookup(

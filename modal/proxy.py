@@ -36,7 +36,8 @@ class _Proxy(_Object, type_prefix="pr"):
             response: api_pb2.ProxyGetResponse = await resolver.client.stub.ProxyGet(req)
             self._hydrate(response.proxy.proxy_id, resolver.client, None)
 
-        return _Proxy._from_loader(_load, "Proxy()", is_another_app=True)
+        rep = _Proxy._repr(name, environment_name)
+        return _Proxy._from_loader(_load, rep, is_another_app=True)
 
 
 Proxy = synchronize_api(_Proxy, target_module=__name__)

@@ -7,13 +7,11 @@ from typer import Argument, Option, Typer
 from modal._output import make_console
 from modal._resolver import Resolver
 from modal._utils.async_utils import synchronizer
-from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.dict import _Dict
 from modal.environments import ensure_env
-from modal_proto import api_pb2
 
 dict_cli = Typer(
     name="dict",
@@ -40,12 +38,13 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     """List all named Dicts."""
     env = ensure_env(env)
-    client = await _Client.from_env()
-    request = api_pb2.DictListRequest(environment_name=env)
-    response = await retry_transient_errors(client.stub.DictList, request)
+    dicts = await _Dict.objects.list(environment_name=env)
+    rows = []
+    for obj in dicts:
+        info = await obj.info()
+        rows.append((info.name, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by))
 
-    rows = [(d.name, timestamp_to_localized_str(d.created_at, json)) for d in response.dicts]
-    display_table(["Name", "Created at"], rows, json)
+    display_table(["Name", "Created at", "Created by"], rows, json)
 
 
 @dict_cli.command("clear", rich_help_panel="Management")
@@ -64,17 +63,21 @@ async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_O
 
 @dict_cli.command(name="delete", rich_help_panel="Management")
 @synchronizer.create_blocking
-async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
+async def delete(
+    name: str,
+    *,
+    allow_missing: bool = Option(False, "--allow-missing", help="Don't error if the Dict doesn't exist."),
+    yes: bool = YES_OPTION,
+    env: Optional[str] = ENV_OPTION,
+):
     """Delete a named Dict and all of its data."""
-    # Lookup first to validate the name, even though delete is a staticmethod
-    await _Dict.from_name(name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Dict '{name}'?",
             default=False,
             abort=True,
         )
-    await _Dict.delete(name, environment_name=env)
+    await _Dict.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
 @dict_cli.command(name="get", rich_help_panel="Inspection")

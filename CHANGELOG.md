@@ -6,37 +6,44 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.1.1.dev38 (2025-07-31)
+#### 1.1.2.dev31 (2025-08-11)
 
-- `uv_pip_install` now uses the more portable `command -v python` to detect your python installation. Running the same code with `uv_pip_install` will trigger an image rebuild.
-
-
-#### 1.1.1.dev28 (2025-07-28)
-
-- Added a `.name` property and a `.info()` method to `modal.Dict`, `modal.Queue`, `modal.Volume`, and `modal.Secret` objects.
+- Allow multi-node Class-based functions to use RDMA
 
 
-#### 1.1.1.dev26 (2025-07-28)
+#### 1.1.2.dev29 (2025-08-11)
 
-- Uses terminal output in Jupyter to improve rendering
-
-
-#### 1.1.1.dev13 (2025-07-22)
-
-- Surface task result exceptions during image build termination events to prevent ambiguous termination conditions.
+- Added `.objects.create()` methods
 
 
-#### 1.1.1.dev4 (2025-07-18)
+#### 1.1.2.dev23 (2025-08-07)
 
-- Added a `name` parameter to `Sandbox.create()`
-- Added a `Sandbox.from_name()` static method.
-- Added a `name` parameter to `Sandbox._experimental_from_snapshot()`
+- `Cls.with_options` now supports `region` and `cloud` keyword arguments to override `region` or `cloud` during runtime.
 
 
-#### 1.1.1.dev3 (2025-07-18)
+#### 1.1.2.dev16 (2025-08-06)
 
-Sandboxes now support `experimental_options`, which can be used to test out experimental functionality that depends only on server-side configuration.
+- Added `.objects.delete()` methods
+- Deprecated existing `.delete()` static methods due to risks of confusion with content deletion operations.
 
+
+#### 1.1.2.dev12 (2025-08-06)
+
+- Added a `.options` namespace to Modal resource object types (`modal.Dict`, `modal.Queue`, `modal.Volume`, and `modal.Secret`).
+
+
+#### 1.1.2.dev3 (2025-08-04)
+
+- Fixed a bug that would cause e.g. some image builds to fail with `'FilePatternMatcher' object has no attribute 'patterns'` when using a `FilePatternMatcher.from_file` ignore pattern.
+
+
+### 1.1.1 (2025-08-01)
+
+- We're introducing the concept of "named Sandboxes" for usecases where Sandboxes need to have unique ownership over a resource. A named Sandbox can be created by passing `name=` to `modal.Sandbox.create()`, and it can be retrieved with the new `modal.Sandbox.from_name()` constructor. Only one running Sandbox can use a given name (scoped within the App that is managing the Sandbox) at any time, so trying to create a Sandbox with a name that is already taken will fail. Sandboxes release their name when they terminate. See the [guide](https://modal.com/docs/guide/sandbox#named-sandboxes) for more information about using this new feature.
+- We've made an internal change to the `modal.Image.uv_pip_install` method to make it more portable across different base Images. As a consequence, Images built with this method on 1.1.0 will need to rebuild the next time they are used.
+- We've added a `.name` property and `.info()` method to `modal.Dict`, `modal.Queue`, `modal.Volume`, and `modal.Secret` objects.
+- Sandboxes now support `experimental_options` configuration for enabling preview functionality.
+- We've Improved Modal's rich output when used in a Jupyter notebook.
 
 ### 1.1.0 (2025-07-17)
 
@@ -74,6 +81,8 @@ Finally, this release introduces a small number of deprecations and potentially-
 - We're enforcing pre-1.0 deprecations on `modal.build`, `modal.Image.copy_local_file`, and `modal.Image.copy_local_dir`.
 - We're deprecating the `environment_name` parameter in `modal.Sandbox.create()`. A Sandbox's environment association will now be determined by its parent App. This should have no user-facing effects.
 - We've deprecated the `namespace` parameter in the `.from_name` methods of `Function`, `Cls`, `Dict`, `Queue`, `Volume`, `NetworkFileSystem`, and `Secret`, along with `modal.runner.deploy_app`. These object types do not have a concept of distinct namespaces.
+
+## 1.0
 
 ### 1.0.5 (2025-06-27)
 

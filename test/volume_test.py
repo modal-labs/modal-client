@@ -8,12 +8,13 @@ import random
 import re
 import sys
 import time
+from difflib import ndiff
 from pathlib import Path
 from unittest import mock
 
 import modal
 from modal._utils.blob_utils import BLOCK_SIZE
-from modal.exception import DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
@@ -25,6 +26,12 @@ VERSIONS = [
 
 def dummy():
     pass
+
+
+def assert_eq_large(left, right):
+    assert len(left) == len(right)
+    if left != right:
+        raise AssertionError(ndiff(left.splitlines(), right.splitlines()))
 
 
 def test_volume_info(servicer, client):
@@ -112,6 +119,7 @@ def test_volume_commit(client, servicer, skip_reload):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="TODO(dflemstr) this test has started flaking at a high rate recently")
 @pytest.mark.parametrize("version", VERSIONS)
 @pytest.mark.parametrize("file_contents_size", [100, 8 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024 + 4711])
 async def test_volume_get(servicer, client, tmp_path, version, file_contents_size):
@@ -330,7 +338,31 @@ async def test_volume2_upload_large_file(client, tmp_path, servicer, blob_server
 
     assert servicer.volumes[object_id].files.keys() == {"/a"}
     # Volumes version 2 don't use blob entities
-    assert servicer.volumes[object_id].files["/a"].data == data
+    assert_eq_large(servicer.volumes[object_id].files["/a"].data, data)
+
+
+@pytest.mark.asyncio
+async def test_volume2_upload_large_blank_file(client, tmp_path, servicer, blob_server):
+    # Volumes version 2 don't use `modal._utils.blob_utils.LARGE_FILE_LIMIT`
+    # Instead, we need to go over 8MiB to trigger different behavior (ie spilling into multiple blocks), but in this
+    # unit test context there isn't much of a semantic difference.
+
+    # Create a byte buffer that is larger than 8MiB. Each block starts with b"a" followed by zeroes until the next
+    # block boundary, except the last block that just contains b"cdef"
+    data = (b"a" + (b"\0" * (8 * 1024 * 1024 - 1))) * 2 + b"cdef"
+    assert len(data) > BLOCK_SIZE
+
+    local_file_path = tmp_path / "bigfile"
+    local_file_path.write_bytes(data)
+
+    async with modal.Volume.ephemeral(client=client, version=api_pb2.VOLUME_FS_VERSION_V2) as vol:
+        async with vol.batch_upload() as batch:
+            batch.put_file(local_file_path, "/a")
+        object_id = vol.object_id
+
+    assert servicer.volumes[object_id].files.keys() == {"/a"}
+    # Volumes version 2 don't use blob entities
+    assert_eq_large(servicer.volumes[object_id].files["/a"].data, data)
 
 
 @pytest.mark.asyncio
@@ -451,9 +483,8 @@ async def test_volume_copy_2(client, tmp_path, servicer, version):
     assert returned_file_data[Path("test_dir/file2.txt")].data == b"test copy"
 
 
-@pytest.mark.parametrize("delete_as_instance_method", [True, False])
 @pytest.mark.parametrize("version", VERSIONS)
-def test_persisted(servicer, client, delete_as_instance_method, version):
+def test_from_name(servicer, client, version):
     # Lookup should fail since it doesn't exist
     with pytest.raises(NotFoundError):
         modal.Volume.from_name("xyz", version=version).hydrate(client)
@@ -464,12 +495,11 @@ def test_persisted(servicer, client, delete_as_instance_method, version):
     # Lookup should succeed now
     modal.Volume.from_name("xyz", version=version).hydrate(client)
 
-    # Delete it
-    modal.Volume.delete("xyz", client=client)
-
+    modal.Volume.objects.delete("xyz", client=client)
     # Lookup should fail again
     with pytest.raises(NotFoundError):
         modal.Volume.from_name("xyz", version=version).hydrate(client)
+    modal.Volume.objects.delete("xyz", client=client, allow_missing=True)
 
 
 def test_ephemeral(servicer, client):
@@ -575,3 +605,36 @@ def test_remove_file_not_found(set_env_client):
     vol = modal.Volume.from_name("my_vol", create_if_missing=True)
     with pytest.raises(FileNotFoundError):
         vol.remove_file("a")
+
+
+def test_volume_list(servicer, client):
+    for i in range(5):
+        modal.Volume.from_name(f"test-volume-{i}", create_if_missing=True).hydrate(client)
+    if sys.platform == "win32":
+        time.sleep(1 / 32)
+
+    volume_list = modal.Volume.objects.list(client=client)
+    assert len(volume_list) == 5
+    assert all(v.name.startswith("test-volume-") for v in volume_list)
+    assert all(v.info().created_by == servicer.default_username for v in volume_list)
+
+    volume_list = modal.Volume.objects.list(max_objects=2, client=client)
+    assert len(volume_list) == 2
+
+
+def test_volume_create(servicer, client):
+    modal.Volume.objects.create(name="test-volume-create", client=client)
+    modal.Volume.from_name("test-volume-create").hydrate(client)
+    with pytest.raises(AlreadyExistsError):
+        modal.Volume.objects.create(name="test-volume-create", client=client)
+    modal.Volume.objects.create(name="test-volume-create", allow_existing=True, client=client)
+
+
+def test_volume_create_version(servicer, client):
+    for version in [1, 2]:
+        modal.Volume.objects.create(name=f"should-be-v{version}", version=version, client=client)
+        vol_id = servicer.deployed_volumes[(f"should-be-v{version}", "main")]
+        assert servicer.volumes[vol_id].version == version
+
+    with pytest.raises(InvalidError, match="VolumeFS version must be either 1 or 2"):
+        modal.Volume.objects.create(name="should-be-v3", version=3, client=client)

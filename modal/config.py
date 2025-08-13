@@ -94,7 +94,7 @@ from google.protobuf.empty_pb2 import Empty
 from modal_proto import api_pb2
 
 from ._utils.logger import configure_logger
-from .exception import InvalidError
+from .exception import InvalidError, NotFoundError
 
 DEFAULT_SERVER_URL = "https://api.modal.com"
 
@@ -158,15 +158,15 @@ def _config_active_profile() -> str:
         return "default"
 
 
-def config_set_active_profile(env: str) -> None:
+def config_set_active_profile(profile: str) -> None:
     """Set the user's active modal profile by writing it to the `.modal.toml` file."""
-    if env not in _user_config:
-        raise KeyError(env)
+    if profile not in _user_config:
+        raise NotFoundError(f"No profile named '{profile}' found in {user_config_path}")
 
-    for key, values in _user_config.items():
-        values.pop("active", None)
+    for profile_data in _user_config.values():
+        profile_data.pop("active", None)
 
-    _user_config[env]["active"] = True
+    _user_config[profile]["active"] = True  # type: ignore
     _write_user_config(_user_config)
 
 

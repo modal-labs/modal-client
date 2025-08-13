@@ -1147,7 +1147,7 @@ message DictListRequest {
 message DictListResponse {
   message DictInfo {
     string name = 1;
-    double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.1
+    double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.2
     string dict_id = 3;
     DictMetadata metadata = 4;
   }
@@ -1510,10 +1510,22 @@ message FunctionCallCancelRequest {
   optional string function_id = 3; // Only provided for sync input cancellation on the input plane. Async input cancellation does not provide this field this.
 }
 
-message FunctionCallGetDataRequest {
+message FunctionCallFromIdRequest {
   string function_call_id = 1;
+}
+
+// Everything you need to build a FunctionCallHandler.
+message FunctionCallFromIdResponse {
+  string function_call_id = 1;
+  int32 num_inputs = 2;
+}
+
+message FunctionCallGetDataRequest {
+  oneof call_info {
+    string function_call_id = 1;
+    string attempt_token = 3;
+  }
   uint64 last_index = 2;
-  optional string attempt_token = 3;
 }
 
 message FunctionCallInfo {
@@ -1540,9 +1552,11 @@ message FunctionCallListResponse {
 }
 
 message FunctionCallPutDataRequest {
-  string function_call_id = 1;
+  oneof call_info {
+    string function_call_id = 1;
+    string attempt_token = 3;
+  }
   repeated DataChunk data_chunks = 2;
-  reserved 3; // attempt_token
 }
 
 message FunctionCreateRequest {
@@ -1644,6 +1658,12 @@ message FunctionExtended {
   }
 }
 
+message FunctionFinishInputsRequest {
+  string function_id = 1;
+  string function_call_id = 2;
+  uint32 num_inputs = 3;
+}
+
 
 message FunctionGetCallGraphRequest {
   // TODO: use input_id once we switch client submit API to return those.
@@ -1678,6 +1698,7 @@ message FunctionGetInputsItem {
   FunctionCallInvocationType function_call_invocation_type = 6;
   uint32 retry_count = 7;
   optional int32 function_map_idx = 8; // intercepted and only used by the worker.
+  string attempt_token = 9;
 }
 
 message FunctionGetInputsRequest {
@@ -1718,6 +1739,7 @@ message FunctionGetOutputsRequest {
   // The jwts the client expects the server to be processing. This is optional and used for sync inputs only.
   repeated string input_jwts = 9;
   optional int32 start_idx = 10; // for async batch requests. this indicates which index to start from.
+  optional int32 end_idx = 11; // for async batch requests. this indicates which index to end at.
 }
 
 message FunctionGetOutputsResponse {
@@ -1819,6 +1841,8 @@ message FunctionOptions {
   optional uint32 max_concurrent_inputs = 14;
   optional uint32 batch_max_size = 15;
   optional uint64 batch_linger_ms = 16;
+  optional SchedulerPlacement scheduler_placement = 17;
+  optional string cloud_provider_str = 18;
 }
 
 message FunctionPrecreateRequest {
@@ -2459,7 +2483,7 @@ message QueueListRequest {
 message QueueListResponse {
   message QueueInfo {
     string name = 1;
-    double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.1
+    double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.2
     int32 num_partitions = 3;
     int32 total_size = 4;
     string queue_id = 5;
@@ -2609,6 +2633,8 @@ message Sandbox {
 
   // Experimental options
   map<string, bool> experimental_options = 31;
+
+  repeated string preload_path_prefixes = 32; // Internal use only.
 }
 
 message SandboxCreateRequest {
@@ -2868,7 +2894,7 @@ message SecretGetOrCreateResponse {
 
 message SecretListItem {
   string label = 1;
-  double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.1
+  double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.2
   double last_used_at = 3;
   string environment_name = 4;  // Unused by client
   string secret_id = 5;
@@ -3008,6 +3034,7 @@ message TaskInfo {
   string gpu_type = 6;
   string sandbox_id = 7;
   TaskSnapshotBehavior snapshot_behavior = 8;
+  GPUConfig gpu_config = 9;
 }
 
 message TaskListRequest {
@@ -3234,7 +3261,7 @@ message VolumeListFilesResponse {
 message VolumeListItem {
   string label = 1;  // app name of object entity app
   string volume_id = 2;
-  double created_at = 3;  // Superseded by metadata, used by clients up to 1.1.1
+  double created_at = 3;  // Superseded by metadata, used by clients up to 1.1.2
   VolumeMetadata metadata = 4;
 }
 
@@ -3414,8 +3441,6 @@ service ModalClient {
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 
   // Input Plane
-  // These RPCs are experimental, not deployed to production, and can be changed / removed
-  // without needing to worry about backwards compatibility.
   rpc AttemptAwait(AttemptAwaitRequest) returns (AttemptAwaitResponse);
   rpc AttemptRetry(AttemptRetryRequest) returns (AttemptRetryResponse);
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
@@ -3486,11 +3511,13 @@ service ModalClient {
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallFromId(FunctionCallFromIdRequest) returns (FunctionCallFromIdResponse);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
   rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (google.protobuf.Empty);
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
+  rpc FunctionFinishInputs(FunctionFinishInputsRequest) returns (google.protobuf.Empty); // For map RPCs, to signal that all inputs have been sent
   rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);
   rpc FunctionGetCurrentStats(FunctionGetCurrentStatsRequest) returns (FunctionStats);

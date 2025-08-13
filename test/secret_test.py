@@ -1,11 +1,13 @@
 # Copyright Modal Labs 2022
 import os
 import pytest
+import sys
 import tempfile
+import time
 from unittest import mock
 
 from modal import App, Secret
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_old_py
@@ -95,6 +97,11 @@ def test_secret_from_name(servicer, client):
     with app.run(client=client):
         assert secret.object_id == secret_id
 
+    Secret.objects.delete("my-secret", client=client)
+    with pytest.raises(NotFoundError):
+        Secret.from_name("my-secret").hydrate(client)
+    Secret.objects.delete("my-secret", client=client, allow_missing=True)
+
 
 def test_secret_namespace_deprecated(servicer, client):
     with pytest.warns(
@@ -116,3 +123,24 @@ def test_secret_namespace_deprecated(servicer, client):
     # Should warn about both the deprecated lookup method and the deprecated namespace parameter
     assert len(record) >= 2
     assert any(isinstance(w.message, DeprecationError) for w in record)
+
+
+def test_secret_list(servicer, client):
+    for i in range(5):
+        Secret.create_deployed(f"test-secret-{i}", {"FOO": "123"}, client=client)
+    if sys.platform == "win32":
+        time.sleep(1 / 32)
+
+    secrets = Secret.objects.list(client=client)
+    assert len(secrets) == 5
+    assert all(s.name.startswith("test-secret-") for s in secrets)
+    assert all(s.info().created_by == servicer.default_username for s in secrets)
+
+
+def test_secret_create(servicer, client):
+    env_dict = {"FOO": "123"}
+    Secret.objects.create(name="test-secret-create", env_dict=env_dict, client=client)
+    Secret.from_name("test-secret-create").hydrate(client)
+    with pytest.raises(AlreadyExistsError):
+        Secret.objects.create(name="test-secret-create", env_dict=env_dict, client=client)
+    Secret.objects.create(name="test-secret-create", env_dict=env_dict, allow_existing=True, client=client)

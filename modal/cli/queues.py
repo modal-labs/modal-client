@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2024
+from datetime import datetime
 from typing import Optional
 
 import typer
@@ -44,17 +45,22 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 
 @queue_cli.command(name="delete", rich_help_panel="Management")
 @synchronizer.create_blocking
-async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
+async def delete(
+    name: str,
+    *,
+    allow_missing: bool = Option(False, "--allow-missing", help="Don't error if the Queue doesn't exist."),
+    yes: bool = YES_OPTION,
+    env: Optional[str] = ENV_OPTION,
+):
     """Delete a named Queue and all of its data."""
-    # Lookup first to validate the name, even though delete is a staticmethod
-    await _Queue.from_name(name, environment_name=env).hydrate()
+    env = ensure_env(env)
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Queue '{name}'?",
             default=False,
             abort=True,
         )
-    await _Queue.delete(name, environment_name=env)
+    await _Queue.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
 @queue_cli.command(name="list", rich_help_panel="Management")
@@ -62,22 +68,46 @@ async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_
 async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     """List all named Queues."""
     env = ensure_env(env)
-
-    max_total_size = 100_000
     client = await _Client.from_env()
-    request = api_pb2.QueueListRequest(environment_name=env, total_size_limit=max_total_size + 1)
-    response = await retry_transient_errors(client.stub.QueueList, request)
+    max_total_size = 100_000  # Limit on the *Queue size* that we report
 
-    rows = [
-        (
-            q.name,
-            timestamp_to_localized_str(q.created_at, json),
-            str(q.num_partitions),
-            str(q.total_size) if q.total_size <= max_total_size else f">{max_total_size}",
+    items: list[api_pb2.QueueListResponse.QueueInfo] = []
+
+    # Note that we need to continue using the gRPC API directly here rather than using Queue.objects.list.
+    # There is some metadata that historically appears in the CLI output (num_partitions, total_size) that
+    # doesn't make sense to transmit as hydration metadata, because the values can change over time and
+    # the metadata retrieved at hydration time could get stale. Alternatively, we could rewrite this using
+    # only public API by sequentially retrieving the queues and then querying their dynamic metadata, but
+    # that would require multiple round trips and would add lag to the CLI.
+    async def retrieve_page(created_before: float) -> bool:
+        max_page_size = 100
+        pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
+        req = api_pb2.QueueListRequest(environment_name=env, pagination=pagination, total_size_limit=max_total_size)
+        resp = await retry_transient_errors(client.stub.QueueList, req)
+        items.extend(resp.queues)
+        return len(resp.queues) < max_page_size
+
+    finished = await retrieve_page(datetime.now().timestamp())
+    while True:
+        if finished:
+            break
+        finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
+
+    queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in items]
+
+    rows = []
+    for obj, resp_data in zip(queues, items):
+        info = await obj.info()
+        rows.append(
+            (
+                obj.name,
+                timestamp_to_localized_str(info.created_at.timestamp(), json),
+                info.created_by,
+                str(resp_data.num_partitions),
+                str(resp_data.total_size) if resp_data.total_size <= max_total_size else f">{max_total_size}",
+            )
         )
-        for q in response.queues
-    ]
-    display_table(["Name", "Created at", "Partitions", "Total size"], rows, json)
+    display_table(["Name", "Created at", "Created by", "Partitions", "Total size"], rows, json)
 
 
 @queue_cli.command(name="clear", rich_help_panel="Management")
@@ -119,7 +149,7 @@ async def peek(
 
 @queue_cli.command(name="len", rich_help_panel="Inspection")
 @synchronizer.create_blocking
-async def len(
+async def len_(
     name: str,
     partition: Optional[str] = PARTITION_OPTION,
     total: bool = Option(False, "-t", "--total", help="Compute the sum of the queue lengths across all partitions"),

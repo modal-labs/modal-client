@@ -108,7 +108,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         image: _Image,
         secrets: Sequence[_Secret],
         name: Optional[str] = None,
-        timeout: Optional[int] = None,
+        timeout: int = 300,
         workdir: Optional[str] = None,
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -257,7 +257,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
+        timeout: int = 300,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -296,8 +296,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
     ) -> "_Sandbox":
         """
-        Create a new Sandbox to run untrusted, arbitrary code. The Sandbox's corresponding container
-        will be created asynchronously.
+        Create a new Sandbox to run untrusted, arbitrary code.
+
+        The Sandbox's corresponding container will be created asynchronously.
 
         **Usage**
 
@@ -354,7 +355,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         mounts: Sequence[_Mount] = (),
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
+        timeout: int = 300,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,

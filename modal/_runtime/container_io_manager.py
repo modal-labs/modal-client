@@ -39,7 +39,6 @@ from modal.exception import ClientClosed, InputCancellation, InvalidError, Seria
 from modal_proto import api_pb2
 
 if TYPE_CHECKING:
-    import modal._runtime.asgi
     import modal._runtime.user_code_imports
 
 
@@ -66,6 +65,7 @@ class IOContext:
     input_ids: list[str]
     retry_counts: list[int]
     function_call_ids: list[str]
+    attempt_tokens: list[str]
     function_inputs: list[api_pb2.FunctionInput]
     finalized_function: "modal._runtime.user_code_imports.FinalizedFunction"
 
@@ -77,6 +77,7 @@ class IOContext:
         input_ids: list[str],
         retry_counts: list[int],
         function_call_ids: list[str],
+        attempt_tokens: list[str],
         finalized_function: "modal._runtime.user_code_imports.FinalizedFunction",
         function_inputs: list[api_pb2.FunctionInput],
         is_batched: bool,
@@ -85,6 +86,7 @@ class IOContext:
         self.input_ids = input_ids
         self.retry_counts = retry_counts
         self.function_call_ids = function_call_ids
+        self.attempt_tokens = attempt_tokens
         self.finalized_function = finalized_function
         self.function_inputs = function_inputs
         self._is_batched = is_batched
@@ -95,11 +97,11 @@ class IOContext:
         cls,
         client: _Client,
         finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
-        inputs: list[tuple[str, int, str, api_pb2.FunctionInput]],
+        inputs: list[tuple[str, int, str, str, api_pb2.FunctionInput]],
         is_batched: bool,
     ) -> "IOContext":
         assert len(inputs) >= 1 if is_batched else len(inputs) == 1
-        input_ids, retry_counts, function_call_ids, function_inputs = zip(*inputs)
+        input_ids, retry_counts, function_call_ids, attempt_tokens, function_inputs = zip(*inputs)
 
         async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
             # If we got a pointer to a blob, download it from S3.
@@ -121,6 +123,7 @@ class IOContext:
             cast(list[str], input_ids),
             cast(list[int], retry_counts),
             cast(list[str], function_call_ids),
+            cast(list[str], attempt_tokens),
             finalized_function,
             cast(list[api_pb2.FunctionInput], function_inputs),
             is_batched,
@@ -300,11 +303,7 @@ class _ContainerIOManager:
         self.function_def = container_args.function_def
         self.checkpoint_id = container_args.checkpoint_id or None
 
-        # We could also have the worker pass this in explicitly.
-        self.input_plane_server_url = None
-        for obj in container_args.app_layout.objects:
-            if obj.object_id == self.function_id:
-                self.input_plane_server_url = obj.function_handle_metadata.input_plane_url
+        self.input_plane_server_url = container_args.input_plane_server_url
 
         self.calls_completed = 0
         self.total_user_time = 0.0
@@ -484,18 +483,21 @@ class _ContainerIOManager:
             else {"data": data}
         )
 
-    async def get_data_in(self, function_call_id: str) -> AsyncIterator[Any]:
+    async def get_data_in(self, function_call_id: str, attempt_token: Optional[str]) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
         stub = self._client.stub
         if self.input_plane_server_url:
             stub = await self._client.get_stub(self.input_plane_server_url)
 
-        async for data in _stream_function_call_data(self._client, stub, function_call_id, "data_in"):
+        async for data in _stream_function_call_data(
+            self._client, stub, function_call_id, variant="data_in", attempt_token=attempt_token
+        ):
             yield data
 
     async def put_data_out(
         self,
         function_call_id: str,
+        attempt_token: str,
         start_index: int,
         data_format: int,
         serialized_messages: list[Any],
@@ -516,6 +518,8 @@ class _ContainerIOManager:
             data_chunks.append(chunk)
 
         req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
+        if attempt_token:
+            req.attempt_token = attempt_token  # oneof clears function_call_id.
 
         if self.input_plane_server_url:
             stub = await self._client.get_stub(self.input_plane_server_url)
@@ -525,7 +529,7 @@ class _ContainerIOManager:
 
     @asynccontextmanager
     async def generator_output_sender(
-        self, function_call_id: str, data_format: int, message_rx: asyncio.Queue
+        self, function_call_id: str, attempt_token: str, data_format: int, message_rx: asyncio.Queue
     ) -> AsyncGenerator[None, None]:
         """Runs background task that feeds generator outputs into a function call's `data_out` stream."""
         GENERATOR_STOP_SENTINEL = Sentinel()
@@ -554,7 +558,7 @@ class _ContainerIOManager:
                     else:
                         serialized_messages.append(serialize_data_format(message, data_format))
                         total_size += len(serialized_messages[-1]) + 512  # 512 bytes for estimated framing overhead
-                await self.put_data_out(function_call_id, index, data_format, serialized_messages)
+                await self.put_data_out(function_call_id, attempt_token, index, data_format, serialized_messages)
                 index += len(serialized_messages)
 
         task = asyncio.create_task(generator_output_task())
@@ -590,7 +594,7 @@ class _ContainerIOManager:
         self,
         batch_max_size: int,
         batch_wait_ms: int,
-    ) -> AsyncIterator[list[tuple[str, int, str, api_pb2.FunctionInput]]]:
+    ) -> AsyncIterator[list[tuple[str, int, str, str, api_pb2.FunctionInput]]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
@@ -625,7 +629,9 @@ class _ContainerIOManager:
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input kill signal input.")
                             return
-                        inputs.append((item.input_id, item.retry_count, item.function_call_id, item.input))
+                        inputs.append(
+                            (item.input_id, item.retry_count, item.function_call_id, item.attempt_token, item.input)
+                        )
                         if item.input.final_input:
                             if request.batch_max_size > 0:
                                 logger.debug(f"Task {self.task_id} Final input not expected in batch input stream")

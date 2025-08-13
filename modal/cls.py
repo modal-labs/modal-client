@@ -4,7 +4,7 @@ import inspect
 import os
 import typing
 from collections.abc import Collection
-from typing import Any, Callable, Optional, TypeVar, Union
+from typing import Any, Callable, Optional, Sequence, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -37,6 +37,7 @@ from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .gpu import GPU_T
 from .retries import Retries
+from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
 
@@ -92,6 +93,8 @@ class _ServiceOptions:
     target_concurrent_inputs: Optional[int] = None
     batch_max_size: Optional[int] = None
     batch_wait_ms: Optional[int] = None
+    scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+    cloud: Optional[str] = None
 
     def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
         """Implement protobuf-like MergeFrom semantics for this dataclass.
@@ -657,7 +660,8 @@ More information on class parameterization can be found here: https://modal.com/
             await resolver.load(self._class_service_function)
             self._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
-        rep = f"Cls.from_name({app_name!r}, {name!r})"
+        environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
+        rep = f"Cls.from_name({app_name!r}, {name!r}{environment_rep})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
         class_service_name = f"{name}.*"  # special name of the base service function for the class
@@ -684,6 +688,8 @@ More information on class parameterization can be found here: https://modal.com/
         buffer_containers: Optional[int] = None,  # Additional containers to scale up while Function is active.
         scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         timeout: Optional[int] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
+        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         # The following parameters are deprecated
         concurrency_limit: Optional[int] = None,  # Now called `max_containers`
         container_idle_timeout: Optional[int] = None,  # Now called `scaledown_window`
@@ -722,6 +728,8 @@ More information on class parameterization can be found here: https://modal.com/
         else:
             resources = None
 
+        scheduler_placement = SchedulerPlacement(region=region).proto if region else None
+
         if allow_concurrent_inputs is not None:
             deprecation_warning(
                 (2025, 5, 9),
@@ -757,6 +765,8 @@ More information on class parameterization can be found here: https://modal.com/
             buffer_containers=buffer_containers,
             scaledown_window=scaledown_window,
             timeout_secs=timeout,
+            scheduler_placement=scheduler_placement,
+            cloud=cloud,
             # Note: set both for backwards / forwards compatibility
             # But going forward `.with_concurrency` is the preferred method with distinct parameterization
             max_concurrent_inputs=allow_concurrent_inputs,

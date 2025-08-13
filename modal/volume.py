@@ -25,14 +25,21 @@ from typing import (
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal.exception
 import modal_proto.api_pb2
-from modal.exception import InvalidError, VolumeUploadTimeoutError
+from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
-from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
+from ._object import (
+    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    _get_environment_name,
+    _Object,
+    live_method,
+    live_method_gen,
+)
 from ._resolver import Resolver
 from ._utils.async_utils import (
     TaskContext,
@@ -55,7 +62,7 @@ from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
-from ._utils.time_utils import timestamp_to_localized_dt
+from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
 
@@ -106,6 +113,170 @@ class VolumeInfo:
     created_by: Optional[str]
 
 
+class _VolumeManager:
+    """Namespace with methods for managing named Volume objects."""
+
+    @staticmethod
+    async def create(
+        name: str,  # Name to use for the new Volume
+        *,
+        version: Optional[int] = None,  # Experimental: Configure the backend VolumeFS version
+        allow_existing: bool = False,  # If True, no-op when the Volume already exists
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> None:
+        """Create a new Volume object.
+
+        **Examples:**
+
+        ```python notest
+        modal.Volume.objects.create("my-volume")
+        ```
+
+        Volumes will be created in the active environment, or another one can be specified:
+
+        ```python notest
+        modal.Volume.objects.create("my-volume", environment_name="dev")
+        ```
+
+        `allow_existing=True` will make the creation attempt a no-op in this case.
+
+        ```python notest
+        modal.Volume.objects.create("my-volume", allow_existing=True)
+        ```
+
+        Note that this method does not return a local instance of the Volume. You can use
+        `modal.Volume.from_name` to perform a lookup after creation.
+
+        """
+        client = await _Client.from_env() if client is None else client
+        object_creation_type = (
+            api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+            if allow_existing
+            else api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
+        )
+
+        if version is not None and version not in {1, 2}:
+            raise InvalidError("VolumeFS version must be either 1 or 2")
+
+        req = api_pb2.VolumeGetOrCreateRequest(
+            deployment_name=name,
+            environment_name=_get_environment_name(environment_name),
+            object_creation_type=object_creation_type,
+            version=version,
+        )
+        try:
+            await retry_transient_errors(client.stub.VolumeGetOrCreate, req)
+        except GRPCError as exc:
+            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
+                raise AlreadyExistsError(exc.message)
+            else:
+                raise
+
+    @staticmethod
+    async def list(
+        *,
+        max_objects: Optional[int] = None,  # Limit requests to this size
+        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        environment_name: str = "",  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ) -> list["_Volume"]:
+        """Return a list of hydrated Volume objects.
+
+        **Examples:**
+
+        ```python
+        volumes = modal.Volume.objects.list()
+        print([v.name for v in volumes])
+        ```
+
+        Volumes will be retreived from the active environment, or another one can be specified:
+
+        ```python notest
+        dev_volumes = modal.Volume.objects.list(environment_name="dev")
+        ```
+
+        By default, all named Volumes are returned, newest to oldest. It's also possible to limit the
+        number of results and to filter by creation date:
+
+        ```python
+        volumes = modal.Volume.objects.list(max_objects=10, created_before="2025-01-01")
+        ```
+
+        """
+        client = await _Client.from_env() if client is None else client
+        if max_objects is not None and max_objects < 0:
+            raise InvalidError("max_objects cannot be negative")
+
+        items: list[api_pb2.VolumeListItem] = []
+
+        async def retrieve_page(created_before: float) -> bool:
+            max_page_size = 100 if max_objects is None else min(100, max_objects - len(items))
+            pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
+            req = api_pb2.VolumeListRequest(
+                environment_name=_get_environment_name(environment_name), pagination=pagination
+            )
+            resp = await retry_transient_errors(client.stub.VolumeList, req)
+            items.extend(resp.items)
+            finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
+            return finished
+
+        finished = await retrieve_page(as_timestamp(created_before))
+        while True:
+            if finished:
+                break
+            finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
+
+        volumes = [
+            _Volume._new_hydrated(
+                item.volume_id,
+                client,
+                item.metadata,
+                is_another_app=True,
+                rep=_Volume._repr(item.label, environment_name),
+            )
+            for item in items
+        ]
+        return volumes[:max_objects] if max_objects is not None else volumes
+
+    @staticmethod
+    async def delete(
+        name: str,  # Name of the Volume to delete
+        *,
+        allow_missing: bool = False,  # If True, don't raise an error if the Volume doesn't exist
+        environment_name: Optional[str] = None,  # Uses active environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
+    ):
+        """Delete a named Volume.
+
+        Warning: This deletes an *entire Volume*, not just a specific file.
+        Deletion is irreversible and will affect any Apps currently using the Volume.
+
+        **Examples:**
+
+        ```python notest
+        await modal.Volume.objects.delete("my-volume")
+        ```
+
+        Volumes will be deleted from the active environment, or another one can be specified:
+
+        ```python notest
+        await modal.Volume.objects.delete("my-volume", environment_name="dev")
+        ```
+        """
+        try:
+            obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
+        except NotFoundError:
+            if not allow_missing:
+                raise
+        else:
+            req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
+            await retry_transient_errors(obj._client.stub.VolumeDelete, req)
+
+
+VolumeManager = synchronize_api(_VolumeManager)
+
+
 class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
@@ -152,6 +323,14 @@ class _Volume(_Object, type_prefix="vo"):
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
     _read_only: bool = False
 
+    @classproperty
+    def objects(cls) -> _VolumeManager:
+        return _VolumeManager
+
+    @property
+    def name(self) -> Optional[str]:
+        return self._name
+
     def read_only(self) -> "_Volume":
         """Configure Volume to mount as read-only.
 
@@ -180,10 +359,6 @@ class _Volume(_Object, type_prefix="vo"):
 
         obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, deps=lambda: [self])
         return obj
-
-    @property
-    def name(self) -> Optional[str]:
-        return self._name
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         if metadata:
@@ -255,7 +430,8 @@ class _Volume(_Object, type_prefix="vo"):
             response = await resolver.client.stub.VolumeGetOrCreate(req)
             self._hydrate(response.volume_id, resolver.client, response.metadata)
 
-        return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, name=name)
+        rep = _Volume._repr(name, environment_name)
+        return _Volume._from_loader(_load, rep, hydrate_lazily=True, name=name)
 
     @classmethod
     @asynccontextmanager
@@ -264,7 +440,7 @@ class _Volume(_Object, type_prefix="vo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
-        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+        _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
     ) -> AsyncGenerator["_Volume", None]:
         """Creates a new ephemeral volume within a context manager:
 
@@ -291,7 +467,13 @@ class _Volume(_Object, type_prefix="vo"):
         async with TaskContext() as tc:
             request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
             tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.volume_id, client, response.metadata, is_another_app=True)
+            yield cls._new_hydrated(
+                response.volume_id,
+                client,
+                response.metadata,
+                is_another_app=True,
+                rep="modal.Volume.ephemeral()",
+            )
 
     @staticmethod
     async def lookup(
@@ -377,7 +559,7 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def commit(self):
-        """Commit changes to the volume.
+        """Commit changes to a mounted volume.
 
         If successful, the changes made are now persisted in durable storage and available to other containers accessing
         the volume.
@@ -646,9 +828,20 @@ class _Volume(_Object, type_prefix="vo"):
 
     @staticmethod
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
-        req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.VolumeDelete, req)
+        """mdmd:hidden
+        Delete a named Volume.
+
+        Warning: This deletes an *entire Volume*, not just a specific file.
+        Deletion is irreversible and will affect any Apps currently using the Volume.
+
+        DEPRECATED: This method is deprecated; we recommend using `modal.Volume.objects.delete` instead.
+
+        """
+        deprecation_warning(
+            (2025, 8, 6),
+            "`modal.Volume.delete` is deprecated; we recommend using `modal.Volume.objects.delete` instead.",
+        )
+        await _Volume.objects.delete(name, environment_name=environment_name, client=client)
 
     @staticmethod
     async def rename(
@@ -988,9 +1181,9 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
             for file_spec in file_specs:
                 blocks = [
                     api_pb2.VolumePutFiles2Request.Block(
-                        contents_sha256=block_sha256, put_response=put_responses.get(block_sha256)
+                        contents_sha256=block.contents_sha256, put_response=put_responses.get(block.contents_sha256)
                     )
-                    for block_sha256 in file_spec.blocks_sha256
+                    for block in file_spec.blocks
                 ]
                 files.append(
                     api_pb2.VolumePutFiles2Request.File(
@@ -1047,7 +1240,7 @@ async def _put_missing_blocks(
         # TODO(dflemstr): Type is `api_pb2.VolumePutFiles2Response.MissingBlock` but synchronicity gets confused
         # by the nested class (?)
         missing_block,
-    ) -> (bytes, bytes):
+    ) -> tuple[bytes, bytes]:
         # Lazily import to keep the eager loading time of this module down
         from ._utils.bytes_io_segment_payload import BytesIOSegmentPayload
 
@@ -1056,9 +1249,7 @@ async def _put_missing_blocks(
         file_spec = file_specs[missing_block.file_index]
         # TODO(dflemstr): What if the underlying file has changed here in the meantime; should we check the
         #  hash again just to be sure?
-        block_sha256 = file_spec.blocks_sha256[missing_block.block_index]
-        block_start = missing_block.block_index * BLOCK_SIZE
-        block_length = min(BLOCK_SIZE, file_spec.size - block_start)
+        block = file_spec.blocks[missing_block.block_index]
 
         if file_spec.path not in file_progresses:
             file_task_id = progress_cb(name=file_spec.path, size=file_spec.size)
@@ -1082,8 +1273,8 @@ async def _put_missing_blocks(
             with file_spec.source() as source_fp:
                 payload = BytesIOSegmentPayload(
                     source_fp,
-                    block_start,
-                    block_length,
+                    block.start,
+                    block.end - block.start,
                     # limit chunk size somewhat to not keep event loop busy for too long
                     chunk_size=256 * 1024,
                     progress_report_cb=task_progress_cb,
@@ -1095,7 +1286,7 @@ async def _put_missing_blocks(
         if len(file_progress.pending_blocks) == 0:
             task_progress_cb(complete=True)
 
-        return block_sha256, resp_data
+        return block.contents_sha256, resp_data
 
     tasks = [asyncio.create_task(put_missing_block(missing_block)) for missing_block in missing_blocks]
     for task_result in asyncio.as_completed(tasks):

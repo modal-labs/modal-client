@@ -612,7 +612,7 @@ class _App:
     @warn_on_renamed_autoscaler_settings
     def function(
         self,
-        _warn_parentheses_missing: Any = None,
+        _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
@@ -641,7 +641,7 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        timeout: int = 300,  # Maximum execution time of the function in seconds.
         name: Optional[str] = None,  # Sets the Modal name of the function within the app
         is_generator: Optional[
             bool
@@ -841,7 +841,7 @@ class _App:
     @warn_on_renamed_autoscaler_settings
     def cls(
         self,
-        _warn_parentheses_missing: Optional[bool] = None,
+        _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
@@ -869,8 +869,9 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        # Maximum execution time of the function in seconds, including time spent in `@modal.enter`.
-        timeout: Optional[int] = None,
+        # Maximum execution time of the function in seconds. This timeout applies independently to `@modal.enter` and
+        # functions.
+        timeout: int = 300,
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
@@ -932,13 +933,16 @@ class _App:
 
                 if wrapped_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_cls.params.cluster_size
+                    rdma = wrapped_cls.params.rdma
                 else:
                     cluster_size = None
+                    rdma = None
             else:
                 user_cls = wrapped_cls
                 max_concurrent_inputs = allow_concurrent_inputs
                 target_concurrent_inputs = None
                 cluster_size = None
+                rdma = None
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
@@ -1008,6 +1012,7 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
+                rdma=rdma,
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
