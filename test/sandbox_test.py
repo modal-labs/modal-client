@@ -506,7 +506,7 @@ def test_sandbox_snapshot_fs(app, servicer):
 @skip_non_subprocess
 def test_sandbox_snapshot_fs_async(app, servicer):
     sb = Sandbox.create(app=app)
-    image = sb.snapshot_filesystem(experimental_large_snapshot_support=True)
+    image = sb.experimental_snapshot_filesystem()
     sb.terminate()
 
     sb2 = Sandbox.create(image=image, app=app)

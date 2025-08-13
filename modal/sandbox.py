@@ -529,17 +529,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         except GRPCError as exc:
             raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
-    async def snapshot_filesystem(
-        self, timeout: int = 55, *, experimental_large_snapshot_support: bool = False
-    ) -> _Image:
+    async def snapshot_filesystem(self, timeout: int = 55) -> _Image:
         """Snapshot the filesystem of the Sandbox.
 
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
         can be used to spawn a new Sandbox with the same filesystem.
         """
-        if experimental_large_snapshot_support:
-            return await self._snapshot_filesystem_async(timeout)
-
         await self._get_task_id()  # Ensure the sandbox has started
         req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout)
         resp = await retry_transient_errors(self._client.stub.SandboxSnapshotFs, req)
@@ -560,7 +555,12 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return image
 
-    async def _snapshot_filesystem_async(self, timeout: Optional[int] = None) -> _Image:
+    async def experimental_snapshot_filesystem(self, timeout: Optional[int] = None) -> _Image:
+        """Snapshot the filesystem of the Sandbox, using the experimental async endpoint to support larger snapshots.
+
+        Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
+        can be used to spawn a new Sandbox with the same filesystem.
+        """
         await self._get_task_id()  # Ensure the sandbox has started
 
         # Issue the async snapshot request
