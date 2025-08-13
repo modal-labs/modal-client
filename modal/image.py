@@ -877,15 +877,19 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
 
         app = modal.App("build-image")
-        with app.run(), modal.enable_output():
+        with modal.enable_output(), app.run():
             image.build(app)
 
-        # Use this object_id with `Image.from_id` to use the built image in a sandbox or function.
-        print(image.object_id)
+        # Saving the image id
+        my_image_id = image.object_id
+
+        # Reference the image by id
+        built_image = Image.from_id(my_image_id)
         ```
+
         """
         if app.app_id is None:
-            raise InvalidError("App has not been initialized yet. Run with `with app.run()`.")
+            raise InvalidError("App has not been initialized yet. Use the content manager `app.run()` or `App.lookup`")
 
         app_id = app.app_id
         app_client = app._client or await _Client.from_env()
