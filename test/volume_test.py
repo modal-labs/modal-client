@@ -628,3 +628,13 @@ def test_volume_create(servicer, client):
     with pytest.raises(AlreadyExistsError):
         modal.Volume.objects.create(name="test-volume-create", client=client)
     modal.Volume.objects.create(name="test-volume-create", allow_existing=True, client=client)
+
+
+def test_volume_create_version(servicer, client):
+    for version in [1, 2]:
+        modal.Volume.objects.create(name=f"should-be-v{version}", version=version, client=client)
+        vol_id = servicer.deployed_volumes[(f"should-be-v{version}", "main")]
+        assert servicer.volumes[vol_id].version == version
+
+    with pytest.raises(InvalidError, match="VolumeFS version must be either 1 or 2"):
+        modal.Volume.objects.create(name="should-be-v3", version=3, client=client)
