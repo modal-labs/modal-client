@@ -120,6 +120,7 @@ class _VolumeManager:
     async def create(
         name: str,  # Name to use for the new Volume
         *,
+        version: Optional[int] = None,  # Experimental: Configure the backend VolumeFS version
         allow_existing: bool = False,  # If True, no-op when the Volume already exists
         environment_name: Optional[str] = None,  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
@@ -154,10 +155,15 @@ class _VolumeManager:
             if allow_existing
             else api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
         )
+
+        if version is not None and version not in {1, 2}:
+            raise InvalidError("VolumeFS version must be either 1 or 2")
+
         req = api_pb2.VolumeGetOrCreateRequest(
             deployment_name=name,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=object_creation_type,
+            version=version,
         )
         try:
             await retry_transient_errors(client.stub.VolumeGetOrCreate, req)
