@@ -529,7 +529,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         except GRPCError as exc:
             raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
-    async def snapshot_filesystem(self, timeout: int = 55, *, experimental_large_snapshot_support: bool = False) -> _Image:
+    async def snapshot_filesystem(
+        self, timeout: int = 55, *, experimental_large_snapshot_support: bool = False
+    ) -> _Image:
         """Snapshot the filesystem of the Sandbox.
 
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
