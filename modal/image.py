@@ -868,6 +868,31 @@ class _Image(_Object, type_prefix="im"):
 
         return obj
 
+    async def build(self, app: "modal.app._App") -> "_Image":
+        """Eagerly build an image.
+
+        **Examples**
+
+        ```python
+        image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
+
+        app = modal.App("build-image")
+        with app.run(), modal.enable_output():
+            image.build(app)
+
+        print(image.object_id)
+        ```
+        """
+        if app.app_id is None:
+            raise InvalidError("App has not been initialized yet. Run with `with app.run()`.")
+
+        app_id = app.app_id
+        app_client = app._client or await _Client.from_env()
+
+        resolver = Resolver(app_client, app_id=app_id)
+        await resolver.load(self)
+        return self
+
     def pip_install(
         self,
         *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
