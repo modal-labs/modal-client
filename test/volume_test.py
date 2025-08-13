@@ -628,6 +628,8 @@ def test_volume_create(servicer, client):
     with pytest.raises(AlreadyExistsError):
         modal.Volume.objects.create(name="test-volume-create", client=client)
     modal.Volume.objects.create(name="test-volume-create", allow_existing=True, client=client)
+    with pytest.raises(InvalidError, match="Invalid Volume name"):
+        modal.Volume.objects.create(name="has space", client=client)
 
 
 def test_volume_create_version(servicer, client):

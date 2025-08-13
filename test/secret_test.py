@@ -144,3 +144,5 @@ def test_secret_create(servicer, client):
     with pytest.raises(AlreadyExistsError):
         Secret.objects.create(name="test-secret-create", env_dict=env_dict, client=client)
     Secret.objects.create(name="test-secret-create", env_dict=env_dict, allow_existing=True, client=client)
+    with pytest.raises(InvalidError, match="Invalid Secret name"):
+        Secret.objects.create(name="has space", env_dict=env_dict, client=client)
