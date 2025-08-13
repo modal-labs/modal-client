@@ -560,7 +560,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return image
 
-    async def _snapshot_filesystem_async(self, timeout: int | None = None) -> _Image:
+    async def _snapshot_filesystem_async(self, timeout: Optional[int] = None) -> _Image:
         await self._get_task_id()  # Ensure the sandbox has started
 
         # Issue the async snapshot request
