@@ -880,6 +880,7 @@ class _Image(_Object, type_prefix="im"):
         with app.run(), modal.enable_output():
             image.build(app)
 
+        # Use this object_id with `Image.from_id` to use the built image in a sandbox or function.
         print(image.object_id)
         ```
         """
