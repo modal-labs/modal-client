@@ -504,6 +504,19 @@ def test_sandbox_snapshot_fs(app, servicer):
 
 
 @skip_non_subprocess
+def test_sandbox_snapshot_fs_async(app, servicer):
+    sb = Sandbox.create(app=app)
+    image = sb.snapshot_filesystem(experimental_large_snapshot_support=True)
+    sb.terminate()
+
+    sb2 = Sandbox.create(image=image, app=app)
+    sb2.terminate()
+
+    assert image.object_id == "im-async-123"
+    assert servicer.sandbox_defs[1].image_id == "im-async-123"
+
+
+@skip_non_subprocess
 def test_sandbox_cpu_request(app, servicer):
     _ = Sandbox.create(cpu=2.0, app=app)
 

@@ -529,12 +529,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         except GRPCError as exc:
             raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
-    async def snapshot_filesystem(self, timeout: int = 55) -> _Image:
+    async def snapshot_filesystem(self, timeout: int = 55, *, experimental_large_snapshot_support: bool = False) -> _Image:
         """Snapshot the filesystem of the Sandbox.
 
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
         can be used to spawn a new Sandbox with the same filesystem.
         """
+        if experimental_large_snapshot_support:
+            return await self._snapshot_filesystem_async(timeout)
+
         await self._get_task_id()  # Ensure the sandbox has started
         req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout)
         resp = await retry_transient_errors(self._client.stub.SandboxSnapshotFs, req)
@@ -554,6 +557,47 @@ class _Sandbox(_Object, type_prefix="sb"):
         image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
 
         return image
+
+    async def _snapshot_filesystem_async(self, timeout: int = 55) -> _Image:
+        await self._get_task_id()  # Ensure the sandbox has started
+
+        # Issue the async snapshot request
+        async_req = api_pb2.SandboxSnapshotFsAsyncRequest(sandbox_id=self.object_id)
+        async_resp = await retry_transient_errors(self._client.stub.SandboxSnapshotFsAsync, async_req)
+
+        image_id = async_resp.image_id
+
+        # Long poll for completion using asyncio.wait_for for timeout handling
+        async def _wait_for_completion() -> _Image:
+            while True:
+                # Use a long poll timeout - the endpoint supports this automatically
+                get_req = api_pb2.SandboxSnapshotFsAsyncGetRequest(image_id=image_id)
+                resp = await retry_transient_errors(self._client.stub.SandboxSnapshotFsAsyncGet, get_req)
+
+                if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                    # Snapshot completed successfully
+                    metadata = resp.image_metadata
+
+                    async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+                        # no need to hydrate again since we do it eagerly below
+                        pass
+
+                    rep = "Image()"
+                    image = _Image._from_loader(_load, rep, hydrate_lazily=True)
+                    image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
+
+                    return image
+                elif resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+                    # Server-side timeout, continue polling
+                    continue
+                else:
+                    # Some other error occurred
+                    raise ExecutionError(resp.result.exception)
+
+        try:
+            return await asyncio.wait_for(_wait_for_completion(), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise SandboxTimeoutError(f"Async filesystem snapshot timed out after {timeout}s")
 
     # Live handle methods
 

@@ -1771,6 +1771,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def SandboxSnapshotFsAsync(self, stream):
+        _request: api_pb2.SandboxSnapshotFsAsyncRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxSnapshotFsAsyncResponse(image_id="im-async-123"))
+
+    async def SandboxSnapshotFsAsyncGet(self, stream):
+        _request: api_pb2.SandboxSnapshotFsAsyncGetRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxSnapshotFsResponse(
+                image_id="im-async-123",
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+            )
+        )
+
     async def SandboxSnapshotWait(self, stream):
         _request: api_pb2.SandboxSnapshotWaitRequest = await stream.recv_message()
         await stream.send_message(
