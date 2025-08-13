@@ -871,6 +871,9 @@ class _Image(_Object, type_prefix="im"):
     async def build(self, app: "modal.app._App") -> "_Image":
         """Eagerly build an image.
 
+        If your image was previously built, then this method will be a no-op and
+        your built image is returned.
+
         **Examples**
 
         ```python
