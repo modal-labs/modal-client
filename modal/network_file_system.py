@@ -120,6 +120,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             )
             try:
                 response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
+                print(">>>>>", response)
                 self._hydrate(response.shared_volume_id, resolver.client, None)
             except modal.exception.NotFoundError as exc:
                 if exc.args[0] == "App has wrong entity vo":
