@@ -641,7 +641,7 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        timeout: int = 300,  # Maximum execution time of the function in seconds.
+        timeout: int = 300,  # Maximum execution time in seconds.
         name: Optional[str] = None,  # Sets the Modal name of the function within the app
         is_generator: Optional[
             bool
@@ -869,7 +869,7 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        timeout: int = 300,  # Maximum execution time of the function in seconds.
+        timeout: int = 300,  # Maximum execution time in seconds; applies independently to startup and each input.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
