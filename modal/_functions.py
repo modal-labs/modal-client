@@ -9,7 +9,7 @@ import warnings
 from collections.abc import AsyncGenerator, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Union
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -360,7 +360,7 @@ class _Invocation:
                 if items_total is not None and items_received >= items_total:
                     break
 
-    async def iter(self, start_index: int, end_index: int):
+    async def enumerate(self, start_index: int, end_index: int):
         """Iterate over the results of the function call in the range [start_index, end_index)."""
         limit = 49
         current_index = start_index
@@ -1903,8 +1903,9 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return await self._invocation().poll_function(timeout=timeout, index=index)
 
     @live_method_gen
-    async def iter(self, *args) -> AsyncIterator[Tuple[int, ReturnType]]:
-        """Iterate in-order over (index, result) pairs of the function call.
+    async def iter(self, *, start: int = 0, end: Optional[int] = None) -> AsyncIterator[ReturnType]:
+        """Iterate in-order over the results of the function call.
+
         Optionally, specify a range [start, end) to iterate over.
 
         Example:
@@ -1917,30 +1918,18 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         @app.local_entrypoint()
         def main():
             fc = my_func.spawn_map([1, 2, 3, 4])
-            assert list(fc.iter()) == [(0, 1), (1, 4), (2, 9), (3, 16)]
-            assert list(fc.iter(1, 3)) == [(1, 4), (2, 9)]
+            assert list(fc.iter()) == [1, 4, 9, 16]
+            assert list(fc.iter(start=1, end=3)) == [4, 9]
         ```
 
         If `end` is not provided, it will iterate over all results.
         """
-        # Match range() semantics.
-        if len(args) == 0:
-            start_index = 0
-            end_index = None
-        elif len(args) == 1:
-            start_index = 0
-            end_index = args[0]
-        elif len(args) == 2:
-            start_index, end_index = args
-        else:
-            raise ValueError(f"Invalid number of arguments: {len(args)}")
-
         num_inputs = await self.num_inputs()
-        if end_index is None:
-            end_index = num_inputs
-        if start_index < 0 or end_index > num_inputs:
-            raise ValueError(f"Invalid index range: {start_index} to {end_index} for {num_inputs} inputs")
-        async for item in self._invocation().iter(start_index=start_index, end_index=end_index):
+        if end is None:
+            end = num_inputs
+        if start < 0 or end > num_inputs:
+            raise ValueError(f"Invalid index range: {start} to {end} for {num_inputs} inputs")
+        async for _, item in self._invocation().enumerate(start_index=start, end_index=end):
             yield item
 
     async def get_call_graph(self) -> list[InputInfo]:

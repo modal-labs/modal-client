@@ -1668,26 +1668,26 @@ def test_function_call_iter(client, servicer):
 
         # Test iterating over all outputs
         results = []
-        for idx, result in fc.iter(5):
-            results.append((idx, result))
+        for result in fc.iter(end=5):
+            results.append(result)
 
-        expected_results = [(0, 4), (1, 9), (2, 16), (3, 25), (4, 36)]
+        expected_results = [4, 9, 16, 25, 36]
         assert results == expected_results
 
         # Test without specifying end_index
         results = []
-        for idx, result in fc.iter():
-            results.append((idx, result))
+        for result in fc.iter():
+            results.append(result)
 
         assert len(results) == 5
         assert results == expected_results
 
         # Test iterating over a subset
         subset_results = []
-        for idx, result in fc.iter(1, 3):
-            subset_results.append((idx, result))
+        for result in fc.iter(start=1, end=3):
+            subset_results.append(result)
 
         # Verify subset results
         assert len(subset_results) == 2
-        expected_subset = [(1, 9), (2, 16)]
+        expected_subset = [9, 16]
         assert subset_results == expected_subset
