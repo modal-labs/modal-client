@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.2.dev43 (2025-08-14)
+
+- Deprecated the undocumented `modal.Secret.create_deployed` and `modal.Volume.create_deployed` methods in favor of this new consistent interface.
+
+
 #### 1.1.2.dev31 (2025-08-11)
 
 - Allow multi-node Class-based functions to use RDMA
