@@ -82,6 +82,7 @@ class _DictManager:
         `modal.Dict.from_name` to perform a lookup after creation.
 
         """
+        check_object_name(name, "Dict")
         client = await _Client.from_env() if client is None else client
         object_creation_type = (
             api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
