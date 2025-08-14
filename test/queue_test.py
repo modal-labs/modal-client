@@ -173,3 +173,5 @@ def test_queue_create(servicer, client):
     with pytest.raises(AlreadyExistsError):
         Queue.objects.create(name="test-queue-create", client=client)
     Queue.objects.create(name="test-queue-create", allow_existing=True, client=client)
+    with pytest.raises(InvalidError, match="Invalid Queue name"):
+        Queue.objects.create(name="has space", client=client)
