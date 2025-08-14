@@ -78,13 +78,13 @@ def test_secret_from_dict_none(servicer, client):
 def test_secret_from_name(servicer, client):
     # Deploy secret
     name = "my-secret"
-    secret_id = Secret.create_deployed(name, {"FOO": "123"}, client=client)
+    Secret.objects.create(name, {"FOO": "123"}, client=client)
 
     # Look up secret
     secret = Secret.from_name(name)
     assert secret.name == name
     secret.hydrate(client)
-    assert secret.object_id == secret_id
+    secret_id = secret.object_id
 
     info = secret.info()
     assert info.name == name
@@ -114,7 +114,7 @@ def test_secret_namespace_deprecated(servicer, client):
         DeprecationError,
         match="The `namespace` parameter for `modal.Secret.create_deployed` is deprecated",
     ):
-        Secret.create_deployed(
+        Secret._create_deployed(
             "my-secret", {"FOO": "123"}, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client=client
         )
 
@@ -127,7 +127,7 @@ def test_secret_namespace_deprecated(servicer, client):
 
 def test_secret_list(servicer, client):
     for i in range(5):
-        Secret.create_deployed(f"test-secret-{i}", {"FOO": "123"}, client=client)
+        Secret.objects.create(f"test-secret-{i}", {"FOO": "123"}, client=client)
     if sys.platform == "win32":
         time.sleep(1 / 32)
 

@@ -140,7 +140,11 @@ modal secret create my-credentials username=john password="$PASSWORD"
             raise click.UsageError(f"Non-string value for secret '{k}'")
 
     # Create secret
-    await _Secret.create_deployed(secret_name, env_dict, overwrite=force)
+    if force:
+        # TODO migrate this path once we support Secret.update()?
+        await _Secret._create_deployed(secret_name, env_dict, overwrite=force)
+    else:
+        await _Secret.objects.create(secret_name, env_dict)
 
     # Print code sample
     console = make_console()
