@@ -1179,24 +1179,26 @@ async def _spawn_map_helper(
 
 
 def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal.functions._FunctionCall":
-    """Spawn parallel execution over a set of inputs, exiting as soon as the inputs are created (without waiting
-    for the map to complete).
+    """mdmd:hidden
+    Spawn parallel execution over a set of inputs, returning as soon as the inputs are created.
+
+    Unlike `modal.Function.map`, this method does not block on completion of the remote execution but
+    returns a `modal.FunctionCall` object that can be used to poll status and retrieve results later.
 
     Takes one iterator argument per argument in the function being mapped over.
 
     Example:
     ```python
     @app.function()
-    def my_func(a):
-        return a ** 2
+    def my_func(a, b):
+        return a ** b
 
 
     @app.local_entrypoint()
     def main():
-        fc = my_func.spawn_map([1, 2, 3, 4])
+        fc = my_func.spawn_map([1, 2], [3, 4])
     ```
 
-    Returns a FunctionCall object that can be used to retrieve results
     """
 
     return run_coroutine_in_temporary_event_loop(
