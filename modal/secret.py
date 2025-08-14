@@ -74,6 +74,8 @@ class _SecretManager:
         Note that this method does not return a local instance of the Secret. You can use
         `modal.Secret.from_name` to perform a lookup after creation.
 
+        Added in v1.1.2.
+
         """
         check_object_name(name, "Secret")
         client = await _Client.from_env() if client is None else client
@@ -125,6 +127,8 @@ class _SecretManager:
         ```python
         secrets = modal.Secret.objects.list(max_objects=10, created_before="2025-01-01")
         ```
+
+        Added in v1.1.2.
 
         """
         client = await _Client.from_env() if client is None else client
@@ -185,6 +189,9 @@ class _SecretManager:
         ```python notest
         await modal.Secret.objects.delete("my-secret", environment_name="dev")
         ```
+
+        Added in v1.1.2.
+
         """
         try:
             obj = await _Secret.from_name(name, environment_name=environment_name).hydrate(client)
