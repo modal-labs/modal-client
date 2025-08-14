@@ -139,6 +139,7 @@ class _VolumeManager:
         modal.Volume.objects.create("my-volume", environment_name="dev")
         ```
 
+        By default, an error will be raised if the Volume already exists, but passing
         `allow_existing=True` will make the creation attempt a no-op in this case.
 
         ```python notest
