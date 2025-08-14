@@ -883,11 +883,24 @@ class _Image(_Object, type_prefix="im"):
         with modal.enable_output(), app.run():
             image.build(app)
 
-        # Saving the image id
+        # Save the image id
         my_image_id = image.object_id
 
-        # Reference the image by id
+        # Reference the image with the id or uses it another context.
         built_image = modal.Image.from_id(my_image_id)
+        ```
+
+        Alternatively, you can re-built a image and use it in a sandbox.
+
+        ```python notest
+        app = modal.App.lookup("sandbox-example")
+
+        with modal.enable_output():
+            image = modal.Image.debian_slim().uv_pip_install("scipy").build(app)
+
+        sb = modal.Sandbox.create("python", "-c", "import scipy; print(scipy)", app=app, image=image)
+        print(sb.stdout.read())
+        sb.terminate()
         ```
 
         **Note**
