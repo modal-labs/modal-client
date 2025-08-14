@@ -236,7 +236,7 @@ def test_run_warns_without_module_flag(
 ):
     monkeypatch.chdir(supports_dir)
     _run(["run", "-m", f"{app_module}::foo"])
-    deprecation_warnings = [w for w in recwarn if issubclass(w.category, DeprecationError)]
+    deprecation_warnings = [w.message for w in recwarn if issubclass(w.category, DeprecationError)]
     assert not deprecation_warnings
 
     with pytest.warns(match=" -m "):
