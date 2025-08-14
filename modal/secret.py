@@ -444,6 +444,23 @@ class _Secret(_Object, type_prefix="st"):
         overwrite: bool = False,
     ) -> str:
         """mdmd:hidden"""
+        deprecation_warning(
+            (2025, 8, 13),
+            "The undocumented `modal.Secret.create_deployed` method is deprecated and will be removed "
+            "in a future release. It can be replaced with `modal.Secret.objects.create`.",
+        )
+        return await _Secret._create_deployed(deployment_name, env_dict, namespace, client, environment_name, overwrite)
+
+    @staticmethod
+    async def _create_deployed(
+        deployment_name: str,
+        env_dict: dict[str, str],
+        namespace=None,  # mdmd:line-hidden
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        overwrite: bool = False,
+    ) -> str:
+        """mdmd:hidden"""
         warn_if_passing_namespace(namespace, "modal.Secret.create_deployed")
 
         check_object_name(deployment_name, "Secret")
