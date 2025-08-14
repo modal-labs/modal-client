@@ -139,6 +139,7 @@ class _VolumeManager:
         modal.Volume.objects.create("my-volume", environment_name="dev")
         ```
 
+        By default, an error will be raised if the Volume already exists, but passing
         `allow_existing=True` will make the creation attempt a no-op in this case.
 
         ```python notest
@@ -147,6 +148,8 @@ class _VolumeManager:
 
         Note that this method does not return a local instance of the Volume. You can use
         `modal.Volume.from_name` to perform a lookup after creation.
+
+        Added in v1.1.2.
 
         """
         check_object_name(name, "Volume")
@@ -203,6 +206,8 @@ class _VolumeManager:
         ```python
         volumes = modal.Volume.objects.list(max_objects=10, created_before="2025-01-01")
         ```
+
+        Added in v1.1.2.
 
         """
         client = await _Client.from_env() if client is None else client
@@ -264,6 +269,9 @@ class _VolumeManager:
         ```python notest
         await modal.Volume.objects.delete("my-volume", environment_name="dev")
         ```
+
+        Added in v1.1.2.
+
         """
         try:
             obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
