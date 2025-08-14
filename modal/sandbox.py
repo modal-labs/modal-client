@@ -556,7 +556,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         return image
 
     async def experimental_snapshot_filesystem(self, timeout: Optional[int] = None) -> _Image:
-        """Snapshot the filesystem of the Sandbox, using the experimental async endpoint to support larger snapshots.
+        """mdmd:hidden
+        Snapshot the filesystem of the Sandbox, using the experimental async endpoint to support larger snapshots.
 
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
         can be used to spawn a new Sandbox with the same filesystem.
@@ -572,7 +573,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Long poll for completion using asyncio.wait_for for timeout handling
         async def _wait_for_completion() -> _Image:
             while True:
-                # Use a long poll timeout - the endpoint supports this automatically
                 get_req = api_pb2.SandboxSnapshotFsAsyncGetRequest(image_id=image_id)
                 resp = await retry_transient_errors(self._client.stub.SandboxSnapshotFsAsyncGet, get_req)
 
