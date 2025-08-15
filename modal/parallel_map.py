@@ -272,8 +272,37 @@ class AsyncInputPumper(InputPumper):
         super().__init__(client, input_queue=input_queue, function=function, function_call_id=function_call_id)
 
     async def pump_inputs(self):
-        async for _ in super().pump_inputs():
-            pass
+        assert self.client.stub
+        tasks = set()
+        max_concurrent = 20
+        semaphore = asyncio.Semaphore(max_concurrent)
+        async for items in queue_batch_iterator(self.input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+
+            async def process(items):
+                async with semaphore:
+                    request = api_pb2.FunctionPutInputsRequest(
+                        function_id=self.function.object_id,
+                        inputs=items,
+                        function_call_id=self.function_call_id,
+                    )
+                    logger.debug(
+                        f"Pushing {len(items)} inputs to server. Num queued inputs awaiting"
+                        f" push is {self.input_queue.qsize()}. Total inputs sent is {self.inputs_sent}."
+                    )
+                    await self._send_inputs(self.client.stub.FunctionPutInputs, request)
+                    self.inputs_sent += len(items)
+                    logger.debug(
+                        f"Successfully pushed {len(items)} inputs to server. "
+                        f"Num queued inputs awaiting push is {self.input_queue.qsize()}."
+                    )
+
+            # https://docs.python.org/3/library/asyncio-task.html
+            # This is the reccomended way to spawn tasks, hold onto references, and discard them when they are done.
+            task = asyncio.create_task(process(items))
+            tasks.add(task)
+            task.add_done_callback(tasks.discard)
+        await asyncio.gather(*tasks)
+
         request = api_pb2.FunctionFinishInputsRequest(
             function_id=self.function.object_id,
             function_call_id=self.function_call_id,
