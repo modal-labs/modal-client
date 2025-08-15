@@ -2573,7 +2573,7 @@ message Sandbox {
   Resources resources = 5;
   CloudProvider cloud_provider = 6;  // Deprecated at some point
 
-  uint32 timeout_secs = 7;
+  uint32 timeout_secs = 7; // The max lifetime of a sandbox in seconds.
 
   optional string workdir = 8;
 
