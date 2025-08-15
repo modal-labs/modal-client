@@ -2573,7 +2573,7 @@ message Sandbox {
   Resources resources = 5;
   CloudProvider cloud_provider = 6;  // Deprecated at some point
 
-  uint32 timeout_secs = 7;
+  uint32 timeout_secs = 7; // The max lifetime of a sandbox in seconds.
 
   optional string workdir = 8;
 
@@ -2635,6 +2635,9 @@ message Sandbox {
   map<string, bool> experimental_options = 31;
 
   repeated string preload_path_prefixes = 32; // Internal use only.
+
+  // Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
+  optional uint32 idle_timeout_secs = 33;
 }
 
 message SandboxCreateRequest {
