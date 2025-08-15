@@ -27,6 +27,40 @@ class Tunnel:
     unencrypted_host: str
     unencrypted_port: int
 
+    @classmethod
+    async def from_port(
+        cls,
+        port: int, 
+        *, 
+        unencrypted: bool = False, 
+        client: Optional[_Client] = None
+    ) -> Tunnel:
+        if not isinstance(port, int):
+            raise InvalidError(f"The port argument should be an int, not {port!r}")
+        if port < 1 or port > 65535:
+            raise InvalidError(f"Invalid port number {port}")
+    
+        if not client:
+            client = await _Client.from_env()
+    
+        if client.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
+            raise InvalidError("Forwarding ports only works inside a Modal container")
+    
+        try:
+            response = await client.stub.TunnelStart(api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted))
+        except GRPCError as exc:
+            if exc.status == Status.ALREADY_EXISTS:
+                raise InvalidError(f"Port {port} is already forwarded")
+            elif exc.status == Status.UNAVAILABLE:
+                raise RemoteError("Relay server is unavailable") from exc
+            else:
+                raise
+    
+        return cls(response.host, response.port, response.unencrypted_host, response.unencrypted_port)
+
+    async def stop(self):
+        await client.stub.TunnelStop(api_pb2.TunnelStopRequest(port=self.port))
+
     @property
     def url(self) -> str:
         """Get the public HTTPS URL of the forwarded port."""
