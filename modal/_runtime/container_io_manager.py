@@ -26,7 +26,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 import modal_proto.api_pb2
 from modal._runtime import gpu_memory_snapshot
-from modal._serialization import deserialize, serialize, serialize_data_format
+from modal._serialization import deserialize_data_format, serialize, serialize_data_format
 from modal._traceback import extract_traceback, print_exception
 from modal._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
@@ -151,9 +151,13 @@ class IOContext:
         # deserializing here instead of the constructor
         # to make sure we handle user exceptions properly
         # and don't retry
-        deserialized_args = [
-            deserialize(input.args, self._client) if input.args else ((), {}) for input in self.function_inputs
-        ]
+        deserialized_args = []
+        for input in self.function_inputs:
+            if input.args:
+                data_format = input.data_format or api_pb2.DATA_FORMAT_PICKLE
+                deserialized_args.append(deserialize_data_format(input.args, data_format, self._client))
+            else:
+                deserialized_args.append(((), {}))
         if not self._is_batched:
             return deserialized_args[0]
 
@@ -792,7 +796,7 @@ class _ContainerIOManager:
             await self._push_outputs(
                 io_context=io_context,
                 started_at=started_at,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                data_format=(io_context.function_inputs[0].data_format or api_pb2.DATA_FORMAT_PICKLE),
                 results=results,
             )
             self.exit_context(started_at, io_context.input_ids)
@@ -839,7 +843,11 @@ class _ContainerIOManager:
             await self._push_outputs(
                 io_context=io_context,
                 started_at=started_at,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                data_format=(
+                    io_context.finalized_function.data_format
+                    if io_context.finalized_function.data_format in (api_pb2.DATA_FORMAT_ASGI,)
+                    else (io_context.function_inputs[0].data_format or api_pb2.DATA_FORMAT_PICKLE)
+                ),
                 results=results,
             )
             self.exit_context(started_at, io_context.input_ids)

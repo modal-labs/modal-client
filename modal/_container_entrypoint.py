@@ -190,6 +190,12 @@ def call_function(
         )
         async with container_io_manager.handle_input_exception.aio(io_context, started_at):
             res = io_context.call_finalized_function()
+            # Select output payload format: mirror input payload format for non-ASGI payloads
+            desired_format = (
+                io_context.finalized_function.data_format
+                if io_context.finalized_function.data_format in (api_pb2.DATA_FORMAT_ASGI,)
+                else (io_context.function_inputs[0].data_format or api_pb2.DATA_FORMAT_PICKLE)
+            )
             # TODO(erikbern): any exception below shouldn't be considered a user exception
             if io_context.finalized_function.is_generator:
                 if not inspect.isasyncgen(res):
@@ -204,7 +210,7 @@ def call_function(
                 async with container_io_manager.generator_output_sender(
                     current_function_call_id,
                     current_attempt_token,
-                    io_context.finalized_function.data_format,
+                    desired_format,
                     generator_queue,
                 ):
                     item_count = 0
@@ -230,7 +236,7 @@ def call_function(
                     io_context,
                     started_at,
                     value,
-                    io_context.finalized_function.data_format,
+                    desired_format,
                 )
         reset_context()
 
@@ -241,6 +247,11 @@ def call_function(
         )
         with container_io_manager.handle_input_exception(io_context, started_at):
             res = io_context.call_finalized_function()
+            desired_format = (
+                io_context.finalized_function.data_format
+                if io_context.finalized_function.data_format in (api_pb2.DATA_FORMAT_ASGI,)
+                else (io_context.function_inputs[0].data_format or api_pb2.DATA_FORMAT_PICKLE)
+            )
 
             # TODO(erikbern): any exception below shouldn't be considered a user exception
             if io_context.finalized_function.is_generator:
@@ -256,7 +267,7 @@ def call_function(
                 with container_io_manager.generator_output_sender(
                     current_function_call_id,
                     current_attempt_token,
-                    io_context.finalized_function.data_format,
+                    desired_format,
                     generator_queue,
                 ):
                     item_count = 0
@@ -272,9 +283,7 @@ def call_function(
                         f"Sync (non-generator) function return value of type {type(res)}."
                         " You might need to use @app.function(..., is_generator=True)."
                     )
-                container_io_manager.push_outputs(
-                    io_context, started_at, res, io_context.finalized_function.data_format
-                )
+                container_io_manager.push_outputs(io_context, started_at, res, desired_format)
         reset_context()
 
     if container_io_manager.input_concurrency_enabled:

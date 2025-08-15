@@ -6,6 +6,11 @@ import typing
 from inspect import Parameter
 from typing import Any
 
+try:
+    import cbor2  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    cbor2 = None
+
 import google.protobuf.message
 
 from modal._utils.async_utils import synchronizer
@@ -355,6 +360,10 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
         assert isinstance(obj, api_pb2.GeneratorDone)
         return obj.SerializeToString(deterministic=True)
+    elif data_format == api_pb2.DATA_FORMAT_CBOR:
+        if cbor2 is None:
+            raise InvalidError("CBOR support requires the 'cbor2' package to be installed.")
+        return cbor2.dumps(obj)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
@@ -366,6 +375,10 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
         return _deserialize_asgi(api_pb2.Asgi.FromString(s))
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
         return api_pb2.GeneratorDone.FromString(s)
+    elif data_format == api_pb2.DATA_FORMAT_CBOR:
+        if cbor2 is None:
+            raise InvalidError("CBOR support requires the 'cbor2' package to be installed.")
+        return cbor2.loads(s)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 

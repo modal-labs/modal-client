@@ -2192,7 +2192,20 @@ class _Image(_Object, type_prefix="im"):
                     f"Arguments to `run_function` are too large ({len(args_serialized)} bytes). "
                     f"Maximum size is {MAX_OBJECT_SIZE_BYTES} bytes."
                 )
-            build_function_input = api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE)
+            from .config import config
+
+            payload_format = (config.get("payload_format") or "pickle").lower()
+            if payload_format == "cbor":
+                from modal._serialization import serialize_data_format
+
+                build_function_input = api_pb2.FunctionInput(
+                    args=serialize_data_format((args, kwargs), api_pb2.DATA_FORMAT_CBOR),
+                    data_format=api_pb2.DATA_FORMAT_CBOR,
+                )
+            else:
+                build_function_input = api_pb2.FunctionInput(
+                    args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE
+                )
         else:
             build_function_input = None
         return _Image._from_args(
