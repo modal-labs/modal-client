@@ -2167,7 +2167,7 @@ message MapStartOrContinueResponse {
   string function_call_id = 2;
   uint32 max_inputs_outstanding = 3;
   repeated string attempt_tokens = 4;
-  FunctionRetryPolicy retry_policy = 5; // TODO(ben-okeefe): Not currently used
+  FunctionRetryPolicy retry_policy = 5;
 }
 
 message MethodDefinition {
