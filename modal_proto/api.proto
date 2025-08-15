@@ -618,7 +618,7 @@ message AttemptStartRequest {
 
 message AttemptStartResponse {
   string attempt_token = 1;
-  FunctionRetryPolicy retry_policy = 2; // TODO(ben-okeefe) TODO(nathan): Not currently used
+  FunctionRetryPolicy retry_policy = 2;
 }
 
 message AuthTokenGetRequest {
