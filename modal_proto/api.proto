@@ -2635,6 +2635,9 @@ message Sandbox {
   map<string, bool> experimental_options = 31;
 
   repeated string preload_path_prefixes = 32; // Internal use only.
+
+  // Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
+  optional uint32 idle_timeout_secs = 33;
 }
 
 message SandboxCreateRequest {
