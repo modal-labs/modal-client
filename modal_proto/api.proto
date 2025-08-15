@@ -111,7 +111,7 @@ enum DataFormat {
   DATA_FORMAT_PICKLE = 1; // Cloudpickle
   DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
   DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
-  DATA_FORMAT_CBOR = 4;
+  DATA_FORMAT_CBOR = 4; // CBOR encoded payloads
 }
 
 enum DeploymentNamespace {

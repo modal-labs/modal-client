@@ -2531,6 +2531,44 @@ def test_deserialization_error_returns_exception(servicer, client):
 
 
 @skip_github_non_linux
+def test_cbor_payload_simple_function(servicer):
+    pytest.importorskip("cbor2")
+    # Construct a single CBOR-encoded input to call test.supports.functions.square(2) -> 4
+    cbor_args = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_CBOR)
+    inputs = [
+        api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id="in-cbor0",
+                    function_call_id="fc-cbor",
+                    input=api_pb2.FunctionInput(
+                        args=cbor_args,
+                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        method_name="",
+                    ),
+                )
+            ]
+        ),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
+    ]
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "square",
+        inputs=inputs,
+    )
+
+    # Expect CBOR output when CBOR input was used
+    assert len(ret.items) == 1
+    item = ret.items[0]
+    assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert item.data_format == api_pb2.DATA_FORMAT_CBOR
+    value = deserialize_data_format(item.result.data, item.data_format, ret.client)
+    assert int(value) == 4
+
+
+@skip_github_non_linux
 def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
     # first populate app objects, so they can be fetched by AppGetObjects
     deploy_app_externally(servicer, credentials, "test.supports.user_code_import_samples.cls")
