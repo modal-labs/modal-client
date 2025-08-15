@@ -109,6 +109,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret],
         name: Optional[str] = None,
         timeout: int = 300,
+        idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -234,6 +235,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 name=name,
                 experimental_options=experimental_options,
             )
+            if idle_timeout is not None:
+                definition.idle_timeout_secs = idle_timeout
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
             try:
@@ -258,6 +261,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         timeout: int = 300,  # Maximum execution time of the sandbox in seconds.
+        # The amount of time in seconds that a sandbox can be idle before being terminated.
+        idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -324,6 +329,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             secrets=secrets,
             network_file_systems=network_file_systems,
             timeout=timeout,
+            idle_timeout=idle_timeout,
             workdir=workdir,
             gpu=gpu,
             cloud=cloud,
@@ -356,6 +362,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         mounts: Sequence[_Mount] = (),
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         timeout: int = 300,  # Maximum execution time of the sandbox in seconds.
+        # The amount of time in seconds that a sandbox can be idle before being terminated.
+        idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -405,6 +413,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             secrets=secrets,
             name=name,
             timeout=timeout,
+            idle_timeout=idle_timeout,
             workdir=workdir,
             gpu=gpu,
             cloud=cloud,
