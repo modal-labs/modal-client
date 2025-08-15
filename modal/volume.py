@@ -696,9 +696,6 @@ class _Volume(_Object, type_prefix="vo"):
         @retry(n_attempts=5, base_delay=0.1, timeout=None)
         async def read_block(block_url: str) -> bytes:
             async with ClientSessionRegistry.get_session().get(block_url) as get_response:
-                if get_response.status in [503, 429]:
-                    logger.warning("Received SlowDown signal, sleeping for 1 second before retrying.")
-                    await asyncio.sleep(1)
                 return await get_response.content.read()
 
         async def iter_urls() -> AsyncGenerator[str]:
@@ -742,10 +739,6 @@ class _Volume(_Object, type_prefix="vo"):
             num_bytes_written = 0
 
             async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
-                if get_response.status in [503, 429]:
-                    logger.warning("Received SlowDown signal, sleeping for 1 second before retrying.")
-                    await asyncio.sleep(1)
-
                 async for chunk in get_response.content.iter_any():
                     num_chunk_bytes_written = 0
 
