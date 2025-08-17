@@ -463,7 +463,7 @@ def test_success(servicer):
 
 
 @skip_github_non_linux
-def test_generator_success(servicer, event_loop):
+def test_generator_success(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
@@ -559,7 +559,7 @@ def test_keyboardinterrupt(servicer):
 
 
 @skip_github_non_linux
-def test_rate_limited(servicer, event_loop):
+def test_rate_limited(servicer):
     t0 = time.time()
     servicer.rate_limit_sleep_duration = 0.25
     ret = _run_container(servicer, "test.supports.functions", "square")
@@ -568,7 +568,7 @@ def test_rate_limited(servicer, event_loop):
 
 
 @skip_github_non_linux
-def test_grpc_failure(servicer, event_loop):
+def test_grpc_failure(servicer):
     # An error in "Modal code" should cause the entire container to fail
     with pytest.raises(GRPCError):
         _run_container(
@@ -2283,13 +2283,13 @@ def test_sigint_termination_exit_handler(servicer, tmp_path, exit_type):
 
 
 @skip_github_non_linux
-def test_sandbox(servicer, event_loop):
+def test_sandbox(servicer):
     ret = _run_container(servicer, "test.supports.functions", "sandbox_f")
     assert _unwrap_scalar(ret) == "sb-123"
 
 
 @skip_github_non_linux
-def test_is_local(servicer, event_loop):
+def test_is_local(servicer):
     assert is_local() == True
 
     ret = _run_container(servicer, "test.supports.functions", "is_local_f")
@@ -2493,7 +2493,7 @@ def test_set_local_input_concurrency(servicer):
 
 
 @skip_github_non_linux
-def test_sandbox_infers_app(servicer, event_loop):
+def test_sandbox_infers_app(servicer):
     _run_container(servicer, "test.supports.sandbox", "spawn_sandbox")
     assert servicer.sandbox_app_id == "ap-1"
 
@@ -2556,18 +2556,18 @@ def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
 
 
 @skip_github_non_linux
-def test_container_app_zero_matching(servicer, event_loop):
+def test_container_app_zero_matching(servicer):
     ret = _run_container(servicer, "test.supports.function_without_app", "f")
     assert _unwrap_scalar(ret) == 123
 
 
 @skip_github_non_linux
-def test_container_app_one_matching(servicer, event_loop):
+def test_container_app_one_matching(servicer):
     _run_container(servicer, "test.supports.functions", "check_container_app")
 
 
 @skip_github_non_linux
-def test_no_event_loop(servicer, event_loop):
+def test_no_event_loop(servicer):
     ret = _run_container(servicer, "test.supports.functions", "get_running_loop")
     exc = _unwrap_exception(ret)
     assert isinstance(exc, RuntimeError)
@@ -2575,19 +2575,19 @@ def test_no_event_loop(servicer, event_loop):
 
 
 @skip_github_non_linux
-def test_is_main_thread_sync(servicer, event_loop):
+def test_is_main_thread_sync(servicer):
     ret = _run_container(servicer, "test.supports.functions", "is_main_thread_sync")
     assert _unwrap_scalar(ret) is True
 
 
 @skip_github_non_linux
-def test_is_main_thread_async(servicer, event_loop):
+def test_is_main_thread_async(servicer):
     ret = _run_container(servicer, "test.supports.functions", "is_main_thread_async")
     assert _unwrap_scalar(ret) is True
 
 
 @skip_github_non_linux
-def test_import_thread_is_main_thread(servicer, event_loop):
+def test_import_thread_is_main_thread(servicer):
     ret = _run_container(servicer, "test.supports.functions", "import_thread_is_main_thread")
     assert _unwrap_scalar(ret) is True
 
