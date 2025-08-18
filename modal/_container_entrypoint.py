@@ -223,7 +223,6 @@ def call_function(
                     io_context,
                     started_at,
                     message,
-                    api_pb2.DATA_FORMAT_GENERATOR_DONE,
                 )
             else:
                 if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
@@ -236,7 +235,6 @@ def call_function(
                     io_context,
                     started_at,
                     value,
-                    desired_format,
                 )
         reset_context()
 
@@ -276,14 +274,14 @@ def call_function(
                         item_count += 1
 
                 message = api_pb2.GeneratorDone(items_total=item_count)
-                container_io_manager.push_outputs(io_context, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
+                container_io_manager.push_outputs(io_context, started_at, message)
             else:
                 if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                     raise InvalidError(
                         f"Sync (non-generator) function return value of type {type(res)}."
                         " You might need to use @app.function(..., is_generator=True)."
                     )
-                container_io_manager.push_outputs(io_context, started_at, res, desired_format)
+                container_io_manager.push_outputs(io_context, started_at, res)
         reset_context()
 
     if container_io_manager.input_concurrency_enabled:

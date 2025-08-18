@@ -202,18 +202,27 @@ class IOContext:
         logger.debug(f"Finished input {self.input_ids}")
         return res
 
-    def validate_output_data(self, data: Any) -> list[Any]:
+    def prepare_output_data(self, data: Any) -> list[tuple[str, int, Any, int]]:
+        """Prepare output data and return tuples of (input_id, retry_count, data, data_format)."""
         if not self._is_batched:
-            return [data]
+            data_list = [data]
+        else:
+            function_name = self.finalized_function.callable.__name__
+            if not isinstance(data, list):
+                raise InvalidError(f"Output of batched function {function_name} must be a list.")
+            if len(data) != len(self.input_ids):
+                raise InvalidError(
+                    f"Output of batched function {function_name} must be a list of equal length as its inputs."
+                )
+            data_list = data
 
-        function_name = self.finalized_function.callable.__name__
-        if not isinstance(data, list):
-            raise InvalidError(f"Output of batched function {function_name} must be a list.")
-        if len(data) != len(self.input_ids):
-            raise InvalidError(
-                f"Output of batched function {function_name} must be a list of equal length as its inputs."
-            )
-        return data
+        # Combine all the needed info into tuples
+        result = []
+        for index, d in enumerate(data_list):
+            input_format = self.function_inputs[index].data_format or api_pb2.DATA_FORMAT_PICKLE
+            result.append((self.input_ids[index], self.retry_counts[index], d, input_format))
+
+        return result
 
 
 class InputSlots:
@@ -701,6 +710,10 @@ class _ContainerIOManager:
             for input_id, retry_count, result in zip(io_context.input_ids, io_context.retry_counts, results)
         ]
 
+        await self._send_outputs(outputs)
+
+    async def _send_outputs(self, outputs: list[api_pb2.FunctionPutOutputsItem]) -> None:
+        """Send pre-built output items with retry and chunking."""
         # There are multiple outputs for a single IOContext in the case of @modal.batched.
         # Limit the batch size to 20 to stay within message size limits and buffer size limits.
         output_batch_size = 20
@@ -867,25 +880,58 @@ class _ContainerIOManager:
         io_context: IOContext,
         started_at: float,
         data: Any,
-        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
     ) -> None:
-        data = io_context.validate_output_data(data)
-        formatted_data = await asyncio.gather(
-            *[self.format_blob_data(self.serialize_data_format(d, data_format)) for d in data]
-        )
-        results = [
-            api_pb2.GenericResult(
-                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                **d,
+        # Special-case for generator completion messages which have a fixed format.
+        if isinstance(data, api_pb2.GeneratorDone):
+            # For generator done messages, we just need the data list
+            data_list = [data] if not io_context._is_batched else data
+            formatted_data = await asyncio.gather(
+                *[
+                    self.format_blob_data(self.serialize_data_format(d, api_pb2.DATA_FORMAT_GENERATOR_DONE))
+                    for d in data_list
+                ]
             )
-            for d in formatted_data
-        ]
-        await self._push_outputs(
-            io_context=io_context,
-            started_at=started_at,
-            data_format=data_format,
-            results=results,
-        )
+            results = [
+                api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                    **d,
+                )
+                for d in formatted_data
+            ]
+            await self._push_outputs(
+                io_context=io_context,
+                started_at=started_at,
+                data_format=api_pb2.DATA_FORMAT_GENERATOR_DONE,
+                results=results,
+            )
+            self.exit_context(started_at, io_context.input_ids)
+            return
+
+        # For non-generator outputs, prepare output data with all needed info.
+        prepared_outputs = io_context.prepare_output_data(data)
+        output_created_at = time.time()
+
+        # Build outputs with per-item data_format values.
+        outputs: list[api_pb2.FunctionPutOutputsItem] = []
+        for input_id, retry_count, output_data, data_format in prepared_outputs:
+            serialized_bytes = self.serialize_data_format(output_data, data_format)
+            formatted = await self.format_blob_data(serialized_bytes)
+            item_result = api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                **formatted,
+            )
+            outputs.append(
+                api_pb2.FunctionPutOutputsItem(
+                    input_id=input_id,
+                    input_started_at=started_at,
+                    output_created_at=output_created_at,
+                    result=item_result,
+                    data_format=data_format,
+                    retry_count=retry_count,
+                )
+            )
+
+        await self._send_outputs(outputs)
         self.exit_context(started_at, io_context.input_ids)
 
     async def memory_restore(self) -> None:
