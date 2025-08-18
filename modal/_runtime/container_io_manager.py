@@ -24,7 +24,6 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
-import modal_proto.api_pb2
 from modal._runtime import gpu_memory_snapshot
 from modal._serialization import deserialize_data_format, serialize, serialize_data_format
 from modal._traceback import extract_traceback, print_exception
@@ -202,7 +201,7 @@ class IOContext:
         logger.debug(f"Finished input {self.input_ids}")
         return res
 
-    def prepare_output_data(self, data: Any) -> list[tuple[str, int, Any, int]]:
+    def prepare_output_data(self, data: Any) -> list[tuple[str, int, Any, api_pb2.DataFormat.ValueType]]:
         """Prepare output data and return tuples of (input_id, retry_count, data, data_format)."""
         if not self._is_batched:
             data_list = [data]
@@ -512,7 +511,7 @@ class _ContainerIOManager:
         function_call_id: str,
         attempt_token: str,
         start_index: int,
-        data_format: int,
+        data_format: "api_pb2.DataFormat.ValueType",
         serialized_messages: list[Any],
     ) -> None:
         """Put data onto the `data_out` stream of a function call.
@@ -694,7 +693,6 @@ class _ContainerIOManager:
         self,
         io_context: IOContext,
         started_at: float,
-        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
         results: list[api_pb2.GenericResult],
     ) -> None:
         output_created_at = time.time()
@@ -704,10 +702,12 @@ class _ContainerIOManager:
                 input_started_at=started_at,
                 output_created_at=output_created_at,
                 result=result,
-                data_format=data_format,
+                data_format=function_input.data_format or api_pb2.DataFormat.DATA_FORMAT_PICKLE,
                 retry_count=retry_count,
             )
-            for input_id, retry_count, result in zip(io_context.input_ids, io_context.retry_counts, results)
+            for input_id, retry_count, function_input, result in zip(
+                io_context.input_ids, io_context.retry_counts, io_context.function_inputs, results
+            )
         ]
 
         await self._send_outputs(outputs)
@@ -809,7 +809,6 @@ class _ContainerIOManager:
             await self._push_outputs(
                 io_context=io_context,
                 started_at=started_at,
-                data_format=(io_context.function_inputs[0].data_format or api_pb2.DATA_FORMAT_PICKLE),
                 results=results,
             )
             self.exit_context(started_at, io_context.input_ids)
@@ -856,11 +855,6 @@ class _ContainerIOManager:
             await self._push_outputs(
                 io_context=io_context,
                 started_at=started_at,
-                data_format=(
-                    io_context.finalized_function.data_format
-                    if io_context.finalized_function.data_format in (api_pb2.DATA_FORMAT_ASGI,)
-                    else (io_context.function_inputs[0].data_format or api_pb2.DATA_FORMAT_PICKLE)
-                ),
                 results=results,
             )
             self.exit_context(started_at, io_context.input_ids)
@@ -884,7 +878,12 @@ class _ContainerIOManager:
         # Special-case for generator completion messages which have a fixed format.
         if isinstance(data, api_pb2.GeneratorDone):
             # For generator done messages, we just need the data list
-            data_list = [data] if not io_context._is_batched else data
+            # For batched mode, data should be a list of GeneratorDone objects
+            if not io_context._is_batched:
+                data_list = [data]
+            else:
+                # In batched mode, data should already be a list
+                data_list = data if isinstance(data, list) else [data]
             formatted_data = await asyncio.gather(
                 *[
                     self.format_blob_data(self.serialize_data_format(d, api_pb2.DATA_FORMAT_GENERATOR_DONE))
@@ -898,12 +897,19 @@ class _ContainerIOManager:
                 )
                 for d in formatted_data
             ]
-            await self._push_outputs(
-                io_context=io_context,
-                started_at=started_at,
-                data_format=api_pb2.DATA_FORMAT_GENERATOR_DONE,
-                results=results,
-            )
+            output_created_at = time.time()
+            outputs = [
+                api_pb2.FunctionPutOutputsItem(
+                    input_id=input_id,
+                    input_started_at=started_at,
+                    output_created_at=output_created_at,
+                    result=result,
+                    data_format=api_pb2.DATA_FORMAT_GENERATOR_DONE,
+                    retry_count=retry_count,
+                )
+                for input_id, retry_count, result in zip(io_context.input_ids, io_context.retry_counts, results)
+            ]
+            await self._send_outputs(outputs)
             self.exit_context(started_at, io_context.input_ids)
             return
 
