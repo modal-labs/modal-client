@@ -541,7 +541,11 @@ class _ContainerIOManager:
 
     @asynccontextmanager
     async def generator_output_sender(
-        self, function_call_id: str, attempt_token: str, data_format: int, message_rx: asyncio.Queue
+        self,
+        function_call_id: str,
+        attempt_token: str,
+        data_format: "api_pb2.DataFormat.ValueType",
+        message_rx: asyncio.Queue,
     ) -> AsyncGenerator[None, None]:
         """Runs background task that feeds generator outputs into a function call's `data_out` stream."""
         GENERATOR_STOP_SENTINEL = Sentinel()
@@ -688,15 +692,15 @@ class _ContainerIOManager:
             # collect all active input slots, meaning all inputs have wrapped up.
             await self._input_slots.close()
 
-    @synchronizer.no_io_translation
-    async def _push_outputs(
+    def _create_output_items(
         self,
         io_context: IOContext,
         started_at: float,
+        output_created_at: float,
         results: list[api_pb2.GenericResult],
-    ) -> None:
-        output_created_at = time.time()
-        outputs = [
+    ) -> list[api_pb2.FunctionPutOutputsItem]:
+        """Helper to package results into FunctionPutOutputsItem objects."""
+        return [
             api_pb2.FunctionPutOutputsItem(
                 input_id=input_id,
                 input_started_at=started_at,
@@ -709,8 +713,6 @@ class _ContainerIOManager:
                 io_context.input_ids, io_context.retry_counts, io_context.function_inputs, results
             )
         ]
-
-        await self._send_outputs(outputs)
 
     async def _send_outputs(self, outputs: list[api_pb2.FunctionPutOutputsItem]) -> None:
         """Send pre-built output items with retry and chunking."""
@@ -806,11 +808,9 @@ class _ContainerIOManager:
                 api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
                 for _ in io_context.input_ids
             ]
-            await self._push_outputs(
-                io_context=io_context,
-                started_at=started_at,
-                results=results,
-            )
+            output_created_at = time.time()
+            outputs = self._create_output_items(io_context, started_at, output_created_at, results)
+            await self._send_outputs(outputs)
             self.exit_context(started_at, io_context.input_ids)
             logger.warning(f"Successfully canceled input {io_context.input_ids}")
             return
@@ -852,11 +852,9 @@ class _ContainerIOManager:
                 )
                 for _ in io_context.input_ids
             ]
-            await self._push_outputs(
-                io_context=io_context,
-                started_at=started_at,
-                results=results,
-            )
+            output_created_at = time.time()
+            outputs = self._create_output_items(io_context, started_at, output_created_at, results)
+            await self._send_outputs(outputs)
             self.exit_context(started_at, io_context.input_ids)
 
     def exit_context(self, started_at, input_ids: list[str]):
@@ -875,6 +873,7 @@ class _ContainerIOManager:
         started_at: float,
         data: Any,
     ) -> None:
+        output_created_at = time.time()
         # Special-case for generator completion messages which have a fixed format.
         if isinstance(data, api_pb2.GeneratorDone):
             # For generator done messages, we just need the data list
@@ -897,7 +896,6 @@ class _ContainerIOManager:
                 )
                 for d in formatted_data
             ]
-            output_created_at = time.time()
             outputs = [
                 api_pb2.FunctionPutOutputsItem(
                     input_id=input_id,
@@ -915,7 +913,6 @@ class _ContainerIOManager:
 
         # For non-generator outputs, prepare output data with all needed info.
         prepared_outputs = io_context.prepare_output_data(data)
-        output_created_at = time.time()
 
         # Build outputs with per-item data_format values.
         outputs: list[api_pb2.FunctionPutOutputsItem] = []
