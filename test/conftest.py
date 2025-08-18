@@ -24,10 +24,9 @@ from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable, Optional, Union, get_args
+from typing import Any, AsyncGenerator, Callable, Optional, Union, get_args
 
 import aiohttp.web
-import aiohttp.web_runner
 import grpclib.server
 import jwt
 import pkg_resources
@@ -319,6 +318,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.port = port
         # AttemptAwait will return a failure until this is 0. It is decremented by 1 each time AttemptAwait is called.
         self.attempt_await_failures_remaining = 0
+        # Number of times AttemptRetry has been called.
+        self.attempted_retries = 0
         # Value returned by AuthTokenGet
         self.auth_token = jwt.encode({"exp": int(time.time()) + 3600}, "my-secret-key", algorithm="HS256")
         self.auth_tokens_generated = 0
@@ -2311,6 +2312,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AttemptStart(self, stream):
         request: api_pb2.AttemptStartRequest = await stream.recv_message()
         fn_definition = self.app_functions.get(request.function_id)
+
+        self.fcidx += 1
+        function_call_id = f"fc-{self.fcidx}"
+        input_id = f"in-{self.n_inputs}"
+        self.n_inputs += 1
+        self.add_function_call_input(function_call_id, request.input, input_id, 0)
+
         retry_policy = fn_definition.retry_policy if fn_definition else None
         # TODO(ryan): implement attempt token logic
         await stream.send_message(
@@ -2318,36 +2326,58 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def AttemptAwait(self, stream):
-        # TODO(ryan): Eventually we may want to invoke the user's function and return a result.
-        # For now we just return a dummy response
+        # TODO(dxia): implement attempt token logic
 
-        # To test client retries, tests can configure outputs to fail some number of times.
+        # To test client retries for internal failures, tests can configure outputs to fail some number of times.
         status = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
         if self.attempt_await_failures_remaining > 0:
             status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
             self.attempt_await_failures_remaining = self.attempt_await_failures_remaining - 1
 
+        if self.function_call_inputs:
+            function_call_id = f"fc-{self.fcidx}"
+            (idx, input_id, retry_count), (args, kwargs) = self.function_call_inputs.pop(function_call_id)[0]
+            self.fcidx -= 1
+            try:
+                res = self._function_body(*args, **kwargs)
+            except Exception as e:
+                res = e
+                status = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+        else:
+            input_id = "in-1"
+            idx = 0
+            retry_count = 0
+            res = "attempt_await_bogus_response"
+
         await stream.send_message(
             api_pb2.AttemptAwaitResponse(
                 output=api_pb2.FunctionGetOutputsItem(
-                    input_id="in-1",
-                    idx=0,
+                    input_id=input_id,
+                    idx=idx,
                     result=api_pb2.GenericResult(
                         status=status,
-                        data=serialize_data_format("attempt_await_bogus_response", api_pb2.DATA_FORMAT_PICKLE),
+                        data=serialize_data_format(res, api_pb2.DATA_FORMAT_PICKLE),
                     ),
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
-                    retry_count=0,
+                    retry_count=retry_count,
                 )
             )
         )
 
     async def AttemptRetry(self, stream):
-        await stream.send_message(api_pb2.AttemptRetryResponse(attempt_token="bogus_retry_token"))
+        request: api_pb2.AttemptRetryRequest = await stream.recv_message()
+
+        self.fcidx += 1
+        function_call_id = f"fc-{self.fcidx}"
+        input_id = f"in-{self.n_inputs}"
+        self.n_inputs += 1
+        self.add_function_call_input(function_call_id, request.input, input_id, 0)
+
+        self.attempted_retries += 1
+        await stream.send_message(api_pb2.AttemptRetryResponse(attempt_token=request.attempt_token))
 
     async def MapStartOrContinue(self, stream):
         request: api_pb2.MapStartOrContinueRequest = await stream.recv_message()
-        # print(f"MapStartOrContinue: request: {request}")
 
         # If function_call_id is provided, this is a continue request, otherwise it's a start
         if request.function_call_id:
@@ -2359,7 +2389,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         # Process inputs and store them for MapAwait to pick up later
         attempt_tokens = []
-        for index, item in enumerate(request.items):
+        for item in request.items:
             retry_count = 0
             if item.attempt_token != "":
                 retry_count = int(item.attempt_token.split(":")[1]) + 1
@@ -2652,7 +2682,7 @@ def credentials():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def servicer(blob_server, temporary_sock_path, credentials):
+async def servicer(blob_server, temporary_sock_path, credentials) -> AsyncGenerator[MockClientServicer, None]:
     port = find_free_port()
 
     blob_host, blobs, blocks, files_sha2data = blob_server
@@ -2675,7 +2705,7 @@ async def servicer(blob_server, temporary_sock_path, credentials):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def client(servicer, credentials):
+async def client(servicer: MockClientServicer, credentials: tuple[str, str]) -> AsyncGenerator[Client, None]:
     with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
         yield client
 
