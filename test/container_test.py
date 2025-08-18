@@ -93,7 +93,7 @@ def _get_inputs(
 
 def _get_inputs_batched_with_formats(
     args_list: list[tuple[tuple, dict]],
-    data_formats: list[int],
+    data_formats: list[api_pb2.DataFormat.ValueType],
     batch_max_size: int,
     kill_switch=True,
     method_name: Optional[str] = None,
@@ -2658,7 +2658,7 @@ def test_batch_sync_function_mixed_data_formats(servicer):
     """Test that batch mode correctly handles different serialization formats per input item."""
     pytest.importorskip("cbor2")
     # Create inputs with different data formats
-    args_list = [
+    args_list: list[tuple[tuple, dict]] = [
         ((10, 5), {}),  # Will use PICKLE format
         ((20, 4), {}),  # Will use CBOR format
         ((30, 6), {}),  # Will use PICKLE format
