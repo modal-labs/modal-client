@@ -91,18 +91,21 @@ def _get_inputs(
     return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
 
 
-def _get_inputs_batched(
+def _get_inputs_batched_with_formats(
     args_list: list[tuple[tuple, dict]],
+    data_formats: list[int],
     batch_max_size: int,
     kill_switch=True,
     method_name: Optional[str] = None,
 ):
-    input_pbs = [
-        api_pb2.FunctionInput(
-            args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+    """Helper function to create batched inputs with different data formats per item."""
+    assert len(args_list) == len(data_formats), "args_list and data_formats must have same length"
+    input_pbs = []
+    for args, data_format in zip(args_list, data_formats):
+        serialized_args = serialize_data_format(args, data_format)
+        input_pbs.append(
+            api_pb2.FunctionInput(args=serialized_args, data_format=data_format, method_name=method_name or "")
         )
-        for args in args_list
-    ]
     inputs = [
         *(
             api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
@@ -126,7 +129,19 @@ def _get_inputs_batched(
 
     if len(current_batch) > 0:
         response_list.append(api_pb2.FunctionGetInputsResponse(inputs=current_batch))
+
     return response_list
+
+
+def _get_inputs_batched(
+    args_list: list[tuple[tuple, dict]],
+    batch_max_size: int,
+    kill_switch=True,
+    method_name: Optional[str] = None,
+):
+    """Helper function to create batched inputs with PICKLE format for all items."""
+    data_formats = [api_pb2.DATA_FORMAT_PICKLE] * len(args_list)
+    return _get_inputs_batched_with_formats(args_list, data_formats, batch_max_size, kill_switch, method_name)
 
 
 def _get_multi_inputs(args: list[tuple[str, tuple, dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
@@ -2636,3 +2651,44 @@ def test_custom_exception(servicer, capsys):
     exc = _unwrap_exception(ret)
     assert isinstance(exc, Exception)
     assert repr(exc) == "CustomException('Failure!')"
+
+
+@skip_github_non_linux
+def test_batch_sync_function_mixed_data_formats(servicer):
+    """Test that batch mode correctly handles different serialization formats per input item."""
+    pytest.importorskip("cbor2")
+    # Create inputs with different data formats
+    args_list = [
+        ((10, 5), {}),  # Will use PICKLE format
+        ((20, 4), {}),  # Will use CBOR format
+        ((30, 6), {}),  # Will use PICKLE format
+    ]
+    data_formats = [
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+        api_pb2.DATA_FORMAT_PICKLE,
+    ]
+    expected_outputs = [2, 5, 5]  # Results of integer division
+    batch_wait_ms = 500
+    batch_max_size = 4
+    inputs = _get_inputs_batched_with_formats(args_list, data_formats, batch_max_size)
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "batch_function_sync",  # This function does integer division: x // y
+        inputs=inputs,
+        batch_max_size=batch_max_size,
+        batch_wait_ms=batch_wait_ms,
+    )
+    # Verify we got the expected number of outputs
+    assert len(ret.items) == len(expected_outputs)
+    # Check that each output has the correct data format and value
+    for i, (item, expected_output, expected_format) in enumerate(zip(ret.items, expected_outputs, data_formats)):
+        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+        assert item.data_format == expected_format, (
+            f"Item {i}: expected format {expected_format}, got {item.data_format}"
+        )
+        # Deserialize using the correct format and verify the result
+        value = deserialize_data_format(item.result.data, item.data_format, ret.client)
+        assert value == expected_output, f"Item {i}: expected {expected_output}, got {value}"
