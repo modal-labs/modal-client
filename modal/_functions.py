@@ -100,6 +100,10 @@ if TYPE_CHECKING:
     import modal.partial_function
 
 MAX_INTERNAL_FAILURE_COUNT = 8
+TERMINAL_STATUSES = (
+    api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+    api_pb2.GenericResult.GENERIC_STATUS_TERMINATED,
+)
 
 
 @dataclasses.dataclass
@@ -300,11 +304,7 @@ class _Invocation:
 
         while True:
             item = await self._get_single_output(ctx.input_jwt)
-            if item.result.status in (
-                api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                api_pb2.GenericResult.GENERIC_STATUS_TERMINATED,
-            ):
-                # success or cancellations are "final" results
+            if item.result.status in TERMINAL_STATUSES:
                 return await _process_result(item.result, item.data_format, self.stub, self.client)
 
             if item.result.status != api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
@@ -411,6 +411,7 @@ class _InputPlaneInvocation:
         client: _Client,
         input_item: api_pb2.FunctionPutInputsItem,
         function_id: str,
+        retry_policy: api_pb2.FunctionRetryPolicy,
         input_plane_region: str,
     ):
         self.stub = stub
@@ -418,6 +419,7 @@ class _InputPlaneInvocation:
         self.attempt_token = attempt_token
         self.input_item = input_item
         self.function_id = function_id
+        self.retry_policy = retry_policy
         self.input_plane_region = input_plane_region
 
     @staticmethod
@@ -453,11 +455,15 @@ class _InputPlaneInvocation:
         response = await retry_transient_errors(stub.AttemptStart, request, metadata=metadata)
         attempt_token = response.attempt_token
 
-        return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id, input_plane_region)
+        return _InputPlaneInvocation(
+            stub, attempt_token, client, input_item, function_id, response.retry_policy, input_plane_region
+        )
 
     async def run_function(self) -> Any:
+        # User errors including timeouts are managed by the user-specified retry policy.
+        user_retry_manager = RetryManager(self.retry_policy)
+
         # This will retry when the server returns GENERIC_STATUS_INTERNAL_FAILURE, i.e. lost inputs or worker preemption
-        # TODO(ryan): add logic to retry for user defined retry policy
         internal_failure_count = 0
         while True:
             await_request = api_pb2.AttemptAwaitRequest(
@@ -474,32 +480,48 @@ class _InputPlaneInvocation:
             )
 
             if await_response.HasField("output"):
+                if await_response.output.result.status in TERMINAL_STATUSES:
+                    return await _process_result(
+                        await_response.output.result, await_response.output.data_format, self.client.stub, self.client
+                    )
+
                 if await_response.output.result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
                     internal_failure_count += 1
                     # Limit the number of times we retry
                     if internal_failure_count < MAX_INTERNAL_FAILURE_COUNT:
                         # For system failures on the server, we retry immediately,
                         # and the failure does not count towards the retry policy.
-                        retry_request = api_pb2.AttemptRetryRequest(
-                            function_id=self.function_id,
-                            parent_input_id=current_input_id() or "",
-                            input=self.input_item,
-                            attempt_token=self.attempt_token,
-                        )
-                        # TODO(ryan): Add exponential backoff?
-                        retry_response = await retry_transient_errors(
-                            self.stub.AttemptRetry,
-                            retry_request,
-                            metadata=metadata,
-                        )
-                        self.attempt_token = retry_response.attempt_token
+                        self.attempt_token = await self._retry_input(metadata)
                         continue
 
-                control_plane_stub = self.client.stub
-                # Note: Blob download is done on the control plane stub, not the input plane stub!
-                return await _process_result(
-                    await_response.output.result, await_response.output.data_format, control_plane_stub, self.client
-                )
+                # We add delays between retries for non-internal failures.
+                delay_ms = user_retry_manager.get_delay_ms()
+                if delay_ms is None:
+                    # No more retries either because we reached the retry limit or user didn't set a retry policy
+                    # and the limit defaulted to 0.
+                    # An unsuccessful status should raise an error when it's converted to an exception.
+                    # Note: Blob download is done on the control plane stub not the input plane stub!
+                    return await _process_result(
+                        await_response.output.result, await_response.output.data_format, self.client.stub, self.client
+                    )
+                await asyncio.sleep(delay_ms / 1000)
+
+            await self._retry_input(metadata)
+
+    async def _retry_input(self, metadata: list[tuple[str, str]]) -> str:
+        retry_request = api_pb2.AttemptRetryRequest(
+            function_id=self.function_id,
+            parent_input_id=current_input_id() or "",
+            input=self.input_item,
+            attempt_token=self.attempt_token,
+        )
+        # TODO(ryan): Add exponential backoff?
+        retry_response = await retry_transient_errors(
+            self.stub.AttemptRetry,
+            retry_request,
+            metadata=metadata,
+        )
+        return retry_response.attempt_token
 
     async def run_generator(self):
         items_received = 0
