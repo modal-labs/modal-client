@@ -156,7 +156,7 @@ def test_invalid_name(name):
 
 def test_attempt_mount_volume(client, servicer):
     app = modal.App()
-    modal.Volume.create_deployed("my-other-vol", client=client)
+    modal.Volume.objects.create("my-other-vol", client=client)
     vol = modal.NetworkFileSystem.from_name("my-other-vol", create_if_missing=False)
     f = app.function(network_file_systems={"/data": vol})(dummy)
     with pytest.raises(InvalidError, match="already exists as a Volume"):

@@ -125,3 +125,5 @@ def test_dict_create(servicer, client):
     with pytest.raises(AlreadyExistsError):
         Dict.objects.create(name="test-dict-create", client=client)
     Dict.objects.create(name="test-dict-create", allow_existing=True, client=client)
+    with pytest.raises(InvalidError, match="Invalid Dict name"):
+        Dict.objects.create(name="has space", client=client)

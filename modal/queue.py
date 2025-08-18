@@ -79,7 +79,10 @@ class _QueueManager:
         Note that this method does not return a local instance of the Queue. You can use
         `modal.Queue.from_name` to perform a lookup after creation.
 
+        Added in v1.1.2.
+
         """
+        check_object_name(name, "Queue")
         client = await _Client.from_env() if client is None else client
         object_creation_type = (
             api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
@@ -128,6 +131,8 @@ class _QueueManager:
         ```python
         queues = modal.Queue.objects.list(max_objects=10, created_before="2025-01-01")
         ```
+
+        Added in v1.1.2.
 
         """
         client = await _Client.from_env() if client is None else client
@@ -189,6 +194,9 @@ class _QueueManager:
         ```python notest
         await modal.Queue.objects.delete("my-queue", environment_name="dev")
         ```
+
+        Added in v1.1.2.
+
         """
         try:
             obj = await _Queue.from_name(name, environment_name=environment_name).hydrate(client)

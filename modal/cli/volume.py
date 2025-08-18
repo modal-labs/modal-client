@@ -54,7 +54,7 @@ def create(
     version: Optional[int] = Option(default=None, help="VolumeFS version. (Experimental)"),
 ):
     env_name = ensure_env(env)
-    modal.Volume.create_deployed(name, environment_name=env, version=version)
+    modal.Volume.objects.create(name, environment_name=env, version=version)
     usage_code = f"""
 @app.function(volumes={{"/my_vol": modal.Volume.from_name("{name}")}})
 def some_func():
