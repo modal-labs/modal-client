@@ -1471,6 +1471,8 @@ message Function {
   string flash_service_label = 84;
 
   bool enable_gpu_snapshot = 85; // GPU memory snapshotting (alpha)
+
+  uint32 startup_timeout_secs = 86;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1644,6 +1646,8 @@ message FunctionData {
 
   repeated string flash_service_urls = 34;
   string flash_service_label = 35;
+
+  uint32 startup_timeout_secs = 36;
 }
 
 message FunctionExtended {
@@ -1894,8 +1898,8 @@ message FunctionPutOutputsItem {
   double output_created_at = 4;
   DataFormat data_format = 7; // for result.data_oneof
   uint32 retry_count = 8;
-  string function_call_id = 9; // injected by the worker 
-  optional int32 function_map_idx = 10; // injected by the worker 
+  string function_call_id = 9; // injected by the worker
+  optional int32 function_map_idx = 10; // injected by the worker
 }
 
 message FunctionPutOutputsRequest {
@@ -2143,7 +2147,7 @@ message MapAwaitResponse {
 message MapCheckInputsRequest {
   string last_entry_id = 1;
   float timeout = 2;
-  repeated string attempt_tokens = 3;  
+  repeated string attempt_tokens = 3;
 }
 
 message MapCheckInputsResponse {
