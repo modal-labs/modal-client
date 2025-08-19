@@ -1904,7 +1904,6 @@ class _Image(_Object, type_prefix="im"):
             setup_dockerfile_commands=setup_dockerfile_commands,
             force_build=force_build,
             add_python=add_python,
-            oidc_auth_role_arn=oidc_auth_role_arn,
             image_registry_config=image_registry_config,
             **kwargs,
         )
