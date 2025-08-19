@@ -1976,6 +1976,8 @@ message GenericResult {  // Used for both tasks and function outputs
     // Terminates the function and all remaining inputs.
     GENERIC_STATUS_INIT_FAILURE = 5;
     GENERIC_STATUS_INTERNAL_FAILURE = 6;
+    // Used when sandboxes are terminated due to idle_timeout
+    GENERIC_STATUS_IDLE_TIMEOUT = 7;
   }
 
   GenericStatus status = 1; // Status of the task or function output.
