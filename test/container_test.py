@@ -2027,7 +2027,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, tmp_path):
 
 @skip_github_non_linux
 def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
-    monkeypatch.setattr("modal._runtime.container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
+    monkeypatch.setattr("modal._utils.blob_utils.MAX_OBJECT_SIZE_BYTES", 0)
     ret = _run_container(
         servicer,
         "test.supports.functions",

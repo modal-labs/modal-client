@@ -300,8 +300,8 @@ async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
     return blob_id
 
 
-async def format_blob_data(data: bytes, client) -> dict[str, Any]:
-    return {"data_blob_id": await blob_upload(data, client)} if len(data) > MAX_OBJECT_SIZE_BYTES else {"data": data}
+async def format_blob_data(data: bytes, api_stub: ModalClientModal) -> dict[str, Any]:
+    return {"data_blob_id": await blob_upload(data, api_stub)} if len(data) > MAX_OBJECT_SIZE_BYTES else {"data": data}
 
 
 async def blob_upload_file(
