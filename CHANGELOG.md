@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.3.dev7 (2025-08-19)
+
+Fixes a bug introduced in `1.1.2` which causes invocation of `FunctionCall.get`, `FunctionCall.get_call_graph`, `FunctionCall.cancel`, and `FunctionCall.gather` to fail when the `FunctionCall` object is retrieved via `FunctionCall.from_id`.
+
+
 ### 1.1.2 (2025-08-14)
 
 We're introducing a new API pattern for imperative management of Modal resource types (`modal.Volume`, `modal.Secret`, `modal.Dict`, and `modal.Queue`). The API is accessible through the `.objects` namespace on each class. The object management namespace has methods for the following operations:
