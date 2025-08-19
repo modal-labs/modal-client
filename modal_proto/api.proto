@@ -2099,6 +2099,8 @@ message ImageMetadata {
 message ImageRegistryConfig {
   RegistryAuthType registry_auth_type = 1;
   string secret_id = 2;
+  string oidc_auth_role_arn = 3;
+  string oidc_ecr_region = 4;
 }
 
 message InputCallGraphInfo {
