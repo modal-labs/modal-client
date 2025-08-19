@@ -259,7 +259,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        timeout: int = 300,  # Maximum execution time of the sandbox in seconds.
+        timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
         # The amount of time in seconds that a sandbox can be idle before being terminated.
         idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,  # Working directory of the sandbox.
@@ -360,7 +360,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         mounts: Sequence[_Mount] = (),
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        timeout: int = 300,  # Maximum execution time of the sandbox in seconds.
+        timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
         # The amount of time in seconds that a sandbox can be idle before being terminated.
         idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,  # Working directory of the sandbox.
