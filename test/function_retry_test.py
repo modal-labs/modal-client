@@ -69,7 +69,9 @@ def setup_app_and_function_inputplane(servicer):
     app = App()
     servicer.function_body(counting_function)
     # Custom retries are not supported for inputplane functions yet.
-    f = app.function(experimental_options={"input_plane_region": "us-east"})(counting_function)
+    f = app.function(experimental_options={"input_plane_region": "us-east"}, retries=modal.Retries(max_retries=3))(
+        counting_function
+    )
     return app, f
 
 
@@ -179,7 +181,6 @@ def test_map_all_retries_fail_raises_error(client, setup_app_and_function, servi
     assert len(ctx.get_requests("FunctionRetryInputs")) == 3
 
 
-@pytest.mark.skip(reason="Inputplane functions do not yet support retry policies.")
 def test_map_all_retries_fail_raises_error_inputplane(client, setup_app_and_function_inputplane, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function_inputplane
@@ -205,7 +206,6 @@ def test_map_failures_followed_by_success(client, setup_app_and_function, servic
     assert len(ctx.get_requests("FunctionRetryInputs")) == 2
 
 
-@pytest.mark.skip(reason="Inputplane functions do not yet support retry policies.")
 def test_map_failures_followed_by_success_inputplane(client, setup_app_and_function_inputplane, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function_inputplane
