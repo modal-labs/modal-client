@@ -247,7 +247,7 @@ class IOContext:
                     data_format = self.function_inputs[index].data_format or api_pb2.DATA_FORMAT_PICKLE
                 # Serialize and format the data
                 serialized_bytes = serialize_data_format(item, data_format)
-                formatted = await format_blob_data(serialized_bytes, self._client)
+                formatted = await format_blob_data(serialized_bytes, self._client.stub)
                 # Create the result
                 result = api_pb2.GenericResult(
                     status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -854,7 +854,7 @@ class _ContainerIOManager:
                 repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
 
             data: bytes = self.serialize_exception(exc) or b""
-            data_result_part = await format_blob_data(data, self._client)
+            data_result_part = await format_blob_data(data, self._client.stub)
             results = [
                 api_pb2.GenericResult(
                     status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
