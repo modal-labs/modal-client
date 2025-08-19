@@ -1377,3 +1377,53 @@ def test_clustered_cls_with_multiple_methods(client, servicer):
             @method()
             def second_clustered_method(self, x):
                 return x * 3
+
+
+timeout_app = App("timeout-app")
+
+
+@timeout_app.cls(startup_timeout=30)
+class Timeout:
+    @enter()
+    def start(self):
+        pass
+
+    @method()
+    def hello(self):
+        pass
+
+
+def test_startup_timeout(client, servicer):
+    with servicer.intercept() as ctx:
+        with timeout_app.run(client=client):
+            pass
+
+    function_creates_requests: list[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
+    assert len(function_creates_requests) == 1
+    function_request = function_creates_requests[0]
+    assert function_request.function.startup_timeout_secs == 30
+
+
+timeout_app_default = App("timeout-app-default")
+
+
+@timeout_app_default.cls(timeout=20)
+class TimeoutDefault:
+    @enter()
+    def start(self):
+        pass
+
+    @method()
+    def hello(self):
+        pass
+
+
+def test_startup_timeout_default_copies_timeout(client, servicer):
+    with servicer.intercept() as ctx:
+        with timeout_app_default.run(client=client):
+            pass
+
+    function_creates_requests: list[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
+    assert len(function_creates_requests) == 1
+    function_request = function_creates_requests[0]
+    assert function_request.function.startup_timeout_secs == 20

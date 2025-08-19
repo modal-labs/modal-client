@@ -870,6 +870,7 @@ class _App:
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         timeout: int = 300,  # Maximum execution time in seconds; applies independently to startup and each input.
+        startup_timeout: Optional[int] = None,  # Maximum startup execution time in seconds.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
@@ -979,7 +980,6 @@ class _App:
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
-
             cls_func = _Function.from_local(
                 info,
                 app=self,
@@ -1002,6 +1002,7 @@ class _App:
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
+                startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
