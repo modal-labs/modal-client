@@ -2018,6 +2018,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         fc: _FunctionCall[Any] = _FunctionCall._from_loader(_load, rep, hydrate_lazily=True)
         # We already know the object ID, so we can set it directly
         fc._object_id = function_call_id
+        fc._client = client
         return fc
 
     @staticmethod
