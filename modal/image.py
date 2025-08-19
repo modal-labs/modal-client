@@ -337,14 +337,20 @@ class _ImageRegistryConfig:
         # TODO: change to _PUBLIC after worker starts handling it.
         registry_auth_type: "api_pb2.RegistryAuthType.ValueType" = api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED,
         secret: Optional[_Secret] = None,
+        oidc_auth_role_arn: str = "",
+        oidc_ecr_region: str = "",
     ):
         self.registry_auth_type = registry_auth_type
         self.secret = secret
+        self.oidc_auth_role_arn = oidc_auth_role_arn
+        self.oidc_ecr_region = oidc_ecr_region
 
     def get_proto(self) -> api_pb2.ImageRegistryConfig:
         return api_pb2.ImageRegistryConfig(
             registry_auth_type=self.registry_auth_type,
             secret_id=(self.secret.object_id if self.secret else ""),
+            oidc_auth_role_arn=self.oidc_auth_role_arn,
+            oidc_ecr_region=self.oidc_ecr_region,
         )
 
 
@@ -1850,10 +1856,13 @@ class _Image(_Object, type_prefix="im"):
             **kwargs,
         )
 
+    # TODO(ben-okeefe): Include oidc_auth_role_arn in the API and tag.
     @staticmethod
     def from_aws_ecr(
         tag: str,
         secret: Optional[_Secret] = None,
+        oidc_auth_role_arn: str = "",
+        oidc_ecr_region: str = "",  # PR Note: Not sure what's the best way to handle this.
         *,
         setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
@@ -1885,12 +1894,17 @@ class _Image(_Object, type_prefix="im"):
         """
         if "secrets" in kwargs:
             raise TypeError("Passing a list of 'secrets' is not supported; use the singular 'secret' argument.")
-        image_registry_config = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_AWS, secret)
+        if oidc_auth_role_arn != "" and oidc_ecr_region == "":
+            raise ValueError("ecr_region must be set if oidc_auth_role_arn is set")
+        image_registry_config = _ImageRegistryConfig(
+            api_pb2.REGISTRY_AUTH_TYPE_AWS, secret, oidc_auth_role_arn, oidc_ecr_region
+        )
         return _Image.from_registry(
             tag,
             setup_dockerfile_commands=setup_dockerfile_commands,
             force_build=force_build,
             add_python=add_python,
+            oidc_auth_role_arn=oidc_auth_role_arn,
             image_registry_config=image_registry_config,
             **kwargs,
         )

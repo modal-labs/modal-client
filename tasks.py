@@ -493,6 +493,7 @@ def show_deprecations(ctx):
     """Analyze Modal source code and display all deprecation warnings/errors.
 
     Shows deprecation date, level, location, function, and message in a formatted table."""
+
     def get_modal_source_files() -> list[str]:
         source_files: list[str] = []
         for root, _, files in os.walk("modal"):
