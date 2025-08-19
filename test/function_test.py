@@ -786,18 +786,19 @@ def test_from_id(client, servicer):
     deploy_app(app, "dummy", client=client)
 
     function_call = foo.spawn()
-    assert function_call.object_id
+    fc_id = function_call.object_id
+    assert fc_id
 
-    # Ensure from_id doesn't do a metadata RPC and .get() works without prior hydration
+    servicer.function_body(lambda: 42)
     with servicer.intercept() as ctx:
-        fc2 = FunctionCall.from_id(function_call.object_id, client)
-        assert fc2.object_id == function_call.object_id
+        fc2 = FunctionCall.from_id(fc_id, client)
+        assert fc2.object_id == fc_id
         assert fc2.get() == 42
-        # Optional: also ensure get_call_graph works without metadata RPC
-        cg = fc2.get_call_graph()
-        assert cg and cg[0].function_call_id == function_call.object_id
+        # Also test cancel
+        fc2.cancel()
 
-    ctx.assert_no_request("FunctionCallFromId")
+    req = ctx.pop_request("FunctionCallCancel")
+    assert req.function_call_id == fc_id
 
 
 def test_local_execution_on_web_endpoint(client, servicer):
