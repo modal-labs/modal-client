@@ -6,10 +6,10 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.1.3.dev7 (2025-08-19)
+### 1.1.3 (2025-08-19)
 
-Fixes a bug introduced in `1.1.2` which causes invocation of `FunctionCall.get`, `FunctionCall.get_call_graph`, `FunctionCall.cancel`, and `FunctionCall.gather` to fail when the `FunctionCall` object is retrieved via `FunctionCall.from_id`.
-
+- Fixed a bug introduced in `v1.1.2` that causes invocation of `modal.FunctionCall.get`, `modal.FunctionCall.get_call_graph`, `modal.FunctionCall.cancel`, and `modal.FunctionCall.gather` to fail when the `FunctionCall` object is retrieved via `modal.FunctionCall.from_id`.
+- Added retries to improve the robustness of `modal volume get`
 
 ### 1.1.2 (2025-08-14)
 
