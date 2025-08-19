@@ -2411,10 +2411,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             retry_policy=retry_policy,
         )
 
-        # Inhereted variable name from python code PutInputs
+        # Inherited variable name from Python code PutInputs
         if self.slow_put_inputs:
             await asyncio.sleep(0.001)
-        # print(f"MapStartOrContinue: response: {response}")
         await stream.send_message(response)
 
     async def MapAwait(self, stream):
