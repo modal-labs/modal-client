@@ -214,6 +214,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 mount_ids=[mount.object_id for mount in mounts] + [mount.object_id for mount in image._mount_layers],
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
+                idle_timeout_secs=idle_timeout,
                 workdir=workdir,
                 resources=convert_fn_config_to_resources_config(
                     cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
@@ -235,8 +236,6 @@ class _Sandbox(_Object, type_prefix="sb"):
                 name=name,
                 experimental_options=experimental_options,
             )
-            if idle_timeout is not None:
-                definition.idle_timeout_secs = idle_timeout
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
             try:
