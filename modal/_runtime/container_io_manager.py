@@ -233,19 +233,19 @@ class IOContext:
         - Raw data: Serializes automatically, detects GeneratorDone format
         """
         output_created_at = time.time()
-        results: list[api_pb2.GenericResult] = []
-        data_formats: list[api_pb2.DataFormat.ValueType] = []
-        for index, item in enumerate(data_or_results):
+
+        # Process all items concurrently and create output items directly
+        async def package_output(item, function_input, input_id, retry_count):
             if isinstance(item, api_pb2.GenericResult):
                 # Pre-built result (from exception handling)
-                results.append(item)
-                data_formats.append(self.function_inputs[index].data_format or api_pb2.DataFormat.DATA_FORMAT_PICKLE)
+                data_format = function_input.data_format or api_pb2.DataFormat.DATA_FORMAT_PICKLE
+                result = item
             else:
-                # Detect format automatically
+                # Raw data - detect format automatically
                 if isinstance(item, api_pb2.GeneratorDone):
                     data_format = api_pb2.DATA_FORMAT_GENERATOR_DONE
                 else:
-                    data_format = self.function_inputs[index].data_format or api_pb2.DATA_FORMAT_PICKLE
+                    data_format = function_input.data_format or api_pb2.DataFormat.DATA_FORMAT_PICKLE
                 # Serialize and format the data
                 serialized_bytes = serialize_data_format(item, data_format)
                 formatted = await format_blob_data(serialized_bytes, self._client.stub)
@@ -254,11 +254,7 @@ class IOContext:
                     status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                     **formatted,
                 )
-                results.append(result)
-                data_formats.append(data_format)
-        # Create output items
-        return [
-            api_pb2.FunctionPutOutputsItem(
+            return api_pb2.FunctionPutOutputsItem(
                 input_id=input_id,
                 input_started_at=started_at,
                 output_created_at=output_created_at,
@@ -266,10 +262,16 @@ class IOContext:
                 data_format=data_format,
                 retry_count=retry_count,
             )
-            for input_id, retry_count, result, data_format in zip(
-                self.input_ids, self.retry_counts, results, data_formats
-            )
-        ]
+
+        # Process all items concurrently
+        return await asyncio.gather(
+            *[
+                package_output(item, function_input, input_id, retry_count)
+                for item, function_input, input_id, retry_count in zip(
+                    data_or_results, self.function_inputs, self.input_ids, self.retry_counts
+                )
+            ]
+        )
 
 
 class InputSlots:
@@ -888,8 +890,6 @@ class _ContainerIOManager:
     ) -> None:
         # Special-case for generator completion messages which have a fixed format.
         if isinstance(data, api_pb2.GeneratorDone):
-            # For generator done messages, we just need the data list
-            # For batched mode, data should be a list of GeneratorDone objects
             outputs = await io_context.create_output_items(started_at, [data])
             await self._send_outputs(outputs)
             self.exit_context(started_at, io_context.input_ids)
