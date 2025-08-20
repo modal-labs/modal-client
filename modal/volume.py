@@ -9,6 +9,7 @@ import platform
 import re
 import time
 import typing
+import warnings
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -598,7 +599,12 @@ class _Volume(_Object, type_prefix="vo"):
                     # Reload changes on successful commit.
                     await self._do_reload(lock=False)
             except GRPCError as exc:
-                raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
+                if exc.status == Status.FAILED_PRECONDITION and exc.message:
+                    warnings.warn(
+                        "Calling `commit` is a noop when called outside of a container.", UserWarning, stacklevel=2
+                    )
+                    return
+                raise RuntimeError(exc.message) if exc.status == Status.NOT_FOUND else exc
 
     @live_method
     async def reload(self):
