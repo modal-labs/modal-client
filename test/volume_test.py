@@ -12,6 +12,8 @@ from difflib import ndiff
 from pathlib import Path
 from unittest import mock
 
+from grpclib import GRPCError, Status
+
 import modal
 from modal._utils.blob_utils import BLOCK_SIZE
 from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
@@ -116,6 +118,20 @@ def test_volume_commit(client, servicer, skip_reload):
 
             # commit should implicitly reload on successful commit if skip_reload=False
             assert servicer.volume_reloads[vol.object_id] == 0 if skip_reload else 2
+
+
+def test_volume_commit_warning(client, servicer):
+    async def volume_commit(servicer, stream):
+        raise GRPCError(
+            Status.FAILED_PRECONDITION, "commit() can only be called on a mounted volume inside a container"
+        )
+
+    with pytest.warns(UserWarning, match=r"Calling `commit` does nothing when"):
+        with servicer.intercept() as ctx:
+            ctx.set_responder("VolumeCommit", volume_commit)
+
+            with modal.Volume.ephemeral(client=client) as vol:
+                vol.commit()
 
 
 @pytest.mark.asyncio
