@@ -602,7 +602,7 @@ class _Volume(_Object, type_prefix="vo"):
                 if (
                     exc.status == Status.FAILED_PRECONDITION
                     and exc.message
-                    and "commit() can only be called" in exc.message
+                    and "commit() can only be called on a mounted volume inside a container" == exc.message
                 ):
                     warnings.warn(
                         "Calling `commit` does nothing when called outside of a container.", UserWarning, stacklevel=2
