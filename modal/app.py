@@ -642,6 +642,7 @@ class _App:
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         timeout: int = 300,  # Maximum execution time in seconds.
+        startup_timeout: Optional[int] = None,  # Maximum startup execution time in seconds.
         name: Optional[str] = None,  # Sets the Modal name of the function within the app
         is_generator: Optional[
             bool
@@ -816,6 +817,7 @@ class _App:
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
+                startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
