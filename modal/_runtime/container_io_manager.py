@@ -224,7 +224,7 @@ class IOContext:
         return result
 
     async def create_output_items(
-        self, started_at: float, output_created_at: float, data_or_results: list[Any]
+        self, started_at: float, data_or_results: list[Any]
     ) -> list[api_pb2.FunctionPutOutputsItem]:
         """Create FunctionPutOutputsItem objects from either raw data or pre-built GenericResult objects.
 
@@ -232,6 +232,7 @@ class IOContext:
         - GenericResult objects: Uses function input data formats
         - Raw data: Serializes automatically, detects GeneratorDone format
         """
+        output_created_at = time.time()
         results: list[api_pb2.GenericResult] = []
         data_formats: list[api_pb2.DataFormat.ValueType] = []
         for index, item in enumerate(data_or_results):
@@ -822,8 +823,7 @@ class _ContainerIOManager:
                 api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
                 for _ in io_context.input_ids
             ]
-            output_created_at = time.time()
-            outputs = await io_context.create_output_items(started_at, output_created_at, results)
+            outputs = await io_context.create_output_items(started_at, results)
             await self._send_outputs(outputs)
             self.exit_context(started_at, io_context.input_ids)
             logger.warning(f"Successfully canceled input {io_context.input_ids}")
@@ -866,8 +866,7 @@ class _ContainerIOManager:
                 )
                 for _ in io_context.input_ids
             ]
-            output_created_at = time.time()
-            outputs = await io_context.create_output_items(started_at, output_created_at, results)
+            outputs = await io_context.create_output_items(started_at, results)
             await self._send_outputs(outputs)
             self.exit_context(started_at, io_context.input_ids)
 
@@ -887,12 +886,11 @@ class _ContainerIOManager:
         started_at: float,
         data: Any,
     ) -> None:
-        output_created_at = time.time()
         # Special-case for generator completion messages which have a fixed format.
         if isinstance(data, api_pb2.GeneratorDone):
             # For generator done messages, we just need the data list
             # For batched mode, data should be a list of GeneratorDone objects
-            outputs = await io_context.create_output_items(started_at, output_created_at, [data])
+            outputs = await io_context.create_output_items(started_at, [data])
             await self._send_outputs(outputs)
             self.exit_context(started_at, io_context.input_ids)
             return
@@ -911,7 +909,7 @@ class _ContainerIOManager:
             data_list = data
 
         # Create output items from raw data, letting the method handle serialization and format detection
-        outputs = await io_context.create_output_items(started_at, output_created_at, data_list)
+        outputs = await io_context.create_output_items(started_at, data_list)
 
         await self._send_outputs(outputs)
         self.exit_context(started_at, io_context.input_ids)
