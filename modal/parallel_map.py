@@ -762,7 +762,12 @@ async def _map_invocation_inputplane(
             metadata = await client.get_input_plane_metadata(function._input_plane_region)
 
             response: api_pb2.MapStartOrContinueResponse = await retry_transient_errors(
-                input_plane_stub.MapStartOrContinue, request, metadata=metadata
+                input_plane_stub.MapStartOrContinue,
+                request,
+                metadata=metadata,
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
+                max_retries=None,
             )
 
             # match response items to the corresponding request item index
@@ -794,7 +799,11 @@ async def _map_invocation_inputplane(
                     await function_call_id_received.wait()
                     continue
 
-                await asyncio.sleep(1)
+                sleep_task = asyncio.create_task(asyncio.sleep(1))
+                map_done_task = asyncio.create_task(map_done_event.wait())
+                done, _ = await asyncio.wait([sleep_task, map_done_task], return_when=FIRST_COMPLETED)
+                if map_done_task in done:
+                    break
 
                 # check_inputs = [(idx, attempt_token), ...]
                 check_inputs = map_items_manager.get_input_idxs_waiting_for_output()
