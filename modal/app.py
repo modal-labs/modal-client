@@ -980,6 +980,7 @@ class _App:
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
+
             cls_func = _Function.from_local(
                 info,
                 app=self,
