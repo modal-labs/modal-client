@@ -50,7 +50,10 @@ def network_file_system_mount_protos(
 
 
 class _NetworkFileSystem(_Object, type_prefix="sv"):
-    """A shared, writable file system accessible by one or more Modal functions.
+    """
+    **Note: `NetworkFileSystem` has been deprecated and will be removed.**
+
+    A shared, writable file system accessible by one or more Modal functions.
 
     By attaching this file system as a mount to one or more functions, they can
     share and persist data with each other.
