@@ -599,9 +599,13 @@ class _Volume(_Object, type_prefix="vo"):
                     # Reload changes on successful commit.
                     await self._do_reload(lock=False)
             except GRPCError as exc:
-                if exc.status == Status.FAILED_PRECONDITION and exc.message:
+                if (
+                    exc.status == Status.FAILED_PRECONDITION
+                    and exc.message
+                    and "commit() can only be called" in exc.message
+                ):
                     warnings.warn(
-                        "Calling `commit` is a noop when called outside of a container.", UserWarning, stacklevel=2
+                        "Calling `commit` does nothing when called outside of a container.", UserWarning, stacklevel=2
                     )
                     return
                 raise RuntimeError(exc.message) if exc.status == Status.NOT_FOUND else exc
