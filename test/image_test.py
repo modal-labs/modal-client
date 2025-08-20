@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
+import platform
 import pytest
 import re
 import shutil
@@ -79,6 +80,12 @@ def get_all_dockerfile_commands(image_id: str, servicer) -> str:
 @pytest.fixture(params=SUPPORTED_IMAGE_BUILDER_VERSIONS)
 def builder_version(request, server_url_env, modal_config):
     builder_version = request.param
+    if (
+        builder_version != SUPPORTED_IMAGE_BUILDER_VERSIONS[-2]
+        and platform.system() == "Darwin"
+        and platform.machine() == "x86_64"
+    ):
+        pytest.skip(f"Skipping Image test for {builder_version} on Darwin x86_64")
     with modal_config():
         with mock.patch("test.conftest.ImageBuilderVersion", Literal[builder_version]):  # type: ignore
             yield builder_version
