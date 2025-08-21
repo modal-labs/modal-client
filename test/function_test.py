@@ -1697,3 +1697,41 @@ def test_function_call_iter(client, servicer):
         assert len(subset_results) == 2
         expected_subset = [9, 16]
         assert subset_results == expected_subset
+
+
+timeout_app = App("timeout-app")
+
+
+@timeout_app.function(startup_timeout=14)
+def hello():
+    pass
+
+
+def test_startup_timeout(client, servicer):
+    with servicer.intercept() as ctx:
+        with timeout_app.run(client=client):
+            pass
+
+    function_creates_requests: list[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
+    assert len(function_creates_requests) == 1
+    function_request = function_creates_requests[0]
+    assert function_request.function.startup_timeout_secs == 14
+
+
+timeout_app_default = App("timeout-app-default")
+
+
+@timeout_app_default.function(timeout=23)
+def hello2():
+    pass
+
+
+def test_startup_timeout_default_copies_timeout(client, servicer):
+    with servicer.intercept() as ctx:
+        with timeout_app_default.run(client=client):
+            pass
+
+    function_creates_requests: list[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
+    assert len(function_creates_requests) == 1
+    function_request = function_creates_requests[0]
+    assert function_request.function.startup_timeout_secs == 23
