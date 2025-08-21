@@ -27,6 +27,8 @@ class _FlashManager:
         self.health_check_url = health_check_url
         self.tunnel_manager = _forward_tunnel(port, client=client)
         self.stopped = False
+        self.flash_url = None
+        self._flash_url_ready = asyncio.Event()
 
     async def _start(self):
         self.tunnel = await self.tunnel_manager.__aenter__()
@@ -53,6 +55,8 @@ class _FlashManager:
                 if first_registration:
                     logger.warning(f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url}")
                     first_registration = False
+                    self.flash_url = resp.url
+                    self._flash_url_ready.set()
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
@@ -65,9 +69,11 @@ class _FlashManager:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
 
-    def get_container_url(self):
-        # WARNING: Try not to use this method; we aren't sure if we will keep it.
-        return self.tunnel.url
+    async def get_flash_url(self) -> str:
+        await self._flash_url_ready.wait()
+        if self.flash_url is None:
+            raise InvalidError("[Modal Flash] Flash URL not available because first heartbeat failed.")
+        return self.flash_url
 
     async def stop(self):
         self.heartbeat_task.cancel()
