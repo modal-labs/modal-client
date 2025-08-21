@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.4.dev5 (2025-08-21)
+
+- Added an `idle_timeout` param to `Sandbox.create()` which, when provided, will have the sandbox terminate after `idle_timeout` seconds of idleness.
+
+
 ### 1.1.3 (2025-08-19)
 
 - Fixed a bug introduced in `v1.1.2` that causes invocation of `modal.FunctionCall.get`, `modal.FunctionCall.get_call_graph`, `modal.FunctionCall.cancel`, and `modal.FunctionCall.gather` to fail when the `FunctionCall` object is retrieved via `modal.FunctionCall.from_id`.
