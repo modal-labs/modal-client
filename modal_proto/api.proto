@@ -1689,6 +1689,14 @@ message FunctionGetDynamicConcurrencyResponse {
   uint32 concurrency = 1;
 }
 
+message FunctionGetFlashUrlsRequest {
+  string function_id = 1;
+}
+
+message FunctionGetFlashUrlsResponse {
+  repeated string urls = 1;
+}
+
 message FunctionGetInputsItem {
   string input_id = 1;
   FunctionInput input = 2;
@@ -3505,6 +3513,7 @@ service ModalClient {
   rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
   rpc FlashContainerList(FlashContainerListRequest) returns (FlashContainerListResponse);
   rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
+  rpc FunctionGetFlashUrls(FunctionGetFlashUrlsRequest) returns (FunctionGetFlashUrlsResponse);
 
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);

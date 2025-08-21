@@ -902,6 +902,31 @@ More information on class parameterization can be found here: https://modal.com/
     def _is_local(self) -> bool:
         return self._user_cls is not None
 
+    @synchronizer.create_blocking
+    async def get_flash_url(self) -> Optional[str]:
+        """Get the stable Flash service URL for this class.
+
+        Returns a load-balanced Flash URL that route requests to all healthy
+        containers running this class. Returns None if Flash is not enabled for this class.
+
+        Example:
+            Model = modal.Cls.from_name("my-app", "Model")
+            flash_url = Model.get_flash_url()
+        """
+        await self.hydrate()
+
+        service_function = self._get_class_service_function()
+        function_id = service_function.object_id
+        if not function_id:
+            return None
+
+        try:
+            req = api_pb2.FunctionGetFlashUrlsRequest(function_id=function_id)
+            resp = await retry_transient_errors(service_function.client.stub.FunctionGetFlashUrls, req)
+            return resp.urls[0] if resp.urls else None
+        except Exception:
+            return None
+
 
 Cls = synchronize_api(_Cls)
 
