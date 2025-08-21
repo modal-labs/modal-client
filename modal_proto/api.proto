@@ -1236,6 +1236,7 @@ message EnvironmentListItem {
   double created_at = 3;
   bool default = 4;
   bool is_managed = 5;
+  string environment_id = 6;
 }
 
 message EnvironmentListResponse {
