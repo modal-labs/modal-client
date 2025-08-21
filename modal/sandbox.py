@@ -479,7 +479,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         environment_name: Optional[str] = None,
         client: Optional[_Client] = None,
     ) -> "_Sandbox":
-        """Get a running Sandbox by name from the given app.
+        """Get a running Sandbox by name from a deployed App.
 
         Raises a modal.exception.NotFoundError if no running sandbox is found with the given name.
         A Sandbox's name is the `name` argument passed to `Sandbox.create`.
