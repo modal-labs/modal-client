@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 from modal._utils.async_utils import synchronize_api
-from modal._utils.grpc_utils import retry_transient_errors
 from modal.client import _Client
 from modal.exception import InvalidError
 from modal_proto import api_pb2
@@ -60,8 +59,7 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
         os.environ["NCCL_NSOCKS_PERTHREAD"] = "1"
 
     if world_size > 1:
-        resp: api_pb2.TaskClusterHelloResponse = await retry_transient_errors(
-            client.stub.TaskClusterHello,
+        resp = await client.stub.TaskClusterHello(
             api_pb2.TaskClusterHelloRequest(
                 task_id=task_id,
                 container_ip=container_ip,

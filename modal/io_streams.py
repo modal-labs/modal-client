@@ -19,7 +19,7 @@ from modal.exception import ClientClosed, InvalidError
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
 from .stream_type import StreamType
 
@@ -442,15 +442,13 @@ class _StreamWriter:
 
         try:
             if self._object_type == "sandbox":
-                await retry_transient_errors(
-                    self._client.stub.SandboxStdinWrite,
+                await self._client.stub.SandboxStdinWrite(
                     api_pb2.SandboxStdinWriteRequest(
                         sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
                     ),
                 )
             else:
-                await retry_transient_errors(
-                    self._client.stub.ContainerExecPutInput,
+                await self._client.stub.ContainerExecPutInput(
                     api_pb2.ContainerExecPutInputRequest(
                         exec_id=self._object_id,
                         input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),

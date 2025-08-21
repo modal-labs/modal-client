@@ -29,7 +29,7 @@ from ._traceback import print_server_warnings, suppress_tb_frames
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.auth_token_manager import _AuthTokenManager
-from ._utils.grpc_utils import ConnectionManager, retry_transient_errors
+from ._utils.grpc_utils import ConnectionManager
 from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed, NotFoundError
 
@@ -159,7 +159,7 @@ class _Client:
     async def hello(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
         logger.debug(f"Client ({id(self)}): Starting")
-        resp = await retry_transient_errors(self.stub.ClientHello, empty_pb2.Empty())
+        resp = await self.stub.ClientHello(empty_pb2.Empty())
         print_server_warnings(resp.server_warnings)
 
     async def __aenter__(self):

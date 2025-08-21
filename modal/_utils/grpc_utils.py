@@ -271,6 +271,40 @@ async def retry_transient_errors(
             delay = min(delay * delay_factor, max_delay)
 
 
+def _with_retries(fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]"):
+    """Wrap a UnaryUnaryWrapper with retry_transient_errors."""
+
+    async def wrapped(
+        req: RequestType,
+        base_delay: float = 0.1,
+        max_delay: float = 1,
+        delay_factor: float = 2,
+        max_retries: Optional[int] = 3,
+        additional_status_codes: list = [],
+        attempt_timeout: Optional[float] = None,
+        total_timeout: Optional[float] = None,
+        attempt_timeout_floor=2.0,
+        retry_warning_message: Optional[RetryWarningMessage] = None,
+        metadata: list[tuple[str, str]] = [],
+    ) -> ResponseType:
+        return await retry_transient_errors(
+            fn,
+            req,
+            base_delay=base_delay,
+            max_delay=max_delay,
+            delay_factor=delay_factor,
+            max_retries=max_retries,
+            additional_status_codes=additional_status_codes,
+            attempt_timeout=attempt_timeout,
+            total_timeout=total_timeout,
+            attempt_timeout_floor=attempt_timeout_floor,
+            retry_warning_message=retry_warning_message,
+            metadata=metadata,
+        )
+
+    return wrapped
+
+
 def find_free_port() -> int:
     """
     Find a free TCP port, useful for testing.

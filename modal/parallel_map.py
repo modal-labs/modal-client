@@ -35,7 +35,7 @@ from modal._utils.function_utils import (
     _create_input,
     _process_result,
 )
-from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, RetryWarningMessage, retry_transient_errors
+from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, RetryWarningMessage
 from modal._utils.jwt_utils import DecodedJwt
 from modal.config import logger
 from modal.retries import RetryManager
@@ -184,7 +184,7 @@ class InputPumper:
                 f" push is {self.input_queue.qsize()}. "
             )
 
-            resp = await self._send_inputs(self.client.stub.FunctionPutInputs, request)
+            resp = await self.client.stub.FunctionPutInputs(request, **self._function_inputs_retry_kwargs)
             self.inputs_sent += len(items)
             # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
             if self.map_items_manager is not None:
@@ -195,11 +195,8 @@ class InputPumper:
             )
         yield
 
-    async def _send_inputs(
-        self,
-        fn: "modal.client.UnaryUnaryWrapper",
-        request: typing.Union[api_pb2.FunctionPutInputsRequest, api_pb2.FunctionRetryInputsRequest],
-    ) -> typing.Union[api_pb2.FunctionPutInputsResponse, api_pb2.FunctionRetryInputsResponse]:
+    @property
+    def _function_inputs_retry_kwargs(self) -> dict:
         # with 8 retries we log the warning below about every 30 seconds which isn't too spammy.
         retry_warning_message = RetryWarningMessage(
             message=f"Warning: map progress for function {self.function._function_name} is limited."
@@ -207,9 +204,7 @@ class InputPumper:
             warning_interval=8,
             errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
         )
-        return await retry_transient_errors(
-            fn,
-            request,
+        return dict(
             max_retries=None,
             max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
             additional_status_codes=[Status.RESOURCE_EXHAUSTED],
@@ -251,7 +246,7 @@ class SyncInputPumper(InputPumper):
                 function_call_jwt=self.function_call_jwt,
                 inputs=inputs,
             )
-            resp = await self._send_inputs(self.client.stub.FunctionRetryInputs, request)
+            resp = await self.client.stub.FunctionRetryInputs(request, **self._function_inputs_retry_kwargs)
             # Update the state to WAITING_FOR_OUTPUT, and update the input_jwt in the context
             # to the new value in the response.
             self.map_items_manager.handle_retry_response(resp.input_jwts)
@@ -279,7 +274,7 @@ class AsyncInputPumper(InputPumper):
             function_call_id=self.function_call_id,
             num_inputs=self.inputs_sent,
         )
-        await retry_transient_errors(self.client.stub.FunctionFinishInputs, request, max_retries=None)
+        await self.client.stub.FunctionFinishInputs(request, max_retries=None)
         yield
 
 
@@ -293,7 +288,7 @@ async def _spawn_map_invocation(
         function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
         function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
     )
-    response: api_pb2.FunctionMapResponse = await retry_transient_errors(client.stub.FunctionMap, request)
+    response: api_pb2.FunctionMapResponse = await client.stub.FunctionMap(request)
     function_call_id = response.function_call_id
 
     have_all_inputs = False
@@ -372,7 +367,7 @@ async def _map_invocation(
         return_exceptions=return_exceptions,
         function_call_invocation_type=function_call_invocation_type,
     )
-    response: api_pb2.FunctionMapResponse = await retry_transient_errors(client.stub.FunctionMap, request)
+    response: api_pb2.FunctionMapResponse = await client.stub.FunctionMap(request)
 
     function_call_id = response.function_call_id
     function_call_jwt = response.function_call_jwt
@@ -468,8 +463,7 @@ async def _map_invocation(
                 input_jwts=input_jwts,
             )
             get_response_task = asyncio.create_task(
-                retry_transient_errors(
-                    client.stub.FunctionGetOutputs,
+                client.stub.FunctionGetOutputs(
                     request,
                     max_retries=20,
                     attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
@@ -531,7 +525,7 @@ async def _map_invocation(
                 clear_on_success=True,
                 requested_at=time.time(),
             )
-            await retry_transient_errors(client.stub.FunctionGetOutputs, request)
+            await client.stub.FunctionGetOutputs(request)
             await retry_queue.close()
 
     async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
@@ -761,8 +755,7 @@ async def _map_invocation_inputplane(
 
             metadata = await client.get_input_plane_metadata(function._input_plane_region)
 
-            response: api_pb2.MapStartOrContinueResponse = await retry_transient_errors(
-                input_plane_stub.MapStartOrContinue,
+            response: api_pb2.MapStartOrContinueResponse = await input_plane_stub.MapStartOrContinue(
                 request,
                 metadata=metadata,
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
@@ -815,8 +808,8 @@ async def _map_invocation_inputplane(
                 )
 
                 metadata = await client.get_input_plane_metadata(function._input_plane_region)
-                response: api_pb2.MapCheckInputsResponse = await retry_transient_errors(
-                    input_plane_stub.MapCheckInputs, request, metadata=metadata
+                response: api_pb2.MapCheckInputsResponse = await input_plane_stub.MapCheckInputs(
+                    request, metadata=metadata
                 )
                 check_inputs_response = [
                     (check_inputs[resp_idx][0], response.lost[resp_idx]) for resp_idx, _ in enumerate(response.lost)
@@ -850,8 +843,7 @@ async def _map_invocation_inputplane(
             )
             metadata = await client.get_input_plane_metadata(function._input_plane_region)
             get_response_task = asyncio.create_task(
-                retry_transient_errors(
-                    input_plane_stub.MapAwait,
+                input_plane_stub.MapAwait(
                     request,
                     max_retries=20,
                     attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,

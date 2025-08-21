@@ -7,7 +7,6 @@ from rich.text import Text
 from modal._object import _get_environment_name
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
-from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, display_table, is_tty, stream_app_logs
 from modal.client import _Client
@@ -95,4 +94,4 @@ async def stop(container_id: str = typer.Argument(help="Container ID")):
     """
     client = await _Client.from_env()
     request = api_pb2.ContainerStopRequest(task_id=container_id)
-    await retry_transient_errors(client.stub.ContainerStop, request)
+    await client.stub.ContainerStop(request)

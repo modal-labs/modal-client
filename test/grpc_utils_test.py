@@ -9,7 +9,6 @@ from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
     connect_channel,
     create_channel,
-    retry_transient_errors,
 )
 from modal_proto import api_grpc, api_pb2
 
@@ -69,7 +68,7 @@ async def test_retry_transient_errors(servicer, client):
 
     @synchronize_api
     async def wrapped_blob_create(req, **kwargs):
-        return await retry_transient_errors(client_stub.BlobCreate, req, **kwargs)
+        return await client_stub.BlobCreate(req, **kwargs)
 
     # Use the BlobCreate request for retries
     req = api_pb2.BlobCreateRequest()

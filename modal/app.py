@@ -33,7 +33,6 @@ from ._utils.deprecation import (
     warn_on_renamed_autoscaler_settings,
 )
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -269,7 +268,7 @@ class _App:
             object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
         )
 
-        response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
+        response = await client.stub.AppGetOrCreate(request)
 
         app = _App(name)
         app._app_id = response.app_id

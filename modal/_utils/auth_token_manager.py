@@ -9,7 +9,6 @@ from typing import Any
 from modal.exception import ExecutionError
 from modal_proto import api_pb2, modal_api_grpc
 
-from .grpc_utils import retry_transient_errors
 from .logger import logger
 
 
@@ -66,9 +65,7 @@ class _AuthTokenManager:
             # new token. Once we have a new token, the other coroutines will unblock and return from here.
             if self._token and not self._needs_refresh():
                 return
-            resp: api_pb2.AuthTokenGetResponse = await retry_transient_errors(
-                self._stub.AuthTokenGet, api_pb2.AuthTokenGetRequest()
-            )
+            resp: api_pb2.AuthTokenGetResponse = await self._stub.AuthTokenGet(api_pb2.AuthTokenGetRequest())
             if not resp.token:
                 # Not expected
                 raise ExecutionError(

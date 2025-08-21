@@ -53,7 +53,7 @@ from ._utils.function_utils import (
     get_function_type,
     is_async,
 )
-from ._utils.grpc_utils import RetryWarningMessage, retry_transient_errors
+from ._utils.grpc_utils import RetryWarningMessage
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
@@ -167,8 +167,7 @@ class _Invocation:
 
         if from_spawn_map:
             request.from_spawn_map = True
-            response = await retry_transient_errors(
-                client.stub.FunctionMap,
+            response = await client.stub.FunctionMap(
                 request,
                 max_retries=None,
                 max_delay=30.0,
@@ -181,7 +180,7 @@ class _Invocation:
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             )
         else:
-            response = await retry_transient_errors(client.stub.FunctionMap, request)
+            response = await client.stub.FunctionMap(request)
 
         function_call_id = response.function_call_id
         if response.pipelined_inputs:
@@ -201,10 +200,7 @@ class _Invocation:
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
         )
-        inputs_response: api_pb2.FunctionPutInputsResponse = await retry_transient_errors(
-            client.stub.FunctionPutInputs,
-            request_put,
-        )
+        inputs_response: api_pb2.FunctionPutInputsResponse = await client.stub.FunctionPutInputs(request_put)
         processed_inputs = inputs_response.inputs
         if not processed_inputs:
             raise Exception("Could not create function call - the input queue seems to be full")
@@ -246,8 +242,7 @@ class _Invocation:
                 start_idx=index,
                 end_idx=index,
             )
-            response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
-                self.stub.FunctionGetOutputs,
+            response: api_pb2.FunctionGetOutputsResponse = await self.stub.FunctionGetOutputs(
                 request,
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
@@ -269,10 +264,7 @@ class _Invocation:
 
         item = api_pb2.FunctionRetryInputsItem(input_jwt=ctx.input_jwt, input=ctx.item.input)
         request = api_pb2.FunctionRetryInputsRequest(function_call_jwt=ctx.function_call_jwt, inputs=[item])
-        await retry_transient_errors(
-            self.stub.FunctionRetryInputs,
-            request,
-        )
+        await self.stub.FunctionRetryInputs(request)
 
     async def _get_single_output(self, expected_jwt: Optional[str] = None) -> api_pb2.FunctionGetOutputsItem:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
@@ -376,10 +368,8 @@ class _Invocation:
                 start_idx=current_index,
                 end_idx=batch_end_index,
             )
-            response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
-                self.stub.FunctionGetOutputs,
-                request,
-                attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD,
+            response: api_pb2.FunctionGetOutputsResponse = await self.stub.FunctionGetOutputs(
+                request, attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD
             )
 
             outputs = list(response.outputs)
@@ -452,7 +442,7 @@ class _InputPlaneInvocation:
         )
 
         metadata = await client.get_input_plane_metadata(input_plane_region)
-        response = await retry_transient_errors(stub.AttemptStart, request, metadata=metadata)
+        response = await stub.AttemptStart(request, metadata=metadata)
         attempt_token = response.attempt_token
 
         return _InputPlaneInvocation(
@@ -472,8 +462,7 @@ class _InputPlaneInvocation:
                 requested_at=time.time(),
             )
             metadata = await self.client.get_input_plane_metadata(self.input_plane_region)
-            await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
-                self.stub.AttemptAwait,
+            await_response: api_pb2.AttemptAwaitResponse = await self.stub.AttemptAwait(
                 await_request,
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
                 metadata=metadata,
@@ -516,11 +505,7 @@ class _InputPlaneInvocation:
             attempt_token=self.attempt_token,
         )
         # TODO(ryan): Add exponential backoff?
-        retry_response = await retry_transient_errors(
-            self.stub.AttemptRetry,
-            retry_request,
-            metadata=metadata,
-        )
+        retry_response = await self.stub.AttemptRetry(retry_request, metadata=metadata)
         return retry_response.attempt_token
 
     async def run_generator(self):
@@ -875,7 +860,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             elif webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
 
-            response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
+            response = await resolver.client.stub.FunctionPrecreate(req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -1077,9 +1062,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     existing_function_id=existing_object_id or "",
                 )
                 try:
-                    response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
-                        resolver.client.stub.FunctionCreate, request
-                    )
+                    response: api_pb2.FunctionCreateResponse = await resolver.client.stub.FunctionCreate(request)
                 except GRPCError as exc:
                     if exc.status == Status.INVALID_ARGUMENT:
                         raise InvalidError(exc.message)
@@ -1214,7 +1197,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
 
-            response = await retry_transient_errors(parent._client.stub.FunctionBindParams, req)
+            response = await parent._client.stub.FunctionBindParams(req)
             param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
 
         def _deps():
@@ -1274,7 +1257,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             scaledown_window=scaledown_window,
         )
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=self.object_id, settings=settings)
-        await retry_transient_errors(self.client.stub.FunctionUpdateSchedulingParams, request)
+        await self.client.stub.FunctionUpdateSchedulingParams(request)
 
         # One idea would be for FunctionUpdateScheduleParams to return the current (coalesced) settings
         # and then we could return them here (would need some ad hoc dataclass, which I don't love)
@@ -1334,7 +1317,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
             try:
-                response = await retry_transient_errors(resolver.client.stub.FunctionGet, request)
+                response = await resolver.client.stub.FunctionGet(request)
             except NotFoundError as exc:
                 # refine the error message
                 env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
@@ -1857,8 +1840,7 @@ Use the `Function.get_web_url()` method instead.
     @live_method
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
-        resp = await retry_transient_errors(
-            self.client.stub.FunctionGetCurrentStats,
+        resp = await self.client.stub.FunctionGetCurrentStats(
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
             total_timeout=10.0,
         )
@@ -1963,7 +1945,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         """
         assert self._client and self._client.stub
         request = api_pb2.FunctionGetCallGraphRequest(function_call_id=self.object_id)
-        response = await retry_transient_errors(self._client.stub.FunctionGetCallGraph, request)
+        response = await self._client.stub.FunctionGetCallGraph(request)
         return _reconstruct_call_graph(response)
 
     async def cancel(
@@ -1981,7 +1963,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             function_call_id=self.object_id, terminate_containers=terminate_containers
         )
         assert self._client and self._client.stub
-        await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
+        await self._client.stub.FunctionCallCancel(request)
 
     @staticmethod
     async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall[Any]":
@@ -2008,7 +1990,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         async def _load(self: _FunctionCall, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.FunctionCallFromIdRequest(function_call_id=function_call_id)
-            resp = await retry_transient_errors(resolver.client.stub.FunctionCallFromId, request)
+            resp = await resolver.client.stub.FunctionCallFromId(request)
             self._hydrate(function_call_id, resolver.client, resp)
 
         rep = f"FunctionCall.from_id({function_call_id!r})"

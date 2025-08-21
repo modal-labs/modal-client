@@ -31,7 +31,6 @@ from modal._traceback import extract_traceback, print_exception
 from modal._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from modal._utils.function_utils import _stream_function_call_data
-from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.package_utils import parse_major_minor_version
 from modal.client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from modal.config import config, logger
@@ -410,9 +409,7 @@ class _ContainerIOManager:
                 await self.heartbeat_condition.wait()
 
             request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs_v2=True)
-            response = await retry_transient_errors(
-                self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
-            )
+            response = await self._client.stub.ContainerHeartbeat(request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
         if response.HasField("cancel_input_event"):
             # response.cancel_input_event.terminate_containers is never set, the server gets the worker to handle it.
@@ -458,8 +455,7 @@ class _ContainerIOManager:
                     target_concurrency=self._target_concurrency,
                     max_concurrency=self._max_concurrency,
                 )
-                resp = await retry_transient_errors(
-                    self._client.stub.FunctionGetDynamicConcurrency,
+                resp = await self._client.stub.FunctionGetDynamicConcurrency(
                     request,
                     attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS,
                 )
@@ -523,9 +519,9 @@ class _ContainerIOManager:
 
         if self.input_plane_server_url:
             stub = await self._client.get_stub(self.input_plane_server_url)
-            await retry_transient_errors(stub.FunctionCallPutDataOut, req)
+            await stub.FunctionCallPutDataOut(req)
         else:
-            await retry_transient_errors(self._client.stub.FunctionCallPutDataOut, req)
+            await self._client.stub.FunctionCallPutDataOut(req)
 
     @asynccontextmanager
     async def generator_output_sender(
@@ -609,9 +605,7 @@ class _ContainerIOManager:
             try:
                 # If number of active inputs is at max queue size, this will block.
                 iteration += 1
-                response: api_pb2.FunctionGetInputsResponse = await retry_transient_errors(
-                    self._client.stub.FunctionGetInputs, request
-                )
+                response: api_pb2.FunctionGetInputsResponse = await self._client.stub.FunctionGetInputs(request)
 
                 if response.rate_limit_sleep_duration:
                     logger.info(
@@ -701,8 +695,7 @@ class _ContainerIOManager:
         # Limit the batch size to 20 to stay within message size limits and buffer size limits.
         output_batch_size = 20
         for i in range(0, len(outputs), output_batch_size):
-            await retry_transient_errors(
-                self._client.stub.FunctionPutOutputs,
+            await self._client.stub.FunctionPutOutputs(
                 api_pb2.FunctionPutOutputsRequest(outputs=outputs[i : i + output_batch_size]),
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                 max_retries=None,  # Retry indefinitely, trying every 1s.
@@ -762,7 +755,7 @@ class _ContainerIOManager:
             )
 
             req = api_pb2.TaskResultRequest(result=result)
-            await retry_transient_errors(self._client.stub.TaskResult, req)
+            await self._client.stub.TaskResult(req)
 
             # Shut down the task gracefully
             raise UserException()
@@ -973,8 +966,7 @@ class _ContainerIOManager:
         await asyncify(os.sync)()
         results = await asyncio.gather(
             *[
-                retry_transient_errors(
-                    self._client.stub.VolumeCommit,
+                self._client.stub.VolumeCommit(
                     api_pb2.VolumeCommitRequest(volume_id=v_id),
                     max_retries=9,
                     base_delay=0.25,

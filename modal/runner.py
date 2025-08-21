@@ -28,7 +28,6 @@ from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
 from ._utils.deprecation import warn_if_passing_namespace
 from ._utils.git_utils import get_git_commit_info
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .cls import _Cls
@@ -55,14 +54,14 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
     # TODO(erikbern): we should capture exceptions here
     # * if request fails: destroy the client
     # * if server says the app is gone: print a helpful warning about detaching
-    await retry_transient_errors(client.stub.AppHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
+    await client.stub.AppHeartbeat(request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
 
 async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> RunningApp:
     # Get all the objects first
     obj_req = api_pb2.AppGetLayoutRequest(app_id=existing_app_id)
     obj_resp, _ = await gather_cancel_on_exc(
-        retry_transient_errors(client.stub.AppGetLayout, obj_req),
+        client.stub.AppGetLayout(obj_req),
         # Cache the environment associated with the app now as we will use it later
         _get_environment_cached(environment_name, client),
     )
@@ -87,7 +86,7 @@ async def _init_local_app_new(
         app_state=app_state,  # type: ignore
     )
     app_resp, _ = await gather_cancel_on_exc(  # TODO: use TaskGroup?
-        retry_transient_errors(client.stub.AppCreate, app_req),
+        client.stub.AppCreate(app_req),
         # Cache the environment associated with the app now as we will use it later
         _get_environment_cached(environment_name, client),
     )
@@ -110,7 +109,7 @@ async def _init_local_app_from_name(
         name=name,
         environment_name=environment_name,
     )
-    app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
+    app_resp = await client.stub.AppGetByDeploymentName(app_req)
     existing_app_id = app_resp.app_id or None
 
     # Grab the app
@@ -203,7 +202,7 @@ async def _publish_app(
     )
 
     try:
-        response = await retry_transient_errors(client.stub.AppPublish, request)
+        response = await client.stub.AppPublish(request)
     except GRPCError as exc:
         if exc.status == Status.INVALID_ARGUMENT or exc.status == Status.FAILED_PRECONDITION:
             raise InvalidError(exc.message)
@@ -227,7 +226,7 @@ async def _disconnect(
 
     logger.debug("Sending app disconnect/stop request")
     req_disconnect = api_pb2.AppClientDisconnectRequest(app_id=app_id, reason=reason, exception=exc_str)
-    await retry_transient_errors(client.stub.AppClientDisconnect, req_disconnect)
+    await client.stub.AppClientDisconnect(req_disconnect)
     logger.debug("App disconnected")
 
 
@@ -619,7 +618,7 @@ async def _interactive_shell(
         except InteractiveTimeoutError:
             # Check on status of Sandbox. It may have crashed, causing connection failure.
             req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox._object_id, timeout=0)
-            resp = await retry_transient_errors(sandbox._client.stub.SandboxWait, req)
+            resp = await sandbox._client.stub.SandboxWait(req)
             if resp.result.exception:
                 raise RemoteError(resp.result.exception)
             else:

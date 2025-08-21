@@ -38,7 +38,7 @@ from ._utils.docker_utils import (
     find_dockerignore_file,
 )
 from ._utils.function_utils import FunctionInfo
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
@@ -631,7 +631,7 @@ class _Image(_Object, type_prefix="im"):
                 allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT") == "1",
                 ignore_cache=config.get("ignore_cache"),
             )
-            resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
+            resp = await resolver.client.stub.ImageGetOrCreate(req)
             image_id = resp.image_id
             result: api_pb2.GenericResult
             metadata: Optional[api_pb2.ImageMetadata] = None
@@ -860,7 +860,7 @@ class _Image(_Object, type_prefix="im"):
             client = await _Client.from_env()
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            resp = await retry_transient_errors(client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id))
+            resp = await client.stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, resolver.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
