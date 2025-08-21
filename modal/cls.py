@@ -920,8 +920,8 @@ More information on class parameterization can be found here: https://modal.com/
             return None
 
         try:
-            req = api_pb2.FunctionGetFlashUrlsRequest(function_id=function_id)
-            resp = await retry_transient_errors(service_function.client.stub.FunctionGetFlashUrls, req)
+            req = api_pb2.FlashGetUrlsRequest(function_id=function_id)
+            resp = await retry_transient_errors(service_function.client.stub.FlashGetUrls, req)
             return resp.urls[0] if resp.urls else None
         except Exception:
             return None

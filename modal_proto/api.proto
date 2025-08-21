@@ -1646,6 +1646,14 @@ message FunctionData {
   string flash_service_label = 35;
 }
 
+message FlashGetUrlsRequest {
+  string function_id = 1;
+}
+
+message FlashGetUrlsResponse {
+  repeated string urls = 1;
+}
+
 message FunctionExtended {
   uint32 type_identifier = 1;
   // FunctionExtended is a union type that exists while we migrate between
@@ -1687,14 +1695,6 @@ message FunctionGetDynamicConcurrencyRequest{
 
 message FunctionGetDynamicConcurrencyResponse {
   uint32 concurrency = 1;
-}
-
-message FunctionGetFlashUrlsRequest {
-  string function_id = 1;
-}
-
-message FunctionGetFlashUrlsResponse {
-  repeated string urls = 1;
 }
 
 message FunctionGetInputsItem {
@@ -3513,7 +3513,7 @@ service ModalClient {
   rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
   rpc FlashContainerList(FlashContainerListRequest) returns (FlashContainerListResponse);
   rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
-  rpc FunctionGetFlashUrls(FunctionGetFlashUrlsRequest) returns (FunctionGetFlashUrlsResponse);
+  rpc FlashGetUrls(FlashGetUrlsRequest) returns (FlashGetUrlsResponse);
 
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
