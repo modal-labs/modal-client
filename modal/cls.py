@@ -904,14 +904,13 @@ More information on class parameterization can be found here: https://modal.com/
 
     @synchronizer.create_blocking
     async def get_flash_url(self) -> Optional[str]:
-        """Get the stable Flash service URL for this class.
-
-        Returns a load-balanced Flash URL that route requests to all healthy
-        containers running this class. Returns None if Flash is not enabled for this class.
+        """
+        Get the stable Flash service URL for this class.
+        Returns None if this class is not a Flash service.
 
         Example:
-            Model = modal.Cls.from_name("my-app", "Model")
-            flash_url = Model.get_flash_url()
+        Model = modal.Cls.from_name("my-app", "Model")
+        flash_url = Model.get_flash_url()
         """
         await self.hydrate()
 
