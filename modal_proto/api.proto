@@ -2242,6 +2242,7 @@ message NetworkAccess {
     OPEN = 1;
     BLOCKED = 2;
     ALLOWLIST = 3;
+    BLOCKED_EGRESS = 4;
   }
   NetworkAccessType network_access_type = 1;
   repeated string allowed_cidrs = 2;
