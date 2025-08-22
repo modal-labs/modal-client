@@ -204,6 +204,7 @@ async def retry_transient_errors(
     else:
         total_deadline = None
 
+    metadata = metadata + [("x-modal-timestamp", str(time.time()))]
     while True:
         attempt_metadata = [
             ("x-idempotency-key", idempotency_key),
