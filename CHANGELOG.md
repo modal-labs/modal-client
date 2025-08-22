@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.4.dev7 (2025-08-22)
+
+The type returned by `modal.experimental.get_cluster_info()` now also includes the cluster ID - shared across the set of tasks that spin up in tandem when using the `@clustered` decorator.
+
+
 #### 1.1.4.dev5 (2025-08-21)
 
 - Added an `idle_timeout` param to `Sandbox.create()` which, when provided, will have the sandbox terminate after `idle_timeout` seconds of idleness.
