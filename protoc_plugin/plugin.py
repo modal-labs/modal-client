@@ -72,7 +72,7 @@ def render(
     for mod in imports:
         buf.add("import {}", mod)
 
-    buf.add("from modal._utils.grpc_utils import _with_retries")
+    buf.add("from modal._utils.grpc_utils import WithRetries")
     buf.add("import typing")
     buf.add("if typing.TYPE_CHECKING:")
     with buf.indent():
@@ -106,7 +106,7 @@ def render(
 
                     if cardinality is const.Cardinality.UNARY_UNARY:
                         buf.add(
-                            f"self.{name} = _with_retries(modal.client.UnaryUnaryWrapper"
+                            f"self.{name} = WithRetries(modal.client.UnaryUnaryWrapper"
                             f"({original_method}, client, server_url))"
                         )
                     elif cardinality is const.Cardinality.UNARY_STREAM:

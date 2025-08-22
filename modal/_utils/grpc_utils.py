@@ -9,11 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import (
-    Any,
-    Optional,
-    TypeVar,
-)
+from typing import Any, Generic, Optional, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -271,10 +267,14 @@ async def retry_transient_errors(
             delay = min(delay * delay_factor, max_delay)
 
 
-def _with_retries(fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]"):
-    """Wrap a UnaryUnaryWrapper with retry_transient_errors."""
+class WithRetries(Generic[RequestType, ResponseType]):
+    """Wrapper for modal.client.UnaryUnaryWrapper with retry_transient_errors."""
 
-    async def wrapped(
+    def __init__(self, orig_wrapper: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]"):
+        self.orig_wrapper = orig_wrapper
+
+    async def __call__(
+        self,
         req: RequestType,
         base_delay: float = 0.1,
         max_delay: float = 1,
@@ -288,7 +288,7 @@ def _with_retries(fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]
         metadata: list[tuple[str, str]] = [],
     ) -> ResponseType:
         return await retry_transient_errors(
-            fn,
+            self.orig_wrapper,
             req,
             base_delay=base_delay,
             max_delay=max_delay,
@@ -301,8 +301,6 @@ def _with_retries(fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]
             retry_warning_message=retry_warning_message,
             metadata=metadata,
         )
-
-    return wrapped
 
 
 def find_free_port() -> int:
