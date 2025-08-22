@@ -68,7 +68,6 @@ def fetch_input_plane_request_counts(ctx):
 def setup_app_and_function_inputplane(servicer):
     app = App()
     servicer.function_body(counting_function)
-    # Custom retries are not supported for inputplane functions yet.
     f = app.function(experimental_options={"input_plane_region": "us-east"}, retries=modal.Retries(max_retries=3))(
         counting_function
     )
