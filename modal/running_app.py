@@ -17,12 +17,14 @@ class RunningApp:
     class_ids: dict[str, str] = field(default_factory=dict)
     object_handle_metadata: dict[str, Optional[Message]] = field(default_factory=dict)
     interactive: bool = False
+    labels: dict[str, str] = field(default_factory=dict)
 
 
 def running_app_from_layout(
     app_id: str,
     app_layout: api_pb2.AppLayout,
     app_page_url: Optional[str] = None,
+    labels: dict[str, str] = {},
 ) -> RunningApp:
     object_handle_metadata = {}
     for obj in app_layout.objects:
@@ -35,4 +37,5 @@ def running_app_from_layout(
         class_ids=dict(app_layout.class_ids),
         object_handle_metadata=object_handle_metadata,
         app_page_url=app_page_url,
+        labels=labels,
     )
