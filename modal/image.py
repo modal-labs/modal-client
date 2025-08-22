@@ -1863,9 +1863,12 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Build a Modal image from a private image in AWS Elastic Container Registry (ECR).
 
-        You will need to pass a `modal.Secret` containing either (`AWS_ACCESS_KEY_ID`,
-        `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`) or (`AWS_ROLE_ARN` and `AWS_REGION`)
-        to access the target ECR registry.
+        You will need to pass a `modal.Secret` containing either IAM user credentials or OIDC
+        configuration to access the target ECR registry.
+
+        For IAM user authentication, set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`.
+
+        For OIDC authentication, set `AWS_ROLE_ARN` and `AWS_REGION`.
 
         IAM configuration details can be found in the AWS documentation for
         ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html).
