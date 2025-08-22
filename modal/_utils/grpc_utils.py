@@ -24,6 +24,7 @@ from grpclib.protocol import H2Protocol
 from modal.exception import AuthError, ConnectionError
 from modal_version import __version__
 
+from .._traceback import suppress_tb_frames
 from .async_utils import retry
 from .logger import logger
 
@@ -287,20 +288,22 @@ class WithRetries(Generic[RequestType, ResponseType]):
         retry_warning_message: Optional[RetryWarningMessage] = None,
         metadata: list[tuple[str, str]] = [],
     ) -> ResponseType:
-        return await retry_transient_errors(
-            self.orig,
-            req,
-            base_delay=base_delay,
-            max_delay=max_delay,
-            delay_factor=delay_factor,
-            max_retries=max_retries,
-            additional_status_codes=additional_status_codes,
-            attempt_timeout=attempt_timeout,
-            total_timeout=total_timeout,
-            attempt_timeout_floor=attempt_timeout_floor,
-            retry_warning_message=retry_warning_message,
-            metadata=metadata,
-        )
+        with suppress_tb_frames(2):
+            # skip current frame + error in `retry_transient_errors`
+            return await retry_transient_errors(
+                self.orig,
+                req,
+                base_delay=base_delay,
+                max_delay=max_delay,
+                delay_factor=delay_factor,
+                max_retries=max_retries,
+                additional_status_codes=additional_status_codes,
+                attempt_timeout=attempt_timeout,
+                total_timeout=total_timeout,
+                attempt_timeout_floor=attempt_timeout_floor,
+                retry_warning_message=retry_warning_message,
+                metadata=metadata,
+            )
 
 
 def find_free_port() -> int:
