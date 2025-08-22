@@ -405,6 +405,9 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         _validate_exec_args(args)
 
+        if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
+            raise InvalidError("Cannot specify open ports when `block_network` is enabled")
+
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
             args,
