@@ -270,8 +270,8 @@ async def retry_transient_errors(
 class WithRetries(Generic[RequestType, ResponseType]):
     """Wrapper for modal.client.UnaryUnaryWrapper with retry_transient_errors."""
 
-    def __init__(self, orig_wrapper: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]"):
-        self.orig_wrapper = orig_wrapper
+    def __init__(self, orig: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]"):
+        self.orig = orig
 
     async def __call__(
         self,
@@ -288,7 +288,7 @@ class WithRetries(Generic[RequestType, ResponseType]):
         metadata: list[tuple[str, str]] = [],
     ) -> ResponseType:
         return await retry_transient_errors(
-            self.orig_wrapper,
+            self.orig,
             req,
             base_delay=base_delay,
             max_delay=max_delay,
