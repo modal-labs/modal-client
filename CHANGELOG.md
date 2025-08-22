@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.4.dev11 (2025-08-22)
+
+Forbid the use of `encrypted_ports`, `h2_ports`, and `unencrypted_ports` in Sandbox creation when `block_network` is `True`.
+
+
 #### 1.1.4.dev7 (2025-08-22)
 
 The type returned by `modal.experimental.get_cluster_info()` now also includes the cluster ID - shared across the set of tasks that spin up in tandem when using the `@clustered` decorator.
