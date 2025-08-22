@@ -318,8 +318,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.port = port
         # AttemptAwait will return a failure until this is 0. It is decremented by 1 each time AttemptAwait is called.
         self.attempt_await_failures_remaining = 0
-        # Number of times AttemptRetry has been called.
-        self.attempted_retries = 0
         # Value returned by AuthTokenGet
         self.auth_token = jwt.encode({"exp": int(time.time()) + 3600}, "my-secret-key", algorithm="HS256")
         self.auth_tokens_generated = 0
@@ -2373,7 +2371,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_inputs += 1
         self.add_function_call_input(function_call_id, request.input, input_id, 0)
 
-        self.attempted_retries += 1
         await stream.send_message(api_pb2.AttemptRetryResponse(attempt_token=request.attempt_token))
 
     async def MapStartOrContinue(self, stream):
