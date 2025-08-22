@@ -445,6 +445,7 @@ message AppPublishRequest {
   uint32 rollback_version = 8;  // Unused by client, but used internally
   string client_version = 9;  // Unused by client, but used internally
   CommitInfo commit_info = 10;  // Git information for deployment tracking
+  map<string, string> tags = 11;  // Tags to set for the App
 }
 
 message AppPublishResponse {
