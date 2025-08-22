@@ -24,6 +24,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
@@ -404,6 +405,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         from .app import _App
 
         _validate_exec_args(args)
+        if name is not None:
+            check_object_name(name)
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -783,6 +786,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         name: Optional[str] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
     ):
         client = client or await _Client.from_env()
+
+        if name is not None and name != _DEFAULT_SANDBOX_NAME_OVERRIDE:
+            check_object_name(name)
 
         if name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
             restore_req = api_pb2.SandboxRestoreRequest(
