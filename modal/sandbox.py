@@ -73,6 +73,12 @@ def _validate_exec_args(args: Sequence[str]) -> None:
         )
 
 
+def _validate_sandbox_name(name: str) -> None:
+    message = f"Invalid Sandbox name: '{name}'.\n\nSandbox names must be between 1 and 128 characters long."
+    if len(name) == 0 or len(name) > 128:
+        raise InvalidError(message)
+
+
 class DefaultSandboxNameOverride(str):
     """A singleton class that represents the default sandbox name override.
 
@@ -404,6 +410,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         from .app import _App
 
         _validate_exec_args(args)
+        if name is not None:
+            _validate_sandbox_name(name)
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -783,6 +791,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         name: Optional[str] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
     ):
         client = client or await _Client.from_env()
+
+        if name is not None and name != _DEFAULT_SANDBOX_NAME_OVERRIDE:
+            _validate_sandbox_name(name)
 
         if name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
             restore_req = api_pb2.SandboxRestoreRequest(
