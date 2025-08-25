@@ -12,7 +12,7 @@ from grpclib import GRPCError, Status
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
-from ._object import _Object
+from ._object import _Object, live_method
 from ._partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
@@ -901,6 +901,28 @@ More information on class parameterization can be found here: https://modal.com/
 
     def _is_local(self) -> bool:
         return self._user_cls is not None
+
+    @live_method
+    async def get_flash_url(self) -> Optional[str]:
+        """
+        Get the stable Flash service URL for this class.
+        Returns None if this class is not a Flash service.
+
+        Example:
+        Model = modal.Cls.from_name("my-app", "Model")
+        flash_url = Model.get_flash_url()
+        """
+        service_function = self._get_class_service_function()
+        function_id = service_function.object_id
+        if not function_id:
+            return None
+
+        try:
+            req = api_pb2.FlashGetUrlsRequest(function_id=function_id)
+            resp = await retry_transient_errors(service_function.client.stub.FlashGetUrls, req)
+            return resp.urls[0] if resp.urls else None
+        except Exception:
+            return None
 
 
 Cls = synchronize_api(_Cls)

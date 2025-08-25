@@ -65,10 +65,6 @@ class _FlashManager:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
 
-    def get_container_url(self):
-        # WARNING: Try not to use this method; we aren't sure if we will keep it.
-        return self.tunnel.url
-
     async def stop(self):
         self.heartbeat_task.cancel()
         await retry_transient_errors(

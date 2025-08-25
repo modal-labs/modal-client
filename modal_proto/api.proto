@@ -1314,6 +1314,14 @@ message FlashContainerRegisterResponse {
   string url = 1;
 }
 
+message FlashGetUrlsRequest {
+  string function_id = 1;
+}
+
+message FlashGetUrlsResponse {
+  repeated string urls = 1;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -3518,6 +3526,7 @@ service ModalClient {
   rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
   rpc FlashContainerList(FlashContainerListRequest) returns (FlashContainerListResponse);
   rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
+  rpc FlashGetUrls(FlashGetUrlsRequest) returns (FlashGetUrlsResponse);
 
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
