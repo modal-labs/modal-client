@@ -219,7 +219,8 @@ async def retry_transient_errors(
         else:
             timeout = None
         try:
-            return await fn(*args, metadata=attempt_metadata, timeout=timeout)
+            with suppress_tb_frames(1):
+                return await fn(*args, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 if exc.status == Status.UNAUTHENTICATED:
@@ -234,23 +235,24 @@ async def retry_transient_errors(
             else:
                 final_attempt = False
 
-            if final_attempt:
-                logger.debug(
-                    f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
-                    f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
-                )
-                if isinstance(exc, OSError):
-                    raise ConnectionError(str(exc))
-                elif isinstance(exc, asyncio.TimeoutError):
-                    raise ConnectionError(str(exc))
-                else:
-                    raise exc
+            with suppress_tb_frames(1):
+                if final_attempt:
+                    logger.debug(
+                        f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                        f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
+                    )
+                    if isinstance(exc, OSError):
+                        raise ConnectionError(str(exc))
+                    elif isinstance(exc, asyncio.TimeoutError):
+                        raise ConnectionError(str(exc))
+                    else:
+                        raise exc
 
-            if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
-                # StreamTerminatedError are not properly raised in grpclib<=0.4.7
-                # fixed in https://github.com/vmagamedov/grpclib/issues/185
-                # TODO: update to newer version (>=0.4.8) once stable
-                raise exc
+                if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
+                    # StreamTerminatedError are not properly raised in grpclib<=0.4.7
+                    # fixed in https://github.com/vmagamedov/grpclib/issues/185
+                    # TODO: update to newer version (>=0.4.8) once stable
+                    raise exc
 
             logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
 
@@ -288,8 +290,7 @@ class WithRetries(Generic[RequestType, ResponseType]):
         retry_warning_message: Optional[RetryWarningMessage] = None,
         metadata: list[tuple[str, str]] = [],
     ) -> ResponseType:
-        with suppress_tb_frames(2):
-            # skip current frame + error in `retry_transient_errors`
+        with suppress_tb_frames(1):
             return await retry_transient_errors(
                 self.orig,
                 req,
