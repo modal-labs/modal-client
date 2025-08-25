@@ -15,7 +15,6 @@ import modal
 from modal._location import display_location
 from modal._output import OutputManager, ProgressHandler, make_console
 from modal._utils.async_utils import synchronizer
-from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
@@ -33,9 +32,7 @@ async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
 
     client = await _Client.from_env()
-    response = await retry_transient_errors(
-        client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env)
-    )
+    response = await client.stub.SharedVolumeList(api_pb2.SharedVolumeListRequest(environment_name=env))
     env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Location", "Created at"]
     rows = []

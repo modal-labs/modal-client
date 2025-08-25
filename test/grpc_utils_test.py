@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import inspect
 import pytest
 import time
 
@@ -7,6 +8,7 @@ from grpclib import GRPCError, Status
 from modal import __version__
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
+    WithRetries,
     connect_channel,
     create_channel,
     retry_transient_errors,
@@ -69,7 +71,7 @@ async def test_retry_transient_errors(servicer, client):
 
     @synchronize_api
     async def wrapped_blob_create(req, **kwargs):
-        return await retry_transient_errors(client_stub.BlobCreate, req, **kwargs)
+        return await client_stub.BlobCreate(req, **kwargs)
 
     # Use the BlobCreate request for retries
     req = api_pb2.BlobCreateRequest()
@@ -126,3 +128,10 @@ async def test_retry_transient_errors(servicer, client):
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "3"
     assert servicer.blob_create_metadata.get("x-modal-input-plane-region") == "us-east"
+
+
+def test_with_reties_wrapper_is_consistent_with_retry_transient_errors():
+    retry_call_params = inspect.signature(WithRetries.__call__).parameters
+    retry_func_params = inspect.signature(retry_transient_errors).parameters
+
+    assert list(retry_call_params)[2:] == list(retry_func_params)[2:]

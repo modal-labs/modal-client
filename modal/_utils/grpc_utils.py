@@ -9,11 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import (
-    Any,
-    Optional,
-    TypeVar,
-)
+from typing import Any, Generic, Optional, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -28,6 +24,7 @@ from grpclib.protocol import H2Protocol
 from modal.exception import AuthError, ConnectionError
 from modal_version import __version__
 
+from .._traceback import suppress_tb_frames
 from .async_utils import retry
 from .logger import logger
 
@@ -223,7 +220,8 @@ async def retry_transient_errors(
         else:
             timeout = None
         try:
-            return await fn(*args, metadata=attempt_metadata, timeout=timeout)
+            with suppress_tb_frames(1):
+                return await fn(*args, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 if exc.status == Status.UNAUTHENTICATED:
@@ -238,23 +236,24 @@ async def retry_transient_errors(
             else:
                 final_attempt = False
 
-            if final_attempt:
-                logger.debug(
-                    f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
-                    f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
-                )
-                if isinstance(exc, OSError):
-                    raise ConnectionError(str(exc))
-                elif isinstance(exc, asyncio.TimeoutError):
-                    raise ConnectionError(str(exc))
-                else:
-                    raise exc
+            with suppress_tb_frames(1):
+                if final_attempt:
+                    logger.debug(
+                        f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                        f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
+                    )
+                    if isinstance(exc, OSError):
+                        raise ConnectionError(str(exc))
+                    elif isinstance(exc, asyncio.TimeoutError):
+                        raise ConnectionError(str(exc))
+                    else:
+                        raise exc
 
-            if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
-                # StreamTerminatedError are not properly raised in grpclib<=0.4.7
-                # fixed in https://github.com/vmagamedov/grpclib/issues/185
-                # TODO: update to newer version (>=0.4.8) once stable
-                raise exc
+                if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
+                    # StreamTerminatedError are not properly raised in grpclib<=0.4.7
+                    # fixed in https://github.com/vmagamedov/grpclib/issues/185
+                    # TODO: update to newer version (>=0.4.8) once stable
+                    raise exc
 
             logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
 
@@ -270,6 +269,43 @@ async def retry_transient_errors(
 
             await asyncio.sleep(delay)
             delay = min(delay * delay_factor, max_delay)
+
+
+class WithRetries(Generic[RequestType, ResponseType]):
+    """Wrapper for modal.client.UnaryUnaryWrapper with retry_transient_errors."""
+
+    def __init__(self, orig: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]"):
+        self.orig = orig
+
+    async def __call__(
+        self,
+        req: RequestType,
+        base_delay: float = 0.1,
+        max_delay: float = 1,
+        delay_factor: float = 2,
+        max_retries: Optional[int] = 3,
+        additional_status_codes: list = [],
+        attempt_timeout: Optional[float] = None,
+        total_timeout: Optional[float] = None,
+        attempt_timeout_floor=2.0,
+        retry_warning_message: Optional[RetryWarningMessage] = None,
+        metadata: list[tuple[str, str]] = [],
+    ) -> ResponseType:
+        with suppress_tb_frames(1):
+            return await retry_transient_errors(
+                self.orig,
+                req,
+                base_delay=base_delay,
+                max_delay=max_delay,
+                delay_factor=delay_factor,
+                max_retries=max_retries,
+                additional_status_codes=additional_status_codes,
+                attempt_timeout=attempt_timeout,
+                total_timeout=total_timeout,
+                attempt_timeout_floor=attempt_timeout_floor,
+                retry_warning_message=retry_warning_message,
+                metadata=metadata,
+            )
 
 
 def find_free_port() -> int:

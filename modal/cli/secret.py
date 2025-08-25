@@ -15,7 +15,6 @@ from typer import Argument, Option
 
 from modal._output import make_console
 from modal._utils.async_utils import synchronizer
-from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
@@ -44,7 +43,7 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
         max_page_size = 100
         pagination = api_pb2.ListPagination(max_objects=max_page_size, created_before=created_before)
         req = api_pb2.SecretListRequest(environment_name=env, pagination=pagination)
-        resp = await retry_transient_errors(client.stub.SecretList, req)
+        resp = await client.stub.SecretList(req)
         items.extend(resp.items)
         return len(resp.items) < max_page_size
 

@@ -14,7 +14,6 @@ from .._partial_function import _clustered
 from .._runtime.container_io_manager import _ContainerIOManager
 from .._utils.async_utils import synchronize_api, synchronizer
 from .._utils.deprecation import deprecation_warning
-from .._utils.grpc_utils import retry_transient_errors
 from ..app import _App
 from ..client import _Client
 from ..cls import _Cls, _Obj
@@ -117,7 +116,7 @@ async def get_app_objects(
 
     app = await _App.lookup(app_name, environment_name=environment_name, client=client)
     req = api_pb2.AppGetLayoutRequest(app_id=app.app_id)
-    app_layout_resp = await retry_transient_errors(client.stub.AppGetLayout, req)
+    app_layout_resp = await client.stub.AppGetLayout(req)
 
     app_objects: dict[str, Union[_Function, _Cls]] = {}
 
@@ -385,4 +384,4 @@ async def update_autoscaler(
     await f.hydrate(client=client)
 
     request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=f.object_id, settings=settings)
-    await retry_transient_errors(client.stub.FunctionUpdateSchedulingParams, request)
+    await client.stub.FunctionUpdateSchedulingParams(request)
