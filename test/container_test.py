@@ -93,7 +93,7 @@ def _get_inputs(
 
 def _get_inputs_batched_with_formats(
     args_list: list[tuple[tuple, dict]],
-    data_formats: list[api_pb2.DataFormat.ValueType],
+    data_formats: list["api_pb2.DataFormat.ValueType"],
     batch_max_size: int,
     kill_switch=True,
     method_name: Optional[str] = None,
