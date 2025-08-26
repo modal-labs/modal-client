@@ -618,7 +618,7 @@ message AttemptStartRequest {
 
 message AttemptStartResponse {
   string attempt_token = 1;
-  FunctionRetryPolicy retry_policy = 2; // TODO(ben-okeefe) TODO(nathan): Not currently used
+  FunctionRetryPolicy retry_policy = 2;
 }
 
 message AuthTokenGetRequest {
@@ -1235,6 +1235,8 @@ message EnvironmentListItem {
   string webhook_suffix = 2;
   double created_at = 3;
   bool default = 4;
+  bool is_managed = 5;
+  string environment_id = 6;
 }
 
 message EnvironmentListResponse {
@@ -1471,6 +1473,8 @@ message Function {
   string flash_service_label = 84;
 
   bool enable_gpu_snapshot = 85; // GPU memory snapshotting (alpha)
+
+  uint32 startup_timeout_secs = 86;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1644,6 +1648,8 @@ message FunctionData {
 
   repeated string flash_service_urls = 34;
   string flash_service_label = 35;
+
+  uint32 startup_timeout_secs = 36;
 }
 
 message FunctionExtended {
@@ -1698,6 +1704,7 @@ message FunctionGetInputsItem {
   FunctionCallInvocationType function_call_invocation_type = 6;
   uint32 retry_count = 7;
   optional int32 function_map_idx = 8; // intercepted and only used by the worker.
+  string attempt_token = 9;
 }
 
 message FunctionGetInputsRequest {
@@ -1975,6 +1982,8 @@ message GenericResult {  // Used for both tasks and function outputs
     // Terminates the function and all remaining inputs.
     GENERIC_STATUS_INIT_FAILURE = 5;
     GENERIC_STATUS_INTERNAL_FAILURE = 6;
+    // Used when sandboxes are terminated due to idle_timeout
+    GENERIC_STATUS_IDLE_TIMEOUT = 7;
   }
 
   GenericStatus status = 1; // Status of the task or function output.
@@ -2166,7 +2175,7 @@ message MapStartOrContinueResponse {
   string function_call_id = 2;
   uint32 max_inputs_outstanding = 3;
   repeated string attempt_tokens = 4;
-  FunctionRetryPolicy retry_policy = 5; // TODO(ben-okeefe): Not currently used
+  FunctionRetryPolicy retry_policy = 5;
 }
 
 message MethodDefinition {
@@ -2572,7 +2581,7 @@ message Sandbox {
   Resources resources = 5;
   CloudProvider cloud_provider = 6;  // Deprecated at some point
 
-  uint32 timeout_secs = 7;
+  uint32 timeout_secs = 7; // The max lifetime of a sandbox in seconds.
 
   optional string workdir = 8;
 
@@ -2634,6 +2643,9 @@ message Sandbox {
   map<string, bool> experimental_options = 31;
 
   repeated string preload_path_prefixes = 32; // Internal use only.
+
+  // Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
+  optional uint32 idle_timeout_secs = 33;
 }
 
 message SandboxCreateRequest {
@@ -3066,6 +3078,7 @@ message TaskLogsBatch {
   bool eof = 14;
   string pty_exec_id = 15;  // Used for interactive functions
   string root_function_id = 16;
+  uint32 ttl_days = 17;
 }
 
 message TaskProgress {

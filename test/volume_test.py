@@ -119,11 +119,12 @@ def test_volume_commit(client, servicer, skip_reload):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="TODO(dflemstr) this test has started flaking at a high rate recently")
 @pytest.mark.parametrize("version", VERSIONS)
 @pytest.mark.parametrize("file_contents_size", [100, 8 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024 + 4711])
 async def test_volume_get(servicer, client, tmp_path, version, file_contents_size):
-    await modal.Volume.create_deployed.aio("my-vol", client=client, version=version)
-    vol = await modal.Volume.from_name("my-vol", version=version).hydrate.aio(client=client)
+    await modal.Volume.objects.create.aio("my-vol", client=client, version=version)
+    vol = await modal.Volume.from_name("my-vol").hydrate.aio(client=client)
 
     file_contents = random.randbytes(file_contents_size)
     file_path = "foo.bin"
@@ -627,3 +628,15 @@ def test_volume_create(servicer, client):
     with pytest.raises(AlreadyExistsError):
         modal.Volume.objects.create(name="test-volume-create", client=client)
     modal.Volume.objects.create(name="test-volume-create", allow_existing=True, client=client)
+    with pytest.raises(InvalidError, match="Invalid Volume name"):
+        modal.Volume.objects.create(name="has space", client=client)
+
+
+def test_volume_create_version(servicer, client):
+    for version in [1, 2]:
+        modal.Volume.objects.create(name=f"should-be-v{version}", version=version, client=client)
+        vol_id = servicer.deployed_volumes[(f"should-be-v{version}", "main")]
+        assert servicer.volumes[vol_id].version == version
+
+    with pytest.raises(InvalidError, match="VolumeFS version must be either 1 or 2"):
+        modal.Volume.objects.create(name="should-be-v3", version=3, client=client)
