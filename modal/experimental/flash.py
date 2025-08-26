@@ -237,6 +237,8 @@ class _FlashPrometheusAutoscaler:
                 await asyncio.sleep(self.autoscaling_interval_seconds)
 
     async def _compute_target_containers(self, current_replicas: int) -> int:
+        # current_replicas is the number of live containers + cold starting containers (not yet live)
+        # containers is the number of live containers that are registered in flash dns
         containers = await self._get_all_containers()
         if len(containers) > current_replicas:
             logger.info(
@@ -269,14 +271,17 @@ class _FlashPrometheusAutoscaler:
             sum_metric += container_metrics[target_metric][0].value
             containers_with_metrics += 1
 
+        # n_containers_missing_metric is the number of unhealthy containers + number of cold starting containers
         n_containers_missing_metric = current_replicas - containers_with_metrics
+        # n_containers_unhealthy is the number of live containers that are not emitting metrics i.e. unhealthy
         n_containers_unhealthy = len(containers) - containers_with_metrics
 
-        # Scale up / down conservatively: Any container that is missing the metric is assumed to be at the minimum
-        # value of the metric when scaling up and the maximum value of the metric when scaling down.
+        # Scale up assuming that every unhealthy container is at 2x the target metric value.
         scale_up_target_metric_value = (sum_metric + n_containers_unhealthy * target_metric_value) / (
             (containers_with_metrics + n_containers_unhealthy) or 1
         )
+
+        # Scale down assuming that every container (including cold starting containers) are at the target metric value.
         scale_down_target_metric_value = (
             sum_metric + n_containers_missing_metric * target_metric_value
         ) / current_replicas
@@ -318,9 +323,19 @@ class _FlashPrometheusAutoscaler:
             logger.warning(f"[Modal Flash] Error getting metrics from {url}: {e}")
             return None
 
+        # Read body with timeout/error handling and parse Prometheus metrics
+        try:
+            text_body = await response.text()
+        except asyncio.TimeoutError:
+            logger.warning(f"[Modal Flash] Timeout reading metrics body from {url}")
+            return None
+        except Exception as e:
+            logger.warning(f"[Modal Flash] Error reading metrics body from {url}: {e}")
+            return None
+
         # Parse the text-based Prometheus metrics format
         metrics: dict[str, list[Sample]] = defaultdict(list)
-        for family in text_string_to_metric_families(await response.text()):
+        for family in text_string_to_metric_families(text_body):
             for sample in family.samples:
                 metrics[sample.name] += [sample]
 
