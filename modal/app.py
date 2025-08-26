@@ -154,6 +154,8 @@ class _App:
     _functions: dict[str, _Function]
     _classes: dict[str, _Cls]
 
+    _labels: dict[str, str]
+
     _image: Optional[_Image]
     _secrets: Sequence[_Secret]
     _volumes: dict[Union[str, PurePosixPath], _Volume]
@@ -174,6 +176,7 @@ class _App:
         image: Optional[_Image] = None,  # Default Image for the App (otherwise default to `modal.Image.debian_slim()`)
         secrets: Sequence[_Secret] = [],  # Secrets to add for all Functions in the App
         volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # Volume mounts to use for all Functions
+        labels: dict[str, str] = {},  # Labels to set for the App  # TODO define redeploy behavior
         include_source: bool = True,  # Default configuration for adding Function source file(s) to the Modal container
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
@@ -203,6 +206,7 @@ class _App:
         self._image = image
         self._secrets = secrets
         self._volumes = volumes
+        self._labels = labels  # TODO validate?
         self._local_entrypoints = {}
         self._web_endpoints = []
 

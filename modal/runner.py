@@ -58,7 +58,9 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
     await retry_transient_errors(client.stub.AppHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
 
-async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> RunningApp:
+async def _init_local_app_existing(
+    client: _Client, existing_app_id: str, environment_name: str, labels: dict[str, str] = {}
+) -> RunningApp:
     # Get all the objects first
     obj_req = api_pb2.AppGetLayoutRequest(app_id=existing_app_id)
     obj_resp, _ = await gather_cancel_on_exc(
@@ -71,6 +73,7 @@ async def _init_local_app_existing(client: _Client, existing_app_id: str, enviro
         existing_app_id,
         obj_resp.app_layout,
         app_page_url=app_page_url,
+        labels=labels,
     )
 
 
@@ -80,6 +83,7 @@ async def _init_local_app_new(
     app_state: int,  # ValueType
     environment_name: str = "",
     interactive: bool = False,
+    labels: dict[str, str] = {},
 ) -> RunningApp:
     app_req = api_pb2.AppCreateRequest(
         description=description,
@@ -97,6 +101,7 @@ async def _init_local_app_new(
         app_page_url=app_resp.app_page_url,
         app_logs_url=app_resp.app_logs_url,
         interactive=interactive,
+        labels=labels,
     )
 
 
@@ -104,6 +109,7 @@ async def _init_local_app_from_name(
     client: _Client,
     name: str,
     environment_name: str = "",
+    labels: dict[str, str] = {},
 ) -> RunningApp:
     # Look up any existing deployment
     app_req = api_pb2.AppGetByDeploymentNameRequest(
@@ -118,7 +124,7 @@ async def _init_local_app_from_name(
         return await _init_local_app_existing(client, existing_app_id, environment_name)
     else:
         return await _init_local_app_new(
-            client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
+            client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name, labels=labels
         )
 
 
@@ -200,6 +206,7 @@ async def _publish_app(
         class_ids=running_app.class_ids,
         definition_ids=definition_ids,
         commit_info=commit_info,
+        labels=running_app.labels,
     )
 
     try:
@@ -303,6 +310,7 @@ async def _run_app(
         environment_name=environment_name or "",
         app_state=app_state,
         interactive=interactive,
+        labels=app._labels,  # TODO or pass directly into _publish_app???
     )
 
     logs_timeout = config["logs_timeout"]
@@ -432,7 +440,9 @@ async def _serve_update(
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        running_app: RunningApp = await _init_local_app_existing(client, existing_app_id, environment_name)
+        running_app: RunningApp = await _init_local_app_existing(
+            client, existing_app_id, environment_name, labels=app._labels
+        )
 
         # Create objects
         await _create_all_objects(
@@ -508,7 +518,9 @@ async def _deploy_app(
     # Get git information to track deployment history
     commit_info_task = asyncio.create_task(get_git_commit_info())
 
-    running_app: RunningApp = await _init_local_app_from_name(client, name, environment_name=environment_name)
+    running_app: RunningApp = await _init_local_app_from_name(
+        client, name, environment_name=environment_name, labels=app._labels
+    )
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
