@@ -275,7 +275,7 @@ class _FlashPrometheusAutoscaler:
 
         # Scale up / down conservatively: Any container that is missing the metric is assumed to be at the minimum
         # value of the metric when scaling up and the maximum value of the metric when scaling down.
-        scale_up_target_metric_value = sum_metric / (containers_with_metrics if containers_with_metrics > 0 else 1)
+        scale_up_target_metric_value = sum_metric / (containers_with_metrics or 1)
         scale_down_target_metric_value = (
             sum_metric + n_containers_missing_metric * target_metric_value
         ) / current_replicas
