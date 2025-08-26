@@ -204,7 +204,8 @@ def call_function(
                 async with container_io_manager.generator_output_sender(
                     current_function_call_id,
                     current_attempt_token,
-                    io_context.finalized_function.data_format,
+                    io_context.function_inputs[0].data_format
+                    or api_pb2.DATA_FORMAT_PICKLE,  # Modal generators have a single input
                     generator_queue,
                 ):
                     item_count = 0
@@ -217,7 +218,6 @@ def call_function(
                     io_context,
                     started_at,
                     message,
-                    api_pb2.DATA_FORMAT_GENERATOR_DONE,
                 )
             else:
                 if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
@@ -230,7 +230,6 @@ def call_function(
                     io_context,
                     started_at,
                     value,
-                    io_context.finalized_function.data_format,
                 )
         reset_context()
 
@@ -256,7 +255,8 @@ def call_function(
                 with container_io_manager.generator_output_sender(
                     current_function_call_id,
                     current_attempt_token,
-                    io_context.finalized_function.data_format,
+                    io_context.function_inputs[0].data_format
+                    or api_pb2.DATA_FORMAT_PICKLE,  # Modal generators are always single-input
                     generator_queue,
                 ):
                     item_count = 0
@@ -265,16 +265,14 @@ def call_function(
                         item_count += 1
 
                 message = api_pb2.GeneratorDone(items_total=item_count)
-                container_io_manager.push_outputs(io_context, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
+                container_io_manager.push_outputs(io_context, started_at, message)
             else:
                 if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
                     raise InvalidError(
                         f"Sync (non-generator) function return value of type {type(res)}."
                         " You might need to use @app.function(..., is_generator=True)."
                     )
-                container_io_manager.push_outputs(
-                    io_context, started_at, res, io_context.finalized_function.data_format
-                )
+                container_io_manager.push_outputs(io_context, started_at, res)
         reset_context()
 
     if container_io_manager.input_concurrency_enabled:
