@@ -213,8 +213,8 @@ class _FlashPrometheusAutoscaler:
                 )
 
                 logger.warning(
-                    f"[Modal Flash] Scaling to {actual_target_containers} containers. Autoscaling decision "
-                    f"made in {time.time() - autoscaling_time} seconds."
+                    f"[Modal Flash] Scaling to {actual_target_containers=} containers. "
+                    f" Autoscaling decision made in {time.time() - autoscaling_time} seconds."
                 )
 
                 await self.autoscaling_decisions_dict.put(
@@ -223,9 +223,7 @@ class _FlashPrometheusAutoscaler:
                 )
                 await self.autoscaling_decisions_dict.put("current_replicas", actual_target_containers)
 
-                await self.cls.update_autoscaler(
-                    min_containers=actual_target_containers,
-                )
+                await self.cls.update_autoscaler(min_containers=actual_target_containers)
 
                 if time.time() - autoscaling_time < self.autoscaling_interval_seconds:
                     await asyncio.sleep(self.autoscaling_interval_seconds - (time.time() - autoscaling_time))
@@ -272,10 +270,13 @@ class _FlashPrometheusAutoscaler:
             containers_with_metrics += 1
 
         n_containers_missing_metric = current_replicas - containers_with_metrics
+        n_containers_unhealthy = len(containers) - containers_with_metrics
 
         # Scale up / down conservatively: Any container that is missing the metric is assumed to be at the minimum
         # value of the metric when scaling up and the maximum value of the metric when scaling down.
-        scale_up_target_metric_value = sum_metric / (containers_with_metrics or 1)
+        scale_up_target_metric_value = (sum_metric + n_containers_unhealthy * target_metric_value) / (
+            (containers_with_metrics + n_containers_unhealthy) or 1
+        )
         scale_down_target_metric_value = (
             sum_metric + n_containers_missing_metric * target_metric_value
         ) / current_replicas
@@ -290,9 +291,14 @@ class _FlashPrometheusAutoscaler:
             desired_replicas = math.ceil(current_replicas * scale_down_ratio)
 
         logger.warning(
-            f"[Modal Flash] Current replicas: {current_replicas}, target metric value: {target_metric_value}, "
-            f"current sum of metric values: {sum_metric}, number of containers missing metric: "
-            f"{n_containers_missing_metric}, scale up ratio: {scale_up_ratio}, scale down ratio: {scale_down_ratio}, "
+            f"[Modal Flash] Current replicas: {current_replicas}, "
+            f"target metric value: {target_metric_value}, "
+            f"current sum of metric values: {sum_metric}, "
+            f"number of containers with metrics: {containers_with_metrics}, "
+            f"number of containers unhealthy: {n_containers_unhealthy}, "
+            f"number of containers missing metric (includes unhealthy): {n_containers_missing_metric}, "
+            f"scale up ratio: {scale_up_ratio}, "
+            f"scale down ratio: {scale_down_ratio}, "
             f"desired replicas: {desired_replicas}"
         )
 
