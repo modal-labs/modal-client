@@ -511,9 +511,9 @@ class _Cls(_Object, type_prefix="cs"):
         return self._method_partials.keys()
 
     @live_method
-    async def get_flash_url(self) -> Optional[str]:
+    async def _experimental_get_flash_urls(self) -> Optional[list[str]]:
         """URL of the flash service for the class."""
-        return await self._get_class_service_function().get_flash_url()
+        return await self._get_class_service_function()._experimental_get_flash_urls()
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)

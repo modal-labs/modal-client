@@ -1393,9 +1393,12 @@ def test_cls_get_flash_url(servicer):
                 handle_metadata=api_pb2.FunctionHandleMetadata(
                     function_name="MyClass.*",
                     is_method=False,
-                    flash_service_urls=["https://flash.example.com/service1"],
+                    _experimental_flash_urls=[
+                        "https://flash.example.com/service1",
+                        "https://flash.example.com/service2",
+                    ],
                 ),
             ),
         )
-        flash_url = cls.get_flash_url()
-        assert flash_url == "https://flash.example.com/service1"
+        flash_urls = cls._experimental_get_flash_urls()
+        assert flash_urls == ["https://flash.example.com/service1", "https://flash.example.com/service2"]
