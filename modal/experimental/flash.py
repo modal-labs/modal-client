@@ -275,7 +275,7 @@ class _FlashPrometheusAutoscaler:
 
         # Scale up / down conservatively: Any container that is missing the metric is assumed to be at the minimum
         # value of the metric when scaling up and the maximum value of the metric when scaling down.
-        scale_up_target_metric_value = sum_metric / current_replicas
+        scale_up_target_metric_value = sum_metric / (containers_with_metrics if containers_with_metrics > 0 else 1)
         scale_down_target_metric_value = (
             sum_metric + n_containers_missing_metric * target_metric_value
         ) / current_replicas
@@ -303,8 +303,11 @@ class _FlashPrometheusAutoscaler:
 
         # Fetch the metrics from the endpoint
         try:
-            response = await self.http_client.get(url)
+            response = await asyncio.wait_for(self.http_client.get(url), timeout=5)
             response.raise_for_status()
+        except asyncio.TimeoutError:
+            logger.warning(f"[Modal Flash] Timeout getting metrics from {url}")
+            return None
         except Exception as e:
             logger.warning(f"[Modal Flash] Error getting metrics from {url}: {e}")
             return None
