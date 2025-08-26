@@ -781,18 +781,24 @@ def test_from_id(client, servicer):
 
     @app.function(serialized=True)
     def foo():
-        pass
+        return 42
 
     deploy_app(app, "dummy", client=client)
 
-    function_id = foo.object_id
-    assert function_id
-
     function_call = foo.spawn()
-    assert function_call.object_id
-    # Used in a few examples to construct FunctionCall objects
-    rehydrated_function_call = FunctionCall.from_id(function_call.object_id, client)
-    assert rehydrated_function_call.object_id == function_call.object_id
+    fc_id = function_call.object_id
+    assert fc_id
+
+    servicer.function_body(lambda: 42)
+    with servicer.intercept() as ctx:
+        fc2 = FunctionCall.from_id(fc_id, client)
+        assert fc2.object_id == fc_id
+        assert fc2.get() == 42
+        # Also test cancel
+        fc2.cancel()
+
+    req = ctx.pop_request("FunctionCallCancel")
+    assert req.function_call_id == fc_id
 
 
 def test_local_execution_on_web_endpoint(client, servicer):

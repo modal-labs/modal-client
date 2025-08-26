@@ -866,6 +866,7 @@ async def _create_single_client_dependency_mount(
     uv_python_platform: str,
     check_if_exists: bool = True,
     allow_overwrite: bool = False,
+    dry_run: bool = False,
 ):
     import tempfile
 
@@ -930,17 +931,20 @@ async def _create_single_client_dependency_mount(
                 remote_path=REMOTE_SITECUSTOMIZE_PATH,
             )
 
-            try:
-                await python_mount._deploy.aio(
-                    mount_name,
-                    api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
-                    environment_name=profile_environment,
-                    allow_overwrite=allow_overwrite,
-                    client=client,
-                )
-                print(f"✅ Deployed mount {mount_name} to global namespace.")
-            except GRPCError as e:
-                print(f"⚠️ Mount creation failed with {e.status}: {e.message}")
+            if not dry_run:
+                try:
+                    await python_mount._deploy.aio(
+                        mount_name,
+                        api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+                        environment_name=profile_environment,
+                        allow_overwrite=allow_overwrite,
+                        client=client,
+                    )
+                    print(f"✅ Deployed mount {mount_name} to global namespace.")
+                except GRPCError as e:
+                    print(f"⚠️ Mount creation failed with {e.status}: {e.message}")
+            else:
+                print(f"Dry run - skipping deployment of mount {mount_name}")
 
 
 async def _create_client_dependency_mounts(
@@ -948,6 +952,7 @@ async def _create_client_dependency_mounts(
     python_versions: list[str] = list(PYTHON_STANDALONE_VERSIONS),
     builder_versions: list[str] = ["2025.06"],  # Reenable "PREVIEW" during testing
     check_if_exists=True,
+    dry_run=False,
 ):
     arch = "x86_64"
     platform_tags = [
@@ -971,6 +976,7 @@ async def _create_client_dependency_mounts(
                         # in theory we may need to do at some point (hopefully not, but...)
                         check_if_exists=check_if_exists and builder_version != "PREVIEW",
                         allow_overwrite=builder_version == "PREVIEW",
+                        dry_run=dry_run,
                     )
                 )
     await TaskContext.gather(*coros)
