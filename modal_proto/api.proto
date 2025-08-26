@@ -1791,6 +1791,7 @@ message FunctionHandleMetadata {
   optional string input_plane_region = 47;
   // Use optional to ensure unset values default to None instead of 0
   optional uint64 max_object_size_bytes = 48;
+  repeated string _experimental_flash_urls = 49; // (Optional) urls for flash services
 }
 
 message FunctionInput {
