@@ -1483,7 +1483,7 @@ Use the `Function.get_web_url()` method instead.
     @live_method
     async def _experimental_get_flash_urls(self) -> Optional[list[str]]:
         """URL of the flash service for the function."""
-        return self._experimental_flash_urls or None
+        return list(self._experimental_flash_urls) or None
 
     @property
     async def is_generator(self) -> bool:
