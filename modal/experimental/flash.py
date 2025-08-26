@@ -303,7 +303,7 @@ class _FlashPrometheusAutoscaler:
 
         # Fetch the metrics from the endpoint
         try:
-            response = await asyncio.wait_for(self.http_client.get(url), timeout=5)
+            response = await self.http_client.get(url, timeout=5)
             response.raise_for_status()
         except asyncio.TimeoutError:
             logger.warning(f"[Modal Flash] Timeout getting metrics from {url}")
