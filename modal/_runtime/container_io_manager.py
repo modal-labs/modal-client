@@ -201,28 +201,6 @@ class IOContext:
         logger.debug(f"Finished input {self.input_ids}")
         return res
 
-    def prepare_output_data(self, data: Any) -> list[tuple[str, int, Any, api_pb2.DataFormat.ValueType]]:
-        """Prepare output data and return tuples of (input_id, retry_count, data, data_format)."""
-        if not self._is_batched:
-            data_list = [data]
-        else:
-            function_name = self.finalized_function.callable.__name__
-            if not isinstance(data, list):
-                raise InvalidError(f"Output of batched function {function_name} must be a list.")
-            if len(data) != len(self.input_ids):
-                raise InvalidError(
-                    f"Output of batched function {function_name} must be a list of equal length as its inputs."
-                )
-            data_list = data
-
-        # Combine all the needed info into tuples
-        result = []
-        for index, d in enumerate(data_list):
-            input_format = self.function_inputs[index].data_format or api_pb2.DATA_FORMAT_PICKLE
-            result.append((self.input_ids[index], self.retry_counts[index], d, input_format))
-
-        return result
-
     async def create_output_items(
         self, started_at: float, data_or_results: list[Any]
     ) -> list[api_pb2.FunctionPutOutputsItem]:
