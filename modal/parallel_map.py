@@ -289,7 +289,7 @@ class AsyncInputPumper(InputPumper):
         tasks = set()
         max_concurrent = 20
         semaphore = asyncio.Semaphore(max_concurrent)
-        async for items in queue_batch_iterator(self.input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+        async for items in queue_batch_iterator(self.input_queue, max_batch_size=self.max_batch_size):
 
             async def process(items):
                 async with semaphore:
