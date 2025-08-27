@@ -20,7 +20,7 @@ class _DummySample:
 
 
 def _make_autoscaler(
-    metrics_by_host: Mapping[str, Optional[float]] | None = None,
+    metrics_by_host: Optional[Mapping[str, Optional[float]]] = None,
     container_hosts: list[str] | None = None,
     *,
     # New flexible parameters
