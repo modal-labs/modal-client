@@ -282,23 +282,23 @@ class _FlashPrometheusAutoscaler:
 
         # number of discoverable containers - overprovisioned containers since we don't want to account for them
         # in the scale up calculation
-        num_provisioned_containers = min(containers_with_metrics + n_containers_unhealthy - overprovision_containers, 1)
+        num_provisioned_containers = max(len(containers) - overprovision_containers, 1)
 
         # Scale up assuming that every unhealthy container is at 1x the target metric value.
-        scale_up_target_metric_value = (sum_metric + n_containers_unhealthy * target_metric_value) / (
+        scale_up_target_metric_value = (sum_metric + 1.1 * n_containers_unhealthy * target_metric_value) / (
             # handle the case where all containers are cold starting or not discoverable
             num_provisioned_containers
         )
 
         # Scale down assuming that every container (including cold starting containers) are at the target metric value.
-        scale_down_target_metric_value = (
-            sum_metric + n_containers_missing_metric * target_metric_value
-        ) / current_replicas
+        scale_down_target_metric_value = (sum_metric + n_containers_missing_metric * target_metric_value) / min(
+            (num_provisioned_containers + n_containers_missing_metric), current_replicas
+        )
 
         scale_up_ratio = scale_up_target_metric_value / target_metric_value
         scale_down_ratio = scale_down_target_metric_value / target_metric_value
 
-        desired_replicas = min(len(containers) - overprovision_containers, 1)
+        desired_replicas = num_provisioned_containers
         if scale_up_ratio > 1 + self.scale_up_tolerance:
             desired_replicas = math.ceil(desired_replicas * scale_up_ratio)
         elif scale_down_ratio < 1 - self.scale_down_tolerance:
@@ -311,6 +311,7 @@ class _FlashPrometheusAutoscaler:
             f"number of containers with metrics: {containers_with_metrics}, "
             f"number of containers unhealthy: {n_containers_unhealthy}, "
             f"number of containers missing metric (includes unhealthy): {n_containers_missing_metric}, "
+            f"number of provisioned containers: {num_provisioned_containers}, "
             f"scale up ratio: {scale_up_ratio}, "
             f"scale down ratio: {scale_down_ratio}, "
             f"desired replicas: {desired_replicas}"

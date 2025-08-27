@@ -20,15 +20,59 @@ class _DummySample:
 
 
 def _make_autoscaler(
-    metrics_by_host: Mapping[str, Optional[float]],
-    container_hosts: list[str],
+    metrics_by_host: Mapping[str, Optional[float]] | None = None,
+    container_hosts: list[str] | None = None,
     *,
+    # New flexible parameters
+    num_containers: int | None = None,
+    unhealthy_hosts: list[str] | None = None,
+    metric_values: list[float] | float | None = None,
+    default_metric_value: float = 10.0,
+    # Existing parameters
     target_metric_value: float = 10.0,
     scale_up_tolerance: float = 0.1,
     scale_down_tolerance: float = 0.1,
     target_metric: str = "test_metric",
     overprovision_containers: int | None = None,
 ):
+    # Build container_hosts and metrics_by_host from flexible parameters
+    if metrics_by_host is None and container_hosts is None:
+        # Use flexible parameters to build the configuration
+        if num_containers is not None:
+            container_hosts = [f"h{i + 1}" for i in range(num_containers)]
+        else:
+            container_hosts = []
+
+        # Build metrics_by_host dictionary
+        metrics_by_host = {}
+        unhealthy_set = set(unhealthy_hosts or [])
+
+        # Handle metric_values
+        if isinstance(metric_values, (int, float)):
+            # Single value for all healthy containers
+            healthy_values = [metric_values] * len(container_hosts)
+        elif isinstance(metric_values, list):
+            # List of values for healthy containers
+            healthy_values = metric_values[:]
+        else:
+            # Use default value for all healthy containers
+            healthy_values = [default_metric_value] * len(container_hosts)
+
+        # Assign metric values to containers
+        healthy_index = 0
+        for host in container_hosts:
+            if host in unhealthy_set:
+                metrics_by_host[host] = None  # Unhealthy container
+            else:
+                if healthy_index < len(healthy_values):
+                    metrics_by_host[host] = healthy_values[healthy_index]
+                    healthy_index += 1
+                else:
+                    metrics_by_host[host] = default_metric_value
+
+    elif metrics_by_host is None or container_hosts is None:
+        raise ValueError("Either provide both metrics_by_host and container_hosts, or use the flexible parameters")
+
     autoscaler = _FlashPrometheusAutoscaler.__new__(_FlashPrometheusAutoscaler)
 
     autoscaler_any = cast(Any, autoscaler)
@@ -55,6 +99,29 @@ def _make_autoscaler(
     autoscaler._get_metrics = MethodType(_get_metrics, autoscaler)
 
     return autoscaler
+
+
+# Helper functions demonstrating the new flexible API
+def make_autoscaler_with_unhealthy(
+    num_containers: int, unhealthy_hosts: list[str], metric_value: float = 10.0, **kwargs
+):
+    """Create autoscaler with specified number of containers and explicit unhealthy hosts."""
+    return _make_autoscaler(
+        num_containers=num_containers, unhealthy_hosts=unhealthy_hosts, metric_values=metric_value, **kwargs
+    )
+
+
+def make_autoscaler_with_mixed_metrics(healthy_values: list[float], unhealthy_hosts: list[str] | None = None, **kwargs):
+    """Create autoscaler with different metric values for each healthy container."""
+    num_containers = len(healthy_values) + len(unhealthy_hosts or [])
+    return _make_autoscaler(
+        num_containers=num_containers, unhealthy_hosts=unhealthy_hosts, metric_values=healthy_values, **kwargs
+    )
+
+
+def make_autoscaler_simple(num_containers: int, all_metric_value: float, **kwargs):
+    """Create autoscaler with all containers having the same metric value."""
+    return _make_autoscaler(num_containers=num_containers, metric_values=all_metric_value, **kwargs)
 
 
 @pytest.mark.asyncio
@@ -121,7 +188,7 @@ async def test_compute_target_containers_current_less_than_discoverable():
 @pytest.mark.asyncio
 async def test_compute_target_containers_overprovision_reduces_scale_up():
     # Overprovision reduces denominator in scale-up avg: 3 containers at 15, overprov=1 ->
-    # (45)/(3-1)=22.5 -> ratio=2.25 -> ceil(3*2.25)=7
+    # (45)/(3-1)=22.5 -> ratio=2.25 -> ceil((3-1)*2.25)=5
     metrics = {"h1": 15.0, "h2": 15.0, "h3": 15.0}
     autoscaler = _make_autoscaler(
         metrics_by_host=metrics,
@@ -130,7 +197,7 @@ async def test_compute_target_containers_overprovision_reduces_scale_up():
         overprovision_containers=1,
     )
     result = await autoscaler._compute_target_containers(current_replicas=3)
-    assert result == 7
+    assert result == 5
 
 
 @pytest.mark.asyncio
@@ -173,5 +240,67 @@ async def test_overprovision_interacts_with_unhealthy_scale_up():
         overprovision_containers=1,
     )
     result = await autoscaler._compute_target_containers(current_replicas=2)
-    # sum_metric=10, unhealthy=1 -> numerator=20, denominator=(1+1-1)=1 -> value=20 -> ratio=2 -> ceil(2*2)=4
+    # sum_metric=10, unhealthy=1 -> numerator=20, denominator=(1+1-1)=1 -> value=20 -> ratio=2 -> ceil(1*2)=2
+    assert result == 3
+
+
+@pytest.mark.asyncio
+async def test_unhealthy_hosts_with_unhealthy_containers():
+    """Example: Create 5 containers where h2 and h4 are unhealthy, others have metric value 15."""
+    autoscaler = make_autoscaler_with_unhealthy(
+        num_containers=5,
+        unhealthy_hosts=["h2", "h4"],
+        metric_value=15.0,
+        target_metric_value=10.0,
+    )
+    result = await autoscaler._compute_target_containers(current_replicas=5)
+    # 3 healthy containers at 15.0, 2 unhealthy assumed at target (10.0)
+    # avg = (15*3 + 10*2) / 5 = 65/5 = 13 -> ratio = 1.3 -> ceil(5*1.3) = 7
+    assert result == 7
+
+
+@pytest.mark.asyncio
+async def test_unhealthy_hosts_with_mixed_metrics():
+    """Example: Create containers with different metric values and some unhealthy."""
+    autoscaler = make_autoscaler_with_mixed_metrics(
+        healthy_values=[12.0, 8.0, 15.0],  # Different values for healthy containers
+        unhealthy_hosts=["h4", "h5"],  # Two unhealthy containers
+        target_metric_value=10.0,
+    )
+    result = await autoscaler._compute_target_containers(current_replicas=5)
+    # 3 healthy: 12+8+15=35, 2 unhealthy assumed at 10 each: 20
+    # avg = (35 + 20) / 5 = 11 -> ratio = 1.1 -> ceil(5*1.1) = 6
+    assert result == 6
+
+
+@pytest.mark.asyncio
+async def test_unhealthy_hosts_simple_all_same_value():
+    """Example: Create 4 containers all with the same metric value."""
+    autoscaler = make_autoscaler_simple(
+        num_containers=4,
+        all_metric_value=5.0,
+        target_metric_value=10.0,
+    )
+    result = await autoscaler._compute_target_containers(current_replicas=4)
+    # All containers at 5.0, below target -> scale down
+    # avg = 5.0 -> ratio = 0.5 -> ceil(4*0.5) = 2
+    assert result == 2
+
+
+@pytest.mark.asyncio
+async def test_unhealthy_hosts_with_custom_numbers():
+    """Example: Custom target values, tolerances, and overprovision settings."""
+    autoscaler = _make_autoscaler(
+        num_containers=3,
+        unhealthy_hosts=["h1"],
+        metric_values=[25.0, 30.0],  # Two healthy containers with high values
+        target_metric_value=20.0,
+        scale_up_tolerance=0.2,
+        scale_down_tolerance=0.15,
+        overprovision_containers=1,
+    )
+    result = await autoscaler._compute_target_containers(current_replicas=3)
+    # 2 healthy: 25+30=55, 1 unhealthy assumed at target: 20
+    # With overprovision=1: avg = (55 + 20) / (2+1-1) = 75/2 = 37.5
+    # ratio = 37.5/20 = 1.875 -> ceil(2*1.875) = 4
     assert result == 4
