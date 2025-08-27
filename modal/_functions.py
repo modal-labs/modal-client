@@ -1471,6 +1471,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._info = None
         self._serve_mounts = frozenset()
         self._metadata = None
+        self._experimental_flash_urls = None
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
@@ -1498,6 +1499,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._max_object_size_bytes = (
             metadata.max_object_size_bytes if metadata.HasField("max_object_size_bytes") else MAX_OBJECT_SIZE_BYTES
         )
+        self._experimental_flash_urls = metadata._experimental_flash_urls
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1515,6 +1517,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             input_plane_url=self._input_plane_url,
             input_plane_region=self._input_plane_region,
             max_object_size_bytes=self._max_object_size_bytes,
+            _experimental_flash_urls=self._experimental_flash_urls,
         )
 
     def _check_no_web_url(self, fn_name: str):
@@ -1544,6 +1547,11 @@ Use the `Function.get_web_url()` method instead.
     async def get_web_url(self) -> Optional[str]:
         """URL of a Function running as a web endpoint."""
         return self._web_url
+
+    @live_method
+    async def _experimental_get_flash_urls(self) -> Optional[list[str]]:
+        """URL of the flash service for the function."""
+        return list(self._experimental_flash_urls) if self._experimental_flash_urls else None
 
     @property
     async def is_generator(self) -> bool:

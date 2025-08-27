@@ -12,7 +12,7 @@ from grpclib import GRPCError, Status
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
-from ._object import _Object
+from ._object import _Object, live_method
 from ._partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
@@ -509,6 +509,11 @@ class _Cls(_Object, type_prefix="cs"):
     def _get_method_names(self) -> Collection[str]:
         # returns method names for a *local* class only for now (used by cli)
         return self._method_partials.keys()
+
+    @live_method
+    async def _experimental_get_flash_urls(self) -> Optional[list[str]]:
+        """URL of the flash service for the class."""
+        return await self._get_class_service_function()._experimental_get_flash_urls()
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
