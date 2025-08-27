@@ -285,7 +285,7 @@ class AsyncInputPumper(InputPumper):
     async def pump_inputs(self):
         assert self.client.stub
         tasks = set()
-        max_concurrent = 20
+        max_concurrent = 8
         semaphore = asyncio.Semaphore(max_concurrent)
         async for items in queue_batch_iterator(self.input_queue, max_batch_size=self.max_batch_size):
 
