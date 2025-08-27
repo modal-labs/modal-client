@@ -188,9 +188,7 @@ class InputPumper:
                 f" push is {self.input_queue.qsize()}. "
             )
 
-            t0 = time.monotonic()
             resp = await self._send_inputs(self.client.stub.FunctionPutInputs, request)
-            logger.debug(f"FunctionPutInputs took {time.monotonic() - t0:.3f}s")
             self.inputs_sent += len(items)
             # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
             if self.map_items_manager is not None:
