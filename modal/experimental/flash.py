@@ -291,6 +291,9 @@ class _FlashPrometheusAutoscaler:
         )
 
         # Scale down assuming that every container (including cold starting containers) are at the target metric value.
+        # The denominator is the min of (num_provisioned_containers + n_containers_missing_metric), current_replicas
+        # because in the case overprovisioned containers > current_replicas, then the newly provisioned containers
+        # will all be cold starting and we want to use the current_replicas to scale down.
         scale_down_target_metric_value = (sum_metric + n_containers_missing_metric * target_metric_value) / min(
             (num_provisioned_containers + n_containers_missing_metric), current_replicas
         )
