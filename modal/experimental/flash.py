@@ -282,7 +282,7 @@ class _FlashPrometheusAutoscaler:
 
         # number of discoverable containers - overprovisioned containers since we don't want to account for them
         # in the scale up calculation
-        num_provisioned_containers = max(len(containers) - overprovision_containers, 1)
+        num_provisioned_containers = max(current_replicas - overprovision_containers, 1)
 
         # Scale up assuming that every unhealthy container is at 1x the target metric value.
         scale_up_target_metric_value = (sum_metric + 1.1 * n_containers_unhealthy * target_metric_value) / (
