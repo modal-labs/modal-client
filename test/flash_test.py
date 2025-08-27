@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2025
 # pyright: reportMissingImports=false
 import pytest
+from types import MethodType
 from typing import Any, Mapping, Optional, cast
+from urllib.parse import urlparse
 
 from modal.experimental.flash import _FlashPrometheusAutoscaler
 
@@ -30,6 +32,20 @@ def _make_autoscaler(
     autoscaler_any.scale_down_tolerance = 0.1
     autoscaler_any.min_overprovision_containers = overprovision_containers
     autoscaler_any.metrics_endpoint = "metrics"
+
+    def _get_all_containers(_self):
+        return [_DummyContainer(h) for h in metrics_by_host.keys()]
+
+    def _get_metrics(_self, url: str):
+        host = urlparse(url).hostname or ""
+        value = metrics_by_host.get(host, None)
+        if value is None:
+            return None
+        return {"test_metric": [_DummySample(value)]}
+
+    autoscaler._get_all_containers = MethodType(_get_all_containers, autoscaler)  # type: ignore
+    autoscaler._get_metrics = MethodType(_get_metrics, autoscaler)  # type: ignore
+
     return autoscaler
 
 
