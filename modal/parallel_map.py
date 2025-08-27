@@ -81,7 +81,7 @@ MAX_INPUTS_OUTSTANDING_DEFAULT = 1000
 
 # maximum number of inputs to send to the server in a single request
 MAP_INVOCATION_CHUNK_SIZE = 49
-SPAWN_MAP_INVOCATION_CHUNK_SIZE = 400
+SPAWN_MAP_INVOCATION_CHUNK_SIZE = 512
 
 
 if typing.TYPE_CHECKING:
