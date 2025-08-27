@@ -343,7 +343,7 @@ async def queue_batch_iterator(
 
     Treats a None value as end of queue items
     """
-    batch = []
+    batch: list[Any] = []
     while True:
         if not batch:
             item = await q.get()
