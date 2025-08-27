@@ -121,6 +121,7 @@ class _FlashPrometheusAutoscaler:
         target_metric_value: float,
         min_containers: Optional[int],
         max_containers: Optional[int],
+        min_overprovision_containers: Optional[int],
         scale_up_tolerance: float,
         scale_down_tolerance: float,
         scale_up_stabilization_window_seconds: int,
@@ -148,6 +149,7 @@ class _FlashPrometheusAutoscaler:
         self.target_metric_value = target_metric_value
         self.min_containers = min_containers
         self.max_containers = max_containers
+        self.min_overprovision_containers = min_overprovision_containers
         self.scale_up_tolerance = scale_up_tolerance
         self.scale_down_tolerance = scale_down_tolerance
         self.scale_up_stabilization_window_seconds = scale_up_stabilization_window_seconds
@@ -210,6 +212,7 @@ class _FlashPrometheusAutoscaler:
                     scale_down_stabilization_window_seconds=self.scale_down_stabilization_window_seconds,
                     min_containers=self.min_containers,
                     max_containers=self.max_containers,
+                    min_overprovision_containers=self.min_overprovision_containers,
                 )
 
                 logger.warning(
@@ -255,6 +258,7 @@ class _FlashPrometheusAutoscaler:
 
         sum_metric = 0
         containers_with_metrics = 0
+        overprovision_containers = self.min_overprovision_containers or 0
         container_metrics_list = await asyncio.gather(
             *[
                 self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
@@ -276,9 +280,14 @@ class _FlashPrometheusAutoscaler:
         # n_containers_unhealthy is the number of live containers that are not emitting metrics i.e. unhealthy
         n_containers_unhealthy = len(containers) - containers_with_metrics
 
-        # Scale up assuming that every unhealthy container is at 2x the target metric value.
+        # number of discoverable containers - overprovisioned containers since we don't want to account for them
+        # in the scale up calculation
+        num_provisioned_containers = containers_with_metrics + n_containers_unhealthy - overprovision_containers
+
+        # Scale up assuming that every unhealthy container is at 1x the target metric value.
         scale_up_target_metric_value = (sum_metric + n_containers_unhealthy * target_metric_value) / (
-            (containers_with_metrics + n_containers_unhealthy) or 1
+            # handle the case where all containers are cold starting or not discoverable
+            num_provisioned_containers if num_provisioned_containers > 0 else 1
         )
 
         # Scale down assuming that every container (including cold starting containers) are at the target metric value.
@@ -354,6 +363,7 @@ class _FlashPrometheusAutoscaler:
         scale_down_stabilization_window_seconds: int = 60 * 5,
         min_containers: Optional[int] = None,
         max_containers: Optional[int] = None,
+        min_overprovision_containers: Optional[int] = None,
     ) -> int:
         """
         Return the target number of containers following (simplified) Kubernetes HPA
@@ -404,6 +414,10 @@ class _FlashPrometheusAutoscaler:
             new_replicas = max(min_containers, new_replicas)
         if max_containers is not None:
             new_replicas = min(max_containers, new_replicas)
+
+        if min_overprovision_containers is not None:
+            new_replicas += min_overprovision_containers
+
         return new_replicas
 
     async def stop(self):
