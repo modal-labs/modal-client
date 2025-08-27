@@ -185,8 +185,9 @@ def call_function(
 ):
     async def run_input_async(io_context: IOContext) -> None:
         started_at = time.time()
-        input_ids, function_call_ids = io_context.input_ids, io_context.function_call_ids
-        reset_context = execution_context._set_current_context_ids(input_ids, function_call_ids)
+        reset_context = execution_context._set_current_context_ids(
+            io_context.input_ids, io_context.function_call_ids, io_context.attempt_tokens
+        )
         async with container_io_manager.handle_input_exception.aio(io_context, started_at):
             res = io_context.call_finalized_function()
             # TODO(erikbern): any exception below shouldn't be considered a user exception
@@ -195,9 +196,14 @@ def call_function(
                     raise InvalidError(f"Async generator function returned value of type {type(res)}")
 
                 # Send up to this many outputs at a time.
+                current_function_call_id = execution_context.current_function_call_id()
+                assert current_function_call_id is not None  # Set above.
+                current_attempt_token = execution_context.current_attempt_token()
+                assert current_attempt_token is not None  # Set above, but can be empty string.
                 generator_queue: asyncio.Queue[Any] = await container_io_manager._queue_create.aio(1024)
                 async with container_io_manager.generator_output_sender(
-                    function_call_ids[0],
+                    current_function_call_id,
+                    current_attempt_token,
                     io_context.finalized_function.data_format,
                     generator_queue,
                 ):
@@ -230,8 +236,9 @@ def call_function(
 
     def run_input_sync(io_context: IOContext) -> None:
         started_at = time.time()
-        input_ids, function_call_ids = io_context.input_ids, io_context.function_call_ids
-        reset_context = execution_context._set_current_context_ids(input_ids, function_call_ids)
+        reset_context = execution_context._set_current_context_ids(
+            io_context.input_ids, io_context.function_call_ids, io_context.attempt_tokens
+        )
         with container_io_manager.handle_input_exception(io_context, started_at):
             res = io_context.call_finalized_function()
 
@@ -241,10 +248,14 @@ def call_function(
                     raise InvalidError(f"Generator function returned value of type {type(res)}")
 
                 # Send up to this many outputs at a time.
+                current_function_call_id = execution_context.current_function_call_id()
+                assert current_function_call_id is not None  # Set above.
+                current_attempt_token = execution_context.current_attempt_token()
+                assert current_attempt_token is not None  # Set above, but can be empty string.
                 generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)
-
                 with container_io_manager.generator_output_sender(
-                    function_call_ids[0],
+                    current_function_call_id,
+                    current_attempt_token,
                     io_context.finalized_function.data_format,
                     generator_queue,
                 ):

@@ -1356,7 +1356,8 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().uv_sync()
         ```
 
-        The `pyproject.toml` and `uv.lock` in `uv_project_dir` are automatically added to the build context.
+        The `pyproject.toml` and `uv.lock` in `uv_project_dir` are automatically added to the build context. The
+        `uv_project_dir` is relative to the current working directory of where `modal` is called.
 
         Added in v1.1.0.
         """
@@ -1862,11 +1863,17 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Build a Modal image from a private image in AWS Elastic Container Registry (ECR).
 
-        You will need to pass a `modal.Secret` containing `AWS_ACCESS_KEY_ID`,
-        `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` to access the target ECR registry.
+        You will need to pass a `modal.Secret` containing either IAM user credentials or OIDC
+        configuration to access the target ECR registry.
+
+        For IAM user authentication, set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`.
+
+        For OIDC authentication, set `AWS_ROLE_ARN` and `AWS_REGION`.
 
         IAM configuration details can be found in the AWS documentation for
         ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html).
+
+        For more details on using an AWS role to access ECR, see the [OIDC integration guide](https://modal.com/docs/guide/oidc-integration).
 
         See `Image.from_registry()` for information about the other parameters.
 
@@ -2114,7 +2121,7 @@ class _Image(_Object, type_prefix="im"):
         gpu: Union[GPU_T, list[GPU_T]] = None,  # Requested GPU or or list of acceptable GPUs( e.g. ["A10", "A100"])
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
-        timeout: Optional[int] = 60 * 60,  # Maximum execution time of the function in seconds.
+        timeout: int = 60 * 60,  # Maximum execution time of the function in seconds.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'

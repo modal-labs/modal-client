@@ -8,10 +8,10 @@ from modal_proto import api_pb2
 
 
 def test_persistent_object(servicer, client):
-    volume_id = Volume.create_deployed("my-volume", client=client)
+    Volume.objects.create("my-volume", client=client)
 
     v = Volume.from_name("my-volume").hydrate(client)
-    assert v.object_id == volume_id
+    assert v.object_id
 
     with pytest.raises(NotFoundError):
         Volume.from_name("bazbazbaz").hydrate(client)
@@ -68,7 +68,7 @@ def test_web_endpoint_legacy_lookup(servicer, client):
 def test_deploy_exists(servicer, client):
     with pytest.raises(NotFoundError):
         Volume.from_name("my-volume").hydrate(client)
-    Volume.create_deployed("my-volume", client=client)
+    Volume.objects.create("my-volume", client=client)
     v1 = Volume.from_name("my-volume").hydrate(client)
     v2 = Volume.from_name("my-volume").hydrate(client)
     assert v1.object_id == v2.object_id

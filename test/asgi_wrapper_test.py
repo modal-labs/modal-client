@@ -61,7 +61,7 @@ def _asgi_get_scope(path, method="GET"):
 class MockIOManager:
     class get_data_in:
         @staticmethod
-        async def aio(_function_call_id):
+        async def aio(_function_call_id, _attempt_token):
             yield {"type": "http.request", "body": b"some_body"}
             await asyncio.sleep(10)
 
@@ -70,7 +70,7 @@ class MockIOManager:
 @pytest.mark.timeout(1)
 async def test_success():
     mock_manager = MockIOManager()
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(app, mock_manager)
     asgi_scope = _asgi_get_scope("/")
     outputs = [output async for output in wrapped_app(asgi_scope)]
@@ -88,7 +88,7 @@ async def test_success():
 @pytest.mark.timeout(1)
 async def test_endpoint_exception(endpoint_url):
     mock_manager = MockIOManager()
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(app, mock_manager)
     asgi_scope = _asgi_get_scope(endpoint_url)
     outputs = []
@@ -109,7 +109,7 @@ async def test_endpoint_exception(endpoint_url):
 class BrokenIOManager:
     class get_data_in:
         @staticmethod
-        async def aio(_function_call_id):
+        async def aio(_function_call_id, _attempt_token):
             raise DummyException("error while fetching data")
             yield  # noqa (makes this a generator)
 
@@ -121,7 +121,7 @@ async def test_broken_io_unused(caplog):
     # any of the body data, it should be allowed to output its data
     # and not raise an exception - but print a warning since it's unexpected
     mock_manager = BrokenIOManager()
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(app, mock_manager)
     asgi_scope = _asgi_get_scope("/")
     outputs = []
@@ -140,7 +140,7 @@ async def test_broken_io_unused(caplog):
 @pytest.mark.timeout(10)
 async def test_broken_io_used():
     mock_manager = BrokenIOManager()
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(app, mock_manager)
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
     outputs = []
@@ -155,7 +155,7 @@ async def test_broken_io_used():
 class SlowIOManager:
     class get_data_in:
         @staticmethod
-        async def aio(_function_call_id):
+        async def aio(_function_call_id, _attempt_token):
             await asyncio.sleep(5)
             yield  # makes this an async generator
 
@@ -164,7 +164,7 @@ class SlowIOManager:
 @pytest.mark.timeout(2)
 async def test_first_message_timeout(monkeypatch):
     monkeypatch.setattr("modal._runtime.asgi.FIRST_MESSAGE_TIMEOUT_SECONDS", 0.1)  # simulate timeout
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(app, SlowIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
     outputs = []
@@ -180,7 +180,7 @@ async def test_first_message_timeout(monkeypatch):
 async def test_cancellation_cleanup(caplog):
     # this test mostly exists to get some coverage on the cancellation/error paths and
     # ensure nothing unexpected happens there
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(app, SlowIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
     outputs = []
@@ -199,7 +199,7 @@ async def test_cancellation_cleanup(caplog):
 
 @pytest.mark.asyncio
 async def test_streaming_response():
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(app, SlowIOManager())
     asgi_scope = _asgi_get_scope("/streaming_response", "GET")
     outputs = []
@@ -216,7 +216,7 @@ async def test_streaming_response():
 class StreamingIOManager:
     class get_data_in:
         @staticmethod
-        async def aio(_function_call_id):
+        async def aio(_function_call_id, _attempt_token):
             yield {"type": "http.request", "body": b"foo", "more_body": True}
             yield {"type": "http.request", "body": b"bar", "more_body": True}
             yield {"type": "http.request", "body": b"baz", "more_body": False}
@@ -225,7 +225,7 @@ class StreamingIOManager:
 
 @pytest.mark.asyncio
 async def test_streaming_body():
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
 
     wrapped_app, lifespan_manager = asgi_app_wrapper(app, StreamingIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")
@@ -241,13 +241,13 @@ async def test_cancellation_while_waiting_for_first_input():
     # are scenarios in which an asgi task cancellation doesn't actually stop the underlying
     # fetch_data_in task, causing either warnings on shutdown or even infinite stalling on
     # shutdown.
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     fut: asyncio.Future[None] = asyncio.Future()
 
     class StreamingIOManager:
         class get_data_in:
             @staticmethod
-            async def aio(_function_call_id):
+            async def aio(_function_call_id, _attempt_token):
                 await fut  # we never resolve this, unlike in test_cancellation_first_message_race_cleanup
                 yield
 
@@ -268,13 +268,13 @@ async def test_cancellation_when_first_input_arrives():
     # are scenarios in which an asgi task cancellation doesn't actually stop the underlying
     # fetch_data_in task, causing either warnings on shutdown or even infinite stalling on
     # shutdown.
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     fut: asyncio.Future[None] = asyncio.Future()
 
     class StreamingIOManager:
         class get_data_in:
             @staticmethod
-            async def aio(_function_call_id):
+            async def aio(_function_call_id, _attempt_token):
                 await fut
                 yield {"type": "http.request", "body": b"foo", "more_body": True}
                 while 1:
@@ -318,7 +318,7 @@ async def test_lifespan_supported():
             await send({"type": "http.response.body", "body": b'{"some_result":"foo"}'})
 
     mock_manager = MockIOManager()
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(asgi_app, mock_manager)
 
     asyncio.create_task(lifespan_manager.background_task())
@@ -353,7 +353,7 @@ async def test_lifespan_unsupported():
             await send({"type": "http.response.body", "body": b'{"some_result":"foo"}'})
 
     mock_manager = MockIOManager()
-    _set_current_context_ids(["in-123"], ["fc-123"])
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(asgi_app, mock_manager)
 
     # Failing lifespan should not affect the app
