@@ -343,25 +343,27 @@ async def queue_batch_iterator(
 
     Treats a None value as end of queue items
     """
-    item_list: list[Any] = []
-
+    batch = []
     while True:
-        if q.empty() and len(item_list) > 0:
-            yield item_list
-            item_list = []
-            await asyncio.sleep(debounce_time)
+        if not batch:
+            item = await q.get()
+            if item is None:
+                break
+            batch.append(item)
 
-        res = await q.get()
+        while len(batch) < max_batch_size:
+            try:
+                item = await asyncio.wait_for(q.get(), timeout=debounce_time)
+            except asyncio.TimeoutError:
+                break
+            if item is None:
+                if batch:
+                    yield batch
+                return
+            batch.append(item)
 
-        if len(item_list) >= max_batch_size:
-            yield item_list
-            item_list = []
-
-        if res is None:
-            if len(item_list) > 0:
-                yield item_list
-            break
-        item_list.append(res)
+        yield batch
+        batch = []
 
 
 class _WarnIfGeneratorIsNotConsumed:
