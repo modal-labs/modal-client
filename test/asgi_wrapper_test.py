@@ -172,7 +172,7 @@ async def test_first_message_timeout(monkeypatch):
         async for output in wrapped_app(asgi_scope):
             outputs.append(output)
 
-    assert outputs[0]["status"] == 502
+    assert outputs[0]["status"] == 408
     assert b"Missing request" in outputs[1]["body"]
 
 
