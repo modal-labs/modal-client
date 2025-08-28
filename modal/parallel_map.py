@@ -405,7 +405,7 @@ async def _map_invocation(
     stale_retry_duplicates = 0
     no_context_duplicates = 0
 
-    retry_queue: TimestampPriorityQueue = TimestampPriorityQueue()
+    retry_queue = TimestampPriorityQueue()
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
     input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
     map_items_manager = _MapItemsManager(
