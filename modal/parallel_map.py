@@ -79,7 +79,7 @@ class _OutputValue:
 
 MAX_INPUTS_OUTSTANDING_DEFAULT = 1000
 
-# maximum number of inputs to send to the server in a single request
+# Maximum number of inputs to send to the server per FunctionPutInputs request
 MAP_INVOCATION_CHUNK_SIZE = 49
 SPAWN_MAP_INVOCATION_CHUNK_SIZE = 512
 
@@ -158,7 +158,7 @@ class InputPumper:
         self,
         client: "modal.client._Client",
         *,
-        input_queue: asyncio.Queue,
+        input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None],
         function: "modal.functions._Function",
         function_call_id: str,
         max_batch_size: int,
@@ -226,8 +226,8 @@ class SyncInputPumper(InputPumper):
         self,
         client: "modal.client._Client",
         *,
-        input_queue: asyncio.Queue,
-        retry_queue: TimestampPriorityQueue,
+        input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None],
+        retry_queue: TimestampPriorityQueue[int],
         function: "modal.functions._Function",
         function_call_jwt: str,
         function_call_id: str,
@@ -270,7 +270,7 @@ class AsyncInputPumper(InputPumper):
         self,
         client: "modal.client._Client",
         *,
-        input_queue: asyncio.Queue,
+        input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None],
         function: "modal.functions._Function",
         function_call_id: str,
     ):
@@ -405,7 +405,7 @@ async def _map_invocation(
     stale_retry_duplicates = 0
     no_context_duplicates = 0
 
-    retry_queue = TimestampPriorityQueue()
+    retry_queue: TimestampPriorityQueue[int] = TimestampPriorityQueue()
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
     input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
     map_items_manager = _MapItemsManager(
