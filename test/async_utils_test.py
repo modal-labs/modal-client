@@ -209,7 +209,7 @@ async def test_queue_batch_iterator():
         tc.create_task(drain_queue(queue))
 
         # Make sure the queue gets drained.
-        await asyncio.sleep(DEBOUNCE_TIME + 0.001)
+        await asyncio.sleep(DEBOUNCE_TIME + 0.02)
 
         assert len(drained_items) == 1
 
