@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2024
+from __future__ import annotations
+
 import asyncio
 import enum
 import inspect
