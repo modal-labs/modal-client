@@ -1,6 +1,4 @@
 # Copyright Modal Labs 2024
-from __future__ import annotations
-
 import asyncio
 import enum
 import inspect
@@ -160,7 +158,7 @@ class InputPumper:
         self,
         client: "modal.client._Client",
         *,
-        input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None],
+        input_queue: asyncio.Queue[Optional[api_pb2.FunctionPutInputsItem]],
         function: "modal.functions._Function",
         function_call_id: str,
         max_batch_size: int,
@@ -228,7 +226,7 @@ class SyncInputPumper(InputPumper):
         self,
         client: "modal.client._Client",
         *,
-        input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None],
+        input_queue: asyncio.Queue[Optional[api_pb2.FunctionPutInputsItem]],
         retry_queue: TimestampPriorityQueue[int],
         function: "modal.functions._Function",
         function_call_jwt: str,
@@ -272,7 +270,7 @@ class AsyncInputPumper(InputPumper):
         self,
         client: "modal.client._Client",
         *,
-        input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None],
+        input_queue: asyncio.Queue[Optional[api_pb2.FunctionPutInputsItem]],
         function: "modal.functions._Function",
         function_call_id: str,
     ):
