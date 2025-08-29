@@ -2034,6 +2034,10 @@ message ImageContextFile {
   bytes data = 2;
 }
 
+message ImageDeleteRequest {
+  string image_id = 1;
+}
+
 message ImageFromIdRequest {
   string image_id = 1;
 }
@@ -3547,6 +3551,7 @@ service ModalClient {
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
   // Images
+  rpc ImageDelete(ImageDeleteRequest) returns (google.protobuf.Empty);
   rpc ImageFromId(ImageFromIdRequest) returns (ImageFromIdResponse);
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
