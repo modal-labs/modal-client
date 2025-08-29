@@ -2034,6 +2034,10 @@ message ImageContextFile {
   bytes data = 2;
 }
 
+message ImageDeleteRequest {
+  string image_id = 1;
+}
+
 message ImageFromIdRequest {
   string image_id = 1;
 }
@@ -2064,10 +2068,6 @@ message ImageGetOrCreateResponse {
   GenericResult result = 2;
   // image metadata - only set if the image has built successfully
   ImageMetadata metadata = 3;
-}
-
-message ImageDeleteRequest {
-  string image_id = 1;
 }
 
 message ImageJoinStreamingRequest {
@@ -3551,9 +3551,9 @@ service ModalClient {
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
   // Images
+  rpc ImageDelete(ImageDeleteRequest) returns (google.protobuf.Empty);
   rpc ImageFromId(ImageFromIdRequest) returns (ImageFromIdResponse);
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
-  rpc ImageDelete(ImageDeleteRequest) returns (google.protobuf.Empty);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
 
   // Input Plane Map
