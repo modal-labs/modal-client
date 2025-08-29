@@ -3637,9 +3637,9 @@ service ModalClient {
   // Tasks
   rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
+  rpc TaskGetFlashScalingMetrics(TaskGetFlashScalingMetricsRequest) returns (TaskGetFlashScalingMetricsResponse); // Used for flash autoscaling
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
-  rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
-  rpc TaskFlashScalingMetrics(TaskFlashScalingMetricsRequest) returns (TaskFlashScalingMetricsResponse); // Used for flash autoscaling 
+  rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty); 
 
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
