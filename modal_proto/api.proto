@@ -644,6 +644,14 @@ message AutoscalerSettings {
   optional uint32 scaledown_window = 5;
 }
 
+// Used for flash autoscaling
+message AutoscalingMetrics {
+  double cpu_usage_percent = 1;
+  double memory_usage_percent = 2;
+  uint32 concurrent_requests = 3;
+  double timestamp = 4;
+}
+
 message BaseImage {
   string image_id = 1;
   string docker_tag = 2;
@@ -3041,6 +3049,14 @@ message TaskCurrentInputsResponse {
   repeated string input_ids = 1;
 }
 
+message TaskGetAutoscalingMetricsRequest {
+  string task_id = 1;
+}
+
+message TaskGetAutoscalingMetricsResponse {
+  AutoscalingMetrics metrics = 1;
+}
+
 message TaskInfo {
   string id = 1;
   double started_at = 2;
@@ -3627,6 +3643,7 @@ service ModalClient {
   // Tasks
   rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
+  rpc TaskGetAutoscalingMetrics(TaskGetAutoscalingMetricsRequest) returns (TaskGetAutoscalingMetricsResponse); // Used for flash autoscaling
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
 
