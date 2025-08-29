@@ -1310,16 +1310,16 @@ message FlashContainerRegisterRequest {
   uint32 port = 5;
 }
 
-message FlashContainerRegisterResponse {
-  string url = 1;
-}
-
 // Used for flash autoscaling
 message AutoscalingMetrics {
   double cpu_usage_percent = 1;
   double memory_usage_percent = 2;
   uint32 concurrent_requests = 3;
   double timestamp = 4;
+}
+
+message FlashContainerRegisterResponse {
+  string url = 1;
 }
 
 message Function {
