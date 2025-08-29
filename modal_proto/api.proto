@@ -1314,7 +1314,8 @@ message FlashContainerRegisterResponse {
   string url = 1;
 }
 
-message FlashScalingMetric {
+// Used for flash autoscaling
+message AutoscalingMetrics {
   double cpu_usage_percent = 1;
   double memory_usage_percent = 2;
   uint32 concurrent_requests = 3;
@@ -3044,12 +3045,12 @@ message TaskCurrentInputsResponse {
   repeated string input_ids = 1;
 }
 
-message TaskGetFlashScalingMetricsRequest {
+message TaskGetAutoscalingMetricsRequest {
   string task_id = 1;
 }
 
-message TaskGetFlashScalingMetricsResponse {
-  FlashScalingMetric metrics = 1;
+message TaskGetAutoscalingMetricsResponse {
+  AutoscalingMetrics metrics = 1;
 }
 
 message TaskInfo {
@@ -3637,7 +3638,7 @@ service ModalClient {
   // Tasks
   rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
-  rpc TaskGetFlashScalingMetrics(TaskGetFlashScalingMetricsRequest) returns (TaskGetFlashScalingMetricsResponse); // Used for flash autoscaling
+  rpc TaskGetAutoscalingMetrics(TaskGetAutoscalingMetricsRequest) returns (TaskGetAutoscalingMetricsResponse); // Used for flash autoscaling
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
 
