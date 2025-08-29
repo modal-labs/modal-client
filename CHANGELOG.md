@@ -6,6 +6,10 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.4.dev20 (2025-08-28)
+
+When an ASGI app doesn't receive input within 5 seconds, return an HTTP 408 (request timeout) instead of the prior 502 (gateway timeout).
+
 #### 1.1.4.dev11 (2025-08-22)
 
 Forbid the use of `encrypted_ports`, `h2_ports`, and `unencrypted_ports` in Sandbox creation when `block_network` is `True`.
