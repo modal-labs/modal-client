@@ -2066,6 +2066,10 @@ message ImageGetOrCreateResponse {
   ImageMetadata metadata = 3;
 }
 
+message ImageDeleteRequest {
+  string image_id = 1;
+}
+
 message ImageJoinStreamingRequest {
   string image_id = 1;
   float timeout = 2;
@@ -3549,6 +3553,7 @@ service ModalClient {
   // Images
   rpc ImageFromId(ImageFromIdRequest) returns (ImageFromIdResponse);
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
+  rpc ImageDelete(ImageDeleteRequest) returns (google.protobuf.Empty);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
 
   // Input Plane Map
