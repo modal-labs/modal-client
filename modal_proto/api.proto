@@ -1314,6 +1314,13 @@ message FlashContainerRegisterResponse {
   string url = 1;
 }
 
+message FlashScalingMetric {
+  double cpu_usage_percent = 1;
+  double memory_usage_percent = 2;
+  uint32 concurrent_requests = 3;
+  double timestamp = 4;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -3037,6 +3044,14 @@ message TaskCurrentInputsResponse {
   repeated string input_ids = 1;
 }
 
+message TaskGetFlashScalingMetricsRequest {
+  string task_id = 1;
+}
+
+message TaskGetFlashScalingMetricsResponse {
+  FlashScalingMetric metrics = 1;
+}
+
 message TaskInfo {
   string id = 1;
   double started_at = 2;
@@ -3624,6 +3639,7 @@ service ModalClient {
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
+  rpc TaskFlashScalingMetrics(TaskFlashScalingMetricsRequest) returns (TaskFlashScalingMetricsResponse); // Used for flash autoscaling 
 
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
