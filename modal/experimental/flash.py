@@ -8,6 +8,8 @@ from collections import defaultdict
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+import aiohttp
+
 from modal.cls import _Cls
 from modal.dict import _Dict
 from modal_proto import api_pb2
@@ -19,6 +21,8 @@ from ..client import _Client
 from ..config import logger
 from ..exception import InvalidError
 
+MAX_FAILURES = 3
+
 
 class _FlashManager:
     def __init__(self, client: _Client, port: int, health_check_url: Optional[str] = None):
@@ -27,20 +31,52 @@ class _FlashManager:
         self.health_check_url = health_check_url
         self.tunnel_manager = _forward_tunnel(port, client=client)
         self.stopped = False
+        self.http_client = aiohttp.ClientSession()
+        self.num_failures = 0
 
     async def _start(self):
         self.tunnel = await self.tunnel_manager.__aenter__()
-
         parsed_url = urlparse(self.tunnel.url)
         host = parsed_url.hostname
         port = parsed_url.port or 443
 
         self.heartbeat_task = asyncio.create_task(self._run_heartbeat(host, port))
+        self.drain_task = asyncio.create_task(self._drain_container())
+
+    async def _drain_container(self):
+        """
+        Background task that checks if we've encountered too many failures and drains the container if so.
+        """
+        while True:
+            try:
+                # Check if the container should be drained (e.g., too many failures)
+                if self.num_failures > MAX_FAILURES:
+                    logger.warning("[Modal Flash] Draining container due to too many failures.")
+                    await asyncio.sleep(15)
+                    await self.stop()
+                    await self.close()
+                    return
+            except asyncio.CancelledError:
+                logger.warning("[Modal Flash] Shutting down...")
+                return
+            except Exception as e:
+                logger.error(f"[Modal Flash] Error draining container: {e}")
+                await asyncio.sleep(1)
+
+            try:
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                logger.warning("[Modal Flash] Shutting down...")
+                return
 
     async def _run_heartbeat(self, host: str, port: int):
         first_registration = True
         while True:
             try:
+                resp = await self.http_client.get(self.tunnel.url, timeout=1)
+                if resp.status != 200:
+                    raise Exception(f"Tunnel unresponsive with status: {resp.status}")
+
                 resp = await self.client.stub.FlashContainerRegister(
                     api_pb2.FlashContainerRegisterRequest(
                         priority=10,
@@ -50,6 +86,7 @@ class _FlashManager:
                     ),
                     timeout=10,
                 )
+                self.num_failures = 0
                 if first_registration:
                     logger.warning(f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url}")
                     first_registration = False
@@ -58,6 +95,16 @@ class _FlashManager:
                 break
             except Exception as e:
                 logger.error(f"[Modal Flash] Heartbeat failed: {e}")
+                self.num_failures += 1
+                if self.num_failures > MAX_FAILURES:
+                    logger.error(
+                        f"[Modal Flash] Deregistering container {self.tunnel.url} after {MAX_FAILURES} failures"
+                    )
+                    await retry_transient_errors(
+                        self.client.stub.FlashContainerDeregister,
+                        api_pb2.FlashContainerDeregisterRequest(),
+                    )
+                    break
 
             try:
                 await asyncio.sleep(1)
@@ -71,6 +118,7 @@ class _FlashManager:
 
     async def stop(self):
         self.heartbeat_task.cancel()
+        await self.http_client.close()
         await retry_transient_errors(
             self.client.stub.FlashContainerDeregister,
             api_pb2.FlashContainerDeregisterRequest(),
@@ -91,21 +139,6 @@ class _FlashManager:
 
 
 FlashManager = synchronize_api(_FlashManager)
-
-
-@synchronizer.create_blocking
-async def flash_forward(port: int, health_check_url: Optional[str] = None) -> _FlashManager:
-    """
-    Forward a port to the Modal Flash service, exposing that port as a stable web endpoint.
-
-    This is a highly experimental method that can break or be removed at any time without warning.
-    Do not use this method unless explicitly instructed to do so by Modal support.
-    """
-    client = await _Client.from_env()
-
-    manager = _FlashManager(client, port, health_check_url)
-    await manager._start()
-    return manager
 
 
 class _FlashPrometheusAutoscaler:
