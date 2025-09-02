@@ -479,7 +479,7 @@ async def flash_prometheus_autoscaler(
     app_name: str,
     cls_name: str,
     # Endpoint to fetch metrics from. Must be in Prometheus format. Example: "/metrics"
-    # If metrics_endpoint is "internal", we will use containers' cpu metrics to autoscale instead.
+    # If metrics_endpoint is "internal", we will use containers' internal metrics to autoscale instead.
     metrics_endpoint: str,
     # Target metric to autoscale on. Example: "vllm:num_requests_running"
     # If metrics_endpoint is "internal", target_metrics options are: [cpu_usage_percent, memory_usage_percent]
