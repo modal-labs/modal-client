@@ -103,7 +103,7 @@ This release also includes a number of other new features and bug fixes:
 - Added a `build_args` parameter to `modal.Image.from_dockerfile` for passing arguments through to `ARG` instructions in the Dockerfile.
 - It's now possible to use `@modal.experimental.clustered` and `i6pn` networking with `modal.Cls`.
 - Fixed a bug where `Cls.with_options` would fail when provided with a `modal.Secret` object that was already hydrated.
-- Fixed a bug where the timeout specified in `modal.Sandbox.exec()` was not respected by `modal.Sandbox.wait()` or `modal.Sandbox.poll()`.
+- Fixed a bug where the timeout specified in `modal.Sandbox.exec()` was not respected by `ContainerProcess.wait()` or `ContainerProcess.poll()`.
 - Fixed retry handling when using `modal run --detach` directly against a remote Function.
 
 Finally, this release introduces a small number of deprecations and potentially-breaking changes:
