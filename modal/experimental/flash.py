@@ -28,6 +28,7 @@ class _FlashManager:
     def __init__(self, client: _Client, port: int, health_check_url: Optional[str] = None):
         self.client = client
         self.port = port
+        # Health check is not currently being used
         self.health_check_url = health_check_url
         self.tunnel_manager = _forward_tunnel(port, client=client)
         self.stopped = False
@@ -51,7 +52,7 @@ class _FlashManager:
             try:
                 # Check if the container should be drained (e.g., too many failures)
                 if self.num_failures > MAX_FAILURES:
-                    logger.warning("[Modal Flash] Draining container due to too many failures.")
+                    logger.warning(f"[Modal Flash] Draining container on {self.tunnel.url} due to too many failures.")
                     await asyncio.sleep(15)
                     await self.stop()
                     await self.close()
