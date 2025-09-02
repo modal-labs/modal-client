@@ -201,9 +201,9 @@ class _FlashPrometheusAutoscaler:
                 ]
 
                 if self.metrics_endpoint == "internal":
-                    current_target_containers = await self._compute_target_containers_by_cpu(current_replicas)
+                    current_target_containers = await self._compute_target_containers_internal(current_replicas)
                 else:
-                    current_target_containers = await self._compute_target_containers_by_prometheus(current_replicas)
+                    current_target_containers = await self._compute_target_containers_prometheus(current_replicas)
                 autoscaling_decisions.append((autoscaling_time, current_target_containers))
 
                 actual_target_containers = self._make_scaling_decision(
@@ -239,9 +239,9 @@ class _FlashPrometheusAutoscaler:
                 logger.error(traceback.format_exc())
                 await asyncio.sleep(self.autoscaling_interval_seconds)
 
-    async def _compute_target_containers_by_cpu(self, current_replicas: int) -> int:
+    async def _compute_target_containers_internal(self, current_replicas: int) -> int:
         """
-        Gets cpu metrics from container and scales up or down based on the average cpu usage percent.
+        Gets internal metrics from container to autoscale up or down.
         """
         containers = await self._get_all_containers()
         if len(containers) > current_replicas:
@@ -254,20 +254,20 @@ class _FlashPrometheusAutoscaler:
         if current_replicas == 0:
             return 1
 
-        cpu_usage_percent_list = []
+        internal_metrics_list = []
         for container in containers:
-            container_cpu_metrics = await self._get_container_metrics(container.id)
-            if container_cpu_metrics is None:
+            internal_metric = await self._get_container_metrics(container.id)
+            if internal_metric is None:
                 continue
-            cpu_usage_percent_list.append(container_cpu_metrics.metrics.cpu_usage_percent)
+            internal_metrics_list.append(getattr(internal_metric.metrics, self.target_metric))
 
-        if not cpu_usage_percent_list:
+        if not internal_metrics_list:
             return current_replicas
 
-        avg_cpu_usage_percent = sum(cpu_usage_percent_list) / len(cpu_usage_percent_list)
+        avg_internal_metric = sum(internal_metrics_list) / len(internal_metrics_list)
 
-        TARGET_CPU_USAGE_PERCENT = 0.5
-        scale_factor = avg_cpu_usage_percent / TARGET_CPU_USAGE_PERCENT
+        TARGET_INTERNAL_METRIC_VALUE = 0.5
+        scale_factor = avg_internal_metric / TARGET_INTERNAL_METRIC_VALUE
 
         desired_replicas = current_replicas
         if scale_factor > 1 + self.scale_up_tolerance:
@@ -277,8 +277,8 @@ class _FlashPrometheusAutoscaler:
 
         logger.warning(
             f"[Modal Flash] Current replicas: {current_replicas}, "
-            f"avg cpu usage percent: {avg_cpu_usage_percent}, "
-            f"target cpu usage percent: {TARGET_CPU_USAGE_PERCENT}, "
+            f"avg internal metric `{self.target_metric}`: {avg_internal_metric}, "
+            f"target internal metric value `{self.target_metric}`: {TARGET_INTERNAL_METRIC_VALUE}, "
             f"scale factor: {scale_factor}, "
             f"desired replicas: {desired_replicas}"
         )
@@ -286,7 +286,7 @@ class _FlashPrometheusAutoscaler:
         desired_replicas = max(1, desired_replicas)
         return desired_replicas
 
-    async def _compute_target_containers_by_prometheus(self, current_replicas: int) -> int:
+    async def _compute_target_containers_prometheus(self, current_replicas: int) -> int:
         # current_replicas is the number of live containers + cold starting containers (not yet live)
         # containers is the number of live containers that are registered in flash dns
         containers = await self._get_all_containers()
@@ -479,8 +479,10 @@ async def flash_prometheus_autoscaler(
     app_name: str,
     cls_name: str,
     # Endpoint to fetch metrics from. Must be in Prometheus format. Example: "/metrics"
+    # If metrics_endpoint is "internal", we will use containers' cpu metrics to autoscale instead.
     metrics_endpoint: str,
     # Target metric to autoscale on. Example: "vllm:num_requests_running"
+    # If metrics_endpoint is "internal", target_metrics options are: [cpu_usage_percent, memory_usage_percent]
     target_metric: str,
     # Target metric value. Example: 25
     target_metric_value: float,
