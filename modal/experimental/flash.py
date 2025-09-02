@@ -266,8 +266,7 @@ class _FlashPrometheusAutoscaler:
 
         avg_internal_metric = sum(internal_metrics_list) / len(internal_metrics_list)
 
-        TARGET_INTERNAL_METRIC_VALUE = 0.5
-        scale_factor = avg_internal_metric / TARGET_INTERNAL_METRIC_VALUE
+        scale_factor = avg_internal_metric / self.target_metric_value
 
         desired_replicas = current_replicas
         if scale_factor > 1 + self.scale_up_tolerance:
@@ -278,7 +277,7 @@ class _FlashPrometheusAutoscaler:
         logger.warning(
             f"[Modal Flash] Current replicas: {current_replicas}, "
             f"avg internal metric `{self.target_metric}`: {avg_internal_metric}, "
-            f"target internal metric value `{self.target_metric}`: {TARGET_INTERNAL_METRIC_VALUE}, "
+            f"target internal metric value: {self.target_metric_value}, "
             f"scale factor: {scale_factor}, "
             f"desired replicas: {desired_replicas}"
         )
@@ -485,6 +484,8 @@ async def flash_prometheus_autoscaler(
     # If metrics_endpoint is "internal", target_metrics options are: [cpu_usage_percent, memory_usage_percent]
     target_metric: str,
     # Target metric value. Example: 25
+    # If metrics_endpoint is "internal", target_metric_value is a percentage value between 0.1 and 1.0 (inclusive),
+    # indicating container's usage of that metric.
     target_metric_value: float,
     min_containers: Optional[int] = None,
     max_containers: Optional[int] = None,
