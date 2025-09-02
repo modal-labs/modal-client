@@ -203,3 +203,30 @@ async def test_unhealthy_hosts_with_custom_numbers():
     # With overprovision=1: avg = (55 + 11) / (2) = 66/2 = 33
     # ratio = 33/10 = 3.3 -> ceil(2*3.3) = 7
     assert result == 7
+
+
+@pytest.mark.asyncio
+async def test_all_unhealthy_no_metrics():
+    """
+    Scenario: 20 current replicas, all containers missing metrics (unhealthy), 17 provisioned containers.
+    Target metric value: 20.0, scale up ratio: 1.1, scale down ratio: 1.0, desired replicas: 17.
+    """
+    # Simulate 20 containers, all missing metrics (None), 17 provisioned containers
+    metrics = {f"h{i}": None for i in range(1, 21)}
+    autoscaler = _make_autoscaler(metrics_by_host=metrics)
+    autoscaler_any = cast(Any, autoscaler)
+    autoscaler_any.target_metric_value = 20.0
+
+    # Simulate the case where only 17 containers are provisioned (e.g., due to unhealthy ones)
+    # This may require patching _get_all_containers or passing a param if the implementation supports it.
+    # For this test, we assume _get_all_containers returns 17 containers.
+    def _get_all_containers(_self):
+        return [_DummyContainer(f"h{i}") for i in range(1, 18)]
+
+    autoscaler._get_all_containers = MethodType(_get_all_containers, autoscaler)  # type: ignore
+
+    result = await autoscaler._compute_target_containers(current_replicas=20)
+    # All containers are unhealthy, so desired replicas should be 17 (provisioned)
+    assert result == 17
+
+    #  this is wrong  ???
