@@ -126,7 +126,6 @@ class _FlashPrometheusAutoscaler:
         scale_up_stabilization_window_seconds: int,
         scale_down_stabilization_window_seconds: int,
         autoscaling_interval_seconds: int,
-        is_autoscaling_by_cpu: bool = True,
     ):
         if scale_up_stabilization_window_seconds > self._max_window_seconds:
             raise InvalidError(
@@ -154,7 +153,6 @@ class _FlashPrometheusAutoscaler:
         self.scale_up_stabilization_window_seconds = scale_up_stabilization_window_seconds
         self.scale_down_stabilization_window_seconds = scale_down_stabilization_window_seconds
         self.autoscaling_interval_seconds = autoscaling_interval_seconds
-        self.is_autoscaling_by_cpu = is_autoscaling_by_cpu
 
         FlashClass = _Cls.from_name(app_name, cls_name)
         self.fn = FlashClass._class_service_function
@@ -202,7 +200,7 @@ class _FlashPrometheusAutoscaler:
                     if timestamp >= autoscaling_time - self._max_window_seconds
                 ]
 
-                if self.autoscale_by_cpu:
+                if self.metrics_endpoint == "internal":
                     current_target_containers = await self._compute_target_containers_by_cpu(current_replicas)
                 else:
                     current_target_containers = await self._compute_target_containers_by_prometheus(current_replicas)
