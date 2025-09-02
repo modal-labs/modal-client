@@ -1320,6 +1320,7 @@ message FlashContainerRegisterRequest {
 
 message FlashContainerRegisterResponse {
   string url = 1;
+  string task_id = 2;
 }
 
 message Function {

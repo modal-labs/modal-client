@@ -40,6 +40,7 @@ class _FlashManager:
         parsed_url = urlparse(self.tunnel.url)
         host = parsed_url.hostname
         port = parsed_url.port or 443
+        self.task_id = None
 
         self.heartbeat_task = asyncio.create_task(self._run_heartbeat(host, port))
         self.drain_task = asyncio.create_task(self._drain_container())
@@ -56,6 +57,9 @@ class _FlashManager:
                     await asyncio.sleep(15)
                     await self.stop()
                     await self.close()
+
+                    if self.task_id:
+                        await self.client.stub.ContainerStop(api_pb2.ContainerStopRequest(task_id=self.task_id))
                     return
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
@@ -89,7 +93,10 @@ class _FlashManager:
                 )
                 self.num_failures = 0
                 if first_registration:
-                    logger.warning(f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url}")
+                    self.task_id = resp.task_id
+                    logger.warning(
+                        f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
+                    )
                     first_registration = False
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
