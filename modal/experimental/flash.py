@@ -126,7 +126,7 @@ class _FlashPrometheusAutoscaler:
         scale_up_stabilization_window_seconds: int,
         scale_down_stabilization_window_seconds: int,
         autoscaling_interval_seconds: int,
-        autoscale_by_cpu: bool,
+        is_autoscaling_by_cpu: bool = True,
     ):
         if scale_up_stabilization_window_seconds > self._max_window_seconds:
             raise InvalidError(
@@ -154,7 +154,7 @@ class _FlashPrometheusAutoscaler:
         self.scale_up_stabilization_window_seconds = scale_up_stabilization_window_seconds
         self.scale_down_stabilization_window_seconds = scale_down_stabilization_window_seconds
         self.autoscaling_interval_seconds = autoscaling_interval_seconds
-        self.autoscale_by_cpu = autoscale_by_cpu
+        self.is_autoscaling_by_cpu = is_autoscaling_by_cpu
 
         FlashClass = _Cls.from_name(app_name, cls_name)
         self.fn = FlashClass._class_service_function
