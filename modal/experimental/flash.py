@@ -253,15 +253,16 @@ class _FlashPrometheusAutoscaler:
         target_metric = self.target_metric
         target_metric_value = float(self.target_metric_value)
 
+        # Gets metrics from prometheus
         sum_metric = 0
         containers_with_metrics = 0
-        container_metrics_list = await asyncio.gather(
+        container_prometheus_metrics_list = await asyncio.gather(
             *[
                 self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
                 for container in containers
             ]
         )
-        for container_metrics in container_metrics_list:
+        for container_metrics in container_prometheus_metrics_list:
             if (
                 container_metrics is None
                 or target_metric not in container_metrics
@@ -270,6 +271,17 @@ class _FlashPrometheusAutoscaler:
                 continue
             sum_metric += container_metrics[target_metric][0].value
             containers_with_metrics += 1
+
+        # Gets cpu metrics from container
+        container_cpu_metrics_list = await asyncio.gather(
+            *[self._get_container_metrics(container.id) for container in containers]
+        )
+        high_cpu_containers = 0
+        for container_cpu_metrics in container_cpu_metrics_list:
+            if container_cpu_metrics is None:
+                continue
+            if container_cpu_metrics.metrics.cpu_usage_percent >= 0.50:
+                high_cpu_containers += 1
 
         # n_containers_missing_metric is the number of unhealthy containers + number of cold starting containers
         n_containers_missing_metric = current_replicas - containers_with_metrics
@@ -291,9 +303,9 @@ class _FlashPrometheusAutoscaler:
 
         desired_replicas = current_replicas
         if scale_up_ratio > 1 + self.scale_up_tolerance:
-            desired_replicas = math.ceil(current_replicas * scale_up_ratio)
+            desired_replicas = math.ceil(current_replicas * scale_up_ratio) + high_cpu_containers
         elif scale_down_ratio < 1 - self.scale_down_tolerance:
-            desired_replicas = math.ceil(current_replicas * scale_down_ratio)
+            desired_replicas = math.ceil(current_replicas * scale_down_ratio) - high_cpu_containers
 
         logger.warning(
             f"[Modal Flash] Current replicas: {current_replicas}, "
@@ -340,6 +352,15 @@ class _FlashPrometheusAutoscaler:
                 metrics[sample.name] += [sample]
 
         return metrics
+
+    async def _get_container_metrics(self, container_id: str) -> Optional[api_pb2.TaskGetAutoscalingMetricsResponse]:
+        req = api_pb2.TaskGetAutoscalingMetricsRequest(task_id=container_id)
+        try:
+            resp = await retry_transient_errors(self.client.stub.TaskGetAutoscalingMetrics, req)
+            return resp
+        except Exception as e:
+            logger.warning(f"[Modal Flash] Error getting metrics for container {container_id}: {e}")
+            return None
 
     async def _get_all_containers(self):
         req = api_pb2.FlashContainerListRequest(function_id=self.fn.object_id)
