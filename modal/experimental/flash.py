@@ -126,6 +126,7 @@ class _FlashPrometheusAutoscaler:
         scale_up_stabilization_window_seconds: int,
         scale_down_stabilization_window_seconds: int,
         autoscaling_interval_seconds: int,
+        autoscale_by_cpu: bool,
     ):
         if scale_up_stabilization_window_seconds > self._max_window_seconds:
             raise InvalidError(
@@ -153,6 +154,7 @@ class _FlashPrometheusAutoscaler:
         self.scale_up_stabilization_window_seconds = scale_up_stabilization_window_seconds
         self.scale_down_stabilization_window_seconds = scale_down_stabilization_window_seconds
         self.autoscaling_interval_seconds = autoscaling_interval_seconds
+        self.autoscale_by_cpu = autoscale_by_cpu
 
         FlashClass = _Cls.from_name(app_name, cls_name)
         self.fn = FlashClass._class_service_function
@@ -200,7 +202,10 @@ class _FlashPrometheusAutoscaler:
                     if timestamp >= autoscaling_time - self._max_window_seconds
                 ]
 
-                current_target_containers = await self._compute_target_containers(current_replicas)
+                if self.autoscale_by_cpu:
+                    current_target_containers = await self._compute_target_containers_by_cpu(current_replicas)
+                else:
+                    current_target_containers = await self._compute_target_containers_by_prometheus(current_replicas)
                 autoscaling_decisions.append((autoscaling_time, current_target_containers))
 
                 actual_target_containers = self._make_scaling_decision(
@@ -236,7 +241,54 @@ class _FlashPrometheusAutoscaler:
                 logger.error(traceback.format_exc())
                 await asyncio.sleep(self.autoscaling_interval_seconds)
 
-    async def _compute_target_containers(self, current_replicas: int) -> int:
+    async def _compute_target_containers_by_cpu(self, current_replicas: int) -> int:
+        """
+        Gets cpu metrics from container and scales up or down based on the average cpu usage percent.
+        """
+        containers = await self._get_all_containers()
+        if len(containers) > current_replicas:
+            logger.info(
+                f"[Modal Flash] Current replicas {current_replicas} is less than the number of containers "
+                f"{len(containers)}. Setting current_replicas = num_containers."
+            )
+            current_replicas = len(containers)
+
+        if current_replicas == 0:
+            return 1
+
+        cpu_usage_percent_list = []
+        for container in containers:
+            container_cpu_metrics = await self._get_container_metrics(container.id)
+            if container_cpu_metrics is None:
+                continue
+            cpu_usage_percent_list.append(container_cpu_metrics.metrics.cpu_usage_percent)
+
+        if not cpu_usage_percent_list:
+            return current_replicas
+
+        avg_cpu_usage_percent = sum(cpu_usage_percent_list) / len(cpu_usage_percent_list)
+
+        TARGET_CPU_USAGE_PERCENT = 0.5
+        scale_factor = avg_cpu_usage_percent / TARGET_CPU_USAGE_PERCENT
+
+        desired_replicas = current_replicas
+        if scale_factor > 1 + self.scale_up_tolerance:
+            desired_replicas = math.ceil(current_replicas * scale_factor)
+        elif scale_factor < 1 - self.scale_down_tolerance:
+            desired_replicas = math.ceil(current_replicas * scale_factor)
+
+        logger.warning(
+            f"[Modal Flash] Current replicas: {current_replicas}, "
+            f"avg cpu usage percent: {avg_cpu_usage_percent}, "
+            f"target cpu usage percent: {TARGET_CPU_USAGE_PERCENT}, "
+            f"scale factor: {scale_factor}, "
+            f"desired replicas: {desired_replicas}"
+        )
+
+        desired_replicas = max(1, desired_replicas)
+        return desired_replicas
+
+    async def _compute_target_containers_by_prometheus(self, current_replicas: int) -> int:
         # current_replicas is the number of live containers + cold starting containers (not yet live)
         # containers is the number of live containers that are registered in flash dns
         containers = await self._get_all_containers()
@@ -256,13 +308,13 @@ class _FlashPrometheusAutoscaler:
         # Gets metrics from prometheus
         sum_metric = 0
         containers_with_metrics = 0
-        container_prometheus_metrics_list = await asyncio.gather(
+        container_metrics_list = await asyncio.gather(
             *[
                 self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
                 for container in containers
             ]
         )
-        for container_metrics in container_prometheus_metrics_list:
+        for container_metrics in container_metrics_list:
             if (
                 container_metrics is None
                 or target_metric not in container_metrics
@@ -271,17 +323,6 @@ class _FlashPrometheusAutoscaler:
                 continue
             sum_metric += container_metrics[target_metric][0].value
             containers_with_metrics += 1
-
-        # Gets cpu metrics from container
-        container_cpu_metrics_list = await asyncio.gather(
-            *[self._get_container_metrics(container.id) for container in containers]
-        )
-        high_cpu_containers = 0
-        for container_cpu_metrics in container_cpu_metrics_list:
-            if container_cpu_metrics is None:
-                continue
-            if container_cpu_metrics.metrics.cpu_usage_percent >= 0.50:
-                high_cpu_containers += 1
 
         # n_containers_missing_metric is the number of unhealthy containers + number of cold starting containers
         n_containers_missing_metric = current_replicas - containers_with_metrics
@@ -303,9 +344,9 @@ class _FlashPrometheusAutoscaler:
 
         desired_replicas = current_replicas
         if scale_up_ratio > 1 + self.scale_up_tolerance:
-            desired_replicas = math.ceil(current_replicas * scale_up_ratio) + high_cpu_containers
+            desired_replicas = math.ceil(current_replicas * scale_up_ratio)
         elif scale_down_ratio < 1 - self.scale_down_tolerance:
-            desired_replicas = math.ceil(current_replicas * scale_down_ratio) - high_cpu_containers
+            desired_replicas = math.ceil(current_replicas * scale_down_ratio)
 
         logger.warning(
             f"[Modal Flash] Current replicas: {current_replicas}, "
