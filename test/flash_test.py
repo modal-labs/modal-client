@@ -43,17 +43,12 @@ class TestFlashAutoscalerLogic:
         autoscaler.target_metric = flash_metric
         autoscaler.target_metric_value = target_value
 
-        mock_containers = [MagicMock(id=f"container_{i}") for i in range(len(metrics))]
+        mock_containers = [MagicMock() for _ in range(len(metrics))]
         autoscaler._get_all_containers = AsyncMock(return_value=mock_containers)
 
-        def mock_get_metrics(container_id):
-            container_index = int(container_id.split("_")[1])
-            mock_metrics_response = MagicMock()
-            mock_metrics_response.metrics = MagicMock()
-            setattr(mock_metrics_response.metrics, flash_metric, metrics[container_index])
-            return mock_metrics_response
-
-        autoscaler._get_container_metrics = AsyncMock(side_effect=mock_get_metrics)
+        autoscaler._get_container_metrics = AsyncMock(
+            side_effect=[MagicMock(metrics=MagicMock(**{flash_metric: value})) for value in metrics]
+        )
 
         result = await autoscaler._compute_target_containers_internal(current_replicas=current_replicas)
         assert result == expected_replicas
