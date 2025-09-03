@@ -10,8 +10,6 @@ from collections import defaultdict
 from typing import Any, Optional
 from urllib.parse import urlparse
 
-import aiohttp
-
 from modal.cls import _Cls
 from modal.dict import _Dict
 from modal_proto import api_pb2
@@ -42,30 +40,29 @@ class _FlashManager:
         self.tunnel_manager = _forward_tunnel(port, client=client)
         self.stopped = False
         self.num_failures = 0
-        self.task_id = None
+        self.task_id = os.environ["MODAL_TASK_ID"]
 
-    async def wait_for_port(self, process: Optional[subprocess.Popen], timeout: int = 10):
+    async def check_port_connection(self, process: Optional[subprocess.Popen], timeout: int = 10):
         import socket
 
         start_time = time.monotonic()
 
         while time.monotonic() - start_time < timeout:
             try:
+                if process is not None and process.poll() is not None:
+                    return Exception(f"Process {process.pid} exited with code {process.returncode}")
                 with socket.create_connection(("localhost", self.port), timeout=1):
                     return
             except (ConnectionRefusedError, OSError):
                 await asyncio.sleep(0.1)
-                if process is not None and process.poll() is not None:
-                    raise Exception(f"Process {process.pid} exited with code {process.returncode}")
 
-        raise Exception(f"Waited too long for port {self.port} to start accepting connections")
+        return Exception(f"Waited too long for port {self.port} to start accepting connections")
 
     async def _start(self):
         self.tunnel = await self.tunnel_manager.__aenter__()
         parsed_url = urlparse(self.tunnel.url)
         host = parsed_url.hostname
         port = parsed_url.port or 443
-        self.task_id = None
 
         self.heartbeat_task = asyncio.create_task(self._run_heartbeat(host, port))
         self.drain_task = asyncio.create_task(self._drain_container())
@@ -82,7 +79,7 @@ class _FlashManager:
                         f"[Modal Flash] Draining task {self.task_id} on {self.tunnel.url} due to too many failures."
                     )
                     await self.stop()
-                    await self.close()
+                    # handle close upon container exit
 
                     if self.task_id:
                         await self.client.stub.ContainerStop(api_pb2.ContainerStopRequest(task_id=self.task_id))
@@ -104,8 +101,7 @@ class _FlashManager:
         first_registration = True
         while True:
             try:
-                await self.wait_for_port(process=self.process)
-
+                await self.check_port_connection(process=self.process)
                 resp = await self.client.stub.FlashContainerRegister(
                     api_pb2.FlashContainerRegisterRequest(
                         priority=10,
@@ -117,7 +113,6 @@ class _FlashManager:
                 )
                 self.num_failures = 0
                 if first_registration:
-                    self.task_id = os.environ["MODAL_TASK_ID"]
                     logger.warning(
                         f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
                     )
@@ -206,6 +201,8 @@ class _FlashPrometheusAutoscaler:
         scale_down_stabilization_window_seconds: int,
         autoscaling_interval_seconds: int,
     ):
+        import aiohttp
+
         if scale_up_stabilization_window_seconds > self._max_window_seconds:
             raise InvalidError(
                 f"scale_up_stabilization_window_seconds must be less than or equal to {self._max_window_seconds}"
