@@ -24,7 +24,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
-from ._utils.name_utils import check_object_name
+from ._utils.name_utils import is_valid_object_name
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
@@ -71,6 +71,16 @@ def _validate_exec_args(args: Sequence[str]) -> None:
         raise InvalidError(
             f"Total length of CMD arguments must be less than {ARG_MAX_BYTES} bytes (ARG_MAX). "
             f"Got {total_arg_len} bytes."
+        )
+
+
+def _warn_if_invalid_name(name: str) -> None:
+    if not is_valid_object_name(name):
+        deprecation_warning(
+            (2025, 9, 3),
+            f"Sandbox name '{name}' will be considered invalid in a future release."
+            "\n\nNames may contain only alphanumeric characters, dashes, periods, and underscores,"
+            " must be shorter than 64 characters, and cannot conflict with App ID strings.",
         )
 
 
@@ -406,7 +416,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         _validate_exec_args(args)
         if name is not None:
-            check_object_name(name, "Sandbox")
+            _warn_if_invalid_name(name)
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -788,7 +798,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         client = client or await _Client.from_env()
 
         if name is not None and name != _DEFAULT_SANDBOX_NAME_OVERRIDE:
-            check_object_name(name, "Sandbox")
+            _warn_if_invalid_name(name)
 
         if name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
             restore_req = api_pb2.SandboxRestoreRequest(
