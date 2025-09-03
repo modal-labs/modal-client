@@ -92,11 +92,12 @@ class TestFlashManagerStopping:
         with patch.dict(os.environ, {"MODAL_TASK_ID": "test-task-123"}):
             flash_manager.tunnel = MagicMock()
             flash_manager.tunnel.url = "https://test.modal.test"
-            flash_manager.http_client.get = AsyncMock(side_effect=Exception("Network error"))
             flash_manager.client.stub.FlashContainerRegister = AsyncMock()
             flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+            flash_manager.wait_for_port = AsyncMock(side_effect=Exception("Persistent network error"))
 
-            await flash_manager._run_heartbeat("test.modal.test", 443)
+            asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
+            await asyncio.sleep(1)
 
             # Check that failures were recorded
             assert flash_manager.num_failures > 0
@@ -115,7 +116,7 @@ class TestFlashManagerStopping:
             flash_manager.tunnel.url = "https://test.modal.test"
 
             # Mock HTTP client to always fail
-            flash_manager.http_client.get = AsyncMock(side_effect=Exception("Persistent network error"))
+            flash_manager.wait_for_port = AsyncMock(side_effect=Exception("Persistent network error"))
 
             # Mock client stub methods
             flash_manager.client.stub.FlashContainerRegister = AsyncMock()
