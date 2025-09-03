@@ -265,18 +265,17 @@ class _FlashPrometheusAutoscaler:
             return current_replicas
 
         n_containers_without_metrics = len(containers) - len(internal_metrics_list)
-        n_containers_with_metrics = len(internal_metrics_list)
         sum_metric = sum(internal_metrics_list)
 
         # Scale up assuming that every unhealthy container is at 2x the target metric value.
         scale_up_target_metric_value = (
-            sum(internal_metrics_list) + n_containers_without_metrics * self.target_metric_value
-        ) / ((n_containers_with_metrics + n_containers_without_metrics) or 1)
+            sum_metric + n_containers_without_metrics * self.target_metric_value
+        ) / current_replicas or 1
 
         # Scale down assuming that every container (including cold starting containers) are at the target metric value.
         scale_down_target_metric_value = (
             sum_metric + n_containers_without_metrics * self.target_metric_value
-        ) / current_replicas
+        ) / current_replicas or 1
 
         scale_up_ratio = scale_up_target_metric_value / self.target_metric_value
         scale_down_ratio = scale_down_target_metric_value / self.target_metric_value
@@ -347,7 +346,7 @@ class _FlashPrometheusAutoscaler:
 
         # Scale down assuming that every container (including cold starting containers) are at the target metric value.
         scale_down_target_metric_value = (sum_metric + n_containers_missing_metric * target_metric_value) / (
-            containers_with_metrics + n_containers_unhealthy
+            current_replicas
         ) or 1
 
         scale_up_ratio = scale_up_target_metric_value / target_metric_value
