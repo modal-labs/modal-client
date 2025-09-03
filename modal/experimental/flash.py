@@ -256,7 +256,7 @@ class _FlashPrometheusAutoscaler:
 
         internal_metrics_list = []
         for container in containers:
-            internal_metric = await self._get_container_metrics(container.id)
+            internal_metric = await self._get_container_metrics(container.task_id)
             if internal_metric is None:
                 continue
             internal_metrics_list.append(getattr(internal_metric.metrics, self.target_metric))
