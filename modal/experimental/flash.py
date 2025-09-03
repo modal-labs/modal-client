@@ -256,7 +256,7 @@ class _FlashPrometheusAutoscaler:
 
         internal_metrics_list = []
         for container in containers:
-            internal_metric = await self._get_container_metrics(container.id)
+            internal_metric = await self._get_container_metrics(container.task_id)
             if internal_metric is None:
                 continue
             internal_metrics_list.append(getattr(internal_metric.metrics, self.target_metric))
@@ -282,7 +282,7 @@ class _FlashPrometheusAutoscaler:
             f"desired replicas: {desired_replicas}"
         )
 
-        desired_replicas = max(1, desired_replicas)
+        desired_replicas = max(1, min(desired_replicas, self.max_containers or 1000))
         return desired_replicas
 
     async def _compute_target_containers_prometheus(self, current_replicas: int) -> int:
