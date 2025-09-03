@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2025
+import asyncio
+import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from modal.experimental.flash import _FlashPrometheusAutoscaler
+from modal.experimental.flash import _FlashManager, _FlashPrometheusAutoscaler
 
 
 class TestFlashAutoscalerLogic:
@@ -63,3 +65,74 @@ class TestFlashAutoscalerLogic:
 
         result = await autoscaler._compute_target_containers_internal(current_replicas=3)
         assert result == 3
+
+
+class TestFlashManagerStopping:
+    @pytest.fixture
+    def mock_tunnel_manager(self):
+        """Mock the tunnel manager async context manager."""
+        mock_tunnel_manager = MagicMock()
+        mock_tunnel = MagicMock()
+        mock_tunnel.url = "https://test.modal.test"
+        mock_tunnel_manager.__aenter__ = AsyncMock(return_value=mock_tunnel)
+        mock_tunnel_manager.__aexit__ = AsyncMock()
+        return mock_tunnel_manager
+
+    @pytest.fixture
+    def flash_manager(self, client, mock_tunnel_manager):
+        """Create a FlashManager with mocked dependencies."""
+        with patch("modal.experimental.flash._forward_tunnel", return_value=mock_tunnel_manager):
+            manager = _FlashManager(client=client, port=8000)
+            return manager
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_failure_increments_counter(self, flash_manager):
+        """Test that heartbeat failures properly increment the failure counter."""
+
+        with patch.dict(os.environ, {"MODAL_TASK_ID": "test-task-123"}):
+            flash_manager.tunnel = MagicMock()
+            flash_manager.tunnel.url = "https://test.modal.test"
+            flash_manager.http_client.get = AsyncMock(side_effect=Exception("Network error"))
+            flash_manager.client.stub.FlashContainerRegister = AsyncMock()
+            flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+
+            await flash_manager._run_heartbeat("test.modal.test", 443)
+
+            # Check that failures were recorded
+            assert flash_manager.num_failures > 0
+
+    @pytest.mark.asyncio
+    async def test_full_failure_and_stop_integration(self, flash_manager):
+        """Test the full integration: failures -> drain -> stop."""
+
+        with (
+            patch.dict(os.environ, {"MODAL_TASK_ID": "test-task-456"}),
+            patch.object(flash_manager, "stop", new_callable=AsyncMock) as mock_stop,
+            patch.object(flash_manager, "close", new_callable=AsyncMock) as mock_close,
+        ):
+            # Set up mocks
+            flash_manager.tunnel = MagicMock()
+            flash_manager.tunnel.url = "https://test.modal.test"
+
+            # Mock HTTP client to always fail
+            flash_manager.http_client.get = AsyncMock(side_effect=Exception("Persistent network error"))
+
+            # Mock client stub methods
+            flash_manager.client.stub.FlashContainerRegister = AsyncMock()
+            flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+            flash_manager.client.stub.ContainerStop = AsyncMock()
+
+            flash_manager.num_failures = 3
+
+            # Start both background tasks
+            asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
+            asyncio.create_task(flash_manager._drain_container())
+
+            await asyncio.sleep(1)
+
+            # Verify that failures accumulated
+            assert flash_manager.num_failures > 3, f"Expected > 3 failures, got {flash_manager.num_failures}"
+
+            # Verify cleanup was called
+            mock_stop.assert_called_once()
+            mock_close.assert_called_once()

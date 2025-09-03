@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2025
 import asyncio
 import math
+import os
+import subprocess
 import sys
 import time
 import traceback
@@ -25,15 +27,46 @@ MAX_FAILURES = 3
 
 
 class _FlashManager:
-    def __init__(self, client: _Client, port: int, health_check_url: Optional[str] = None):
+    def __init__(
+        self,
+        client: _Client,
+        port: int,
+        process: Optional[subprocess.Popen] = None,
+        health_check_url: Optional[str] = None,
+    ):
         self.client = client
         self.port = port
         # Health check is not currently being used
         self.health_check_url = health_check_url
+        self.process = process
         self.tunnel_manager = _forward_tunnel(port, client=client)
         self.stopped = False
-        self.http_client = aiohttp.ClientSession()
+        self._http_client = None
         self.num_failures = 0
+        self.task_id = os.environ["MODAL_TASK_ID"]
+
+    def wait_for_port(self, process: Optional[subprocess.Popen], timeout: int = 10):
+        import socket
+
+        start_time = time.monotonic()
+
+        while time.monotonic() - start_time < timeout:
+            try:
+                with socket.create_connection(("localhost", self.port), timeout=1):
+                    return
+            except (ConnectionRefusedError, OSError):
+                time.sleep(0.1)
+                if process is not None and process.poll() is not None:
+                    raise Exception(f"Process {process.pid} exited with code {process.returncode}")
+
+        raise Exception(f"Waited too long for port {self.port} to start accepting connections")
+
+    @property
+    def http_client(self):
+        """Lazily create HTTP client session when first accessed."""
+        if self._http_client is None:
+            self._http_client = aiohttp.ClientSession()
+        return self._http_client
 
     async def _start(self):
         self.tunnel = await self.tunnel_manager.__aenter__()
@@ -53,8 +86,9 @@ class _FlashManager:
             try:
                 # Check if the container should be drained (e.g., too many failures)
                 if self.num_failures > MAX_FAILURES:
-                    logger.warning(f"[Modal Flash] Draining container on {self.tunnel.url} due to too many failures.")
-                    await asyncio.sleep(15)
+                    logger.warning(
+                        f"[Modal Flash] Draining task {self.task_id} on {self.tunnel.url} due to too many failures."
+                    )
                     await self.stop()
                     await self.close()
 
@@ -78,9 +112,8 @@ class _FlashManager:
         first_registration = True
         while True:
             try:
-                resp = await self.http_client.get(self.tunnel.url, timeout=1)
-                if resp.status != 200:
-                    raise Exception(f"Tunnel unresponsive with status: {resp.status}")
+                if self.process is not None:
+                    self.wait_for_port(process=self.process)
 
                 resp = await self.client.stub.FlashContainerRegister(
                     api_pb2.FlashContainerRegisterRequest(
@@ -93,7 +126,6 @@ class _FlashManager:
                 )
                 self.num_failures = 0
                 if first_registration:
-                    self.task_id = resp.task_id
                     logger.warning(
                         f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
                     )
@@ -104,15 +136,13 @@ class _FlashManager:
             except Exception as e:
                 logger.error(f"[Modal Flash] Heartbeat failed: {e}")
                 self.num_failures += 1
-                if self.num_failures > MAX_FAILURES:
-                    logger.error(
-                        f"[Modal Flash] Deregistering container {self.tunnel.url} after {MAX_FAILURES} failures"
-                    )
-                    await retry_transient_errors(
-                        self.client.stub.FlashContainerDeregister,
-                        api_pb2.FlashContainerDeregisterRequest(),
-                    )
-                    break
+                logger.error(
+                    f"[Modal Flash] Deregistering container {self.tunnel.url}, num_failures: {self.num_failures}"
+                )
+                await retry_transient_errors(
+                    self.client.stub.FlashContainerDeregister,
+                    api_pb2.FlashContainerDeregisterRequest(),
+                )
 
             try:
                 await asyncio.sleep(1)
@@ -142,6 +172,10 @@ class _FlashManager:
         if not self.stopped:
             await self.stop()
 
+        # Close HTTP client session if it was created
+        if self._http_client is not None:
+            await self._http_client.close()
+
         logger.warning(f"[Modal Flash] Closing tunnel on {self.tunnel.url}.")
         await self.tunnel_manager.__aexit__(*sys.exc_info())
 
@@ -150,7 +184,9 @@ FlashManager = synchronize_api(_FlashManager)
 
 
 @synchronizer.create_blocking
-async def flash_forward(port: int, health_check_url: Optional[str] = None) -> _FlashManager:
+async def flash_forward(
+    port: int, process: Optional[subprocess.Popen] = None, health_check_url: Optional[str] = None
+) -> _FlashManager:
     """
     Forward a port to the Modal Flash service, exposing that port as a stable web endpoint.
     This is a highly experimental method that can break or be removed at any time without warning.
@@ -158,7 +194,7 @@ async def flash_forward(port: int, health_check_url: Optional[str] = None) -> _F
     """
     client = await _Client.from_env()
 
-    manager = _FlashManager(client, port, health_check_url)
+    manager = _FlashManager(client, port, process=process, health_check_url=health_check_url)
     await manager._start()
     return manager
 
