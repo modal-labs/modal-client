@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.4.dev27 (2025-09-03)
+
+- `app.function` and `app.cls` now support `startup_timeout` which configures the timeout for the startup phase
+
+
 #### 1.1.4.dev24 (2025-09-01)
 
 - Fixed a bug in the deprecation warning in `Sandbox.create(..., environment_name=...)`.
