@@ -143,6 +143,7 @@ class _FlashManager:
 
     async def stop(self):
         self.heartbeat_task.cancel()
+        await self.http_client.close()
         await retry_transient_errors(
             self.client.stub.FlashContainerDeregister,
             api_pb2.FlashContainerDeregisterRequest(),
