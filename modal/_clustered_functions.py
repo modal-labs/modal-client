@@ -14,6 +14,7 @@ from modal_proto import api_pb2
 @dataclass
 class ClusterInfo:
     rank: int
+    cluster_id: str
     container_ips: list[str]
     container_ipv4_ips: list[str]
 
@@ -69,12 +70,14 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
         )
         cluster_info = ClusterInfo(
             rank=resp.cluster_rank,
+            cluster_id=resp.cluster_id,
             container_ips=resp.container_ips,
             container_ipv4_ips=resp.container_ipv4_ips,
         )
     else:
         cluster_info = ClusterInfo(
             rank=0,
+            cluster_id="",  # No cluster ID for single-node  # TODO(irfansharif): Is this right?
             container_ips=[container_ip],
             container_ipv4_ips=[],  # No IPv4 IPs for single-node
         )

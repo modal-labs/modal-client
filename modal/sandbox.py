@@ -109,6 +109,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret],
         name: Optional[str] = None,
         timeout: int = 300,
+        idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -213,6 +214,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 mount_ids=[mount.object_id for mount in mounts] + [mount.object_id for mount in image._mount_layers],
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
+                idle_timeout_secs=idle_timeout,
                 workdir=workdir,
                 resources=convert_fn_config_to_resources_config(
                     cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
@@ -257,7 +259,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        timeout: int = 300,  # Maximum execution time of the sandbox in seconds.
+        timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
+        # The amount of time in seconds that a sandbox can be idle before being terminated.
+        idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -312,7 +316,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         if environment_name is not None:
             deprecation_warning(
                 (2025, 7, 16),
-                "Passing `environment_name` to `Sandbox.create` is deprecated and will be removed in a future release.",
+                "Passing `environment_name` to `Sandbox.create` is deprecated and will be removed in a future release. "
                 "A sandbox's environment is determined by the app it is associated with.",
             )
 
@@ -324,6 +328,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             secrets=secrets,
             network_file_systems=network_file_systems,
             timeout=timeout,
+            idle_timeout=idle_timeout,
             workdir=workdir,
             gpu=gpu,
             cloud=cloud,
@@ -355,7 +360,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         mounts: Sequence[_Mount] = (),
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        timeout: int = 300,  # Maximum execution time of the sandbox in seconds.
+        timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
+        # The amount of time in seconds that a sandbox can be idle before being terminated.
+        idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -398,6 +405,9 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         _validate_exec_args(args)
 
+        if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
+            raise InvalidError("Cannot specify open ports when `block_network` is enabled")
+
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
             args,
@@ -405,6 +415,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             secrets=secrets,
             name=name,
             timeout=timeout,
+            idle_timeout=idle_timeout,
             workdir=workdir,
             gpu=gpu,
             cloud=cloud,
@@ -479,7 +490,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         environment_name: Optional[str] = None,
         client: Optional[_Client] = None,
     ) -> "_Sandbox":
-        """Get a running Sandbox by name from the given app.
+        """Get a running Sandbox by name from a deployed App.
 
         Raises a modal.exception.NotFoundError if no running sandbox is found with the given name.
         A Sandbox's name is the `name` argument passed to `Sandbox.create`.

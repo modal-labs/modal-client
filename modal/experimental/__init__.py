@@ -311,7 +311,8 @@ async def notebook_base_image(*, python_version: Optional[str] = None, force_bui
 
     commands: list[str] = [
         "apt-get update",
-        "apt-get install -y libpq-dev pkg-config cmake git curl wget unzip zip libsqlite3-dev openssh-server vim",
+        "apt-get install -y "
+        + "libpq-dev pkg-config cmake git curl wget unzip zip libsqlite3-dev openssh-server vim ffmpeg",
         _install_cuda_command(),
         # Install uv since it's faster than pip for installing packages.
         "pip install uv",
