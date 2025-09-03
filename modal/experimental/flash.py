@@ -41,7 +41,6 @@ class _FlashManager:
         self.process = process
         self.tunnel_manager = _forward_tunnel(port, client=client)
         self.stopped = False
-        self._http_client = None
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
 
@@ -60,13 +59,6 @@ class _FlashManager:
                     raise Exception(f"Process {process.pid} exited with code {process.returncode}")
 
         raise Exception(f"Waited too long for port {self.port} to start accepting connections")
-
-    @property
-    def http_client(self):
-        """Lazily create HTTP client session when first accessed."""
-        if self._http_client is None:
-            self._http_client = aiohttp.ClientSession()
-        return self._http_client
 
     async def _start(self):
         self.tunnel = await self.tunnel_manager.__aenter__()
@@ -171,10 +163,6 @@ class _FlashManager:
     async def close(self):
         if not self.stopped:
             await self.stop()
-
-        # Close HTTP client session if it was created
-        if self._http_client is not None:
-            await self._http_client.close()
 
         logger.warning(f"[Modal Flash] Closing tunnel on {self.tunnel.url}.")
         await self.tunnel_manager.__aexit__(*sys.exc_info())
