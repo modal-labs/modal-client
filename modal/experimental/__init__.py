@@ -317,13 +317,10 @@ async def notebook_base_image(*, python_version: Optional[str] = None, force_bui
         # Install uv since it's faster than pip for installing packages.
         "pip install uv",
         # https://github.com/astral-sh/uv/issues/11480
-        "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126",
+        "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129",
         f"uv pip install --system {shlex.join(sorted(environment_packages))}",
         f"uv pip install --system {shlex.join(sorted(kernelshim_packages))}",
     ]
-
-    # TODO: Also install the CUDA Toolkit, so `nvcc` is available.
-    # https://github.com/charlesfrye/cuda-modal/blob/7fef8db12402986cf42d9c8cca8c63d1da6d7700/cuda/use_cuda.py#L158-L188
 
     def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
         return DockerfileSpec(
