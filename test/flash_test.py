@@ -96,8 +96,13 @@ class TestFlashManagerStopping:
             flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
             flash_manager.wait_for_port = AsyncMock(side_effect=Exception("Persistent network error"))
 
-            asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
+            heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
             await asyncio.sleep(1)
+            try:
+                heartbeat_task.cancel()
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass  # Expected when task is cancelled
 
             # Check that failures were recorded
             assert flash_manager.num_failures > 0
@@ -126,10 +131,23 @@ class TestFlashManagerStopping:
             flash_manager.num_failures = 3
 
             # Start both background tasks
-            asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
-            asyncio.create_task(flash_manager._drain_container())
+            heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
+            drain_task = asyncio.create_task(flash_manager._drain_container())
 
             await asyncio.sleep(1)
+
+            heartbeat_task.cancel()
+            drain_task.cancel()
+
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+            try:
+                await drain_task
+            except asyncio.CancelledError:
+                pass
 
             # Verify that failures accumulated
             assert flash_manager.num_failures > 3, f"Expected > 3 failures, got {flash_manager.num_failures}"
