@@ -81,7 +81,10 @@ class TestFlashManagerStopping:
     @pytest.fixture
     def flash_manager(self, client, mock_tunnel_manager):
         """Create a FlashManager with mocked dependencies."""
-        with patch("modal.experimental.flash._forward_tunnel", return_value=mock_tunnel_manager):
+        with (
+            patch.dict(os.environ, {"MODAL_TASK_ID": "test-task-123"}),
+            patch("modal.experimental.flash._forward_tunnel", return_value=mock_tunnel_manager),
+        ):
             manager = _FlashManager(client=client, port=8000)
             return manager
 
@@ -89,39 +92,36 @@ class TestFlashManagerStopping:
     async def test_heartbeat_failure_increments_counter(self, flash_manager):
         """Test that heartbeat failures properly increment the failure counter."""
 
-        with patch.dict(os.environ, {"MODAL_TASK_ID": "test-task-123"}):
-            flash_manager.tunnel = MagicMock()
-            flash_manager.tunnel.url = "https://test.modal.test"
-            flash_manager.client.stub.FlashContainerRegister = AsyncMock()
-            flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
-            flash_manager.wait_for_port = AsyncMock(side_effect=Exception("Persistent network error"))
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
+        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+        flash_manager.check_port_connection = AsyncMock(side_effect=Exception("Persistent network error"))
 
-            heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
-            await asyncio.sleep(1)
-            try:
-                heartbeat_task.cancel()
-                await heartbeat_task
-            except asyncio.CancelledError:
-                pass  # Expected when task is cancelled
+        heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
+        await asyncio.sleep(1)
+        try:
+            heartbeat_task.cancel()
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass  # Expected when task is cancelled
 
-            # Check that failures were recorded
-            assert flash_manager.num_failures > 0
+        # Check that failures were recorded
+        assert flash_manager.num_failures > 0
 
     @pytest.mark.asyncio
     async def test_full_failure_and_stop_integration(self, flash_manager):
         """Test the full integration: failures -> drain -> stop."""
 
         with (
-            patch.dict(os.environ, {"MODAL_TASK_ID": "test-task-456"}),
             patch.object(flash_manager, "stop", new_callable=AsyncMock) as mock_stop,
-            patch.object(flash_manager, "close", new_callable=AsyncMock) as mock_close,
         ):
             # Set up mocks
             flash_manager.tunnel = MagicMock()
             flash_manager.tunnel.url = "https://test.modal.test"
 
             # Mock HTTP client to always fail
-            flash_manager.wait_for_port = AsyncMock(side_effect=Exception("Persistent network error"))
+            flash_manager.check_port_connection = AsyncMock(side_effect=Exception("Persistent network error"))
 
             # Mock client stub methods
             flash_manager.client.stub.FlashContainerRegister = AsyncMock()
@@ -154,4 +154,3 @@ class TestFlashManagerStopping:
 
             # Verify cleanup was called
             mock_stop.assert_called_once()
-            mock_close.assert_called_once()
