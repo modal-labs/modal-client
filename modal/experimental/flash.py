@@ -42,7 +42,7 @@ class _FlashManager:
         self.tunnel_manager = _forward_tunnel(port, client=client)
         self.stopped = False
         self.num_failures = 0
-        self.task_id = os.environ["MODAL_TASK_ID"]
+        self.task_id = None
 
     def wait_for_port(self, process: Optional[subprocess.Popen], timeout: int = 10):
         import socket
@@ -118,6 +118,7 @@ class _FlashManager:
                 )
                 self.num_failures = 0
                 if first_registration:
+                    self.task_id = os.environ["MODAL_TASK_ID"]
                     logger.warning(
                         f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
                     )
