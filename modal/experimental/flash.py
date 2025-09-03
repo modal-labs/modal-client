@@ -44,7 +44,7 @@ class _FlashManager:
         self.num_failures = 0
         self.task_id = None
 
-    def wait_for_port(self, process: Optional[subprocess.Popen], timeout: int = 10):
+    async def wait_for_port(self, process: Optional[subprocess.Popen], timeout: int = 10):
         import socket
 
         start_time = time.monotonic()
@@ -54,7 +54,7 @@ class _FlashManager:
                 with socket.create_connection(("localhost", self.port), timeout=1):
                     return
             except (ConnectionRefusedError, OSError):
-                time.sleep(0.1)
+                await asyncio.sleep(0.1)
                 if process is not None and process.poll() is not None:
                     raise Exception(f"Process {process.pid} exited with code {process.returncode}")
 
@@ -104,8 +104,7 @@ class _FlashManager:
         first_registration = True
         while True:
             try:
-                if self.process is not None:
-                    self.wait_for_port(process=self.process)
+                await self.wait_for_port(process=self.process)
 
                 resp = await self.client.stub.FlashContainerRegister(
                     api_pb2.FlashContainerRegisterRequest(
