@@ -282,7 +282,7 @@ class _FlashPrometheusAutoscaler:
             f"desired replicas: {desired_replicas}"
         )
 
-        desired_replicas = max(1, desired_replicas)
+        desired_replicas = max(1, min(desired_replicas, self.max_containers or 1000))
         return desired_replicas
 
     async def _compute_target_containers_prometheus(self, current_replicas: int) -> int:
