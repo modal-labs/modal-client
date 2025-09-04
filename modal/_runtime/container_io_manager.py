@@ -250,12 +250,22 @@ class IOContext:
                 yield result
         logger.debug(f"Finished generator input {self.input_ids}")
 
-    async def output_items_cancellation(self):
+    async def output_items_cancellation(self, started_at: float):
         # Create terminated outputs for these inputs to signal that the cancellations have been completed.
-        return [api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED) for _ in self.input_ids]
+        return [
+            api_pb2.FunctionPutOutputsItem(
+                input_id=input_id,
+                input_started_at=started_at,
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED),
+                retry_count=retry_count,
+            )
+            for input_id, retry_count in zip(self.input_ids, self.retry_counts)
+        ]
 
-    async def output_items_exception(self, started_at: float, exc: Exception) -> list[api_pb2.FunctionPutOutputsItem]:
-        serialized_tb, tb_line_cache = pickle_traceback(exc)
+    async def output_items_exception(
+        self, started_at: float, task_id: str, exc: Exception
+    ) -> list[api_pb2.FunctionPutOutputsItem]:
+        serialized_tb, tb_line_cache = pickle_traceback(exc, task_id)
 
         # Note: we're not pickling the traceback since it contains
         # local references that means we can't unpickle it. We *are*
@@ -296,7 +306,7 @@ class IOContext:
             for input_id, retry_count, function_input in zip(self.input_ids, self.retry_counts, self.function_inputs)
         ]
 
-    async def output_items_generator_done(self, items_total: int) -> list[api_pb2.FunctionPutOutputsItem]:
+    def output_items_generator_done(self, started_at: float, items_total: int) -> list[api_pb2.FunctionPutOutputsItem]:
         assert not self._is_batched, "generators are not supported with batched inputs"
         assert len(self.function_inputs) == 1, "generators are expected to have 1 input"
         # Serialize and format the data
@@ -306,7 +316,7 @@ class IOContext:
         return [
             api_pb2.FunctionPutOutputsItem(
                 input_id=self.input_ids[0],
-                input_started_at=self.started_at,
+                input_started_at=started_at,
                 output_created_at=time.time(),
                 result=api_pb2.GenericResult(
                     status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -745,6 +755,7 @@ class _ContainerIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
+            logger.debug("getting input slot lock")
             await self._input_slots.acquire()
 
             request.average_call_time = self.get_average_call_time()
@@ -812,6 +823,7 @@ class _ContainerIOManager:
         )
         async with dynamic_concurrency_manager:
             async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
+                logger.debug("got inputs")
                 io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
                 for input_id in io_context.input_ids:
                     self.current_inputs[input_id] = io_context
@@ -819,11 +831,11 @@ class _ContainerIOManager:
                 self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
                 yield io_context
                 self.current_input_id, self.current_input_started_at = (None, None)
-
+            logger.debug("no more inputs")
             # collect all active input slots, meaning all inputs have wrapped up.
             await self._input_slots.close()
 
-    async def _send_outputs(self, outputs: list[api_pb2.FunctionPutOutputsItem]) -> None:
+    async def _send_outputs(self, started_at: float, outputs: list[api_pb2.FunctionPutOutputsItem]) -> None:
         """Send pre-built output items with retry and chunking."""
         # There are multiple outputs for a single IOContext in the case of @modal.batched.
         # Limit the batch size to 20 to stay within message size limits and buffer size limits.
@@ -835,6 +847,9 @@ class _ContainerIOManager:
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                 max_retries=None,  # Retry indefinitely, trying every 1s.
             )
+        logger.debug("sent outputs %s", outputs)
+        input_ids = [output.input_id for output in outputs]
+        self.exit_context(started_at, input_ids)
 
     @asynccontextmanager
     async def handle_user_exception(self) -> AsyncGenerator[None, None]:
@@ -857,7 +872,7 @@ class _ContainerIOManager:
             # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
             print_exception(type(exc), exc, exc.__traceback__)
 
-            serialized_tb, tb_line_cache = self.serialize_traceback(exc)
+            serialized_tb, tb_line_cache = pickle_traceback(exc, self.task_id)
 
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
@@ -891,9 +906,8 @@ class _ContainerIOManager:
             #    for the yield. Typically on event loop shutdown
             raise
         except (InputCancellation, asyncio.CancelledError):
-            outputs = await io_context.create_cancellation_output_items(started_at)
-            await self._send_outputs(outputs)
-            self.exit_context(started_at, io_context.input_ids)
+            outputs = await io_context.output_items_cancellation(started_at)
+            await self._send_outputs(started_at, outputs)
             logger.warning(f"Successfully canceled input {io_context.input_ids}")
             return
         except BaseException as exc:
@@ -903,9 +917,8 @@ class _ContainerIOManager:
 
             # print exception so it's logged
             print_exception(*sys.exc_info())
-            outputs = await io_context.output_items_exception(started_at, exc)
-            await self._send_outputs(outputs)
-            self.exit_context(started_at, io_context.input_ids)
+            outputs = await io_context.output_items_exception(started_at, self.task_id, exc)
+            await self._send_outputs(started_at, outputs)
 
     def exit_context(self, started_at, input_ids: list[str]):
         self.total_user_time += time.time() - started_at
@@ -916,6 +929,7 @@ class _ContainerIOManager:
 
         self._input_slots.release()
 
+    # skip inspection of user-generated output_data for synchronicity input translation
     @synchronizer.no_io_translation
     async def push_outputs(
         self,
@@ -923,17 +937,9 @@ class _ContainerIOManager:
         started_at: float,
         output_data: list[Any],  # one per output
     ) -> None:
-        # Special-case for generator completion messages which have a fixed format.
-        # if isinstance(data, api_pb2.GeneratorDone):
-        #     outputs = await io_context.create_output_items(started_at, [data])
-        #     await self._send_outputs(outputs)
-        #     self.exit_context(started_at, io_context.input_ids)
-        #     return
-
-        # Create output items from raw data, letting the method handle serialization and format detection
+        # The standard output encoding+sending method for successful function outputs
         outputs = await io_context.output_items(started_at, output_data)
-        await self._send_outputs(outputs)
-        self.exit_context(started_at, io_context.input_ids)
+        await self._send_outputs(started_at, outputs)
 
     async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
