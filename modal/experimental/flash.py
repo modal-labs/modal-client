@@ -347,7 +347,7 @@ class _FlashPrometheusAutoscaler:
             target_metric_value = self.target_metric_value
         else:
             sum_metric, containers_with_metrics = await self._get_prometheus_metrics(containers)
-            target_metric_value = float(self.target_metric_value)
+            target_metric_value = self.target_metric_value
 
         if containers_with_metrics == 0:
             return current_replicas
@@ -360,7 +360,6 @@ class _FlashPrometheusAutoscaler:
             target_metric_value=target_metric_value,
         )
 
-        desired_replicas = max(1, min(desired_replicas, self.max_containers or 5000))
         return desired_replicas
 
     def _calculate_desired_replicas(
@@ -421,7 +420,7 @@ class _FlashPrometheusAutoscaler:
             f"desired replicas: {desired_replicas}"
         )
 
-        return desired_replicas
+        return max(1, desired_replicas)
 
     async def _get_internal_metrics(self, containers) -> tuple[float, int]:
         """Get metrics using internal container metrics API."""
