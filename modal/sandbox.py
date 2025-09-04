@@ -24,6 +24,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
+from ._utils.name_utils import is_valid_object_name
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
@@ -70,6 +71,16 @@ def _validate_exec_args(args: Sequence[str]) -> None:
         raise InvalidError(
             f"Total length of CMD arguments must be less than {ARG_MAX_BYTES} bytes (ARG_MAX). "
             f"Got {total_arg_len} bytes."
+        )
+
+
+def _warn_if_invalid_name(name: str) -> None:
+    if not is_valid_object_name(name):
+        deprecation_warning(
+            (2025, 9, 3),
+            f"Sandbox name '{name}' will be considered invalid in a future release."
+            "\n\nNames may contain only alphanumeric characters, dashes, periods, and underscores,"
+            " must be shorter than 64 characters, and cannot conflict with App ID strings.",
         )
 
 
@@ -316,7 +327,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         if environment_name is not None:
             deprecation_warning(
                 (2025, 7, 16),
-                "Passing `environment_name` to `Sandbox.create` is deprecated and will be removed in a future release.",
+                "Passing `environment_name` to `Sandbox.create` is deprecated and will be removed in a future release. "
                 "A sandbox's environment is determined by the app it is associated with.",
             )
 
@@ -404,6 +415,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         from .app import _App
 
         _validate_exec_args(args)
+        if name is not None:
+            _warn_if_invalid_name(name)
 
         if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
             raise InvalidError("Cannot specify open ports when `block_network` is enabled")
@@ -786,6 +799,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         name: Optional[str] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
     ):
         client = client or await _Client.from_env()
+
+        if name is not None and name != _DEFAULT_SANDBOX_NAME_OVERRIDE:
+            _warn_if_invalid_name(name)
 
         if name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
             restore_req = api_pb2.SandboxRestoreRequest(

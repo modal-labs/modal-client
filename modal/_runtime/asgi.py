@@ -120,7 +120,7 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> tuple[Callable[..., Asyn
 
         async def handle_first_input_timeout():
             if scope["type"] == "http":
-                await messages_from_app.put({"type": "http.response.start", "status": 502})
+                await messages_from_app.put({"type": "http.response.start", "status": 408})
                 await messages_from_app.put(
                     {
                         "type": "http.response.body",
