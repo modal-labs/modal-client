@@ -6,6 +6,8 @@ import typing
 from inspect import Parameter
 from typing import Any
 
+from modal._traceback import extract_traceback
+
 try:
     import cbor2  # type: ignore
 except Exception:  # pragma: no cover - optional dependency
@@ -20,7 +22,7 @@ from ._object import _Object
 from ._type_manager import parameter_serde_registry, schema_registry
 from ._vendor import cloudpickle
 from .config import logger
-from .exception import DeserializationError, ExecutionError, InvalidError
+from .exception import DeserializationError, ExecutionError, InvalidError, SerializationError
 from .object import Object
 
 if typing.TYPE_CHECKING:
@@ -592,3 +594,26 @@ def get_callable_schema(
         arguments=arguments,
         return_type=return_type_proto,
     )
+
+
+def pickle_exception(self, exc: BaseException) -> bytes:
+    try:
+        return serialize(exc)
+    except Exception as serialization_exc:
+        # We can't always serialize exceptions.
+        err = f"Failed to serialize exception {exc} of type {type(exc)}: {serialization_exc}"
+        logger.info(err)
+        return serialize(SerializationError(err))
+
+
+def pickle_traceback(self, exc: BaseException) -> tuple[bytes, bytes]:
+    serialized_tb, tb_line_cache = b"", b""
+
+    try:
+        tb_dict, line_cache = extract_traceback(exc, self.task_id)
+        serialized_tb = serialize(tb_dict)
+        tb_line_cache = serialize(line_cache)
+    except Exception:
+        logger.info("Failed to serialize exception traceback.")
+
+    return serialized_tb, tb_line_cache

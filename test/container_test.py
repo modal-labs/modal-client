@@ -2433,7 +2433,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
                     raise Exception("Blah")
                 else:
                     # and some successes
-                    io_manager.push_outputs(input_to_process, 0, None)
+                    io_manager.push_outputs(input_to_process, None)
     assert not triggered_assertions
 
 
