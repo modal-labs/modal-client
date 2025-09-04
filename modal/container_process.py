@@ -8,6 +8,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.sandbox_utils import DirectAccessMetadata
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .exception import InteractiveTimeoutError, InvalidError
@@ -18,6 +19,79 @@ T = TypeVar("T", str, bytes)
 
 
 class _ContainerProcess(Generic[T]):
+    """Factory base class for container processes.
+
+    Use `_ContainerProcess.create(...)` to construct an appropriate implementation.
+    """
+
+    @classmethod
+    def create(
+        cls,
+        process_id: str,
+        client: _Client,
+        *,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        exec_deadline: Optional[float] = None,
+        text: bool = True,
+        by_line: bool = False,
+        direct_access: Optional[DirectAccessMetadata] = None,
+    ) -> "_ContainerProcess[T]":
+        if direct_access is None:
+            return _ContainerProcessThroughServer(
+                process_id,
+                client,
+                stdout=stdout,
+                stderr=stderr,
+                exec_deadline=exec_deadline,
+                text=text,
+                by_line=by_line,
+            )
+        else:
+            return _ContainerProcessDirect(
+                process_id,
+                client,
+                direct_access,
+                stdout=stdout,
+                stderr=stderr,
+                exec_deadline=exec_deadline,
+                text=text,
+                by_line=by_line,
+            )
+
+    # Interface stubs for synchronize_api to wrap; concrete subclasses override these
+    @property
+    def stdout(self) -> _StreamReader[T]:  # type: ignore[override]
+        pass
+
+    @property
+    def stderr(self) -> _StreamReader[T]:  # type: ignore[override]
+        pass
+
+    @property
+    def stdin(self) -> _StreamWriter:  # type: ignore[override]
+        pass
+
+    @property
+    def returncode(self) -> int:  # type: ignore[override]
+        pass
+
+    async def poll(self) -> Optional[int]:
+        pass
+
+    async def wait(self) -> int:
+        pass
+
+    async def attach(self):
+        pass
+
+
+class _ContainerProcessThroughServer(_ContainerProcess[T]):
+    """
+    Container process that runs through the server. This is the original implementation for
+    `ContainerProcess`.
+    """
+
     _process_id: Optional[str] = None
     _stdout: _StreamReader[T]
     _stderr: _StreamReader[T]
@@ -189,6 +263,52 @@ class _ContainerProcess(Generic[T]):
                 stdout_task.cancel()
                 stderr_task.cancel()
                 raise InteractiveTimeoutError("Failed to establish connection to container. Please try again.")
+
+
+class _ContainerProcessDirect(_ContainerProcess[T]):
+    """
+    Container process implementation  that works via direct communication with
+    the Modal worker where the container is running.
+    """
+
+    def __init__(
+        self,
+        process_id: str,
+        client: _Client,
+        direct_access: DirectAccessMetadata,
+        *,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        exec_deadline: Optional[float] = None,
+        text: bool = True,
+        by_line: bool = False,
+    ) -> None:
+        pass
+
+    @property
+    def stdout(self) -> _StreamReader[T]:
+        pass
+
+    @property
+    def stderr(self) -> _StreamReader[T]:
+        pass
+
+    @property
+    def stdin(self) -> _StreamWriter:
+        pass
+
+    @property
+    def returncode(self) -> int:
+        pass
+
+    async def poll(self) -> Optional[int]:
+        pass
+
+    async def wait(self) -> int:
+        pass
+
+    async def attach(self):
+        pass
 
 
 ContainerProcess = synchronize_api(_ContainerProcess)

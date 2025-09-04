@@ -24,6 +24,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
+from ._utils.sandbox_utils import DirectAccessMetadata
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
@@ -98,9 +99,10 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stdout: _StreamReader[str]
     _stderr: _StreamReader[str]
     _stdin: _StreamWriter
-    _task_id: Optional[str] = None
-    _tunnels: Optional[dict[int, Tunnel]] = None
-    _enable_snapshot: bool = False
+    _task_id: Optional[str]
+    _tunnels: Optional[dict[int, Tunnel]]
+    _enable_snapshot: bool
+    _direct_access_metadata: Optional[DirectAccessMetadata]
 
     @staticmethod
     def _new(
@@ -481,6 +483,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
         self._result = None
+        self._task_id = None
+        self._tunnels = None
+        self._enable_snapshot = False
+        self._direct_access_metadata = None
 
     @staticmethod
     async def from_name(
@@ -657,6 +663,33 @@ class _Sandbox(_Object, type_prefix="sb"):
                 await asyncio.sleep(0.5)
         return self._task_id
 
+    async def _get_direct_access_metadata(self) -> Optional[DirectAccessMetadata]:
+        # The sandbox must be scheduled before we can get direct access metadata,
+        # so the caller is expected to wait for the task ID to be set.
+        assert self._task_id is not None
+
+        # TODO(saltzm): We'll need to bypass this if we need to retry when token expires.
+        if self._direct_access_metadata is not None:
+            return self._direct_access_metadata
+
+        try:
+            # This will retry until the sandbox has been scheduled or an error
+            # is thrown indicating that direct access is not enabled for this
+            # sandbox.
+            resp = await retry_transient_errors(
+                self._client.stub.SandboxGetDirectAccess,
+                api_pb2.SandboxGetDirectAccessRequest(sandbox_id=self.object_id),
+            )
+        except GRPCError as exc:
+            if exc.status == Status.FAILED_PRECONDITION:
+                # Direct access is not enabled for this sandbox.
+                return None
+            else:
+                raise exc
+
+        self._direct_access_metadata = DirectAccessMetadata(resp.jwt, resp.url)
+        return self._direct_access_metadata
+
     @overload
     async def exec(
         self,
@@ -732,6 +765,57 @@ class _Sandbox(_Object, type_prefix="sb"):
         await TaskContext.gather(*secret_coros)
 
         task_id = await self._get_task_id()
+        # NB: This must come after the task ID is set, since the sandbox must be scheduled
+        # before we can get direct access metadata.
+        direct_access_metadata = await self._get_direct_access_metadata()
+
+        if direct_access_metadata is not None:
+            return await self._exec_direct(
+                direct_access_metadata,
+                *args,
+                pty_info=pty_info,
+                stdout=stdout,
+                stderr=stderr,
+                timeout=timeout,
+                workdir=workdir,
+                secrets=secrets,
+                text=text,
+                bufsize=bufsize,
+                _pty_info=_pty_info,
+            )
+        else:
+            return await self._exec_through_server(
+                task_id,
+                *args,
+                pty_info=pty_info,
+                stdout=stdout,
+                stderr=stderr,
+                timeout=timeout,
+                workdir=workdir,
+                secrets=secrets,
+                text=text,
+                bufsize=bufsize,
+                _pty_info=_pty_info,
+            )
+
+    async def _exec_through_server(
+        self,
+        task_id: str,
+        *args: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
+        # Encode output as text.
+        text: bool = True,
+        # Control line-buffered output.
+        # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
+        bufsize: Literal[-1, 1] = -1,
+        # Internal option to set terminal size and metadata
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
+    ) -> _ContainerProcess:
         req = api_pb2.ContainerExecRequest(
             task_id=task_id,
             command=args,
@@ -744,7 +828,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
         exec_deadline = time.monotonic() + int(timeout) + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
-        return _ContainerProcess(
+        return _ContainerProcess.create(
             resp.exec_id,
             self._client,
             stdout=stdout,
@@ -753,6 +837,26 @@ class _Sandbox(_Object, type_prefix="sb"):
             exec_deadline=exec_deadline,
             by_line=by_line,
         )
+
+    async def _exec_direct(
+        self,
+        direct_access: DirectAccessMetadata,
+        *args: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
+        # Encode output as text.
+        text: bool = True,
+        # Control line-buffered output.
+        # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
+        bufsize: Literal[-1, 1] = -1,
+        # Internal option to set terminal size and metadata
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
+    ):
+        pass
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
         await self._get_task_id()
