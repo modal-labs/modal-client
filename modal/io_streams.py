@@ -235,6 +235,7 @@ class _StreamReader(Generic[T]):
                     elif isinstance(exc, ClientClosed):
                         # If the client was closed, the user has triggered a cleanup.
                         break
+                logger.error(f"{self._object_id} stream read failure while consuming process output: {exc}")
                 raise exc
 
     async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
