@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from modal.experimental.flash import (
-    MAX_FAILURES,
+    _MAX_FAILURES,
     _FlashManager,
     _FlashPrometheusAutoscaler,
 )
@@ -161,10 +161,10 @@ class TestFlashManagerStopping:
         drain_task = asyncio.create_task(flash_manager._drain_container())
 
         with patch.object(flash_manager, "stop", new_callable=AsyncMock) as mock_stop:
-            for i in range(3, 5):
+            for i in range(_MAX_FAILURES, _MAX_FAILURES + 2):
                 flash_manager.num_failures = i
                 await asyncio.sleep(1)
-                if i <= MAX_FAILURES:
+                if i <= _MAX_FAILURES:
                     assert flash_manager.num_failures == i
                     assert mock_stop.call_count == 0
                 else:

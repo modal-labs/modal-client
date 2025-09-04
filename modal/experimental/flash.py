@@ -21,7 +21,7 @@ from ..client import _Client
 from ..config import logger
 from ..exception import InvalidError
 
-MAX_FAILURES = 3
+_MAX_FAILURES = 3
 
 
 class _FlashManager:
@@ -76,7 +76,7 @@ class _FlashManager:
         while True:
             try:
                 # Check if the container should be drained (e.g., too many failures)
-                if self.num_failures > MAX_FAILURES:
+                if self.num_failures > _MAX_FAILURES:
                     logger.warning(
                         f"[Modal Flash] Draining task {self.task_id} on {self.tunnel.url} due to too many failures."
                     )
