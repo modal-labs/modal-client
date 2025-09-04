@@ -21,7 +21,7 @@ from ..client import _Client
 from ..config import logger
 from ..exception import InvalidError
 
-_MAX_FAILURES = 3
+_MAX_FAILURES = 10
 
 
 class _FlashManager:
@@ -43,7 +43,7 @@ class _FlashManager:
         self.task_id = os.environ["MODAL_TASK_ID"]
 
     async def is_port_connection_healthy(
-        self, process: Optional[subprocess.Popen], timeout: int = 5
+        self, process: Optional[subprocess.Popen], timeout: int = 1
     ) -> tuple[bool, Optional[Exception]]:
         import socket
 
@@ -53,7 +53,7 @@ class _FlashManager:
             try:
                 if process is not None and process.poll() is not None:
                     return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
-                with socket.create_connection(("localhost", self.port), timeout=1):
+                with socket.create_connection(("localhost", self.port), timeout=0.5):
                     return True, None
             except (ConnectionRefusedError, OSError):
                 await asyncio.sleep(0.1)
