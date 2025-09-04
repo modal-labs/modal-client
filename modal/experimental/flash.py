@@ -337,25 +337,42 @@ class _FlashPrometheusAutoscaler:
         if not internal_metrics_list:
             return current_replicas
 
-        avg_internal_metric = sum(internal_metrics_list) / len(internal_metrics_list)
+        sum_metric = sum(internal_metrics_list)
+        containers_with_metrics = len(internal_metrics_list)
+        # n_containers_missing_metric is the number of unhealthy containers + number of cold starting containers
+        n_containers_missing_metric = current_replicas - containers_with_metrics
+        # n_containers_unhealthy is the number of live containers that are not emitting metrics i.e. unhealthy
+        n_containers_unhealthy = len(containers) - containers_with_metrics
 
-        scale_factor = avg_internal_metric / self.target_metric_value
+        # Scale up assuming that every unhealthy container is at 2x the target metric value.
+        scale_up_target_metric_value = (sum_metric + n_containers_unhealthy * self.target_metric_value) / (
+            (containers_with_metrics + n_containers_unhealthy) or 1
+        )
+
+        # Scale down assuming that every container (including cold starting containers) are at the target metric value.
+        scale_down_target_metric_value = (sum_metric + n_containers_missing_metric * self.target_metric_value) / (
+            current_replicas or 1
+        )
+
+        scale_up_ratio = scale_up_target_metric_value / self.target_metric_value
+        scale_down_ratio = scale_down_target_metric_value / self.target_metric_value
 
         desired_replicas = current_replicas
-        if scale_factor > 1 + self.scale_up_tolerance:
-            desired_replicas = math.ceil(current_replicas * scale_factor)
-        elif scale_factor < 1 - self.scale_down_tolerance:
-            desired_replicas = math.ceil(current_replicas * scale_factor)
+        if scale_up_ratio > 1 + self.scale_up_tolerance:
+            desired_replicas = math.ceil(current_replicas * scale_up_ratio)
+        elif scale_down_ratio < 1 - self.scale_down_tolerance:
+            desired_replicas = math.ceil(current_replicas * scale_down_ratio)
 
         logger.warning(
             f"[Modal Flash] Current replicas: {current_replicas}, "
-            f"avg internal metric `{self.target_metric}`: {avg_internal_metric}, "
+            f"sum internal metric `{self.target_metric}`: {sum_metric}, "
             f"target internal metric value: {self.target_metric_value}, "
-            f"scale factor: {scale_factor}, "
+            f"scale up ratio: {scale_up_ratio}, "
+            f"scale down ratio: {scale_down_ratio}, "
             f"desired replicas: {desired_replicas}"
         )
 
-        desired_replicas = max(1, min(desired_replicas, self.max_containers or 1000))
+        desired_replicas = max(1, min(desired_replicas, self.max_containers or 5000))
         return desired_replicas
 
     async def _compute_target_containers_prometheus(self, current_replicas: int) -> int:
@@ -405,9 +422,9 @@ class _FlashPrometheusAutoscaler:
         )
 
         # Scale down assuming that every container (including cold starting containers) are at the target metric value.
-        scale_down_target_metric_value = (
-            sum_metric + n_containers_missing_metric * target_metric_value
-        ) / current_replicas
+        scale_down_target_metric_value = (sum_metric + n_containers_missing_metric * target_metric_value) / (
+            current_replicas or 1
+        )
 
         scale_up_ratio = scale_up_target_metric_value / target_metric_value
         scale_down_ratio = scale_down_target_metric_value / target_metric_value
