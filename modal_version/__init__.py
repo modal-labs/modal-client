@@ -1,4 +1,4 @@
 # Copyright Modal Labs 2025
 """Supplies the current version of the modal client library."""
 
-__version__ = "1.1.5.dev1"
+__version__ = "1.1.5.dev2"
