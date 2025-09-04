@@ -5,6 +5,8 @@ import time
 from collections.abc import AsyncGenerator, Sequence
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
+from .config import config, logger
+
 if TYPE_CHECKING:
     import _typeshed
 
@@ -26,7 +28,6 @@ from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from ._utils.name_utils import is_valid_object_name
 from .client import _Client
-from .config import config
 from .container_process import _ContainerProcess
 from .exception import AlreadyExistsError, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
@@ -588,6 +589,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
             resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
             if resp.result.status:
+                logger.debug(f"Sandbox {self.object_id} wait completed with status {resp.result.status}")
                 self._result = resp.result
 
                 if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
@@ -757,6 +759,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
         exec_deadline = time.monotonic() + int(timeout) + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
+        logger.debug(f"Created ContainerProcess for exec_id {resp.exec_id} on Sandbox {self.object_id}")
         return _ContainerProcess(
             resp.exec_id,
             self._client,
