@@ -43,10 +43,10 @@ class TestFlashAutoscalerLogic:
             )
 
     def _make_autoscaler(self, autoscaler: _FlashPrometheusAutoscaler, metrics_by_host: dict[str, float]):
-        def _get_all_containers(_self):
+        async def _get_all_containers(_self):
             return [_DummyContainer(h) for h in metrics_by_host.keys()]
 
-        def _get_metrics(_self, url: str):
+        async def _get_metrics(_self, url: str):
             host = urlparse(url).hostname or ""
             value = metrics_by_host.get(host, None)
             if value is None:
@@ -93,24 +93,24 @@ class TestFlashAutoscalerLogic:
                 {f"h{i}": None for i in range(1, 21)},
                 20,
                 1,
-                17,  # this is wrong   ??
+                22,
             ),
         ],
     )
     async def test_metric_scaling(
         self,
-        autoscaler,
         metrics_by_host,
         current_replicas,
         overprovision_containers,
         expected_replicas,
+        autoscaler,
     ):
         autoscaler = self._make_autoscaler(autoscaler, metrics_by_host)
 
         if overprovision_containers is not None:
             autoscaler.buffer_containers = overprovision_containers
 
-        result = await autoscaler._compute_target_containers(current_replicas=current_replicas)
+        result = await autoscaler._compute_target_containers_prometheus(current_replicas=current_replicas)
         assert result == expected_replicas
 
 
