@@ -6,20 +6,14 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.1.4.dev11 (2025-08-22)
+### 1.1.4 (2025-09-03)
 
-Forbid the use of `encrypted_ports`, `h2_ports`, and `unencrypted_ports` in Sandbox creation when `block_network` is `True`.
-
-
-#### 1.1.4.dev7 (2025-08-22)
-
-The type returned by `modal.experimental.get_cluster_info()` now also includes the cluster ID - shared across the set of tasks that spin up in tandem when using the `@clustered` decorator.
-
-
-#### 1.1.4.dev5 (2025-08-21)
-
-- Added an `idle_timeout` param to `Sandbox.create()` which, when provided, will have the sandbox terminate after `idle_timeout` seconds of idleness.
-
+- Added a `startup_timeout` parameter to the `@app.function()` and `@app.cls()` decorators. When used, this configures the timeout applied to each container's startup period separately from the input `timeout`. For backwards compatibility, `timeout` still applies to the startup phase when `startup_timeout` is unset.
+- Added an optional `idle_timeout` parameter to `modal.Sandbox.create()`. When provided, Sandboxes will terminate after `idle_timeout` seconds of idleness.
+- The dataclass returned by `modal.experimental.get_cluster_info()` now includes a `cluster_id` field to identify the clustered set of containers.
+- When `block_network=True` is set in `modal.Sandbox.create()`, we now raise an error if any of `encrypted_ports`, `h2_ports`, or `unencrypted_ports` are also set.
+- Functions decorated with `@modal.asgi_app()` now return an HTTP 408 (request timeout) error code instead of a 502 (gateway timeout) in rare cases when an input fails to arrive at the container, e.g. due to cancellation.
+- `modal.Sandbox.create()` now warns when an invalid `name=` is passed, applying the same rules as other Modal object names: names must be alphanumeric and not longer than 64 characters. This will become an error in the future.
 
 ### 1.1.3 (2025-08-19)
 
@@ -94,7 +88,7 @@ This release also includes a number of other new features and bug fixes:
 - Added a `build_args` parameter to `modal.Image.from_dockerfile` for passing arguments through to `ARG` instructions in the Dockerfile.
 - It's now possible to use `@modal.experimental.clustered` and `i6pn` networking with `modal.Cls`.
 - Fixed a bug where `Cls.with_options` would fail when provided with a `modal.Secret` object that was already hydrated.
-- Fixed a bug where the timeout specified in `modal.Sandbox.exec()` was not respected by `modal.Sandbox.wait()` or `modal.Sandbox.poll()`.
+- Fixed a bug where the timeout specified in `modal.Sandbox.exec()` was not respected by `ContainerProcess.wait()` or `ContainerProcess.poll()`.
 - Fixed retry handling when using `modal run --detach` directly against a remote Function.
 
 Finally, this release introduces a small number of deprecations and potentially-breaking changes:
