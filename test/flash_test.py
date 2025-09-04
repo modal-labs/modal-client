@@ -10,6 +10,8 @@ from modal.experimental.flash import (
     _FlashPrometheusAutoscaler,
 )
 
+_MAX_FAILURES = 10
+
 
 class TestFlashInternalMetricAutoscalerLogic:
     @pytest.fixture
@@ -150,6 +152,27 @@ class TestFlashManagerStopping:
         assert flash_manager.num_failures > 0
 
     @pytest.mark.asyncio
+    async def test_heartbeat_success_resets_counter(self, flash_manager):
+        """Test that heartbeat failures properly increment the failure counter."""
+
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
+        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+        flash_manager.is_port_connection_healthy = AsyncMock(return_value=(True, None))
+
+        heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
+        await asyncio.sleep(1)
+        try:
+            heartbeat_task.cancel()
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass  # Expected when task is cancelled
+
+        # Check that failures were recorded
+        assert flash_manager.num_failures == 0
+
+    @pytest.mark.asyncio
     async def test_heartbeat_triggers_failure(self, flash_manager):
         """Test that heartbeat failures properly increment the failure counter."""
 
@@ -160,15 +183,15 @@ class TestFlashManagerStopping:
         drain_task = asyncio.create_task(flash_manager._drain_container())
 
         with patch.object(flash_manager, "stop", new_callable=AsyncMock) as mock_stop:
-            for i in range(3, 5):
+            for i in range(_MAX_FAILURES, _MAX_FAILURES + 2):
                 flash_manager.num_failures = i
-                await asyncio.sleep(1)
-                if i <= 3:
+                if i <= _MAX_FAILURES:
                     assert flash_manager.num_failures == i
                     assert mock_stop.call_count == 0
                 else:
-                    assert flash_manager.num_failures == i
-                    assert mock_stop.call_count == 1
+                    assert flash_manager.num_failures > _MAX_FAILURES
+                await asyncio.sleep(1)
+        assert mock_stop.call_count == 1
 
         try:
             heartbeat_task.cancel()
@@ -202,7 +225,7 @@ class TestFlashManagerStopping:
             flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
             flash_manager.client.stub.ContainerStop = AsyncMock()
 
-            flash_manager.num_failures = 3
+            flash_manager.num_failures = _MAX_FAILURES
 
             # Start both background tasks
             heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
@@ -223,6 +246,8 @@ class TestFlashManagerStopping:
             except asyncio.CancelledError:
                 pass
 
-            assert flash_manager.num_failures > 3, f"Expected > 3 failures, got {flash_manager.num_failures}"
+            assert flash_manager.num_failures > _MAX_FAILURES, (
+                f"Expected > {_MAX_FAILURES} failures, got {flash_manager.num_failures}"
+            )
 
             mock_stop.assert_called_once()

@@ -43,7 +43,7 @@ class _FlashManager:
         self.task_id = os.environ["MODAL_TASK_ID"]
 
     async def is_port_connection_healthy(
-        self, process: Optional[subprocess.Popen], timeout: int = 1
+        self, process: Optional[subprocess.Popen], timeout: int = 0.5
     ) -> tuple[bool, Optional[Exception]]:
         import socket
 
