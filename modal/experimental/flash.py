@@ -427,9 +427,9 @@ class _FlashPrometheusAutoscaler:
         # n_containers_unhealthy = number of dns registered containers that are not emitting metrics
         n_containers_unhealthy = len(containers) - containers_with_metrics
 
-        # number of total containers - buffer containers since we don't want to account for buffer containers unless
-        # the buffer containers are overloaded. Also we take a max to handle case when buffer_containers are first
-        # initialized and current_replicas < buffer_containers.
+        # number of total containers - buffer containers
+        # This is used in 1) scale ratio denominators 2) provisioning base.
+        # Max is used to handle case when buffer_containers are first initialized.
         num_provisioned_containers = max(current_replicas - buffer_containers, 1)
 
         # Scale up assuming that every unhealthy container is at (1 + scale_up_tolerance)x the target metric value.
