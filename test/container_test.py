@@ -152,7 +152,11 @@ def _get_multi_inputs(args: list[tuple[str, tuple, dict]] = []) -> list[api_pb2.
                 api_pb2.FunctionGetInputsItem(
                     function_call_id="fc-123",
                     input_id=f"in-{input_n:03}",
-                    input=api_pb2.FunctionInput(args=serialize((input_args, input_kwargs)), method_name=method_name),
+                    input=api_pb2.FunctionInput(
+                        args=serialize((input_args, input_kwargs)),
+                        method_name=method_name,
+                        data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    ),
                 )
             ]
         )
@@ -176,7 +180,9 @@ def _get_multi_inputs_with_methods(args: list[tuple[str, tuple, dict]] = []) -> 
             inputs=[
                 api_pb2.FunctionGetInputsItem(
                     input_id=f"in-{input_n:03}",
-                    input=api_pb2.FunctionInput(args=serialize(input_args), method_name=method_name),
+                    input=api_pb2.FunctionInput(
+                        args=serialize(input_args), method_name=method_name, data_format=api_pb2.DATA_FORMAT_PICKLE
+                    ),
                 )
             ]
         )
@@ -478,6 +484,7 @@ def test_success(servicer):
 
 
 @skip_github_non_linux
+@pytest.mark.timeout(1)
 def test_generator_success(servicer, event_loop):
     ret = _run_container(
         servicer,
@@ -1922,8 +1929,10 @@ def test_cancellation_aborts_current_input_on_match(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
     stdout, stderr = container_process.communicate()
-    assert stderr.decode().count("Successfully canceled input") == live_cancellations
-    assert "Traceback" not in stderr.decode()
+    stderr_str = stderr.decode()
+    print(stderr_str)
+    assert stderr_str.count("Successfully canceled input") == live_cancellations
+    assert "Traceback" not in stderr_str
     assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit
 
@@ -2395,7 +2404,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     async def _func(x):
         await asyncio.sleep(x)
 
-    fin_func = FinalizedFunction(_func, is_async=True, is_generator=False, data_format=api_pb2.DATA_FORMAT_PICKLE)
+    fin_func = FinalizedFunction(_func, is_async=True, is_generator=False, is_asgi=False)
 
     total_inputs = 5
     servicer.container_inputs = _get_inputs(((42,), {}), n=total_inputs)

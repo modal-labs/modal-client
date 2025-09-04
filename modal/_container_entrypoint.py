@@ -212,10 +212,8 @@ def call_function(
                         await container_io_manager._queue_put.aio(generator_queue, value)
                         item_count += 1
 
-                await container_io_manager.push_outputs.aio(
-                    io_context,
-                    started_at,
-                    [api_pb2.GeneratorDone(items_total=item_count)],
+                await container_io_manager._send_outputs.aio(
+                    started_at, io_context.output_items_generator_done(started_at, item_count)
                 )
             else:
                 res = io_context.call_function_async()
@@ -261,8 +259,8 @@ def call_function(
                         container_io_manager._queue_put(generator_queue, value)
                         item_count += 1
 
-                container_io_manager.push_outputs(
-                    io_context, started_at, [[api_pb2.GeneratorDone(items_total=item_count)]]
+                container_io_manager._send_outputs(
+                    started_at, io_context.output_items_generator_done(started_at, item_count)
                 )
             else:
                 res = io_context.call_function_sync()
@@ -323,6 +321,7 @@ def call_function(
             user_code_event_loop.run(run_concurrent_inputs())
     else:
         for io_context in container_io_manager.run_inputs_outputs(finalized_functions, batch_max_size, batch_wait_ms):
+            logger.debug("starging input batch")
             # This goes to a registered signal handler for sync Modal functions, or to the
             # `UserCodeEventLoop` for async functions.
             #
@@ -346,8 +345,10 @@ def call_function(
                 # this lets us cancel it using a signal handler that raises an exception
                 try:
                     run_input_sync(io_context)
+                    logger.debug("ran input sync")
                 finally:
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
+        logger.debug("leaving input loop")
 
 
 def call_lifecycle_functions(

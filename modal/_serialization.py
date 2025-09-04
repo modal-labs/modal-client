@@ -596,7 +596,7 @@ def get_callable_schema(
     )
 
 
-def pickle_exception(self, exc: BaseException) -> bytes:
+def pickle_exception(exc: BaseException) -> bytes:
     try:
         return serialize(exc)
     except Exception as serialization_exc:
@@ -606,11 +606,11 @@ def pickle_exception(self, exc: BaseException) -> bytes:
         return serialize(SerializationError(err))
 
 
-def pickle_traceback(self, exc: BaseException) -> tuple[bytes, bytes]:
+def pickle_traceback(exc: BaseException, task_id: str) -> tuple[bytes, bytes]:
     serialized_tb, tb_line_cache = b"", b""
 
     try:
-        tb_dict, line_cache = extract_traceback(exc, self.task_id)
+        tb_dict, line_cache = extract_traceback(exc, task_id)
         serialized_tb = serialize(tb_dict)
         tb_line_cache = serialize(line_cache)
     except Exception:
