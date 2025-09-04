@@ -42,7 +42,9 @@ class _FlashManager:
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
 
-    async def check_port_connection(self, process: Optional[subprocess.Popen], timeout: int = 10):
+    async def is_port_connection_healthy(
+        self, process: Optional[subprocess.Popen], timeout: int = 5
+    ) -> tuple[bool, Optional[Exception]]:
         import socket
 
         start_time = time.monotonic()
@@ -50,13 +52,13 @@ class _FlashManager:
         while time.monotonic() - start_time < timeout:
             try:
                 if process is not None and process.poll() is not None:
-                    return Exception(f"Process {process.pid} exited with code {process.returncode}")
+                    return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
                 with socket.create_connection(("localhost", self.port), timeout=1):
-                    return
+                    return True, None
             except (ConnectionRefusedError, OSError):
                 await asyncio.sleep(0.1)
 
-        return Exception(f"Waited too long for port {self.port} to start accepting connections")
+        return False, Exception(f"Waited too long for port {self.port} to start accepting connections")
 
     async def _start(self):
         self.tunnel = await self.tunnel_manager.__aenter__()
@@ -101,35 +103,38 @@ class _FlashManager:
         first_registration = True
         while True:
             try:
-                await self.check_port_connection(process=self.process)
-                resp = await self.client.stub.FlashContainerRegister(
-                    api_pb2.FlashContainerRegisterRequest(
-                        priority=10,
-                        weight=5,
-                        host=host,
-                        port=port,
-                    ),
-                    timeout=10,
-                )
-                self.num_failures = 0
-                if first_registration:
-                    logger.warning(
-                        f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
+                port_check_resp, port_check_error = await self.is_port_connection_healthy(process=self.process)
+                if port_check_resp:
+                    resp = await self.client.stub.FlashContainerRegister(
+                        api_pb2.FlashContainerRegisterRequest(
+                            priority=10,
+                            weight=5,
+                            host=host,
+                            port=port,
+                        ),
+                        timeout=10,
                     )
-                    first_registration = False
+                    self.num_failures = 0
+                    if first_registration:
+                        logger.warning(
+                            f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
+                        )
+                        first_registration = False
+                else:
+                    logger.error(
+                        f"[Modal Flash] Deregistering container {self.task_id} on {self.tunnel.url} "
+                        f"due to error: {port_check_error}, num_failures: {self.num_failures}"
+                    )
+                    self.num_failures += 1
+                    await retry_transient_errors(
+                        self.client.stub.FlashContainerDeregister,
+                        api_pb2.FlashContainerDeregisterRequest(),
+                    )
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
             except Exception as e:
                 logger.error(f"[Modal Flash] Heartbeat failed: {e}")
-                self.num_failures += 1
-                logger.error(
-                    f"[Modal Flash] Deregistering container {self.tunnel.url}, num_failures: {self.num_failures}"
-                )
-                await retry_transient_errors(
-                    self.client.stub.FlashContainerDeregister,
-                    api_pb2.FlashContainerDeregisterRequest(),
-                )
 
             try:
                 await asyncio.sleep(1)
