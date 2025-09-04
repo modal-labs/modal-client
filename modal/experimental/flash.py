@@ -282,10 +282,7 @@ class _FlashPrometheusAutoscaler:
                     if timestamp >= autoscaling_time - self._max_window_seconds
                 ]
 
-                if self.metrics_endpoint == "internal":
-                    current_target_containers = await self._compute_target_containers_internal(current_replicas)
-                else:
-                    current_target_containers = await self._compute_target_containers_prometheus(current_replicas)
+                current_target_containers = await self._compute_target_containers(current_replicas)
                 autoscaling_decisions.append((autoscaling_time, current_target_containers))
 
                 actual_target_containers = self._make_scaling_decision(
@@ -322,6 +319,48 @@ class _FlashPrometheusAutoscaler:
                 logger.error(traceback.format_exc())
                 await asyncio.sleep(self.autoscaling_interval_seconds)
 
+    async def _compute_target_containers(
+        self, current_replicas: int, use_internal_metrics: Optional[bool] = None
+    ) -> int:
+        """
+        Gets internal metrics from container to autoscale up or down.
+        """
+        if use_internal_metrics is None:
+            use_internal_metrics = self.metrics_endpoint == "internal"
+
+        containers = await self._get_all_containers()
+        if len(containers) > current_replicas:
+            logger.info(
+                f"[Modal Flash] Current replicas {current_replicas} is less than the number of containers "
+                f"{len(containers)}. Setting current_replicas = num_containers."
+            )
+            current_replicas = len(containers)
+
+        if current_replicas == 0:
+            return 1
+
+        # Get metrics based on autoscaler type (prometheus or internal)
+        if use_internal_metrics:
+            sum_metric, containers_with_metrics = await self._get_internal_metrics(containers)
+            target_metric_value = self.target_metric_value
+        else:
+            sum_metric, containers_with_metrics = await self._get_prometheus_metrics(containers)
+            target_metric_value = float(self.target_metric_value)
+
+        if containers_with_metrics == 0:
+            return current_replicas
+
+        desired_replicas = self._calculate_desired_replicas(
+            current_replicas=current_replicas,
+            sum_metric=sum_metric,
+            containers_with_metrics=containers_with_metrics,
+            total_containers=len(containers),
+            target_metric_value=target_metric_value,
+        )
+
+        desired_replicas = max(1, min(desired_replicas, self.max_containers or 5000))
+        return desired_replicas
+
     def _calculate_desired_replicas(
         self,
         current_replicas: int,
@@ -331,7 +370,7 @@ class _FlashPrometheusAutoscaler:
         target_metric_value: float,
     ) -> int:
         """
-        Calculate the desired number of replicas based on metrics.
+        Calculate the desired number of replicas to autoscale to.
         """
         buffer_containers = self.buffer_containers or 0
 
@@ -382,21 +421,8 @@ class _FlashPrometheusAutoscaler:
 
         return desired_replicas
 
-    async def _compute_target_containers_internal(self, current_replicas: int) -> int:
-        """
-        Gets internal metrics from container to autoscale up or down.
-        """
-        containers = await self._get_all_containers()
-        if len(containers) > current_replicas:
-            logger.info(
-                f"[Modal Flash] Current replicas {current_replicas} is less than the number of containers "
-                f"{len(containers)}. Setting current_replicas = num_containers."
-            )
-            current_replicas = len(containers)
-
-        if current_replicas == 0:
-            return 1
-
+    async def _get_internal_metrics(self, containers) -> tuple[float, int]:
+        """Get metrics using internal container metrics API."""
         internal_metrics_list = []
         for container in containers:
             internal_metric = await self._get_container_metrics(container.task_id)
@@ -404,49 +430,23 @@ class _FlashPrometheusAutoscaler:
                 continue
             internal_metrics_list.append(getattr(internal_metric.metrics, self.target_metric))
 
-        if not internal_metrics_list:
-            return current_replicas
-
         sum_metric = sum(internal_metrics_list)
         containers_with_metrics = len(internal_metrics_list)
+        return sum_metric, containers_with_metrics
 
-        desired_replicas = self._calculate_desired_replicas(
-            current_replicas=current_replicas,
-            sum_metric=sum_metric,
-            containers_with_metrics=containers_with_metrics,
-            total_containers=len(containers),
-            target_metric_value=self.target_metric_value,
-        )
-
-        desired_replicas = max(1, min(desired_replicas, self.max_containers or 5000))
-        return desired_replicas
-
-    async def _compute_target_containers_prometheus(self, current_replicas: int) -> int:
-        # current_replicas is the number of live containers + cold starting containers (not yet live)
-        # containers is the number of live containers that are registered in flash dns
-        containers = await self._get_all_containers()
-        if len(containers) > current_replicas:
-            logger.info(
-                f"[Modal Flash] Current replicas {current_replicas} is less than the number of containers "
-                f"{len(containers)}. Setting current_replicas = num_containers."
-            )
-            current_replicas = len(containers)
-
-        if current_replicas == 0:
-            return 1
-
+    async def _get_prometheus_metrics(self, containers) -> tuple[float, int]:
+        """Get metrics using prometheus HTTP endpoints."""
         target_metric = self.target_metric
-        target_metric_value = float(self.target_metric_value)
-
-        # Gets metrics from prometheus
         sum_metric = 0
         containers_with_metrics = 0
+
         container_metrics_list = await asyncio.gather(
             *[
                 self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
                 for container in containers
             ]
         )
+
         for container_metrics in container_metrics_list:
             if (
                 container_metrics is None
@@ -457,15 +457,7 @@ class _FlashPrometheusAutoscaler:
             sum_metric += container_metrics[target_metric][0].value
             containers_with_metrics += 1
 
-        desired_replicas = self._calculate_desired_replicas(
-            current_replicas=current_replicas,
-            sum_metric=sum_metric,
-            containers_with_metrics=containers_with_metrics,
-            total_containers=len(containers),
-            target_metric_value=target_metric_value,
-        )
-
-        return desired_replicas
+        return sum_metric, containers_with_metrics
 
     async def _get_metrics(self, url: str) -> Optional[dict[str, list[Any]]]:  # technically any should be Sample
         from prometheus_client.parser import Sample, text_string_to_metric_families
