@@ -282,7 +282,9 @@ class _FlashPrometheusAutoscaler:
                     if timestamp >= autoscaling_time - self._max_window_seconds
                 ]
 
-                current_target_containers = await self._compute_target_containers(current_replicas)
+                current_target_containers = await self._compute_target_containers(
+                    current_replicas=current_replicas, use_internal_metrics=(self.metrics_endpoint == "internal")
+                )
                 autoscaling_decisions.append((autoscaling_time, current_target_containers))
 
                 actual_target_containers = self._make_scaling_decision(
