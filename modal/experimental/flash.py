@@ -201,6 +201,7 @@ class _FlashPrometheusAutoscaler:
         target_metric_value: float,
         min_containers: Optional[int],
         max_containers: Optional[int],
+        buffer_containers: Optional[int],
         scale_up_tolerance: float,
         scale_down_tolerance: float,
         scale_up_stabilization_window_seconds: int,
@@ -228,6 +229,7 @@ class _FlashPrometheusAutoscaler:
         self.target_metric_value = target_metric_value
         self.min_containers = min_containers
         self.max_containers = max_containers
+        self.buffer_containers = buffer_containers
         self.scale_up_tolerance = scale_up_tolerance
         self.scale_down_tolerance = scale_down_tolerance
         self.scale_up_stabilization_window_seconds = scale_up_stabilization_window_seconds
@@ -293,6 +295,7 @@ class _FlashPrometheusAutoscaler:
                     scale_down_stabilization_window_seconds=self.scale_down_stabilization_window_seconds,
                     min_containers=self.min_containers,
                     max_containers=self.max_containers,
+                    buffer_containers=self.buffer_containers,
                 )
 
                 logger.warning(
@@ -402,6 +405,7 @@ class _FlashPrometheusAutoscaler:
         # Gets metrics from prometheus
         sum_metric = 0
         containers_with_metrics = 0
+        buffer_containers = self.buffer_containers or 0
         container_metrics_list = await asyncio.gather(
             *[
                 self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
@@ -418,29 +422,36 @@ class _FlashPrometheusAutoscaler:
             sum_metric += container_metrics[target_metric][0].value
             containers_with_metrics += 1
 
-        # n_containers_missing_metric is the number of unhealthy containers + number of cold starting containers
+        # n_containers_missing = number of unhealthy containers + number of containers not registered in flash dns
         n_containers_missing_metric = current_replicas - containers_with_metrics
-        # n_containers_unhealthy is the number of live containers that are not emitting metrics i.e. unhealthy
+        # n_containers_unhealthy = number of dns registered containers that are not emitting metrics
         n_containers_unhealthy = len(containers) - containers_with_metrics
 
-        # Scale up assuming that every unhealthy container is at 2x the target metric value.
-        scale_up_target_metric_value = (sum_metric + n_containers_unhealthy * target_metric_value) / (
-            (containers_with_metrics + n_containers_unhealthy) or 1
-        )
+        # number of total containers - buffer containers
+        # This is used in 1) scale ratio denominators 2) provisioning base.
+        # Max is used to handle case when buffer_containers are first initialized.
+        num_provisioned_containers = max(current_replicas - buffer_containers, 1)
+
+        # Scale up assuming that every unhealthy container is at (1 + scale_up_tolerance)x the target metric value.
+        # This way if all containers are unhealthy, we will increase our number of containers.
+        scale_up_target_metric_value = (
+            sum_metric + (1 + self.scale_up_tolerance) * n_containers_unhealthy * target_metric_value
+        ) / (num_provisioned_containers)
 
         # Scale down assuming that every container (including cold starting containers) are at the target metric value.
+        # The denominator is just num_provisioned_containers because we don't want to account for the buffer containers.
         scale_down_target_metric_value = (sum_metric + n_containers_missing_metric * target_metric_value) / (
-            current_replicas or 1
+            num_provisioned_containers
         )
 
         scale_up_ratio = scale_up_target_metric_value / target_metric_value
         scale_down_ratio = scale_down_target_metric_value / target_metric_value
 
-        desired_replicas = current_replicas
+        desired_replicas = num_provisioned_containers
         if scale_up_ratio > 1 + self.scale_up_tolerance:
-            desired_replicas = math.ceil(current_replicas * scale_up_ratio)
+            desired_replicas = math.ceil(desired_replicas * scale_up_ratio)
         elif scale_down_ratio < 1 - self.scale_down_tolerance:
-            desired_replicas = math.ceil(current_replicas * scale_down_ratio)
+            desired_replicas = math.ceil(desired_replicas * scale_down_ratio)
 
         logger.warning(
             f"[Modal Flash] Current replicas: {current_replicas}, "
@@ -449,6 +460,7 @@ class _FlashPrometheusAutoscaler:
             f"number of containers with metrics: {containers_with_metrics}, "
             f"number of containers unhealthy: {n_containers_unhealthy}, "
             f"number of containers missing metric (includes unhealthy): {n_containers_missing_metric}, "
+            f"number of provisioned containers: {num_provisioned_containers}, "
             f"scale up ratio: {scale_up_ratio}, "
             f"scale down ratio: {scale_down_ratio}, "
             f"desired replicas: {desired_replicas}"
@@ -510,6 +522,7 @@ class _FlashPrometheusAutoscaler:
         scale_down_stabilization_window_seconds: int = 60 * 5,
         min_containers: Optional[int] = None,
         max_containers: Optional[int] = None,
+        buffer_containers: Optional[int] = None,
     ) -> int:
         """
         Return the target number of containers following (simplified) Kubernetes HPA
@@ -560,6 +573,10 @@ class _FlashPrometheusAutoscaler:
             new_replicas = max(min_containers, new_replicas)
         if max_containers is not None:
             new_replicas = min(max_containers, new_replicas)
+
+        if buffer_containers is not None:
+            new_replicas += buffer_containers
+
         return new_replicas
 
     async def stop(self):
@@ -597,6 +614,8 @@ async def flash_prometheus_autoscaler(
     # How often to make autoscaling decisions.
     # Corresponds to --horizontal-pod-autoscaler-sync-period in Kubernetes.
     autoscaling_interval_seconds: int = 15,
+    # Whether to include overprovisioned containers in the scale up calculation.
+    buffer_containers: Optional[int] = None,
 ) -> _FlashPrometheusAutoscaler:
     """
     Autoscale a Flash service based on containers' Prometheus metrics.
@@ -614,19 +633,20 @@ async def flash_prometheus_autoscaler(
 
     client = await _Client.from_env()
     autoscaler = _FlashPrometheusAutoscaler(
-        client,
-        app_name,
-        cls_name,
-        metrics_endpoint,
-        target_metric,
-        target_metric_value,
-        min_containers,
-        max_containers,
-        scale_up_tolerance,
-        scale_down_tolerance,
-        scale_up_stabilization_window_seconds,
-        scale_down_stabilization_window_seconds,
-        autoscaling_interval_seconds,
+        client=client,
+        app_name=app_name,
+        cls_name=cls_name,
+        metrics_endpoint=metrics_endpoint,
+        target_metric=target_metric,
+        target_metric_value=target_metric_value,
+        min_containers=min_containers,
+        max_containers=max_containers,
+        buffer_containers=buffer_containers,
+        scale_up_tolerance=scale_up_tolerance,
+        scale_down_tolerance=scale_down_tolerance,
+        scale_up_stabilization_window_seconds=scale_up_stabilization_window_seconds,
+        scale_down_stabilization_window_seconds=scale_down_stabilization_window_seconds,
+        autoscaling_interval_seconds=autoscaling_interval_seconds,
     )
     await autoscaler.start()
     return autoscaler
