@@ -322,110 +322,23 @@ class _FlashPrometheusAutoscaler:
                 logger.error(traceback.format_exc())
                 await asyncio.sleep(self.autoscaling_interval_seconds)
 
-    async def _compute_target_containers_internal(self, current_replicas: int) -> int:
+    def _calculate_desired_replicas(
+        self,
+        current_replicas: int,
+        sum_metric: float,
+        containers_with_metrics: int,
+        total_containers: int,
+        target_metric_value: float,
+    ) -> int:
         """
-        Gets internal metrics from container to autoscale up or down.
+        Calculate the desired number of replicas based on metrics.
         """
-        containers = await self._get_all_containers()
-        if len(containers) > current_replicas:
-            logger.info(
-                f"[Modal Flash] Current replicas {current_replicas} is less than the number of containers "
-                f"{len(containers)}. Setting current_replicas = num_containers."
-            )
-            current_replicas = len(containers)
-
-        if current_replicas == 0:
-            return 1
-
-        internal_metrics_list = []
-        for container in containers:
-            internal_metric = await self._get_container_metrics(container.task_id)
-            if internal_metric is None:
-                continue
-            internal_metrics_list.append(getattr(internal_metric.metrics, self.target_metric))
-
-        if not internal_metrics_list:
-            return current_replicas
-
-        sum_metric = sum(internal_metrics_list)
-        containers_with_metrics = len(internal_metrics_list)
-        # n_containers_missing_metric is the number of unhealthy containers + number of cold starting containers
-        n_containers_missing_metric = current_replicas - containers_with_metrics
-        # n_containers_unhealthy is the number of live containers that are not emitting metrics i.e. unhealthy
-        n_containers_unhealthy = len(containers) - containers_with_metrics
-
-        # Scale up assuming that every unhealthy container is at 2x the target metric value.
-        scale_up_target_metric_value = (sum_metric + n_containers_unhealthy * self.target_metric_value) / (
-            (containers_with_metrics + n_containers_unhealthy) or 1
-        )
-
-        # Scale down assuming that every container (including cold starting containers) are at the target metric value.
-        scale_down_target_metric_value = (sum_metric + n_containers_missing_metric * self.target_metric_value) / (
-            current_replicas or 1
-        )
-
-        scale_up_ratio = scale_up_target_metric_value / self.target_metric_value
-        scale_down_ratio = scale_down_target_metric_value / self.target_metric_value
-
-        desired_replicas = current_replicas
-        if scale_up_ratio > 1 + self.scale_up_tolerance:
-            desired_replicas = math.ceil(current_replicas * scale_up_ratio)
-        elif scale_down_ratio < 1 - self.scale_down_tolerance:
-            desired_replicas = math.ceil(current_replicas * scale_down_ratio)
-
-        logger.warning(
-            f"[Modal Flash] Current replicas: {current_replicas}, "
-            f"sum internal metric `{self.target_metric}`: {sum_metric}, "
-            f"target internal metric value: {self.target_metric_value}, "
-            f"scale up ratio: {scale_up_ratio}, "
-            f"scale down ratio: {scale_down_ratio}, "
-            f"desired replicas: {desired_replicas}"
-        )
-
-        desired_replicas = max(1, min(desired_replicas, self.max_containers or 5000))
-        return desired_replicas
-
-    async def _compute_target_containers_prometheus(self, current_replicas: int) -> int:
-        # current_replicas is the number of live containers + cold starting containers (not yet live)
-        # containers is the number of live containers that are registered in flash dns
-        containers = await self._get_all_containers()
-        if len(containers) > current_replicas:
-            logger.info(
-                f"[Modal Flash] Current replicas {current_replicas} is less than the number of containers "
-                f"{len(containers)}. Setting current_replicas = num_containers."
-            )
-            current_replicas = len(containers)
-
-        if current_replicas == 0:
-            return 1
-
-        target_metric = self.target_metric
-        target_metric_value = float(self.target_metric_value)
-
-        # Gets metrics from prometheus
-        sum_metric = 0
-        containers_with_metrics = 0
         buffer_containers = self.buffer_containers or 0
-        container_metrics_list = await asyncio.gather(
-            *[
-                self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
-                for container in containers
-            ]
-        )
-        for container_metrics in container_metrics_list:
-            if (
-                container_metrics is None
-                or target_metric not in container_metrics
-                or len(container_metrics[target_metric]) == 0
-            ):
-                continue
-            sum_metric += container_metrics[target_metric][0].value
-            containers_with_metrics += 1
 
         # n_containers_missing = number of unhealthy containers + number of containers not registered in flash dns
         n_containers_missing_metric = current_replicas - containers_with_metrics
         # n_containers_unhealthy = number of dns registered containers that are not emitting metrics
-        n_containers_unhealthy = len(containers) - containers_with_metrics
+        n_containers_unhealthy = total_containers - containers_with_metrics
 
         # number of total containers - buffer containers
         # This is used in 1) scale ratio denominators 2) provisioning base.
@@ -455,6 +368,7 @@ class _FlashPrometheusAutoscaler:
 
         logger.warning(
             f"[Modal Flash] Current replicas: {current_replicas}, "
+            f"target metric: {self.target_metric}"
             f"target metric value: {target_metric_value}, "
             f"current sum of metric values: {sum_metric}, "
             f"number of containers with metrics: {containers_with_metrics}, "
@@ -464,6 +378,91 @@ class _FlashPrometheusAutoscaler:
             f"scale up ratio: {scale_up_ratio}, "
             f"scale down ratio: {scale_down_ratio}, "
             f"desired replicas: {desired_replicas}"
+        )
+
+        return desired_replicas
+
+    async def _compute_target_containers_internal(self, current_replicas: int) -> int:
+        """
+        Gets internal metrics from container to autoscale up or down.
+        """
+        containers = await self._get_all_containers()
+        if len(containers) > current_replicas:
+            logger.info(
+                f"[Modal Flash] Current replicas {current_replicas} is less than the number of containers "
+                f"{len(containers)}. Setting current_replicas = num_containers."
+            )
+            current_replicas = len(containers)
+
+        if current_replicas == 0:
+            return 1
+
+        internal_metrics_list = []
+        for container in containers:
+            internal_metric = await self._get_container_metrics(container.task_id)
+            if internal_metric is None:
+                continue
+            internal_metrics_list.append(getattr(internal_metric.metrics, self.target_metric))
+
+        if not internal_metrics_list:
+            return current_replicas
+
+        sum_metric = sum(internal_metrics_list)
+        containers_with_metrics = len(internal_metrics_list)
+
+        desired_replicas = self._calculate_desired_replicas(
+            current_replicas=current_replicas,
+            sum_metric=sum_metric,
+            containers_with_metrics=containers_with_metrics,
+            total_containers=len(containers),
+            target_metric_value=self.target_metric_value,
+        )
+
+        desired_replicas = max(1, min(desired_replicas, self.max_containers or 5000))
+        return desired_replicas
+
+    async def _compute_target_containers_prometheus(self, current_replicas: int) -> int:
+        # current_replicas is the number of live containers + cold starting containers (not yet live)
+        # containers is the number of live containers that are registered in flash dns
+        containers = await self._get_all_containers()
+        if len(containers) > current_replicas:
+            logger.info(
+                f"[Modal Flash] Current replicas {current_replicas} is less than the number of containers "
+                f"{len(containers)}. Setting current_replicas = num_containers."
+            )
+            current_replicas = len(containers)
+
+        if current_replicas == 0:
+            return 1
+
+        target_metric = self.target_metric
+        target_metric_value = float(self.target_metric_value)
+
+        # Gets metrics from prometheus
+        sum_metric = 0
+        containers_with_metrics = 0
+        container_metrics_list = await asyncio.gather(
+            *[
+                self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
+                for container in containers
+            ]
+        )
+        for container_metrics in container_metrics_list:
+            if (
+                container_metrics is None
+                or target_metric not in container_metrics
+                or len(container_metrics[target_metric]) == 0
+            ):
+                continue
+            sum_metric += container_metrics[target_metric][0].value
+            containers_with_metrics += 1
+
+        desired_replicas = self._calculate_desired_replicas(
+            current_replicas=current_replicas,
+            sum_metric=sum_metric,
+            containers_with_metrics=containers_with_metrics,
+            total_containers=len(containers),
+            target_metric_value=target_metric_value,
         )
 
         return desired_replicas
