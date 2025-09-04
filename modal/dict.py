@@ -258,12 +258,6 @@ class _Dict(_Object, type_prefix="di"):
     _name: Optional[str] = None
     _metadata: Optional[api_pb2.DictMetadata] = None
 
-    def __init__(self, data={}):
-        """mdmd:hidden"""
-        raise RuntimeError(
-            "`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead"
-        )
-
     @classproperty
     def objects(cls) -> _DictManager:
         return _DictManager

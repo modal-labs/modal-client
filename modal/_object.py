@@ -61,7 +61,20 @@ class _Object:
 
     def __init__(self, *args, **kwargs):
         """mdmd:hidden"""
-        raise InvalidError(f"Class {type(self).__name__} has no constructor. Use class constructor methods instead.")
+        constructor_methods = ["from_name", "from_id", "ephemeral"]
+
+        valid_constructor_methods = []
+        class_name = type(self).__name__.lstrip("_")
+        for method in constructor_methods:
+            if hasattr(self, method):
+                valid_constructor_methods.append(f"`{class_name}.{method}`")
+
+        valid_methods_msg = ""
+        if valid_constructor_methods:
+            valid_methods = ", ".join(valid_constructor_methods)
+            valid_methods_msg = f"Please use {valid_methods} instead"
+
+        raise InvalidError(f"{class_name}(...) is not allowed. {valid_methods_msg}")
 
     def _init(
         self,

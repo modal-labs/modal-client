@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 
-from modal import Secret
+from modal import Image, Queue, Secret, Volume
 from modal._object import _Object
 from modal.dict import Dict, _Dict
 from modal.exception import InvalidError
@@ -41,3 +41,18 @@ def test_types():
     assert not _Dict._is_id_type("qu-123")
     assert _Queue._is_id_type("qu-123")
     assert not _Queue._is_id_type("di-123")
+
+
+@pytest.mark.parametrize(
+    "Kls, msg",
+    [
+        (Image, r"Please use `Image\.from_id` instead"),
+        (Dict, r"Please use `Dict\.from_name`, `Dict\.ephemeral` instead"),
+        (Volume, r"Please use `Volume\.from_name`, `Volume\.ephemeral` instead"),
+        (Queue, r"Please use `Queue\.from_name`, `Queue\.ephemeral` instead"),
+        (Secret, r"Please use `Secret\.from_name` instead"),
+    ],
+)
+def test_improve_error_messaage(Kls, msg):
+    with pytest.raises(InvalidError, match=msg):
+        _ = Kls()
