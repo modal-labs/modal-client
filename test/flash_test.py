@@ -141,7 +141,20 @@ class TestFlashInternalMetricAutoscalerLogic:
         "flash_metric,target_value,metrics,current_replicas,expected_replicas",
         [
             ("cpu_usage_percent", 0.5, [0.8], 1, 2),  # High CPU single container
-            ("cpu_usage_percent", 0.5, [0.2], 3, 2),  # Low CPU single container
+            (
+                "cpu_usage_percent",
+                0.5,
+                [0.1, 0.05, 0.05],
+                2,
+                1,
+            ),  # Low CPU single container
+            (
+                "cpu_usage_percent",
+                0.5,
+                [0.2],
+                3,
+                3,
+            ),  # Low CPU single container and other containers unhealthy
             (
                 "cpu_usage_percent",
                 0.5,
@@ -225,13 +238,47 @@ class TestFlashManagerStopping:
         flash_manager.tunnel.url = "https://test.modal.test"
         flash_manager.client.stub.FlashContainerRegister = AsyncMock()
         flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
-        flash_manager.check_port_connection = AsyncMock(side_effect=Exception("Persistent network error"))
+        flash_manager.is_port_connection_healthy = AsyncMock(
+            return_value=(False, Exception("Persistent network error"))
+        )
 
         heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
         await asyncio.sleep(1)
         try:
             heartbeat_task.cancel()
             await heartbeat_task
+        except asyncio.CancelledError:
+            pass  # Expected when task is cancelled
+
+        # Check that failures were recorded
+        assert flash_manager.num_failures > 0
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_triggers_failure(self, flash_manager):
+        """Test that heartbeat failures properly increment the failure counter."""
+
+        flash_manager.tunnel = MagicMock()
+        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
+        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+        heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
+        drain_task = asyncio.create_task(flash_manager._drain_container())
+
+        with patch.object(flash_manager, "stop", new_callable=AsyncMock) as mock_stop:
+            for i in range(3, 5):
+                flash_manager.num_failures = i
+                await asyncio.sleep(1)
+                if i <= 3:
+                    assert flash_manager.num_failures == i
+                    assert mock_stop.call_count == 0
+                else:
+                    assert flash_manager.num_failures == i
+                    assert mock_stop.call_count == 1
+
+        try:
+            heartbeat_task.cancel()
+            drain_task.cancel()
+            await heartbeat_task
+            await drain_task
         except asyncio.CancelledError:
             pass  # Expected when task is cancelled
 
@@ -250,7 +297,9 @@ class TestFlashManagerStopping:
             flash_manager.tunnel.url = "https://test.modal.test"
 
             # Mock HTTP client to always fail
-            flash_manager.check_port_connection = AsyncMock(side_effect=Exception("Persistent network error"))
+            flash_manager.is_port_connection_healthy = AsyncMock(
+                return_value=(False, Exception("Persistent network error"))
+            )
 
             # Mock client stub methods
             flash_manager.client.stub.FlashContainerRegister = AsyncMock()
@@ -278,8 +327,6 @@ class TestFlashManagerStopping:
             except asyncio.CancelledError:
                 pass
 
-            # Verify that failures accumulated
             assert flash_manager.num_failures > 3, f"Expected > 3 failures, got {flash_manager.num_failures}"
 
-            # Verify cleanup was called
             mock_stop.assert_called_once()
