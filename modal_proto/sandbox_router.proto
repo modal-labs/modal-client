@@ -31,12 +31,12 @@ enum SandboxExecStdoutConfig {
 
 enum SandboxExecStderrConfig {
   // The output will be discarded.
-  EXEC_STDERR_CONFIG_DEVNULL = 0;
+  SANDBOX_EXEC_STDERR_CONFIG_DEVNULL = 0;
   // The output will be streamed to the client.
-  EXEC_STDERR_CONFIG_PIPE = 1;
+  SANDBOX_EXEC_STDERR_CONFIG_PIPE = 1;
   // A special value that can be used to indicate that the stderr stream should
   // be merged with the stdout stream.
-  EXEC_STDERR_CONFIG_STDOUT = 2;
+  SANDBOX_EXEC_STDERR_CONFIG_STDOUT = 2;
 }
 
 message SandboxExecStartRequest {
