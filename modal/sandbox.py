@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2022
 import asyncio
+import json
 import os
 import time
 from collections.abc import AsyncGenerator, Sequence
-from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
 
 from .config import config, logger
 
@@ -97,6 +99,14 @@ class DefaultSandboxNameOverride(str):
 
 
 _DEFAULT_SANDBOX_NAME_OVERRIDE = DefaultSandboxNameOverride()
+
+
+@dataclass(frozen=True)
+class SandboxConnectCredentials:
+    """Simple data structure storing credentials for making HTTP connections to a sandbox."""
+
+    url: str
+    token: str
 
 
 class _Sandbox(_Object, type_prefix="sb"):
@@ -625,6 +635,20 @@ class _Sandbox(_Object, type_prefix="sb"):
         }
 
         return self._tunnels
+
+    async def connect_credentials(
+        self, metadata: Optional[Union[str, dict[str, Any]]] = None
+    ) -> SandboxConnectCredentials:
+        """Create credentials for making HTTP connections to the sandbox."""
+        if metadata is not None and isinstance(metadata, dict):
+            try:
+                metadata = json.dumps(metadata)
+            except BaseException as e:
+                raise InvalidError(f"Failed to serialize metadata: {e}")
+
+        req = api_pb2.SandboxCreateConnectCredentialsRequest(sandbox_id=self.object_id, metadata=metadata)
+        resp = await retry_transient_errors(self._client.stub.SandboxCreateConnectCredentials, req)
+        return SandboxConnectCredentials(resp.url, resp.token)
 
     async def reload_volumes(self) -> None:
         """Reload all Volumes mounted in the Sandbox.
