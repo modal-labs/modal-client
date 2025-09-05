@@ -432,7 +432,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
                 attempt_timeout_floor=attempt_timeout_floor,
                 retry_warning_message=retry_warning_message,
                 metadata=metadata,
-                name=self.name,
+                fn_name=self.name,
             )
 
     async def direct(
