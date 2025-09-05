@@ -323,8 +323,6 @@ class _FlashPrometheusAutoscaler:
         """
         Gets internal metrics from container to autoscale up or down.
         """
-        use_internal_metrics = self.metrics_endpoint == "internal"
-
         containers = await self._get_all_containers()
         if len(containers) > current_replicas:
             logger.info(
@@ -337,10 +335,7 @@ class _FlashPrometheusAutoscaler:
             return 1
 
         # Get metrics based on autoscaler type (prometheus or internal)
-        if use_internal_metrics:
-            sum_metric, n_containers_with_metrics = await self._get_scaling_info_internal(containers)
-        else:
-            sum_metric, n_containers_with_metrics = await self._get_scaling_info_prometheus(containers)
+        sum_metric, n_containers_with_metrics = await self._get_scaling_info(containers)
 
         desired_replicas = self._calculate_desired_replicas(
             n_current_replicas=current_replicas,
@@ -412,43 +407,40 @@ class _FlashPrometheusAutoscaler:
 
         return desired_replicas
 
-    async def _get_scaling_info_internal(self, containers) -> tuple[float, int]:
-        """Get metrics using internal container metrics API."""
-        internal_metrics_results = await asyncio.gather(
-            *[self._get_container_metrics(container.task_id) for container in containers]
-        )
-        internal_metrics_list = []
-        for internal_metric in internal_metrics_results:
-            if internal_metric is None:
-                continue
-            internal_metrics_list.append(getattr(internal_metric.metrics, self.target_metric))
+    async def _get_scaling_info(self, containers) -> tuple[float, int]:
+        """Get metrics using either internal container metrics API or prometheus HTTP endpoints."""
+        if self.metrics_endpoint == "internal":
+            container_metrics_results = await asyncio.gather(
+                *[self._get_container_metrics(container.task_id) for container in containers]
+            )
+            container_metrics_list = []
+            for container_metric in container_metrics_results:
+                if container_metric is None:
+                    continue
+                container_metrics_list.append(getattr(container_metric.metrics, self.target_metric))
 
-        sum_metric = sum(internal_metrics_list)
-        n_containers_with_metrics = len(internal_metrics_list)
-        return sum_metric, n_containers_with_metrics
+            sum_metric = sum(container_metrics_list)
+            n_containers_with_metrics = len(container_metrics_list)
+        else:
+            sum_metric = 0
+            n_containers_with_metrics = 0
 
-    async def _get_scaling_info_prometheus(self, containers) -> tuple[float, int]:
-        """Get metrics using prometheus HTTP endpoints."""
-        target_metric = self.target_metric
-        sum_metric = 0
-        n_containers_with_metrics = 0
+            container_metrics_list = await asyncio.gather(
+                *[
+                    self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
+                    for container in containers
+                ]
+            )
 
-        container_metrics_list = await asyncio.gather(
-            *[
-                self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
-                for container in containers
-            ]
-        )
-
-        for container_metrics in container_metrics_list:
-            if (
-                container_metrics is None
-                or target_metric not in container_metrics
-                or len(container_metrics[target_metric]) == 0
-            ):
-                continue
-            sum_metric += container_metrics[target_metric][0].value
-            n_containers_with_metrics += 1
+            for container_metrics in container_metrics_list:
+                if (
+                    container_metrics is None
+                    or self.target_metric not in container_metrics
+                    or len(container_metrics[self.target_metric]) == 0
+                ):
+                    continue
+                sum_metric += container_metrics[self.target_metric][0].value
+                n_containers_with_metrics += 1
 
         return sum_metric, n_containers_with_metrics
 
