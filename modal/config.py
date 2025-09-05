@@ -239,6 +239,11 @@ _SETTINGS = {
     "snapshot_debug": _Setting(False, transform=_to_boolean),
     "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),  # Used for snapshotting GPU memory.
     "build_validation": _Setting("error", transform=_check_value(["error", "warn", "ignore"])),
+    # Payload format for function inputs/outputs: 'pickle' (default) or 'cbor'
+    "payload_format": _Setting(
+        "pickle",
+        transform=lambda s: _check_value(["pickle", "cbor"])(s.lower()),
+    ),
 }
 
 

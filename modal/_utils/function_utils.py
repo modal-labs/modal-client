@@ -18,10 +18,11 @@ from .._serialization import (
     deserialize,
     deserialize_data_format,
     serialize,
+    serialize_data_format as _serialize_data_format,
     signature_to_parameter_specs,
 )
 from .._traceback import append_modal_tb
-from ..config import logger
+from ..config import config, logger
 from ..exception import (
     DeserializationError,
     ExecutionError,
@@ -562,14 +563,21 @@ async def _create_input(
     if method_name is None:
         method_name = ""  # proto compatible
 
-    args_serialized = serialize((args, kwargs))
+    payload_format = (config.get("payload_format") or "pickle").lower()
+    use_cbor = payload_format == "cbor"
+    if use_cbor:
+        args_serialized = _serialize_data_format((args, kwargs), api_pb2.DATA_FORMAT_CBOR)
+        data_format = api_pb2.DATA_FORMAT_CBOR
+    else:
+        args_serialized = serialize((args, kwargs))
+        data_format = api_pb2.DATA_FORMAT_PICKLE
 
     if should_upload(len(args_serialized), max_object_size_bytes, function_call_invocation_type):
         args_blob_id, r2_failed, r2_throughput_bytes_s = await blob_upload_with_r2_failure_info(args_serialized, stub)
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(
                 args_blob_id=args_blob_id,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                data_format=data_format,
                 method_name=method_name,
             ),
             idx=idx,
@@ -580,7 +588,7 @@ async def _create_input(
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(
                 args=args_serialized,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                data_format=data_format,
                 method_name=method_name,
             ),
             idx=idx,
