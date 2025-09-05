@@ -343,10 +343,10 @@ class _FlashPrometheusAutoscaler:
 
         # Get metrics based on autoscaler type (prometheus or internal)
         if use_internal_metrics:
-            sum_metric, containers_with_metrics = await self._get_internal_metrics(containers)
+            sum_metric, containers_with_metrics = await self._get_scaling_info_internal(containers)
             target_metric_value = self.target_metric_value
         else:
-            sum_metric, containers_with_metrics = await self._get_prometheus_metrics(containers)
+            sum_metric, containers_with_metrics = await self._get_scaling_info_prometheus(containers)
             target_metric_value = self.target_metric_value
 
         if containers_with_metrics == 0:
@@ -422,11 +422,13 @@ class _FlashPrometheusAutoscaler:
 
         return max(1, desired_replicas)
 
-    async def _get_internal_metrics(self, containers) -> tuple[float, int]:
+    async def _get_scaling_info_internal(self, containers) -> tuple[float, int]:
         """Get metrics using internal container metrics API."""
+        internal_metrics_results = await asyncio.gather(
+            *[self._get_container_metrics(container.task_id) for container in containers]
+        )
         internal_metrics_list = []
-        for container in containers:
-            internal_metric = await self._get_container_metrics(container.task_id)
+        for internal_metric in internal_metrics_results:
             if internal_metric is None:
                 continue
             internal_metrics_list.append(getattr(internal_metric.metrics, self.target_metric))
@@ -435,7 +437,7 @@ class _FlashPrometheusAutoscaler:
         containers_with_metrics = len(internal_metrics_list)
         return sum_metric, containers_with_metrics
 
-    async def _get_prometheus_metrics(self, containers) -> tuple[float, int]:
+    async def _get_scaling_info_prometheus(self, containers) -> tuple[float, int]:
         """Get metrics using prometheus HTTP endpoints."""
         target_metric = self.target_metric
         sum_metric = 0
