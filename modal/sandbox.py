@@ -3,19 +3,21 @@ import asyncio
 import os
 import time
 from collections.abc import AsyncGenerator, Sequence
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
 if TYPE_CHECKING:
     import _typeshed
 
 from google.protobuf.message import Message
+from google.protobuf.timestamp_pb2 import Timestamp
 from grpclib import GRPCError, Status
 
 from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.mount import _Mount
 from modal.volume import _Volume
-from modal_proto import api_pb2
+from modal_proto import api_pb2, sandbox_router_pb2 as sr_pb2
 
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
@@ -24,7 +26,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
-from ._utils.sandbox_utils import DirectAccessMetadata
+from ._utils.sandbox_utils import DirectAccessMetadata, SandboxRouterServiceClient
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
@@ -861,10 +863,34 @@ class _Sandbox(_Object, type_prefix="sb"):
         import uuid
 
         process_id = str(uuid.uuid4())
+        router_client = SandboxRouterServiceClient(direct_access.url, direct_access.jwt)
+
+        # Compute the deadline as a protobuf timestamp.
+        deadline = None
+        if timeout:
+            deadline_dt = datetime.now(timezone.utc) + timedelta(seconds=int(timeout))
+            deadline = Timestamp()
+            deadline.FromDatetime(deadline_dt)
+
+        # Start the process.
+        start_req = sr_pb2.SandboxExecStartRequest(
+            exec_id=process_id,
+            command_args=args,
+            # TODO(saltzm): Handle stdout/stderr configs.
+            stdout_config=sr_pb2.SandboxExecStdoutConfig.SANDBOX_EXEC_STDOUT_CONFIG_PIPE,
+            stderr_config=sr_pb2.SandboxExecStderrConfig.SANDBOX_EXEC_STDERR_CONFIG_PIPE,
+            deadline=deadline,
+            workdir=workdir,
+            secret_ids=[secret.object_id for secret in secrets],
+        )
+
+        # TODO(saltzm): Handle exec_start errors/retries.
+        _ = await router_client.exec_start(start_req)
+
         return _ContainerProcess(
             process_id,
             self._client,
-            direct_access=direct_access,
+            router_client=router_client,
             stdout=stdout,
             stderr=stderr,
             text=text,

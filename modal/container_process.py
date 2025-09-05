@@ -8,7 +8,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.sandbox_utils import DirectAccessMetadata, SandboxRouterServiceClient
+from ._utils.sandbox_utils import SandboxRouterServiceClient
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .exception import InteractiveTimeoutError, InvalidError
@@ -34,10 +34,10 @@ class _ContainerProcess(Generic[T]):
         exec_deadline: Optional[float] = None,
         text: bool = True,
         by_line: bool = False,
-        direct_access: Optional[DirectAccessMetadata] = None,
+        router_client: Optional[SandboxRouterServiceClient] = None,
     ) -> None:
         # Choose the underlying implementation and delegate all calls to it.
-        if direct_access is None:
+        if router_client is None:
             self._impl = _ContainerProcessThroughServer(
                 process_id,
                 client,
@@ -51,12 +51,12 @@ class _ContainerProcess(Generic[T]):
             self._impl = _ContainerProcessDirect(
                 process_id,
                 client,
-                direct_access,
                 stdout=stdout,
                 stderr=stderr,
                 exec_deadline=exec_deadline,
                 text=text,
                 by_line=by_line,
+                router_client=router_client,
             )
 
     @property
@@ -274,17 +274,16 @@ class _ContainerProcessDirect:
         self,
         process_id: str,
         client: _Client,
-        direct_access: DirectAccessMetadata,
         *,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
         exec_deadline: Optional[float] = None,
         text: bool = True,
         by_line: bool = False,
+        router_client: SandboxRouterServiceClient,
     ) -> None:
         self._client = client
-        self._direct_access = direct_access
-        self._router_client = SandboxRouterServiceClient(direct_access.url, direct_access.jwt)
+        self._router_client = router_client
         self._process_id = process_id
         self._exec_deadline = exec_deadline
         self._text = text
