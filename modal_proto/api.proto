@@ -2661,16 +2661,6 @@ message Sandbox {
   optional uint32 idle_timeout_secs = 33;
 }
 
-message SandboxCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  Sandbox definition = 2;
-  string environment_name = 3; // *DEPRECATED* 7/16/2025
-}
-
-message SandboxCreateResponse {
-  string sandbox_id = 1;
-}
-
 message SandboxCreateConnectCredentialsRequest {
   string sandbox_id = 1;
   string metadata = 2;
@@ -2679,6 +2669,16 @@ message SandboxCreateConnectCredentialsRequest {
 message SandboxCreateConnectCredentialsResponse {
   string url = 1;
   string token = 2;
+}
+
+message SandboxCreateRequest {
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  Sandbox definition = 2;
+  string environment_name = 3; // *DEPRECATED* 7/16/2025
+}
+
+message SandboxCreateResponse {
+  string sandbox_id = 1;
 }
 
 message SandboxGetFromNameRequest {
