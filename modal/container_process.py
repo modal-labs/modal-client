@@ -19,14 +19,13 @@ T = TypeVar("T", str, bytes)
 
 
 class _ContainerProcess(Generic[T]):
-    """Factory base class for container processes.
-
-    Use `_ContainerProcess.create(...)` to construct an appropriate implementation.
+    """
+    Implements functionality for a process running in a container. The backing implementation
+    is chosen based on whether direct communication with the worker is enabled for the container.
     """
 
-    @classmethod
-    def create(
-        cls,
+    def __init__(
+        self,
         process_id: str,
         client: _Client,
         *,
@@ -36,9 +35,10 @@ class _ContainerProcess(Generic[T]):
         text: bool = True,
         by_line: bool = False,
         direct_access: Optional[DirectAccessMetadata] = None,
-    ) -> "_ContainerProcess[T]":
+    ) -> None:
+        # Choose the underlying implementation and delegate all calls to it.
         if direct_access is None:
-            return _ContainerProcessThroughServer(
+            self._impl = _ContainerProcessThroughServer(
                 process_id,
                 client,
                 stdout=stdout,
@@ -48,7 +48,7 @@ class _ContainerProcess(Generic[T]):
                 by_line=by_line,
             )
         else:
-            return _ContainerProcessDirect(
+            self._impl = _ContainerProcessDirect(
                 process_id,
                 client,
                 direct_access,
@@ -59,34 +59,33 @@ class _ContainerProcess(Generic[T]):
                 by_line=by_line,
             )
 
-    # Interface stubs for synchronize_api to wrap; concrete subclasses override these
     @property
     def stdout(self) -> _StreamReader[T]:  # type: ignore[override]
-        pass
+        return self._impl.stdout
 
     @property
     def stderr(self) -> _StreamReader[T]:  # type: ignore[override]
-        pass
+        return self._impl.stderr
 
     @property
     def stdin(self) -> _StreamWriter:  # type: ignore[override]
-        pass
+        return self._impl.stdin
 
     @property
     def returncode(self) -> int:  # type: ignore[override]
-        pass
+        return self._impl.returncode
 
     async def poll(self) -> Optional[int]:
-        pass
+        return await self._impl.poll()
 
     async def wait(self) -> int:
-        pass
+        return await self._impl.wait()
 
     async def attach(self):
-        pass
+        return await self._impl.attach()
 
 
-class _ContainerProcessThroughServer(_ContainerProcess[T]):
+class _ContainerProcessThroughServer:
     """
     Container process that runs through the server. This is the original implementation for
     `ContainerProcess`.
@@ -265,7 +264,7 @@ class _ContainerProcessThroughServer(_ContainerProcess[T]):
                 raise InteractiveTimeoutError("Failed to establish connection to container. Please try again.")
 
 
-class _ContainerProcessDirect(_ContainerProcess[T]):
+class _ContainerProcessDirect:
     """
     Container process implementation  that works via direct communication with
     the Modal worker where the container is running.
