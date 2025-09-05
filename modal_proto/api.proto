@@ -2671,6 +2671,16 @@ message SandboxCreateResponse {
   string sandbox_id = 1;
 }
 
+message SandboxCreateConnectCredentialsRequest {
+  string sandbox_id = 1;
+  string metadata = 2;
+}
+
+message SandboxCreateConnectCredentialsResponse {
+  string url = 1;
+  string token = 2;
+}
+
 message SandboxGetFromNameRequest {
   string sandbox_name = 1;
   string environment_name = 2;
@@ -3606,6 +3616,7 @@ service ModalClient {
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxCreateConnectCredentials(SandboxCreateConnectCredentialsRequest) returns (SandboxCreateConnectCredentialsResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
