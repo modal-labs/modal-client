@@ -323,7 +323,7 @@ class _FlashPrometheusAutoscaler:
         """
         Gets internal metrics from container to autoscale up or down.
         """
-        use_internal_metrics = (self.metrics_endpoint == "internal") if hasattr(self, "metrics_endpoint") else False
+        use_internal_metrics = self.metrics_endpoint == "internal"
 
         containers = await self._get_all_containers()
         if len(containers) > current_replicas:
@@ -342,9 +342,6 @@ class _FlashPrometheusAutoscaler:
         else:
             sum_metric, containers_with_metrics = await self._get_scaling_info_prometheus(containers)
 
-        if containers_with_metrics == 0:
-            return current_replicas
-
         desired_replicas = self._calculate_desired_replicas(
             current_replicas=current_replicas,
             sum_metric=sum_metric,
@@ -353,7 +350,7 @@ class _FlashPrometheusAutoscaler:
             target_metric_value=self.target_metric_value,
         )
 
-        return desired_replicas
+        return max(1, desired_replicas)
 
     def _calculate_desired_replicas(
         self,
@@ -413,7 +410,7 @@ class _FlashPrometheusAutoscaler:
             f"desired replicas: {desired_replicas}"
         )
 
-        return max(1, desired_replicas)
+        return desired_replicas
 
     async def _get_scaling_info_internal(self, containers) -> tuple[float, int]:
         """Get metrics using internal container metrics API."""
