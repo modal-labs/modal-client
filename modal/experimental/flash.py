@@ -282,9 +282,7 @@ class _FlashPrometheusAutoscaler:
                     if timestamp >= autoscaling_time - self._max_window_seconds
                 ]
 
-                current_target_containers = await self._compute_target_containers(
-                    current_replicas=current_replicas, use_internal_metrics=(self.metrics_endpoint == "internal")
-                )
+                current_target_containers = await self._compute_target_containers(current_replicas=current_replicas)
                 autoscaling_decisions.append((autoscaling_time, current_target_containers))
 
                 actual_target_containers = self._make_scaling_decision(
@@ -321,14 +319,11 @@ class _FlashPrometheusAutoscaler:
                 logger.error(traceback.format_exc())
                 await asyncio.sleep(self.autoscaling_interval_seconds)
 
-    async def _compute_target_containers(
-        self, current_replicas: int, use_internal_metrics: Optional[bool] = None
-    ) -> int:
+    async def _compute_target_containers(self, current_replicas: int) -> int:
         """
         Gets internal metrics from container to autoscale up or down.
         """
-        if use_internal_metrics is None:
-            use_internal_metrics = self.metrics_endpoint == "internal"
+        use_internal_metrics = (self.metrics_endpoint == "internal") if hasattr(self, "metrics_endpoint") else False
 
         containers = await self._get_all_containers()
         if len(containers) > current_replicas:
