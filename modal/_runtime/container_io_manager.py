@@ -265,6 +265,7 @@ class IOContext:
     async def output_items_exception(
         self, started_at: float, task_id: str, exc: Exception
     ) -> list[api_pb2.FunctionPutOutputsItem]:
+        # Failure outputs for when input exceptions occur
         serialized_tb, tb_line_cache = pickle_traceback(exc, task_id)
 
         # Note: we're not pickling the traceback since it contains
@@ -285,6 +286,7 @@ class IOContext:
         data: bytes = pickle_exception(exc)
         data_result_part = await format_blob_data(data, self._client.stub)
 
+        pickled_exception_data = {"serialized_tb": serialized_tb, "tb_line_cache": tb_line_cache, **data_result_part}
         # all inputs in the batch get the same failure:
         return [
             api_pb2.FunctionPutOutputsItem(
@@ -295,11 +297,7 @@ class IOContext:
                     status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                     exception=repr_exc,
                     traceback=traceback.format_exc(),
-                    serialized_tb=serialized_tb if function_input.data_format != api_pb2.DATA_FORMAT_CBOR else b"",
-                    tb_line_cache=tb_line_cache if function_input.data_format != api_pb2.DATA_FORMAT_CBOR else b"",
-                    **(
-                        data_result_part if function_input.data_format != api_pb2.DATA_FORMAT_CBOR else {}
-                    ),  # either data or data_blob_id
+                    **(pickled_exception_data if function_input.data_format != api_pb2.DATA_FORMAT_CBOR else {}),
                 ),
                 retry_count=retry_count,
             )
