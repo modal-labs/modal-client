@@ -5,6 +5,8 @@ import time
 from collections.abc import AsyncGenerator, Sequence
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
+from .config import config, logger
+
 if TYPE_CHECKING:
     import _typeshed
 
@@ -23,8 +25,8 @@ from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
+from ._utils.name_utils import is_valid_object_name
 from .client import _Client
-from .config import config
 from .container_process import _ContainerProcess
 from .exception import AlreadyExistsError, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
@@ -72,6 +74,16 @@ def _validate_exec_args(args: Sequence[str]) -> None:
         )
 
 
+def _warn_if_invalid_name(name: str) -> None:
+    if not is_valid_object_name(name):
+        deprecation_warning(
+            (2025, 9, 3),
+            f"Sandbox name '{name}' will be considered invalid in a future release."
+            "\n\nNames may contain only alphanumeric characters, dashes, periods, and underscores,"
+            " must be shorter than 64 characters, and cannot conflict with App ID strings.",
+        )
+
+
 class DefaultSandboxNameOverride(str):
     """A singleton class that represents the default sandbox name override.
 
@@ -108,6 +120,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret],
         name: Optional[str] = None,
         timeout: int = 300,
+        idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -212,6 +225,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 mount_ids=[mount.object_id for mount in mounts] + [mount.object_id for mount in image._mount_layers],
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
+                idle_timeout_secs=idle_timeout,
                 workdir=workdir,
                 resources=convert_fn_config_to_resources_config(
                     cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
@@ -256,7 +270,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        timeout: int = 300,  # Maximum execution time of the sandbox in seconds.
+        timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
+        # The amount of time in seconds that a sandbox can be idle before being terminated.
+        idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -311,7 +327,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         if environment_name is not None:
             deprecation_warning(
                 (2025, 7, 16),
-                "Passing `environment_name` to `Sandbox.create` is deprecated and will be removed in a future release.",
+                "Passing `environment_name` to `Sandbox.create` is deprecated and will be removed in a future release. "
                 "A sandbox's environment is determined by the app it is associated with.",
             )
 
@@ -323,6 +339,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             secrets=secrets,
             network_file_systems=network_file_systems,
             timeout=timeout,
+            idle_timeout=idle_timeout,
             workdir=workdir,
             gpu=gpu,
             cloud=cloud,
@@ -354,7 +371,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         mounts: Sequence[_Mount] = (),
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        timeout: int = 300,  # Maximum execution time of the sandbox in seconds.
+        timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
+        # The amount of time in seconds that a sandbox can be idle before being terminated.
+        idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
@@ -396,6 +415,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         from .app import _App
 
         _validate_exec_args(args)
+        if name is not None:
+            _warn_if_invalid_name(name)
+
+        if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
+            raise InvalidError("Cannot specify open ports when `block_network` is enabled")
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -404,6 +428,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             secrets=secrets,
             name=name,
             timeout=timeout,
+            idle_timeout=idle_timeout,
             workdir=workdir,
             gpu=gpu,
             cloud=cloud,
@@ -478,7 +503,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         environment_name: Optional[str] = None,
         client: Optional[_Client] = None,
     ) -> "_Sandbox":
-        """Get a running Sandbox by name from the given app.
+        """Get a running Sandbox by name from a deployed App.
 
         Raises a modal.exception.NotFoundError if no running sandbox is found with the given name.
         A Sandbox's name is the `name` argument passed to `Sandbox.create`.
@@ -563,6 +588,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
             resp = await self._client.stub.SandboxWait(req)
             if resp.result.status:
+                logger.debug(f"Sandbox {self.object_id} wait completed with status {resp.result.status}")
                 self._result = resp.result
 
                 if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
@@ -727,6 +753,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await self._client.stub.ContainerExec(req)
         by_line = bufsize == 1
         exec_deadline = time.monotonic() + int(timeout) + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
+        logger.debug(f"Created ContainerProcess for exec_id {resp.exec_id} on Sandbox {self.object_id}")
         return _ContainerProcess(
             resp.exec_id,
             self._client,
@@ -769,6 +796,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         name: Optional[str] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
     ):
         client = client or await _Client.from_env()
+
+        if name is not None and name != _DEFAULT_SANDBOX_NAME_OVERRIDE:
+            _warn_if_invalid_name(name)
 
         if name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
             restore_req = api_pb2.SandboxRestoreRequest(

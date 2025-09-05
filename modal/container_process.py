@@ -9,6 +9,7 @@ from modal_proto import api_pb2
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
+from .config import logger
 from .exception import InteractiveTimeoutError, InvalidError
 from .io_streams import _StreamReader, _StreamWriter
 from .stream_type import StreamType
@@ -133,6 +134,7 @@ class _ContainerProcess(Generic[T]):
             self._returncode = await asyncio.wait_for(self._wait_for_completion(), timeout=timeout)
         except (asyncio.TimeoutError, TimeoutError):
             self._returncode = -1
+        logger.debug(f"ContainerProcess {self._process_id} wait completed with returncode {self._returncode}")
         return self._returncode
 
     async def attach(self):

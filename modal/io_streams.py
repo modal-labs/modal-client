@@ -21,6 +21,7 @@ from modal_proto import api_pb2
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
+from .config import logger
 from .stream_type import StreamType
 
 if TYPE_CHECKING:
@@ -180,6 +181,7 @@ class _StreamReader(Generic[T]):
         """
         data_str = ""
         data_bytes = b""
+        logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read starting")
         async for message in self._get_logs():
             if message is None:
                 break
@@ -188,6 +190,7 @@ class _StreamReader(Generic[T]):
             else:
                 data_bytes += message
 
+        logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
         if self._text:
             return cast(T, data_str)
         else:
@@ -232,6 +235,7 @@ class _StreamReader(Generic[T]):
                     elif isinstance(exc, ClientClosed):
                         # If the client was closed, the user has triggered a cleanup.
                         break
+                logger.error(f"{self._object_id} stream read failure while consuming process output: {exc}")
                 raise exc
 
     async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:

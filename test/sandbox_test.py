@@ -445,6 +445,41 @@ def test_sandbox_network_access(app, servicer):
 
 
 @skip_non_subprocess
+def test_sandbox_block_network_with_ports(app, servicer):
+    """Test that specifying open ports when block_network is enabled raises an error."""
+
+    # Test with encrypted_ports
+    with pytest.raises(InvalidError, match="Cannot specify open ports when `block_network` is enabled"):
+        Sandbox.create("echo", "test", block_network=True, encrypted_ports=[8080], app=app)
+
+    # Test with h2_ports
+    with pytest.raises(InvalidError, match="Cannot specify open ports when `block_network` is enabled"):
+        Sandbox.create("echo", "test", block_network=True, h2_ports=[8080], app=app)
+
+    # Test with unencrypted_ports
+    with pytest.raises(InvalidError, match="Cannot specify open ports when `block_network` is enabled"):
+        Sandbox.create("echo", "test", block_network=True, unencrypted_ports=[8080], app=app)
+
+    # Test with multiple port types
+    with pytest.raises(InvalidError, match="Cannot specify open ports when `block_network` is enabled"):
+        Sandbox.create(
+            "echo",
+            "test",
+            block_network=True,
+            encrypted_ports=[8080],
+            h2_ports=[9090],
+            unencrypted_ports=[3000],
+            app=app,
+        )
+
+    # Test that it works fine when block_network is False
+    sb = Sandbox.create(
+        "echo", "test", block_network=False, encrypted_ports=[8080], h2_ports=[9090], unencrypted_ports=[3000], app=app
+    )
+    sb.terminate()
+
+
+@skip_non_subprocess
 def test_sandbox_no_entrypoint(app, servicer):
     sb = Sandbox.create(app=app)
 
