@@ -125,10 +125,8 @@ class _FlashManager:
                         f"due to error: {port_check_error}, num_failures: {self.num_failures}"
                     )
                     self.num_failures += 1
-                    await retry_transient_errors(
-                        self.client.stub.FlashContainerDeregister,
-                        api_pb2.FlashContainerDeregisterRequest(),
-                    )
+                    await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
+
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
@@ -501,7 +499,7 @@ class _FlashPrometheusAutoscaler:
     async def _get_container_metrics(self, container_id: str) -> Optional[api_pb2.TaskGetAutoscalingMetricsResponse]:
         req = api_pb2.TaskGetAutoscalingMetricsRequest(task_id=container_id)
         try:
-            resp = await retry_transient_errors(self.client.stub.TaskGetAutoscalingMetrics, req)
+            resp = await self.client.stub.TaskGetAutoscalingMetrics(req)
             return resp
         except Exception as e:
             logger.warning(f"[Modal Flash] Error getting metrics for container {container_id}: {e}")
