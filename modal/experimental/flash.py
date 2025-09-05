@@ -338,15 +338,15 @@ class _FlashPrometheusAutoscaler:
 
         # Get metrics based on autoscaler type (prometheus or internal)
         if use_internal_metrics:
-            sum_metric, containers_with_metrics = await self._get_scaling_info_internal(containers)
+            sum_metric, n_containers_with_metrics = await self._get_scaling_info_internal(containers)
         else:
-            sum_metric, containers_with_metrics = await self._get_scaling_info_prometheus(containers)
+            sum_metric, n_containers_with_metrics = await self._get_scaling_info_prometheus(containers)
 
         desired_replicas = self._calculate_desired_replicas(
-            current_replicas=current_replicas,
+            n_current_replicas=current_replicas,
             sum_metric=sum_metric,
-            containers_with_metrics=containers_with_metrics,
-            total_containers=len(containers),
+            n_containers_with_metrics=n_containers_with_metrics,
+            n_total_containers=len(containers),
             target_metric_value=self.target_metric_value,
         )
 
@@ -354,10 +354,10 @@ class _FlashPrometheusAutoscaler:
 
     def _calculate_desired_replicas(
         self,
-        current_replicas: int,
+        n_current_replicas: int,
         sum_metric: float,
-        containers_with_metrics: int,
-        total_containers: int,
+        n_containers_with_metrics: int,
+        n_total_containers: int,
         target_metric_value: float,
     ) -> int:
         """
@@ -366,14 +366,14 @@ class _FlashPrometheusAutoscaler:
         buffer_containers = self.buffer_containers or 0
 
         # n_containers_missing = number of unhealthy containers + number of containers not registered in flash dns
-        n_containers_missing_metric = current_replicas - containers_with_metrics
+        n_containers_missing_metric = n_current_replicas - n_containers_with_metrics
         # n_containers_unhealthy = number of dns registered containers that are not emitting metrics
-        n_containers_unhealthy = total_containers - containers_with_metrics
+        n_containers_unhealthy = n_total_containers - n_containers_with_metrics
 
         # number of total containers - buffer containers
         # This is used in 1) scale ratio denominators 2) provisioning base.
         # Max is used to handle case when buffer_containers are first initialized.
-        num_provisioned_containers = max(current_replicas - buffer_containers, 1)
+        num_provisioned_containers = max(n_current_replicas - buffer_containers, 1)
 
         # Scale up assuming that every unhealthy container is at (1 + scale_up_tolerance)x the target metric value.
         # This way if all containers are unhealthy, we will increase our number of containers.
@@ -397,11 +397,11 @@ class _FlashPrometheusAutoscaler:
             desired_replicas = math.ceil(desired_replicas * scale_down_ratio)
 
         logger.warning(
-            f"[Modal Flash] Current replicas: {current_replicas}, "
+            f"[Modal Flash] Current replicas: {n_current_replicas}, "
             f"target metric: {self.target_metric}"
             f"target metric value: {target_metric_value}, "
             f"current sum of metric values: {sum_metric}, "
-            f"number of containers with metrics: {containers_with_metrics}, "
+            f"number of containers with metrics: {n_containers_with_metrics}, "
             f"number of containers unhealthy: {n_containers_unhealthy}, "
             f"number of containers missing metric (includes unhealthy): {n_containers_missing_metric}, "
             f"number of provisioned containers: {num_provisioned_containers}, "
@@ -424,14 +424,14 @@ class _FlashPrometheusAutoscaler:
             internal_metrics_list.append(getattr(internal_metric.metrics, self.target_metric))
 
         sum_metric = sum(internal_metrics_list)
-        containers_with_metrics = len(internal_metrics_list)
-        return sum_metric, containers_with_metrics
+        n_containers_with_metrics = len(internal_metrics_list)
+        return sum_metric, n_containers_with_metrics
 
     async def _get_scaling_info_prometheus(self, containers) -> tuple[float, int]:
         """Get metrics using prometheus HTTP endpoints."""
         target_metric = self.target_metric
         sum_metric = 0
-        containers_with_metrics = 0
+        n_containers_with_metrics = 0
 
         container_metrics_list = await asyncio.gather(
             *[
@@ -448,9 +448,9 @@ class _FlashPrometheusAutoscaler:
             ):
                 continue
             sum_metric += container_metrics[target_metric][0].value
-            containers_with_metrics += 1
+            n_containers_with_metrics += 1
 
-        return sum_metric, containers_with_metrics
+        return sum_metric, n_containers_with_metrics
 
     async def _get_metrics(self, url: str) -> Optional[dict[str, list[Any]]]:  # technically any should be Sample
         from prometheus_client.parser import Sample, text_string_to_metric_families
