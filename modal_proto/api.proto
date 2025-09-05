@@ -2664,7 +2664,7 @@ message Sandbox {
   // authenticate the client when directly connecting to a sandbox server running on
   // the modal-worker to issue exec commands (and other operations as they
   // become available).
-  optional string client_to_sandbox_direct_auth_secret = 34;
+  optional bytes client_to_sandbox_direct_auth_secret = 34;
 }
 
 message SandboxCreateRequest {
