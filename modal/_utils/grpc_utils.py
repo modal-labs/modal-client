@@ -187,6 +187,7 @@ async def retry_transient_errors(
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
     retry_warning_message: Optional[RetryWarningMessage] = None,
     metadata: list[tuple[str, str]] = [],
+    fn_name: Optional[str] = None,
 ) -> R:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
@@ -239,11 +240,12 @@ async def retry_transient_errors(
             else:
                 final_attempt = False
 
+            fn_name = fn_name or fn.__name__
             with suppress_tb_frames(1):
                 if final_attempt:
                     logger.debug(
                         f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
-                        f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
+                        f"{total_deadline=} for {fn_name} ({idempotency_key[:8]})"
                     )
                     if isinstance(exc, OSError):
                         raise ConnectionError(str(exc))
@@ -258,7 +260,7 @@ async def retry_transient_errors(
                     # TODO: update to newer version (>=0.4.8) once stable
                     raise exc
 
-            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
+            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})")
 
             n_retries += 1
 
