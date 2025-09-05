@@ -8,7 +8,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.sandbox_utils import DirectAccessMetadata
+from ._utils.sandbox_utils import DirectAccessMetadata, SandboxRouterServiceClient
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .exception import InteractiveTimeoutError, InvalidError
@@ -282,15 +282,43 @@ class _ContainerProcessDirect:
         text: bool = True,
         by_line: bool = False,
     ) -> None:
-        pass
+        self._client = client
+        self._direct_access = direct_access
+        self._router_client = SandboxRouterServiceClient(direct_access.url, direct_access.jwt)
+        self._process_id = process_id
+        self._exec_deadline = exec_deadline
+        self._text = text
+        self._by_line = by_line
+        self._stdout = _StreamReader[T](
+            api_pb2.FILE_DESCRIPTOR_STDOUT,
+            process_id,
+            "container_process",
+            self._client,
+            stream_type=stdout,
+            text=text,
+            by_line=by_line,
+            deadline=exec_deadline,
+            router_client=self._router_client,
+        )
+        self._stderr = _StreamReader[T](
+            api_pb2.FILE_DESCRIPTOR_STDERR,
+            process_id,
+            "container_process",
+            self._client,
+            stream_type=stderr,
+            text=text,
+            by_line=by_line,
+            deadline=exec_deadline,
+            router_client=self._router_client,
+        )
 
     @property
     def stdout(self) -> _StreamReader[T]:
-        pass
+        return self._stdout
 
     @property
     def stderr(self) -> _StreamReader[T]:
-        pass
+        return self._stderr
 
     @property
     def stdin(self) -> _StreamWriter:

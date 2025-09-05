@@ -20,6 +20,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.sandbox_utils import SandboxRouterServiceClient
 from .client import _Client
 from .stream_type import StreamType
 
@@ -82,8 +83,8 @@ async def _container_process_logs_iterator(
 T = TypeVar("T", str, bytes)
 
 
-class _StreamReader(Generic[T]):
-    """Retrieve logs from a stream (`stdout` or `stderr`).
+class _StreamReaderThroughServer(Generic[T]):
+    """Retrieve logs from a stream (`stdout` or `stderr`) via the Modal server.
 
     As an asynchronous iterable, the object supports the `for` and `async for`
     statements. Just loop over the object to read in chunks.
@@ -350,6 +351,107 @@ class _StreamReader(Generic[T]):
         """mdmd:hidden"""
         if self._stream:
             await self._stream.aclose()
+
+
+class _StreamReaderDirect(Generic[T]):
+    """
+    Placeholder StreamReader implementation that will read directly from the worker
+    that hosts the sandbox.
+    """
+
+    def __init__(
+        self,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        object_id: str,
+        object_type: Literal["sandbox"],
+        router_client: SandboxRouterServiceClient,
+        stream_type: StreamType = StreamType.PIPE,
+        text: bool = True,
+        by_line: bool = False,
+        deadline: Optional[float] = None,
+    ) -> None:
+        self._file_descriptor = file_descriptor
+        self._object_type = object_type
+        self._object_id = object_id
+        self._router_client = router_client
+        self._stream_type = stream_type
+        self._text = text
+        self._by_line = by_line
+        self._deadline = deadline
+        self.eof = False
+
+    @property
+    def file_descriptor(self) -> int:
+        return self._file_descriptor
+
+    async def read(self) -> T:
+        raise NotImplementedError
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        raise NotImplementedError
+
+    async def __anext__(self) -> T:
+        raise NotImplementedError
+
+    async def aclose(self):
+        return None
+
+
+class _StreamReader(Generic[T]):
+    """Delegating StreamReader that chooses implementation based on whether direct access
+    is enabled for the sandbox."""
+
+    def __init__(
+        self,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        client: _Client,
+        *,
+        stream_type: StreamType = StreamType.PIPE,
+        text: bool = True,
+        by_line: bool = False,
+        deadline: Optional[float] = None,
+        router_client: Optional[SandboxRouterServiceClient] = None,
+    ) -> None:
+        if router_client is None:
+            self._impl = _StreamReaderThroughServer[T](
+                file_descriptor,
+                object_id,
+                object_type,
+                client,
+                stream_type=stream_type,
+                text=text,
+                by_line=by_line,
+                deadline=deadline,
+            )
+        else:
+            self._impl = _StreamReaderDirect[T](
+                file_descriptor,
+                object_id,
+                object_type,
+                router_client,
+                stream_type=stream_type,
+                text=text,
+                by_line=by_line,
+                deadline=deadline,
+            )
+
+    @property
+    def file_descriptor(self) -> int:
+        return self._impl.file_descriptor
+
+    async def read(self) -> T:
+        return await self._impl.read()
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self._impl.__aiter__()
+
+    async def __anext__(self) -> T:
+        return await self._impl.__anext__()
+
+    async def aclose(self):
+        return await self._impl.aclose()
 
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
