@@ -142,7 +142,7 @@ async def _lookup_workspace(server_url: str, token_id: str, token_secret: str) -
 
     credentials = (token_id, token_secret)
     async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
-        return await client.stub.WorkspaceNameLookup.orig(Empty(), timeout=3)
+        return await client.stub.WorkspaceNameLookup.direct(Empty(), timeout=3)
 
 
 def config_profiles():

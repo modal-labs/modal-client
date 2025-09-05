@@ -72,7 +72,6 @@ def render(
     for mod in imports:
         buf.add("import {}", mod)
 
-    buf.add("from modal._utils.grpc_utils import WithRetries")
     buf.add("import typing")
     buf.add("if typing.TYPE_CHECKING:")
     with buf.indent():
@@ -102,21 +101,20 @@ def render(
                     buf.add("pass")
                 for method in service.methods:
                     name, cardinality, request_type, reply_type = method
-                    original_method = f"grpclib_stub.{name}"
-
+                    wrapper_cls: str
                     if cardinality is const.Cardinality.UNARY_UNARY:
-                        buf.add(
-                            f"self.{name} = WithRetries(modal.client.UnaryUnaryWrapper"
-                            f"({original_method}, client, server_url))"
-                        )
+                        wrapper_cls = "modal.client.UnaryUnaryWrapper"
                     elif cardinality is const.Cardinality.UNARY_STREAM:
-                        buf.add(f"self.{name} = modal.client.UnaryStreamWrapper({original_method}, client, server_url)")
+                        wrapper_cls = "modal.client.UnaryStreamWrapper"
                     # elif cardinality is const.Cardinality.STREAM_UNARY:
                     #     wrapper_cls = StreamUnaryWrapper
                     # elif cardinality is const.Cardinality.STREAM_STREAM:
                     #     wrapper_cls = StreamStreamWrapper
                     else:
                         raise TypeError(cardinality)
+
+                    original_method = f"grpclib_stub.{name}"
+                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, server_url)")
 
     return buf.content()
 

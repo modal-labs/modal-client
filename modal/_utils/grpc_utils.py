@@ -9,7 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -171,8 +171,11 @@ async def unary_stream(
         yield item
 
 
+R = TypeVar("R")
+
+
 async def retry_transient_errors(
-    fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]",
+    fn: Callable[..., Awaitable[R]],
     *args,
     base_delay: float = 0.1,
     max_delay: float = 1,
@@ -184,7 +187,7 @@ async def retry_transient_errors(
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
     retry_warning_message: Optional[RetryWarningMessage] = None,
     metadata: list[tuple[str, str]] = [],
-) -> ResponseType:
+) -> R:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
 
@@ -269,43 +272,6 @@ async def retry_transient_errors(
 
             await asyncio.sleep(delay)
             delay = min(delay * delay_factor, max_delay)
-
-
-class WithRetries(Generic[RequestType, ResponseType]):
-    """Wrapper for modal.client.UnaryUnaryWrapper with retry_transient_errors."""
-
-    def __init__(self, orig: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]"):
-        self.orig = orig
-
-    async def __call__(
-        self,
-        req: RequestType,
-        base_delay: float = 0.1,
-        max_delay: float = 1,
-        delay_factor: float = 2,
-        max_retries: Optional[int] = 3,
-        additional_status_codes: list = [],
-        attempt_timeout: Optional[float] = None,
-        total_timeout: Optional[float] = None,
-        attempt_timeout_floor=2.0,
-        retry_warning_message: Optional[RetryWarningMessage] = None,
-        metadata: list[tuple[str, str]] = [],
-    ) -> ResponseType:
-        with suppress_tb_frames(1):
-            return await retry_transient_errors(
-                self.orig,
-                req,
-                base_delay=base_delay,
-                max_delay=max_delay,
-                delay_factor=delay_factor,
-                max_retries=max_retries,
-                additional_status_codes=additional_status_codes,
-                attempt_timeout=attempt_timeout,
-                total_timeout=total_timeout,
-                attempt_timeout_floor=attempt_timeout_floor,
-                retry_warning_message=retry_warning_message,
-                metadata=metadata,
-            )
 
 
 def find_free_port() -> int:

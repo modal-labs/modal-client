@@ -56,7 +56,7 @@ class _TokenFlow:
         req = api_pb2.TokenFlowWaitRequest(
             token_flow_id=self.token_flow_id, timeout=timeout, wait_secret=self.wait_secret
         )
-        resp = await self.stub.TokenFlowWait.orig(req, timeout=(timeout + grpc_extra_timeout))
+        resp = await self.stub.TokenFlowWait.direct(req, timeout=(timeout + grpc_extra_timeout))
         if not resp.timeout:
             return resp
         else:
