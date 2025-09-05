@@ -856,7 +856,21 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Internal option to set terminal size and metadata
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
-        pass
+        # Generate a random process ID.
+        # TODO(saltzm): Generate properly or use idempotency key here and have exec_start return the process ID.
+        import uuid
+
+        process_id = str(uuid.uuid4())
+        return _ContainerProcess(
+            process_id,
+            self._client,
+            direct_access=direct_access,
+            stdout=stdout,
+            stderr=stderr,
+            text=text,
+            by_line=bufsize == 1,
+            exec_deadline=time.monotonic() + int(timeout) if timeout else None,
+        )
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
         await self._get_task_id()
