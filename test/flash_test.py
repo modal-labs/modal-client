@@ -141,12 +141,18 @@ class TestFlashInternalMetricAutoscalerLogic:
     @pytest.mark.parametrize(
         "flash_metric,target_value,metrics,current_replicas,expected_replicas",
         [
-            ("cpu_usage_percent", 0.5, [0.8], 1, 2),  # High CPU single container
-            ("cpu_usage_percent", 0.5, [0.1, 0.05, 0.05], 2, 1),  # Low CPU single container
-            ("cpu_usage_percent", 0.5, [0.2], 3, 3),  # Low CPU single container and other containers unhealthy
-            ("cpu_usage_percent", 0.5, [0.6, 0.7, 0.8, 0.9], 5, 8),  # High CPU multiple containers
-            ("memory_usage_percent", 0.6, [0.9], 2, 3),  # High memory usage
-            ("memory_usage_percent", 0.6, [0.52], 2, 2),  # Low memory usage within tolerance
+            # Case 1: High CPU single container
+            ("cpu_usage_percent", 0.5, [0.8], 1, 2),
+            # Case 2: Low CPU multiple containers
+            ("cpu_usage_percent", 0.5, [0.1, 0.05, 0.05], 2, 1),
+            # Case 3: Low CPU single container with missing containers
+            ("cpu_usage_percent", 0.5, [0.2], 3, 3),
+            # Case 4: High CPU multiple containers
+            ("cpu_usage_percent", 0.5, [0.6, 0.7, 0.8, 0.9], 5, 6),
+            # Case 5: High memory usage
+            ("memory_usage_percent", 0.6, [0.9], 2, 2),
+            # Case 6: Low memory usage within tolerance
+            ("memory_usage_percent", 0.6, [0.52], 2, 2),
         ],
     )
     async def test_metric_scaling(
