@@ -202,7 +202,10 @@ def test_map_failures_followed_by_success(client, setup_app_and_function, servic
             results = list(f.map([3, 3, 3]))
             assert set(results) == {3, 4, 5}
 
-    assert len(ctx.get_requests("FunctionRetryInputs")) == 2
+    requests = ctx.get_requests("FunctionRetryInputs")
+    assert len(requests) >= 1  # Allow batching
+    total_inputs = sum(len(req.inputs) for req in requests)
+    assert total_inputs == 2  # Still ensure 2 items were retried
 
 
 def test_map_failures_followed_by_success_inputplane(client, setup_app_and_function_inputplane, servicer):
