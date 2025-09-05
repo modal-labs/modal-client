@@ -55,6 +55,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     By attaching this file system as a mount to one or more functions, they can
     share and persist data with each other.
 
+    **Note: `NetworkFileSystem` has been deprecated and will be removed.**
+
     **Usage**
 
     ```python
