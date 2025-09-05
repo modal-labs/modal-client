@@ -339,10 +339,8 @@ class _FlashPrometheusAutoscaler:
         # Get metrics based on autoscaler type (prometheus or internal)
         if use_internal_metrics:
             sum_metric, containers_with_metrics = await self._get_scaling_info_internal(containers)
-            target_metric_value = self.target_metric_value
         else:
             sum_metric, containers_with_metrics = await self._get_scaling_info_prometheus(containers)
-            target_metric_value = self.target_metric_value
 
         if containers_with_metrics == 0:
             return current_replicas
@@ -352,7 +350,7 @@ class _FlashPrometheusAutoscaler:
             sum_metric=sum_metric,
             containers_with_metrics=containers_with_metrics,
             total_containers=len(containers),
-            target_metric_value=target_metric_value,
+            target_metric_value=self.target_metric_value,
         )
 
         return desired_replicas
