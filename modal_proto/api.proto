@@ -2659,6 +2659,12 @@ message Sandbox {
 
   // Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
   optional uint32 idle_timeout_secs = 33;
+
+  // Set only by the server. Must not be transmitted to the client. Used to
+  // authenticate the client when directly connecting to a sandbox server running on
+  // the modal-worker to issue exec commands (and other operations as they
+  // become available).
+  optional string client_to_sandbox_direct_auth_secret = 34;
 }
 
 message SandboxCreateRequest {
@@ -2669,6 +2675,15 @@ message SandboxCreateRequest {
 
 message SandboxCreateResponse {
   string sandbox_id = 1;
+}
+
+message SandboxGetDirectAccessRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetDirectAccessResponse {
+  string jwt = 1;
+  string url = 2;
 }
 
 message SandboxGetFromNameRequest {
@@ -3606,6 +3621,7 @@ service ModalClient {
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxGetDirectAccess(SandboxGetDirectAccessRequest) returns (SandboxGetDirectAccessResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
