@@ -642,6 +642,7 @@ message AutoscalerSettings {
   optional uint32 scaleup_window = 4;
   // Maximum amount of time a container can be idle before being scaled down, in seconds; pka "container_idle_timeout"
   optional uint32 scaledown_window = 5;
+  reserved 6;
 }
 
 // Used for flash autoscaling
