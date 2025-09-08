@@ -2661,6 +2661,16 @@ message Sandbox {
   optional uint32 idle_timeout_secs = 33;
 }
 
+message SandboxCreateConnectCredentialsRequest {
+  string sandbox_id = 1;
+  string metadata = 2;
+}
+
+message SandboxCreateConnectCredentialsResponse {
+  string url = 1;
+  string token = 2;
+}
+
 message SandboxCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   Sandbox definition = 2;
@@ -3606,6 +3616,7 @@ service ModalClient {
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxCreateConnectCredentials(SandboxCreateConnectCredentialsRequest) returns (SandboxCreateConnectCredentialsResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
