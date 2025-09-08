@@ -95,6 +95,14 @@ class TestFlashAutoscalerLogic:
                 1,
                 22,
             ),
+            # 13 containers, 0 healthy, 9 unhealthy, 1 missing, 3 buffer
+            # expected number should just be > 10
+            (
+                {f"h{i}": None for i in range(1, 10)},
+                13,
+                3,
+                17,
+            ),
         ],
     )
     async def test_metric_scaling(
@@ -112,6 +120,7 @@ class TestFlashAutoscalerLogic:
 
         result = await autoscaler._compute_target_containers_prometheus(current_replicas=current_replicas)
         assert result == expected_replicas
+
 
 _MAX_FAILURES = 10
 

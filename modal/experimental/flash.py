@@ -431,12 +431,14 @@ class _FlashPrometheusAutoscaler:
         # This is used in 1) scale ratio denominators 2) provisioning base.
         # Max is used to handle case when buffer_containers are first initialized.
         num_provisioned_containers = max(current_replicas - buffer_containers, 1)
+        num_provisioned_alive_containers = max(len(containers) - buffer_containers, 1)
+        num_provisioned_and_alive_containers = min(num_provisioned_containers, num_provisioned_alive_containers)
 
         # Scale up assuming that every unhealthy container is at (1 + scale_up_tolerance)x the target metric value.
         # This way if all containers are unhealthy, we will increase our number of containers.
         scale_up_target_metric_value = (
             sum_metric + (1 + self.scale_up_tolerance) * n_containers_unhealthy * target_metric_value
-        ) / (num_provisioned_containers)
+        ) / (num_provisioned_and_alive_containers)
 
         # Scale down assuming that every container (including cold starting containers) are at the target metric value.
         # The denominator is just num_provisioned_containers because we don't want to account for the buffer containers.
