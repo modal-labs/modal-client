@@ -7,6 +7,7 @@ from inspect import Parameter
 from typing import Any
 
 from modal._traceback import extract_traceback
+from modal.config import config
 
 try:
     import cbor2  # type: ignore
@@ -351,6 +352,12 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
     else:
         assert msg_type is None
         return None
+
+
+def get_default_payload_format() -> "api_pb2.DataFormat.ValueType":
+    payload_format = (config.get("payload_format") or "pickle").lower()
+    data_format = api_pb2.DATA_FORMAT_CBOR if payload_format == "cbor" else api_pb2.DATA_FORMAT_PICKLE
+    return data_format
 
 
 def serialize_data_format(obj: Any, data_format: int) -> bytes:

@@ -30,7 +30,7 @@ from modal_proto import api_pb2
 
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
-from ._serialization import serialize
+from ._serialization import get_default_payload_format, serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import deprecation_warning
@@ -2187,8 +2187,7 @@ class _Image(_Object, type_prefix="im"):
             include_source=include_source,
         )
         if len(args) + len(kwargs) > 0:
-            payload_format = (config.get("payload_format") or "pickle").lower()
-            data_format = api_pb2.DATA_FORMAT_CBOR if payload_format == "cbor" else api_pb2.DATA_FORMAT_PICKLE
+            data_format = get_default_payload_format()
             args_serialized = serialize_data_format((args, kwargs), data_format)
 
             if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:

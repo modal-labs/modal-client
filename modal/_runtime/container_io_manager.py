@@ -389,9 +389,13 @@ class IOContext:
         )
 
     def generator_data_format(self) -> "api_pb2.DataFormat.ValueType":
-        # for batched inputs, each input/output could technically have distinct pickle/cbor data formats
-        # but in the single input case (which generators are) they are either asgi (web endpoints) or whatever
-        # the single input had as the data format
+        """Return the data format that this *generator* has declared
+        * web endpoints (that are always generators) use DATA_FORMAT_ASGI
+        * Other generators should use the whatever the data format of their input is
+
+        Since generators don't support "batched" mode, all outputs of a generator
+        IOContext will have the same output format (based on the sole input of that batch)
+        """
         if self.finalized_function.is_asgi:
             # web endpoints are generators using proto-encoded asgi as the data format
             return api_pb2.DATA_FORMAT_ASGI
@@ -780,7 +784,6 @@ class _ContainerIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
-            logger.debug("getting input slot lock")
             await self._input_slots.acquire()
 
             request.average_call_time = self.get_average_call_time()
@@ -848,7 +851,6 @@ class _ContainerIOManager:
         )
         async with dynamic_concurrency_manager:
             async for inputs in self._generate_inputs(batch_max_size, batch_wait_ms):
-                logger.debug("got inputs")
                 io_context = await IOContext.create(self._client, finalized_functions, inputs, batch_max_size > 0)
                 for input_id in io_context.input_ids:
                     self.current_inputs[input_id] = io_context
@@ -856,7 +858,6 @@ class _ContainerIOManager:
                 self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
                 yield io_context
                 self.current_input_id, self.current_input_started_at = (None, None)
-            logger.debug("no more inputs")
             # collect all active input slots, meaning all inputs have wrapped up.
             await self._input_slots.close()
 
@@ -872,7 +873,6 @@ class _ContainerIOManager:
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                 max_retries=None,  # Retry indefinitely, trying every 1s.
             )
-        logger.debug("sent outputs %s", outputs)
         input_ids = [output.input_id for output in outputs]
         self.exit_context(started_at, input_ids)
 
