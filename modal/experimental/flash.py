@@ -372,11 +372,11 @@ class _FlashPrometheusAutoscaler:
         # num_provisioned_alive_containers = max(n_total_containers - buffer_containers, 1)
         # num_provisioned_and_alive_containers = min(num_provisioned_containers, num_provisioned_alive_containers)
 
-        # Scale up assuming that every unhealthy container is at (1 + scale_up_tolerance)x the target metric value.
+        # Scale up assuming that every unhealthy container is at 1.5x the target metric value.
         # This way if all containers are unhealthy, we will increase our number of containers.
-        scale_up_target_metric_value = (
-            sum_metric + (1 + self.scale_up_tolerance) * n_containers_unhealthy * target_metric_value
-        ) / (num_provisioned_containers)
+        scale_up_target_metric_value = (sum_metric + 1.5 * n_containers_unhealthy * target_metric_value) / (
+            num_provisioned_containers
+        )
 
         # Scale down assuming that every container (including cold starting containers) are at the target metric value.
         # The denominator is just num_provisioned_containers because we don't want to account for the buffer containers.
@@ -582,7 +582,7 @@ async def flash_prometheus_autoscaler(
     min_containers: Optional[int] = None,
     max_containers: Optional[int] = None,
     # Corresponds to https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#tolerance
-    scale_up_tolerance: float = 0.5,
+    scale_up_tolerance: float = 0.1,
     # Corresponds to https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#tolerance
     scale_down_tolerance: float = 0.1,
     # Corresponds to https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#stabilization-window
