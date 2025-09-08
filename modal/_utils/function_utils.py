@@ -565,7 +565,7 @@ async def _create_input(
         method_name = ""  # proto compatible
 
     data_format = get_default_payload_format()
-    args_serialized = _serialize_data_format((args, kwargs), api_pb2.DATA_FORMAT_CBOR)
+    args_serialized = _serialize_data_format((args, kwargs), data_format)
 
     if should_upload(len(args_serialized), max_object_size_bytes, function_call_invocation_type):
         args_blob_id, r2_failed, r2_throughput_bytes_s = await blob_upload_with_r2_failure_info(args_serialized, stub)
