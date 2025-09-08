@@ -14,6 +14,7 @@ class _DummyContainer:
     def __init__(self, host: str):
         self.host = host
         self.port = 443
+        self.task_id = f"task-{host}"  # Add missing task_id attribute
 
 
 class _DummySample:
@@ -118,7 +119,7 @@ class TestFlashAutoscalerLogic:
         if overprovision_containers is not None:
             autoscaler.buffer_containers = overprovision_containers
 
-        result = await autoscaler._compute_target_containers_prometheus(current_replicas=current_replicas)
+        result = await autoscaler._compute_target_containers(current_replicas=current_replicas)
         assert result == expected_replicas
 
 
@@ -151,36 +152,18 @@ class TestFlashInternalMetricAutoscalerLogic:
     @pytest.mark.parametrize(
         "flash_metric,target_value,metrics,current_replicas,expected_replicas",
         [
-            ("cpu_usage_percent", 0.5, [0.8], 1, 2),  # High CPU single container
-            (
-                "cpu_usage_percent",
-                0.5,
-                [0.1, 0.05, 0.05],
-                2,
-                1,
-            ),  # Low CPU single container
-            (
-                "cpu_usage_percent",
-                0.5,
-                [0.2],
-                3,
-                3,
-            ),  # Low CPU single container and other containers unhealthy
-            (
-                "cpu_usage_percent",
-                0.5,
-                [0.6, 0.7, 0.8, 0.9],
-                5,
-                8,
-            ),  # High CPU multiple containers
-            ("memory_usage_percent", 0.6, [0.9], 2, 3),  # High memory usage
-            (
-                "memory_usage_percent",
-                0.6,
-                [0.52],
-                2,
-                2,
-            ),  # Low memory usage within tolerance
+            # Case 1: High CPU single container
+            ("cpu_usage_percent", 0.5, [0.8], 1, 2),
+            # Case 2: Low CPU multiple containers
+            ("cpu_usage_percent", 0.5, [0.1, 0.05, 0.05], 2, 1),
+            # Case 3: Low CPU single container with missing containers
+            ("cpu_usage_percent", 0.5, [0.2], 3, 3),
+            # Case 4: High CPU multiple containers
+            ("cpu_usage_percent", 0.5, [0.6, 0.7, 0.8, 0.9], 5, 6),
+            # Case 5: High memory usage
+            ("memory_usage_percent", 0.6, [0.9], 2, 2),
+            # Case 6: Low memory usage within tolerance
+            ("memory_usage_percent", 0.6, [0.52], 2, 2),
         ],
     )
     async def test_metric_scaling(
@@ -202,7 +185,7 @@ class TestFlashInternalMetricAutoscalerLogic:
             side_effect=[MagicMock(metrics=MagicMock(**{flash_metric: value})) for value in metrics]
         )
 
-        result = await autoscaler._compute_target_containers_internal(current_replicas=current_replicas)
+        result = await autoscaler._compute_target_containers(current_replicas=current_replicas)
         assert result == expected_replicas
 
     @pytest.mark.asyncio
@@ -213,7 +196,7 @@ class TestFlashInternalMetricAutoscalerLogic:
         autoscaler._get_all_containers = AsyncMock(return_value=[mock_container])
         autoscaler._get_container_metrics = AsyncMock(return_value=None)
 
-        result = await autoscaler._compute_target_containers_internal(current_replicas=3)
+        result = await autoscaler._compute_target_containers(current_replicas=3)
         assert result == 3
 
 
