@@ -32,14 +32,14 @@ from modal._partial_function import (
     _PartialFunctionFlags,
 )
 from modal._serialization import deserialize, deserialize_params
-from modal._utils.async_utils import TaskContext, synchronizer
+from modal._utils.async_utils import TaskContext, aclosing, synchronizer
 from modal._utils.function_utils import (
     callable_has_non_self_params,
 )
 from modal.app import App, _App
 from modal.client import Client, _Client
 from modal.config import logger
-from modal.exception import ExecutionError, InputCancellation, InvalidError
+from modal.exception import ExecutionError, InputCancellation
 from modal.running_app import RunningApp, running_app_from_layout
 from modal_proto import api_pb2
 
@@ -191,10 +191,6 @@ def call_function(
         async with container_io_manager.handle_input_exception.aio(io_context, started_at):
             # TODO(erikbern): any exception below shouldn't be considered a user exception
             if io_context.finalized_function.is_generator:
-                res = io_context.call_generator_async()
-                if not inspect.isasyncgen(res):
-                    raise InvalidError(f"Async generator function returned value of type {type(res)}")
-
                 # Send up to this many outputs at a time.
                 current_function_call_id = execution_context.current_function_call_id()
                 assert current_function_call_id is not None  # Set above.
@@ -208,21 +204,16 @@ def call_function(
                     generator_queue,
                 ):
                     item_count = 0
-                    async for value in res:
-                        await container_io_manager._queue_put.aio(generator_queue, value)
-                        item_count += 1
+                    async with aclosing(io_context.call_generator_async()) as gen:
+                        async for value in gen:
+                            await container_io_manager._queue_put.aio(generator_queue, value)
+                            item_count += 1
 
                 await container_io_manager._send_outputs.aio(
                     started_at, io_context.output_items_generator_done(started_at, item_count)
                 )
             else:
-                res = io_context.call_function_async()
-                if not inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-                    raise InvalidError(
-                        f"Async (non-generator) function returned value of type {type(res)}"
-                        " You might need to use @app.function(..., is_generator=True)."
-                    )
-                value = await res
+                value = await io_context.call_function_async()
                 await container_io_manager.push_outputs.aio(
                     io_context,
                     started_at,
@@ -238,10 +229,7 @@ def call_function(
         with container_io_manager.handle_input_exception(io_context, started_at):
             # TODO(erikbern): any exception below shouldn't be considered a user exception
             if io_context.finalized_function.is_generator:
-                res = io_context.call_generator_sync()
-                if not inspect.isgenerator(res):
-                    raise InvalidError(f"Generator function returned value of type {type(res)}")
-
+                gen = io_context.call_generator_sync()
                 # Send up to this many outputs at a time.
                 current_function_call_id = execution_context.current_function_call_id()
                 assert current_function_call_id is not None  # Set above.
@@ -255,7 +243,7 @@ def call_function(
                     generator_queue,
                 ):
                     item_count = 0
-                    for value in res:
+                    for value in gen:
                         container_io_manager._queue_put(generator_queue, value)
                         item_count += 1
 
@@ -263,13 +251,8 @@ def call_function(
                     started_at, io_context.output_items_generator_done(started_at, item_count)
                 )
             else:
-                res = io_context.call_function_sync()
-                if inspect.iscoroutine(res) or inspect.isgenerator(res) or inspect.isasyncgen(res):
-                    raise InvalidError(
-                        f"Sync (non-generator) function return value of type {type(res)}."
-                        " You might need to use @app.function(..., is_generator=True)."
-                    )
-                container_io_manager.push_outputs(io_context, started_at, res)
+                values = io_context.call_function_sync()
+                container_io_manager.push_outputs(io_context, started_at, values)
         reset_context()
 
     if container_io_manager.input_concurrency_enabled:
