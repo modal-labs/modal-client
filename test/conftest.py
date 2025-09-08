@@ -457,6 +457,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             input_plane_region=self._get_input_plane_region(function_proto),
             max_object_size_bytes=self.max_object_size_bytes,
             definition_id=definition_id,
+            data_format_compatibility=function_proto.data_format_compatibility,
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
