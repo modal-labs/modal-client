@@ -1485,6 +1485,17 @@ def test_function_schema_recording(client, servicer):
 
 
 @pytest.mark.usefixtures("set_env_client")
+def test_function_data_format_compatibility(client, servicer):
+    app = App("app")
+
+    @app.function(name="f", serialized=True)
+    def f(a: int) -> list[str]: ...
+
+    deploy_app(app, client=client)
+    assert set(f._get_metadata().data_format_compatibility) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+
+
+@pytest.mark.usefixtures("set_env_client")
 def test_function_schema_excludes_web_endpoints(client, servicer):
     # for now we exclude web endpoints since they don't use straight-forward arguments
     # in the same way as regular modal functions

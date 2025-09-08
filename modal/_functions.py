@@ -947,6 +947,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_schema = (
                     get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config)) if info.raw_f else None
                 )
+                if webhook_config is not None:
+                    data_format_compatibility = [api_pb2.DATA_FORMAT_ASGI]
+                else:
+                    data_format_compatibility = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+
                 # Create function remotely
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
@@ -1008,6 +1013,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     task_idle_timeout_secs=scaledown_window or 0,
                     # ---
                     function_schema=function_schema,
+                    data_format_compatibility=data_format_compatibility,
                 )
 
                 if isinstance(gpu, list):
@@ -1521,6 +1527,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             input_plane_region=self._input_plane_region,
             max_object_size_bytes=self._max_object_size_bytes,
             _experimental_flash_urls=self._experimental_flash_urls,
+            data_format_compatibility=self._metadata.data_format_compatibility if self._metadata else None,
         )
 
     def _check_no_web_url(self, fn_name: str):

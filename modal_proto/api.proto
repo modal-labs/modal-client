@@ -1489,6 +1489,7 @@ message Function {
   bool enable_gpu_snapshot = 85; // GPU memory snapshotting (alpha)
 
   uint32 startup_timeout_secs = 86;
+  repeated DataFormat data_format_compatibility = 87;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1813,6 +1814,7 @@ message FunctionHandleMetadata {
   // Use optional to ensure unset values default to None instead of 0
   optional uint64 max_object_size_bytes = 48;
   repeated string _experimental_flash_urls = 49; // (Optional) urls for flash services
+  repeated DataFormat data_format_compatibility = 50;
 }
 
 message FunctionInput {
