@@ -2556,7 +2556,6 @@ def test_deserialization_error_returns_exception(servicer, client):
 
 @skip_github_non_linux
 def test_cbor_payload_simple_function(servicer):
-    pytest.importorskip("cbor2")
     # Construct a single CBOR-encoded input to call test.supports.functions.square(2) -> 4
     cbor_args = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_CBOR)
     inputs = [
@@ -2665,7 +2664,6 @@ def test_custom_exception(servicer, capsys):
 @skip_github_non_linux
 def test_batch_sync_function_mixed_data_formats(servicer):
     """Test that batch mode correctly handles different serialization formats per input item."""
-    pytest.importorskip("cbor2")
     # Create inputs with different data formats
     args_list: list[tuple[tuple, dict]] = [
         ((10, 5), {}),  # Will use PICKLE format
