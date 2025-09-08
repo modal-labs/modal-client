@@ -1488,11 +1488,16 @@ def test_function_schema_recording(client, servicer):
 def test_function_data_format_compatibility(client, servicer):
     app = App("app")
 
-    @app.function(name="f", serialized=True)
+    @app.function(serialized=True)
     def f(a: int) -> list[str]: ...
+
+    @app.function(serialized=True)
+    @modal.fastapi_endpoint()
+    def web_f(a: int) -> list[str]: ...
 
     deploy_app(app, client=client)
     assert set(f._get_metadata().data_format_compatibility) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+    assert set(web_f._get_metadata().data_format_compatibility) == {api_pb2.DATA_FORMAT_ASGI}
 
 
 @pytest.mark.usefixtures("set_env_client")
