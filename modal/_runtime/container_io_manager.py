@@ -248,8 +248,9 @@ class IOContext:
                 f"Async (non-generator) function returned value of type {type(expected_coro)}"
                 " You might need to use @app.function(..., is_generator=True)."
             )
+        value = await expected_coro
         logger.debug(f"Finished input {self.input_ids}")
-        return self._prepare_batch_output(expected_coro)
+        return self._prepare_batch_output(value)
 
     def call_generator_sync(self) -> Generator[Any, None, None]:
         assert not self._is_batched
