@@ -290,7 +290,7 @@ class IOContext:
         ]
 
     async def output_items_exception(
-        self, started_at: float, task_id: str, exc: Exception
+        self, started_at: float, task_id: str, exc: BaseException
     ) -> list[api_pb2.FunctionPutOutputsItem]:
         # Failure outputs for when input exceptions occur
         serialized_tb, tb_line_cache = pickle_traceback(exc, task_id)
