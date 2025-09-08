@@ -582,7 +582,7 @@ async def flash_prometheus_autoscaler(
     min_containers: Optional[int] = None,
     max_containers: Optional[int] = None,
     # Corresponds to https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#tolerance
-    scale_up_tolerance: float = 0.1,
+    scale_up_tolerance: float = 0.5,
     # Corresponds to https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#tolerance
     scale_down_tolerance: float = 0.1,
     # Corresponds to https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#stabilization-window
