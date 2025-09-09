@@ -2667,12 +2667,12 @@ message Sandbox {
   optional uint32 idle_timeout_secs = 33;
 }
 
-message SandboxCreateConnectCredentialsRequest {
+message SandboxCreateConnectTokenRequest {
   string sandbox_id = 1;
   string metadata = 2;
 }
 
-message SandboxCreateConnectCredentialsResponse {
+message SandboxCreateConnectTokenResponse {
   string url = 1;
   string token = 2;
 }
@@ -3622,7 +3622,7 @@ service ModalClient {
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
-  rpc SandboxCreateConnectCredentials(SandboxCreateConnectCredentialsRequest) returns (SandboxCreateConnectCredentialsResponse);
+  rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
