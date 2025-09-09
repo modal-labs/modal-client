@@ -639,7 +639,10 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def create_connect_token(
         self, metadata: Optional[Union[str, dict[str, Any]]] = None
     ) -> SandboxConnectCredentials:
-        """Create a token for making HTTP connections to the sandbox."""
+        """Create a token for making HTTP connections to the sandbox.
+
+        Also accepts an optional metadata string or dict to associate with the token. This metadata
+        will be added to the headers by the proxy when forwarding requests to the sandbox."""
         if metadata is not None and isinstance(metadata, dict):
             try:
                 metadata = json.dumps(metadata)
