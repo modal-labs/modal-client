@@ -2151,11 +2151,13 @@ message ListPagination {
 }
 
 message MapAwaitRequest {
-  string function_call_id = 1;
+  oneof call_id {
+    string function_call_id = 1;
+    string map_token = 5;
+  }
   string last_entry_id = 2;
   double requested_at = 3; // Used for waypoints.
   float timeout = 4;
-  optional string map_token = 5;
 }
 
 message MapAwaitResponse {
@@ -2181,18 +2183,22 @@ message MapStartOrContinueItem {
 message MapStartOrContinueRequest {
   string function_id = 1;
   string parent_input_id = 2;
-  optional string function_call_id = 3; // This is given iff this is a map continue request.
+  // Old clients will send neither of these on map start requests.
+  oneof call_id {
+    string function_call_id = 3; // This is given iff this is a map continue request and map_token is not provided.
+    string map_token = 5;
+  }
   repeated MapStartOrContinueItem items = 4;
-  optional string map_token = 5; // Given if this is a map continue request (but for older clients it will never be given).
 }
 
 message MapStartOrContinueResponse {
+  // function_id and function_call_id are not necessary if map_token is provided, all 3 will be sent until it is safe to only send map_token.
+  string map_token = 6;
   string function_id = 1;
   string function_call_id = 2;
   uint32 max_inputs_outstanding = 3;
   repeated string attempt_tokens = 4;
   FunctionRetryPolicy retry_policy = 5;
-  optional string map_token = 6;
 }
 
 message MethodDefinition {
