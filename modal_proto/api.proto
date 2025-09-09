@@ -2183,7 +2183,7 @@ message MapStartOrContinueRequest {
   string parent_input_id = 2;
   optional string function_call_id = 3; // This is given iff this is a map continue request.
   repeated MapStartOrContinueItem items = 4;
-  optional string map_token = 5; // Given if this is a map continue request (but for older clients it is will never be given).
+  optional string map_token = 5; // Given if this is a map continue request (but for older clients it will never be given).
 }
 
 message MapStartOrContinueResponse {
