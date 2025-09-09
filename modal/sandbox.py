@@ -643,7 +643,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         if metadata is not None and isinstance(metadata, dict):
             try:
                 metadata = json.dumps(metadata)
-            except BaseException as e:
+            except Exception as e:
                 raise InvalidError(f"Failed to serialize metadata: {e}")
 
         req = api_pb2.SandboxCreateConnectTokenRequest(sandbox_id=self.object_id, metadata=metadata)
