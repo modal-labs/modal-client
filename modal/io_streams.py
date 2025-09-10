@@ -28,6 +28,11 @@ if TYPE_CHECKING:
     pass
 
 
+async def _decode_bytes_stream_to_str(stream: AsyncGenerator[Optional[bytes], None]) -> AsyncGenerator[str, None]:
+    async for item in stream:
+        yield item.decode("utf-8")
+
+
 async def _sandbox_logs_iterator(
     sandbox_id: str, file_descriptor: "api_pb2.FileDescriptor.ValueType", last_entry_id: str, client: _Client
 ) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
@@ -413,10 +418,7 @@ class _StreamReaderDirect(Generic[T]):
                 raise ValueError("Received empty message streaming stdio from sandbox.")
 
             offset += len(item.data)
-            if self._text:
-                yield item.data.decode("utf-8")
-            else:
-                yield item.data
+            yield item.data
 
     async def _get_stdio_stream_by_line(self) -> AsyncGenerator[Optional[bytes], None]:
         """Yield complete lines only (ending with \n), buffering partial lines until complete."""
@@ -431,10 +433,6 @@ class _StreamReaderDirect(Generic[T]):
         if line_buffer:
             yield line_buffer
 
-    async def _decode_stream_to_str(self, stream: AsyncGenerator[Optional[bytes], None]) -> AsyncGenerator[str, None]:
-        async for item in stream:
-            yield item.decode("utf-8")
-
     # TODO(saltzm): I sort of would prefer an API where you either do read() or as_stream() and as_stream() would
     # return a new stream object.
     # TODO(saltzm): Is it a problem I'm returning a new stream object every time?
@@ -445,7 +443,7 @@ class _StreamReaderDirect(Generic[T]):
             byte_stream = self._get_stdio_stream()
 
         if self._text:
-            return self._decode_stream_to_str(byte_stream)
+            return _decode_bytes_stream_to_str(byte_stream)
         else:
             return byte_stream
 
