@@ -15,7 +15,7 @@ from typer import Typer
 from .._output import make_console
 from ..exception import _CliUserExecutionError
 from ..output import enable_output
-from ..runner import run_app
+from ..runner import run_app, deploy_app
 from .import_refs import ImportRef, _get_runnable_app, import_file_or_module
 
 launch_cli = Typer(
@@ -30,7 +30,7 @@ launch_cli = Typer(
 
 
 def _launch_program(
-    name: str, filename: str, detach: bool, args: dict[str, Any], *, description: Optional[str] = None
+    name: str, filename: str, args: dict[str, Any], *, detach: bool = False, description: Optional[str] = None, deploy: bool = False,
 ) -> None:
     console = make_console()
     console.print(
@@ -48,20 +48,24 @@ def _launch_program(
     entrypoint = module.main
 
     app = _get_runnable_app(entrypoint)
+    print(app)
     app.set_description(description if description else base_cmd)
 
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
     with enable_output():
-        with run_app(app, detach=detach):
-            try:
-                if isasync:
-                    asyncio.run(func())
-                else:
-                    func()
-            except Exception as exc:
-                raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+        if deploy:
+            deploy_app(app)
+        else:
+            with run_app(app, detach=detach):
+                try:
+                    if isasync:
+                        asyncio.run(func())
+                    else:
+                        func()
+                except Exception as exc:
+                    raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
 
 
 @launch_cli.command(name="jupyter", help="Start Jupyter Lab on Modal.")
@@ -97,7 +101,7 @@ def jupyter(
         "mount": mount,
         "volume": volume,
     }
-    _launch_program("jupyter", "run_jupyter.py", detach, args)
+    _launch_program("jupyter", "run_jupyter.py", args, detach=detach)
 
 
 @launch_cli.command(name="vscode", help="Start Visual Studio Code on Modal.")
@@ -120,7 +124,7 @@ def vscode(
         "mount": mount,
         "volume": volume,
     }
-    _launch_program("vscode", "vscode.py", detach, args)
+    _launch_program("vscode", "vscode.py", args, detach=detach)
 
 
 @launch_cli.command(name="machine", help="Start an instance on Modal, with direct SSH access.", hidden=True)
@@ -164,8 +168,8 @@ def machine(
     _launch_program(
         "machine",
         "launch_instance_ssh.py",
-        True,
         args,
+        detach=True,
         description=name,
     )
 
@@ -192,4 +196,36 @@ def marimo(
         "mount": mount,
         "volume": volume,
     }
-    _launch_program("marimo", "run_marimo.py", detach, args)
+    _launch_program("marimo", "run_marimo.py", args, detach=detach)
+
+
+@launch_cli.command(name="gradio", help="Deploy a remote Gradio app on Modal.", hidden=True)
+def gradio(
+    app_file: str = None,
+    app_name: str = None,
+    auto_launch: bool = True,
+    cpu: int = 8,
+    memory: int = 32768,
+    gpu: Optional[str] = None,
+    image: str = "debian:12",
+    timeout: int = 3600,
+    add_python: Optional[str] = "3.12",
+    mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
+    volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
+    volume_mount: Optional[str] = None,  # path string to the mount point for the volume
+):
+    args = {
+        "app_file": app_file,
+        "app_name": app_name,
+        "auto_launch": auto_launch,
+        "cpu": cpu,
+        "memory": memory,
+        "gpu": gpu,
+        "timeout": timeout,
+        "image": image,
+        "add_python": add_python,
+        "mount": mount,
+        "volume": volume,
+        "volume_mount": volume_mount,
+    }
+    _launch_program("gradio", "deploy_gradio.py", args, deploy=True)
