@@ -329,8 +329,8 @@ class _StreamReaderThroughServer(Generic[T]):
 
     def __aiter__(self) -> AsyncIterator[T]:
         """mdmd:hidden"""
-        self._ensure_stream()
-        return self
+        return self._ensure_stream()
+        # return self
 
     async def __anext__(self) -> T:
         """mdmd:hidden"""
@@ -413,14 +413,51 @@ class _StreamReaderDirect(Generic[T]):
         else:
             return cast(T, data_bytes)
 
+    async def _get_stdio_stream(self) -> AsyncGenerator[Optional[bytes], None]:
+        """Stream raw bytes from the router client, yielding None at EOF.
+
+        This mirrors _get_logs() semantics for the through-server implementation.
+        """
+        if self._stream_type != StreamType.PIPE:
+            raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+
+        offset = 0
+        # Select the appropriate stream based on the file descriptor and current offset
+        if self._file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            stream = self._router_client.exec_stdout_read(self._task_id, self._object_id, offset=offset)
+        else:
+            stream = self._router_client.exec_stderr_read(self._task_id, self._object_id, offset=offset)
+
+        async for item in stream:
+            # TODO(saltzm): Figure out origin of "liveness" comment in other implementation.
+            if len(item.data) == 0:
+                # This is an error.
+                raise ValueError("Received empty message streaming stdio from sandbox.")
+
+            offset += len(item.data)
+            yield item.data
+
+    async def _get_stdio_stream_by_line(self) -> AsyncGenerator[Optional[bytes], None]:
+        """Yield complete lines only (ending with \n), buffering partial lines until complete."""
+        line_buffer = b""
+        async for message in self._get_stdio_stream():
+            assert isinstance(message, bytes)
+            line_buffer += message
+            while b"\n" in line_buffer:
+                line, line_buffer = line_buffer.split(b"\n", 1)
+                yield str(line + "\n")
+
+        if line_buffer:
+            yield line_buffer
+
+    # TODO(saltzm): I sort of would prefer an API where you either do read() or as_stream() and as_stream() would
+    # return a new stream object.
+    # TODO(saltzm): Is it a problem I'm returning a new stream object every time?
     def __aiter__(self) -> AsyncIterator[T]:
-        raise NotImplementedError
-
-    async def __anext__(self) -> T:
-        raise NotImplementedError
-
-    async def aclose(self):
-        return None
+        if self._by_line:
+            return self._get_stdio_by_line()
+        else:
+            return self._get_stdio_stream()
 
 
 class _StreamReader(Generic[T]):
