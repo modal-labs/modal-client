@@ -2151,7 +2151,7 @@ message ListPagination {
 }
 
 message MapAwaitRequest {
-  oneof call_id {
+  oneof call_info {
     string function_call_id = 1;
     string map_token = 5;
   }
@@ -2183,16 +2183,17 @@ message MapStartOrContinueItem {
 message MapStartOrContinueRequest {
   string function_id = 1;
   string parent_input_id = 2;
-  // Old clients will send neither of these on map start requests.
-  oneof call_id {
-    string function_call_id = 3; // This is given iff this is a map continue request and map_token is not provided.
+  // Clients will send call_info on map continue requests.
+  oneof call_info {
+    string function_call_id = 3;
     string map_token = 5;
   }
   repeated MapStartOrContinueItem items = 4;
 }
 
 message MapStartOrContinueResponse {
-  // function_id and function_call_id are not necessary if map_token is provided, all 3 will be sent until it is safe to only send map_token.
+  // function_id and function_call_id are not necessary if map_token is provided.
+  // All 3 will be sent until it is safe to only send map_token.
   string map_token = 6;
   string function_id = 1;
   string function_call_id = 2;
