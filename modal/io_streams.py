@@ -354,6 +354,8 @@ class _StreamReaderDirect(Generic[T]):
         object_id: str,
         object_type: Literal["sandbox"],
         router_client: SandboxRouterServiceClient,
+        # TODO(saltzm): We should probably just construct a different kind of dummy object
+        # if the user has DEVNULL for the stream_type.
         stream_type: StreamType = StreamType.PIPE,
         text: bool = True,
         by_line: bool = False,
@@ -376,30 +378,17 @@ class _StreamReaderDirect(Generic[T]):
         return self._file_descriptor
 
     async def read(self) -> T:
-        data_str = ""
-        data_bytes = b""
-
-        # Choose the appropriate stdio stream based on the file descriptor
-        if self._file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
-            stream = self._router_client.exec_stdout_read(self._task_id, self._object_id, offset=0)
-        else:
-            stream = self._router_client.exec_stderr_read(self._task_id, self._object_id, offset=0)
-
-        async for item in stream:
-            chunk = item.data
-            if not chunk:
-                continue
-            if self._text:
-                data_str += chunk.decode("utf-8")
-            else:
-                data_bytes += chunk
-
-        # Mark EOF once the stream is exhausted
-        self.eof = True
-
         if self._text:
+            data_str = ""
+            async for part in self:
+                data_str += cast(str, part)
+            self.eof = True
             return cast(T, data_str)
         else:
+            data_bytes = b""
+            async for part in self:
+                data_bytes += cast(bytes, part)
+            self.eof = True
             return cast(T, data_bytes)
 
     async def _get_stdio_stream(self) -> AsyncGenerator[Optional[bytes], None]:
@@ -437,25 +426,28 @@ class _StreamReaderDirect(Generic[T]):
             line_buffer += message
             while b"\n" in line_buffer:
                 line, line_buffer = line_buffer.split(b"\n", 1)
-                if self._text:
-                    yield line.decode("utf-8") + "\n"
-                else:
-                    yield line + b"\n"
+                yield line + b"\n"
 
         if line_buffer:
-            if self._text:
-                yield line_buffer.decode("utf-8")
-            else:
-                yield line_buffer
+            yield line_buffer
+
+    async def _decode_stream_to_str(self, stream: AsyncGenerator[Optional[bytes], None]) -> AsyncGenerator[str, None]:
+        async for item in stream:
+            yield item.decode("utf-8")
 
     # TODO(saltzm): I sort of would prefer an API where you either do read() or as_stream() and as_stream() would
     # return a new stream object.
     # TODO(saltzm): Is it a problem I'm returning a new stream object every time?
     def __aiter__(self) -> AsyncIterator[T]:
         if self._by_line:
-            return self._get_stdio_by_line()
+            byte_stream = self._get_stdio_stream_by_line()
         else:
-            return self._get_stdio_stream()
+            byte_stream = self._get_stdio_stream()
+
+        if self._text:
+            return self._decode_stream_to_str(byte_stream)
+        else:
+            return byte_stream
 
 
 class _StreamReader(Generic[T]):
@@ -509,12 +501,6 @@ class _StreamReader(Generic[T]):
 
     def __aiter__(self) -> AsyncIterator[T]:
         return self._impl.__aiter__()
-
-    async def __anext__(self) -> T:
-        return await self._impl.__anext__()
-
-    async def aclose(self):
-        return await self._impl.aclose()
 
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
