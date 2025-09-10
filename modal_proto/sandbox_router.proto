@@ -40,39 +40,41 @@ enum SandboxExecStderrConfig {
 }
 
 message SandboxExecStartRequest {
+  string task_id = 1;
   // Execution ID. This ID will be used to identify the execution for other
   // requests and ensure exec commands are idempotent.
   //
   // TODO(saltzm): Could instead have a separate idempotency key from the exec_id
   // like present day, and have the server generate the exec_id and return it in
   // the ExecStartResponse.
-  string exec_id = 1;
+  string exec_id = 2;
   // Command arguments to execute.
-  repeated string command_args= 2;
+  repeated string command_args= 3;
   // Configures how the stdout of the command will be handled.
-  SandboxExecStdoutConfig stdout_config = 3;
+  SandboxExecStdoutConfig stdout_config = 4;
   // Configures how the stderr of the command will be handled.
-  SandboxExecStderrConfig stderr_config = 4;
+  SandboxExecStderrConfig stderr_config = 5;
   // Deadline for the exec'd command to exit. If the command does not exit before
   // the deadline, the command will be killed. This is NOT the deadline for the
   // ExecStartRequest RPC to complete.
-  google.protobuf.Timestamp deadline = 5;
+  google.protobuf.Timestamp deadline = 6;
   // Working directory for the command.
-  optional string workdir = 6;
+  optional string workdir = 7;
   // Secret IDs to mount into the sandbox.
-  repeated string secret_ids = 7;
+  repeated string secret_ids = 8;
   // TODO(saltzm): Add remaining fields (pty_info, runtime_debug)
 }
 
 message SandboxExecStartResponse { }
 
 message SandboxExecStdioReadRequest {
-  string exec_id = 1;
+  string task_id = 1;
+  string exec_id = 2;
   // The offset to start reading from. This is used to resume reading from the
   // last read position if the connection is closed and reopened.
-  uint64 offset = 2;
+  uint64 offset = 3;
   // Which file descriptor to read from.
-  SandboxStdioFileDescriptor file_descriptor = 3;
+  SandboxStdioFileDescriptor file_descriptor = 4;
 }
 
 message SandboxExecStdioReadResponse {
@@ -80,17 +82,19 @@ message SandboxExecStdioReadResponse {
 }
 
 message SandboxExecStdinWriteRequest {
-  string exec_id = 1;
+  string task_id = 1;
+  string exec_id = 2;
   // The offset to start writing to. This is used to resume writing from the
   // last write position if the connection is closed and reopened.
-  uint64 offset = 2;
-  bytes data = 3;
+  uint64 offset = 3;
+  bytes data = 4;
 }
 
 message SandboxExecStdinWriteResponse { }
 
 message SandboxExecWaitRequest {
-  string exec_id = 1;
+  string task_id = 1;
+  string exec_id = 2;
 }
 
 message SandboxExecWaitResponse {
