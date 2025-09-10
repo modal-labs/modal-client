@@ -35,6 +35,7 @@ class _ContainerProcess(Generic[T]):
         text: bool = True,
         by_line: bool = False,
         router_client: Optional[SandboxRouterServiceClient] = None,
+        task_id: Optional[str] = None,
     ) -> None:
         # Choose the underlying implementation and delegate all calls to it.
         if router_client is None:
@@ -57,6 +58,7 @@ class _ContainerProcess(Generic[T]):
                 text=text,
                 by_line=by_line,
                 router_client=router_client,
+                task_id=task_id,
             )
 
     @property
@@ -281,6 +283,7 @@ class _ContainerProcessDirect:
         text: bool = True,
         by_line: bool = False,
         router_client: SandboxRouterServiceClient,
+        task_id: Optional[str] = None,
     ) -> None:
         self._client = client
         self._router_client = router_client
@@ -288,6 +291,7 @@ class _ContainerProcessDirect:
         self._exec_deadline = exec_deadline
         self._text = text
         self._by_line = by_line
+        self._task_id = task_id or ""
         self._stdout = _StreamReader[T](
             api_pb2.FILE_DESCRIPTOR_STDOUT,
             process_id,
@@ -298,6 +302,7 @@ class _ContainerProcessDirect:
             by_line=by_line,
             deadline=exec_deadline,
             router_client=self._router_client,
+            task_id=self._task_id,
         )
         self._stderr = _StreamReader[T](
             api_pb2.FILE_DESCRIPTOR_STDERR,
@@ -309,6 +314,7 @@ class _ContainerProcessDirect:
             by_line=by_line,
             deadline=exec_deadline,
             router_client=self._router_client,
+            task_id=self._task_id,
         )
 
     @property
@@ -331,7 +337,7 @@ class _ContainerProcessDirect:
         pass
 
     async def wait(self) -> int:
-        pass
+        return await self._router_client.exec_wait(self._task_id, self._process_id)
 
     async def attach(self):
         pass

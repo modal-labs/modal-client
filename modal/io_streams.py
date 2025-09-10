@@ -369,6 +369,7 @@ class _StreamReaderDirect(Generic[T]):
         text: bool = True,
         by_line: bool = False,
         deadline: Optional[float] = None,
+        task_id: Optional[str] = None,
     ) -> None:
         self._file_descriptor = file_descriptor
         self._object_type = object_type
@@ -379,13 +380,38 @@ class _StreamReaderDirect(Generic[T]):
         self._by_line = by_line
         self._deadline = deadline
         self.eof = False
+        self._task_id = task_id or ""
 
     @property
     def file_descriptor(self) -> int:
         return self._file_descriptor
 
     async def read(self) -> T:
-        raise NotImplementedError
+        data_str = ""
+        data_bytes = b""
+
+        # Choose the appropriate stdio stream based on the file descriptor
+        if self._file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            stream = self._router_client.exec_stdout_read(self._task_id, self._object_id, offset=0)
+        else:
+            stream = self._router_client.exec_stderr_read(self._task_id, self._object_id, offset=0)
+
+        async for item in stream:
+            chunk = item.data
+            if not chunk:
+                continue
+            if self._text:
+                data_str += chunk.decode("utf-8")
+            else:
+                data_bytes += chunk
+
+        # Mark EOF once the stream is exhausted
+        self.eof = True
+
+        if self._text:
+            return cast(T, data_str)
+        else:
+            return cast(T, data_bytes)
 
     def __aiter__(self) -> AsyncIterator[T]:
         raise NotImplementedError
@@ -413,6 +439,7 @@ class _StreamReader(Generic[T]):
         by_line: bool = False,
         deadline: Optional[float] = None,
         router_client: Optional[SandboxRouterServiceClient] = None,
+        task_id: Optional[str] = None,
     ) -> None:
         if router_client is None:
             self._impl = _StreamReaderThroughServer[T](
@@ -435,6 +462,7 @@ class _StreamReader(Generic[T]):
                 text=text,
                 by_line=by_line,
                 deadline=deadline,
+                task_id=task_id,
             )
 
     @property

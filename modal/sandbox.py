@@ -773,6 +773,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         if direct_access_metadata is not None:
             return await self._exec_direct(
+                task_id,
                 direct_access_metadata,
                 *args,
                 pty_info=pty_info,
@@ -842,6 +843,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def _exec_direct(
         self,
+        task_id: str,
         direct_access: DirectAccessMetadata,
         *args: str,
         pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
@@ -863,6 +865,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         import uuid
 
         process_id = str(uuid.uuid4())
+        # TODO(saltzm): Instantiate this once per sandbox?
         router_client = SandboxRouterServiceClient(direct_access.url, direct_access.jwt)
 
         # Compute the deadline as a protobuf timestamp.
@@ -874,6 +877,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         # Start the process.
         start_req = sr_pb2.SandboxExecStartRequest(
+            task_id=task_id,
             exec_id=process_id,
             command_args=args,
             # TODO(saltzm): Handle stdout/stderr configs.
@@ -896,6 +900,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             text=text,
             by_line=bufsize == 1,
             exec_deadline=time.monotonic() + int(timeout) if timeout else None,
+            task_id=task_id,
         )
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
