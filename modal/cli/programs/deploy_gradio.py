@@ -33,7 +33,6 @@ image = (
             }
         )
         .add_local_file(gradio_app_file, remote_path=f"/root/{gradio_app_file}")
-        .add_local_file("frpc_linux_amd64_v0.3", remote_path="/root/.cache/huggingface/gradio/frpc/frpc_linux_amd64_v0.3")
 )
 
 
