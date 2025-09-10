@@ -185,7 +185,7 @@ class _StreamReaderThroughServer(Generic[T]):
             if message is None:
                 break
             if self._text:
-                data_str += message.decode("utf-8")
+                data_str += message
             else:
                 data_bytes += message
 
@@ -291,7 +291,11 @@ class _StreamReaderThroughServer(Generic[T]):
                     if message is None:
                         completed = True
                         self.eof = True
-                    yield message
+                    else:
+                        if self._text:
+                            yield message.decode("utf-8")
+                        else:
+                            yield message
 
             except (GRPCError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
@@ -309,15 +313,21 @@ class _StreamReaderThroughServer(Generic[T]):
         async for message in self._get_logs():
             if message is None:
                 if self._line_buffer:
-                    yield self._line_buffer
+                    if self._text:
+                        yield self._line_buffer.decode("utf-8")
+                    else:
+                        yield self._line_buffer
                     self._line_buffer = b""
-                yield None
+                return
             else:
                 assert isinstance(message, bytes)
                 self._line_buffer += message
                 while b"\n" in self._line_buffer:
                     line, self._line_buffer = self._line_buffer.split(b"\n", 1)
-                    yield line + b"\n"
+                    if self._text:
+                        yield line.decode("utf-8") + "\n"
+                    else:
+                        yield line + b"\n"
 
     def _ensure_stream(self) -> AsyncGenerator[Optional[bytes], None]:
         if not self._stream:
@@ -330,27 +340,6 @@ class _StreamReaderThroughServer(Generic[T]):
     def __aiter__(self) -> AsyncIterator[T]:
         """mdmd:hidden"""
         return self._ensure_stream()
-        # return self
-
-    async def __anext__(self) -> T:
-        """mdmd:hidden"""
-        stream = self._ensure_stream()
-
-        value = await stream.__anext__()
-
-        # The stream yields None if it receives an EOF batch.
-        if value is None:
-            raise StopAsyncIteration
-
-        if self._text:
-            return cast(T, value.decode("utf-8"))
-        else:
-            return cast(T, value)
-
-    async def aclose(self):
-        """mdmd:hidden"""
-        if self._stream:
-            await self._stream.aclose()
 
 
 class _StreamReaderDirect(Generic[T]):
@@ -435,7 +424,10 @@ class _StreamReaderDirect(Generic[T]):
                 raise ValueError("Received empty message streaming stdio from sandbox.")
 
             offset += len(item.data)
-            yield item.data
+            if self._text:
+                yield item.data.decode("utf-8")
+            else:
+                yield item.data
 
     async def _get_stdio_stream_by_line(self) -> AsyncGenerator[Optional[bytes], None]:
         """Yield complete lines only (ending with \n), buffering partial lines until complete."""
@@ -445,10 +437,16 @@ class _StreamReaderDirect(Generic[T]):
             line_buffer += message
             while b"\n" in line_buffer:
                 line, line_buffer = line_buffer.split(b"\n", 1)
-                yield str(line + "\n")
+                if self._text:
+                    yield line.decode("utf-8") + "\n"
+                else:
+                    yield line + b"\n"
 
         if line_buffer:
-            yield line_buffer
+            if self._text:
+                yield line_buffer.decode("utf-8")
+            else:
+                yield line_buffer
 
     # TODO(saltzm): I sort of would prefer an API where you either do read() or as_stream() and as_stream() would
     # return a new stream object.
