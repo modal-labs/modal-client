@@ -23,6 +23,7 @@ class SandboxRouterServiceClient:
     returned by SandboxGetDirectAccess.
 
     TODO(saltzm): Review carefully, LLM generated.
+    TODO(saltzm): Handle network errors.
     """
 
     def __init__(self, server_url: str, jwt: str) -> None:
@@ -80,7 +81,7 @@ class SandboxRouterServiceClient:
         stub = await self._get_stub()
         return await stub.SandboxExecStart(request)
 
-    async def stdio_read(
+    async def exec_stdio_read(
         self,
         request: sr_pb2.SandboxExecStdioReadRequest,
     ) -> AsyncIterator[sr_pb2.SandboxExecStdioReadResponse]:
@@ -91,33 +92,37 @@ class SandboxRouterServiceClient:
             async for item in s:
                 yield item
 
-    async def stdout_read(
+    async def exec_stdout_read(
         self,
+        task_id: str,
         exec_id: str,
         offset: int = 0,
     ) -> AsyncIterator[sr_pb2.SandboxExecStdioReadResponse]:
         req = sr_pb2.SandboxExecStdioReadRequest(
+            task_id=task_id,
             exec_id=exec_id,
             offset=offset,
             file_descriptor=sr_pb2.SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT,
         )
-        async for item in self.stdio_read(req):
+        async for item in self.exec_stdio_read(req):
             yield item
 
-    async def stderr_read(
+    async def exec_stderr_read(
         self,
+        task_id: str,
         exec_id: str,
         offset: int = 0,
     ) -> AsyncIterator[sr_pb2.SandboxExecStdioReadResponse]:
         req = sr_pb2.SandboxExecStdioReadRequest(
+            task_id=task_id,
             exec_id=exec_id,
             offset=offset,
             file_descriptor=sr_pb2.SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR,
         )
-        async for item in self.stdio_read(req):
+        async for item in self.exec_stdio_read(req):
             yield item
 
-    async def stdin_write(
+    async def exec_stdin_write(
         self,
         requests: AsyncIterator[sr_pb2.SandboxExecStdinWriteRequest]
         | AsyncGenerator[sr_pb2.SandboxExecStdinWriteRequest, None],
@@ -131,8 +136,15 @@ class SandboxRouterServiceClient:
             # Receive the single response
             return await s.recv_message()
 
-    async def wait(self, request: sr_pb2.SandboxExecWaitRequest) -> sr_pb2.SandboxExecWaitResponse:
+    async def exec_wait(
+        self,
+        task_id: str,
+        exec_id: str,
+        timeout: int | None = None,
+    ) -> sr_pb2.SandboxExecWaitResponse:
         stub = await self._get_stub()
+        request = sr_pb2.SandboxExecWaitRequest(task_id=task_id, exec_id=exec_id)
+        # TODO(saltzm): Add timeout.
         return await stub.SandboxExecWait(request)
 
 
