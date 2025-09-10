@@ -2156,7 +2156,10 @@ message ListPagination {
 }
 
 message MapAwaitRequest {
-  string function_call_id = 1;
+  oneof call_info {
+    string function_call_id = 1;
+    string map_token = 5;
+  }
   string last_entry_id = 2;
   double requested_at = 3; // Used for waypoints.
   float timeout = 4;
@@ -2185,11 +2188,18 @@ message MapStartOrContinueItem {
 message MapStartOrContinueRequest {
   string function_id = 1;
   string parent_input_id = 2;
-  optional string function_call_id = 3; // This is given iff this is a map continue request.
+  // Clients will send call_info on map continue requests.
+  oneof call_info {
+    string function_call_id = 3;
+    string map_token = 5;
+  }
   repeated MapStartOrContinueItem items = 4;
 }
 
 message MapStartOrContinueResponse {
+  // function_id and function_call_id are not necessary if map_token is provided.
+  // All 3 will be sent until it is safe to only send map_token.
+  string map_token = 6;
   string function_id = 1;
   string function_call_id = 2;
   uint32 max_inputs_outstanding = 3;
