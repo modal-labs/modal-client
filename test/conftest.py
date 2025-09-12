@@ -460,6 +460,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             max_object_size_bytes=self.max_object_size_bytes,
             definition_id=definition_id,
             supported_data_formats=function_proto.supported_data_formats,
+            output_format=function_proto.output_format,
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
