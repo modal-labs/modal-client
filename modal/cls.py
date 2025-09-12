@@ -81,7 +81,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 @dataclasses.dataclass()
 class _ServiceOptions:
     # Note that default values should always be "untruthy" so we can detect when they are not set
-    secrets: typing.Collection[_Secret] = ()
+    secrets: Collection[_Secret] = ()
     validated_volumes: typing.Sequence[tuple[str, _Volume]] = ()
     resources: Optional[api_pb2.Resources] = None
     retry_policy: Optional[api_pb2.FunctionRetryPolicy] = None
@@ -686,7 +686,8 @@ More information on class parameterization can be found here: https://modal.com/
         cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
         gpu: GPU_T = None,
-        secrets: Collection[_Secret] = (),
+        env: Optional[dict[str, str]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
         max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
@@ -760,6 +761,10 @@ More information on class parameterization can be found here: https://modal.com/
 
         cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
         cls._initialize_from_other(self)
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(dict(**env))]
 
         new_options = _ServiceOptions(
             secrets=secrets,

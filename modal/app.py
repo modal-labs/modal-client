@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import inspect
 import typing
-from collections.abc import AsyncGenerator, Coroutine, Sequence
+from collections.abc import AsyncGenerator, Collection, Coroutine, Sequence
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
@@ -616,7 +616,8 @@ class _App:
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
-        secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
+        env: Optional[dict[str, str]] = None,  # Environment variables to set in the container
+        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
         gpu: Union[
             GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
@@ -694,6 +695,9 @@ class _App:
         if allow_cross_region_volumes is not None:
             deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(dict(**env))]
         secrets = [*self._secrets, *secrets]
 
         def wrapped(
@@ -846,7 +850,8 @@ class _App:
         _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
-        secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
+        env: Optional[dict[str, str]] = None,  # Environment variables to set in the container
+        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
         gpu: Union[
             GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
@@ -919,6 +924,10 @@ class _App:
             )
         if allow_cross_region_volumes is not None:
             deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(dict(**env))]
 
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class
