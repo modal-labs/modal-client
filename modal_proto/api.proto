@@ -2375,6 +2375,7 @@ message PTYInfo {
     PTY_TYPE_SHELL = 2;  // Replace function with shell
   }
   PTYType pty_type = 7;
+  bool interactive = 8;
 }
 
 message PortSpec {
