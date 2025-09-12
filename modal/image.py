@@ -1562,10 +1562,6 @@ class _Image(_Object, type_prefix="im"):
             ignore=lambda p: p.is_relative_to(".venv"),
         )
 
-        secrets = secrets or []
-        if env:
-            secrets = [*secrets, _Secret.from_dict(dict(**env))]
-
         image = modal.Image.debian_slim().dockerfile_commands(
             ["COPY data /data"],
             ignore=FilePatternMatcher("**/*.txt"),
