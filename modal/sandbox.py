@@ -699,6 +699,11 @@ class _Sandbox(_Object, type_prefix="sb"):
                 await asyncio.sleep(0.5)
         return self._task_id
 
+    async def wait_for_scheduled(self) -> None:
+        """Allows user to check if the sandbox has been scheduled on a worker."""
+
+        await self._get_task_id()
+
     @overload
     async def exec(
         self,
