@@ -951,7 +951,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_schema = (
                     get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config)) if info.raw_f else None
                 )
-                if webhook_config is not None:
+                if info.is_service_class():
+                    # classes don't have data formats themselves - methods do
+                    supported_data_formats = []
+                    output_format = api_pb2.DATA_FORMAT_UNSPECIFIED
+                elif webhook_config is not None:
                     supported_data_formats = [api_pb2.DATA_FORMAT_ASGI]
                     output_format = api_pb2.DATA_FORMAT_ASGI
                 else:
@@ -1538,6 +1542,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             max_object_size_bytes=self._max_object_size_bytes,
             _experimental_flash_urls=self._experimental_flash_urls,
             supported_data_formats=self._metadata.supported_data_formats if self._metadata else None,
+            output_format=self._metadata.output_format if self._metadata else api_pb2.DATA_FORMAT_UNSPECIFIED,
         )
 
     def _check_no_web_url(self, fn_name: str):
