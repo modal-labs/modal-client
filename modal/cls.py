@@ -686,7 +686,7 @@ More information on class parameterization can be found here: https://modal.com/
         cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
         gpu: GPU_T = None,
-        env: Optional[dict[str, str]] = None,
+        env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
         volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
@@ -764,7 +764,7 @@ More information on class parameterization can be found here: https://modal.com/
 
         secrets = secrets or []
         if env:
-            secrets = [*secrets, _Secret.from_dict(dict(**env))]
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         new_options = _ServiceOptions(
             secrets=secrets,

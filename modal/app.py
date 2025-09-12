@@ -616,7 +616,7 @@ class _App:
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
-        env: Optional[dict[str, str]] = None,  # Environment variables to set in the container
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
         secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
         gpu: Union[
             GPU_T, list[GPU_T]
@@ -697,7 +697,7 @@ class _App:
 
         secrets = secrets or []
         if env:
-            secrets = [*secrets, _Secret.from_dict(dict(**env))]
+            secrets = [*secrets, _Secret.from_dict(env)]
         secrets = [*self._secrets, *secrets]
 
         def wrapped(
@@ -850,7 +850,7 @@ class _App:
         _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
-        env: Optional[dict[str, str]] = None,  # Environment variables to set in the container
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
         secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
         gpu: Union[
             GPU_T, list[GPU_T]
@@ -927,7 +927,7 @@ class _App:
 
         secrets = secrets or []
         if env:
-            secrets = [*secrets, _Secret.from_dict(dict(**env))]
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class

@@ -279,6 +279,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the Sandbox.
         secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the Sandbox as environment variables.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
@@ -320,7 +321,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
-        env: Optional[dict[str, str]] = None,  # Environment variables to set in the Sandbox.
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
@@ -345,7 +345,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         secrets = secrets or []
         if env:
-            secrets = [*secrets, _Secret.from_dict(dict(**env))]
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         return await _Sandbox._create(
             *args,
@@ -384,6 +384,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the Sandbox.
         secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the Sandbox as environment variables.
         mounts: Sequence[_Mount] = (),
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
@@ -424,7 +425,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
         verbose: bool = False,
-        env: Optional[dict[str, str]] = None,  # Environment variables to set in the Sandbox.
     ):
         # This method exposes some internal arguments (currently `mounts`) which are not in the public API
         # `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
@@ -440,7 +440,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         secrets = secrets or []
         if env:
-            secrets = [*secrets, _Secret.from_dict(dict(**env))]
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -718,11 +718,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
+        env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
         text: Literal[True] = True,
         bufsize: Literal[-1, 1] = -1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
-        env: Optional[dict[str, Union[str, None]]] = None,
     ) -> _ContainerProcess[str]: ...
 
     @overload
@@ -734,11 +734,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
+        env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
         text: Literal[False] = False,
         bufsize: Literal[-1, 1] = -1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
-        env: Optional[dict[str, Union[str, None]]] = None,
     ) -> _ContainerProcess[bytes]: ...
 
     async def exec(
@@ -749,6 +749,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set during command execution.
         secrets: Optional[
             Collection[_Secret]
         ] = None,  # Secrets to inject as environment variables during command execution.
@@ -759,7 +760,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         bufsize: Literal[-1, 1] = -1,
         # Internal option to set terminal size and metadata
         _pty_info: Optional[api_pb2.PTYInfo] = None,
-        env: Optional[dict[str, Union[str, None]]] = None,  # Environment variables to set during command execution.
     ):
         """Execute a command in the Sandbox and return a ContainerProcess handle.
 

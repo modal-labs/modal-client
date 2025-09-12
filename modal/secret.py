@@ -239,7 +239,7 @@ class _Secret(_Object, type_prefix="st"):
     @staticmethod
     def from_dict(
         env_dict: dict[
-            str, Union[str, None]
+            str, Optional[str]
         ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
     ) -> "_Secret":
         """Create a secret from a str-str dictionary. Values can also be `None`, which is ignored.

@@ -700,7 +700,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         experimental_options: Optional[dict[str, str]] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
-        env: Optional[dict[str, str]] = None,
+        env: Optional[dict[str, Optional[str]]] = None,
     ) -> "_Function":
         """mdmd:hidden"""
         # Needed to avoid circular imports
@@ -739,7 +739,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         secrets = secrets or []
         if env:
-            secrets = [*secrets, _Secret.from_dict(dict(**env))]
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         function_spec = _FunctionSpec(
             mounts=all_mounts,
