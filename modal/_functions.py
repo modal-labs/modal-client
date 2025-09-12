@@ -861,6 +861,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             return deps
 
+        if info.is_service_class():
+            # classes don't have data formats themselves - methods do
+            supported_data_formats = []
+            output_format = api_pb2.DATA_FORMAT_UNSPECIFIED
+        elif webhook_config is not None:
+            supported_data_formats = [api_pb2.DATA_FORMAT_ASGI]
+            output_format = api_pb2.DATA_FORMAT_ASGI
+        else:
+            # TODO: add CBOR support
+            supported_data_formats = [api_pb2.DATA_FORMAT_PICKLE]
+            output_format = api_pb2.DATA_FORMAT_PICKLE
+
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
 
@@ -873,6 +885,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_schema=get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config))
                 if info.raw_f
                 else None,
+                supported_data_formats=supported_data_formats,
+                output_format=output_format,
             )
             if method_definitions:
                 for method_name, method_definition in method_definitions.items():
@@ -951,17 +965,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_schema = (
                     get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config)) if info.raw_f else None
                 )
-                if info.is_service_class():
-                    # classes don't have data formats themselves - methods do
-                    supported_data_formats = []
-                    output_format = api_pb2.DATA_FORMAT_UNSPECIFIED
-                elif webhook_config is not None:
-                    supported_data_formats = [api_pb2.DATA_FORMAT_ASGI]
-                    output_format = api_pb2.DATA_FORMAT_ASGI
-                else:
-                    # TODO: add CBOR support
-                    supported_data_formats = [api_pb2.DATA_FORMAT_PICKLE]
-                    output_format = api_pb2.DATA_FORMAT_PICKLE
 
                 # Create function remotely
                 function_definition = api_pb2.Function(
