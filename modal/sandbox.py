@@ -7,6 +7,8 @@ from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
 
+from modal._pty import get_pty_info
+
 from .config import config, logger
 
 if TYPE_CHECKING:
@@ -125,6 +127,10 @@ class _Sandbox(_Object, type_prefix="sb"):
     _enable_snapshot: bool = False
 
     @staticmethod
+    def _default_pty_info() -> api_pb2.PTYInfo:
+        return get_pty_info(shell=True)
+
+    @staticmethod
     def _new(
         args: Sequence[str],
         image: _Image,
@@ -143,7 +149,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
-        pty_info: Optional[api_pb2.PTYInfo] = None,
+        pty: bool = False,
+        pty_info: Optional[api_pb2.PTYInfo] = None,  # deprecated
         encrypted_ports: Sequence[int] = [],
         h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
@@ -176,6 +183,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
+
+        pty_info_proto = pty_info
+        if pty:
+            pty_info_proto = _Sandbox._default_pty_info()
 
         def _deps() -> list[_Object]:
             deps: list[_Object] = [image] + list(mounts) + list(secrets)
@@ -247,7 +258,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 runtime_debug=config.get("function_runtime_debug"),
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
-                pty_info=pty_info,
+                pty_info=pty_info_proto,
                 scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
@@ -301,7 +312,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         volumes: dict[
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
-        pty_info: Optional[api_pb2.PTYInfo] = None,
+        pty: bool = False,  # Enable a PTY for the Sandbox
         # List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
         encrypted_ports: Sequence[int] = [],
         # List of encrypted ports to tunnel into the sandbox, using HTTP/2.
@@ -320,6 +331,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
+        pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
@@ -342,6 +354,13 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "A sandbox's environment is determined by the app it is associated with.",
             )
 
+        if pty_info is not None:
+            deprecation_warning(
+                (2025, 9, 12),
+                "The `pty_info` parameter is deprecated and will be removed in a future release. "
+                "Set the `pty` parameter to `True` instead.",
+            )
+
         return await _Sandbox._create(
             *args,
             app=app,
@@ -360,7 +379,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             block_network=block_network,
             cidr_allowlist=cidr_allowlist,
             volumes=volumes,
-            pty_info=pty_info,
+            pty=pty,
             encrypted_ports=encrypted_ports,
             h2_ports=h2_ports,
             unencrypted_ports=unencrypted_ports,
@@ -370,6 +389,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             client=client,
             verbose=verbose,
+            pty_info=pty_info,
         )
 
     @staticmethod
@@ -402,7 +422,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         volumes: dict[
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
-        pty_info: Optional[api_pb2.PTYInfo] = None,
+        pty: bool = False,  # Enable a PTY for the Sandbox
         # List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
         encrypted_ports: Sequence[int] = [],
         # List of encrypted ports to tunnel into the sandbox, using HTTP/2.
@@ -419,6 +439,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
         verbose: bool = False,
+        pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead
     ):
         # This method exposes some internal arguments (currently `mounts`) which are not in the public API
         # `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
@@ -451,6 +472,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             block_network=block_network,
             cidr_allowlist=cidr_allowlist,
             volumes=volumes,
+            pty=pty,
             pty_info=pty_info,
             encrypted_ports=encrypted_ports,
             h2_ports=h2_ports,
@@ -703,7 +725,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def exec(
         self,
         *args: str,
-        pty_info: Optional[api_pb2.PTYInfo] = None,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
@@ -711,6 +732,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret] = (),
         text: Literal[True] = True,
         bufsize: Literal[-1, 1] = -1,
+        pty: bool = False,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ) -> _ContainerProcess[str]: ...
 
@@ -718,7 +741,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def exec(
         self,
         *args: str,
-        pty_info: Optional[api_pb2.PTYInfo] = None,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
@@ -726,13 +748,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret] = (),
         text: Literal[False] = False,
         bufsize: Literal[-1, 1] = -1,
+        pty: bool = False,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ) -> _ContainerProcess[bytes]: ...
 
     async def exec(
         self,
         *args: str,
-        pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
@@ -743,8 +766,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Control line-buffered output.
         # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
         bufsize: Literal[-1, 1] = -1,
+        pty: bool = False,  # Enable a PTY for the command
         # Internal option to set terminal size and metadata
         _pty_info: Optional[api_pb2.PTYInfo] = None,
+        pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
     ):
         """Execute a command in the Sandbox and return a ContainerProcess handle.
 
@@ -765,6 +790,17 @@ class _Sandbox(_Object, type_prefix="sb"):
         ```
         """
 
+        if pty_info is not None or _pty_info is not None:
+            deprecation_warning(
+                (2025, 9, 12),
+                "The `_pty_info` and `pty_info` parameters are deprecated and will be removed in a future release. "
+                "Set the `pty` parameter to `True` instead.",
+            )
+
+        pty_info_proto = _pty_info or pty_info
+        if pty:
+            pty_info_proto = self._default_pty_info()
+
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
         _validate_exec_args(args)
@@ -777,7 +813,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.ContainerExecRequest(
             task_id=task_id,
             command=args,
-            pty_info=_pty_info or pty_info,
+            pty_info=pty_info_proto,
             runtime_debug=config.get("function_runtime_debug"),
             timeout_secs=timeout or 0,
             workdir=workdir,

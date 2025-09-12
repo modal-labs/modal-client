@@ -22,7 +22,6 @@ from modal_proto import api_pb2
 
 from ._functions import _Function
 from ._object import _get_environment_name, _Object
-from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
@@ -607,9 +606,7 @@ async def _interactive_shell(
 
         try:
             if pty:
-                container_process = await sandbox.exec(
-                    *sandbox_cmds, pty_info=get_pty_info(shell=True) if pty else None
-                )
+                container_process = await sandbox.exec(*sandbox_cmds, pty=pty)
                 await container_process.attach()
             else:
                 container_process = await sandbox.exec(
