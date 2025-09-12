@@ -673,6 +673,7 @@ class _App:
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        _experimental_restrict_output: bool = False,  # outputs safe to deserialize and consumable by libmodal beta
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal Function with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -831,6 +832,7 @@ class _App:
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
+                _experimental_restrict_output=_experimental_restrict_output,
             )
 
             self._add_function(function, webhook_config is not None)
