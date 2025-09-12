@@ -22,6 +22,7 @@ from modal.volume import _Volume
 from modal_proto import api_pb2
 
 from ._object import _get_environment_name, _Object
+from ._pty import get_default_pty_info_shell
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import TaskContext, synchronize_api
@@ -743,6 +744,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Control line-buffered output.
         # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
         bufsize: Literal[-1, 1] = -1,
+        pty: bool = False,  # Enable PTY
+        interactive: bool = False,  # PTY session is interactive
         # Internal option to set terminal size and metadata
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
@@ -773,11 +776,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         secret_coros = [secret.hydrate(client=self._client) for secret in secrets]
         await TaskContext.gather(*secret_coros)
 
+        pty_info = _pty_info or pty_info
+        if pty:
+            pty_info = get_default_pty_info_shell(interactive)
+
         task_id = await self._get_task_id()
         req = api_pb2.ContainerExecRequest(
             task_id=task_id,
             command=args,
-            pty_info=_pty_info or pty_info,
+            pty_info=pty_info,
             runtime_debug=config.get("function_runtime_debug"),
             timeout_secs=timeout or 0,
             workdir=workdir,

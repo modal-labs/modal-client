@@ -51,3 +51,16 @@ def get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         env_term_program=os.environ.get("TERM_PROGRAM"),
         pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL if shell else api_pb2.PTYInfo.PTY_TYPE_FUNCTION,
     )
+
+
+def get_default_pty_info_shell(interactive: bool) -> api_pb2.PTYInfo:
+    return api_pb2.PTYInfo(
+        enabled=True,
+        winsz_rows=120,
+        winsz_cols=120,
+        env_term="xterm",
+        env_colorterm="truecolor",
+        env_term_program="",
+        pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL,
+        interactive=interactive,
+    )
