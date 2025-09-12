@@ -287,6 +287,28 @@ def test_run_commands_secrets_type_validation(builder_version, servicer, client)
         )
 
 
+@pytest.mark.parametrize(
+    "env,secrets,expected",
+    [
+        (None, None, 0),
+        ({"EV1": "ev1"}, None, 1),
+        ({"EV1": "ev1", "EV2": "ev2"}, None, 1),
+        ({"EV1": "ev1"}, [Secret.from_dict({"S1": "s1"})], 2),
+        ({"EV1": "ev1"}, [Secret.from_dict({"S1": "s1"}), Secret.from_dict({"S2": "s2"})], 3),
+    ],
+)
+def test_env_parameter_conversion(builder_version, servicer, client, env, secrets, expected):
+    """Test that env parameter is properly converted to secrets."""
+    app = App()
+
+    image = Image.debian_slim().run_commands("echo $FOO", env=env, secrets=secrets)
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert len(layers[0].secret_ids) == expected
+
+
 def test_wrong_type(builder_version, servicer, client):
     image = Image.debian_slim()
     for m in [image.pip_install, image.apt_install, image.run_commands]:

@@ -3,7 +3,7 @@ import asyncio
 import json
 import os
 import time
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
 
@@ -279,7 +279,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
-        secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the Sandbox.
+        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the Sandbox as environment variables.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
         # The amount of time in seconds that a sandbox can be idle before being terminated.
@@ -342,6 +343,10 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "A sandbox's environment is determined by the app it is associated with.",
             )
 
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
+
         return await _Sandbox._create(
             *args,
             app=app,
@@ -379,7 +384,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
-        secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the Sandbox.
+        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the Sandbox as environment variables.
         mounts: Sequence[_Mount] = (),
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
@@ -431,6 +437,10 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
             raise InvalidError("Cannot specify open ports when `block_network` is enabled")
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -708,7 +718,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
-        secrets: Sequence[_Secret] = (),
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         text: Literal[True] = True,
         bufsize: Literal[-1, 1] = -1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
@@ -723,7 +734,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
-        secrets: Sequence[_Secret] = (),
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         text: Literal[False] = False,
         bufsize: Literal[-1, 1] = -1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
@@ -737,7 +749,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
-        secrets: Sequence[_Secret] = (),
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set during command execution.
+        secrets: Optional[
+            Collection[_Secret]
+        ] = None,  # Secrets to inject as environment variables during command execution.
         # Encode output as text.
         text: bool = True,
         # Control line-buffered output.
@@ -768,6 +783,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
         _validate_exec_args(args)
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         # Force secret resolution so we can pass the secret IDs to the backend.
         secret_coros = [secret.hydrate(client=self._client) for secret in secrets]
