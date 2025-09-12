@@ -315,11 +315,6 @@ class _StreamReaderThroughServer(Generic[T]):
                 self._stream = self._get_logs()
         return self._stream
 
-    def __aiter__(self) -> AsyncIterator[T]:
-        """mdmd:hidden"""
-        self._ensure_stream()
-        return self
-
     async def __anext__(self) -> T:
         """mdmd:hidden"""
         stream = self._ensure_stream()
@@ -441,32 +436,9 @@ class _StreamReaderDirect(Generic[T]):
 
         return self._stream
 
-    # TODO(saltzm): I sort of would prefer an API where you either do read() or as_stream() and as_stream() would
-    # return a new stream object.
-    # TODO(saltzm): Is it a problem I'm returning a new stream object every time?
-    # def __aiter__(self) -> AsyncIterator[T]:
-    #    if self._by_line:
-    #        byte_stream = self._get_stdio_stream_by_line()
-    #    else:
-    #        byte_stream = self._get_stdio_stream()
-
-    #    if self._text:
-    #        return _decode_bytes_stream_to_str(byte_stream)
-    #    else:
-    #        return byte_stream
-
-    def __aiter__(self) -> AsyncIterator[T]:
-        """mdmd:hidden"""
+    async def __anext__(self) -> T:
         # TODO (saltzm): I don't know if we need this stream-caching behavior. I think now that we save
         # exec output and we can consume it more than once, this could return a new stream object every time.
-        # I originally did this, and removed __anext__/aclose, but had trouble doing the same with
-        # _StreamReaderThroughServer, so I'm doing this to match the behavior and allow _StreamReader to
-        # implement __anext__ and aclose.
-        self._ensure_stream()
-        return self
-
-    async def __anext__(self) -> T:
-        """mdmd:hidden"""
         stream = self._ensure_stream()
 
         # This raises StopAsyncIteration if the stream is at EOF.
@@ -478,7 +450,6 @@ class _StreamReaderDirect(Generic[T]):
             return cast(T, value)
 
     async def aclose(self):
-        """mdmd:hidden"""
         if self._stream:
             await self._stream.aclose()
 
@@ -532,8 +503,12 @@ class _StreamReader(Generic[T]):
     async def read(self) -> T:
         return await self._impl.read()
 
+    # TODO (saltzm): I'd prefer to have the implementation classes only implement __aiter__
+    # and have them return generator functions directly, but synchronicity doesn't let us
+    # return self._impl.__aiter__() here because it won't properly wrap the implementation
+    # classes.
     def __aiter__(self) -> AsyncIterator[T]:
-        return self._impl.__aiter__()
+        return self
 
     async def __anext__(self) -> T:
         return await self._impl.__anext__()
