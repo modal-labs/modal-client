@@ -449,6 +449,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     is_method=True,
                     use_method_name=method_name,
                     function_schema=method_definition.function_schema,
+                    supported_data_formats=method_definition.supported_data_formats,
+                    output_format=method_definition.output_format,
                 )
                 for method_name, method_definition in function_proto.method_definitions.items()
             },
@@ -1099,6 +1101,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 function_type=method_definition.function_type,
                 web_url=method_web_url,
                 function_schema=method_definition.function_schema,
+                supported_data_formats=method_definition.supported_data_formats,
+                output_format=method_definition.output_format,
             )
         await stream.send_message(
             api_pb2.FunctionPrecreateResponse(

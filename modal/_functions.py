@@ -823,17 +823,21 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             for method_name, partial_function in interface_methods.items():
                 function_type = get_function_type(partial_function.params.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
+                is_web_endpoint = partial_function._is_web_endpoint()
                 method_schema = get_callable_schema(
                     partial_function._get_raw_f(),
-                    is_web_endpoint=partial_function._is_web_endpoint(),
+                    is_web_endpoint=is_web_endpoint,
                     ignore_first_argument=True,
                 )
-
                 method_definition = api_pb2.MethodDefinition(
                     webhook_config=partial_function.params.webhook_config,
                     function_type=function_type,
                     function_name=function_name,
                     function_schema=method_schema,
+                    supported_data_formats=[api_pb2.DATA_FORMAT_ASGI]
+                    if is_web_endpoint
+                    else [api_pb2.DATA_FORMAT_PICKLE],
+                    output_format=api_pb2.DATA_FORMAT_ASGI if is_web_endpoint else api_pb2.DATA_FORMAT_PICKLE,
                 )
                 method_definitions[method_name] = method_definition
 

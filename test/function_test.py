@@ -1498,6 +1498,14 @@ def test_function_supported_data_formats(client, servicer):
     @modal.fastapi_endpoint()
     def web_f(): ...
 
+    @app.cls(serialized=True)
+    class A:
+        @modal.method()
+        def f(self): ...
+
+        @modal.fastapi_endpoint()
+        def web_f(self): ...
+
     deploy_app(app, client=client)
     f_metadata = f._get_metadata()
     assert set(f_metadata.supported_data_formats) == {api_pb2.DATA_FORMAT_PICKLE}
@@ -1505,6 +1513,10 @@ def test_function_supported_data_formats(client, servicer):
     assert set(g_metadata.supported_data_formats) == {api_pb2.DATA_FORMAT_PICKLE}
     web_f_metadata = web_f._get_metadata()
     assert set(web_f_metadata.supported_data_formats) == {api_pb2.DATA_FORMAT_ASGI}
+
+    cls_metadata = typing.cast(modal.Cls, A)._get_class_service_function()._get_metadata()
+    assert cls_metadata.method_handle_metadata["f"].output_format == api_pb2.DATA_FORMAT_PICKLE
+    assert cls_metadata.method_handle_metadata["web_f"].output_format == api_pb2.DATA_FORMAT_ASGI
 
 
 @pytest.mark.usefixtures("set_env_client")

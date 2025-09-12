@@ -1884,6 +1884,8 @@ message FunctionPrecreateRequest {
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 8;
   FunctionSchema function_schema = 9;
+  repeated DataFormat supported_data_formats = 10;
+  DataFormat output_format = 11;
 }
 
 message FunctionPrecreateResponse {
@@ -2222,6 +2224,8 @@ message MethodDefinition {
   WebUrlInfo web_url_info = 5;
   repeated CustomDomainInfo custom_domain_info = 6;
   FunctionSchema function_schema = 7;
+  repeated DataFormat supported_data_formats = 10;
+  DataFormat output_format = 11;
 }
 
 message MountFile {
