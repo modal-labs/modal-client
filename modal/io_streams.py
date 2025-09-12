@@ -16,12 +16,13 @@ from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal.exception import ClientClosed, InvalidError
-from modal_proto import api_pb2
+from modal_proto import api_pb2, sandbox_router_pb2 as sr_pb2
 
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from ._utils.sandbox_utils import SandboxRouterServiceClient
 from .client import _Client
+from .config import logger
 from .stream_type import StreamType
 
 if TYPE_CHECKING:
@@ -89,27 +90,6 @@ T = TypeVar("T", str, bytes)
 
 
 class _StreamReaderThroughServer(Generic[T]):
-    """Retrieve logs from a stream (`stdout` or `stderr`) via the Modal server.
-
-    As an asynchronous iterable, the object supports the `for` and `async for`
-    statements. Just loop over the object to read in chunks.
-
-    **Usage**
-
-    ```python fixture:running_app
-    from modal import Sandbox
-
-    sandbox = Sandbox.create(
-        "bash",
-        "-c",
-        "for i in $(seq 1 10); do echo foo; sleep 0.1; done",
-        app=running_app,
-    )
-    for message in sandbox.stdout:
-        print(f"Message: {message}")
-    ```
-    """
-
     _stream: Optional[AsyncGenerator[Optional[bytes], None]]
 
     def __init__(
@@ -186,14 +166,16 @@ class _StreamReaderThroughServer(Generic[T]):
         """
         data_str = ""
         data_bytes = b""
+        logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read starting")
         async for message in self._get_logs():
             if message is None:
                 break
             if self._text:
-                data_str += message
+                data_str += message.decode("utf-8")
             else:
                 data_bytes += message
 
+        logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
         if self._text:
             return cast(T, data_str)
         else:
@@ -238,6 +220,7 @@ class _StreamReaderThroughServer(Generic[T]):
                     elif isinstance(exc, ClientClosed):
                         # If the client was closed, the user has triggered a cleanup.
                         break
+                logger.error(f"{self._object_id} stream read failure while consuming process output: {exc}")
                 raise exc
 
     async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
@@ -296,11 +279,7 @@ class _StreamReaderThroughServer(Generic[T]):
                     if message is None:
                         completed = True
                         self.eof = True
-                    else:
-                        if self._text:
-                            yield message.decode("utf-8")
-                        else:
-                            yield message
+                    yield message
 
             except (GRPCError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
@@ -318,21 +297,15 @@ class _StreamReaderThroughServer(Generic[T]):
         async for message in self._get_logs():
             if message is None:
                 if self._line_buffer:
-                    if self._text:
-                        yield self._line_buffer.decode("utf-8")
-                    else:
-                        yield self._line_buffer
+                    yield self._line_buffer
                     self._line_buffer = b""
-                return
+                yield None
             else:
                 assert isinstance(message, bytes)
                 self._line_buffer += message
                 while b"\n" in self._line_buffer:
                     line, self._line_buffer = self._line_buffer.split(b"\n", 1)
-                    if self._text:
-                        yield line.decode("utf-8") + "\n"
-                    else:
-                        yield line + b"\n"
+                    yield line + b"\n"
 
     def _ensure_stream(self) -> AsyncGenerator[Optional[bytes], None]:
         if not self._stream:
@@ -344,7 +317,28 @@ class _StreamReaderThroughServer(Generic[T]):
 
     def __aiter__(self) -> AsyncIterator[T]:
         """mdmd:hidden"""
-        return self._ensure_stream()
+        self._ensure_stream()
+        return self
+
+    async def __anext__(self) -> T:
+        """mdmd:hidden"""
+        stream = self._ensure_stream()
+
+        value = await stream.__anext__()
+
+        # The stream yields None if it receives an EOF batch.
+        if value is None:
+            raise StopAsyncIteration
+
+        if self._text:
+            return cast(T, value.decode("utf-8"))
+        else:
+            return cast(T, value)
+
+    async def aclose(self):
+        """mdmd:hidden"""
+        if self._stream:
+            await self._stream.aclose()
 
 
 class _StreamReaderDirect(Generic[T]):
@@ -433,19 +427,60 @@ class _StreamReaderDirect(Generic[T]):
         if line_buffer:
             yield line_buffer
 
+    def _ensure_stream(self) -> AsyncGenerator[Optional[bytes], None]:
+        if self._stream:
+            return self._stream
+        if self._by_line:
+            stream = self._get_stdio_stream_by_line()
+        else:
+            stream = self._get_stdio_stream()
+        if self._text:
+            self._stream = _decode_bytes_stream_to_str(stream)
+        else:
+            self._stream = stream
+
+        return self._stream
+
     # TODO(saltzm): I sort of would prefer an API where you either do read() or as_stream() and as_stream() would
     # return a new stream object.
     # TODO(saltzm): Is it a problem I'm returning a new stream object every time?
+    # def __aiter__(self) -> AsyncIterator[T]:
+    #    if self._by_line:
+    #        byte_stream = self._get_stdio_stream_by_line()
+    #    else:
+    #        byte_stream = self._get_stdio_stream()
+
+    #    if self._text:
+    #        return _decode_bytes_stream_to_str(byte_stream)
+    #    else:
+    #        return byte_stream
+
     def __aiter__(self) -> AsyncIterator[T]:
-        if self._by_line:
-            byte_stream = self._get_stdio_stream_by_line()
-        else:
-            byte_stream = self._get_stdio_stream()
+        """mdmd:hidden"""
+        # TODO (saltzm): I don't know if we need this stream-caching behavior. I think now that we save
+        # exec output and we can consume it more than once, this could return a new stream object every time.
+        # I originally did this, and removed __anext__/aclose, but had trouble doing the same with
+        # _StreamReaderThroughServer, so I'm doing this to match the behavior and allow _StreamReader to
+        # implement __anext__ and aclose.
+        self._ensure_stream()
+        return self
+
+    async def __anext__(self) -> T:
+        """mdmd:hidden"""
+        stream = self._ensure_stream()
+
+        # This raises StopAsyncIteration if the stream is at EOF.
+        value = await stream.__anext__()
 
         if self._text:
-            return _decode_bytes_stream_to_str(byte_stream)
+            return cast(T, value.decode("utf-8"))
         else:
-            return byte_stream
+            return cast(T, value)
+
+    async def aclose(self):
+        """mdmd:hidden"""
+        if self._stream:
+            await self._stream.aclose()
 
 
 class _StreamReader(Generic[T]):
@@ -500,15 +535,18 @@ class _StreamReader(Generic[T]):
     def __aiter__(self) -> AsyncIterator[T]:
         return self._impl.__aiter__()
 
+    async def __anext__(self) -> T:
+        return await self._impl.__anext__()
+
+    async def aclose(self):
+        await self._impl.aclose()
+
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
 
 
-class _StreamWriter:
-    """Provides an interface to buffer and write logs to a sandbox or container process stream (`stdin`)."""
-
+class _StreamWriterThroughServer:
     def __init__(self, object_id: str, object_type: Literal["sandbox", "container_process"], client: _Client) -> None:
-        """mdmd:hidden"""
         self._index = 1
         self._object_id = object_id
         self._object_type = object_type
@@ -520,6 +558,116 @@ class _StreamWriter:
         index = self._index
         self._index += 1
         return index
+
+    def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
+        if self._is_closed:
+            raise ValueError("Stdin is closed. Cannot write to it.")
+        if isinstance(data, (bytes, bytearray, memoryview, str)):
+            if isinstance(data, str):
+                data = data.encode("utf-8")
+            if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
+                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
+            self._buffer.extend(data)
+        else:
+            raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
+
+    def write_eof(self) -> None:
+        self._is_closed = True
+
+    async def drain(self) -> None:
+        data = bytes(self._buffer)
+        self._buffer.clear()
+        index = self._get_next_index()
+
+        try:
+            if self._object_type == "sandbox":
+                await retry_transient_errors(
+                    self._client.stub.SandboxStdinWrite,
+                    api_pb2.SandboxStdinWriteRequest(
+                        sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
+                    ),
+                )
+            else:
+                await retry_transient_errors(
+                    self._client.stub.ContainerExecPutInput,
+                    api_pb2.ContainerExecPutInputRequest(
+                        exec_id=self._object_id,
+                        input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
+                    ),
+                )
+        except GRPCError as exc:
+            if exc.status == Status.FAILED_PRECONDITION:
+                raise ValueError(exc.message)
+            else:
+                raise exc
+
+
+class _StreamWriterDirect:
+    def __init__(
+        self,
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        router_client: SandboxRouterServiceClient,
+        *,
+        task_id: Optional[str] = None,
+    ) -> None:
+        self._object_id = object_id
+        self._object_type = object_type
+        self._router_client = router_client
+        self._task_id = task_id or ""
+        self._is_closed = False
+        self._buffer = bytearray()
+        self._offset = 0
+
+    def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
+        if self._is_closed:
+            raise ValueError("Stdin is closed. Cannot write to it.")
+        if isinstance(data, (bytes, bytearray, memoryview, str)):
+            if isinstance(data, str):
+                data = data.encode("utf-8")
+            if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
+                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
+            self._buffer.extend(data)
+        else:
+            raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
+
+    def write_eof(self) -> None:
+        self._is_closed = True
+
+    async def drain(self) -> None:
+        data = bytes(self._buffer)
+        self._buffer.clear()
+        start_offset = self._offset
+
+        async def _gen():
+            if data or self._is_closed:
+                yield sr_pb2.SandboxExecStdinWriteRequest(
+                    task_id=self._task_id,
+                    exec_id=self._object_id,
+                    offset=start_offset,
+                    data=data,
+                )
+
+        await self._router_client.exec_stdin_write(_gen())
+        self._offset += len(data)
+
+
+class _StreamWriter:
+    """Provides an interface to buffer and write logs to a sandbox or container process stream (`stdin`)."""
+
+    def __init__(
+        self,
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        client: _Client,
+        *,
+        router_client: Optional[SandboxRouterServiceClient] = None,
+        task_id: Optional[str] = None,
+    ) -> None:
+        if router_client is None:
+            self._impl = _StreamWriterThroughServer(object_id, object_type, client)
+        else:
+            self._impl = _StreamWriterDirect(object_id, object_type, router_client, task_id=task_id)
 
     def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
         """Write data to the stream but does not send it immediately.
@@ -546,16 +694,7 @@ class _StreamWriter:
         sandbox.wait()
         ```
         """
-        if self._is_closed:
-            raise ValueError("Stdin is closed. Cannot write to it.")
-        if isinstance(data, (bytes, bytearray, memoryview, str)):
-            if isinstance(data, str):
-                data = data.encode("utf-8")
-            if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
-                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
-            self._buffer.extend(data)
-        else:
-            raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
+        self._impl.write(data)
 
     def write_eof(self) -> None:
         """Close the write end of the stream after the buffered data is drained.
@@ -564,7 +703,7 @@ class _StreamWriter:
         `write_eof()`. This method needs to be used along with the `drain()`
         method, which flushes the EOF to the process.
         """
-        self._is_closed = True
+        self._impl.write_eof()
 
     async def drain(self) -> None:
         """Flush the write buffer and send data to the running process.
@@ -585,31 +724,7 @@ class _StreamWriter:
         await writer.drain.aio()
         ```
         """
-        data = bytes(self._buffer)
-        self._buffer.clear()
-        index = self._get_next_index()
-
-        try:
-            if self._object_type == "sandbox":
-                await retry_transient_errors(
-                    self._client.stub.SandboxStdinWrite,
-                    api_pb2.SandboxStdinWriteRequest(
-                        sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
-                    ),
-                )
-            else:
-                await retry_transient_errors(
-                    self._client.stub.ContainerExecPutInput,
-                    api_pb2.ContainerExecPutInputRequest(
-                        exec_id=self._object_id,
-                        input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
-                    ),
-                )
-        except GRPCError as exc:
-            if exc.status == Status.FAILED_PRECONDITION:
-                raise ValueError(exc.message)
-            else:
-                raise exc
+        await self._impl.drain()
 
 
 StreamReader = synchronize_api(_StreamReader)

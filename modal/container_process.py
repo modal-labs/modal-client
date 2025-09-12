@@ -316,6 +316,13 @@ class _ContainerProcessDirect:
             router_client=self._router_client,
             task_id=self._task_id,
         )
+        self._stdin = _StreamWriter(
+            process_id,
+            "container_process",
+            self._client,
+            router_client=self._router_client,
+            task_id=self._task_id,
+        )
 
     @property
     def stdout(self) -> _StreamReader[T]:
@@ -327,7 +334,7 @@ class _ContainerProcessDirect:
 
     @property
     def stdin(self) -> _StreamWriter:
-        pass
+        return self._stdin
 
     @property
     def returncode(self) -> int:
