@@ -2406,13 +2406,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def MapStartOrContinue(self, stream):
         request: api_pb2.MapStartOrContinueRequest = await stream.recv_message()
 
-        # If function_call_id is provided, this is a continue request, otherwise it's a start
-        if request.function_call_id:
-            function_call_id = request.function_call_id
+        # If map_token is provided, this is a continue request, otherwise it's a start
+        if request.map_token:
+            map_token = request.map_token
+            function_call_id = request.map_token[3:]
         else:
             self.fcidx += 1
             function_call_id = f"fc-{self.fcidx}"
             self.function_id_for_function_call[function_call_id] = request.function_id
+            map_token = f"mt-{function_call_id}"
 
         # Process inputs and store them for MapAwait to pick up later
         attempt_tokens = []
@@ -2433,6 +2435,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         response = api_pb2.MapStartOrContinueResponse(
             function_id=request.function_id,
             function_call_id=function_call_id,
+            map_token=map_token,
             max_inputs_outstanding=1000,
             attempt_tokens=attempt_tokens,
             retry_policy=retry_policy,
@@ -2445,9 +2448,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def MapAwait(self, stream):
         request: api_pb2.MapAwaitRequest = await stream.recv_message()
+        function_call_id = request.map_token[3:]
 
         # Check if we have any function call inputs for this function call
-        fc_inputs = self.function_call_inputs.setdefault(request.function_call_id, [])
+        fc_inputs = self.function_call_inputs.setdefault(function_call_id, [])
         outputs = []
 
         if fc_inputs and not self.function_is_running:
@@ -2464,7 +2468,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     count = 0
                     for item in res:
                         count += 1
-                        await self.fc_data_out[request.function_call_id].put(
+                        await self.fc_data_out[function_call_id].put(
                             api_pb2.DataChunk(
                                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                                 data=serialize_data_format(item, api_pb2.DATA_FORMAT_PICKLE),
