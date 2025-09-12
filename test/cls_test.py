@@ -107,6 +107,8 @@ def test_run_class(client, servicer):
                     base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
                 ),
             ),
+            output_format=api_pb2.DATA_FORMAT_PICKLE,
+            supported_data_formats=[api_pb2.DATA_FORMAT_PICKLE],
         ),
         "baz": api_pb2.MethodDefinition(
             function_name="Foo.baz",
@@ -125,6 +127,8 @@ def test_run_class(client, servicer):
                     base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
                 ),
             ),
+            output_format=api_pb2.DATA_FORMAT_PICKLE,
+            supported_data_formats=[api_pb2.DATA_FORMAT_PICKLE],
         ),
     }
 
