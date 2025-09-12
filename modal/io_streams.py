@@ -366,6 +366,7 @@ class _StreamReaderDirect(Generic[T]):
         self._deadline = deadline
         self.eof = False
         self._task_id = task_id or ""
+        self._stream = None
 
     @property
     def file_descriptor(self) -> int:
@@ -436,18 +437,16 @@ class _StreamReaderDirect(Generic[T]):
 
         return self._stream
 
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self
+
     async def __anext__(self) -> T:
         # TODO (saltzm): I don't know if we need this stream-caching behavior. I think now that we save
         # exec output and we can consume it more than once, this could return a new stream object every time.
         stream = self._ensure_stream()
 
         # This raises StopAsyncIteration if the stream is at EOF.
-        value = await stream.__anext__()
-
-        if self._text:
-            return cast(T, value.decode("utf-8"))
-        else:
-            return cast(T, value)
+        return await stream.__anext__()
 
     async def aclose(self):
         if self._stream:
