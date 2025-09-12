@@ -91,18 +91,21 @@ def _get_inputs(
     return [api_pb2.FunctionGetInputsResponse(inputs=[x]) for x in inputs]
 
 
-def _get_inputs_batched(
+def _get_inputs_batched_with_formats(
     args_list: list[tuple[tuple, dict]],
+    data_formats: list["api_pb2.DataFormat.ValueType"],
     batch_max_size: int,
     kill_switch=True,
     method_name: Optional[str] = None,
 ):
-    input_pbs = [
-        api_pb2.FunctionInput(
-            args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+    """Helper function to create batched inputs with different data formats per item."""
+    assert len(args_list) == len(data_formats), "args_list and data_formats must have same length"
+    input_pbs = []
+    for args, data_format in zip(args_list, data_formats):
+        serialized_args = serialize_data_format(args, data_format)
+        input_pbs.append(
+            api_pb2.FunctionInput(args=serialized_args, data_format=data_format, method_name=method_name or "")
         )
-        for args in args_list
-    ]
     inputs = [
         *(
             api_pb2.FunctionGetInputsItem(input_id=f"in-xyz{i}", function_call_id="fc-123", input=input_pb)
@@ -126,7 +129,19 @@ def _get_inputs_batched(
 
     if len(current_batch) > 0:
         response_list.append(api_pb2.FunctionGetInputsResponse(inputs=current_batch))
+
     return response_list
+
+
+def _get_inputs_batched(
+    args_list: list[tuple[tuple, dict]],
+    batch_max_size: int,
+    kill_switch=True,
+    method_name: Optional[str] = None,
+):
+    """Helper function to create batched inputs with PICKLE format for all items."""
+    data_formats = [api_pb2.DATA_FORMAT_PICKLE] * len(args_list)
+    return _get_inputs_batched_with_formats(args_list, data_formats, batch_max_size, kill_switch, method_name)
 
 
 def _get_multi_inputs(args: list[tuple[str, tuple, dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
@@ -137,7 +152,11 @@ def _get_multi_inputs(args: list[tuple[str, tuple, dict]] = []) -> list[api_pb2.
                 api_pb2.FunctionGetInputsItem(
                     function_call_id="fc-123",
                     input_id=f"in-{input_n:03}",
-                    input=api_pb2.FunctionInput(args=serialize((input_args, input_kwargs)), method_name=method_name),
+                    input=api_pb2.FunctionInput(
+                        args=serialize((input_args, input_kwargs)),
+                        method_name=method_name,
+                        data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    ),
                 )
             ]
         )
@@ -161,7 +180,9 @@ def _get_multi_inputs_with_methods(args: list[tuple[str, tuple, dict]] = []) -> 
             inputs=[
                 api_pb2.FunctionGetInputsItem(
                     input_id=f"in-{input_n:03}",
-                    input=api_pb2.FunctionInput(args=serialize(input_args), method_name=method_name),
+                    input=api_pb2.FunctionInput(
+                        args=serialize(input_args), method_name=method_name, data_format=api_pb2.DATA_FORMAT_PICKLE
+                    ),
                 )
             ]
         )
@@ -463,6 +484,7 @@ def test_success(servicer):
 
 
 @skip_github_non_linux
+@pytest.mark.timeout(1)
 def test_generator_success(servicer, event_loop):
     ret = _run_container(
         servicer,
@@ -1907,8 +1929,10 @@ def test_cancellation_aborts_current_input_on_match(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
     stdout, stderr = container_process.communicate()
-    assert stderr.decode().count("Successfully canceled input") == live_cancellations
-    assert "Traceback" not in stderr.decode()
+    stderr_str = stderr.decode()
+    print(stderr_str)
+    assert stderr_str.count("Successfully canceled input") == live_cancellations
+    assert "Traceback" not in stderr_str
     assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit
 
@@ -2012,7 +2036,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, tmp_path):
 
 @skip_github_non_linux
 def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
-    monkeypatch.setattr("modal._runtime.container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
+    monkeypatch.setattr("modal._utils.blob_utils.MAX_OBJECT_SIZE_BYTES", 0)
     ret = _run_container(
         servicer,
         "test.supports.functions",
@@ -2380,7 +2404,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     async def _func(x):
         await asyncio.sleep(x)
 
-    fin_func = FinalizedFunction(_func, is_async=True, is_generator=False, data_format=api_pb2.DATA_FORMAT_PICKLE)
+    fin_func = FinalizedFunction(_func, is_async=True, is_generator=False, is_asgi=False)
 
     total_inputs = 5
     servicer.container_inputs = _get_inputs(((42,), {}), n=total_inputs)
@@ -2418,7 +2442,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
                     raise Exception("Blah")
                 else:
                     # and some successes
-                    io_manager.push_outputs(input_to_process, 0, None, fin_func.data_format)
+                    io_manager.push_outputs(input_to_process, started_at=0.0, output_data=[None])
     assert not triggered_assertions
 
 
@@ -2531,6 +2555,43 @@ def test_deserialization_error_returns_exception(servicer, client):
 
 
 @skip_github_non_linux
+def test_cbor_payload_simple_function(servicer):
+    # Construct a single CBOR-encoded input to call test.supports.functions.square(2) -> 4
+    cbor_args = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_CBOR)
+    inputs = [
+        api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id="in-cbor0",
+                    function_call_id="fc-cbor",
+                    input=api_pb2.FunctionInput(
+                        args=cbor_args,
+                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        method_name="",
+                    ),
+                )
+            ]
+        ),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
+    ]
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "square",
+        inputs=inputs,
+    )
+
+    # Expect CBOR output when CBOR input was used
+    assert len(ret.items) == 1
+    item = ret.items[0]
+    assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert item.data_format == api_pb2.DATA_FORMAT_CBOR
+    value = deserialize_data_format(item.result.data, item.data_format, ret.client)
+    assert int(value) == 4
+
+
+@skip_github_non_linux
 def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
     # first populate app objects, so they can be fetched by AppGetObjects
     deploy_app_externally(servicer, credentials, "test.supports.user_code_import_samples.cls")
@@ -2598,3 +2659,43 @@ def test_custom_exception(servicer, capsys):
     exc = _unwrap_exception(ret)
     assert isinstance(exc, Exception)
     assert repr(exc) == "CustomException('Failure!')"
+
+
+@skip_github_non_linux
+def test_batch_sync_function_mixed_data_formats(servicer):
+    """Test that batch mode correctly handles different serialization formats per input item."""
+    # Create inputs with different data formats
+    args_list: list[tuple[tuple, dict]] = [
+        ((10, 5), {}),  # Will use PICKLE format
+        ((20, 4), {}),  # Will use CBOR format
+        ((30, 6), {}),  # Will use PICKLE format
+    ]
+    data_formats = [
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+        api_pb2.DATA_FORMAT_PICKLE,
+    ]
+    expected_outputs = [2, 5, 5]  # Results of integer division
+    batch_wait_ms = 500
+    batch_max_size = 4
+    inputs = _get_inputs_batched_with_formats(args_list, data_formats, batch_max_size)
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "batch_function_sync",  # This function does integer division: x // y
+        inputs=inputs,
+        batch_max_size=batch_max_size,
+        batch_wait_ms=batch_wait_ms,
+    )
+    # Verify we got the expected number of outputs
+    assert len(ret.items) == len(expected_outputs)
+    # Check that each output has the correct data format and value
+    for i, (item, expected_output, expected_format) in enumerate(zip(ret.items, expected_outputs, data_formats)):
+        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+        assert item.data_format == expected_format, (
+            f"Item {i}: expected format {expected_format}, got {item.data_format}"
+        )
+        # Deserialize using the correct format and verify the result
+        value = deserialize_data_format(item.result.data, item.data_format, ret.client)
+        assert value == expected_output, f"Item {i}: expected {expected_output}, got {value}"
