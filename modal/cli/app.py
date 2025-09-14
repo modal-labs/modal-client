@@ -11,6 +11,7 @@ from typer import Argument
 
 from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
+from modal._utils.grpc_utils import get_proto_oneof
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal_proto import api_pb2
@@ -248,3 +249,193 @@ async def history(
 
     if deployments_with_dirty_commit and not json:
         rich.print("* - repo had uncommitted changes")
+
+
+def _proto_type_to_python_type(proto_type: api_pb2.GenericPayloadType) -> str:
+    """Convert a protobuf GenericPayloadType to Python type annotation string."""
+    if proto_type.base_type == api_pb2.PARAM_TYPE_STRING:
+        return "str"
+    elif proto_type.base_type == api_pb2.PARAM_TYPE_INT:
+        return "int"
+    elif proto_type.base_type == api_pb2.PARAM_TYPE_BOOL:
+        return "bool"
+    elif proto_type.base_type == api_pb2.PARAM_TYPE_BYTES:
+        return "bytes"
+    elif proto_type.base_type == api_pb2.PARAM_TYPE_NONE:
+        return "None"
+    elif proto_type.base_type == api_pb2.PARAM_TYPE_LIST:
+        if proto_type.sub_types:
+            sub_type = _proto_type_to_python_type(proto_type.sub_types[0])
+            return f"list[{sub_type}]"
+        return "list"
+    elif proto_type.base_type == api_pb2.PARAM_TYPE_DICT:
+        if len(proto_type.sub_types) >= 2:
+            key_type = _proto_type_to_python_type(proto_type.sub_types[0])
+            value_type = _proto_type_to_python_type(proto_type.sub_types[1])
+            return f"dict[{key_type}, {value_type}]"
+        return "dict"
+    elif proto_type.base_type == api_pb2.PARAM_TYPE_UNSPECIFIED:
+        return "typing.Any"
+    elif proto_type.base_type == api_pb2.PARAM_TYPE_UNKNOWN:
+        return "typing.Any"
+    else:
+        return "typing.Any"
+
+
+def _generate_function_stub(function_name: str, app_name: str, handle_metadata: api_pb2.FunctionHandleMetadata) -> str:
+    """Generate Python stub code for a Modal function."""
+    lines = []
+
+    # Generate function signature with type annotations
+    if handle_metadata.function_schema:
+        # Build parameter list with types
+        params = []
+        for arg in handle_metadata.function_schema.arguments:
+            if arg.full_type:
+                param_type = _proto_type_to_python_type(arg.full_type)
+            else:
+                param_type = "typing.Any"
+
+            if arg.has_default:
+                params.append(f"{arg.name}: {param_type} = ...")
+            else:
+                params.append(f"{arg.name}: {param_type}")
+
+        # Return type
+        if handle_metadata.function_schema.return_type:
+            return_type = _proto_type_to_python_type(handle_metadata.function_schema.return_type)
+        else:
+            return_type = "typing.Any"
+
+        lines.append(
+            f"{function_name}: modal.Function[typing.Any, {return_type}, {return_type}] = "
+            f'modal.Function.from_name("{app_name}", "{function_name}")'
+        )
+    else:
+        # No schema information available
+        lines.append(f'{function_name}: modal.Function = modal.Function.from_name("{app_name}", "{function_name}")')
+
+    return "\n".join(lines)
+
+
+def _generate_class_stub(class_name: str, app_name: str, handle_metadata) -> str:
+    """Generate Python stub code for a Modal class."""
+    lines = []
+    lines.append(f'{class_name}: modal.Cls = modal.Cls.from_name("{app_name}", "{class_name}")')
+    return "\n".join(lines)
+
+
+@app_cli.command("remote-stub", no_args_is_help=True)
+@synchronizer.create_blocking
+async def remote_stub(
+    app_name: str = typer.Argument(help="Name of the deployed app"),
+    *,
+    env: Optional[str] = ENV_OPTION,
+):
+    """Generate Python stub code for remotely accessing functions in a deployed app.
+
+    This command outputs Python source code that creates properly typed Function
+    and Cls objects for all the functions and classes in the specified app.
+
+    **Examples:**
+
+    Generate stubs for an app called "my-app":
+
+    ```
+    modal app remote-stub my-app
+    ```
+
+    Generate stubs for an app in a specific environment:
+
+    ```
+    modal app remote-stub my-app --env production
+    ```
+    """
+    env = ensure_env(env)
+    client = await _Client.from_env()
+
+    # Get app ID from name
+    try:
+        app_req = api_pb2.AppGetByDeploymentNameRequest(
+            name=app_name,
+            environment_name=_get_environment_name(env),
+        )
+        app_resp = await client.stub.AppGetByDeploymentName(app_req)
+        if not app_resp.app_id:
+            env_comment = f" in environment '{env}'" if env else ""
+            rich.print(f"[red]Error:[/red] Could not find deployed app '{app_name}'{env_comment}")
+            raise typer.Exit(1)
+
+        app_id = app_resp.app_id
+    except Exception as e:
+        rich.print(f"[red]Error:[/red] Failed to find app: {e}")
+        raise typer.Exit(1)
+
+    # Get all objects in the app
+    try:
+        objects_req = api_pb2.AppGetObjectsRequest(
+            app_id=app_id,
+            include_unindexed=False,
+            only_class_function=True,
+        )
+        objects_resp = await client.stub.AppGetObjects(objects_req)
+    except Exception as e:
+        rich.print(f"[red]Error:[/red] Failed to get app objects: {e}")
+        raise typer.Exit(1)
+
+    # Generate stub code
+    stub_lines = [
+        "# Generated stub code for Modal app functions and classes",
+        f"# App: {app_name}",
+        f"# Environment: {env or 'default'}",
+        "",
+        "import typing",
+        "import modal",
+        "",
+    ]
+
+    functions_found = []
+    classes_found = []
+
+    for item in objects_resp.items:
+        obj = item.object
+        tag = item.tag
+
+        # Get the handle metadata using the oneof field
+        handle_metadata = get_proto_oneof(obj, "handle_metadata_oneof")
+
+        if isinstance(handle_metadata, api_pb2.FunctionHandleMetadata):
+            if handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_FUNCTION:
+                # Regular function
+                stub_code = _generate_function_stub(tag, app_name, handle_metadata)
+                stub_lines.append(stub_code)
+                functions_found.append(tag)
+            elif handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_CLASS:
+                # Class service function
+                stub_code = _generate_class_stub(tag, app_name, handle_metadata)
+                stub_lines.append(stub_code)
+                classes_found.append(tag)
+        elif isinstance(handle_metadata, api_pb2.ClassHandleMetadata):
+            # This shouldn't happen with only_class_function=True, but just in case
+            stub_code = _generate_class_stub(tag, app_name, handle_metadata)
+            stub_lines.append(stub_code)
+            classes_found.append(tag)
+
+    if not functions_found and not classes_found:
+        rich.print(f"[yellow]Warning:[/yellow] No functions or classes found in app '{app_name}'")
+        return
+
+    # Print the generated stub code
+    print("\n".join(stub_lines))
+
+    # Print summary to stderr so it doesn't interfere with the stub output
+    import sys
+
+    summary_parts = []
+    if functions_found:
+        summary_parts.append(f"{len(functions_found)} function(s): {', '.join(functions_found)}")
+    if classes_found:
+        summary_parts.append(f"{len(classes_found)} class(es): {', '.join(classes_found)}")
+
+    summary = "; ".join(summary_parts)
+    print(f"# Found {summary}", file=sys.stderr)
