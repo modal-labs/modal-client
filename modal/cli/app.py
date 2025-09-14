@@ -307,10 +307,20 @@ def _generate_function_stub(function_name: str, app_name: str, handle_metadata: 
         else:
             return_type = "typing.Any"
 
+        # Generate a dummy function signature to capture ParamSpec
+        param_list = ", ".join(params)
+
+        # Create a dummy function signature
+        lines.append(f"def _{function_name}_sig({param_list}) -> {return_type}: ...")
+        lines.append("")
+
+        # Use a generic helper to capture the ParamSpec and return properly typed Function
         lines.append(
-            f"{function_name}: modal.Function[typing.Any, {return_type}, {return_type}] = "
-            f'modal.Function.from_name("{app_name}", "{function_name}")'
+            f"{function_name} = _with_signature("
+            f"_{function_name}_sig, "
+            f'modal.Function.from_name("{app_name}", "{function_name}"))'
         )
+
     else:
         # No schema information available
         lines.append(f'{function_name}: modal.Function = modal.Function.from_name("{app_name}", "{function_name}")')
@@ -390,7 +400,16 @@ async def remote_stub(
         f"# Environment: {env or 'default'}",
         "",
         "import typing",
+        "import typing_extensions",
         "import modal",
+        "",
+        "# Generic helper to capture ParamSpec from function signature",
+        "P = typing_extensions.ParamSpec('P')",
+        "R = typing.TypeVar('R')",
+        "",
+        "def _with_signature(sig_func: typing.Callable[P, R], actual_func: modal.Function) -> modal.Function[P, R, R]:",
+        '    """Helper to capture ParamSpec from dummy signature and apply it to Function."""',
+        "    return actual_func  # type: ignore",
         "",
     ]
 
