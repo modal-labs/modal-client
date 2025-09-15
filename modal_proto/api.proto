@@ -2375,6 +2375,7 @@ message PTYInfo {
     PTY_TYPE_SHELL = 2;  // Replace function with shell
   }
   PTYType pty_type = 7;
+  bool no_terminate_on_idle_stdin = 8;
 }
 
 message PortSpec {
