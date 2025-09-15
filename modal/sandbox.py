@@ -817,7 +817,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
-        secrets: Sequence[_Secret] = (),
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         text: bool = True,
         bufsize: Literal[-1, 1] = -1,
     ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
