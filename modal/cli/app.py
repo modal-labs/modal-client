@@ -13,6 +13,7 @@ from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import get_proto_oneof
 from modal.client import _Client
+from modal.config import logger
 from modal.environments import ensure_env
 from modal_proto import api_pb2
 
@@ -422,6 +423,14 @@ async def remote_stub(
 
         # Get the handle metadata using the oneof field
         handle_metadata = get_proto_oneof(obj, "handle_metadata_oneof")
+
+        # Debug logging for FunctionHandleMetadata
+        if isinstance(handle_metadata, api_pb2.FunctionHandleMetadata):
+            logger.debug(f"Function {tag} metadata: {handle_metadata}")
+            logger.debug(f"Function {tag} schema: {handle_metadata.function_schema}")
+            if handle_metadata.function_schema:
+                logger.debug(f"Function {tag} arguments: {list(handle_metadata.function_schema.arguments)}")
+                logger.debug(f"Function {tag} return_type: {handle_metadata.function_schema.return_type}")
 
         if isinstance(handle_metadata, api_pb2.FunctionHandleMetadata):
             if handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_FUNCTION:
