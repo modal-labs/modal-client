@@ -64,7 +64,8 @@ async def test_blob_multipart(servicer, blob_server, client, monkeypatch, tmp_pa
     data = random.randbytes(data_len)  # random data will not hide byte re-ordering corruption
     data_filepath = tmp_path / "temp.bin"
     data_filepath.write_bytes(data)
-    blob_id = await blob_upload_file.aio(data_filepath.open("rb"), client.stub)
+    with data_filepath.open("rb") as f:
+        blob_id = await blob_upload_file.aio(f, client.stub)
     assert await blob_download.aio(blob_id, client.stub) == data
 
 
