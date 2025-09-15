@@ -661,6 +661,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         info: FunctionInfo,
         app,
         image: _Image,
+        env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
         schedule: Optional[Schedule] = None,
         is_generator: bool = False,
@@ -700,9 +701,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         experimental_options: Optional[dict[str, str]] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
     ) -> "_Function":
-        """mdmd:hidden"""
+        """mdmd:hidden
+
+        Note: This is not intended to be public API.
+        """
         # Needed to avoid circular imports
         from ._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
