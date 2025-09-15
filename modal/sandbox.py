@@ -320,7 +320,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
-        wait_until_running: bool = False,  # Enable waiting for the sandbox to be assigned to a worker before returning
+        wait_until_running: bool = False,  # Wait for the sandbox to start running before returning
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
@@ -421,7 +421,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
         verbose: bool = False,
-        wait_until_running: bool = False,  # Whether to wait for the sandbox to be assigned to a worker before returning
+        wait_until_running: bool = False,  # Wait for the sandbox to start running before returning
     ):
         # This method exposes some internal arguments (currently `mounts`) which are not in the public API
         # `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
@@ -499,7 +499,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         await resolver.load(obj)
 
         if wait_until_running:
-            await obj.wait_until_running()
+            await obj._get_task_id()
 
         return obj
 
@@ -705,11 +705,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             if not self._task_id:
                 await asyncio.sleep(0.5)
         return self._task_id
-
-    async def wait_until_running(self) -> None:
-        """Allows user to check if the sandbox has been assigned to a worker."""
-
-        await self._get_task_id()
 
     @overload
     async def exec(
