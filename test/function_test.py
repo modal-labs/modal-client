@@ -1518,14 +1518,17 @@ def test_function_supported_data_formats(client, servicer):
     assert g_metadata.output_format == api_pb2.DATA_FORMAT_PICKLE
     web_f_metadata = web_f._get_metadata()
     assert set(web_f_metadata.supported_data_formats) == {api_pb2.DATA_FORMAT_ASGI}
-    assert set(web_f_metadata.output_format) == {api_pb2.DATA_FORMAT_ASGI}
+    assert web_f_metadata.output_format == api_pb2.DATA_FORMAT_ASGI
 
     cbor_f_metadata = cbor_f._get_metadata()
     assert set(cbor_f_metadata.supported_data_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     assert cbor_f_metadata.output_format == api_pb2.DATA_FORMAT_CBOR
 
     cls_metadata = typing.cast(modal.Cls, A)._get_class_service_function()._get_metadata()
-    assert cls_metadata.method_handle_metadata["f"].supported_data_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    assert set(cls_metadata.method_handle_metadata["f"].supported_data_formats) == {
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+    }
     assert cls_metadata.method_handle_metadata["f"].output_format == api_pb2.DATA_FORMAT_PICKLE
     assert cls_metadata.method_handle_metadata["web_f"].supported_data_formats == [api_pb2.DATA_FORMAT_ASGI]
     assert cls_metadata.method_handle_metadata["web_f"].output_format == api_pb2.DATA_FORMAT_ASGI
