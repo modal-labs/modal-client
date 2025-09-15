@@ -200,7 +200,7 @@ def call_function(
                 async with container_io_manager.generator_output_sender(
                     current_function_call_id,
                     current_attempt_token,
-                    io_context.generator_data_format(),
+                    io_context.finalized_function.output_format,
                     generator_queue,
                 ):
                     item_count = 0
@@ -239,7 +239,7 @@ def call_function(
                 with container_io_manager.generator_output_sender(
                     current_function_call_id,
                     current_attempt_token,
-                    io_context.generator_data_format(),
+                    io_context.finalized_function.output_format,
                     generator_queue,
                 ):
                     item_count = 0

@@ -2409,7 +2409,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     async def _func(x):
         await asyncio.sleep(x)
 
-    fin_func = FinalizedFunction(_func, is_async=True, is_generator=False, is_asgi=False)
+    fin_func = FinalizedFunction(_func, is_async=True, is_generator=False, output_format=api_pb2.DATA_FORMAT_PICKLE)
 
     total_inputs = 5
     servicer.container_inputs = _get_inputs(((42,), {}), n=total_inputs)

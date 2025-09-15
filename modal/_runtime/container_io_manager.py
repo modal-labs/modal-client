@@ -157,13 +157,10 @@ class IOContext:
         # to make sure we handle user exceptions properly
         # and don't retry
         deserialized_args = []
-        fallback_data_format = (
-            # just in case - if the  data format isn't specified in the input payload
-            api_pb2.DATA_FORMAT_ASGI if self.finalized_function.is_asgi else api_pb2.DATA_FORMAT_PICKLE
-        )
         for input in self.function_inputs:
             if input.args:
-                data_format = input.data_format or fallback_data_format
+                assert input.data_format
+                data_format = input.data_format
                 deserialized_args.append(deserialize_data_format(input.args, data_format, self._client))
             else:
                 deserialized_args.append(((), {}))
@@ -389,22 +386,6 @@ class IOContext:
                 for item, input_id, retry_count in zip(data, self.input_ids, self.retry_counts)
             ]
         )
-
-    def generator_data_format(self) -> "api_pb2.DataFormat.ValueType":
-        """Return the data format that this *generator* has declared
-        * web endpoints (that are always generators) use DATA_FORMAT_ASGI
-        * Other generators should use the whatever the data format of their input is
-
-        Since generators don't support "batched" mode, all outputs of a generator
-        IOContext will have the same output format (based on the sole input of that batch)
-        """
-        if self.finalized_function.is_asgi:
-            # web endpoints are generators using proto-encoded asgi as the data format
-            return api_pb2.DATA_FORMAT_ASGI
-        else:
-            assert not self._is_batched, "Generators can't use @batched"
-            # use whatever data format the input used (generators are always single input)
-            return self.function_inputs[0].data_format or api_pb2.DATA_FORMAT_PICKLE
 
 
 class InputSlots:

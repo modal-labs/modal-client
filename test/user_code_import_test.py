@@ -28,7 +28,7 @@ def test_import_function(supports_dir, monkeypatch):
     finalized_func = finalized_funcs[""]
     assert finalized_func.is_async is False
     assert finalized_func.is_generator is False
-    assert finalized_func.is_asgi is False
+    assert finalized_func.output_format == api_pb2.DATA_FORMAT_PICKLE
     assert finalized_func.lifespan_manager is None
     container_callable = finalized_func.callable
     assert container_callable("world") == "hello world"
@@ -87,7 +87,7 @@ def test_import_class(monkeypatch, supports_dir, client):
     for finalized in finalized_funcs.values():
         assert finalized.is_async is False
         assert finalized.is_generator is False
-        assert finalized.is_asgi is False
+        assert finalized.output_format == api_pb2.DATA_FORMAT_PICKLE
         assert finalized.lifespan_manager is None
 
     finalized_1, finalized_2, self_ref = finalized_funcs["f"], finalized_funcs["f2"], finalized_funcs["self_ref"]

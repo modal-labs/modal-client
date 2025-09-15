@@ -29,7 +29,6 @@ class FinalizedFunction:
     callable: Callable[..., Any]
     is_async: bool
     is_generator: bool
-    is_asgi: bool
     output_format: "api_pb2.DataFormat.ValueType"
     lifespan_manager: Optional["LifespanManager"] = None
 
@@ -116,7 +115,6 @@ class ImportedFunction(Service):
                     callable=self._user_defined_callable,
                     is_async=is_async,
                     is_generator=is_generator,
-                    is_asgi=False,
                     output_format=fun_def.output_format or api_pb2.DATA_FORMAT_PICKLE,  # <v1.2 fallback
                 )
             }
@@ -131,7 +129,6 @@ class ImportedFunction(Service):
                 lifespan_manager=lifespan_manager,
                 is_async=True,
                 is_generator=True,
-                is_asgi=True,
                 output_format=api_pb2.DATA_FORMAT_ASGI,
             )
         }
@@ -166,7 +163,6 @@ class ImportedClass(Service):
                     callable=bound_func,
                     is_async=is_async,
                     is_generator=bool(is_generator),
-                    is_asgi=False,
                     output_format=fun_def.output_format or api_pb2.DATA_FORMAT_PICKLE,  # <v1.2 fallback
                 )
             else:
@@ -178,7 +174,6 @@ class ImportedClass(Service):
                     lifespan_manager=lifespan_manager,
                     is_async=True,
                     is_generator=True,
-                    is_asgi=True,
                     output_format=api_pb2.DATA_FORMAT_ASGI,
                 )
             finalized_functions[method_name] = finalized_function
