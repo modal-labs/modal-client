@@ -34,6 +34,11 @@ def square(x: int):
     return x * x
 
 
+@app.function(experimental_options={"restrict_output": True})
+def square_restrict_output(x: int):
+    return x * x
+
+
 @app.function()
 def ident(x):
     return x

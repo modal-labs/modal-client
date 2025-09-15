@@ -219,6 +219,7 @@ def _container_args(
     web_server_startup_timeout: Optional[float] = None,
     function_serialized: Optional[bytes] = None,
     class_serialized: Optional[bytes] = None,
+    output_format: "api_pb2.DataFormat.ValueType" = api_pb2.DATA_FORMAT_UNSPECIFIED,
 ):
     if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
         app_layout = api_pb2.AppLayout(
@@ -270,8 +271,10 @@ def _container_args(
         class_parameter_info=class_parameter_info,
         function_serialized=function_serialized,
         class_serialized=class_serialized,
+        output_format=output_format,
     )
 
+    print("used data format", output_format)
     return api_pb2.ContainerArguments(
         task_id="ta-123",
         function_id="fu-123",
@@ -320,6 +323,7 @@ def _run_container(
     web_server_startup_timeout: Optional[float] = None,
     function_serialized: Optional[bytes] = None,
     class_serialized: Optional[bytes] = None,
+    output_format: "api_pb2.DataFormat.ValueType" = api_pb2.DATA_FORMAT_UNSPECIFIED,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name=module_name,
@@ -346,6 +350,7 @@ def _run_container(
         web_server_startup_timeout=web_server_startup_timeout,
         function_serialized=function_serialized,
         class_serialized=class_serialized,
+        output_format=output_format,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
@@ -2555,7 +2560,7 @@ def test_deserialization_error_returns_exception(servicer, client):
 
 
 @skip_github_non_linux
-def test_cbor_payload_simple_function(servicer):
+def test_cbor_input_payload_simple_function(servicer):
     # Construct a single CBOR-encoded input to call test.supports.functions.square(2) -> 4
     cbor_args = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_CBOR)
     inputs = [
@@ -2582,11 +2587,46 @@ def test_cbor_payload_simple_function(servicer):
         inputs=inputs,
     )
 
-    # Expect CBOR output when CBOR input was used
+    # We can use cbor input with our function, but still get Pickle output
     assert len(ret.items) == 1
     item = ret.items[0]
     assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert item.data_format == api_pb2.DATA_FORMAT_CBOR
+    assert item.data_format == api_pb2.DATA_FORMAT_PICKLE  # default output format - Pickle
+    value = deserialize_data_format(item.result.data, item.data_format, ret.client)
+    assert int(value) == 4
+
+
+@skip_github_non_linux
+@pytest.mark.parametrize("input_data_format", [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR])
+def test_cbor_output_payload_simple_function(servicer, input_data_format):
+    # Construct a single CBOR-encoded input to call test.supports.functions.square(2) -> 4
+    serialized_input = serialize_data_format(((2,), {}), input_data_format)
+    inputs = [
+        api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id="in-cbor0",
+                    function_call_id="fc-cbor",
+                    input=api_pb2.FunctionInput(args=serialized_input, data_format=input_data_format),
+                )
+            ]
+        ),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
+    ]
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "square_restrict_output",
+        inputs=inputs,
+        output_format=api_pb2.DATA_FORMAT_CBOR,
+    )
+
+    # We can use cbor input with our function, but still get Pickle output
+    assert len(ret.items) == 1
+    item = ret.items[0]
+    assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert item.data_format == api_pb2.DATA_FORMAT_CBOR  # expect cbor output
     value = deserialize_data_format(item.result.data, item.data_format, ret.client)
     assert int(value) == 4
 

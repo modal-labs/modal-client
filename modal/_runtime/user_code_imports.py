@@ -30,6 +30,7 @@ class FinalizedFunction:
     is_async: bool
     is_generator: bool
     is_asgi: bool
+    output_format: "api_pb2.DataFormat.ValueType"
     lifespan_manager: Optional["LifespanManager"] = None
 
 
@@ -116,6 +117,7 @@ class ImportedFunction(Service):
                     is_async=is_async,
                     is_generator=is_generator,
                     is_asgi=False,
+                    output_format=fun_def.output_format or api_pb2.DATA_FORMAT_PICKLE,  # <v1.2 fallback
                 )
             }
 
@@ -130,6 +132,7 @@ class ImportedFunction(Service):
                 is_async=True,
                 is_generator=True,
                 is_asgi=True,
+                output_format=api_pb2.DATA_FORMAT_ASGI,
             )
         }
 
@@ -164,6 +167,7 @@ class ImportedClass(Service):
                     is_async=is_async,
                     is_generator=bool(is_generator),
                     is_asgi=False,
+                    output_format=fun_def.output_format or api_pb2.DATA_FORMAT_PICKLE,  # <v1.2 fallback
                 )
             else:
                 web_callable, lifespan_manager = construct_webhook_callable(
@@ -175,6 +179,7 @@ class ImportedClass(Service):
                     is_async=True,
                     is_generator=True,
                     is_asgi=True,
+                    output_format=api_pb2.DATA_FORMAT_ASGI,
                 )
             finalized_functions[method_name] = finalized_function
         return finalized_functions

@@ -158,6 +158,7 @@ class IOContext:
         # and don't retry
         deserialized_args = []
         fallback_data_format = (
+            # just in case - if the  data format isn't specified in the input payload
             api_pb2.DATA_FORMAT_ASGI if self.finalized_function.is_asgi else api_pb2.DATA_FORMAT_PICKLE
         )
         for input in self.function_inputs:
@@ -292,15 +293,11 @@ class IOContext:
     async def output_items_exception(
         self, started_at: float, task_id: str, exc: BaseException
     ) -> list[api_pb2.FunctionPutOutputsItem]:
-        # Failure outputs for when input exceptions occur
-        serialized_tb, tb_line_cache = pickle_traceback(exc, task_id)
-
         # Note: we're not pickling the traceback since it contains
         # local references that means we can't unpickle it. We *are*
         # pickling the exception, which may have some issues (there
         # was an earlier note about it that it might not be possible
         # to unpickle it in some cases). Let's watch out for issues.
-
         repr_exc = repr(exc)
         if len(repr_exc) >= MAX_OBJECT_SIZE_BYTES:
             # We prevent large exception messages to avoid
@@ -313,22 +310,32 @@ class IOContext:
         data: bytes = pickle_exception(exc)
         data_result_part = await format_blob_data(data, self._client.stub)
 
-        pickled_exception_data = {"serialized_tb": serialized_tb, "tb_line_cache": tb_line_cache, **data_result_part}
+        output_format: "api_pb2.DataFormat.ValueType" = self.finalized_function.output_format
+        # Failure outputs for when input exceptions occur
+        if output_format == api_pb2.DATA_FORMAT_PICKLE:
+            serialized_tb, tb_line_cache = pickle_traceback(exc, task_id)
+            serialized_exception_data = {
+                "serialized_tb": serialized_tb,
+                "tb_line_cache": tb_line_cache,
+                **data_result_part,
+            }
+        else:
+            serialized_exception_data = {}
         # all inputs in the batch get the same failure:
         return [
             api_pb2.FunctionPutOutputsItem(
                 input_id=input_id,
                 input_started_at=started_at,
-                data_format=function_input.data_format,  # note that many fields are empty for the cbor format
+                data_format=output_format,
                 result=api_pb2.GenericResult(
                     status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                     exception=repr_exc,
                     traceback=traceback.format_exc(),
-                    **(pickled_exception_data if function_input.data_format != api_pb2.DATA_FORMAT_CBOR else {}),
+                    **serialized_exception_data,
                 ),
                 retry_count=retry_count,
             )
-            for input_id, retry_count, function_input in zip(self.input_ids, self.retry_counts, self.function_inputs)
+            for input_id, retry_count in zip(self.input_ids, self.retry_counts)
         ]
 
     def output_items_generator_done(self, started_at: float, items_total: int) -> list[api_pb2.FunctionPutOutputsItem]:
@@ -356,11 +363,8 @@ class IOContext:
         output_created_at = time.time()
 
         # Process all items concurrently and create output items directly
-        async def package_output(
-            item: Any, function_input: api_pb2.FunctionInput, input_id: str, retry_count: int
-        ) -> api_pb2.FunctionPutOutputsItem:
-            assert function_input.data_format  # TODO: Remove this - just for debugging
-            output_data_format = function_input.data_format or api_pb2.DATA_FORMAT_PICKLE
+        async def package_output(item: Any, input_id: str, retry_count: int) -> api_pb2.FunctionPutOutputsItem:
+            output_data_format = self.finalized_function.output_format or api_pb2.DATA_FORMAT_PICKLE
 
             serialized_bytes = serialize_data_format(item, data_format=output_data_format)
             formatted = await format_blob_data(serialized_bytes, self._client.stub)
@@ -381,10 +385,8 @@ class IOContext:
         # Process all items concurrently
         return await asyncio.gather(
             *[
-                package_output(item, function_input, input_id, retry_count)
-                for item, function_input, input_id, retry_count in zip(
-                    data, self.function_inputs, self.input_ids, self.retry_counts
-                )
+                package_output(item, input_id, retry_count)
+                for item, input_id, retry_count in zip(data, self.input_ids, self.retry_counts)
             ]
         )
 

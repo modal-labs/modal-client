@@ -700,7 +700,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         experimental_options: Optional[dict[str, str]] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
-        _experimental_restrict_output: bool = False,
+        restrict_output: bool = False,
     ) -> "_Function":
         """mdmd:hidden"""
         # Needed to avoid circular imports
@@ -815,9 +815,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
         method_definitions: Optional[dict[str, api_pb2.MethodDefinition]] = None
-        non_web_output_format = (
-            api_pb2.DATA_FORMAT_CBOR if _experimental_restrict_output else api_pb2.DATA_FORMAT_PICKLE
-        )
+        non_web_output_format = api_pb2.DATA_FORMAT_CBOR if restrict_output else api_pb2.DATA_FORMAT_PICKLE
 
         if info.user_cls:
             method_definitions = {}
