@@ -10,7 +10,7 @@ service SandboxRouterService {
   // Get a stream of output from the stdout or stderr stream of an exec'd command.
   rpc SandboxExecStdioRead(SandboxExecStdioReadRequest) returns (stream SandboxExecStdioReadResponse);
   // Write to the stdin stream of an exec'd command.
-  rpc SandboxExecStdinWrite(stream SandboxExecStdinWriteRequest) returns (SandboxExecStdinWriteResponse);
+  rpc SandboxExecStdinWrite(SandboxExecStdinWriteRequest) returns (SandboxExecStdinWriteResponse);
   // Wait for an exec'd command to exit and return the exit code.
   rpc SandboxExecWait(SandboxExecWaitRequest) returns (SandboxExecWaitResponse);
 }
