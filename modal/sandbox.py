@@ -392,52 +392,39 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def _create(
-        *args: str,  # Set the CMD of the Sandbox, overriding any CMD of the container image.
-        # Associate the sandbox with an app. Required unless creating from a container.
+        *args: str,
         app: Optional["modal.app._App"] = None,
-        name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
-        image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
-        secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
+        name: Optional[str] = None,
+        image: Optional[_Image] = None,
+        secrets: Sequence[_Secret] = (),
         mounts: Sequence[_Mount] = (),
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
-        timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
-        # The amount of time in seconds that a sandbox can be idle before being terminated.
+        timeout: int = 300,
         idle_timeout: Optional[int] = None,
-        workdir: Optional[str] = None,  # Working directory of the sandbox.
+        workdir: Optional[str] = None,
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
-        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
-        # Specify, in fractional CPU cores, how many CPU cores to request.
-        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
-        # CPU throttling will prevent a container from exceeding its specified limit.
+        region: Optional[Union[str, Sequence[str]]] = None,
         cpu: Optional[Union[float, tuple[float, float]]] = None,
-        # Specify, in MiB, a memory request which is the minimum memory required.
-        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, tuple[int, int]]] = None,
-        block_network: bool = False,  # Whether to block network access
-        # List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
+        block_network: bool = False,
         cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: dict[
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
-        ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
-        pty: bool = False,  # Enable a PTY for the Sandbox
-        # List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
+        ] = {},
+        pty: bool = False,
         encrypted_ports: Sequence[int] = [],
-        # List of encrypted ports to tunnel into the sandbox, using HTTP/2.
         h2_ports: Sequence[int] = [],
-        # List of ports to tunnel into the sandbox without encryption.
         unencrypted_ports: Sequence[int] = [],
-        # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: Optional[_Proxy] = None,
         experimental_options: Optional[dict[str, bool]] = None,
-        # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
-        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        ] = None,
         client: Optional[_Client] = None,
         verbose: bool = False,
-        pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
+        pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
         """Private method used internally.
 
@@ -820,10 +807,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         secrets: Sequence[_Secret] = (),
-        # Encode output as text.
         text: bool = True,
-        # Control line-buffered output.
-        # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
         bufsize: Literal[-1, 1] = -1,
     ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
         """Private method used internally.
