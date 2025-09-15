@@ -133,7 +133,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     def _new(
         args: Sequence[str],
         image: _Image,
-        secrets: Sequence[_Secret],
+        secrets: Collection[_Secret],
         name: Optional[str] = None,
         timeout: int = 300,
         idle_timeout: Optional[int] = None,
@@ -804,6 +804,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             stderr=stderr,
             timeout=timeout,
             workdir=workdir,
+            env=env,
             secrets=secrets,
             text=text,
             bufsize=bufsize,

@@ -984,15 +984,14 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
 
-        secrets = secrets or []
-        if env:
-            secrets = [*secrets, _Secret.from_dict(env)]
-
         if not secrets:
             raise InvalidError(
                 "No secrets provided to function. "
                 "Installing private packages requires tokens to be passed via modal.Secret objects."
             )
+
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         invalid_repos = []
         install_urls = []
