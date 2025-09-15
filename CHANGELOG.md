@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev20 (2025-09-15)
+
+- Added an option to enable a PTY for Sandboxes via `Sandbox.create(..., pty=True)` and `Sandbox.exec(..., pty=True)`. Also deprecated the old `pty_info` parameters.
+
+
 #### 1.1.5.dev16 (2025-09-10)
 
 - Adds a `create_connect_token()` method for Sandboxes which may be used to generate credentials for making HTTP / Websocket requests to a server running in a Sandbox.
