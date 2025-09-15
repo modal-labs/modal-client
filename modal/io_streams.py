@@ -619,6 +619,7 @@ class _StreamWriterDirect:
                 exec_id=self._object_id,
                 offset=start_offset,
                 data=data,
+                eof=self._is_closed,
             )
             await self._router_client.exec_stdin_write(req)
         self._offset += len(data)

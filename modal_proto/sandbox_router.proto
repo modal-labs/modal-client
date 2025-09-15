@@ -88,6 +88,7 @@ message SandboxExecStdinWriteRequest {
   // last write position if the connection is closed and reopened.
   uint64 offset = 3;
   bytes data = 4;
+  bool eof = 5;
 }
 
 message SandboxExecStdinWriteResponse { }

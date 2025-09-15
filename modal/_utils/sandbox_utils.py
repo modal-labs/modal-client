@@ -23,7 +23,7 @@ class SandboxRouterServiceClient:
     returned by SandboxGetDirectAccess.
 
     TODO(saltzm): Review carefully, LLM generated.
-    TODO(saltzm): Handle network errors.
+    TODO(saltzm): Handle network errors and auth errors.
     """
 
     def __init__(self, server_url: str, jwt: str) -> None:
