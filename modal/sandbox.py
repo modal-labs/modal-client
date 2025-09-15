@@ -764,7 +764,37 @@ class _Sandbox(_Object, type_prefix="sb"):
             print(line)
         ```
         """
+        # TODO: Deprecate _pty_info and pty_info with `pty: bool`. If `pty=True`, then
+        # create a PTYInfo that sets `no_terminate_on_idle_stdin=True`.
+        pty_info = _pty_info or pty_info
+        return await self._exec(
+            *args,
+            pty_info=pty_info,
+            stdout=stdout,
+            stderr=stderr,
+            timeout=timeout,
+            workdir=workdir,
+            secrets=secrets,
+            text=text,
+            bufsize=bufsize,
+        )
 
+    async def _exec(
+        self,
+        *args: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
+        # Encode output as text.
+        text: bool = True,
+        # Control line-buffered output.
+        # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
+        bufsize: Literal[-1, 1] = -1,
+    ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
+        """Private method used internally tp ass in `pty_info`."""
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
         _validate_exec_args(args)
@@ -777,7 +807,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = api_pb2.ContainerExecRequest(
             task_id=task_id,
             command=args,
-            pty_info=_pty_info or pty_info,
+            pty_info=pty_info,
             runtime_debug=config.get("function_runtime_debug"),
             timeout_secs=timeout or 0,
             workdir=workdir,
