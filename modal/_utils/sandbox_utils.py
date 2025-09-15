@@ -3,7 +3,7 @@ import os
 import ssl
 import urllib.parse
 from dataclasses import dataclass
-from typing import AsyncGenerator, AsyncIterator
+from typing import AsyncIterator
 
 import grpclib.client
 import grpclib.config
@@ -123,18 +123,10 @@ class SandboxRouterServiceClient:
             yield item
 
     async def exec_stdin_write(
-        self,
-        requests: AsyncIterator[sr_pb2.SandboxExecStdinWriteRequest]
-        | AsyncGenerator[sr_pb2.SandboxExecStdinWriteRequest, None],
+        self, request: sr_pb2.SandboxExecStdinWriteRequest
     ) -> sr_pb2.SandboxExecStdinWriteResponse:
         stub = await self._get_stub()
-        stream = stub.SandboxExecStdinWrite.open()
-        async with stream as s:
-            async for req in requests:
-                await s.send_message(req)
-            await s.end()
-            # Receive the single response
-            return await s.recv_message()
+        return await stub.SandboxExecStdinWrite(request)
 
     async def exec_wait(
         self,

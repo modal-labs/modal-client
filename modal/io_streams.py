@@ -613,16 +613,14 @@ class _StreamWriterDirect:
         self._buffer.clear()
         start_offset = self._offset
 
-        async def _gen():
-            if data or self._is_closed:
-                yield sr_pb2.SandboxExecStdinWriteRequest(
-                    task_id=self._task_id,
-                    exec_id=self._object_id,
-                    offset=start_offset,
-                    data=data,
-                )
-
-        await self._router_client.exec_stdin_write(_gen())
+        if data or self._is_closed:
+            req = sr_pb2.SandboxExecStdinWriteRequest(
+                task_id=self._task_id,
+                exec_id=self._object_id,
+                offset=start_offset,
+                data=data,
+            )
+            await self._router_client.exec_stdin_write(req)
         self._offset += len(data)
 
 
