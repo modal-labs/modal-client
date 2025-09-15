@@ -639,6 +639,7 @@ def test_sandbox_create_pty(app, servicer):
         assert req.definition.pty_info is not None
         assert req.definition.pty_info.enabled is True
         assert req.definition.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL
+        assert req.definition.pty_info.no_terminate_on_idle_stdin is True
 
 
 @skip_non_subprocess
@@ -651,3 +652,4 @@ def test_sandbox_exec_pty(app, servicer):
         assert req.pty_info is not None
         assert req.pty_info.enabled is True
         assert req.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL
+        assert req.pty_info.no_terminate_on_idle_stdin is True
