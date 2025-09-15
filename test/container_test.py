@@ -2702,7 +2702,8 @@ def test_custom_exception(servicer, capsys):
 
 
 @skip_github_non_linux
-def test_batch_sync_function_mixed_data_formats(servicer):
+@pytest.mark.parametrize("output_format", [api_pb2.DATA_FORMAT_CBOR, api_pb2.DATA_FORMAT_PICKLE])
+def test_batch_sync_function_mixed_input_data_formats(servicer, output_format):
     """Test that batch mode correctly handles different serialization formats per input item."""
     # Create inputs with different data formats
     args_list: list[tuple[tuple, dict]] = [
@@ -2727,15 +2728,14 @@ def test_batch_sync_function_mixed_data_formats(servicer):
         inputs=inputs,
         batch_max_size=batch_max_size,
         batch_wait_ms=batch_wait_ms,
+        output_format=output_format,
     )
     # Verify we got the expected number of outputs
     assert len(ret.items) == len(expected_outputs)
     # Check that each output has the correct data format and value
-    for i, (item, expected_output, expected_format) in enumerate(zip(ret.items, expected_outputs, data_formats)):
+    for i, (item, expected_output) in enumerate(zip(ret.items, expected_outputs)):
         assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert item.data_format == expected_format, (
-            f"Item {i}: expected format {expected_format}, got {item.data_format}"
-        )
+        assert item.data_format == output_format
         # Deserialize using the correct format and verify the result
         value = deserialize_data_format(item.result.data, item.data_format, ret.client)
         assert value == expected_output, f"Item {i}: expected {expected_output}, got {value}"
