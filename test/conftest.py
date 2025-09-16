@@ -449,8 +449,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     is_method=True,
                     use_method_name=method_name,
                     function_schema=method_definition.function_schema,
-                    supported_data_formats=method_definition.supported_data_formats,
-                    output_format=method_definition.output_format,
+                    supported_input_formats=method_definition.supported_input_formats,
+                    supported_output_formats=method_definition.supported_output_formats,
                 )
                 for method_name, method_definition in function_proto.method_definitions.items()
             },
@@ -459,8 +459,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             input_plane_region=self._get_input_plane_region(function_proto),
             max_object_size_bytes=self.max_object_size_bytes,
             definition_id=definition_id,
-            supported_data_formats=function_proto.supported_data_formats,
-            output_format=function_proto.output_format,
+            supported_input_formats=function_proto.supported_input_formats,
+            supported_output_formats=function_proto.supported_output_formats,
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -1102,8 +1102,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 function_type=method_definition.function_type,
                 web_url=method_web_url,
                 function_schema=method_definition.function_schema,
-                supported_data_formats=method_definition.supported_data_formats,
-                output_format=method_definition.output_format,
+                supported_input_formats=method_definition.supported_input_formats,
+                supported_output_formats=method_definition.supported_output_formats,
             )
         await stream.send_message(
             api_pb2.FunctionPrecreateResponse(

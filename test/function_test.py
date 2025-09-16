@@ -1485,7 +1485,7 @@ def test_function_schema_recording(client, servicer):
 
 
 @pytest.mark.usefixtures("set_env_client")
-def test_function_supported_data_formats(client, servicer):
+def test_function_supported_input_formats(client, servicer):
     app = App("app")
 
     @app.function(serialized=True)
@@ -1511,27 +1511,26 @@ def test_function_supported_data_formats(client, servicer):
 
     deploy_app(app, client=client)
     f_metadata = f._get_metadata()
-    assert set(f_metadata.supported_data_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
-    assert f_metadata.output_format == api_pb2.DATA_FORMAT_PICKLE
+    assert set(f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+    assert set(f_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     g_metadata = g._get_metadata()
-    assert set(g_metadata.supported_data_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
-    assert g_metadata.output_format == api_pb2.DATA_FORMAT_PICKLE
+    assert set(g_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE}
+    assert set(g_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     web_f_metadata = web_f._get_metadata()
-    assert set(web_f_metadata.supported_data_formats) == {api_pb2.DATA_FORMAT_ASGI}
-    assert web_f_metadata.output_format == api_pb2.DATA_FORMAT_ASGI
-
-    cbor_f_metadata = cbor_f._get_metadata()
-    assert set(cbor_f_metadata.supported_data_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
-    assert cbor_f_metadata.output_format == api_pb2.DATA_FORMAT_CBOR
+    assert set(web_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_ASGI}
+    assert web_f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
 
     cls_metadata = typing.cast(modal.Cls, A)._get_class_service_function()._get_metadata()
-    assert set(cls_metadata.method_handle_metadata["f"].supported_data_formats) == {
+    assert set(cls_metadata.method_handle_metadata["f"].supported_input_formats) == {
         api_pb2.DATA_FORMAT_PICKLE,
         api_pb2.DATA_FORMAT_CBOR,
     }
-    assert cls_metadata.method_handle_metadata["f"].output_format == api_pb2.DATA_FORMAT_PICKLE
-    assert cls_metadata.method_handle_metadata["web_f"].supported_data_formats == [api_pb2.DATA_FORMAT_ASGI]
-    assert cls_metadata.method_handle_metadata["web_f"].output_format == api_pb2.DATA_FORMAT_ASGI
+    assert set(cls_metadata.method_handle_metadata["f"].supported_output_formats) == {
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+    }
+    assert cls_metadata.method_handle_metadata["web_f"].supported_input_formats == [api_pb2.DATA_FORMAT_ASGI]
+    assert cls_metadata.method_handle_metadata["web_f"].supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
 
 
 @pytest.mark.usefixtures("set_env_client")
