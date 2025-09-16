@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
 from urllib.parse import urlparse
 
 from modal_proto import api_pb2
@@ -118,8 +118,13 @@ class _CloudBucketMount:
     read_only: bool = False
     requester_pays: bool = False
 
+    @property
+    def is_hydrated(self):
+        # Cloud bucket mounts do not have a server side representation.
+        return True
 
-def cloud_bucket_mounts_to_proto(mounts: list[tuple[str, _CloudBucketMount]]) -> list[api_pb2.CloudBucketMount]:
+
+def cloud_bucket_mounts_to_proto(mounts: Sequence[tuple[str, _CloudBucketMount]]) -> list[api_pb2.CloudBucketMount]:
     """Helper function to convert `CloudBucketMount` to a list of protobufs that can be passed to the server."""
     cloud_bucket_mounts: list[api_pb2.CloudBucketMount] = []
 

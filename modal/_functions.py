@@ -1199,8 +1199,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 options_pb = api_pb2.FunctionOptions(
                     secret_ids=[s.object_id for s in options.secrets],
                     replace_secret_ids=bool(options.secrets),
-                    replace_volume_mounts=len(volume_mounts) > 0,
                     volume_mounts=volume_mounts,
+                    replace_volume_mounts=len(volume_mounts) > 0,
+                    cloud_bucket_mounts=cloud_bucket_mounts_to_proto(options.cloud_bucket_mounts),
+                    replace_cloud_bucket_mounts=bool(options.cloud_bucket_mounts),
                     resources=options.resources,
                     retry_policy=options.retry_policy,
                     concurrency_limit=options.max_containers,
