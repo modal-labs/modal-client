@@ -580,13 +580,11 @@ class _StreamWriterDirect:
     def __init__(
         self,
         object_id: str,
-        object_type: Literal["sandbox", "container_process"],
         router_client: SandboxRouterServiceClient,
         *,
         task_id: Optional[str] = None,
     ) -> None:
         self._object_id = object_id
-        self._object_type = object_type
         self._router_client = router_client
         self._task_id = task_id or ""
         self._is_closed = False
@@ -640,7 +638,7 @@ class _StreamWriter:
         if router_client is None:
             self._impl = _StreamWriterThroughServer(object_id, object_type, client)
         else:
-            self._impl = _StreamWriterDirect(object_id, object_type, router_client, task_id=task_id)
+            self._impl = _StreamWriterDirect(object_id, router_client, task_id=task_id)
 
     def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
         """Write data to the stream but does not send it immediately.
