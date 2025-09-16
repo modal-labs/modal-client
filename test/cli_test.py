@@ -562,7 +562,7 @@ def mock_shell_pty(servicer):
         mock.patch("rich.console.Console.is_terminal", True),
         mock.patch("modal.cli.container.get_pty_info", mock_get_pty_info),
         mock.patch("modal._pty.get_pty_info", mock_get_pty_info),
-        mock.patch("modal.runner.get_pty_info", mock_get_pty_info),
+        mock.patch("modal.sandbox.get_pty_info", mock_get_pty_info),
         mock.patch("modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin),
         mock.patch("modal.container_process.stream_from_stdin", fake_stream_from_stdin),
         mock.patch("modal.container_process.write_to_fd", write_to_fd),

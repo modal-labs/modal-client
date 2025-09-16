@@ -7,8 +7,11 @@ from typing import Optional
 from modal_proto import api_pb2
 
 
-def get_winsz(fd) -> tuple[Optional[int], Optional[int]]:
+def get_winsz(fd=None) -> tuple[Optional[int], Optional[int]]:
     try:
+        if fd is None:
+            fd = sys.stdin.fileno()
+
         import fcntl
         import struct
         import termios
@@ -40,8 +43,8 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def get_pty_info(shell: bool) -> api_pb2.PTYInfo:
-    rows, cols = get_winsz(sys.stdin.fileno())
+def get_pty_info(shell: bool, no_terminate_on_idle_stdin: bool = False) -> api_pb2.PTYInfo:
+    rows, cols = get_winsz()
     return api_pb2.PTYInfo(
         enabled=True,  # TODO(erikbern): deprecated
         winsz_rows=rows,
@@ -50,4 +53,5 @@ def get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         env_colorterm=os.environ.get("COLORTERM"),
         env_term_program=os.environ.get("TERM_PROGRAM"),
         pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL if shell else api_pb2.PTYInfo.PTY_TYPE_FUNCTION,
+        no_terminate_on_idle_stdin=no_terminate_on_idle_stdin,
     )
