@@ -776,7 +776,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 task_id,
                 direct_access_metadata,
                 *args,
-                pty_info=pty_info,
+                pty_info=pty_info or _pty_info,
                 stdout=stdout,
                 stderr=stderr,
                 timeout=timeout,
@@ -784,7 +784,6 @@ class _Sandbox(_Object, type_prefix="sb"):
                 secrets=secrets,
                 text=text,
                 bufsize=bufsize,
-                _pty_info=_pty_info,
             )
         else:
             return await self._exec_through_server(
@@ -846,7 +845,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         task_id: str,
         direct_access: DirectAccessMetadata,
         *args: str,
-        pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
+        pty_info: Optional[api_pb2.PTYInfo] = None,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
@@ -857,8 +856,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Control line-buffered output.
         # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
         bufsize: Literal[-1, 1] = -1,
-        # Internal option to set terminal size and metadata
-        _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
         # Generate a random process ID.
         # TODO(saltzm): Generate properly or use idempotency key here and have exec_start return the process ID.
@@ -886,6 +883,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             deadline=deadline,
             workdir=workdir,
             secret_ids=[secret.object_id for secret in secrets],
+            pty_info=pty_info,
+            runtime_debug=config.get("function_runtime_debug"),
         )
 
         # TODO(saltzm): Handle exec_start errors/retries.
