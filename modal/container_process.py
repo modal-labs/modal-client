@@ -228,8 +228,14 @@ class _ContainerProcessThroughServer:
         on_connect = asyncio.Event()
 
         async def _write_to_fd_loop(stream: _StreamReader):
+            # TODO(saltzm): This is required to make modal shell work, but this is hacky.
+            # Clean this up so we don't need to extract the implementation.
+            from .io_streams import _StreamReaderThroughServer
+
+            assert isinstance(stream._impl, _StreamReaderThroughServer)
+            stream_impl = stream._impl
             # Don't skip empty messages so we can detect when the process has booted.
-            async for chunk in stream._get_logs(skip_empty_messages=False):
+            async for chunk in stream_impl._get_logs(skip_empty_messages=False):
                 if chunk is None:
                     break
 
@@ -237,7 +243,7 @@ class _ContainerProcessThroughServer:
                     connecting_status.stop()
                     on_connect.set()
 
-                await write_to_fd(stream.file_descriptor, chunk)
+                await write_to_fd(stream_impl.file_descriptor, chunk)
 
         async def _handle_input(data: bytes, message_index: int):
             self.stdin.write(data)
