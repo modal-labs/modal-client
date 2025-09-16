@@ -1864,6 +1864,8 @@ message FunctionOptions {
   optional uint64 batch_linger_ms = 16;
   optional SchedulerPlacement scheduler_placement = 17;
   optional string cloud_provider_str = 18;
+  bool replace_cloud_bucket_mounts = 19;
+  repeated CloudBucketMount cloud_bucket_mounts = 20;
 }
 
 message FunctionPrecreateRequest {
