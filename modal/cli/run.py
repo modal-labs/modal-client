@@ -516,13 +516,12 @@ def serve(
 
 
 def shell(
-    container_or_function: Optional[str] = typer.Argument(
+    ref: Optional[str] = typer.Argument(
         default=None,
         help=(
-            "ID of running container, or path to a Python file containing a Modal App."
-            " Can also include a function specifier, like `module.py::func`, if the file defines multiple functions."
+            "ID of running container or Sandbox, or path to a Python file containing an App."
+            " Can also include a Function specifier, like `module.py::func`, if the file defines multiple Functions."
         ),
-        metavar="REF",
     ),
     cmd: str = typer.Option("/bin/bash", "-c", "--cmd", help="Command to run inside the Modal image."),
     env: str = ENV_OPTION,
@@ -602,6 +601,12 @@ def shell(
     ```
     modal shell hello_world.py -c 'uv pip list' > env.txt
     ```
+
+    Connect to a running Sandbox by ID:
+
+    ```
+    modal shell sb-abc123xyz
+    ```
     """
     env = ensure_env(env)
 
@@ -613,19 +618,31 @@ def shell(
 
     app = App("modal shell")
 
-    if container_or_function is not None:
+    if ref is not None:
+        # `modal shell` with a sandbox ID gets the task_id, that's then handled by the `ta-*` flow below.
+        if ref.startswith("sb-") and len(ref[3:]) > 0 and ref[3:].isalnum():
+            from ..sandbox import Sandbox
+
+            try:
+                sandbox = Sandbox.from_id(ref)
+                task_id = sandbox._get_task_id()
+                ref = task_id
+            except Exception as e:
+                from ..exception import NotFoundError
+
+                if isinstance(e, NotFoundError):
+                    raise ClickException(f"Sandbox '{ref}' not found")
+                else:
+                    raise ClickException(f"Error connecting to sandbox '{ref}': {str(e)}")
+
         # `modal shell` with a container ID is a special case, alias for `modal container exec`.
-        if (
-            container_or_function.startswith("ta-")
-            and len(container_or_function[3:]) > 0
-            and container_or_function[3:].isalnum()
-        ):
+        if ref.startswith("ta-") and len(ref[3:]) > 0 and ref[3:].isalnum():
             from .container import exec
 
-            exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
+            exec(container_id=ref, command=shlex.split(cmd), pty=pty)
             return
 
-        import_ref = parse_import_ref(container_or_function, use_module_mode=use_module_mode)
+        import_ref = parse_import_ref(ref, use_module_mode=use_module_mode)
         runnable, all_usable_commands = import_and_filter(
             import_ref, base_cmd="modal shell", accept_local_entrypoint=False, accept_webhook=True
         )
