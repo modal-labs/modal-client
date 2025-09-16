@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
+import "modal_proto/api.proto";
 
 package modal.sandbox_router;
 
@@ -62,7 +63,13 @@ message SandboxExecStartRequest {
   optional string workdir = 7;
   // Secret IDs to mount into the sandbox.
   repeated string secret_ids = 8;
-  // TODO(saltzm): Add remaining fields (pty_info, runtime_debug)
+  // PTY info for the command.
+  optional modal.client.PTYInfo pty_info = 9;
+  // Enable debugging capabilities on the container runtime. Used only for
+  // internal debugging.
+  bool runtime_debug = 10;
+  // TODO(saltzm): Add field to indicate if the command is interactive
+  // once the SDK team has decided on the API.
 }
 
 message SandboxExecStartResponse { }
