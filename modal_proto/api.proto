@@ -631,22 +631,16 @@ message AuthTokenGetResponse {
 // Message representing the current (coalesced) state of the autoscaler configuration
 // As well as the different sources that were used to create it.
 message AutoscalerConfiguration {
-  // Used for capturing context about an action performed by a user
-  message UserActionInfo {
-    string user_id = 1;
-    double timestamp = 2;
-  }
-
   // The settings that are currently in effect.
-  modal.client.AutoscalerSettings settings = 1;
+  AutoscalerSettings settings = 1;
   // For tracking the source of the overridden value; keys correspond to fields in `settings`.
   map<string, UserActionInfo> override_events = 2;
   // The default settings that are used when no static settings are provided and no overrides are in effect.
-  modal.client.AutoscalerSettings default_settings = 3;
+  AutoscalerSettings default_settings = 3;
   // The static settings that were used to initialize the configuration.
-  modal.client.AutoscalerSettings static_settings = 4;
+  AutoscalerSettings static_settings = 4;
   // The merge of all overrides that were used to create the current configuration.
-  modal.client.AutoscalerSettings override_settings = 5;
+  AutoscalerSettings override_settings = 5;
 }
 
 message AutoscalerSettings {
@@ -3220,6 +3214,12 @@ message TunnelStopResponse {
 
 message UploadUrlList {
   repeated string items = 1;
+}
+
+// Used for capturing context about an action performed by a user
+message UserActionInfo {
+  string user_id = 1;
+  double timestamp = 2;
 }
 
 message VolumeCommitRequest {
