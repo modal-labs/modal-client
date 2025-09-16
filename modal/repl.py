@@ -3,6 +3,7 @@ import asyncio
 import os
 import signal
 import sys
+import uuid
 from typing import List, Literal, Tuple
 
 import httpx
@@ -20,6 +21,7 @@ class Repl:
     def __init__(self, sandbox: Sandbox, sb_url: str):
         self.sb = sandbox
         self.sb_url = sb_url
+        self.uuid = str(uuid.uuid4())
 
     @staticmethod
     def parse_command(code: str) -> List[Tuple[str, Literal["exec", "eval"]]]:
@@ -69,15 +71,12 @@ class Repl:
             return []
 
     @staticmethod
-    def create(python_version: str = "3.13", port: int = port, packages: str = "") -> "Repl":
-        pip_packages = packages.strip().split(",")
-        if pip_packages == [""]:
-            pip_packages = []
-        pip_packages.append("fastapi")
-        pip_packages.append("uvicorn")
-        pip_packages.append("pydantic")
+    def create(python_version: str = "3.13", port: int = port, packages: List[str] = []) -> "Repl":
+        packages.append("fastapi")
+        packages.append("uvicorn")
+        packages.append("pydantic")
         image = Image.debian_slim(python_version=python_version)
-        image = image.pip_install(*pip_packages)
+        image = image.pip_install(*packages)
         repl_server_path = os.path.join(os.path.dirname(__file__), "_utils", "repl_server.py")
         image = image.add_local_file(local_path=repl_server_path, remote_path="/root/repl_server.py")
         app = App.lookup(name="repl", create_if_missing=True)
@@ -90,8 +89,7 @@ class Repl:
         return Repl(sb, sb_url)
 
     @staticmethod
-    def from_snapshot() -> "Repl":
-        snapshot_id = input("Enter the  id of the snapshot you want to restore from: ")
+    def from_snapshot(snapshot_id: str) -> "Repl":
         snapshot = SandboxSnapshot.from_id(snapshot_id)
         sb = Sandbox._experimental_from_snapshot(snapshot)
         sb_url = sb.tunnels()[8000].url
@@ -101,7 +99,7 @@ class Repl:
     def create_prompt() -> "Repl":
         print("enter the python packages you want to install in a comma separated list")
         packages = input()
-        return Repl.create(packages=packages)
+        return Repl.create(packages=packages.split(","))
 
     @staticmethod
     def start_repl():
@@ -114,7 +112,7 @@ class Repl:
                 print("invalid choice, please enter y or n")
                 createNew = None
         if createNew == "y":
-            repl = Repl.from_snapshot()
+            repl = Repl.from_snapshot(input("Enter the id of the snapshot you want to restore from: "))
         else:
             repl = Repl.create_prompt()
         signal.signal(signal.SIGINT, lambda signum, frame: repl.signal_handler(signum, frame))
