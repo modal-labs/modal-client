@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -219,7 +219,7 @@ def _container_args(
     web_server_startup_timeout: Optional[float] = None,
     function_serialized: Optional[bytes] = None,
     class_serialized: Optional[bytes] = None,
-    output_format: "api_pb2.DataFormat.ValueType" = api_pb2.DATA_FORMAT_UNSPECIFIED,
+    supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"] = (),
 ):
     if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
         app_layout = api_pb2.AppLayout(
@@ -271,10 +271,9 @@ def _container_args(
         class_parameter_info=class_parameter_info,
         function_serialized=function_serialized,
         class_serialized=class_serialized,
-        output_format=output_format,
+        supported_output_formats=supported_output_formats,
     )
 
-    print("used data format", output_format)
     return api_pb2.ContainerArguments(
         task_id="ta-123",
         function_id="fu-123",
@@ -323,7 +322,7 @@ def _run_container(
     web_server_startup_timeout: Optional[float] = None,
     function_serialized: Optional[bytes] = None,
     class_serialized: Optional[bytes] = None,
-    output_format: "api_pb2.DataFormat.ValueType" = api_pb2.DATA_FORMAT_UNSPECIFIED,
+    supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"] = (),
 ) -> ContainerResult:
     container_args = _container_args(
         module_name=module_name,
@@ -350,7 +349,7 @@ def _run_container(
         web_server_startup_timeout=web_server_startup_timeout,
         function_serialized=function_serialized,
         class_serialized=class_serialized,
-        output_format=output_format,
+        supported_output_formats=supported_output_formats,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
@@ -2409,7 +2408,9 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
     async def _func(x):
         await asyncio.sleep(x)
 
-    fin_func = FinalizedFunction(_func, is_async=True, is_generator=False, output_format=api_pb2.DATA_FORMAT_PICKLE)
+    fin_func = FinalizedFunction(
+        _func, is_async=True, is_generator=False, supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE]
+    )
 
     total_inputs = 5
     servicer.container_inputs = _get_inputs(((42,), {}), n=total_inputs)
@@ -2597,17 +2598,16 @@ def test_cbor_input_payload_simple_function(servicer):
 
 
 @skip_github_non_linux
-@pytest.mark.parametrize("input_data_format", [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR])
-def test_cbor_output_payload_simple_function(servicer, input_data_format):
+def test_cbor_limited_output_simple_function(servicer):
     # Construct a single CBOR-encoded input to call test.supports.functions.square(2) -> 4
-    serialized_input = serialize_data_format(((2,), {}), input_data_format)
+    serialized_input = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_PICKLE)
     inputs = [
         api_pb2.FunctionGetInputsResponse(
             inputs=[
                 api_pb2.FunctionGetInputsItem(
                     input_id="in-cbor0",
                     function_call_id="fc-cbor",
-                    input=api_pb2.FunctionInput(args=serialized_input, data_format=input_data_format),
+                    input=api_pb2.FunctionInput(args=serialized_input, data_format=api_pb2.DATA_FORMAT_PICKLE),
                 )
             ]
         ),
@@ -2619,7 +2619,7 @@ def test_cbor_output_payload_simple_function(servicer, input_data_format):
         "test.supports.functions",
         "square_restrict_output",
         inputs=inputs,
-        output_format=api_pb2.DATA_FORMAT_CBOR,
+        supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],  # restrict output formats
     )
 
     # We can use cbor input with our function, but still get Pickle output
@@ -2702,8 +2702,7 @@ def test_custom_exception(servicer, capsys):
 
 
 @skip_github_non_linux
-@pytest.mark.parametrize("output_format", [api_pb2.DATA_FORMAT_CBOR, api_pb2.DATA_FORMAT_PICKLE])
-def test_batch_sync_function_mixed_input_data_formats(servicer, output_format):
+def test_batch_sync_function_mixed_input_data_formats(servicer):
     """Test that batch mode correctly handles different serialization formats per input item."""
     # Create inputs with different data formats
     args_list: list[tuple[tuple, dict]] = [
@@ -2728,14 +2727,14 @@ def test_batch_sync_function_mixed_input_data_formats(servicer, output_format):
         inputs=inputs,
         batch_max_size=batch_max_size,
         batch_wait_ms=batch_wait_ms,
-        output_format=output_format,
+        supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
     )
     # Verify we got the expected number of outputs
     assert len(ret.items) == len(expected_outputs)
     # Check that each output has the correct data format and value
-    for i, (item, expected_output) in enumerate(zip(ret.items, expected_outputs)):
+    for i, (item, expected_output, expected_data_format) in enumerate(zip(ret.items, expected_outputs, data_formats)):
         assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        assert item.data_format == output_format
+        assert item.data_format == expected_data_format
         # Deserialize using the correct format and verify the result
         value = deserialize_data_format(item.result.data, item.data_format, ret.client)
         assert value == expected_output, f"Item {i}: expected {expected_output}, got {value}"

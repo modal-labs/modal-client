@@ -201,6 +201,9 @@ class IOContext:
         }
         return (), formatted_kwargs
 
+    def _generator_output_format(self) -> "api_pb2.DataFormat.ValueType":
+        return self._coalesce_output_format(self.function_inputs[0].data_format)
+
     def _prepare_batch_output(self, data: Any) -> list[Any]:
         # validate that output is valid for batch
         if self._is_batched:
@@ -287,6 +290,19 @@ class IOContext:
             for input_id, retry_count in zip(self.input_ids, self.retry_counts)
         ]
 
+    def _coalesce_output_format(self, input_format: "api_pb2.DataFormat.ValueType") -> "api_pb2.DataFormat.ValueType":
+        if input_format in self.finalized_function.supported_output_formats:
+            return input_format
+        else:
+            # This branch would normally be hit when calling a restricted_output function with Pickle input
+            # but we enforce cbor output at function definition level. In the future we might send the intended
+            # output format along with the input to make this disitinction in the calling client instead
+            logger.debug(
+                f"Got an input with format {input_format}, but can only produce output"
+                f" using formats {self.finalized_function.supported_output_formats}"
+            )
+            return self.finalized_function.supported_output_formats[0]
+
     async def output_items_exception(
         self, started_at: float, task_id: str, exc: BaseException
     ) -> list[api_pb2.FunctionPutOutputsItem]:
@@ -306,33 +322,42 @@ class IOContext:
 
         data: bytes = pickle_exception(exc)
         data_result_part = await format_blob_data(data, self._client.stub)
+        serialized_tb, tb_line_cache = pickle_traceback(exc, task_id)
 
-        output_format: "api_pb2.DataFormat.ValueType" = self.finalized_function.output_format
         # Failure outputs for when input exceptions occur
-        if output_format == api_pb2.DATA_FORMAT_PICKLE:
-            serialized_tb, tb_line_cache = pickle_traceback(exc, task_id)
-            serialized_exception_data = {
-                "serialized_tb": serialized_tb,
-                "tb_line_cache": tb_line_cache,
-                **data_result_part,
-            }
-        else:
-            serialized_exception_data = {}
+        def data_format_specific_output(input_format: "api_pb2.DataFormat.ValueType") -> dict:
+            output_format = self._coalesce_output_format(input_format)
+            if output_format == api_pb2.DATA_FORMAT_PICKLE:
+                return {
+                    "data_format": output_format,
+                    "result": api_pb2.GenericResult(
+                        status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                        exception=repr_exc,
+                        traceback=traceback.format_exc(),
+                        serialized_tb=serialized_tb,
+                        tb_line_cache=tb_line_cache,
+                        **data_result_part,
+                    ),
+                }
+            else:
+                return {
+                    "data_format": output_format,
+                    "result": api_pb2.GenericResult(
+                        status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                        exception=repr_exc,
+                        traceback=traceback.format_exc(),
+                    ),
+                }
+
         # all inputs in the batch get the same failure:
         return [
             api_pb2.FunctionPutOutputsItem(
                 input_id=input_id,
                 input_started_at=started_at,
-                data_format=output_format,
-                result=api_pb2.GenericResult(
-                    status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-                    exception=repr_exc,
-                    traceback=traceback.format_exc(),
-                    **serialized_exception_data,
-                ),
                 retry_count=retry_count,
+                **data_format_specific_output(function_input.data_format),
             )
-            for input_id, retry_count in zip(self.input_ids, self.retry_counts)
+            for input_id, retry_count, function_input in zip(self.input_ids, self.retry_counts, self.function_inputs)
         ]
 
     def output_items_generator_done(self, started_at: float, items_total: int) -> list[api_pb2.FunctionPutOutputsItem]:
@@ -360,10 +385,12 @@ class IOContext:
         output_created_at = time.time()
 
         # Process all items concurrently and create output items directly
-        async def package_output(item: Any, input_id: str, retry_count: int) -> api_pb2.FunctionPutOutputsItem:
-            output_data_format = self.finalized_function.output_format or api_pb2.DATA_FORMAT_PICKLE
+        async def package_output(
+            item: Any, input_id: str, retry_count: int, input_format: "api_pb2.DataFormat.ValueType"
+        ) -> api_pb2.FunctionPutOutputsItem:
+            output_format = self._coalesce_output_format(input_format)
 
-            serialized_bytes = serialize_data_format(item, data_format=output_data_format)
+            serialized_bytes = serialize_data_format(item, data_format=output_format)
             formatted = await format_blob_data(serialized_bytes, self._client.stub)
             # Create the result
             result = api_pb2.GenericResult(
@@ -375,15 +402,17 @@ class IOContext:
                 input_started_at=started_at,
                 output_created_at=output_created_at,
                 result=result,
-                data_format=output_data_format,
+                data_format=output_format,
                 retry_count=retry_count,
             )
 
         # Process all items concurrently
         return await asyncio.gather(
             *[
-                package_output(item, input_id, retry_count)
-                for item, input_id, retry_count in zip(data, self.input_ids, self.retry_counts)
+                package_output(item, input_id, retry_count, function_input.data_format)
+                for item, input_id, retry_count, function_input in zip(
+                    data, self.input_ids, self.retry_counts, self.function_inputs
+                )
             ]
         )
 

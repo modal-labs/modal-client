@@ -29,7 +29,7 @@ class FinalizedFunction:
     callable: Callable[..., Any]
     is_async: bool
     is_generator: bool
-    output_format: "api_pb2.DataFormat.ValueType"
+    supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"]
     lifespan_manager: Optional["LifespanManager"] = None
 
 
@@ -115,7 +115,8 @@ class ImportedFunction(Service):
                     callable=self._user_defined_callable,
                     is_async=is_async,
                     is_generator=is_generator,
-                    output_format=fun_def.output_format or api_pb2.DATA_FORMAT_PICKLE,  # <v1.2 fallback
+                    supported_output_formats=fun_def.supported_output_formats
+                    or [api_pb2.DATA_FORMAT_PICKLE],  # <v1.2 fallback
                 )
             }
 
@@ -129,7 +130,7 @@ class ImportedFunction(Service):
                 lifespan_manager=lifespan_manager,
                 is_async=True,
                 is_generator=True,
-                output_format=api_pb2.DATA_FORMAT_ASGI,
+                supported_output_formats=[api_pb2.DATA_FORMAT_ASGI],
             )
         }
 
@@ -163,7 +164,8 @@ class ImportedClass(Service):
                     callable=bound_func,
                     is_async=is_async,
                     is_generator=bool(is_generator),
-                    output_format=fun_def.output_format or api_pb2.DATA_FORMAT_PICKLE,  # <v1.2 fallback
+                    supported_output_formats=fun_def.supported_output_formats
+                    or [api_pb2.DATA_FORMAT_PICKLE],  # <v1.2 fallback
                 )
             else:
                 web_callable, lifespan_manager = construct_webhook_callable(
@@ -174,7 +176,7 @@ class ImportedClass(Service):
                     lifespan_manager=lifespan_manager,
                     is_async=True,
                     is_generator=True,
-                    output_format=api_pb2.DATA_FORMAT_ASGI,
+                    supported_output_formats=[api_pb2.DATA_FORMAT_ASGI],
                 )
             finalized_functions[method_name] = finalized_function
         return finalized_functions

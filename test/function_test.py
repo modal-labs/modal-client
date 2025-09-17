@@ -1498,7 +1498,7 @@ def test_function_supported_input_formats(client, servicer):
     @modal.fastapi_endpoint()
     def web_f(): ...
 
-    @app.function(serialized=True, _experimental_restrict_output=True)
+    @app.function(serialized=True, experimental_options={"restrict_output": True})
     def cbor_f(a): ...
 
     @app.cls(serialized=True)
@@ -1514,11 +1514,14 @@ def test_function_supported_input_formats(client, servicer):
     assert set(f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     assert set(f_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     g_metadata = g._get_metadata()
-    assert set(g_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE}
+    assert set(g_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     assert set(g_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     web_f_metadata = web_f._get_metadata()
     assert set(web_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_ASGI}
     assert web_f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
+    cbor_f_metadata = cbor_f._get_metadata()
+    assert set(cbor_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+    assert set(cbor_f_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
 
     cls_metadata = typing.cast(modal.Cls, A)._get_class_service_function()._get_metadata()
     assert set(cls_metadata.method_handle_metadata["f"].supported_input_formats) == {
