@@ -4,7 +4,7 @@ import os
 import signal
 import sys
 import uuid
-from typing import List, Literal, Tuple
+from typing import List, Literal, Optional, Tuple
 
 import httpx
 
@@ -18,10 +18,10 @@ from modal.snapshot import SandboxSnapshot
 class Repl:
     port = 8000
 
-    def __init__(self, sandbox: Sandbox, sb_url: str):
+    def __init__(self, sandbox: Sandbox, sb_url: str, id: Optional[str] = None):
         self.sb = sandbox
         self.sb_url = sb_url
-        self.uuid = str(uuid.uuid4())
+        self.id = id or str(uuid.uuid4())
 
     @staticmethod
     def parse_command(code: str) -> List[Tuple[str, Literal["exec", "eval"]]]:
@@ -89,11 +89,11 @@ class Repl:
         return Repl(sb, sb_url)
 
     @staticmethod
-    def from_snapshot(snapshot_id: str) -> "Repl":
+    def from_snapshot(snapshot_id: str, id: Optional[str] = None) -> "Repl":
         snapshot = SandboxSnapshot.from_id(snapshot_id)
         sb = Sandbox._experimental_from_snapshot(snapshot)
         sb_url = sb.tunnels()[8000].url
-        return Repl(sb, sb_url)
+        return Repl(sb, sb_url, id)
 
     @staticmethod
     def create_prompt() -> "Repl":
@@ -102,44 +102,49 @@ class Repl:
         return Repl.create(packages=packages.split(","))
 
     @staticmethod
-    def start_repl():
-        createNew = None
-        while createNew not in ["y", "n"]:
-            print("Would you like to use a previously snapshotted repl? (y/n)")
-            createNew = input()
-            createNew = createNew.lower()
-            if createNew not in ["y", "n"]:
-                print("invalid choice, please enter y or n")
-                createNew = None
-        if createNew == "y":
-            repl = Repl.from_snapshot(input("Enter the id of the snapshot you want to restore from: "))
-        else:
-            repl = Repl.create_prompt()
-        signal.signal(signal.SIGINT, lambda signum, frame: repl.signal_handler(signum, frame))
-        with enable_output():
-            print("Welcome to Modal REPL")
-            while True:
-                print(">> ", end="")
-                command = input()
-                if command == "exit()":
-                    asyncio.run(repl.signal_handler(signal.SIGINT, None))
-                commands = Repl.parse_command(command)
-                res = repl.run(commands)
-                output = res.json()["result"]
-                if output:
-                    print(output)
+    async def start_repl():
+        try:
+            createNew = None
+            while createNew not in ["y", "n"]:
+                print("Would you like to use a previously snapshotted repl? (y/n)")
+                createNew = input()
+                createNew = createNew.lower()
+                if createNew not in ["y", "n"]:
+                    print("invalid choice, please enter y or n")
+                    createNew = None
+            if createNew == "y":
+                repl = Repl.from_snapshot(input("Enter the id of the snapshot you want to restore from: "))
+            else:
+                repl = Repl.create_prompt()
+            signal.signal(signal.SIGINT, lambda signum, frame: repl.signal_handler(signum, frame))
+            with enable_output():
+                print("Welcome to Modal REPL")
+                while True:
+                    print(">> ", end="")
+                    command = input()
+                    if command == "exit()":
+                        asyncio.run(repl.signal_handler(signal.SIGINT, None))
+                    commands = Repl.parse_command(command)
+                    res = await repl.run(commands)
+                    output = res.json()["result"]
+                    if output:
+                        print(output)
+        except Exception as e:
+            raise Exception(f"Error running commands: {e}")
 
     def run(self, commands: List[Tuple[str, Literal["exec", "eval"]]]):
-        response = httpx.post(self.sb_url, json={"code": commands})
-        return response
+        try:
+            response = httpx.post(self.sb_url, json={"code": commands})
+            return response
+        except Exception as e:
+            raise Exception(f"Error running commands: {e}")
 
     def kill(self):
-        print("Killing REPL sandbox")
         if self.sb:
             snapshot = self.sb._experimental_snapshot()
             self.sb.terminate()
-            asyncio.run(asyncio.sleep(2))
-            print("The snapshot id is: ", snapshot.object_id, "\nYou can use this id to restore the repl later.")
+            return snapshot.object_id
+        raise ValueError("repl not found")
 
     def signal_handler(self, signum, frame):
         self.kill()
