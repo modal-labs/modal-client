@@ -1856,6 +1856,8 @@ Use the `Function.get_web_url()` method instead.
         that can later be polled or waited for using
         [`.get(timeout=...)`](https://modal.com/docs/reference/modal.FunctionCall#get).
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
+
+        Note: If a parent function is canceled, all spawned child processes will also be canceled.
         """
         self._check_no_web_url("spawn")
         if self._is_generator:
