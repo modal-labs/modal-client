@@ -868,6 +868,68 @@ class _Image(_Object, type_prefix="im"):
 
         return obj
 
+    async def build(self, app: "modal.app._App") -> "_Image":
+        """Eagerly build an image.
+
+        If your image was previously built, then this method will not rebuild your image
+        and your cached image is returned.
+
+        **Examples**
+
+        ```python
+        image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
+
+        app = modal.App("build-image")
+        with modal.enable_output(), app.run():
+            image.build(app)
+
+        # Save the image id
+        my_image_id = image.object_id
+
+        # Reference the image with the id or uses it another context.
+        built_image = modal.Image.from_id(my_image_id)
+        ```
+
+        Alternatively, you can pre-build a image and use it in a sandbox.
+
+        ```python notest
+        app = modal.App.lookup("sandbox-example")
+
+        with modal.enable_output():
+            image = modal.Image.debian_slim().uv_pip_install("scipy")
+            image.build(app)
+
+        sb = modal.Sandbox.create("python", "-c", "import scipy; print(scipy)", app=app, image=image)
+        print(sb.stdout.read())
+        sb.terminate()
+        ```
+
+        **Note**
+
+        For defining Modal functions, images are built automatically when deploying or running an App.
+        You do not need to built the image explicitly:
+
+        ```python notest
+        app = modal.App()
+        image = modal.Image.debian_slim()
+
+        # No need to explicitly build the image for defining a function.
+        @app.function(image=image)
+        def f():
+            ...
+        ```
+
+        """
+        if app.app_id is None:
+            raise InvalidError("App has not been initialized yet. Use the content manager `app.run()` or `App.lookup`")
+
+        app_id = app.app_id
+        app_client = app._client or await _Client.from_env()
+
+        resolver = Resolver(app_client, app_id=app_id)
+        await resolver.load(self)
+        return self
+
     def pip_install(
         self,
         *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
