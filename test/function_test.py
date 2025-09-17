@@ -1521,7 +1521,7 @@ def test_function_supported_input_formats(client, servicer):
     assert web_f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
     cbor_f_metadata = cbor_f._get_metadata()
     assert set(cbor_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
-    assert set(cbor_f_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+    assert set(cbor_f_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_CBOR}
 
     cls_metadata = typing.cast(modal.Cls, A)._get_class_service_function()._get_metadata()
     assert set(cls_metadata.method_handle_metadata["f"].supported_input_formats) == {
