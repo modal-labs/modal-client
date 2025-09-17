@@ -1934,7 +1934,6 @@ def test_cancellation_aborts_current_input_on_match(
     )
     stdout, stderr = container_process.communicate()
     stderr_str = stderr.decode()
-    print(stderr_str)
     assert stderr_str.count("Successfully canceled input") == live_cancellations
     assert "Traceback" not in stderr_str
     assert container_process.returncode == 0  # wait for container to exit
@@ -2599,7 +2598,7 @@ def test_cbor_input_payload_simple_function(servicer):
 
 @skip_github_non_linux
 def test_cbor_limited_output_simple_function(servicer):
-    # Construct a single CBOR-encoded input to call test.supports.functions.square(2) -> 4
+    # send input as pickle, but function definition limits the output to cbor
     serialized_input = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_PICKLE)
     inputs = [
         api_pb2.FunctionGetInputsResponse(
@@ -2629,6 +2628,40 @@ def test_cbor_limited_output_simple_function(servicer):
     assert item.data_format == api_pb2.DATA_FORMAT_CBOR  # expect cbor output
     value = deserialize_data_format(item.result.data, item.data_format, ret.client)
     assert int(value) == 4
+
+
+@skip_github_non_linux
+def test_cbor_incompatible_output(servicer):
+    serialized_input = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_PICKLE)
+    inputs = [
+        api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id="in-cbor0",
+                    function_call_id="fc-cbor",
+                    input=api_pb2.FunctionInput(args=serialized_input, data_format=api_pb2.DATA_FORMAT_PICKLE),
+                )
+            ]
+        ),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
+    ]
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "cbor_incompatible_output",
+        inputs=inputs,
+        supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],  # restrict output formats
+    )
+
+    # We can use cbor input with our function, but still get Pickle output
+    assert len(ret.items) == 1
+    item = ret.items[0]
+    assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert item.data_format == api_pb2.DATA_FORMAT_CBOR  # expect cbor output
+    assert "SerializationError" in item.result.exception
+    assert "Can not serialize type" in item.result.exception
+    assert item.result.data == b""
 
 
 @skip_github_non_linux

@@ -23,6 +23,7 @@ from modal import (
 )
 from modal._utils.deprecation import deprecation_warning
 from modal.experimental import get_local_input_concurrency, set_local_input_concurrency
+from modal.queue import Queue
 
 SLEEP_DELAY = 0.1
 
@@ -34,9 +35,15 @@ def square(x: int):
     return x * x
 
 
-@app.function(experimental_options={"restrict_output": True})
+@app.function(_experimental_restrict_output=True)
 def square_restrict_output(x: int):
     return x * x
+
+
+@app.function(_experimental_restrict_output=True)
+def cbor_incompatible_output(x: int):
+    with Queue.ephemeral() as q:
+        return q
 
 
 @app.function()

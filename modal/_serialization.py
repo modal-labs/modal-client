@@ -11,7 +11,7 @@ from modal.config import config
 
 try:
     import cbor2  # type: ignore
-except Exception:  # pragma: no cover - optional dependency
+except ImportError:  # pragma: no cover - optional dependency
     cbor2 = None
 
 import google.protobuf.message
@@ -372,7 +372,18 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
     elif data_format == api_pb2.DATA_FORMAT_CBOR:
         if cbor2 is None:
             raise InvalidError("CBOR support requires the 'cbor2' package to be installed.")
-        return cbor2.dumps(obj)
+        try:
+            return cbor2.dumps(obj)
+        except cbor2.CBOREncodeTypeError:
+            try:
+                typename = f"{type(obj).__module__}.{type(obj).__name__}"
+            except Exception:
+                typename = str(type(obj))
+            raise SerializationError(
+                # TODO (elias): add documentation link for more information on this
+                f"Can not serialize type {typename} as cbor. If you need to use a custom data type, "
+                "try to serialize it yourself e.g. by using pickle.dumps(my_data)"
+            )
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
