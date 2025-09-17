@@ -9,7 +9,11 @@ from modal_proto import api_pb2
 
 def test_import_function(supports_dir, monkeypatch):
     monkeypatch.syspath_prepend(supports_dir)
-    fun = api_pb2.Function(module_name="user_code_import_samples.func", function_name="f")
+    fun = api_pb2.Function(
+        module_name="user_code_import_samples.func",
+        function_name="f",
+        supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],
+    )
     service = user_code_imports.import_single_function_service(
         fun,
         None,
@@ -28,7 +32,7 @@ def test_import_function(supports_dir, monkeypatch):
     finalized_func = finalized_funcs[""]
     assert finalized_func.is_async is False
     assert finalized_func.is_generator is False
-    assert finalized_func.output_format == api_pb2.DATA_FORMAT_PICKLE
+    assert finalized_func.supported_output_formats == [api_pb2.DATA_FORMAT_CBOR]
     assert finalized_func.lifespan_manager is None
     container_callable = finalized_func.callable
     assert container_callable("world") == "hello world"
@@ -57,6 +61,7 @@ def test_import_class(monkeypatch, supports_dir, client):
     function_def = api_pb2.Function(
         module_name="user_code_import_samples.cls",
         function_name="C.*",
+        supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
     )
     service = user_code_imports.import_class_service(
         function_def,
@@ -87,7 +92,7 @@ def test_import_class(monkeypatch, supports_dir, client):
     for finalized in finalized_funcs.values():
         assert finalized.is_async is False
         assert finalized.is_generator is False
-        assert finalized.output_format == api_pb2.DATA_FORMAT_PICKLE
+        assert finalized.supported_output_formats == [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
         assert finalized.lifespan_manager is None
 
     finalized_1, finalized_2, self_ref = finalized_funcs["f"], finalized_funcs["f2"], finalized_funcs["self_ref"]
