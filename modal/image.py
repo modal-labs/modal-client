@@ -871,8 +871,8 @@ class _Image(_Object, type_prefix="im"):
     async def build(self, app: "modal.app._App") -> "_Image":
         """Eagerly build an image.
 
-        If your image was previously built, then this method will be a no-op and
-        your built image is returned.
+        If your image was previously built, then this method will not rebuild your image
+        and your cached image is returned.
 
         **Examples**
 
@@ -890,7 +890,7 @@ class _Image(_Object, type_prefix="im"):
         built_image = modal.Image.from_id(my_image_id)
         ```
 
-        Alternatively, you can re-built a image and use it in a sandbox.
+        Alternatively, you can pre-build a image and use it in a sandbox.
 
         ```python notest
         app = modal.App.lookup("sandbox-example")
