@@ -628,11 +628,26 @@ message AuthTokenGetResponse {
   string token = 1;
 }
 
+// Message representing the current (coalesced) state of the autoscaler configuration
+// As well as the different sources that were used to create it.
+message AutoscalerConfiguration {
+  // The settings that are currently in effect.
+  AutoscalerSettings settings = 1;
+  // For tracking the source of the overridden value; keys correspond to fields in `settings`.
+  map<string, UserActionInfo> override_events = 2;
+  // The default settings that are used when no static settings are provided and no overrides are in effect.
+  AutoscalerSettings default_settings = 3;
+  // The static settings that were used to initialize the configuration.
+  AutoscalerSettings static_settings = 4;
+  // The merge of all overrides that were used to create the current configuration.
+  AutoscalerSettings override_settings = 5;
+}
+
 message AutoscalerSettings {
   // A collection of user-configurable settings for Function autoscaling
   // These are used for static configuration and for dynamic autoscaler updates
 
-  // Minimum containers when scale-to-zero is not deisired; pka "keep_warm" or "warm_pool_size"
+  // Minimum containers when scale-to-zero is not desired; pka "keep_warm" or "warm_pool_size"
   optional uint32 min_containers = 1;
   // Limit on the number of containers that can be running for each Function; pka "concurrency_limit"
   optional uint32 max_containers = 2;
@@ -3215,6 +3230,12 @@ message TunnelStopResponse {
 
 message UploadUrlList {
   repeated string items = 1;
+}
+
+// Used for capturing context about an action performed by a user
+message UserActionInfo {
+  string user_id = 1;
+  double timestamp = 2;
 }
 
 message VolumeCommitRequest {
