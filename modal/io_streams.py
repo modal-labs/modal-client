@@ -453,6 +453,7 @@ class _StreamReaderDirect(Generic[T]):
             await self._stream.aclose()
 
 
+# TODO(saltzm): Unit tests for stream readers.
 class _StreamReader(Generic[T]):
     """Delegating StreamReader that chooses implementation based on whether direct access
     is enabled for the sandbox."""
