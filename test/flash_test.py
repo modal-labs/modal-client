@@ -69,7 +69,7 @@ class TestFlashAutoscalerLogic:
             # 4 containers, all emit value 5 with target 10 -> avg=5 -> ratio=0.5 -> ceil(4*0.5)=2
             ({"h1": 5.0, "h2": 5.0, "h3": 5.0, "h4": 5.0}, 4, None, 2),
             # 3 containers, only one emits 10 (target), two unhealthy -> both assumed at target for scale-up calc
-            ({"h1": 10.0, "h2": None, "h3": None}, 3, None, 3),
+            ({"h1": 10.0, "h2": None, "h3": None}, 3, None, 5),
             # current_replicas (1) < discoverable containers (3) -> adjusted up to 3; metrics equal target -> stay at 3
             ({"h1": 10.0, "h2": 10.0, "h3": 10.0}, 1, None, 3),
             # Overprovision reduces denominator in scale-up avg: 3 containers at 15,
@@ -82,19 +82,27 @@ class TestFlashAutoscalerLogic:
             # One healthy at target, one unhealthy; with overprovision=1 denominator becomes 1, leading to scale-up.
             ({"h1": 10.0, "h2": None}, 2, 1, 3),
             # 5 containers, h2 and h4 unhealthy, others at 15.0
-            ({"h1": 15.0, "h2": None, "h3": 15.0, "h4": None, "h5": 15.0}, 5, None, 7),
+            ({"h1": 15.0, "h2": None, "h3": 15.0, "h4": None, "h5": 15.0}, 5, None, 8),
             # 5 containers, mixed metrics and some unhealthy
-            ({"h1": 12.0, "h2": 8.0, "h3": 15.0, "h4": None, "h5": None}, 5, None, 6),
+            ({"h1": 12.0, "h2": 8.0, "h3": 15.0, "h4": None, "h5": None}, 5, None, 7),
             # 4 containers all with the same metric value
             ({"h1": 5.0, "h2": 5.0, "h3": 5.0, "h4": 5.0}, 4, None, 2),
             # Custom target values, tolerances, and overprovision settings
-            ({"h1": 25.0, "h2": 30.0, "h3": None}, 3, 1, 7),
+            ({"h1": 25.0, "h2": 30.0, "h3": None}, 3, 1, 8),
             # All unhealthy, 20 current replicas, 17 provisioned, target_metric_value=20.0
             (
                 {f"h{i}": None for i in range(1, 21)},
                 20,
                 1,
-                22,
+                33,
+            ),
+            # 13 containers, 0 healthy, 9 unhealthy, 1 missing, 3 buffer
+            # expected number should just be > 10
+            (
+                {f"h{i}": None for i in range(1, 10)},
+                13,
+                3,
+                15,
             ),
         ],
     )
@@ -113,6 +121,7 @@ class TestFlashAutoscalerLogic:
 
         result = await autoscaler._compute_target_containers(current_replicas=current_replicas)
         assert result == expected_replicas
+
 
 _MAX_FAILURES = 10
 
