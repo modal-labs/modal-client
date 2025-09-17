@@ -896,7 +896,8 @@ class _Image(_Object, type_prefix="im"):
         app = modal.App.lookup("sandbox-example")
 
         with modal.enable_output():
-            image = modal.Image.debian_slim().uv_pip_install("scipy").build(app)
+            image = modal.Image.debian_slim().uv_pip_install("scipy")
+            image.build(app)
 
         sb = modal.Sandbox.create("python", "-c", "import scipy; print(scipy)", app=app, image=image)
         print(sb.stdout.read())
