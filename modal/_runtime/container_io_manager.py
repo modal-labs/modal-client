@@ -159,7 +159,6 @@ class IOContext:
         deserialized_args = []
         for input in self.function_inputs:
             if input.args:
-                assert input.data_format
                 data_format = input.data_format
                 deserialized_args.append(deserialize_data_format(input.args, data_format, self._client))
             else:

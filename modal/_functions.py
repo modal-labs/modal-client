@@ -1555,7 +1555,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             input_plane_region=self._input_plane_region,
             max_object_size_bytes=self._max_object_size_bytes,
             _experimental_flash_urls=self._experimental_flash_urls,
-            supported_input_formats=self._metadata.supported_input_formats if self._metadata else None,
+            supported_input_formats=self._metadata.supported_input_formats if self._metadata else [],
             supported_output_formats=self._metadata.supported_output_formats if self._metadata else [],
         )
 
