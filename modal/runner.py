@@ -606,12 +606,12 @@ async def _interactive_shell(
 
         try:
             if pty:
-                container_process = await sandbox.exec(
+                container_process = await sandbox._exec(
                     *sandbox_cmds, pty_info=get_pty_info(shell=True) if pty else None
                 )
                 await container_process.attach()
             else:
-                container_process = await sandbox.exec(
+                container_process = await sandbox._exec(
                     *sandbox_cmds, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT
                 )
                 await container_process.wait()

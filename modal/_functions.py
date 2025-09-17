@@ -6,7 +6,7 @@ import textwrap
 import time
 import typing
 import warnings
-from collections.abc import AsyncGenerator, Sequence, Sized
+from collections.abc import AsyncGenerator, Collection, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Union
@@ -582,7 +582,7 @@ class _FunctionSpec:
 
     image: Optional[_Image]
     mounts: Sequence[_Mount]
-    secrets: Sequence[_Secret]
+    secrets: Collection[_Secret]
     network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem]
     volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
     # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
@@ -646,7 +646,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         info: FunctionInfo,
         app,
         image: _Image,
-        secrets: Sequence[_Secret] = (),
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         schedule: Optional[Schedule] = None,
         is_generator: bool = False,
         gpu: Union[GPU_T, list[GPU_T]] = None,
@@ -686,7 +687,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
     ) -> "_Function":
-        """mdmd:hidden"""
+        """mdmd:hidden
+
+        Note: This is not intended to be public API.
+        """
         # Needed to avoid circular imports
         from ._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
@@ -720,6 +724,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 raise InvalidError("Web endpoints do not support retries.")
             if is_generator:
                 raise InvalidError("Generator functions do not support retries.")
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         function_spec = _FunctionSpec(
             mounts=all_mounts,
