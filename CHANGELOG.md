@@ -6,6 +6,24 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev26 (2025-09-17)
+
+- Adds `image.build` to eagerly build an image:
+ 
+```python
+image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
+app = modal.App("build-image")
+with modal.enable_output(), app.run():
+    image.build(app)
+
+# Save the image id
+my_image_id = image.object_id
+
+# Reference the image by id
+built_image = Image.from_id(my_image_id)
+```
+
+
 #### 1.1.5.dev21 (2025-09-16)
 
 - Added `env` parameters to several methods, as a more discoverable convenience method for passing non-secret environment variables to containers.
