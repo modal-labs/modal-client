@@ -365,15 +365,13 @@ class _FlashPrometheusAutoscaler:
         # n_containers_unhealthy = number of dns registered containers that are not emitting metrics
         n_containers_unhealthy = n_total_containers - n_containers_with_metrics
 
-        # number of total containers - buffer containers
-        # This is used in 1) scale ratio denominators 2) provisioning base.
         # Max is used to handle case when buffer_containers are first initialized.
         num_provisioned_containers = max(n_current_replicas - buffer_containers, 1)
 
-        # Scale up assuming that every unhealthy container is at (1 + scale_up_tolerance)x the target metric value.
+        # Scale up assuming that every unhealthy container is at 1.5 x (1 + scale_up_tolerance) the target metric value.
         # This way if all containers are unhealthy, we will increase our number of containers.
         scale_up_target_metric_value = (
-            sum_metric + (1 + self.scale_up_tolerance) * n_containers_unhealthy * target_metric_value
+            sum_metric + 1.5 * (1 + self.scale_up_tolerance) * n_containers_unhealthy * target_metric_value
         ) / (num_provisioned_containers)
 
         # Scale down assuming that every container (including cold starting containers) are at the target metric value.

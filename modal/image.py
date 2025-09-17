@@ -7,7 +7,7 @@ import shlex
 import sys
 import typing
 import warnings
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
@@ -492,7 +492,7 @@ class _Image(_Object, type_prefix="im"):
         *,
         base_images: Optional[dict[str, "_Image"]] = None,
         dockerfile_function: Optional[Callable[[ImageBuilderVersion], DockerfileSpec]] = None,
-        secrets: Optional[Sequence[_Secret]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu_config: Optional[api_pb2.GPUConfig] = None,
         build_function: Optional["modal._functions._Function"] = None,
         build_function_input: Optional[api_pb2.FunctionInput] = None,
@@ -878,7 +878,8 @@ class _Image(_Object, type_prefix="im"):
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of Python packages using pip.
@@ -925,6 +926,10 @@ class _Image(_Object, type_prefix="im"):
                 commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files={})
 
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
+
         gpu_config = parse_gpu_config(gpu)
         return _Image._from_args(
             base_images={"base": self},
@@ -944,7 +949,8 @@ class _Image(_Object, type_prefix="im"):
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         gpu: GPU_T = None,
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
+        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
         """
@@ -978,11 +984,15 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+
         if not secrets:
             raise InvalidError(
                 "No secrets provided to function. "
                 "Installing private packages requires tokens to be passed via modal.Secret objects."
             )
+
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         invalid_repos = []
         install_urls = []
@@ -1045,10 +1055,15 @@ class _Image(_Object, type_prefix="im"):
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of Python packages from a local `requirements.txt` file."""
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             requirements_txt_path = os.path.expanduser(requirements_txt)
@@ -1086,7 +1101,8 @@ class _Image(_Object, type_prefix="im"):
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
     ) -> "_Image":
         """Install dependencies specified by a local `pyproject.toml` file.
@@ -1096,6 +1112,10 @@ class _Image(_Object, type_prefix="im"):
         (e.g. test, doc, experiment, etc). When provided,
         all of the packages in each listed section are installed as well.
         """
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             # Defer toml import so we don't need it in the container runtime environment
@@ -1148,7 +1168,8 @@ class _Image(_Object, type_prefix="im"):
         extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         uv_version: Optional[str] = None,  # uv version to use
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of Python packages using uv pip install.
@@ -1167,6 +1188,11 @@ class _Image(_Object, type_prefix="im"):
 
         Added in v1.1.0.
         """
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
+
         pkgs = _flatten_str_args("uv_pip_install", "packages", packages)
 
         if requirements is None or isinstance(requirements, list):
@@ -1262,7 +1288,8 @@ class _Image(_Object, type_prefix="im"):
         poetry_version: Optional[str] = "latest",  # Version of poetry to install, or None to skip installation
         # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
         old_installer: bool = False,
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
     ) -> "_Image":
         """Install poetry *dependencies* specified by a local `pyproject.toml` file.
@@ -1277,6 +1304,10 @@ class _Image(_Object, type_prefix="im"):
         Note that the interpretation of `poetry_version="latest"` depends on the Modal Image Builder
         version, with versions 2024.10 and earlier limiting poetry to 1.x.
         """
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             context_files = {"/.pyproject.toml": os.path.expanduser(poetry_pyproject_toml)}
@@ -1347,7 +1378,8 @@ class _Image(_Object, type_prefix="im"):
         frozen: bool = True,  # If True, then we run `uv sync --frozen` when a uv.lock file is present
         extra_options: str = "",  # Extra options to pass to `uv sync`
         uv_version: Optional[str] = None,  # uv version to use
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
     ) -> "_Image":
         """Creates a virtual environment with the dependencies in a uv managed project with `uv sync`.
@@ -1362,6 +1394,10 @@ class _Image(_Object, type_prefix="im"):
 
         Added in v1.1.0.
         """
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         def _normalize_items(items, name) -> list[str]:
             if items is None:
@@ -1495,7 +1531,8 @@ class _Image(_Object, type_prefix="im"):
         self,
         *dockerfile_commands: Union[str, list[str]],
         context_files: dict[str, str] = {},
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
         context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
@@ -1553,6 +1590,10 @@ class _Image(_Object, type_prefix="im"):
         if not cmds:
             return self
 
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
+
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", *cmds], context_files=context_files)
 
@@ -1596,11 +1637,17 @@ class _Image(_Object, type_prefix="im"):
     def run_commands(
         self,
         *commands: Union[str, list[str]],
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
         """Extend an image with a list of shell commands to run."""
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
+
         cmds = _flatten_str_args("run_commands", "commands", commands)
         if not cmds:
             return self
@@ -1659,10 +1706,16 @@ class _Image(_Object, type_prefix="im"):
         # A list of Conda channels, eg. ["conda-forge", "nvidia"].
         channels: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of additional packages using micromamba."""
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
+
         pkgs = _flatten_str_args("micromamba_install", "packages", packages)
         if not pkgs and spec_file is None:
             return self
@@ -1910,7 +1963,8 @@ class _Image(_Object, type_prefix="im"):
         context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
         add_python: Optional[str] = None,
         build_args: dict[str, str] = {},
@@ -1965,6 +2019,11 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
+
         if context_mount is not None:
             deprecation_warning(
                 (2025, 1, 13),
@@ -2079,7 +2138,8 @@ class _Image(_Object, type_prefix="im"):
         self,
         *packages: Union[str, list[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secrets: Sequence[_Secret] = [],
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
     ) -> "_Image":
         """Install a list of Debian packages using `apt`.
@@ -2104,6 +2164,10 @@ class _Image(_Object, type_prefix="im"):
             ]
             return DockerfileSpec(commands=commands, context_files={})
 
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
+
         return _Image._from_args(
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
@@ -2116,7 +2180,8 @@ class _Image(_Object, type_prefix="im"):
         self,
         raw_f: Callable[..., Any],
         *,
-        secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
+        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
         gpu: Union[GPU_T, list[GPU_T]] = None,  # Requested GPU or or list of acceptable GPUs( e.g. ["A10", "A100"])
@@ -2158,6 +2223,11 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
+
         from ._functions import _Function
 
         if not callable(raw_f):
