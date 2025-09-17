@@ -437,9 +437,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                         param_kwargs,
                     )
                 else:
+                    assert ser_usr_cls is None
                     service = import_single_function_service(
                         function_def,
-                        ser_usr_cls,
                         ser_fun,
                     )
 
