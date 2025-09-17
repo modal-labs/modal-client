@@ -12,7 +12,7 @@ from grpclib import GRPCError, Status
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
-from ._object import _Object
+from ._object import _Object, live_method
 from ._partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
@@ -81,7 +81,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 @dataclasses.dataclass()
 class _ServiceOptions:
     # Note that default values should always be "untruthy" so we can detect when they are not set
-    secrets: typing.Collection[_Secret] = ()
+    secrets: Collection[_Secret] = ()
     validated_volumes: typing.Sequence[tuple[str, _Volume]] = ()
     resources: Optional[api_pb2.Resources] = None
     retry_policy: Optional[api_pb2.FunctionRetryPolicy] = None
@@ -510,6 +510,11 @@ class _Cls(_Object, type_prefix="cs"):
         # returns method names for a *local* class only for now (used by cli)
         return self._method_partials.keys()
 
+    @live_method
+    async def _experimental_get_flash_urls(self) -> Optional[list[str]]:
+        """URL of the flash service for the class."""
+        return await self._get_class_service_function()._experimental_get_flash_urls()
+
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
         class_service_function = self._get_class_service_function()
@@ -681,7 +686,8 @@ More information on class parameterization can be found here: https://modal.com/
         cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
         gpu: GPU_T = None,
-        secrets: Collection[_Secret] = (),
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
         volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
         max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
@@ -755,6 +761,10 @@ More information on class parameterization can be found here: https://modal.com/
 
         cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
         cls._initialize_from_other(self)
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         new_options = _ServiceOptions(
             secrets=secrets,

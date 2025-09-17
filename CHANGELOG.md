@@ -6,40 +6,71 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.1.2.dev31 (2025-08-11)
+#### 1.1.5.dev21 (2025-09-16)
 
-- Allow multi-node Class-based functions to use RDMA
-
-
-#### 1.1.2.dev29 (2025-08-11)
-
-- Added `.objects.create()` methods
+- Added `env` parameters to several methods, as a more discoverable convenience method for passing non-secret environment variables to containers.
 
 
-#### 1.1.2.dev23 (2025-08-07)
+#### 1.1.5.dev20 (2025-09-15)
 
-- `Cls.with_options` now supports `region` and `cloud` keyword arguments to override `region` or `cloud` during runtime.
-
-
-#### 1.1.2.dev16 (2025-08-06)
-
-- Added `.objects.delete()` methods
-- Deprecated existing `.delete()` static methods due to risks of confusion with content deletion operations.
+- Added an option to enable a PTY for Sandboxes via `Sandbox.create(..., pty=True)` and `Sandbox.exec(..., pty=True)`. Also deprecated the old `pty_info` parameters.
 
 
-#### 1.1.2.dev12 (2025-08-06)
+#### 1.1.5.dev16 (2025-09-10)
 
-- Added a `.options` namespace to Modal resource object types (`modal.Dict`, `modal.Queue`, `modal.Volume`, and `modal.Secret`).
+- Adds a `create_connect_token()` method for Sandboxes which may be used to generate credentials for making HTTP / Websocket requests to a server running in a Sandbox.
 
 
-#### 1.1.2.dev3 (2025-08-04)
+### 1.1.4 (2025-09-03)
 
-- Fixed a bug that would cause e.g. some image builds to fail with `'FilePatternMatcher' object has no attribute 'patterns'` when using a `FilePatternMatcher.from_file` ignore pattern.
+- Added a `startup_timeout` parameter to the `@app.function()` and `@app.cls()` decorators. When used, this configures the timeout applied to each container's startup period separately from the input `timeout`. For backwards compatibility, `timeout` still applies to the startup phase when `startup_timeout` is unset.
+- Added an optional `idle_timeout` parameter to `modal.Sandbox.create()`. When provided, Sandboxes will terminate after `idle_timeout` seconds of idleness.
+- The dataclass returned by `modal.experimental.get_cluster_info()` now includes a `cluster_id` field to identify the clustered set of containers.
+- When `block_network=True` is set in `modal.Sandbox.create()`, we now raise an error if any of `encrypted_ports`, `h2_ports`, or `unencrypted_ports` are also set.
+- Functions decorated with `@modal.asgi_app()` now return an HTTP 408 (request timeout) error code instead of a 502 (gateway timeout) in rare cases when an input fails to arrive at the container, e.g. due to cancellation.
+- `modal.Sandbox.create()` now warns when an invalid `name=` is passed, applying the same rules as other Modal object names: names must be alphanumeric and not longer than 64 characters. This will become an error in the future.
 
+### 1.1.3 (2025-08-19)
+
+- Fixed a bug introduced in `v1.1.2` that causes invocation of `modal.FunctionCall.get`, `modal.FunctionCall.get_call_graph`, `modal.FunctionCall.cancel`, and `modal.FunctionCall.gather` to fail when the `FunctionCall` object is retrieved via `modal.FunctionCall.from_id`.
+- Added retries to improve the robustness of `modal volume get`
+
+### 1.1.2 (2025-08-14)
+
+We're introducing a new API pattern for imperative management of Modal resource types (`modal.Volume`, `modal.Secret`, `modal.Dict`, and `modal.Queue`). The API is accessible through the `.objects` namespace on each class. The object management namespace has methods for the following operations:
+
+- `.objects.create(name)` creates an object on our backend. E.g., with [`modal.Volume.objects.create`](https://modal.com/docs/reference/modal.Volume#create):
+  ```python notest
+  modal.Volume.objects.create("huggingface-cache", environment_name="dev")
+  ```
+- `.objects.delete(name)` deletes the object with that name. E.g., with [`modal.Secret.objects.delete`](https://modal.com/docs/reference/modal.Secret#delete):
+  ```python notest
+  modal.Secret.objects.delete("aws-token")
+  ```
+- `.objects.list()` returns a list of object instances. E.g., with [`modal.Queue.objects.list`](https://modal.com/docs/reference/modal.Queue#list):
+  ```python notest
+  for queue in modal.Queue.objects.list():
+      queue_info = queue.info()
+      print(queue_info.name, queue_info.created_at, queue.len())
+  ```
+
+With the introduction of these APIs, we're replacing a few older methods with similar functionality:
+
+- Static `.delete()` methods on the resource types themselves are being deprecated, because they are too easily confused with operations on the _contents_ of a resource (i.e., calling `modal.Dict.delete(key_name)` is an easy mistake that can have significant adverse consequences).
+- The undocumented `.create_deployed()` methods of `modal.Volume` and `modal.Secret` are being deprecated in favor of this consistent API for imperative management.
+
+Other changes:
+
+- `modal.Cls.with_options` now supports `region` and `cloud` keyword arguments to support runtime constraints on scheduling.
+- Fixed a bug that could cause Image builds to fail with `'FilePatternMatcher' object has no attribute 'patterns'` when using a `modal.FilePatternMatcher.from_file` ignore pattern.
+- Fixed a bug where `rdma=True` was ignored when using `@modal.experimental.clustered()` with a `modal.Cls`.
 
 ### 1.1.1 (2025-08-01)
 
-- We're introducing the concept of "named Sandboxes" for usecases where Sandboxes need to have unique ownership over a resource. A named Sandbox can be created by passing `name=` to `modal.Sandbox.create()`, and it can be retrieved with the new `modal.Sandbox.from_name()` constructor. Only one running Sandbox can use a given name (scoped within the App that is managing the Sandbox) at any time, so trying to create a Sandbox with a name that is already taken will fail. Sandboxes release their name when they terminate. See the [guide](https://modal.com/docs/guide/sandbox#named-sandboxes) for more information about using this new feature.
+We're introducing the concept of "named Sandboxes" for usecases where Sandboxes need to have unique ownership over a resource. A named Sandbox can be created by passing `name=` to `modal.Sandbox.create()`, and it can be retrieved with the new `modal.Sandbox.from_name()` constructor. Only one running Sandbox can use a given name (scoped within the App that is managing the Sandbox) at any time, so trying to create a Sandbox with a name that is already taken will fail. Sandboxes release their name when they terminate. See the [guide](https://modal.com/docs/guide/sandbox#named-sandboxes) for more information about using this new feature.
+
+Other changes:
+
 - We've made an internal change to the `modal.Image.uv_pip_install` method to make it more portable across different base Images. As a consequence, Images built with this method on 1.1.0 will need to rebuild the next time they are used.
 - We've added a `.name` property and `.info()` method to `modal.Dict`, `modal.Queue`, `modal.Volume`, and `modal.Secret` objects.
 - Sandboxes now support `experimental_options` configuration for enabling preview functionality.
@@ -72,7 +103,7 @@ This release also includes a number of other new features and bug fixes:
 - Added a `build_args` parameter to `modal.Image.from_dockerfile` for passing arguments through to `ARG` instructions in the Dockerfile.
 - It's now possible to use `@modal.experimental.clustered` and `i6pn` networking with `modal.Cls`.
 - Fixed a bug where `Cls.with_options` would fail when provided with a `modal.Secret` object that was already hydrated.
-- Fixed a bug where the timeout specified in `modal.Sandbox.exec()` was not respected by `modal.Sandbox.wait()` or `modal.Sandbox.poll()`.
+- Fixed a bug where the timeout specified in `modal.Sandbox.exec()` was not respected by `ContainerProcess.wait()` or `ContainerProcess.poll()`.
 - Fixed retry handling when using `modal run --detach` directly against a remote Function.
 
 Finally, this release introduces a small number of deprecations and potentially-breaking changes:

@@ -79,8 +79,10 @@ class _OutputValue:
 
 MAX_INPUTS_OUTSTANDING_DEFAULT = 1000
 
-# maximum number of inputs to send to the server in a single request
+# Maximum number of inputs to send to the server per FunctionPutInputs request
 MAP_INVOCATION_CHUNK_SIZE = 49
+SPAWN_MAP_INVOCATION_CHUNK_SIZE = 512
+
 
 if typing.TYPE_CHECKING:
     import modal.functions
@@ -159,6 +161,7 @@ class InputPumper:
         input_queue: asyncio.Queue,
         function: "modal.functions._Function",
         function_call_id: str,
+        max_batch_size: int,
         map_items_manager: Optional["_MapItemsManager"] = None,
     ):
         self.client = client
@@ -167,10 +170,11 @@ class InputPumper:
         self.input_queue = input_queue
         self.inputs_sent = 0
         self.function_call_id = function_call_id
+        self.max_batch_size = max_batch_size
 
     async def pump_inputs(self):
         assert self.client.stub
-        async for items in queue_batch_iterator(self.input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+        async for items in queue_batch_iterator(self.input_queue, max_batch_size=self.max_batch_size):
             # Add items to the manager. Their state will be SENDING.
             if self.map_items_manager is not None:
                 await self.map_items_manager.add_items(items)
@@ -234,6 +238,7 @@ class SyncInputPumper(InputPumper):
             input_queue=input_queue,
             function=function,
             function_call_id=function_call_id,
+            max_batch_size=MAP_INVOCATION_CHUNK_SIZE,
             map_items_manager=map_items_manager,
         )
         self.retry_queue = retry_queue
@@ -241,7 +246,7 @@ class SyncInputPumper(InputPumper):
         self.function_call_jwt = function_call_jwt
 
     async def retry_inputs(self):
-        async for retriable_idxs in queue_batch_iterator(self.retry_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+        async for retriable_idxs in queue_batch_iterator(self.retry_queue, max_batch_size=self.max_batch_size):
             # For each index, use the context in the manager to create a FunctionRetryInputsItem.
             # This will also update the context state to RETRYING.
             inputs: list[api_pb2.FunctionRetryInputsItem] = await self.map_items_manager.prepare_items_for_retry(
@@ -269,12 +274,29 @@ class AsyncInputPumper(InputPumper):
         function: "modal.functions._Function",
         function_call_id: str,
     ):
-        super().__init__(client, input_queue=input_queue, function=function, function_call_id=function_call_id)
+        super().__init__(
+            client,
+            input_queue=input_queue,
+            function=function,
+            function_call_id=function_call_id,
+            max_batch_size=SPAWN_MAP_INVOCATION_CHUNK_SIZE,
+        )
+
+    async def pump_inputs(self):
+        async for _ in super().pump_inputs():
+            pass
+        request = api_pb2.FunctionFinishInputsRequest(
+            function_id=self.function.object_id,
+            function_call_id=self.function_call_id,
+            num_inputs=self.inputs_sent,
+        )
+        await retry_transient_errors(self.client.stub.FunctionFinishInputs, request, max_retries=None)
+        yield
 
 
 async def _spawn_map_invocation(
     function: "modal.functions._Function", raw_input_queue: _SynchronizedQueue, client: "modal.client._Client"
-) -> str:
+) -> tuple[str, int]:
     assert client.stub
     request = api_pb2.FunctionMapRequest(
         function_id=function.object_id,
@@ -340,7 +362,7 @@ async def _spawn_map_invocation(
     )
     log_debug_stats_task.cancel()
     await log_debug_stats_task
-    return function_call_id
+    return function_call_id, inputs_created
 
 
 async def _map_invocation(
@@ -662,9 +684,11 @@ async def _map_invocation_inputplane(
     # any reason).
     max_inputs_outstanding = MAX_INPUTS_OUTSTANDING_DEFAULT
 
-    # Input plane does not yet return a retry policy. So we currently disable retries.
+    # Set a default retry policy to construct an instance of _MapItemsManager.
+    # We'll update the retry policy with the actual user-specified retry policy
+    # from the server in the first MapStartOrContinue response.
     retry_policy = api_pb2.FunctionRetryPolicy(
-        retries=0,  # Input plane does not yet return a retry policy. So only retry server failures for now.
+        retries=0,
         initial_delay_ms=1000,
         max_delay_ms=1000,
         backoff_coefficient=1.0,
@@ -749,7 +773,12 @@ async def _map_invocation_inputplane(
             metadata = await client.get_input_plane_metadata(function._input_plane_region)
 
             response: api_pb2.MapStartOrContinueResponse = await retry_transient_errors(
-                input_plane_stub.MapStartOrContinue, request, metadata=metadata
+                input_plane_stub.MapStartOrContinue,
+                request,
+                metadata=metadata,
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
+                max_retries=None,
             )
 
             # match response items to the corresponding request item index
@@ -760,10 +789,17 @@ async def _map_invocation_inputplane(
 
             map_items_manager.handle_put_continue_response(response_items_idx_tuple)
 
+            # Set the function call id and actual retry policy with the data from the first response.
+            # This conditional is skipped for subsequent iterations of this for-loop.
             if function_call_id is None:
                 function_call_id = response.function_call_id
                 function_call_id_received.set()
                 max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
+                map_items_manager.set_retry_policy(response.retry_policy)
+                # Update the retry policy for the first batch of inputs.
+                # Subsequent batches will have the correct user-specified retry policy
+                # set by the updated _MapItemsManager.
+                map_items_manager.update_items_retry_policy(response.retry_policy)
         yield
 
     async def check_lost_inputs():
@@ -774,7 +810,11 @@ async def _map_invocation_inputplane(
                     await function_call_id_received.wait()
                     continue
 
-                await asyncio.sleep(1)
+                sleep_task = asyncio.create_task(asyncio.sleep(1))
+                map_done_task = asyncio.create_task(map_done_event.wait())
+                done, _ = await asyncio.wait([sleep_task, map_done_task], return_when=FIRST_COMPLETED)
+                if map_done_task in done:
+                    break
 
                 # check_inputs = [(idx, attempt_token), ...]
                 check_inputs = map_items_manager.get_input_idxs_waiting_for_output()
@@ -1168,24 +1208,26 @@ async def _spawn_map_helper(
 
 
 def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal.functions._FunctionCall":
-    """Spawn parallel execution over a set of inputs, exiting as soon as the inputs are created (without waiting
-    for the map to complete).
+    """mdmd:hidden
+    Spawn parallel execution over a set of inputs, returning as soon as the inputs are created.
+
+    Unlike `modal.Function.map`, this method does not block on completion of the remote execution but
+    returns a `modal.FunctionCall` object that can be used to poll status and retrieve results later.
 
     Takes one iterator argument per argument in the function being mapped over.
 
     Example:
     ```python
     @app.function()
-    def my_func(a):
-        return a ** 2
+    def my_func(a, b):
+        return a ** b
 
 
     @app.local_entrypoint()
     def main():
-        fc = my_func.spawn_map([1, 2, 3, 4])
+        fc = my_func.spawn_map([1, 2], [3, 4])
     ```
 
-    Returns a FunctionCall object that can be used to retrieve results
     """
 
     return run_coroutine_in_temporary_event_loop(
@@ -1462,6 +1504,9 @@ class _MapItemContext:
             retry_count=self.retry_manager.retry_count,
         )
 
+    def set_retry_policy(self, retry_policy: api_pb2.FunctionRetryPolicy):
+        self.retry_manager = RetryManager(retry_policy)
+
     def handle_retry_response(self, input_jwt: str):
         self.input_jwt.set_result(input_jwt)
         self.state = _MapItemState.WAITING_FOR_OUTPUT
@@ -1498,6 +1543,9 @@ class _MapItemsManager:
         self._sync_client_retries_enabled = sync_client_retries_enabled
         self._is_input_plane_instance = is_input_plane_instance
 
+    def set_retry_policy(self, retry_policy: api_pb2.FunctionRetryPolicy):
+        self._retry_policy = retry_policy
+
     async def add_items(self, items: list[api_pb2.FunctionPutInputsItem]):
         for item in items:
             # acquire semaphore to limit the number of inputs in progress
@@ -1526,6 +1574,10 @@ class _MapItemsManager:
 
     async def prepare_items_for_retry(self, retriable_idxs: list[int]) -> list[api_pb2.FunctionRetryInputsItem]:
         return [await self._item_context[idx].prepare_item_for_retry() for idx in retriable_idxs]
+
+    def update_items_retry_policy(self, retry_policy: api_pb2.FunctionRetryPolicy):
+        for ctx in self._item_context.values():
+            ctx.set_retry_policy(retry_policy)
 
     def get_input_jwts_waiting_for_output(self) -> list[str]:
         """

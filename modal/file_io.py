@@ -128,7 +128,7 @@ class _FileIO(Generic[T]):
 
     **Usage**
 
-    ```python
+    ```python notest
     import modal
 
     app = modal.App.lookup("my-app", create_if_missing=True)

@@ -618,7 +618,7 @@ message AttemptStartRequest {
 
 message AttemptStartResponse {
   string attempt_token = 1;
-  FunctionRetryPolicy retry_policy = 2; // TODO(ben-okeefe) TODO(nathan): Not currently used
+  FunctionRetryPolicy retry_policy = 2;
 }
 
 message AuthTokenGetRequest {
@@ -628,11 +628,26 @@ message AuthTokenGetResponse {
   string token = 1;
 }
 
+// Message representing the current (coalesced) state of the autoscaler configuration
+// As well as the different sources that were used to create it.
+message AutoscalerConfiguration {
+  // The settings that are currently in effect.
+  AutoscalerSettings settings = 1;
+  // For tracking the source of the overridden value; keys correspond to fields in `settings`.
+  map<string, UserActionInfo> override_events = 2;
+  // The default settings that are used when no static settings are provided and no overrides are in effect.
+  AutoscalerSettings default_settings = 3;
+  // The static settings that were used to initialize the configuration.
+  AutoscalerSettings static_settings = 4;
+  // The merge of all overrides that were used to create the current configuration.
+  AutoscalerSettings override_settings = 5;
+}
+
 message AutoscalerSettings {
   // A collection of user-configurable settings for Function autoscaling
   // These are used for static configuration and for dynamic autoscaler updates
 
-  // Minimum containers when scale-to-zero is not deisired; pka "keep_warm" or "warm_pool_size"
+  // Minimum containers when scale-to-zero is not desired; pka "keep_warm" or "warm_pool_size"
   optional uint32 min_containers = 1;
   // Limit on the number of containers that can be running for each Function; pka "concurrency_limit"
   optional uint32 max_containers = 2;
@@ -642,6 +657,15 @@ message AutoscalerSettings {
   optional uint32 scaleup_window = 4;
   // Maximum amount of time a container can be idle before being scaled down, in seconds; pka "container_idle_timeout"
   optional uint32 scaledown_window = 5;
+  reserved 6;
+}
+
+// Used for flash autoscaling
+message AutoscalingMetrics {
+  double cpu_usage_percent = 1;
+  double memory_usage_percent = 2;
+  uint32 concurrent_requests = 3;
+  double timestamp = 4;
 }
 
 message BaseImage {
@@ -1235,6 +1259,8 @@ message EnvironmentListItem {
   string webhook_suffix = 2;
   double created_at = 3;
   bool default = 4;
+  bool is_managed = 5;
+  string environment_id = 6;
 }
 
 message EnvironmentListResponse {
@@ -1310,6 +1336,11 @@ message FlashContainerRegisterRequest {
 
 message FlashContainerRegisterResponse {
   string url = 1;
+}
+
+message FlashProxyUpstreamRequest {
+  uint32 upstream_requests = 1;
+  double timestamp = 2; 
 }
 
 message Function {
@@ -1471,6 +1502,8 @@ message Function {
   string flash_service_label = 84;
 
   bool enable_gpu_snapshot = 85; // GPU memory snapshotting (alpha)
+
+  uint32 startup_timeout_secs = 86;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1644,6 +1677,8 @@ message FunctionData {
 
   repeated string flash_service_urls = 34;
   string flash_service_label = 35;
+
+  uint32 startup_timeout_secs = 36;
 }
 
 message FunctionExtended {
@@ -1792,6 +1827,7 @@ message FunctionHandleMetadata {
   optional string input_plane_region = 47;
   // Use optional to ensure unset values default to None instead of 0
   optional uint64 max_object_size_bytes = 48;
+  repeated string _experimental_flash_urls = 49; // (Optional) urls for flash services
 }
 
 message FunctionInput {
@@ -1976,6 +2012,8 @@ message GenericResult {  // Used for both tasks and function outputs
     // Terminates the function and all remaining inputs.
     GENERIC_STATUS_INIT_FAILURE = 5;
     GENERIC_STATUS_INTERNAL_FAILURE = 6;
+    // Used when sandboxes are terminated due to idle_timeout
+    GENERIC_STATUS_IDLE_TIMEOUT = 7;
   }
 
   GenericStatus status = 1; // Status of the task or function output.
@@ -2023,6 +2061,10 @@ message Image {
 message ImageContextFile {
   string filename = 1;
   bytes data = 2;
+}
+
+message ImageDeleteRequest {
+  string image_id = 1;
 }
 
 message ImageFromIdRequest {
@@ -2129,7 +2171,10 @@ message ListPagination {
 }
 
 message MapAwaitRequest {
-  string function_call_id = 1;
+  oneof call_info {
+    string function_call_id = 1;
+    string map_token = 5;
+  }
   string last_entry_id = 2;
   double requested_at = 3; // Used for waypoints.
   float timeout = 4;
@@ -2158,16 +2203,23 @@ message MapStartOrContinueItem {
 message MapStartOrContinueRequest {
   string function_id = 1;
   string parent_input_id = 2;
-  optional string function_call_id = 3; // This is given iff this is a map continue request.
+  // Clients will send call_info on map continue requests.
+  oneof call_info {
+    string function_call_id = 3;
+    string map_token = 5;
+  }
   repeated MapStartOrContinueItem items = 4;
 }
 
 message MapStartOrContinueResponse {
+  // function_id and function_call_id are not necessary if map_token is provided.
+  // All 3 will be sent until it is safe to only send map_token.
+  string map_token = 6;
   string function_id = 1;
   string function_call_id = 2;
   uint32 max_inputs_outstanding = 3;
   repeated string attempt_tokens = 4;
-  FunctionRetryPolicy retry_policy = 5; // TODO(ben-okeefe): Not currently used
+  FunctionRetryPolicy retry_policy = 5;
 }
 
 message MethodDefinition {
@@ -2338,6 +2390,7 @@ message PTYInfo {
     PTY_TYPE_SHELL = 2;  // Replace function with shell
   }
   PTYType pty_type = 7;
+  bool no_terminate_on_idle_stdin = 8;
 }
 
 message PortSpec {
@@ -2573,7 +2626,7 @@ message Sandbox {
   Resources resources = 5;
   CloudProvider cloud_provider = 6;  // Deprecated at some point
 
-  uint32 timeout_secs = 7;
+  uint32 timeout_secs = 7; // The max lifetime of a sandbox in seconds.
 
   optional string workdir = 8;
 
@@ -2635,6 +2688,19 @@ message Sandbox {
   map<string, bool> experimental_options = 31;
 
   repeated string preload_path_prefixes = 32; // Internal use only.
+
+  // Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
+  optional uint32 idle_timeout_secs = 33;
+}
+
+message SandboxCreateConnectTokenRequest {
+  string sandbox_id = 1;
+  string metadata = 2;
+}
+
+message SandboxCreateConnectTokenResponse {
+  string url = 1;
+  string token = 2;
 }
 
 message SandboxCreateRequest {
@@ -3025,6 +3091,14 @@ message TaskCurrentInputsResponse {
   repeated string input_ids = 1;
 }
 
+message TaskGetAutoscalingMetricsRequest {
+  string task_id = 1;
+}
+
+message TaskGetAutoscalingMetricsResponse {
+  AutoscalingMetrics metrics = 1;
+}
+
 message TaskInfo {
   string id = 1;
   double started_at = 2;
@@ -3067,6 +3141,7 @@ message TaskLogsBatch {
   bool eof = 14;
   string pty_exec_id = 15;  // Used for interactive functions
   string root_function_id = 16;
+  uint32 ttl_days = 17;
 }
 
 message TaskProgress {
@@ -3155,6 +3230,12 @@ message TunnelStopResponse {
 
 message UploadUrlList {
   repeated string items = 1;
+}
+
+// Used for capturing context about an action performed by a user
+message UserActionInfo {
+  string user_id = 1;
+  double timestamp = 2;
 }
 
 message VolumeCommitRequest {
@@ -3534,6 +3615,7 @@ service ModalClient {
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
   // Images
+  rpc ImageDelete(ImageDeleteRequest) returns (google.protobuf.Empty);
   rpc ImageFromId(ImageFromIdRequest) returns (ImageFromIdResponse);
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
@@ -3572,6 +3654,7 @@ service ModalClient {
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
@@ -3609,6 +3692,7 @@ service ModalClient {
   // Tasks
   rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
+  rpc TaskGetAutoscalingMetrics(TaskGetAutoscalingMetricsRequest) returns (TaskGetAutoscalingMetricsResponse); // Used for flash autoscaling
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
 

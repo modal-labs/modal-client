@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
+import platform
 import pytest
 import re
 import shutil
@@ -79,6 +80,12 @@ def get_all_dockerfile_commands(image_id: str, servicer) -> str:
 @pytest.fixture(params=SUPPORTED_IMAGE_BUILDER_VERSIONS)
 def builder_version(request, server_url_env, modal_config):
     builder_version = request.param
+    if (
+        builder_version != SUPPORTED_IMAGE_BUILDER_VERSIONS[-2]
+        and platform.system() == "Darwin"
+        and platform.machine() == "x86_64"
+    ):
+        pytest.skip(f"Skipping Image test for {builder_version} on Darwin x86_64")
     with modal_config():
         with mock.patch("test.conftest.ImageBuilderVersion", Literal[builder_version]):  # type: ignore
             yield builder_version
@@ -278,6 +285,28 @@ def test_run_commands_secrets_type_validation(builder_version, servicer, client)
                 Dict.from_name("mydict"),  # type: ignore
             ],  # Dict is not a valid Secret
         )
+
+
+@pytest.mark.parametrize(
+    "env,secrets,expected",
+    [
+        (None, None, 0),
+        ({"EV1": "ev1"}, None, 1),
+        ({"EV1": "ev1", "EV2": "ev2"}, None, 1),
+        ({"EV1": "ev1"}, [Secret.from_dict({"S1": "s1"})], 2),
+        ({"EV1": "ev1"}, [Secret.from_dict({"S1": "s1"}), Secret.from_dict({"S2": "s2"})], 3),
+    ],
+)
+def test_env_parameter_conversion(builder_version, servicer, client, env, secrets, expected):
+    """Test that env parameter is properly converted to secrets."""
+    app = App()
+
+    image = Image.debian_slim().run_commands("echo $FOO", env=env, secrets=secrets)
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert len(layers[0].secret_ids) == expected
 
 
 def test_wrong_type(builder_version, servicer, client):

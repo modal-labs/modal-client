@@ -781,18 +781,24 @@ def test_from_id(client, servicer):
 
     @app.function(serialized=True)
     def foo():
-        pass
+        return 42
 
     deploy_app(app, "dummy", client=client)
 
-    function_id = foo.object_id
-    assert function_id
-
     function_call = foo.spawn()
-    assert function_call.object_id
-    # Used in a few examples to construct FunctionCall objects
-    rehydrated_function_call = FunctionCall.from_id(function_call.object_id, client)
-    assert rehydrated_function_call.object_id == function_call.object_id
+    fc_id = function_call.object_id
+    assert fc_id
+
+    servicer.function_body(lambda: 42)
+    with servicer.intercept() as ctx:
+        fc2 = FunctionCall.from_id(fc_id, client)
+        assert fc2.object_id == fc_id
+        assert fc2.get() == 42
+        # Also test cancel
+        fc2.cancel()
+
+    req = ctx.pop_request("FunctionCallCancel")
+    assert req.function_call_id == fc_id
 
 
 def test_local_execution_on_web_endpoint(client, servicer):
@@ -1199,16 +1205,25 @@ def test_spawn_map_sync(client, servicer):
         assert deserialize(function_map.pipelined_inputs[0].input.args, client) == ((1,), {})
 
 
-def test_experimental_spawn_map_sync(client, servicer):
+def test_experimental_spawn_map_sync(set_env_client, servicer):
     dummy_function = app.function()(dummy)
     with servicer.intercept() as ctx:
-        with app.run(client=client):
-            fc = dummy_function.experimental_spawn_map([1, 2, 3])
+        with app.run(client=set_env_client):
+            fc1 = dummy_function.experimental_spawn_map([1, 2, 3])
 
         # Verify the correct invocation type was used
         function_put_inputs = ctx.pop_request("FunctionPutInputs")
         assert function_put_inputs is not None
-        assert type(fc) is modal.FunctionCall
+        assert type(fc1) is modal.FunctionCall
+
+        assert fc1.num_inputs() == 3
+        fc2 = FunctionCall.from_id(fc1.object_id, client=set_env_client)
+        assert fc2.num_inputs() == 3
+
+        # The server squares the inputs.
+        assert fc1.get(index=0) == 1
+        assert fc1.get(index=1) == 4
+        assert fc1.get(index=2) == 9
 
 
 def test_warn_on_local_volume_mount(client, servicer):
@@ -1648,3 +1663,75 @@ def test_unset_input_limit_does_not_blob_upload(client, servicer, blob_server):
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
     assert len(blobs) == 0
+
+
+def test_function_call_iter(client, servicer):
+    """Test the .iter() method on FunctionCall objects."""
+    dummy_function = app.function()(dummy)
+    with app.run(client=client):
+        # Use experimental_spawn_map to create a FunctionCall with multiple inputs
+        fc = dummy_function.experimental_spawn_map([2, 3, 4, 5, 6])
+
+        # Test iterating over all outputs
+        results = []
+        for result in fc.iter(end=5):
+            results.append(result)
+
+        expected_results = [4, 9, 16, 25, 36]
+        assert results == expected_results
+
+        # Test without specifying end_index
+        results = []
+        for result in fc.iter():
+            results.append(result)
+
+        assert len(results) == 5
+        assert results == expected_results
+
+        # Test iterating over a subset
+        subset_results = []
+        for result in fc.iter(start=1, end=3):
+            subset_results.append(result)
+
+        # Verify subset results
+        assert len(subset_results) == 2
+        expected_subset = [9, 16]
+        assert subset_results == expected_subset
+
+
+timeout_app = App("timeout-app")
+
+
+@timeout_app.function(startup_timeout=14)
+def hello():
+    pass
+
+
+def test_startup_timeout(client, servicer):
+    with servicer.intercept() as ctx:
+        with timeout_app.run(client=client):
+            pass
+
+    function_creates_requests: list[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
+    assert len(function_creates_requests) == 1
+    function_request = function_creates_requests[0]
+    assert function_request.function.startup_timeout_secs == 14
+
+
+timeout_app_default = App("timeout-app-default")
+
+
+@timeout_app_default.function(timeout=23)
+def hello2():
+    pass
+
+
+def test_startup_timeout_default_copies_timeout(client, servicer):
+    with servicer.intercept() as ctx:
+        with timeout_app_default.run(client=client):
+            pass
+
+    function_creates_requests: list[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
+    assert len(function_creates_requests) == 1
+    function_request = function_creates_requests[0]
+    assert function_request.function.startup_timeout_secs == 23

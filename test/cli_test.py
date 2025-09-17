@@ -25,7 +25,7 @@ from modal import App, Sandbox
 from modal._serialization import serialize
 from modal._utils.grpc_testing import InterceptionContext
 from modal.cli.entry_point import entrypoint_cli
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
 
 from . import helpers
@@ -236,7 +236,8 @@ def test_run_warns_without_module_flag(
 ):
     monkeypatch.chdir(supports_dir)
     _run(["run", "-m", f"{app_module}::foo"])
-    assert not len(recwarn)
+    deprecation_warnings = [w.message for w in recwarn if issubclass(w.category, DeprecationError)]
+    assert not deprecation_warnings
 
     with pytest.warns(match=" -m "):
         _run(["run", f"{app_module}::foo"])
@@ -561,7 +562,7 @@ def mock_shell_pty(servicer):
         mock.patch("rich.console.Console.is_terminal", True),
         mock.patch("modal.cli.container.get_pty_info", mock_get_pty_info),
         mock.patch("modal._pty.get_pty_info", mock_get_pty_info),
-        mock.patch("modal.runner.get_pty_info", mock_get_pty_info),
+        mock.patch("modal.sandbox.get_pty_info", mock_get_pty_info),
         mock.patch("modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin),
         mock.patch("modal.container_process.stream_from_stdin", fake_stream_from_stdin),
         mock.patch("modal.container_process.write_to_fd", write_to_fd),

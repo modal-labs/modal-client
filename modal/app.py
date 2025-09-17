@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import inspect
 import typing
-from collections.abc import AsyncGenerator, Coroutine, Sequence
+from collections.abc import AsyncGenerator, Collection, Coroutine, Sequence
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
@@ -616,7 +616,8 @@ class _App:
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
-        secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
+        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
         gpu: Union[
             GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
@@ -641,7 +642,8 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        timeout: int = 300,  # Maximum execution time for inputs and startup time in seconds.
+        startup_timeout: Optional[int] = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
         name: Optional[str] = None,  # Sets the Modal name of the function within the app
         is_generator: Optional[
             bool
@@ -693,6 +695,9 @@ class _App:
         if allow_cross_region_volumes is not None:
             deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
         secrets = [*self._secrets, *secrets]
 
         def wrapped(
@@ -816,6 +821,7 @@ class _App:
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
+                startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
@@ -844,7 +850,8 @@ class _App:
         _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
-        secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
+        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
         gpu: Union[
             GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
@@ -869,7 +876,8 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
+        timeout: int = 300,  # Maximum execution time for inputs and startup time in seconds.
+        startup_timeout: Optional[int] = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
@@ -916,6 +924,10 @@ class _App:
             )
         if allow_cross_region_volumes is not None:
             deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
 
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class
@@ -1002,6 +1014,7 @@ class _App:
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
+                startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,

@@ -61,7 +61,7 @@ def _asgi_get_scope(path, method="GET"):
 class MockIOManager:
     class get_data_in:
         @staticmethod
-        async def aio(_function_call_id):
+        async def aio(_function_call_id, _attempt_token):
             yield {"type": "http.request", "body": b"some_body"}
             await asyncio.sleep(10)
 
@@ -109,7 +109,7 @@ async def test_endpoint_exception(endpoint_url):
 class BrokenIOManager:
     class get_data_in:
         @staticmethod
-        async def aio(_function_call_id):
+        async def aio(_function_call_id, _attempt_token):
             raise DummyException("error while fetching data")
             yield  # noqa (makes this a generator)
 
@@ -155,7 +155,7 @@ async def test_broken_io_used():
 class SlowIOManager:
     class get_data_in:
         @staticmethod
-        async def aio(_function_call_id):
+        async def aio(_function_call_id, _attempt_token):
             await asyncio.sleep(5)
             yield  # makes this an async generator
 
@@ -172,7 +172,7 @@ async def test_first_message_timeout(monkeypatch):
         async for output in wrapped_app(asgi_scope):
             outputs.append(output)
 
-    assert outputs[0]["status"] == 502
+    assert outputs[0]["status"] == 408
     assert b"Missing request" in outputs[1]["body"]
 
 
@@ -216,7 +216,7 @@ async def test_streaming_response():
 class StreamingIOManager:
     class get_data_in:
         @staticmethod
-        async def aio(_function_call_id):
+        async def aio(_function_call_id, _attempt_token):
             yield {"type": "http.request", "body": b"foo", "more_body": True}
             yield {"type": "http.request", "body": b"bar", "more_body": True}
             yield {"type": "http.request", "body": b"baz", "more_body": False}
@@ -247,7 +247,7 @@ async def test_cancellation_while_waiting_for_first_input():
     class StreamingIOManager:
         class get_data_in:
             @staticmethod
-            async def aio(_function_call_id):
+            async def aio(_function_call_id, _attempt_token):
                 await fut  # we never resolve this, unlike in test_cancellation_first_message_race_cleanup
                 yield
 
@@ -274,7 +274,7 @@ async def test_cancellation_when_first_input_arrives():
     class StreamingIOManager:
         class get_data_in:
             @staticmethod
-            async def aio(_function_call_id):
+            async def aio(_function_call_id, _attempt_token):
                 await fut
                 yield {"type": "http.request", "body": b"foo", "more_body": True}
                 while 1:

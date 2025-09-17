@@ -120,6 +120,7 @@ class _VolumeManager:
     async def create(
         name: str,  # Name to use for the new Volume
         *,
+        version: Optional[int] = None,  # Experimental: Configure the backend VolumeFS version
         allow_existing: bool = False,  # If True, no-op when the Volume already exists
         environment_name: Optional[str] = None,  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
@@ -138,6 +139,7 @@ class _VolumeManager:
         modal.Volume.objects.create("my-volume", environment_name="dev")
         ```
 
+        By default, an error will be raised if the Volume already exists, but passing
         `allow_existing=True` will make the creation attempt a no-op in this case.
 
         ```python notest
@@ -147,17 +149,25 @@ class _VolumeManager:
         Note that this method does not return a local instance of the Volume. You can use
         `modal.Volume.from_name` to perform a lookup after creation.
 
+        Added in v1.1.2.
+
         """
+        check_object_name(name, "Volume")
         client = await _Client.from_env() if client is None else client
         object_creation_type = (
             api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
             if allow_existing
             else api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
         )
+
+        if version is not None and version not in {1, 2}:
+            raise InvalidError("VolumeFS version must be either 1 or 2")
+
         req = api_pb2.VolumeGetOrCreateRequest(
             deployment_name=name,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=object_creation_type,
+            version=version,
         )
         try:
             await retry_transient_errors(client.stub.VolumeGetOrCreate, req)
@@ -196,6 +206,8 @@ class _VolumeManager:
         ```python
         volumes = modal.Volume.objects.list(max_objects=10, created_before="2025-01-01")
         ```
+
+        Added in v1.1.2.
 
         """
         client = await _Client.from_env() if client is None else client
@@ -257,6 +269,9 @@ class _VolumeManager:
         ```python notest
         await modal.Volume.objects.delete("my-volume", environment_name="dev")
         ```
+
+        Added in v1.1.2.
+
         """
         try:
             obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
@@ -519,6 +534,22 @@ class _Volume(_Object, type_prefix="vo"):
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
+        deprecation_warning(
+            (2025, 8, 13),
+            "The undocumented `modal.Volume.create_deployed` method is deprecated and will be removed "
+            "in a future release. It can be replaced with `modal.Volume.objects.create`.",
+        )
+        return await _Volume._create_deployed(deployment_name, namespace, client, environment_name, version)
+
+    @staticmethod
+    async def _create_deployed(
+        deployment_name: str,
+        namespace=None,  # mdmd:line-hidden
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
+    ) -> str:
+        """mdmd:hidden"""
         check_object_name(deployment_name, "Volume")
         warn_if_passing_namespace(namespace, "modal.Volume.create_deployed")
         if client is None:
@@ -662,6 +693,7 @@ class _Volume(_Object, type_prefix="vo"):
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 
+        @retry(n_attempts=5, base_delay=0.1, timeout=None)
         async def read_block(block_url: str) -> bytes:
             async with ClientSessionRegistry.get_session().get(block_url) as get_response:
                 return await get_response.content.read()
@@ -701,6 +733,7 @@ class _Volume(_Object, type_prefix="vo"):
         write_lock = asyncio.Lock()
         start_pos = fileobj.tell()
 
+        @retry(n_attempts=5, base_delay=0.1, timeout=None)
         async def download_block(idx, url) -> int:
             block_start_pos = start_pos + idx * BLOCK_SIZE
             num_bytes_written = 0

@@ -445,6 +445,41 @@ def test_sandbox_network_access(app, servicer):
 
 
 @skip_non_subprocess
+def test_sandbox_block_network_with_ports(app, servicer):
+    """Test that specifying open ports when block_network is enabled raises an error."""
+
+    # Test with encrypted_ports
+    with pytest.raises(InvalidError, match="Cannot specify open ports when `block_network` is enabled"):
+        Sandbox.create("echo", "test", block_network=True, encrypted_ports=[8080], app=app)
+
+    # Test with h2_ports
+    with pytest.raises(InvalidError, match="Cannot specify open ports when `block_network` is enabled"):
+        Sandbox.create("echo", "test", block_network=True, h2_ports=[8080], app=app)
+
+    # Test with unencrypted_ports
+    with pytest.raises(InvalidError, match="Cannot specify open ports when `block_network` is enabled"):
+        Sandbox.create("echo", "test", block_network=True, unencrypted_ports=[8080], app=app)
+
+    # Test with multiple port types
+    with pytest.raises(InvalidError, match="Cannot specify open ports when `block_network` is enabled"):
+        Sandbox.create(
+            "echo",
+            "test",
+            block_network=True,
+            encrypted_ports=[8080],
+            h2_ports=[9090],
+            unencrypted_ports=[3000],
+            app=app,
+        )
+
+    # Test that it works fine when block_network is False
+    sb = Sandbox.create(
+        "echo", "test", block_network=False, encrypted_ports=[8080], h2_ports=[9090], unencrypted_ports=[3000], app=app
+    )
+    sb.terminate()
+
+
+@skip_non_subprocess
 def test_sandbox_no_entrypoint(app, servicer):
     sb = Sandbox.create(app=app)
 
@@ -593,3 +628,28 @@ def test_sandbox_volume(app, servicer, read_only):
         )
         req = ctx.pop_request("SandboxCreate")
         assert req.definition.volume_mounts[0].read_only == read_only
+
+
+@skip_non_subprocess
+def test_sandbox_create_pty(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox.create("echo", "hi", pty=True, app=app)
+        req = ctx.pop_request("SandboxCreate")
+
+        assert req.definition.pty_info is not None
+        assert req.definition.pty_info.enabled is True
+        assert req.definition.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL
+        assert req.definition.pty_info.no_terminate_on_idle_stdin is True
+
+
+@skip_non_subprocess
+def test_sandbox_exec_pty(app, servicer):
+    with servicer.intercept() as ctx:
+        sb = Sandbox.create("sleep", "infinity", app=app)
+        sb.exec("echo", "hello", pty=True)
+        req = ctx.pop_request("ContainerExec")
+
+        assert req.pty_info is not None
+        assert req.pty_info.enabled is True
+        assert req.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL
+        assert req.pty_info.no_terminate_on_idle_stdin is True
