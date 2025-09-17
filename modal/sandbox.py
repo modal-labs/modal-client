@@ -665,7 +665,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 raise InvalidError(f"Failed to serialize metadata: {e}")
 
         req = api_pb2.SandboxCreateConnectTokenRequest(sandbox_id=self.object_id, metadata=metadata)
-        resp = await retry_transient_errors(self._client.stub.SandboxCreateConnectToken, req)
+        resp = await self._client.stub.SandboxCreateConnectToken(req)
         return SandboxConnectCredentials(resp.url, resp.token)
 
     async def reload_volumes(self) -> None:
