@@ -667,6 +667,7 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
+        _experimental_restrict_output: bool = False,  # Don't use pickle for return values
         # Parameters below here are deprecated. Please update your code as suggested
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
@@ -835,7 +836,7 @@ class _App:
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
-                restrict_output=bool((experimental_options or {}).get("restrict_output")),
+                restrict_output=_experimental_restrict_output,
             )
 
             self._add_function(function, webhook_config is not None)
