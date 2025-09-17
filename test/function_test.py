@@ -1498,7 +1498,7 @@ def test_function_supported_input_formats(client, servicer):
     @modal.fastapi_endpoint()
     def web_f(): ...
 
-    @app.function(serialized=True, experimental_options={"restrict_output": True})
+    @app.function(serialized=True, _experimental_restrict_output=True)
     def cbor_f(a): ...
 
     @app.cls(serialized=True)
