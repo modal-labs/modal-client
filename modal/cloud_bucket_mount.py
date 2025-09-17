@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from typing import ClassVar, Optional, Sequence
+from typing import Optional, Sequence
 from urllib.parse import urlparse
 
 from modal_proto import api_pb2
@@ -117,9 +117,6 @@ class _CloudBucketMount:
 
     read_only: bool = False
     requester_pays: bool = False
-
-    # Cloud bucket mounts do not have a server side object_id.
-    is_hydrated: ClassVar[bool] = True
 
 
 def cloud_bucket_mounts_to_proto(mounts: Sequence[tuple[str, _CloudBucketMount]]) -> list[api_pb2.CloudBucketMount]:
