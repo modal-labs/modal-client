@@ -575,8 +575,12 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None) -> None:
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
         environment_name = _get_environment_name()
-        if client is None:
-            client = await _Client.from_env()
+        if client is not None:
+            deprecation_warning(
+                (2025, 9, 18),
+                "The `client` parameter is deprecated. Set `client` when creating the Sandbox instead "
+                "(in e.g. `Sandbox.create()`/`.from_id()`/`.from_name()`).",
+            )
 
         tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()]
 
@@ -586,7 +590,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             tags=tags_list,
         )
         try:
-            await retry_transient_errors(client.stub.SandboxTagsSet, req)
+            await retry_transient_errors(self._client.stub.SandboxTagsSet, req)
         except GRPCError as exc:
             raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
