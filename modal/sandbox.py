@@ -564,11 +564,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def get_tags(self):
         """Fetches any tags (key-value pairs) attached to this Sandbox from the server."""
-        environment_name = _get_environment_name()
-        req = api_pb2.SandboxTagsGetRequest(
-            sandbox_id=self.object_id,
-            environment_name=environment_name,
-        )
+        req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
         try:
             resp = await retry_transient_errors(self._client.stub.SandboxTagsGet, req)
         except GRPCError as exc:
