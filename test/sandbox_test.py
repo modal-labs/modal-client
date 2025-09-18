@@ -408,6 +408,8 @@ def test_sandbox_list_app(client, servicer):
 def test_sandbox_list_tags(app, client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
     sb.set_tags({"foo": "bar", "baz": "qux"}, client=client)
+    assert sb.get_tags(client=client) == {"foo": "bar", "baz": "qux"}
+
     assert len(list(Sandbox.list(tags={"foo": "bar"}, client=client))) == 1
     assert not list(Sandbox.list(tags={"foo": "notbar"}, client=client))
     sb.terminate()

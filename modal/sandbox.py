@@ -562,6 +562,23 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return obj
 
+    async def get_tags(self, client: Optional[_Client] = None):
+        """Fetches any tags (key-value pairs) attached to this Sandbox from the server."""
+        environment_name = _get_environment_name()
+        if client is None:
+            client = await _Client.from_env()
+
+        req = api_pb2.SandboxTagsGetRequest(
+            sandbox_id=self.object_id,
+            environment_name=environment_name,
+        )
+        try:
+            resp = await retry_transient_errors(client.stub.SandboxTagsGet, req)
+        except GRPCError as exc:
+            raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+
+        return {tag.tag_name: tag.tag_value for tag in resp.tags}
+
     async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None):
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
         environment_name = _get_environment_name()
