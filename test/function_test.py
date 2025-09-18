@@ -1552,6 +1552,74 @@ def test_function_schema_excludes_web_endpoints(client, servicer):
 
 
 @pytest.mark.usefixtures("set_env_client")
+def test_cbor_output_complex_data_types(client, servicer):
+    """Test that a received cbor payload is decoded as such, even if the submitted input is pickle"""
+    app = App("app")
+
+    @app.function(serialized=True)
+    def complex_cbor_function(data: list) -> dict:
+        return {"processed": True, "data": data}
+
+    deploy_app(app, client=client)
+
+    # Test with complex nested data structures
+    complex_result = {
+        "processed": True,
+        "data": [1, 2.5, "string", {"nested": True, "values": [None, False, True]}],
+        "metadata": {
+            "timestamp": 1234567890,
+            "tags": ("test", "cbor", "serialization"),
+            "config": {"enabled": True, "count": 42},
+        },
+    }
+    expected_decoded_output = {
+        "processed": True,
+        "data": [1, 2.5, "string", {"nested": True, "values": [None, False, True]}],
+        "metadata": {
+            "timestamp": 1234567890,
+            "tags": ["test", "cbor", "serialization"],  # same but tuple converted to list since cbor doesnt distinguish
+            "config": {"enabled": True, "count": 42},
+        },
+    }
+
+    with servicer.intercept() as ctx:
+        from modal._serialization import serialize_data_format
+
+        # Create CBOR-encoded complex data
+        cbor_encoded_data = serialize_data_format(complex_result, api_pb2.DATA_FORMAT_CBOR)
+
+        # Inject FunctionGetOutputs response with complex CBOR data
+        ctx.add_response(
+            "FunctionGetOutputs",
+            api_pb2.FunctionGetOutputsResponse(
+                outputs=[
+                    api_pb2.FunctionGetOutputsItem(
+                        input_id="complex-test-id",
+                        idx=0,
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, data=cbor_encoded_data
+                        ),
+                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        retry_count=0,
+                    )
+                ]
+            ),
+        )
+
+        # Call the function remotely
+        result = complex_cbor_function.remote(["doesnt_matter"])
+
+        # Verify that the input was submitted as pickle format (default)
+        function_map_requests = ctx.get_requests("FunctionMap")
+        assert len(function_map_requests) == 1
+        function_map_request = function_map_requests[0]
+        assert function_map_request.pipelined_inputs[0].input.data_format == api_pb2.DATA_FORMAT_PICKLE
+
+        # Verify complex data structure is properly decoded
+        assert result == expected_decoded_output
+
+
+@pytest.mark.usefixtures("set_env_client")
 def test_class_schema_recording(client, servicer):
     app = App("app")
 
