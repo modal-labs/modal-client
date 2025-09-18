@@ -86,7 +86,7 @@ def delete(
         typer.confirm(
             (
                 f"Are you sure you want to irrevocably delete the environment '{name}' and"
-                " all its associated apps and secrets?"
+                " all its associated Apps, Secrets, Volumes, Dicts and Queues?"
             ),
             default=False,
             abort=True,
