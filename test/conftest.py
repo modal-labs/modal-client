@@ -321,6 +321,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # Value returned by AuthTokenGet
         self.auth_token = jwt.encode({"exp": int(time.time()) + 3600}, "my-secret-key", algorithm="HS256")
         self.auth_tokens_generated = 0
+        self.function_id_to_definition_id: dict[str, str] = {}
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -428,16 +429,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         input_plane_region = definition.experimental_options.get("input_plane_region")
         return input_plane_region
 
-    def get_function_metadata(self, object_id: str) -> api_pb2.FunctionHandleMetadata:
-        definition: api_pb2.Function = self.app_functions[object_id]
+    def get_function_metadata(self, function_id: str) -> api_pb2.FunctionHandleMetadata:
+        function_proto: api_pb2.Function = self.app_functions[function_id]
+        definition_id = self.function_id_to_definition_id[function_id]
+
         return api_pb2.FunctionHandleMetadata(
-            function_name=definition.function_name,
-            function_type=definition.function_type,
-            web_url=definition.web_url,
-            is_method=definition.is_method,
-            use_method_name=definition.use_method_name,
-            use_function_id=definition.use_function_id,
-            class_parameter_info=definition.class_parameter_info,
+            function_name=function_proto.function_name,
+            function_type=function_proto.function_type,
+            web_url=function_proto.web_url,
+            is_method=function_proto.is_method,
+            use_method_name=function_proto.use_method_name,
+            use_function_id=function_proto.use_function_id,
+            class_parameter_info=function_proto.class_parameter_info,
             method_handle_metadata={
                 method_name: api_pb2.FunctionHandleMetadata(
                     function_name=method_definition.function_name,
@@ -446,13 +449,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     is_method=True,
                     use_method_name=method_name,
                     function_schema=method_definition.function_schema,
+                    supported_input_formats=method_definition.supported_input_formats,
+                    supported_output_formats=method_definition.supported_output_formats,
                 )
-                for method_name, method_definition in definition.method_definitions.items()
+                for method_name, method_definition in function_proto.method_definitions.items()
             },
-            function_schema=definition.function_schema,
-            input_plane_url=self._get_input_plane_url(definition),
-            input_plane_region=self._get_input_plane_region(definition),
+            function_schema=function_proto.function_schema,
+            input_plane_url=self._get_input_plane_url(function_proto),
+            input_plane_region=self._get_input_plane_region(function_proto),
             max_object_size_bytes=self.max_object_size_bytes,
+            definition_id=definition_id,
+            supported_input_formats=function_proto.supported_input_formats,
+            supported_output_formats=function_proto.supported_output_formats,
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -501,12 +509,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for tag, object_id in app_objects.items():
             if _Function._is_id_type(object_id):
                 function_ids[tag] = object_id
-                definition = self.app_functions[object_id]
-                if isinstance(definition, api_pb2.FunctionData):
-                    for ranked_fn in definition.ranked_functions:
+                function_proto = self.app_functions[object_id]
+                if isinstance(function_proto, api_pb2.FunctionData):
+                    for ranked_fn in function_proto.ranked_functions:
                         object_ids |= {obj.object_id for obj in ranked_fn.function.object_dependencies}
                 else:
-                    object_ids |= {obj.object_id for obj in definition.object_dependencies}
+                    object_ids |= {obj.object_id for obj in function_proto.object_dependencies}
             elif _Cls._is_id_type(object_id):
                 class_ids[tag] = object_id
 
@@ -1014,6 +1022,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             bound_func = api_pb2.Function()
             bound_func.CopyFrom(base_function)
             self.app_functions[function_id] = bound_func
+            self.function_id_to_definition_id[function_id] = self.function_id_to_definition_id[request.function_id]
             self.bound_functions[(request.function_id, request.serialized_params)] = function_id
             self.function_params[function_id] = deserialize_params(request.serialized_params, bound_func, None)
             self.function_options[function_id] = request.function_options
@@ -1093,6 +1102,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 function_type=method_definition.function_type,
                 web_url=method_web_url,
                 function_schema=method_definition.function_schema,
+                supported_input_formats=method_definition.supported_input_formats,
+                supported_output_formats=method_definition.supported_output_formats,
             )
         await stream.send_message(
             api_pb2.FunctionPrecreateResponse(
@@ -1144,6 +1155,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if method_definition.webhook_config.type:
                 method_definition.web_url = f"http://{method_name}.internal"
         self.app_functions[function_id] = function_defn
+        self.function_id_to_definition_id[function_id] = f"de-{len(self.function_id_to_definition_id)}"
 
         if function_defn.schedule:
             self.function2schedule[function_id] = function_defn.schedule
@@ -1156,31 +1168,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             api_pb2.FunctionCreateResponse(
                 function_id=function_id,
                 function=function,
-                # TODO: use self.get_function_metadata here
-                handle_metadata=api_pb2.FunctionHandleMetadata(
-                    function_name=function_defn.function_name,
-                    function_type=function_defn.function_type,
-                    web_url=function_defn.web_url,
-                    use_function_id=function_defn.use_function_id or function_id,
-                    use_method_name=function_defn.use_method_name,
-                    definition_id=f"de-{self.n_functions}",
-                    method_handle_metadata={
-                        method_name: api_pb2.FunctionHandleMetadata(
-                            function_name=method_definition.function_name,
-                            function_type=method_definition.function_type,
-                            web_url=method_definition.web_url,
-                            is_method=True,
-                            use_method_name=method_name,
-                            function_schema=method_definition.function_schema,
-                        )
-                        for method_name, method_definition in function_defn.method_definitions.items()
-                    },
-                    class_parameter_info=function_defn.class_parameter_info,
-                    function_schema=function_defn.function_schema,
-                    input_plane_url=self._get_input_plane_url(function_defn),
-                    input_plane_region=self._get_input_plane_region(function_defn),
-                    max_object_size_bytes=self.max_object_size_bytes,
-                ),
+                handle_metadata=self.get_function_metadata(function_id),
                 server_warnings=warnings,
             )
         )

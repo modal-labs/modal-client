@@ -111,6 +111,7 @@ enum DataFormat {
   DATA_FORMAT_PICKLE = 1; // Cloudpickle
   DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
   DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
+  DATA_FORMAT_CBOR = 4;
 }
 
 enum DeploymentNamespace {
@@ -1504,6 +1505,8 @@ message Function {
   bool enable_gpu_snapshot = 85; // GPU memory snapshotting (alpha)
 
   uint32 startup_timeout_secs = 86;
+  repeated DataFormat supported_input_formats = 87; // can be used as inputs
+  repeated DataFormat supported_output_formats = 88;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1679,6 +1682,8 @@ message FunctionData {
   string flash_service_label = 35;
 
   uint32 startup_timeout_secs = 36;
+  repeated DataFormat supported_input_formats = 37;
+  repeated DataFormat supported_output_formats = 38;
 }
 
 message FunctionExtended {
@@ -1828,6 +1833,8 @@ message FunctionHandleMetadata {
   // Use optional to ensure unset values default to None instead of 0
   optional uint64 max_object_size_bytes = 48;
   repeated string _experimental_flash_urls = 49; // (Optional) urls for flash services
+  repeated DataFormat supported_input_formats = 50;
+  repeated DataFormat supported_output_formats = 51;
 }
 
 message FunctionInput {
@@ -1892,6 +1899,8 @@ message FunctionPrecreateRequest {
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 8;
   FunctionSchema function_schema = 9;
+  repeated DataFormat supported_input_formats = 10;
+  repeated DataFormat supported_output_formats = 11;
 }
 
 message FunctionPrecreateResponse {
@@ -2230,6 +2239,8 @@ message MethodDefinition {
   WebUrlInfo web_url_info = 5;
   repeated CustomDomainInfo custom_domain_info = 6;
   FunctionSchema function_schema = 7;
+  repeated DataFormat supported_input_formats = 8;
+  repeated DataFormat supported_output_formats = 9;
 }
 
 message MountFile {
