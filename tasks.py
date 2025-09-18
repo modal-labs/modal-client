@@ -72,6 +72,7 @@ def protoc(ctx):
             + f" --modal-grpclib-python_out=. -I . {input_files}"
         )
 
+    # TODO: Remove when our minimum support protobuf is 4.X
     options_pb = Path("modal_proto/options_pb2.py")
     options_pb_patch = Path("protoc_plugin/options_pb2.py.patch").read_text()
 

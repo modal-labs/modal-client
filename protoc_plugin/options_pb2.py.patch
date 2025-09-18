@@ -5,6 +5,7 @@ except Exception:
   pb_older_than_5 = False
 
 if pb_older_than_5:
+  # Generated with protobuf 3
   AUDIT_TARGET_ATTR_FIELD_NUMBER = 50000
   audit_target_attr = DESCRIPTOR.extensions_by_name['audit_target_attr']
   AUDIT_EVENT_NAME_FIELD_NUMBER = 50000
@@ -20,6 +21,7 @@ if pb_older_than_5:
     DESCRIPTOR._options = None
     DESCRIPTOR._serialized_options = b'Z$github.com/modal-labs/modal/go/proto'
 else:
+  # Generated with protobuf 4 which is compatible with 5 and higher
   from google.protobuf.internal import builder as _builder
   _globals = globals()
   _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
