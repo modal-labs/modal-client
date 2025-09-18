@@ -488,7 +488,7 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
     elif result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
         raise InternalFailure(result.exception)
     elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-        if data:
+        if data and data_format == api_pb2.DATA_FORMAT_PICKLE:
             try:
                 exc = deserialize(data, client)
             except DeserializationError as deser_exc:

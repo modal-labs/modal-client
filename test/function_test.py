@@ -15,7 +15,7 @@ import modal
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, RemoteError
 from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
 from modal_proto import api_pb2
@@ -1617,6 +1617,55 @@ def test_cbor_output_complex_data_types(client, servicer):
 
         # Verify complex data structure is properly decoded
         assert result == expected_decoded_output
+
+
+@pytest.mark.usefixtures("set_env_client")
+def test_cbor_output_failed_result_handling(client, servicer):
+    """Test that CBOR output format is handled correctly even when the result failed"""
+    app = App("app")
+
+    @app.function(serialized=True)
+    def failing_cbor_function(x: int) -> int:
+        return x * 2
+
+    deploy_app(app, client=client)
+
+    with servicer.intercept() as ctx:
+        # Inject a failed FunctionGetOutputs response with CBOR data format
+        # but no data field set (only exception text)
+        ctx.add_response(
+            "FunctionGetOutputs",
+            api_pb2.FunctionGetOutputsResponse(
+                outputs=[
+                    api_pb2.FunctionGetOutputsItem(
+                        input_id="failed-test-id",
+                        idx=0,
+                        # simulate that the function was cbor only and had an exception
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                            exception="ValueError: Something went wrong in the function",
+                            traceback=(
+                                "Traceback (most recent call last):\n"
+                                '  File "test.py", line 1, in <module>\n'
+                                "ValueError: Something went wrong in the function\n"
+                            ),
+                        ),
+                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        retry_count=0,
+                    )
+                ]
+            ),
+        )
+
+        # Call the function remotely and expect it to raise the exception
+        with pytest.raises(RemoteError, match="Something went wrong in the function"):
+            failing_cbor_function.remote(42)
+
+        # Verify that the input was submitted as pickle format (default)
+        function_map_requests = ctx.get_requests("FunctionMap")
+        assert len(function_map_requests) == 1
+        function_map_request = function_map_requests[0]
+        assert function_map_request.pipelined_inputs[0].input.data_format == api_pb2.DATA_FORMAT_PICKLE
 
 
 @pytest.mark.usefixtures("set_env_client")
