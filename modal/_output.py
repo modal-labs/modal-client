@@ -34,7 +34,7 @@ from rich.text import Text
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal_proto import api_pb2
 
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from ._utils.shell_utils import stream_from_stdin
 from .client import _Client
 from .config import logger
@@ -489,8 +489,7 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
     """
 
     async def _handle_input(data: bytes, message_index: int):
-        await retry_transient_errors(
-            client.stub.ContainerExecPutInput,
+        await client.stub.ContainerExecPutInput(
             api_pb2.ContainerExecPutInputRequest(
                 exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
             ),
