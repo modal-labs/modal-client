@@ -180,6 +180,7 @@ def test_class_with_options(client, servicer):
             assert function_bind_params.function_options.scheduler_placement.regions == ["us-east-1"]
             assert function_bind_params.function_options.cloud_provider_str == "aws"
             assert function_bind_params.function_options.replace_cloud_bucket_mounts
+            assert function_bind_params.function_options.replace_secret_ids
             cloud_bucket_mounts = function_bind_params.function_options.cloud_bucket_mounts
             assert len(cloud_bucket_mounts) == 1
             assert cloud_bucket_mounts[0].mount_path == "/cloud_mnt"

@@ -773,9 +773,6 @@ More information on class parameterization can be found here: https://modal.com/
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
-        if cloud_bucket_mounts:
-            secrets = [*secrets, *[mount.secret for _, mount in cloud_bucket_mounts if mount.secret]]
-
         new_options = _ServiceOptions(
             secrets=secrets,
             validated_volumes=validated_volumes_no_cloud_buckets,

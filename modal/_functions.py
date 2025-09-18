@@ -1232,7 +1232,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         def _deps():
             if options:
-                all_deps = [v for _, v in options.validated_volumes] + list(options.secrets)
+                all_deps = (
+                    [v for _, v in options.validated_volumes]
+                    + list(options.secrets)
+                    + [mount.secret for _, mount in options.cloud_bucket_mounts if mount.secret]
+                )
                 return [dep for dep in all_deps if not dep.is_hydrated]
             return []
 
