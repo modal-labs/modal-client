@@ -495,7 +495,7 @@ class _InputPlaneInvocation:
                     # We immediately retry internal failures and the failure doesn't count towards the retry policy.
                     self.attempt_token = await self._retry_input(metadata)
                     continue
-            elif delay_ms := user_retry_manager.get_delay_ms():
+            elif (delay_ms := user_retry_manager.get_delay_ms()) is not None:
                 # We still have user retries left, so sleep and retry.
                 await asyncio.sleep(delay_ms / 1000)
                 self.attempt_token = await self._retry_input(metadata)
