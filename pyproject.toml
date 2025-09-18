@@ -98,7 +98,7 @@ exclude = [
 ]
 line-length = 120
 lint.ignore = ['E741']
-lint.select = ['E', 'F', 'W', 'I']
+lint.select = ['E', 'F', 'W', 'I', 'C901']
 
 [tool.ruff.lint.per-file-ignores]
 "*_test.py" = ['E712']
