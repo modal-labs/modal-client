@@ -751,7 +751,7 @@ More information on class parameterization can be found here: https://modal.com/
             # But the (instance) service function for each Obj will be different
             # since it will rebind to whatever `_options` have been assigned on
             # the particular Cls parent
-            if isinstance(self, _Object) and not self.is_hydrated:
+            if not self.is_hydrated:
                 # this should only happen for Cls.from_name instances
                 # other classes should already be hydrated!
                 await resolver.load(self)
