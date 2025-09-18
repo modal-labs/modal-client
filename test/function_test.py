@@ -6,20 +6,31 @@ import os
 import pytest
 import time
 import typing
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
 import modal
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
+from modal._functions import MAX_INTERNAL_FAILURE_COUNT
 from modal._utils.async_utils import synchronize_api
+from modal._utils.function_utils import OUTPUTS_TIMEOUT
 from modal._vendor import cloudpickle
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
+from modal.client import Client
+from modal.exception import (
+    DeprecationError,
+    ExecutionError,
+    FunctionTimeoutError,
+    InternalFailure,
+    InvalidError,
+    NotFoundError,
+    RemoteError,
+)
 from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
 from modal_proto import api_pb2
-from test.conftest import GrpcErrorAndCount
+from test.conftest import GrpcErrorAndCount, MockClientServicer
 from test.helpers import deploy_app_externally
 
 app = App()
@@ -45,11 +56,231 @@ def dummy():
     pass  # not actually used in test (servicer returns sum of square of all args)
 
 
+@app.function(experimental_options={"input_plane_region": "us-east"})
+def input_plane_func():
+    return "DEADBEEF"
+
+
+@app.function(experimental_options={"input_plane_region": "us-east"}, retries=modal.Retries(max_retries=3))
+def input_plane_failing_func_with_retry():
+    raise ValueError()
+
+
+@app.function(
+    experimental_options={"input_plane_region": "us-east"},
+    retries=modal.Retries(max_retries=1, initial_delay=0, backoff_coefficient=1.0),
+)
+def input_plane_func_with_immediate_retry():
+    raise ValueError()
+
+
+duration = int(OUTPUTS_TIMEOUT + 5)
+
+
+@app.function(timeout=duration, experimental_options={"input_plane_region": "us-east"})
+def input_plane_func_long_running():
+    time.sleep(duration)
+    return "DEADBEEF"
+
+
 def test_run_function(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with app.run(client=client):
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "func, attempt_await_responses, expectation, attempt_await_count, function_call_count",
+    [
+        # If the function runs sucessfully the first time, the client should call the
+        # AttemptAwait RPC once and the user's function should be called once.
+        pytest.param(input_plane_func, [], nullcontext("DEADBEEF"), 1, 1, id="success"),
+        # The client should call the AttemptAwait RPC until it receives an AttemptAwaitResponse
+        # with an output attribute and then return a successful AttemptAwaitResponse.
+        pytest.param(
+            input_plane_func,
+            [api_pb2.AttemptAwaitResponse(), api_pb2.AttemptAwaitResponse()],
+            nullcontext("DEADBEEF"),
+            3,
+            1,
+            id="no output",
+        ),
+        # The client should raise a RemoteError if the AttemptAwaitResponse has a GENERIC_STATUS_TERMINATED status.
+        pytest.param(
+            input_plane_func,
+            [
+                api_pb2.AttemptAwaitResponse(
+                    output=api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+                    )
+                )
+            ],
+            pytest.raises(RemoteError),
+            1,
+            0,
+            id="terminated",
+        ),
+        # The client should retry up to a MAX_INTERNAL_FAILURE_COUNT number of times when it receives an
+        # internal failure status.
+        pytest.param(
+            input_plane_func,
+            [
+                api_pb2.AttemptAwaitResponse(
+                    output=api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE)
+                    )
+                )
+            ]
+            * (MAX_INTERNAL_FAILURE_COUNT - 1),
+            nullcontext("DEADBEEF"),
+            MAX_INTERNAL_FAILURE_COUNT,
+            1,
+            id="internal failure",
+        ),
+        # The client should raise an InternalFailure if it receives more than MAX_INTERNAL_FAILURE_COUNT
+        # internal failure statuses.
+        pytest.param(
+            input_plane_func,
+            [
+                api_pb2.AttemptAwaitResponse(
+                    output=api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE)
+                    )
+                )
+            ]
+            * MAX_INTERNAL_FAILURE_COUNT,
+            pytest.raises(InternalFailure),
+            MAX_INTERNAL_FAILURE_COUNT,
+            0,
+            id="internal failure max",
+        ),
+        # The client should raise a RemoteError and not retry when it receives a GENERIC_STATUS_UNSPECIFIED status.
+        pytest.param(
+            input_plane_func,
+            [
+                api_pb2.AttemptAwaitResponse(
+                    output=api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED)
+                    )
+                )
+            ],
+            pytest.raises(RemoteError),
+            1,
+            0,
+            id="unspecified",
+        ),
+        # The client should raise a RemoteError and not retry when it receives a GENERIC_STATUS_FAILURE status.
+        pytest.param(
+            input_plane_func,
+            [
+                api_pb2.AttemptAwaitResponse(
+                    output=api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE)
+                    )
+                )
+            ],
+            pytest.raises(RemoteError),
+            1,
+            0,
+            id="failure",
+        ),
+        # The client should raise a FunctionTimeoutError and not retry when it receives a GENERIC_STATUS_TIMEOUT status.
+        pytest.param(
+            input_plane_func,
+            [
+                api_pb2.AttemptAwaitResponse(
+                    output=api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT)
+                    )
+                )
+            ],
+            pytest.raises(FunctionTimeoutError),
+            1,
+            0,
+            id="timeout",
+        ),
+        # The client should raise a RemoteError and not retry when it receives a GENERIC_STATUS_INIT_FAILURE status.
+        pytest.param(
+            input_plane_func,
+            [
+                api_pb2.AttemptAwaitResponse(
+                    output=api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_INIT_FAILURE)
+                    )
+                )
+            ],
+            pytest.raises(RemoteError),
+            1,
+            0,
+            id="init failure",
+        ),
+        # The client should raise a RemoteError and not retry when it receives a GENERIC_STATUS_IDLE_TIMEOUT status.
+        pytest.param(
+            input_plane_func,
+            [
+                api_pb2.AttemptAwaitResponse(
+                    output=api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_IDLE_TIMEOUT)
+                    )
+                )
+            ],
+            pytest.raises(RemoteError),
+            1,
+            0,
+            id="idle timeout",
+        ),
+        # The client should retry up to user-specified number of retries when the user's function raises an exception.
+        pytest.param(
+            input_plane_failing_func_with_retry, [], pytest.raises(ValueError), 4, 4, id="honor user retry policy"
+        ),
+        # Internal failure retries shouldn't use up user-specified retries.
+        pytest.param(
+            input_plane_failing_func_with_retry,
+            [
+                api_pb2.AttemptAwaitResponse(
+                    output=api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE)
+                    )
+                )
+            ]
+            * (MAX_INTERNAL_FAILURE_COUNT - 1),
+            pytest.raises(ValueError),
+            MAX_INTERNAL_FAILURE_COUNT + 3,
+            4,
+            id="internal failure does not use up user retries",
+        ),
+        # The client should retry when the retry policy has an initial delay of 0 seconds.
+        pytest.param(input_plane_func_with_immediate_retry, [], pytest.raises(ValueError), 2, 2, id="immediate retry"),
+        # The client should call AttemptAwait multiple times when a function call lasts longer than
+        # function_utils.OUTPUTS_TIMEOUT, but the client should not retry the function call itself.
+        pytest.param(
+            input_plane_func_long_running,
+            [],
+            # Currently MockClientServicer returns this string instead of the function return value
+            # when the function call takes longer than function_utils.OUTPUTS_TIMEOUT to run.
+            nullcontext("attempt_await_bogus_response"),
+            2,
+            1,
+            id="long running",
+        ),
+    ],
+)
+def test_remote_input_plane(
+    client: Client,
+    servicer: MockClientServicer,
+    func: Function,
+    attempt_await_responses: list[api_pb2.AttemptAwaitResponse],
+    expectation: typing.Any,
+    attempt_await_count: int,
+    function_call_count: int,
+):
+    servicer.attempt_await_responses = attempt_await_responses
+    servicer.function_body(func.get_raw_f())
+    with app.run(client=client), expectation as e:
+        assert func.remote() == e
+    assert servicer.attempt_await_count == attempt_await_count
+    assert servicer.function_call_count == function_call_count
 
 
 def test_single_input_function_call_uses_single_rpc(client, servicer):
@@ -91,7 +322,7 @@ def test_map(client, servicer, slow_put_inputs):
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
 @pytest.mark.timeout(120)
-def test_map_inputplane(client, servicer, slow_put_inputs):
+def test_map_input_plane(client, servicer, slow_put_inputs):
     servicer.slow_put_inputs = slow_put_inputs
 
     app = App()
@@ -113,7 +344,7 @@ def test_nested_map(client):
         assert final_results == [1, 16]
 
 
-def test_nested_map_inputplane(client):
+def test_nested_map_input_plane(client):
     app = App()
     dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
@@ -146,7 +377,7 @@ def test_exception_in_input_iterator(client, map_type):
 
 
 @pytest.mark.parametrize("map_type", ["map", "starmap"])
-def test_exception_in_input_iterator_inputplane(client, map_type):
+def test_exception_in_input_iterator_input_plane(client, map_type):
     class CustomException(Exception):
         pass
 
@@ -180,7 +411,7 @@ async def test_map_async_generator(client):
 
 
 @pytest.mark.asyncio
-async def test_map_async_generator_inputplane(client):
+async def test_map_async_generator_input_plane(client):
     app = App()
     dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
@@ -305,7 +536,7 @@ def test_map_none_values(client, servicer):
         assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
 
 
-def test_map_none_values_inputplane(client, servicer):
+def test_map_none_values_input_plane(client, servicer):
     app = App()
     servicer.function_body(custom_function)
     custom_function_modal = app.function(experimental_options={"input_plane_region": "us-east"})(custom_function)
@@ -493,7 +724,7 @@ def test_generator_map_invalid(client, servicer):
 
 
 # This test is somewhat redundant, but it's good to have when we remove the old python server.
-def test_generator_map_invalid_inputplane(client, servicer):
+def test_generator_map_invalid_input_plane(client, servicer):
     app = App()
 
     later_gen_modal = app.function(experimental_options={"input_plane_region": "us-east"})(later_gen)
@@ -645,7 +876,7 @@ def test_map_exceptions(client, servicer):
         assert type(res[4]) is CustomException and "bad" in str(res[4])
 
 
-def test_map_exceptions_inputplane(client, servicer):
+def test_map_exceptions_input_plane(client, servicer):
     app = App()
 
     servicer.function_body(custom_exception_function)
@@ -689,7 +920,7 @@ async def test_async_map_wrapped_exception_warning(client, servicer):
 
 # This test is somewhat redundant, but it's good to have when we remove the old python server.
 @pytest.mark.asyncio
-async def test_async_map_wrapped_exception_warning_inputplane(client, servicer):
+async def test_async_map_wrapped_exception_warning_input_plane(client, servicer):
     app = App()
 
     servicer.function_body(custom_exception_function)
@@ -1164,7 +1395,7 @@ async def test_non_aio_map_in_async_caller_error(client):
 
 # This test is somewhat redundant, but it's good to have when we remove the old python server.
 @pytest.mark.asyncio
-async def test_non_aio_map_in_async_caller_error_inputplane(client):
+async def test_non_aio_map_in_async_caller_error_input_plane(client):
     dummy_function = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
     with app.run(client=client):

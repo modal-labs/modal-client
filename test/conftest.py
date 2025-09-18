@@ -316,12 +316,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_get_server_warnings = None
         self.resp_jitter_secs: float = 0.0
         self.port = port
-        # AttemptAwait will return a failure until this is 0. It is decremented by 1 each time AttemptAwait is called.
-        self.attempt_await_failures_remaining = 0
+        # Set a list of custom, fixed responses for the AttemptAwait RPC.
+        # This mock server will return responses in order. The regular behavior will resume once this list is exhausted.
+        self.attempt_await_responses: list[api_pb2.AttemptAwaitResponse] = []
         # Value returned by AuthTokenGet
         self.auth_token = jwt.encode({"exp": int(time.time()) + 3600}, "my-secret-key", algorithm="HS256")
         self.auth_tokens_generated = 0
         self.function_id_to_definition_id: dict[str, str] = {}
+        # Number of times AttemptAwait was called.
+        self.attempt_await_count = 0
+        # Number of times the user's function was called.
+        self.function_call_count = 0
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -2312,19 +2317,22 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def AttemptAwait(self, stream):
+        self.attempt_await_count += 1
         # TODO(dxia): implement attempt token logic
+
+        if len(self.attempt_await_responses) > 0:
+            await stream.send_message(self.attempt_await_responses.pop(0))
+            return
 
         # To test client retries for internal failures, tests can configure outputs to fail some number of times.
         status = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        if self.attempt_await_failures_remaining > 0:
-            status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
-            self.attempt_await_failures_remaining = self.attempt_await_failures_remaining - 1
 
         if self.function_call_inputs:
             function_call_id = f"fc-{self.fcidx}"
             (idx, input_id, retry_count), (args, kwargs) = self.function_call_inputs.pop(function_call_id)[0]
             self.fcidx -= 1
             try:
+                self.function_call_count += 1
                 res = self._function_body(*args, **kwargs)
             except Exception as e:
                 res = e
