@@ -2224,8 +2224,8 @@ message MethodDefinition {
   WebUrlInfo web_url_info = 5;
   repeated CustomDomainInfo custom_domain_info = 6;
   FunctionSchema function_schema = 7;
-  repeated DataFormat supported_input_formats = 10;
-  repeated DataFormat supported_output_formats = 11;
+  repeated DataFormat supported_input_formats = 8;
+  repeated DataFormat supported_output_formats = 9;
 }
 
 message MountFile {
