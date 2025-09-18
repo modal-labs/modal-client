@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import threading
 import time
+from typing import Sequence
 
 import modal
 from modal import (
@@ -506,6 +507,20 @@ def batch_function_sync(x: tuple[int], y: tuple[int]):
     for x_i, y_i in zip(x, y):
         outputs.append(x_i / y_i)
     return outputs
+
+
+@app.function()
+@batched(max_batch_size=4, wait_ms=500)
+def batch_function_cbor_tester(c_list: list[Sequence[str]]) -> list[Sequence[str]]:
+    # batch processing so we process all entries before returning:
+    res = []
+    for input_entry in c_list:
+        if input_entry[0] == "error":
+            raise Exception("custom error!")
+        input_type = type(input_entry).__name__  # if input was cbor this becomes "list", if pickle then "tuple"
+        res.append((input_type,))  # returns a tuple per input (gets transformed to list for cbor)
+
+    return res
 
 
 @app.function()

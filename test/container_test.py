@@ -2739,16 +2739,22 @@ def test_batch_sync_function_mixed_input_data_formats(servicer):
     """Test that batch mode correctly handles different serialization formats per input item."""
     # Create inputs with different data formats
     args_list: list[tuple[tuple, dict]] = [
-        ((10, 5), {}),  # Will use PICKLE format
-        ((20, 4), {}),  # Will use CBOR format
-        ((30, 6), {}),  # Will use PICKLE format
+        ((("a",),), {}),
+        ((("b",),), {}),
+        ((("c",),), {}),
     ]
     data_formats = [
         api_pb2.DATA_FORMAT_PICKLE,
         api_pb2.DATA_FORMAT_CBOR,
         api_pb2.DATA_FORMAT_PICKLE,
     ]
-    expected_outputs = [2, 5, 5]  # Results of integer division
+    expected_outputs = [
+        ("tuple",),
+        [
+            "list",
+        ],
+        ("tuple",),
+    ]
     batch_wait_ms = 500
     batch_max_size = 4
     inputs = _get_inputs_batched_with_formats(args_list, data_formats, batch_max_size)
@@ -2756,7 +2762,7 @@ def test_batch_sync_function_mixed_input_data_formats(servicer):
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "batch_function_sync",  # This function does integer division: x // y
+        "batch_function_cbor_tester",
         inputs=inputs,
         batch_max_size=batch_max_size,
         batch_wait_ms=batch_wait_ms,
@@ -2771,3 +2777,52 @@ def test_batch_sync_function_mixed_input_data_formats(servicer):
         # Deserialize using the correct format and verify the result
         value = deserialize_data_format(item.result.data, item.data_format, ret.client)
         assert value == expected_output, f"Item {i}: expected {expected_output}, got {value}"
+
+
+@skip_github_non_linux
+def test_batch_sync_function_mixed_input_data_formats_exceptions(servicer):
+    """Test that batch mode correctly handles different serialization formats per input item."""
+    # Create inputs with different data formats
+    args_list: list[tuple[tuple, dict]] = [
+        ((("a",),), {}),
+        ((("b",),), {}),
+        ((("error",),), {}),
+    ]
+    data_formats = [
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+        api_pb2.DATA_FORMAT_PICKLE,
+    ]
+    batch_wait_ms = 500
+    batch_max_size = 4
+    inputs = _get_inputs_batched_with_formats(args_list, data_formats, batch_max_size)
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "batch_function_cbor_tester",
+        inputs=inputs,
+        batch_max_size=batch_max_size,
+        batch_wait_ms=batch_wait_ms,
+        supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+    )
+    # Verify we got the expected number of outputs
+    assert len(ret.items) == 3
+    # Check that each output has the correct data format and value
+    for item, expected_data_format in zip(ret.items, data_formats):
+        assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+        assert item.data_format == expected_data_format
+
+        if expected_data_format == api_pb2.DATA_FORMAT_PICKLE:
+            # Deserialize using the correct format and verify the result
+            value = deserialize_data_format(item.result.data, item.data_format, ret.client)
+            assert isinstance(value, Exception)
+            assert item.result.serialized_tb
+            assert item.result.tb_line_cache
+            assert item.result.exception == "Exception('custom error!')"
+        else:
+            # cbor will not add pickled metadata about the exception
+            assert item.result.serialized_tb == b""
+            assert item.result.data == b""
+            assert item.result.tb_line_cache == b""
+            assert item.result.exception == "Exception('custom error!')"
