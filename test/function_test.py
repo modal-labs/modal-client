@@ -1485,6 +1485,46 @@ def test_function_schema_recording(client, servicer):
 
 
 @pytest.mark.usefixtures("set_env_client")
+def test_function_supported_input_formats(client, servicer):
+    app = App("app")
+
+    @app.function(serialized=True)
+    def f(a): ...
+
+    @app.function(serialized=True, is_generator=True)
+    def g(a): ...
+
+    @app.function(serialized=True)
+    @modal.fastapi_endpoint()
+    def web_f(): ...
+
+    @app.cls(serialized=True)
+    class A:
+        @modal.method()
+        def f(self): ...
+
+        @modal.web_server(8080)
+        def web_f(self): ...
+
+    deploy_app(app, client=client)
+    f_metadata = f._get_metadata()
+    assert set(f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE}
+    assert f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    g_metadata = g._get_metadata()
+    assert set(g_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE}
+    assert g_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    web_f_metadata = web_f._get_metadata()
+    assert set(web_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_ASGI}
+    assert web_f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
+
+    cls_metadata = typing.cast(modal.Cls, A)._get_class_service_function()._get_metadata()
+    assert cls_metadata.method_handle_metadata["f"].supported_input_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    assert cls_metadata.method_handle_metadata["f"].supported_output_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    assert cls_metadata.method_handle_metadata["web_f"].supported_input_formats == [api_pb2.DATA_FORMAT_ASGI]
+    assert cls_metadata.method_handle_metadata["web_f"].supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
+
+
+@pytest.mark.usefixtures("set_env_client")
 def test_function_schema_excludes_web_endpoints(client, servicer):
     # for now we exclude web endpoints since they don't use straight-forward arguments
     # in the same way as regular modal functions

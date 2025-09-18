@@ -831,17 +831,23 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             for method_name, partial_function in interface_methods.items():
                 function_type = get_function_type(partial_function.params.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
+                is_web_endpoint = partial_function._is_web_endpoint()
                 method_schema = get_callable_schema(
                     partial_function._get_raw_f(),
-                    is_web_endpoint=partial_function._is_web_endpoint(),
+                    is_web_endpoint=is_web_endpoint,
                     ignore_first_argument=True,
                 )
-
                 method_definition = api_pb2.MethodDefinition(
                     webhook_config=partial_function.params.webhook_config,
                     function_type=function_type,
                     function_name=function_name,
                     function_schema=method_schema,
+                    supported_input_formats=[api_pb2.DATA_FORMAT_ASGI]
+                    if is_web_endpoint
+                    else [api_pb2.DATA_FORMAT_PICKLE],
+                    supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]
+                    if is_web_endpoint
+                    else [api_pb2.DATA_FORMAT_PICKLE],
                 )
                 method_definitions[method_name] = method_definition
 
@@ -865,6 +871,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             return deps
 
+        if info.is_service_class():
+            # classes don't have data formats themselves - methods do
+            supported_input_formats = []
+            supported_output_formats = []
+        elif webhook_config is not None:
+            supported_input_formats = [api_pb2.DATA_FORMAT_ASGI]
+            supported_output_formats = [api_pb2.DATA_FORMAT_ASGI]
+        else:
+            # TODO: add CBOR support
+            supported_input_formats = [api_pb2.DATA_FORMAT_PICKLE]
+            supported_output_formats = [api_pb2.DATA_FORMAT_PICKLE]
+
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
 
@@ -877,6 +895,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_schema=get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config))
                 if info.raw_f
                 else None,
+                supported_input_formats=supported_input_formats,
+                supported_output_formats=supported_output_formats,
             )
             if method_definitions:
                 for method_name, method_definition in method_definitions.items():
@@ -955,6 +975,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_schema = (
                     get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config)) if info.raw_f else None
                 )
+
                 # Create function remotely
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
@@ -1016,6 +1037,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     task_idle_timeout_secs=scaledown_window or 0,
                     # ---
                     function_schema=function_schema,
+                    supported_input_formats=supported_input_formats,
+                    supported_output_formats=supported_output_formats,
                 )
 
                 if isinstance(gpu, list):
@@ -1051,6 +1074,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         runtime_perf_record=function_definition.runtime_perf_record,
                         function_schema=function_schema,
                         untrusted=function_definition.untrusted,
+                        supported_input_formats=supported_input_formats,
+                        supported_output_formats=supported_output_formats,
                     )
 
                     ranked_functions = []
@@ -1529,6 +1554,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             input_plane_region=self._input_plane_region,
             max_object_size_bytes=self._max_object_size_bytes,
             _experimental_flash_urls=self._experimental_flash_urls,
+            supported_input_formats=self._metadata.supported_input_formats if self._metadata else [],
+            supported_output_formats=self._metadata.supported_output_formats if self._metadata else [],
         )
 
     def _check_no_web_url(self, fn_name: str):
