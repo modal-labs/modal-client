@@ -1,0 +1,30 @@
+import google.protobuf
+try:
+  pb_older_than_5 = int(google.protobuf.__version__.split(".")[0]) < 5
+except Exception:
+  pb_older_than_5 = False
+
+if pb_older_than_5:
+  AUDIT_TARGET_ATTR_FIELD_NUMBER = 50000
+  audit_target_attr = DESCRIPTOR.extensions_by_name['audit_target_attr']
+  AUDIT_EVENT_NAME_FIELD_NUMBER = 50000
+  audit_event_name = DESCRIPTOR.extensions_by_name['audit_event_name']
+  AUDIT_EVENT_DESCRIPTION_FIELD_NUMBER = 50001
+  audit_event_description = DESCRIPTOR.extensions_by_name['audit_event_description']
+
+  if _descriptor._USE_C_DESCRIPTORS == False:
+    google_dot_protobuf_dot_descriptor__pb2.FieldOptions.RegisterExtension(audit_target_attr)
+    google_dot_protobuf_dot_descriptor__pb2.MethodOptions.RegisterExtension(audit_event_name)
+    google_dot_protobuf_dot_descriptor__pb2.MethodOptions.RegisterExtension(audit_event_description)
+
+    DESCRIPTOR._options = None
+    DESCRIPTOR._serialized_options = b'Z$github.com/modal-labs/modal/go/proto'
+else:
+  from google.protobuf.internal import builder as _builder
+  _globals = globals()
+  _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
+  _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'modal_proto.options_pb2', _globals)
+  if _descriptor._USE_C_DESCRIPTORS == False:
+    DESCRIPTOR._options = None
+    DESCRIPTOR._serialized_options = b'Z$github.com/modal-labs/modal/go/proto'
+# @@protoc_insertion_point(module_scope)

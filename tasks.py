@@ -72,6 +72,26 @@ def protoc(ctx):
             + f" --modal-grpclib-python_out=. -I . {input_files}"
         )
 
+    options_pb = Path("modal_proto/options_pb2.py")
+    options_pb_patch = Path("protoc_plugin/options_pb2.py.patch").read_text()
+
+    options_pb_content = options_pb.read_text()
+    if options_pb_patch in options_pb_content:
+        return
+
+    print(f"Patching {options_pb}")
+    lines = options_pb_content.splitlines()
+    descriptor_idx = 0
+    for i, line in enumerate(lines):
+        if line.startswith("DESCRIPTOR"):
+            descriptor_idx = i
+            break
+    else:  # no break
+        raise RuntimeError(f"Could not find line starting with 'DESCRIPTOR' in {options_pb}")
+
+    new_content = os.linesep.join(lines[: descriptor_idx + 1] + [options_pb_patch])
+    options_pb.write_text(new_content)
+
 
 @task(
     help={
@@ -493,6 +513,7 @@ def show_deprecations(ctx):
     """Analyze Modal source code and display all deprecation warnings/errors.
 
     Shows deprecation date, level, location, function, and message in a formatted table."""
+
     def get_modal_source_files() -> list[str]:
         source_files: list[str] = []
         for root, _, files in os.walk("modal"):
