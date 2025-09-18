@@ -563,7 +563,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     async def get_tags(self):
-        """Fetches any tags (key-value pairs) attached to this Sandbox from the server."""
+        """Fetches any tags (key-value pairs) currently attached to this Sandbox from the server."""
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
         try:
             resp = await retry_transient_errors(self._client.stub.SandboxTagsGet, req)
