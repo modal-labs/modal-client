@@ -1503,7 +1503,7 @@ def test_function_supported_input_formats(client, servicer):
         @modal.method()
         def f(self): ...
 
-        @modal.fastapi_endpoint()
+        @modal.web_server(8080)
         def web_f(self): ...
 
     deploy_app(app, client=client)
