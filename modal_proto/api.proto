@@ -2882,8 +2882,7 @@ message SandboxTag {
 }
 
 message SandboxTagsGetRequest {
-  string environment_name = 1;
-  string sandbox_id = 2;
+  string sandbox_id = 1;
 }
 
 message SandboxTagsGetResponse {
