@@ -201,7 +201,7 @@ class IOContext:
         return (), formatted_kwargs
 
     def _generator_output_format(self) -> "api_pb2.DataFormat.ValueType":
-        return self._coalesce_output_format(self.function_inputs[0].data_format)
+        return self._determine_output_format(self.function_inputs[0].data_format)
 
     def _prepare_batch_output(self, data: Any) -> list[Any]:
         # validate that output is valid for batch
@@ -289,7 +289,7 @@ class IOContext:
             for input_id, retry_count in zip(self.input_ids, self.retry_counts)
         ]
 
-    def _coalesce_output_format(self, input_format: "api_pb2.DataFormat.ValueType") -> "api_pb2.DataFormat.ValueType":
+    def _determine_output_format(self, input_format: "api_pb2.DataFormat.ValueType") -> "api_pb2.DataFormat.ValueType":
         if input_format in self.finalized_function.supported_output_formats:
             return input_format
         else:
@@ -325,7 +325,7 @@ class IOContext:
 
         # Failure outputs for when input exceptions occur
         def data_format_specific_output(input_format: "api_pb2.DataFormat.ValueType") -> dict:
-            output_format = self._coalesce_output_format(input_format)
+            output_format = self._determine_output_format(input_format)
             if output_format == api_pb2.DATA_FORMAT_PICKLE:
                 return {
                     "data_format": output_format,
@@ -387,7 +387,7 @@ class IOContext:
         async def package_output(
             item: Any, input_id: str, retry_count: int, input_format: "api_pb2.DataFormat.ValueType"
         ) -> api_pb2.FunctionPutOutputsItem:
-            output_format = self._coalesce_output_format(input_format)
+            output_format = self._determine_output_format(input_format)
 
             serialized_bytes = serialize_data_format(item, data_format=output_format)
             formatted = await format_blob_data(serialized_bytes, self._client.stub)
