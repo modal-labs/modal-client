@@ -85,7 +85,7 @@ def _patch_options_pb2():
         return
 
     print(f"Patching {options_pb}")
-    lines = options_pb_content.splitlines()
+    lines = options_pb_content.splitlines(keepends=True)
     descriptor_idx = 0
     for i, line in enumerate(lines):
         if line.startswith("DESCRIPTOR"):
@@ -94,7 +94,8 @@ def _patch_options_pb2():
     else:  # no break
         raise RuntimeError(f"Could not find line starting with 'DESCRIPTOR' in {options_pb}")
 
-    new_content = os.linesep.join(lines[: descriptor_idx + 1] + [options_pb_patch])
+    # Replace all content after the DESCRIPTOR with our patch that is compatible with 3.X and 4.X
+    new_content = "".join(lines[: descriptor_idx + 1] + [options_pb_patch])
     options_pb.write_text(new_content)
 
 
