@@ -17,7 +17,6 @@ def test_import_function(supports_dir, monkeypatch):
     service = user_code_imports.import_single_function_service(
         fun,
         None,
-        None,
     )
     assert len(service.service_deps) == 1
     assert type(service.service_deps[0]) is _Image
@@ -48,7 +47,6 @@ def test_import_function_undecorated(monkeypatch, supports_on_path):
     )
     service = user_code_imports.import_single_function_service(
         fun,
-        None,
         None,
     )
     assert service.service_deps is None  # undecorated - can't get code deps

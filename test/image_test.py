@@ -2296,3 +2296,14 @@ def test_raw_registry_image(servicer, client):
 def test_hydration_refusal():
     with pytest.raises(ExecutionError, match="Images cannot currently be hydrated on demand"):
         Image.debian_slim().hydrate()
+
+
+def test_build(servicer, client):
+    image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
+
+    app = App()
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            image.build(app)
+
+    assert len(ctx.get_requests("ImageGetOrCreate")) == 2

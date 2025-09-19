@@ -93,9 +93,9 @@ def construct_webhook_callable(
 
 @dataclass
 class ImportedFunction(Service):
-    user_cls_instance: Any
     app: modal.app._App
     service_deps: Optional[Sequence["modal._object._Object"]]
+    user_cls_instance = None
 
     _user_defined_callable: Callable[..., Any]
 
@@ -201,7 +201,6 @@ def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs:
 
 def import_single_function_service(
     function_def: api_pb2.Function,
-    ser_cls: Optional[type],  # used only for @build functions
     ser_fun: Optional[Callable[..., Any]],
 ) -> Service:
     """Imports a function dynamically, and locates the app.
@@ -230,12 +229,9 @@ def import_single_function_service(
     service_deps: Optional[Sequence["modal._object._Object"]] = None
     active_app: modal.app._App
 
-    user_cls_or_cls: typing.Union[None, type, modal.cls.Cls]
-    user_cls_instance = None
-
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
-        user_cls_or_cls, user_defined_callable = ser_cls, ser_fun
+        user_defined_callable = ser_fun
         active_app = get_active_app_fallback(function_def)
     else:
         # Load the module dynamically
@@ -246,58 +242,22 @@ def import_single_function_service(
             raise LocalFunctionError("Attempted to load a function defined in a function scope")
 
         parts = qual_name.split(".")
-        if len(parts) == 1:
-            # This is a function
-            user_cls_or_cls = None
-            f = getattr(module, qual_name)
-            if isinstance(f, Function):
-                _function: modal._functions._Function[Any, Any, Any] = synchronizer._translate_in(f)  # type: ignore
-                service_deps = _function.deps(only_explicit_mounts=True)
-                user_defined_callable = _function.get_raw_f()
-                assert _function._app  # app should always be set on a decorated function
-                active_app = _function._app
-            else:
-                user_defined_callable = f
-                active_app = get_active_app_fallback(function_def)
-
-        elif len(parts) == 2:
-            # This path should only be triggered by @build class builder methods and can be removed
-            # once @build is deprecated.
-            assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
-            assert function_def.is_builder_function
-            cls_name, fun_name = parts
-            user_cls_or_cls = getattr(module, cls_name)
-            if isinstance(user_cls_or_cls, modal.cls.Cls):
-                # The cls decorator is in global scope
-                _cls = typing.cast(modal.cls._Cls, synchronizer._translate_in(user_cls_or_cls))
-                user_defined_callable = _cls._callables[fun_name]
-                # Intentionally not including these, since @build functions don't actually
-                # forward the information from their parent class.
-                # service_deps = _cls._get_class_service_function().deps(only_explicit_mounts=True)
-                assert _cls._app
-                active_app = _cls._app
-            else:
-                # This is non-decorated class
-                user_defined_callable = getattr(user_cls_or_cls, fun_name)  # unbound method
-                active_app = get_active_app_fallback(function_def)
-        else:
+        if len(parts) != 1:
             raise InvalidError(f"Invalid function qualname {qual_name}")
 
-    # Instantiate the class if it's defined
-    if user_cls_or_cls:
-        if isinstance(user_cls_or_cls, modal.cls.Cls):
-            # This code is only used for @build methods on classes
-            _cls = typing.cast(modal.cls._Cls, user_cls_or_cls)
-            user_cls_instance = get_user_class_instance(_cls, (), {})
-            # Bind the unbound method to the instance as self (using the descriptor protocol!)
+        f = getattr(module, qual_name)
+        if isinstance(f, Function):
+            _function: modal._functions._Function[Any, Any, Any] = synchronizer._translate_in(f)  # type: ignore
+            service_deps = _function.deps(only_explicit_mounts=True)
+            user_defined_callable = _function.get_raw_f()
+            assert _function._app  # app should always be set on a decorated function
+            active_app = _function._app
         else:
-            # serialized=True or "undecorated"
-            user_cls_instance = user_cls_or_cls()
-
-        user_defined_callable = user_defined_callable.__get__(user_cls_instance)
+            # function isn't decorated in global scope
+            user_defined_callable = f
+            active_app = get_active_app_fallback(function_def)
 
     return ImportedFunction(
-        user_cls_instance,
         active_app,
         service_deps,
         user_defined_callable,
