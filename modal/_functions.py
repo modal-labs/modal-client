@@ -821,9 +821,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
         method_definitions: Optional[dict[str, api_pb2.MethodDefinition]] = None
-        non_web_output_formats = (
-            [api_pb2.DATA_FORMAT_CBOR] if restrict_output else [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-        )
 
         if info.user_cls:
             method_definitions = {}
@@ -839,15 +836,23 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_web_endpoint=is_web_endpoint,
                     ignore_first_argument=True,
                 )
+                if is_web_endpoint:
+                    method_input_formats = [api_pb2.DATA_FORMAT_ASGI]
+                    method_output_formats = [api_pb2.DATA_FORMAT_ASGI]
+                else:
+                    method_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+                    if partial_function.params.restrict_output:
+                        method_output_formats = [api_pb2.DATA_FORMAT_CBOR]
+                    else:
+                        method_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+
                 method_definition = api_pb2.MethodDefinition(
                     webhook_config=partial_function.params.webhook_config,
                     function_type=function_type,
                     function_name=function_name,
                     function_schema=method_schema,
-                    supported_input_formats=[api_pb2.DATA_FORMAT_ASGI]
-                    if is_web_endpoint
-                    else [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],  # inputs support any format regardless
-                    supported_output_formats=[api_pb2.DATA_FORMAT_ASGI] if is_web_endpoint else non_web_output_formats,
+                    supported_input_formats=method_input_formats,
+                    supported_output_formats=method_output_formats,
                 )
                 method_definitions[method_name] = method_definition
 
@@ -872,7 +877,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             return deps
 
         if info.is_service_class():
-            # classes don't have data formats themselves - methods do
+            # classes don't have data formats themselves - input/output formats are set per method above
             supported_input_formats = []
             supported_output_formats = []
         elif webhook_config is not None:
@@ -880,7 +885,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             supported_output_formats = [api_pb2.DATA_FORMAT_ASGI]
         else:
             supported_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            supported_output_formats = non_web_output_formats
+            if restrict_output:
+                supported_output_formats = [api_pb2.DATA_FORMAT_CBOR]
+            else:
+                supported_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub

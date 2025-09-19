@@ -62,7 +62,7 @@ class Foo:
     def bar(self, x: int) -> float:
         return x**3
 
-    @method()
+    @method(_experimental_restrict_output=True)
     def baz(self, y: int) -> float:
         return y**4
 
@@ -107,8 +107,8 @@ def test_run_class(client, servicer):
                     base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
                 ),
             ),
-            supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
             supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+            supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
         ),
         "baz": api_pb2.MethodDefinition(
             function_name="Foo.baz",
@@ -127,8 +127,8 @@ def test_run_class(client, servicer):
                     base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
                 ),
             ),
-            supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
             supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+            supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],
         ),
     }
 
