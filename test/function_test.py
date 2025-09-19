@@ -1669,6 +1669,49 @@ def test_cbor_output_failed_result_handling(client, servicer):
 
 
 @pytest.mark.usefixtures("set_env_client")
+def test_cbor_input_only_function_uses_cbor_input(client, servicer):
+    """Test that if a Function has supported_input_formats set to CBOR only in its handle metadata,
+    the client will use CBOR encoded FunctionMap when calling it."""
+
+    # Use an existing function from a previous test
+    cbor_only_function = Function.from_name("app", "f")
+
+    with servicer.intercept() as ctx:
+        # Mock the FunctionGet response to return metadata with CBOR-only input format
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test-function-id",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    function_name="f",
+                    function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+                    supported_input_formats=[api_pb2.DATA_FORMAT_CBOR],
+                    supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+                ),
+            ),
+        )
+
+        # Call the function remotely
+        cbor_only_function.remote(42)
+
+        # Verify that the input was submitted as CBOR format
+        function_map_requests = ctx.get_requests("FunctionMap")
+        assert len(function_map_requests) == 1
+        function_map_request = function_map_requests[0]
+
+        # The client should use CBOR encoding when the function only supports CBOR input
+        assert function_map_request.pipelined_inputs[0].input.data_format == api_pb2.DATA_FORMAT_CBOR
+
+        # Verify the CBOR-encoded data can be properly decoded
+        cbor_encoded_args = function_map_request.pipelined_inputs[0].input.args
+        from modal._serialization import deserialize_data_format
+
+        decoded_args = deserialize_data_format(cbor_encoded_args, api_pb2.DATA_FORMAT_CBOR, client)
+        expected_args = ((42,), {})  # (args, kwargs) tuple
+        assert decoded_args == expected_args
+
+
+@pytest.mark.usefixtures("set_env_client")
 def test_class_schema_recording(client, servicer):
     app = App("app")
 
