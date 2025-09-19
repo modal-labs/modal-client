@@ -175,5 +175,8 @@ def test_url_displayed_function_create_status_web_url():
     with FunctionCreationStatus(resolver, tag) as function_creation_status:
         function_creation_status.set_response(response)
 
-    message = status_row_mock.finish.call_args.args[0]
-    assert web_url in message
+    start_message = status_row_mock.message.call_args.args[0]
+    assert f"Creating function {tag}..." == start_message
+
+    finish_message = status_row_mock.finish.call_args.args[0]
+    assert web_url in finish_message
