@@ -562,7 +562,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return obj
 
-    async def get_tags(self):
+    async def get_tags(self) -> dict[str, str]:
         """Fetches any tags (key-value pairs) currently attached to this Sandbox from the server."""
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
         try:
@@ -572,7 +572,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return {tag.tag_name: tag.tag_value for tag in resp.tags}
 
-    async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None):
+    async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None) -> None:
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
         if client is None:
             client = await _Client.from_env()
