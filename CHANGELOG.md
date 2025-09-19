@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev32 (2025-09-19)
+
+- Deprecated the `client` parameter to `Sandbox.set_tags()`, and the `environment_name` parameter to `Sandbox.from_name()`.
+
+
 #### 1.1.5.dev30 (2025-09-19)
 
 - Added a `.get_tags()` method to Sandbox, enabling fetching tags that were previously set using `.set_tags()`.
