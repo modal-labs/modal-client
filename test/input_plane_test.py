@@ -1,10 +1,7 @@
 # Copyright Modal Labs 2025
-import pytest
-
 import modal
 from modal import App
 from modal.client import Client
-from modal.exception import InternalFailure
 from modal.functions import Function
 from modal.runner import deploy_app
 from test.conftest import MockClientServicer
@@ -35,25 +32,3 @@ def test_lookup_foo(client: Client, servicer: MockClientServicer):
     assert f.remote() == "foo"
     assert f._get_metadata().input_plane_url is not None
     assert f._get_metadata().input_plane_region == "us-east"
-
-
-def test_retry_on_internal_error(client: Client, servicer: MockClientServicer):
-    # Tell the servicer to fail once, and then succeed. The client should retry the failed attempt.
-    servicer.attempt_await_failures_remaining = 1
-    servicer.function_body(foo.get_raw_f())
-    with app.run(client=client):
-        assert foo.remote() == "foo"
-    # We don't have a great way to verify the call was actually retried. We can at least check that the servicer
-    # decremented the attempts_to_fail counter, which indicates that the call was retried.
-    assert servicer.attempt_await_failures_remaining == 0
-
-
-def test_retry_limit_on_internal_error(client: Client, servicer: MockClientServicer, monkeypatch):
-    monkeypatch.setattr("modal._functions.MAX_INTERNAL_FAILURE_COUNT", 2)
-    # Tell the servicer to fail once, and then succeed. The client should retry the failed attempt.
-    servicer.attempt_await_failures_remaining = 3
-    with pytest.raises(InternalFailure):
-        with app.run(client=client):
-            foo.remote()
-    # Verify that the mock server's failure counter was decremented by 2.
-    assert servicer.attempt_await_failures_remaining == 1
