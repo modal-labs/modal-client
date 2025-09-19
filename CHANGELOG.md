@@ -6,6 +6,18 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev34 (2025-09-19)
+
+- `Cls.with_options` supports `CloudBucketMount` in `volumes`.
+
+```python
+cloud_bucket = modal.CloudBucketMount("my-bucket", secret=aws_secret)
+MyAppCloud = modal.Cls.from_name("my-app", "MyApp").with_options(
+  volumes={"/mnt": cloud_bucket}
+)
+```
+
+
 #### 1.1.5.dev32 (2025-09-19)
 
 - Deprecated the `client` parameter to `Sandbox.set_tags()`, and the `environment_name` parameter to `Sandbox.from_name()`.
