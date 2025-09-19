@@ -354,7 +354,7 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
         return None
 
 
-def get_default_payload_format() -> "api_pb2.DataFormat.ValueType":
+def get_preferred_payload_format() -> "api_pb2.DataFormat.ValueType":
     payload_format = (config.get("payload_format") or "pickle").lower()
     data_format = api_pb2.DATA_FORMAT_CBOR if payload_format == "cbor" else api_pb2.DATA_FORMAT_PICKLE
     return data_format

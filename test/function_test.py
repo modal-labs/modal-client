@@ -1707,7 +1707,12 @@ def test_cbor_input_only_function_uses_cbor_input(client, servicer):
         from modal._serialization import deserialize_data_format
 
         decoded_args = deserialize_data_format(cbor_encoded_args, api_pb2.DATA_FORMAT_CBOR, client)
-        expected_args: tuple[tuple[typing.Any, ...], dict[str, typing.Any]] = ((42,), {})  # (args, kwargs) tuple
+        expected_args = [
+            [
+                42,
+            ],
+            {},
+        ]  # (args, kwargs) tuple
         assert decoded_args == expected_args
 
 

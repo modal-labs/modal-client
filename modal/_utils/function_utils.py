@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import os
+import typing
 from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -17,7 +18,7 @@ from modal_proto.modal_api_grpc import ModalClientModal
 from .._serialization import (
     deserialize,
     deserialize_data_format,
-    get_default_payload_format,
+    get_preferred_payload_format,
     serialize,
     serialize_data_format as _serialize_data_format,
     signature_to_parameter_specs,
@@ -39,6 +40,9 @@ from .blob_utils import (
     blob_upload_with_r2_failure_info,
 )
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
+
+if typing.TYPE_CHECKING:
+    import modal._functions
 
 
 class FunctionInfoType(Enum):
@@ -551,20 +555,28 @@ async def _create_input(
     kwargs,
     stub: ModalClientModal,
     *,
-    max_object_size_bytes: int,
+    function: "modal._functions._Function",
     idx: Optional[int] = None,
-    method_name: Optional[str] = None,
     function_call_invocation_type: Optional["api_pb2.FunctionCallInvocationType.ValueType"] = None,
 ) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
+    method_name = function._use_method_name
+    max_object_size_bytes = function._max_object_size_bytes
+
     if idx is None:
         idx = 0
-    if method_name is None:
-        method_name = ""  # proto compatible
 
-    data_format = get_default_payload_format()
+    data_format = get_preferred_payload_format()
+    if method_name:
+        handle_metadata = function._method_handle_metadata[method_name]
+    else:
+        handle_metadata = function._metadata
+    supported_input_formats = handle_metadata.supported_input_formats or [api_pb2.DATA_FORMAT_PICKLE]
+    if data_format not in supported_input_formats:
+        data_format = supported_input_formats[0]
+
     args_serialized = _serialize_data_format((args, kwargs), data_format)
 
     if should_upload(len(args_serialized), max_object_size_bytes, function_call_invocation_type):

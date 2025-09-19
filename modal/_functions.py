@@ -152,8 +152,7 @@ class _Invocation:
             args,
             kwargs,
             stub,
-            max_object_size_bytes=function._max_object_size_bytes,
-            method_name=function._use_method_name,
+            function=function,
             function_call_invocation_type=function_call_invocation_type,
         )
 
@@ -441,8 +440,7 @@ class _InputPlaneInvocation:
             args,
             kwargs,
             control_plane_stub,
-            max_object_size_bytes=function._max_object_size_bytes,
-            method_name=function._use_method_name,
+            function=function,
         )
 
         request = api_pb2.AttemptStartRequest(
