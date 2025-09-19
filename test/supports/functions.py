@@ -511,7 +511,7 @@ def batch_function_sync(x: tuple[int], y: tuple[int]):
 
 @app.function()
 @batched(max_batch_size=4, wait_ms=500)
-def batch_function_cbor_tester(c_list: list[Sequence[str]]) -> list[Sequence[str]]:
+def batch_function_cbor_tester(c_list: list[Sequence[str]]) -> Sequence[Sequence[str]]:
     # batch processing so we process all entries before returning:
     res = []
     for input_entry in c_list:
