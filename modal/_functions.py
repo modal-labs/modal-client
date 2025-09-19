@@ -94,10 +94,8 @@ from .secret import _Secret
 from .volume import _Volume
 
 if TYPE_CHECKING:
-    import modal._partial_function
     import modal.app
     import modal.cls
-    import modal.partial_function
 
 MAX_INTERNAL_FAILURE_COUNT = 8
 TERMINAL_STATUSES = (
