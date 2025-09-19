@@ -569,11 +569,10 @@ async def _create_input(
         idx = 0
 
     data_format = get_preferred_payload_format()
-    if method_name:
-        handle_metadata = function._method_handle_metadata[method_name]
-    else:
-        handle_metadata = function._metadata
-    supported_input_formats = handle_metadata.supported_input_formats or [api_pb2.DATA_FORMAT_PICKLE]
+    if not function._metadata:
+        raise ExecutionError("Attempted to call function that has not been hydrated with metadata")
+
+    supported_input_formats = function._metadata.supported_input_formats or [api_pb2.DATA_FORMAT_PICKLE]
     if data_format not in supported_input_formats:
         data_format = supported_input_formats[0]
 
