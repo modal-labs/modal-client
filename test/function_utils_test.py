@@ -2,6 +2,7 @@
 import functools
 import pytest
 import time
+from unittest.mock import Mock
 
 from grpclib import Status
 
@@ -9,6 +10,7 @@ from modal import fastapi_endpoint, method
 from modal._serialization import serialize_data_format
 from modal._utils import async_utils
 from modal._utils.function_utils import (
+    FunctionCreationStatus,
     FunctionInfo,
     _stream_function_call_data,
     callable_has_non_self_non_default_params,
@@ -151,3 +153,27 @@ def has_global_ref():
 def test_global_variable_extraction(func):
     info = FunctionInfo(func)
     assert info.get_globals().get("GLOBAL_VARIABLE") == GLOBAL_VARIABLE
+
+
+def test_url_displayed_function_create_status_web_url():
+    status_row_mock = Mock()
+    resolver = Mock()
+    resolver.add_status_row.return_value = status_row_mock
+
+    web_url = "https://user--endpoint-f.me"
+    tag = "fu-abc"
+
+    response = api_pb2.FunctionCreateResponse(
+        function_id="fu-abc",
+        function=api_pb2.Function(
+            module_name="my_module",
+            function_name="f",
+        ),
+        handle_metadata=api_pb2.FunctionHandleMetadata(web_url=web_url),
+    )
+
+    with FunctionCreationStatus(resolver, tag) as function_creation_status:
+        function_creation_status.set_response(response)
+
+    message = status_row_mock.finish.call_args.args[0]
+    assert web_url in message
