@@ -467,11 +467,10 @@ def deploy(
     if not name:
         raise ExecutionError(
             "You need to either supply an explicit deployment name on the command line "
-            "or have a name set on the app.\n"
+            "or have a name set on the App.\n"
             "\n"
             "Examples:\n"
-            'app = modal.App("some-name")'
-            "or\n"
+            'app = modal.App("some-name")\n'
             "modal deploy ... --name=some-name"
         )
 
