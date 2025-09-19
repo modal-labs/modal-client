@@ -574,12 +574,14 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None) -> None:
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
+        environment_name = _get_environment_name()
         if client is None:
             client = await _Client.from_env()
 
         tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()]
 
         req = api_pb2.SandboxTagsSetRequest(
+            environment_name=environment_name,
             sandbox_id=self.object_id,
             tags=tags_list,
         )
