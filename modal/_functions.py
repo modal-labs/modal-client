@@ -1224,6 +1224,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     replace_secret_ids=bool(options.secrets),
                     replace_volume_mounts=len(volume_mounts) > 0,
                     volume_mounts=volume_mounts,
+                    cloud_bucket_mounts=cloud_bucket_mounts_to_proto(options.cloud_bucket_mounts),
+                    replace_cloud_bucket_mounts=bool(options.cloud_bucket_mounts),
                     resources=options.resources,
                     retry_policy=options.retry_policy,
                     concurrency_limit=options.max_containers,
@@ -1253,7 +1255,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         def _deps():
             if options:
-                all_deps = [v for _, v in options.validated_volumes] + list(options.secrets)
+                all_deps = (
+                    [v for _, v in options.validated_volumes]
+                    + list(options.secrets)
+                    + [mount.secret for _, mount in options.cloud_bucket_mounts if mount.secret]
+                )
                 return [dep for dep in all_deps if not dep.is_hydrated]
             return []
 
