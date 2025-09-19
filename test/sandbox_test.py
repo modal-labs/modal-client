@@ -407,6 +407,7 @@ def test_sandbox_list_app(client, servicer):
 @skip_non_subprocess
 def test_sandbox_list_tags(app, client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
+    assert sb.get_tags() == {}
     sb.set_tags({"foo": "bar", "baz": "qux"}, client=client)
     assert sb.get_tags() == {"foo": "bar", "baz": "qux"}
 
