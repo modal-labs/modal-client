@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev30 (2025-09-19)
+
+- Added a `.get_tags()` method to Sandbox, enabling fetching tags that were previously set using `.set_tags()`.
+
+
 #### 1.1.5.dev26 (2025-09-17)
 
 - Adds `image.build` to eagerly build an image:
