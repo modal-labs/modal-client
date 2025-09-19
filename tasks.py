@@ -55,13 +55,14 @@ def protoc(ctx):
 
     Generates Python stubs for api.proto and options.proto."""
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
-    input_files = "modal_proto/api.proto modal_proto/options.proto"
+    client_proto_files = "modal_proto/api.proto modal_proto/options.proto"
+    sandbox_router_proto_file = "modal_proto/sandbox_router.proto"
     py_protoc = (
         protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
     print(py_protoc)
     # generate grpcio and grpclib proto files:
-    ctx.run(f"{py_protoc} -I . {input_files}")
+    ctx.run(f"{py_protoc} -I . {client_proto_files} {sandbox_router_proto_file}")
 
     # generate modal-specific wrapper around grpclib api stub using custom plugin:
     grpc_plugin_pyfile = Path("protoc_plugin/plugin.py")
@@ -69,7 +70,7 @@ def protoc(ctx):
     with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
         ctx.run(
             f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
-            + f" --modal-grpclib-python_out=. -I . {input_files}"
+            + f" --modal-grpclib-python_out=. -I . {client_proto_files}"
         )
 
 
@@ -83,13 +84,7 @@ def lint(ctx, fix=False):
     ctx.run(f"ruff check . {'--fix' if fix else ''}", pty=True)
 
 
-@task
-def lint_protos(ctx):
-    """Lint protocol buffer files.
-
-    Ensures imports/enums/messages/services are ordered correctly and RPCs are alphabetized.
-    """
-    proto_fname = "modal_proto/api.proto"
+def lint_protos_impl(ctx, proto_fname: str):
     with open(proto_fname) as f:
         proto_text = f.read()
 
@@ -131,6 +126,16 @@ def lint_protos(ctx):
                 console.print(f"\nThe {rpc_a} rpc proto is out of order relative to the {rpc_b} rpc.")
                 console.print("\nRPC definitions should be ordered within each service proto.", style="dim")
                 sys.exit(1)
+
+
+@task
+def lint_protos(ctx):
+    """Lint protocol buffer files.
+
+    Ensures imports/enums/messages/services are ordered correctly and RPCs are alphabetized.
+    """
+    lint_protos_impl(ctx, "modal_proto/api.proto")
+    lint_protos_impl(ctx, "modal_proto/sandbox_router.proto")
 
 
 @task
@@ -493,6 +498,7 @@ def show_deprecations(ctx):
     """Analyze Modal source code and display all deprecation warnings/errors.
 
     Shows deprecation date, level, location, function, and message in a formatted table."""
+
     def get_modal_source_files() -> list[str]:
         source_files: list[str] = []
         for root, _, files in os.walk("modal"):
