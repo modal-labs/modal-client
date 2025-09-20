@@ -6,6 +6,14 @@ import typing
 from inspect import Parameter
 from typing import Any
 
+from modal._traceback import extract_traceback
+from modal.config import config
+
+try:
+    import cbor2  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    cbor2 = None
+
 import google.protobuf.message
 
 from modal._utils.async_utils import synchronizer
@@ -15,7 +23,7 @@ from ._object import _Object
 from ._type_manager import parameter_serde_registry, schema_registry
 from ._vendor import cloudpickle
 from .config import logger
-from .exception import DeserializationError, ExecutionError, InvalidError
+from .exception import DeserializationError, ExecutionError, InvalidError, SerializationError
 from .object import Object
 
 if typing.TYPE_CHECKING:
@@ -346,6 +354,12 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
         return None
 
 
+def get_preferred_payload_format() -> "api_pb2.DataFormat.ValueType":
+    payload_format = (config.get("payload_format") or "pickle").lower()
+    data_format = api_pb2.DATA_FORMAT_CBOR if payload_format == "cbor" else api_pb2.DATA_FORMAT_PICKLE
+    return data_format
+
+
 def serialize_data_format(obj: Any, data_format: int) -> bytes:
     """Similar to serialize(), but supports other data formats."""
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
@@ -355,6 +369,21 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
         assert isinstance(obj, api_pb2.GeneratorDone)
         return obj.SerializeToString(deterministic=True)
+    elif data_format == api_pb2.DATA_FORMAT_CBOR:
+        if cbor2 is None:
+            raise InvalidError("CBOR support requires the 'cbor2' package to be installed.")
+        try:
+            return cbor2.dumps(obj)
+        except cbor2.CBOREncodeTypeError:
+            try:
+                typename = f"{type(obj).__module__}.{type(obj).__name__}"
+            except Exception:
+                typename = str(type(obj))
+            raise SerializationError(
+                # TODO (elias): add documentation link for more information on this
+                f"Can not serialize type {typename} as cbor. If you need to use a custom data type, "
+                "try to serialize it yourself e.g. by using pickle.dumps(my_data)"
+            )
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
@@ -366,6 +395,10 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
         return _deserialize_asgi(api_pb2.Asgi.FromString(s))
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
         return api_pb2.GeneratorDone.FromString(s)
+    elif data_format == api_pb2.DATA_FORMAT_CBOR:
+        if cbor2 is None:
+            raise InvalidError("CBOR support requires the 'cbor2' package to be installed.")
+        return cbor2.loads(s)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
@@ -579,3 +612,26 @@ def get_callable_schema(
         arguments=arguments,
         return_type=return_type_proto,
     )
+
+
+def pickle_exception(exc: BaseException) -> bytes:
+    try:
+        return serialize(exc)
+    except Exception as serialization_exc:
+        # We can't always serialize exceptions.
+        err = f"Failed to serialize exception {exc} of type {type(exc)}: {serialization_exc}"
+        logger.info(err)
+        return serialize(SerializationError(err))
+
+
+def pickle_traceback(exc: BaseException, task_id: str) -> tuple[bytes, bytes]:
+    serialized_tb, tb_line_cache = b"", b""
+
+    try:
+        tb_dict, line_cache = extract_traceback(exc, task_id)
+        serialized_tb = serialize(tb_dict)
+        tb_line_cache = serialize(line_cache)
+    except Exception:
+        logger.info("Failed to serialize exception traceback.")
+
+    return serialized_tb, tb_line_cache

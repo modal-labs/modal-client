@@ -116,3 +116,4 @@ extra-standard-library = ["pytest"]
 
 [tool.pyright]
 reportUnnecessaryComparison = true
+venvPath = ".venv/"
