@@ -15,7 +15,6 @@ import modal
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._functions import MAX_INTERNAL_FAILURE_COUNT
 from modal._utils.async_utils import synchronize_api
-from modal._utils.function_utils import OUTPUTS_TIMEOUT
 from modal._vendor import cloudpickle
 from modal.client import Client
 from modal.exception import (
@@ -61,7 +60,7 @@ def input_plane_func():
     return "DEADBEEF"
 
 
-@app.function(experimental_options={"input_plane_region": "us-east"}, retries=modal.Retries(max_retries=3))
+@app.function(experimental_options={"input_plane_region": "us-east"}, retries=modal.Retries(max_retries=1))
 def input_plane_failing_func_with_retry():
     raise ValueError()
 
@@ -74,7 +73,8 @@ def input_plane_func_with_immediate_retry():
     raise ValueError()
 
 
-duration = int(OUTPUTS_TIMEOUT + 5)
+# We set this to more than the outputs_timeout_override of the "long running" test_remote_input_plane() test case.
+duration = 2
 
 
 @app.function(timeout=duration, experimental_options={"input_plane_region": "us-east"})
@@ -91,16 +91,17 @@ def test_run_function(client, servicer):
 
 
 @pytest.mark.parametrize(
-    "func, attempt_await_responses, expectation, attempt_await_count, function_call_count",
+    "func, attempt_await_responses, outputs_timeout_override, expectation, attempt_await_count, function_call_count",
     [
         # If the function runs sucessfully the first time, the client should call the
         # AttemptAwait RPC once and the user's function should be called once.
-        pytest.param(input_plane_func, [], nullcontext("DEADBEEF"), 1, 1, id="success"),
+        pytest.param(input_plane_func, [], None, nullcontext("DEADBEEF"), 1, 1, id="success"),
         # The client should call the AttemptAwait RPC until it receives an AttemptAwaitResponse
         # with an output attribute and then return a successful AttemptAwaitResponse.
         pytest.param(
             input_plane_func,
             [api_pb2.AttemptAwaitResponse(), api_pb2.AttemptAwaitResponse()],
+            None,
             nullcontext("DEADBEEF"),
             3,
             1,
@@ -116,6 +117,7 @@ def test_run_function(client, servicer):
                     )
                 )
             ],
+            None,
             pytest.raises(RemoteError),
             1,
             0,
@@ -133,6 +135,7 @@ def test_run_function(client, servicer):
                 )
             ]
             * (MAX_INTERNAL_FAILURE_COUNT - 1),
+            None,
             nullcontext("DEADBEEF"),
             MAX_INTERNAL_FAILURE_COUNT,
             1,
@@ -150,6 +153,7 @@ def test_run_function(client, servicer):
                 )
             ]
             * MAX_INTERNAL_FAILURE_COUNT,
+            None,
             pytest.raises(InternalFailure),
             MAX_INTERNAL_FAILURE_COUNT,
             0,
@@ -165,6 +169,7 @@ def test_run_function(client, servicer):
                     )
                 )
             ],
+            None,
             pytest.raises(RemoteError),
             1,
             0,
@@ -180,6 +185,7 @@ def test_run_function(client, servicer):
                     )
                 )
             ],
+            None,
             pytest.raises(RemoteError),
             1,
             0,
@@ -195,6 +201,7 @@ def test_run_function(client, servicer):
                     )
                 )
             ],
+            None,
             pytest.raises(FunctionTimeoutError),
             1,
             0,
@@ -210,6 +217,7 @@ def test_run_function(client, servicer):
                     )
                 )
             ],
+            None,
             pytest.raises(RemoteError),
             1,
             0,
@@ -225,6 +233,7 @@ def test_run_function(client, servicer):
                     )
                 )
             ],
+            None,
             pytest.raises(RemoteError),
             1,
             0,
@@ -232,7 +241,7 @@ def test_run_function(client, servicer):
         ),
         # The client should retry up to user-specified number of retries when the user's function raises an exception.
         pytest.param(
-            input_plane_failing_func_with_retry, [], pytest.raises(ValueError), 4, 4, id="honor user retry policy"
+            input_plane_failing_func_with_retry, [], None, pytest.raises(ValueError), 2, 2, id="honor user retry policy"
         ),
         # Internal failure retries shouldn't use up user-specified retries.
         pytest.param(
@@ -245,18 +254,22 @@ def test_run_function(client, servicer):
                 )
             ]
             * (MAX_INTERNAL_FAILURE_COUNT - 1),
+            None,
             pytest.raises(ValueError),
-            MAX_INTERNAL_FAILURE_COUNT + 3,
-            4,
+            MAX_INTERNAL_FAILURE_COUNT + 1,
+            2,
             id="internal failure does not use up user retries",
         ),
         # The client should retry when the retry policy has an initial delay of 0 seconds.
-        pytest.param(input_plane_func_with_immediate_retry, [], pytest.raises(ValueError), 2, 2, id="immediate retry"),
+        pytest.param(
+            input_plane_func_with_immediate_retry, [], None, pytest.raises(ValueError), 2, 2, id="immediate retry"
+        ),
         # The client should call AttemptAwait multiple times when a function call lasts longer than
         # function_utils.OUTPUTS_TIMEOUT, but the client should not retry the function call itself.
         pytest.param(
             input_plane_func_long_running,
             [],
+            1,
             # Currently MockClientServicer returns this string instead of the function return value
             # when the function call takes longer than function_utils.OUTPUTS_TIMEOUT to run.
             nullcontext("attempt_await_bogus_response"),
@@ -269,12 +282,18 @@ def test_run_function(client, servicer):
 def test_remote_input_plane(
     client: Client,
     servicer: MockClientServicer,
+    monkeypatch: pytest.MonkeyPatch,
     func: Function,
     attempt_await_responses: list[api_pb2.AttemptAwaitResponse],
+    outputs_timeout_override: typing.Optional[int],
     expectation: typing.Any,
     attempt_await_count: int,
     function_call_count: int,
 ):
+    if outputs_timeout_override is not None:
+        monkeypatch.setattr(modal._functions, "OUTPUTS_TIMEOUT", outputs_timeout_override)
+        monkeypatch.setattr(modal._functions, "ATTEMPT_TIMEOUT_GRACE_PERIOD", 0)
+
     servicer.attempt_await_responses = attempt_await_responses
     servicer.function_body(func.get_raw_f())
     with app.run(client=client), expectation as e:
