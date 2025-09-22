@@ -384,3 +384,21 @@ async def update_autoscaler(
 
     request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=f.object_id, settings=settings)
     await retry_transient_errors(client.stub.FunctionUpdateSchedulingParams, request)
+
+
+@synchronizer.create_blocking
+async def image_delete(
+    image_id: str,
+    *,
+    client: Optional[_Client] = None,
+) -> None:
+    """Delete an image by its ID.
+
+    Warning: This is an experimental API that may change.
+    Deletion is irreversible and will prevent Apps from using the Image.
+    """
+    if client is None:
+        client = await _Client.from_env()
+
+    req = api_pb2.ImageDeleteRequest(image_id=image_id)
+    await retry_transient_errors(client.stub.ImageDelete, req)

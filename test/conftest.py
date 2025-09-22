@@ -1486,6 +1486,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def ImageDelete(self, stream):
+        request: api_pb2.ImageDeleteRequest = await stream.recv_message()
+        if request.image_id not in self.images:
+            raise GRPCError(Status.NOT_FOUND, f"Image {request.image_id} not found")
+        self.images.pop(request.image_id)
+        await stream.send_message(Empty())
+
     ### Mount
 
     async def MountPutFile(self, stream):
