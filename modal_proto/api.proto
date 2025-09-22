@@ -2707,7 +2707,7 @@ message Sandbox {
 
 message SandboxCreateConnectTokenRequest {
   string sandbox_id = 1;
-  string metadata = 2;
+  string user_metadata = 2;
 }
 
 message SandboxCreateConnectTokenResponse {
