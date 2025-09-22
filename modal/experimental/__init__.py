@@ -392,10 +392,17 @@ async def image_delete(
     *,
     client: Optional[_Client] = None,
 ) -> None:
-    """Delete an image by its ID.
+    """Delete an Image by its ID.
 
-    Warning: This is an experimental API that may change.
     Deletion is irreversible and will prevent Apps from using the Image.
+
+    This is an experimental interface for a feature that we will be adding to
+    the main Image class. The stable form of this interface may look different.
+
+    Note: When building an Image, each chained method call will create an
+    intermediate Image layer, each with its own ID. Deleting an Image will not
+    delete any of its intermediate layers, only the image identified by the
+    provided ID.
     """
     if client is None:
         client = await _Client.from_env()
