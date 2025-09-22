@@ -93,7 +93,7 @@ def test_run_function(client, servicer):
 @pytest.mark.parametrize(
     "func, attempt_await_responses, outputs_timeout_override, expectation, attempt_await_count, function_call_count",
     [
-        # If the function runs sucessfully the first time, the client should call the
+        # If the function runs successfully the first time, the client should call the
         # AttemptAwait RPC once and the user's function should be called once.
         pytest.param(input_plane_func, [], None, nullcontext("DEADBEEF"), 1, 1, id="success"),
         # The client should call the AttemptAwait RPC until it receives an AttemptAwaitResponse
