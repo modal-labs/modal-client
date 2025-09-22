@@ -1,6 +1,5 @@
 syntax = "proto3";
 
-import "google/protobuf/timestamp.proto";
 import "modal_proto/api.proto";
 
 package modal.sandbox_router;
@@ -45,10 +44,10 @@ message SandboxExecStartRequest {
   SandboxExecStdoutConfig stdout_config = 4;
   // Configures how the stderr of the command will be handled.
   SandboxExecStderrConfig stderr_config = 5;
-  // Deadline for the exec'd command to exit. If the command does not exit before
-  // the deadline, the command will be killed. This is NOT the deadline for the
-  // ExecStartRequest RPC to complete.
-  google.protobuf.Timestamp deadline = 6;
+  // Timeout in seconds for the exec'd command to exit. If the command does not
+  // exit within this duration, the command will be killed. This is NOT the
+  // timeout for the ExecStartRequest RPC to complete.
+  uint32 timeout_secs = 6;
   // Working directory for the command.
   optional string workdir = 7;
   // Secret IDs to mount into the sandbox.
