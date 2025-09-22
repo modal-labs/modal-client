@@ -111,7 +111,7 @@ message SandboxExecWaitResponse {
     int32 signal = 4;
   }
   // TODO(saltzm): Give a way for the user to distinguish between normal exit
-  // and termination by Modal (due to sandbox idle timeout, exec exceeded deadline, etc.)  
+  // and termination by Modal (due to sandbox timeout, exec exceeded deadline, etc.)
 }
 
 service SandboxRouter {
