@@ -1490,7 +1490,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ImageDeleteRequest = await stream.recv_message()
         if request.image_id not in self.images:
             raise GRPCError(Status.NOT_FOUND, f"Image {request.image_id} not found")
+
         self.images.pop(request.image_id)
+        self.image_build_function_ids.pop(request.image_id, None)
+        self.image_builder_versions.pop(request.image_id, None)
+        if request.image_id in self.force_built_images:
+            self.force_built_images.remove(request.image_id)
+
         await stream.send_message(Empty())
 
     ### Mount
