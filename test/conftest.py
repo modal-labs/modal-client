@@ -327,6 +327,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.attempt_await_count = 0
         # Number of times the user's function was called.
         self.function_call_count = 0
+        self.function_call_result: Any = None
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -2332,15 +2333,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.fcidx -= 1
             try:
                 self.function_call_count += 1
-                res = self._function_body(*args, **kwargs)
+                self.function_call_result = self._function_body(*args, **kwargs)
             except Exception as e:
-                res = e
+                self.function_call_result = e
                 status = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
         else:
             input_id = "in-1"
             idx = 0
             retry_count = 0
-            res = "attempt_await_bogus_response"
 
         await stream.send_message(
             api_pb2.AttemptAwaitResponse(
@@ -2349,7 +2349,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     idx=idx,
                     result=api_pb2.GenericResult(
                         status=status,
-                        data=serialize_data_format(res, api_pb2.DATA_FORMAT_PICKLE),
+                        data=serialize_data_format(self.function_call_result, api_pb2.DATA_FORMAT_PICKLE),
                     ),
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
                     retry_count=retry_count,

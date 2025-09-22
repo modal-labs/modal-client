@@ -272,7 +272,7 @@ def test_run_function(client, servicer):
             1,
             # Currently MockClientServicer returns this string instead of the function return value
             # when the function call takes longer than function_utils.OUTPUTS_TIMEOUT to run.
-            nullcontext("attempt_await_bogus_response"),
+            nullcontext("DEADBEEF"),
             2,
             1,
             id="long running",
