@@ -55,7 +55,7 @@ def protoc(ctx):
 
     Generates Python stubs for api.proto and options.proto."""
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
-    input_files = "modal_proto/api.proto modal_proto/options.proto"
+    input_files = "modal_proto/api.proto"
     py_protoc = (
         protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
@@ -493,6 +493,7 @@ def show_deprecations(ctx):
     """Analyze Modal source code and display all deprecation warnings/errors.
 
     Shows deprecation date, level, location, function, and message in a formatted table."""
+
     def get_modal_source_files() -> list[str]:
         source_files: list[str] = []
         for root, _, files in os.walk("modal"):
