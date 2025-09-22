@@ -167,6 +167,8 @@ class _App:
 
     _include_source_default: Optional[bool] = None
 
+    _canary: Optional[api_pb2.Canary]
+
     def __init__(
         self,
         name: Optional[str] = None,
@@ -175,6 +177,7 @@ class _App:
         secrets: Sequence[_Secret] = [],  # Secrets to add for all Functions in the App
         volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # Volume mounts to use for all Functions
         include_source: bool = True,  # Default configuration for adding Function source file(s) to the Modal container
+        canary_percentage: Optional[int] = None,
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
@@ -212,6 +215,11 @@ class _App:
 
         # Register this app. This is used to look up the app in the container, when we can't get it from the function
         _App._all_apps.setdefault(self._name, []).append(self)
+
+        if canary_percentage:
+            self._canary = api_pb2.Canary(new_percentage=canary_percentage)
+        else:
+            self._canary = None
 
     @property
     def name(self) -> Optional[str]:

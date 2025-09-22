@@ -186,6 +186,7 @@ async def _publish_app(
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
     commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
+    canary: Optional[api_pb2.Canary] = None,
 ) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
 
@@ -200,6 +201,7 @@ async def _publish_app(
         class_ids=running_app.class_ids,
         definition_ids=definition_ids,
         commit_info=commit_info,
+        canary=canary,
     )
 
     try:
@@ -546,6 +548,7 @@ async def _deploy_app(
                 name,
                 tag,
                 commit_info,
+                app._canary,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.

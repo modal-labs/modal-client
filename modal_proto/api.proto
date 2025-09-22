@@ -445,6 +445,7 @@ message AppPublishRequest {
   uint32 rollback_version = 8;  // Unused by client, but used internally
   string client_version = 9;  // Unused by client, but used internally
   CommitInfo commit_info = 10;  // Git information for deployment tracking
+  optional Canary canary = 11;
 }
 
 message AppPublishResponse {
@@ -469,6 +470,10 @@ message AppSetObjectsRequest {
 message AppStopRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   AppStopSource source = 2;
+}
+
+message Canary {
+  int32 new_percentage = 1;
 }
 
 // A web endpoint connection-related message.
@@ -1341,7 +1346,7 @@ message FlashContainerRegisterResponse {
 
 message FlashProxyUpstreamRequest {
   uint32 upstream_requests = 1;
-  double timestamp = 2; 
+  double timestamp = 2;
 }
 
 message Function {
@@ -1941,8 +1946,8 @@ message FunctionPutOutputsItem {
   double output_created_at = 4;
   DataFormat data_format = 7; // for result.data_oneof
   uint32 retry_count = 8;
-  string function_call_id = 9; // injected by the worker 
-  optional int32 function_map_idx = 10; // injected by the worker 
+  string function_call_id = 9; // injected by the worker
+  optional int32 function_map_idx = 10; // injected by the worker
 }
 
 message FunctionPutOutputsRequest {
@@ -2202,7 +2207,7 @@ message MapAwaitResponse {
 message MapCheckInputsRequest {
   string last_entry_id = 1;
   float timeout = 2;
-  repeated string attempt_tokens = 3;  
+  repeated string attempt_tokens = 3;
 }
 
 message MapCheckInputsResponse {
