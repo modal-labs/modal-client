@@ -219,7 +219,11 @@ def _container_args(
     web_server_startup_timeout: Optional[float] = None,
     function_serialized: Optional[bytes] = None,
     class_serialized: Optional[bytes] = None,
-    supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"] = (),
+    supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"] = [
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+    ],
+    method_definitions: dict[str, api_pb2.MethodDefinition] = {},
 ):
     if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
         app_layout = api_pb2.AppLayout(
@@ -272,6 +276,7 @@ def _container_args(
         function_serialized=function_serialized,
         class_serialized=class_serialized,
         supported_output_formats=supported_output_formats,
+        method_definitions=method_definitions,
     )
 
     return api_pb2.ContainerArguments(
@@ -322,7 +327,11 @@ def _run_container(
     web_server_startup_timeout: Optional[float] = None,
     function_serialized: Optional[bytes] = None,
     class_serialized: Optional[bytes] = None,
-    supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"] = (),
+    supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"] = [
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+    ],
+    method_definitions: dict[str, api_pb2.MethodDefinition] = {},
 ) -> ContainerResult:
     container_args = _container_args(
         module_name=module_name,
@@ -350,6 +359,7 @@ def _run_container(
         function_serialized=function_serialized,
         class_serialized=class_serialized,
         supported_output_formats=supported_output_formats,
+        method_definitions=method_definitions,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
@@ -765,6 +775,11 @@ def test_serialized_class_with_parameters(servicer):
             class_ids={"SerializedClassWithParams": "cs-123"},
         ),
         class_serialized=serialize(SerializedClassWithParams),
+        method_definitions={
+            "method": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+            )
+        },
     )
     assert _unwrap_scalar(ret) == "hello"
 
@@ -925,6 +940,10 @@ def test_cls_web_asgi_with_lifespan(servicer):
         "fastapi_class_multiple_asgi_apps_lifespans.*",
         inputs=inputs,
         is_class=True,
+        method_definitions={
+            "my_app1": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
+            "my_app2": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
+        },
     )
 
     # There should be one message for the header, and one for the body
@@ -977,6 +996,9 @@ def test_cls_web_asgi_with_lifespan_failure(servicer):
         "fastapi_class_lifespan_shutdown_failure.*",
         inputs=inputs,
         is_class=True,
+        method_definitions={
+            "my_app1": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
+        },
     )
 
     # There should be one message for the header, and one for the body
@@ -1088,6 +1110,16 @@ def test_cls_function(servicer):
         "NonParamCls.*",
         is_class=True,
         inputs=_get_inputs(method_name="f"),
+        method_definitions={
+            "f": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+            "web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
+            "asgi_web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
+            "generator": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+        },
     )
     assert _unwrap_scalar(ret) == 42 * 111
 
@@ -1100,6 +1132,11 @@ def test_lifecycle_enter_sync(servicer):
         "LifecycleCls.*",
         inputs=_get_inputs(((), {}), method_name="f_sync"),
         is_class=True,
+        method_definitions={
+            "f_sync": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+        },
     )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_sync", "local"]
 
@@ -1112,6 +1149,11 @@ def test_lifecycle_enter_async(servicer):
         "LifecycleCls.*",
         inputs=_get_inputs(((), {}), method_name="f_async"),
         is_class=True,
+        method_definitions={
+            "f_async": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+        },
     )
     assert _unwrap_scalar(ret) == ["enter_sync", "enter_async", "f_async", "local"]
 
@@ -1126,6 +1168,11 @@ def test_param_cls_function(servicer):
         serialized_params=serialized_params,
         is_class=True,
         inputs=_get_inputs(method_name="f"),
+        method_definitions={
+            "f": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+        },
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
 
@@ -1143,6 +1190,11 @@ def test_param_cls_function_strict_params(servicer):
         class_parameter_info=api_pb2.ClassParameterInfo(
             format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
         ),
+        method_definitions={
+            "f": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+        },
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
 
@@ -1156,6 +1208,16 @@ def test_cls_web_endpoint(servicer):
         "NonParamCls.*",
         inputs=inputs,
         is_class=True,
+        method_definitions={
+            "web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
+            "asgi_web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
+            "generator": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+            "f": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+        },
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -1190,6 +1252,16 @@ def test_cls_web_asgi_construction(servicer):
         inputs=inputs,
         is_class=True,
         app_layout=app_layout,
+        method_definitions={
+            "web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
+            "asgi_web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
+            "generator": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+            "f": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+        },
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -1223,6 +1295,11 @@ def test_serialized_cls(servicer):
         is_class=True,
         inputs=_get_inputs(method_name="method"),
         class_serialized=serialize(Cls),
+        method_definitions={
+            "method": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            ),
+        },
     )
     assert _unwrap_scalar(ret) == 42**5
 
@@ -2592,6 +2669,49 @@ def test_cbor_input_payload_simple_function(servicer):
     item = ret.items[0]
     assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert item.data_format == api_pb2.DATA_FORMAT_PICKLE  # default output format - Pickle
+    value = deserialize_data_format(item.result.data, item.data_format, ret.client)
+    assert int(value) == 4
+
+
+@skip_github_non_linux
+def test_cbor_input_payload_simple_cls_method(servicer):
+    # Construct a single CBOR-encoded input to call SimpleCbor.square(2) -> 4
+    cbor_args = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_CBOR)
+    inputs = [
+        api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id="in-cbor0",
+                    function_call_id="fc-cbor",
+                    input=api_pb2.FunctionInput(
+                        args=cbor_args,
+                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        method_name="square",
+                    ),
+                )
+            ]
+        ),
+        api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
+    ]
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "SimpleCbor.*",
+        inputs=inputs,
+        is_class=True,
+        method_definitions={
+            "square": api_pb2.MethodDefinition(
+                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            )
+        },
+    )
+
+    # We can use CBOR input with our class method and get CBOR output
+    assert len(ret.items) == 1
+    item = ret.items[0]
+    assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert item.data_format == api_pb2.DATA_FORMAT_CBOR  # expect cbor output
     value = deserialize_data_format(item.result.data, item.data_format, ret.client)
     assert int(value) == 4
 

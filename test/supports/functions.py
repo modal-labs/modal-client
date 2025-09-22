@@ -47,6 +47,20 @@ def cbor_incompatible_output(x: int):
         return q
 
 
+@app.cls()
+class SimpleCls:
+    @method()
+    def square(x: int) -> int:
+        return x**2
+
+
+@app.cls()
+class SimpleCbor:
+    @method(_experimental_restrict_output=True)
+    def square(self, x: int) -> int:
+        return x**2
+
+
 @app.function()
 def ident(x):
     return x
