@@ -2637,9 +2637,13 @@ def test_deserialization_error_returns_exception(servicer, client):
 
 
 @skip_github_non_linux
-def test_cbor_input_payload_simple_function(servicer):
+@pytest.mark.parametrize("data_format", [api_pb2.DATA_FORMAT_CBOR, api_pb2.DATA_FORMAT_PICKLE])
+def test_mirrored_input_payload_simple_function(servicer, data_format):
     # Construct a single CBOR-encoded input to call test.supports.functions.square(2) -> 4
-    cbor_args = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_CBOR)
+    cbor_args = serialize_data_format(
+        ((2,), {}),
+        data_format,
+    )
     inputs = [
         api_pb2.FunctionGetInputsResponse(
             inputs=[
@@ -2648,7 +2652,7 @@ def test_cbor_input_payload_simple_function(servicer):
                     function_call_id="fc-cbor",
                     input=api_pb2.FunctionInput(
                         args=cbor_args,
-                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        data_format=data_format,
                         method_name="",
                     ),
                 )
@@ -2662,21 +2666,25 @@ def test_cbor_input_payload_simple_function(servicer):
         "test.supports.functions",
         "square",
         inputs=inputs,
+        supported_output_formats=[
+            api_pb2.DATA_FORMAT_PICKLE,
+            api_pb2.DATA_FORMAT_CBOR,
+        ],  # *support* both output formats
     )
 
-    # We can use cbor input with our function, but still get Pickle output
     assert len(ret.items) == 1
     item = ret.items[0]
     assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert item.data_format == api_pb2.DATA_FORMAT_PICKLE  # default output format - Pickle
+    assert item.data_format == data_format  # output format should match input format
     value = deserialize_data_format(item.result.data, item.data_format, ret.client)
     assert int(value) == 4
 
 
 @skip_github_non_linux
-def test_cbor_input_payload_simple_cls_method(servicer):
+@pytest.mark.parametrize("data_format", [api_pb2.DATA_FORMAT_CBOR, api_pb2.DATA_FORMAT_PICKLE])
+def test_mirrored_input_payload_simple_cls_method(servicer, data_format):
     # Construct a single CBOR-encoded input to call SimpleCbor.square(2) -> 4
-    cbor_args = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_CBOR)
+    cbor_args = serialize_data_format(((2,), {}), data_format)
     inputs = [
         api_pb2.FunctionGetInputsResponse(
             inputs=[
@@ -2685,7 +2693,7 @@ def test_cbor_input_payload_simple_cls_method(servicer):
                     function_call_id="fc-cbor",
                     input=api_pb2.FunctionInput(
                         args=cbor_args,
-                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        data_format=data_format,
                         method_name="square",
                     ),
                 )
@@ -2711,7 +2719,7 @@ def test_cbor_input_payload_simple_cls_method(servicer):
     assert len(ret.items) == 1
     item = ret.items[0]
     assert item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert item.data_format == api_pb2.DATA_FORMAT_CBOR  # expect cbor output
+    assert item.data_format == data_format
     value = deserialize_data_format(item.result.data, item.data_format, ret.client)
     assert int(value) == 4
 

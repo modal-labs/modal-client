@@ -108,7 +108,6 @@ class ImportedFunction(Service):
         is_generator = fun_def.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
         webhook_config = fun_def.webhook_config
-        assert fun_def.supported_output_formats
 
         if not webhook_config.type:
             # for non-webhooks, the runnable is straight forward:
@@ -117,7 +116,9 @@ class ImportedFunction(Service):
                     callable=self._user_defined_callable,
                     is_async=is_async,
                     is_generator=is_generator,
-                    supported_output_formats=fun_def.supported_output_formats,
+                    supported_output_formats=fun_def.supported_output_formats
+                    # FIXME (elias): the following `or [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]` is only needed for tests
+                    or [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
                 )
             }
 
@@ -131,7 +132,8 @@ class ImportedFunction(Service):
                 lifespan_manager=lifespan_manager,
                 is_async=True,
                 is_generator=True,
-                supported_output_formats=fun_def.supported_output_formats,
+                # FIXME (elias): the following `or [api_pb2.DATA_FORMAT_ASGI]` is only needed for tests
+                supported_output_formats=fun_def.supported_output_formats or [api_pb2.DATA_FORMAT_ASGI],
             )
         }
 
@@ -166,19 +168,21 @@ class ImportedClass(Service):
                     callable=bound_func,
                     is_async=is_async,
                     is_generator=bool(is_generator),
-                    supported_output_formats=method_def.supported_output_formats,
+                    # FIXME (elias): the following `or [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]` is only needed for tests
+                    supported_output_formats=method_def.supported_output_formats
+                    or [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
                 )
             else:
                 web_callable, lifespan_manager = construct_webhook_callable(
                     bound_func, webhook_config, container_io_manager
                 )
-                assert method_def.supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
                 finalized_function = FinalizedFunction(
                     callable=web_callable,
                     lifespan_manager=lifespan_manager,
                     is_async=True,
                     is_generator=True,
-                    supported_output_formats=method_def.supported_output_formats,
+                    # FIXME (elias): the following `or [api_pb2.DATA_FORMAT_ASGI]` is only needed for tests
+                    supported_output_formats=method_def.supported_output_formats or [api_pb2.DATA_FORMAT_ASGI],
                 )
             finalized_functions[method_name] = finalized_function
         return finalized_functions
