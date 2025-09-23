@@ -993,16 +993,15 @@ def test_asgi_lifespan(servicer, deployed_support_function_definitions):
 
 
 @skip_github_non_linux
-def test_asgi_lifespan_startup_failure(servicer):
+def test_asgi_lifespan_startup_failure(servicer, deployed_support_function_definitions):
     inputs = _get_web_inputs(path="/")
 
     _put_web_body(servicer, b"")
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "fastapi_app_with_lifespan_failing_startup",
+        deployed_support_function_definitions,
         inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     )
     assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     assert "ASGI lifespan startup failed" in ret.task_result.exception
@@ -1025,18 +1024,13 @@ def test_asgi_lifespan_shutdown_failure(servicer):
 
 
 @skip_github_non_linux
-def test_cls_web_asgi_with_lifespan(servicer):
+def test_cls_web_asgi_with_lifespan(servicer, deployed_support_function_definitions):
     inputs = _get_web_inputs(method_name="my_app1")
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "fastapi_class_multiple_asgi_apps_lifespans.*",
+        deployed_support_function_definitions,
         inputs=inputs,
-        is_class=True,
-        method_definitions={
-            "my_app1": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
-            "my_app2": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
-        },
     )
 
     # There should be one message for the header, and one for the body
