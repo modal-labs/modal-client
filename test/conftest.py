@@ -8,6 +8,7 @@ import dataclasses
 import datetime
 import hashlib
 import inspect
+import json
 import os
 import platform
 import pytest
@@ -20,6 +21,7 @@ import threading
 import time
 import traceback
 import uuid
+from asyncio import Future
 from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
@@ -235,6 +237,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.nfs_files: dict[str, dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
         self.volumes: dict[str, Volume] = {}
+        # dict of (input_id, retry_count) -> (args, kwargs)
+        self.input_plane_inputs: dict[tuple[str, int], tuple[Any, Any]] = {}
+        # dict of (input_id, retry_count) -> FunctionGetOutputsItem
+        self.input_plane_outputs: dict[tuple[str, int], Future[api_pb2.FunctionGetOutputsItem]] = {}
         self.images = {}
         self.image_build_function_ids = {}
         self.image_builder_versions = {}
@@ -327,7 +333,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.attempt_await_count = 0
         # Number of times the user's function was called.
         self.function_call_count = 0
-        self.function_call_result: Any = None
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -1286,11 +1291,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             api_pb2.FunctionCallFromIdResponse(num_inputs=self.function_call_num_inputs[request.function_call_id])
         )
 
-    def add_function_call_input(self, function_call_id, item: api_pb2.FunctionPutInputsItem, input_id, retry_count):
+    def get_args_kwargs(self, item: api_pb2.FunctionPutInputsItem):
         if item.input.WhichOneof("args_oneof") == "args":
-            args, kwargs = deserialize(item.input.args, None)
-        else:
-            args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
+            return deserialize(item.input.args, None)
+        return deserialize(self.blobs[item.input.args_blob_id], None)
+
+    def add_function_call_input(self, function_call_id, item: api_pb2.FunctionPutInputsItem, input_id, retry_count):
+        args, kwargs = self.get_args_kwargs(item)
         function_call_inputs = self.function_call_inputs.setdefault(function_call_id, [])
         function_call_inputs.append(((item.idx, input_id, retry_count), (args, kwargs)))
         self.function_call_inputs_update_event.set()
@@ -2309,64 +2316,89 @@ class MockClientServicer(api_grpc.ModalClientBase):
         function_call_id = f"fc-{self.fcidx}"
         input_id = f"in-{self.n_inputs}"
         self.n_inputs += 1
-        self.add_function_call_input(function_call_id, request.input, input_id, 0)
+        # self.add_function_call_input(function_call_id, request.input, input_id, 0)
+        self.add_input_plane_input(input_id, 0, request.input)
 
         retry_policy = fn_definition.retry_policy if fn_definition else None
-        # TODO(ryan): implement attempt token logic
+        attempt_token = AttemptToken(request.function_id, input_id, 0, function_call_id)
         await stream.send_message(
-            api_pb2.AttemptStartResponse(attempt_token="bogus_attempt_token", retry_policy=retry_policy)
+            api_pb2.AttemptStartResponse(attempt_token=attempt_token.to_json(), retry_policy=retry_policy)
         )
 
+    def add_input_plane_input(self, input_id: str, retry_count:int, item: api_pb2.FunctionPutInputsItem):
+        self.input_plane_inputs[(input_id, retry_count)] = self.get_args_kwargs(item)
+        # self.input_plane_outputs[(input_id, retry_count)] = Future()
+
     async def AttemptAwait(self, stream):
+        request: api_pb2.AttemptAwaitRequest = await stream.recv_message()
+        attempt_token = AttemptToken.from_json(request.attempt_token)
         self.attempt_await_count += 1
-        # TODO(dxia): implement attempt token logic
 
         if len(self.attempt_await_responses) > 0:
             await stream.send_message(self.attempt_await_responses.pop(0))
             return
 
-        status = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-
-        if self.function_call_inputs:
-            function_call_id = f"fc-{self.fcidx}"
-            (idx, input_id, retry_count), (args, kwargs) = self.function_call_inputs.pop(function_call_id)[0]
-            self.fcidx -= 1
+        output_future = self.input_plane_outputs.get((attempt_token.input_id, attempt_token.retry_count), None)
+        # If an output future exists, then we have started processing this input already.
+        # Just wait for the future to complete (or timeout), and return the result.
+        if output_future:
             try:
-                self.function_call_count += 1
-                self.function_call_result = self._function_body(*args, **kwargs)
-            except Exception as e:
-                self.function_call_result = e
-                status = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-        else:
-            input_id = "in-1"
-            idx = 0
-            retry_count = 0
+                output = await asyncio.wait_for(output_future, timeout=request.timeout_secs)
+            except asyncio.TimeoutError:
+                output = None
+            await stream.send_message(api_pb2.AttemptAwaitResponse(output=output))
+            return
 
-        await stream.send_message(
-            api_pb2.AttemptAwaitResponse(
-                output=api_pb2.FunctionGetOutputsItem(
-                    input_id=input_id,
-                    idx=idx,
-                    result=api_pb2.GenericResult(
-                        status=status,
-                        data=serialize_data_format(self.function_call_result, api_pb2.DATA_FORMAT_PICKLE),
-                    ),
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
-                    retry_count=retry_count,
-                )
+        input_args_kwargs = self.input_plane_inputs.get((attempt_token.input_id, attempt_token.retry_count), None)
+        # We expect there to always be args/kwargs for the attempt_token.
+        assert input_args_kwargs
+
+        # Create a future to hold the output. Its presence in the output dict indicates the input is being processed.
+        output_future = Future()
+        self.input_plane_outputs[(attempt_token.input_id, attempt_token.retry_count)] = output_future
+        args, kwargs = input_args_kwargs
+        try:
+            self.function_call_count += 1
+            result = self._function_body(*args, **kwargs)
+            output = api_pb2.FunctionGetOutputsItem(
+                input_id=attempt_token.input_id,
+                idx=0, # Always 0 for .remote calls
+                result=api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                    data=serialize_data_format(result, api_pb2.DATA_FORMAT_PICKLE),
+                ),
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                retry_count=attempt_token.retry_count,
             )
-        )
+        except Exception as exc:
+            serialized_exc = cloudpickle.dumps(exc)
+            result = api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GenericStatus.GENERIC_STATUS_FAILURE,
+                data=serialized_exc,
+                exception=repr(exc),
+                traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            )
+            output = api_pb2.FunctionGetOutputsItem(
+                input_id=attempt_token.input_id,
+                idx=0,
+                result=result,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                retry_count=attempt_token.retry_count,
+            )
+        # Set result in output dict so other coroutines can read it.
+        self.input_plane_outputs[(attempt_token.input_id, attempt_token.retry_count)].set_result(output)
+        await stream.send_message(api_pb2.AttemptAwaitResponse(output=output))
 
     async def AttemptRetry(self, stream):
         request: api_pb2.AttemptRetryRequest = await stream.recv_message()
-
-        self.fcidx += 1
-        function_call_id = f"fc-{self.fcidx}"
-        input_id = f"in-{self.n_inputs}"
+        attempt_token = AttemptToken.from_json(request.attempt_token)
         self.n_inputs += 1
-        self.add_function_call_input(function_call_id, request.input, input_id, 0)
-
-        await stream.send_message(api_pb2.AttemptRetryResponse(attempt_token=request.attempt_token))
+        attempt_token.retry_count += 1
+        # self.add_function_call_input(
+        #     attempt_token.function_call_id, request.input, attempt_token.input_id, attempt_token.retry_count
+        # )
+        self.add_input_plane_input(attempt_token.input_id, attempt_token.retry_count, request.input)
+        await stream.send_message(api_pb2.AttemptRetryResponse(attempt_token=attempt_token.to_json()))
 
     async def MapStartOrContinue(self, stream):
         request: api_pb2.MapStartOrContinueRequest = await stream.recv_message()
@@ -2911,6 +2943,30 @@ def decode_function_call_jwt(function_call_jwt: str) -> tuple[str, str]:
     decoded = DecodedJwt.decode_without_verification(function_call_jwt)
     return (decoded.payload["function_id"], decoded.payload["function_call_id"])
 
+@dataclasses.dataclass
+class AttemptToken:
+    function_id: str
+    input_id: str
+    retry_count: int
+    function_call_id: str
+
+    def __init__(self, function_id: str, input_id: str, retry_count: int, function_call_id: str):
+        assert function_id.startswith("fu-")
+        assert input_id.startswith("in-")
+        assert retry_count >= 0
+        assert function_call_id.startswith("fc-")
+        self.function_id = function_id
+        self.input_id = input_id
+        self.retry_count = retry_count
+        self.function_call_id = function_call_id
+
+    def to_json(self) -> str:
+        return json.dumps(dataclasses.asdict(self))
+
+    @staticmethod
+    def from_json(json_str: str) -> "AttemptToken":
+        data = json.loads(json_str)
+        return AttemptToken(**data)
 
 @pytest.fixture
 def tmp_cwd(tmp_path, monkeypatch):
