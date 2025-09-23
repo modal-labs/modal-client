@@ -71,15 +71,16 @@ def _get_inputs(
     method_name: Optional[str] = None,
     upload_to_blob: bool = False,
     client: Optional[Client] = None,
+    data_format: "api_pb2.DataFormat.ValueType" = api_pb2.DATA_FORMAT_PICKLE,
 ) -> list[api_pb2.FunctionGetInputsResponse]:
     if upload_to_blob:
-        args_blob_id = blob_upload(serialize(args), client.stub)
+        args_blob_id = blob_upload(serialize_data_format(args, data_format), client.stub)
         input_pb = api_pb2.FunctionInput(
-            args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+            args_blob_id=args_blob_id, data_format=data_format, method_name=method_name or ""
         )
     else:
         input_pb = api_pb2.FunctionInput(
-            args=serialize(args), data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
+            args=serialize_data_format(args, data_format), data_format=data_format, method_name=method_name or ""
         )
     inputs = [
         *(
@@ -499,17 +500,24 @@ def test_success(servicer):
 
 @skip_github_non_linux
 @pytest.mark.timeout(1)
-def test_generator_success(servicer, event_loop):
+@pytest.mark.parametrize("data_format", [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR])
+def test_generator_success(servicer, data_format):
     ret = _run_container(
         servicer,
         "test.supports.functions",
         "gen_n",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        inputs=_get_inputs(data_format=data_format),
     )
+    assert len(ret.data_chunks) == 42
+    for i, data_chunk in enumerate(ret.data_chunks):
+        assert data_chunk.index == i + 1
+        assert data_chunk.data_format == data_format  # should be same as input data format
+        assert deserialize_data_format(data_chunk.data, data_chunk.data_format, ret.client) == i**2
 
-    items, exc = _unwrap_generator(ret)
-    assert items == [i**2 for i in range(42)]
-    assert exc is None
+    assert deserialize_data_format(
+        ret.items[0].result.data, ret.items[0].data_format, ret.client
+    ) == api_pb2.GeneratorDone(items_total=42)
 
 
 @skip_github_non_linux
