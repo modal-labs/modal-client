@@ -15,6 +15,7 @@ authors = [
 ]
 dependencies = [
     "aiohttp",
+    "cbor2",
     "certifi",
     "click~=8.1",
     "grpclib>=0.4.7,<0.4.9",
