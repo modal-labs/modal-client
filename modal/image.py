@@ -39,6 +39,7 @@ from ._utils.docker_utils import (
 )
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
@@ -499,12 +500,16 @@ class _Image(_Object, type_prefix="im"):
         context_mount_function: Optional[Callable[[], Optional[_Mount]]] = None,
         force_build: bool = False,
         build_args: dict[str, str] = {},
+        volumes: Optional[dict[Union[str, PurePosixPath], _Volume]] = None,
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
     ):
         if base_images is None:
             base_images = {}
+
+        if volumes is None:
+            volumes = {}
 
         if secrets is None:
             secrets = []
@@ -520,12 +525,22 @@ class _Image(_Object, type_prefix="im"):
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
 
+        validated_volumes = validate_volumes(volumes)
+        validated_volumes_: list[tuple[str, _Volume]] = []
+
+        for k, v in validated_volumes:
+            if isinstance(v, _CloudBucketMount):
+                raise InvalidError("Image builds only support mounting modal.Volume")
+            validated_volumes_.append((k, v))
+
         def _deps() -> Sequence[_Object]:
             deps = tuple(base_images.values()) + tuple(secrets)
             if build_function:
                 deps += (build_function,)
             if image_registry_config and image_registry_config.secret:
                 deps += (image_registry_config.secret,)
+            for _, vol in validated_volumes_:
+                deps += (vol,)
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
@@ -604,6 +619,17 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id = ""
                 _build_function = None
 
+            # Relies on dicts being ordered (true as of Python 3.6).
+            volume_mounts = [
+                api_pb2.VolumeMount(
+                    mount_path=path,
+                    volume_id=volume.object_id,
+                    allow_background_commits=True,
+                    read_only=volume._read_only,
+                )
+                for path, volume in validated_volumes_
+            ]
+
             image_definition = api_pb2.Image(
                 base_images=base_images_pb2s,
                 dockerfile_commands=dockerfile.commands,
@@ -616,6 +642,7 @@ class _Image(_Object, type_prefix="im"):
                 runtime_debug=config.get("function_runtime_debug"),
                 build_function=_build_function,
                 build_args=build_args,
+                volume_mounts=volume_mounts,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -1700,6 +1727,7 @@ class _Image(_Object, type_prefix="im"):
         *commands: Union[str, list[str]],
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
+        volumes: Optional[dict[Union[str, PurePosixPath], _Volume]] = None,
         gpu: GPU_T = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
@@ -1722,6 +1750,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
             force_build=self.force_build or force_build,
+            volumes=volumes,
         )
 
     @staticmethod
