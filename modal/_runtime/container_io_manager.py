@@ -1048,7 +1048,9 @@ class _ContainerIOManager:
 
     @classmethod
     def stop_fetching_inputs(cls):
-        assert cls._singleton
+        assert cls._singleton, (
+            "Container IO state is not initialized. Must be called after Modal container is initialized."
+        )
         cls._singleton._fetching_inputs = False
 
 
