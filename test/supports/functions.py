@@ -507,14 +507,14 @@ class LifecycleCls:
 
 
 @app.function()
-@concurrent(max_inputs=5)
+@concurrent(max_inputs=6)
 def sleep_700_sync(x):
     time.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
 
 
 @app.function()
-@concurrent(max_inputs=5)
+@concurrent(max_inputs=6)
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
@@ -664,6 +664,7 @@ def get_input_concurrency(timeout: int):
 
 
 @app.function()
+@modal.concurrent(target_inputs=3, max_inputs=6)
 def set_input_concurrency(start: float):
     set_local_input_concurrency(3)
     time.sleep(1)
