@@ -50,7 +50,7 @@ def cbor_incompatible_output(x: int):
 @app.cls()
 class SimpleCls:
     @method()
-    def square(x: int) -> int:
+    def square(self, x: int) -> int:
         return x**2
 
 
