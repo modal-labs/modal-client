@@ -757,3 +757,20 @@ def function_with_volumes(should_raise: bool):
     if should_raise:
         raise Exception("Failure!")
     return "success"
+
+
+@app.cls(serialized=True)
+class Foo:
+    x: str = modal.parameter()
+
+    @enter()
+    def some_enter(self):
+        self.x += "_enter"
+
+    @method()
+    def method_a(self, y):
+        return self.x + f"_a_{y}"
+
+    @method()
+    def method_b(self, y):
+        return self.x + f"_b_{y}"

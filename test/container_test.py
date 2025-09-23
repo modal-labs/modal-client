@@ -48,7 +48,6 @@ from modal._utils.blob_utils import (
 )
 from modal.app import _App
 from modal.exception import InvalidError
-from modal.partial_function import enter, method
 from modal_proto import api_pb2
 
 from .helpers import deploy_app_externally
@@ -2446,38 +2445,14 @@ def test_is_local(servicer, deployed_support_function_definitions, event_loop):
     assert _unwrap_scalar(ret) == False
 
 
-class Foo:
-    x: str = modal.parameter()
-
-    @enter()
-    def some_enter(self):
-        self.x += "_enter"
-
-    @method()
-    def method_a(self, y):
-        return self.x + f"_a_{y}"
-
-    @method()
-    def method_b(self, y):
-        return self.x + f"_b_{y}"
-
-
 @skip_github_non_linux
-def test_class_as_service_serialized(servicer):
-    # TODO(elias): refactor once the loading code is merged
-
-    app = modal.App()
-    app.cls()(Foo)  # avoid errors about methods not being turned into functions
-
-    result = _run_container(
+def test_class_as_service_serialized(servicer, deployed_support_function_definitions):
+    result = _run_container_auto(
         servicer,
-        "nomodule",
         "Foo.*",
-        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
-        is_class=True,
+        deployed_support_function_definitions,
         inputs=_get_multi_inputs_with_methods([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
-        serialized_params=serialize(((), {"x": "s"})),
-        class_serialized=serialize(Foo),
+        serialized_params=serialize_proto_params({"x": "s"}),
     )
     assert len(result.items) == 2
     res_0 = result.items[0].result
