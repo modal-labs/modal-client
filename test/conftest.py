@@ -2497,8 +2497,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.MapCheckInputsResponse(lost=lost))
 
 
-@pytest.fixture
-def blob_server():
+@contextlib.contextmanager
+def blob_server_factory():
+    """Utility context manager to create a blob server for testing. Yields (host, blobs, blocks, files_sha2data)."""
     blobs = {}
     blob_parts: dict[str, dict[int, bytes]] = defaultdict(dict)
     blocks = {}
@@ -2617,15 +2618,17 @@ def blob_server():
     thread = threading.Thread(target=run_server_other_thread)
     thread.start()
     started.wait()
-    yield host, blobs, blocks, files_sha2data
-    stop_server.set()
-    thread.join()
+    try:
+        yield host, blobs, blocks, files_sha2data
+    finally:
+        stop_server.set()
+        thread.join()
 
 
-@pytest_asyncio.fixture(scope="function")
-def temporary_sock_path():
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        yield os.path.join(tmpdirname, "servicer.sock")
+@pytest.fixture
+def blob_server():
+    with blob_server_factory() as server:
+        yield server
 
 
 @contextlib.asynccontextmanager
@@ -2665,19 +2668,24 @@ def credentials():
     return (token_id, token_secret)
 
 
-@pytest_asyncio.fixture(scope="function")
-async def servicer(blob_server, temporary_sock_path, credentials) -> AsyncGenerator[MockClientServicer, None]:
+async def servicer_factory(blob_server, credentials):
+    """
+    Utility function to create a servicer for testing.
+    Returns an async context manager that yields a MockClientServicer.
+    """
     port = find_free_port()
 
     blob_host, blobs, blocks, files_sha2data = blob_server
     servicer = MockClientServicer(blob_host, blobs, blocks, files_sha2data, credentials, port)  # type: ignore
 
     if platform.system() != "Windows":
-        async with run_server(servicer, host="0.0.0.0", port=port):
-            async with run_server(servicer, path=temporary_sock_path):
-                servicer.client_addr = f"http://127.0.0.1:{port}"
-                servicer.container_addr = f"unix://{temporary_sock_path}"
-                yield servicer
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            temporary_sock_path = os.path.join(tmpdirname, "servicer.sock")
+            async with run_server(servicer, host="0.0.0.0", port=port):
+                async with run_server(servicer, path=temporary_sock_path):
+                    servicer.client_addr = f"http://127.0.0.1:{port}"
+                    servicer.container_addr = f"unix://{temporary_sock_path}"
+                    yield servicer
     else:
         # Use a regular TCP socket for the container connection
         container_port = find_free_port()
@@ -2686,6 +2694,12 @@ async def servicer(blob_server, temporary_sock_path, credentials) -> AsyncGenera
                 servicer.client_addr = f"http://127.0.0.1:{port}"
                 servicer.container_addr = f"http://127.0.0.1:{container_port}"
                 yield servicer
+
+
+@pytest_asyncio.fixture(scope="function")
+async def servicer(blob_server, credentials) -> AsyncGenerator[MockClientServicer, None]:
+    async for s in servicer_factory(blob_server, credentials):
+        yield s
 
 
 @pytest_asyncio.fixture(scope="function")
