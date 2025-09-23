@@ -2878,7 +2878,7 @@ def test_mirrored_input_payload_simple_cls_method(servicer, data_format):
 
 
 @skip_github_non_linux
-def test_cbor_limited_output_simple_function(servicer):
+def test_cbor_limited_output_simple_function(servicer, deployed_support_function_definitions):
     # send input as pickle, but function definition limits the output to cbor
     serialized_input = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_PICKLE)
     inputs = [
@@ -2894,12 +2894,11 @@ def test_cbor_limited_output_simple_function(servicer):
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
     ]
 
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "square_restrict_output",
+        deployed_support_function_definitions,
         inputs=inputs,
-        supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],  # restrict output formats
     )
 
     # We can use cbor input with our function, but still get Pickle output
@@ -2912,7 +2911,7 @@ def test_cbor_limited_output_simple_function(servicer):
 
 
 @skip_github_non_linux
-def test_cbor_incompatible_output(servicer):
+def test_cbor_incompatible_output(servicer, deployed_support_function_definitions):
     serialized_input = serialize_data_format(((2,), {}), api_pb2.DATA_FORMAT_PICKLE)
     inputs = [
         api_pb2.FunctionGetInputsResponse(
@@ -2927,12 +2926,11 @@ def test_cbor_incompatible_output(servicer):
         api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
     ]
 
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "cbor_incompatible_output",
+        deployed_support_function_definitions,
         inputs=inputs,
-        supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],  # restrict output formats
     )
 
     # We can use cbor input with our function, but still get Pickle output
