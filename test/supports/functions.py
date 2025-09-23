@@ -700,3 +700,30 @@ class CustomException(Exception):
 @app.function()
 def raises_custom_exception(x):
     raise CustomException("Failure!")
+
+
+@app.cls()
+class StopFetching:
+    @enter()
+    def init(self):
+        self.counter = 0
+
+    @method()
+    def after_two(self, x):
+        import modal.experimental
+
+        self.counter += 1
+
+        if self.counter >= 2:
+            modal.experimental.stop_fetching_inputs()
+
+        return x * x
+
+
+@app.cls(serialized=True)
+class SerializedClassWithParams:
+    p: int = modal.parameter()
+
+    @modal.method()
+    def method(self):
+        return "hello"

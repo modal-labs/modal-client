@@ -73,11 +73,14 @@ def deployed_support_function_definitions():
     with blob_server_factory() as blob_server:
         credentials = ("test-ak-" + str(uuid.uuid4()), "test-as-" + str(uuid.uuid4()))
 
-        # Deploy test.supports.functions to get the function definitions
+        # Deploy test.supports.functions to get the function definitions and app layout
         async def _deploy_and_get_functions():
             async for servicer in servicer_factory(blob_server, credentials):
                 # Deploy the test.supports.functions module
                 deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
+
+                # Get the app layout
+                app_layout = servicer.app_get_layout("ap-1")
 
                 # Return the function definitions as dict[name, (id, definition)]
                 functions_dict = {}
@@ -90,18 +93,18 @@ def deployed_support_function_definitions():
                     function_name = func_def.function_name
                     functions_by_name[function_name] = (func_id, func_def)
 
-                return functions_by_name
+                return functions_by_name, app_layout
 
         import asyncio
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            function_definitions = loop.run_until_complete(_deploy_and_get_functions())
+            function_definitions, app_layout = loop.run_until_complete(_deploy_and_get_functions())
         finally:
             loop.close()
 
-    return function_definitions
+    return function_definitions, app_layout
 
 
 def _get_inputs(
@@ -457,34 +460,23 @@ def _run_container_auto(
     servicer,
     function_name: str,
     deployed_support_function_definitions,
+    *,
     fail_get_inputs=False,
     inputs=None,
-    app_layout=DEFAULT_APP_LAYOUT_SENTINEL,
+    serialized_params: Optional[bytes] = None,
 ) -> ContainerResult:
     """
     Utility function that runs a function from test.supports.functions using predeployed
     function definitions instead of constructing them
     """
+    functions_dict, app_layout = deployed_support_function_definitions
+    print(app_layout)
+
     # Look up the function definition from the predeployed definitions
-    if function_name not in deployed_support_function_definitions:
+    if function_name not in functions_dict:
         raise ValueError(f"Function '{function_name}' not found in deployed support functions")
 
-    function_id, function_def = deployed_support_function_definitions[function_name]
-
-    # Create app layout if not provided (similar to _container_args)
-    if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
-        app_layout = api_pb2.AppLayout(
-            objects=[
-                api_pb2.Object(object_id="im-1"),
-                api_pb2.Object(
-                    object_id=function_id,
-                    function_handle_metadata=api_pb2.FunctionHandleMetadata(
-                        function_name=function_name,
-                    ),
-                ),
-            ],
-            function_ids={function_name: function_id},
-        )
+    function_id, function_def = functions_dict[function_name]
 
     # Create container arguments using the predeployed function definition
     container_args = api_pb2.ContainerArguments(
@@ -494,6 +486,7 @@ def _run_container_auto(
         function_def=function_def,
         checkpoint_id=f"ch-{uuid.uuid4()}",
         app_layout=app_layout,
+        serialized_params=serialized_params,
     )
 
     # Use the same container execution logic as _run_container
@@ -882,53 +875,16 @@ def test_serialized_function(servicer):
 
 
 @skip_github_non_linux
-def test_serialized_class_with_parameters(servicer):
-    class SerializedClassWithParams:
-        p: int = modal.parameter()
-
-        @modal.method()
-        def method(self):
-            return "hello"
-
-        # TODO: expand this test to check that self.other_method.remote() can be called
-        #  this would require feeding the servicer with more information about the function
-        #  since it would re-bind parameters to the class service function etc.
-
-    app = modal.App()
-    app.cls(serialized=True)(SerializedClassWithParams)  # gets rid of warning
-
-    ret = _run_container(
+def test_serialized_class_with_parameters(servicer, deployed_support_function_definitions):
+    # TODO: expand this test to check that self.other_method.remote() can be called
+    #  this would require feeding the servicer with more information about the function
+    #  since it would re-bind parameters to the class service function etc.
+    ret = _run_container_auto(
         servicer,
-        "",
         "SerializedClassWithParams.*",
-        is_class=True,
+        deployed_support_function_definitions,
         inputs=_get_inputs(((), {}), method_name="method"),
-        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
-        class_parameter_info=api_pb2.ClassParameterInfo(
-            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
-        ),
         serialized_params=serialize_proto_params({"p": 10}),
-        app_layout=api_pb2.AppLayout(
-            objects=[
-                api_pb2.Object(
-                    object_id="fu-123",
-                    function_handle_metadata=api_pb2.FunctionHandleMetadata(
-                        function_name="SerializedClassWithParams.*",
-                        method_handle_metadata={
-                            "method": api_pb2.FunctionHandleMetadata(),
-                        },
-                    ),
-                )
-            ],
-            function_ids={"SerializedClassWithParams.*": "fu-123"},
-            class_ids={"SerializedClassWithParams": "cs-123"},
-        ),
-        class_serialized=serialize(SerializedClassWithParams),
-        method_definitions={
-            "method": api_pb2.MethodDefinition(
-                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
-            )
-        },
     )
     assert _unwrap_scalar(ret) == "hello"
 
@@ -1915,15 +1871,12 @@ def test_derived_cls(servicer):
 
 
 @skip_github_non_linux
-def test_call_function_that_calls_function(servicer, credentials, deployed_support_function_definitions):
-    deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
-    app_layout = servicer.app_get_layout("ap-1")
+def test_call_function_that_calls_function(servicer, deployed_support_function_definitions):
     ret = _run_container_auto(
         servicer,
         "cube",
         deployed_support_function_definitions,
         inputs=_get_inputs(((42,), {})),
-        app_layout=app_layout,
     )
     assert _unwrap_scalar(ret) == 42**3
 
@@ -2315,13 +2268,12 @@ def test_lifecycle_full(servicer, tmp_path):
 
 @skip_github_non_linux
 @pytest.mark.timeout(10)
-def test_stop_fetching_inputs(servicer):
-    ret = _run_container(
+def test_stop_fetching_inputs(servicer, deployed_support_function_definitions):
+    ret = _run_container_auto(
         servicer,
-        "test.supports.experimental",
         "StopFetching.*",
+        deployed_support_function_definitions,
         inputs=_get_inputs(((42,), {}), n=4, kill_switch=False, method_name="after_two"),
-        is_class=True,
     )
 
     assert len(ret.items) == 2
