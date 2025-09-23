@@ -75,7 +75,7 @@ def deployed_support_function_definitions():
 
         # Deploy test.supports.functions to get the function definitions and app layout
         async def _deploy_and_get_functions():
-            async for servicer in servicer_factory(blob_server, credentials):
+            async with servicer_factory(blob_server, credentials) as servicer:
                 # Deploy the test.supports.functions module
                 deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
 
@@ -965,16 +965,15 @@ def test_non_blocking_web_server(servicer, monkeypatch, deployed_support_functio
 
 
 @skip_github_non_linux
-def test_asgi_lifespan(servicer):
+def test_asgi_lifespan(servicer, deployed_support_function_definitions):
     inputs = _get_web_inputs(path="/")
 
     _put_web_body(servicer, b"")
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "fastapi_app_with_lifespan",
+        deployed_support_function_definitions,
         inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     )
 
     # There should be one message for the header, and one for the body

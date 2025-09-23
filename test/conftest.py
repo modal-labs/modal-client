@@ -2668,6 +2668,7 @@ def credentials():
     return (token_id, token_secret)
 
 
+@contextlib.asynccontextmanager
 async def servicer_factory(blob_server, credentials):
     """
     Utility function to create a servicer for testing.
@@ -2698,7 +2699,7 @@ async def servicer_factory(blob_server, credentials):
 
 @pytest_asyncio.fixture(scope="function")
 async def servicer(blob_server, credentials) -> AsyncGenerator[MockClientServicer, None]:
-    async for s in servicer_factory(blob_server, credentials):
+    async with servicer_factory(blob_server, credentials) as s:
         yield s
 
 
