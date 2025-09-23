@@ -2710,18 +2710,14 @@ async def test_input_slots():
 
 
 @skip_github_non_linux
-def test_max_concurrency(servicer):
+def test_max_concurrency(servicer, deployed_support_function_definitions):
     n_inputs = 5
-    target_concurrency = 2
-    max_concurrency = 10
 
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "get_input_concurrency",
+        deployed_support_function_definitions,
         inputs=_get_inputs(((1,), {}), n=n_inputs),
-        max_concurrent_inputs=max_concurrency,
-        target_concurrent_inputs=target_concurrency,
     )
 
     outputs = [deserialize(item.result.data, ret.client) for item in ret.items]

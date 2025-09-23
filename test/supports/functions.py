@@ -651,6 +651,7 @@ def raise_large_unicode_exception():
 
 
 @app.function()
+@modal.concurrent(target_inputs=2, max_inputs=10)
 def get_input_concurrency(timeout: int):
     time.sleep(timeout)
     return get_local_input_concurrency()
