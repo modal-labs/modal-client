@@ -64,6 +64,46 @@ blob_download = synchronize_api(_blob_download)
 DEFAULT_APP_LAYOUT_SENTINEL: Any = object()
 
 
+@pytest.fixture(scope="package")
+def deployed_support_function_definitions():
+    """Package-scoped fixture that deploys test.supports.functions using a separate servicer instance."""
+    from test.conftest import blob_server_factory, servicer_factory
+
+    # Create isolated servicer instance using our new factories
+    with blob_server_factory() as blob_server:
+        credentials = ("test-ak-" + str(uuid.uuid4()), "test-as-" + str(uuid.uuid4()))
+
+        # Deploy test.supports.functions to get the function definitions
+        async def _deploy_and_get_functions():
+            async for servicer in servicer_factory(blob_server, credentials):
+                # Deploy the test.supports.functions module
+                deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
+
+                # Return the function definitions as dict[name, (id, definition)]
+                functions_dict = {}
+                functions_dict.update(servicer.app_functions._functions)
+                functions_dict.update(servicer.app_functions._functions_data)
+
+                # Transform to dict[name, (id, definition)] structure
+                functions_by_name = {}
+                for func_id, func_def in functions_dict.items():
+                    function_name = func_def.function_name
+                    functions_by_name[function_name] = (func_id, func_def)
+
+                return functions_by_name
+
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            function_definitions = loop.run_until_complete(_deploy_and_get_functions())
+        finally:
+            loop.close()
+
+    return function_definitions
+
+
 def _get_inputs(
     args: tuple[tuple, dict] = ((42,), {}),
     n: int = 1,
@@ -413,6 +453,92 @@ def _run_container(
         return ContainerResult(client, items, data_chunks, servicer.task_result)
 
 
+def _run_container_auto(
+    servicer,
+    function_name: str,
+    deployed_support_function_definitions,
+    fail_get_inputs=False,
+    inputs=None,
+    app_layout=DEFAULT_APP_LAYOUT_SENTINEL,
+) -> ContainerResult:
+    """
+    Utility function that runs a function from test.supports.functions using predeployed
+    function definitions instead of constructing them
+    """
+    # Look up the function definition from the predeployed definitions
+    if function_name not in deployed_support_function_definitions:
+        raise ValueError(f"Function '{function_name}' not found in deployed support functions")
+
+    function_id, function_def = deployed_support_function_definitions[function_name]
+
+    # Create app layout if not provided (similar to _container_args)
+    if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
+        app_layout = api_pb2.AppLayout(
+            objects=[
+                api_pb2.Object(object_id="im-1"),
+                api_pb2.Object(
+                    object_id=function_id,
+                    function_handle_metadata=api_pb2.FunctionHandleMetadata(
+                        function_name=function_name,
+                    ),
+                ),
+            ],
+            function_ids={function_name: function_id},
+        )
+
+    # Create container arguments using the predeployed function definition
+    container_args = api_pb2.ContainerArguments(
+        task_id="ta-123",
+        function_id=function_id,
+        app_id="ap-1",  # Use the same app ID as the deployed functions
+        function_def=function_def,
+        checkpoint_id=f"ch-{uuid.uuid4()}",
+        app_layout=app_layout,
+    )
+
+    # Use the same container execution logic as _run_container
+    with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
+        if inputs is None:
+            servicer.container_inputs = _get_inputs()
+        else:
+            servicer.container_inputs = inputs
+        first_function_call_id = servicer.container_inputs[0].inputs[0].function_call_id
+        servicer.fail_get_inputs = fail_get_inputs
+
+        # Since we're using predeployed functions from test.supports.functions,
+        # we need to handle the module dropping carefully
+        module_name = "test.supports.functions"
+        if module_name in sys.modules:
+            # Drop the module from sys.modules since some function code relies on the
+            # assumption that that the app is created before the user code is imported.
+            # This is really only an issue for tests.
+            sys.modules.pop(module_name)
+
+        env = os.environ.copy()
+
+        # These env vars are always present in containers
+        env["MODAL_SERVER_URL"] = servicer.container_addr
+        env["MODAL_TASK_ID"] = "ta-123"
+        env["MODAL_IS_REMOTE"] = "1"
+
+        # reset _App tracking state between runs
+        _App._all_apps.clear()
+
+        try:
+            with mock.patch.dict(os.environ, env):
+                main(container_args, client)
+        except UserException:
+            # Handle it gracefully
+            pass
+
+        # Flatten outputs
+        items = _flatten_outputs(servicer.container_outputs)
+
+        data_chunks = servicer.get_data_chunks(first_function_call_id)
+
+        return ContainerResult(client, items, data_chunks, servicer.task_result)
+
+
 def _unwrap_scalar(ret: ContainerResult):
     assert len(ret.items) == 1
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
@@ -504,6 +630,15 @@ def _get_web_inputs(path="/", method_name=""):
 def test_success(servicer):
     t0 = time.time()
     ret = _run_container(servicer, "test.supports.functions", "square")
+    assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
+    assert _unwrap_scalar(ret) == 42**2
+
+
+@skip_github_non_linux
+def test_success_auto(servicer, deployed_support_function_definitions):
+    """Test the new _run_container_auto utility function."""
+    t0 = time.time()
+    ret = _run_container_auto(servicer, "square", deployed_support_function_definitions)
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
     assert _unwrap_scalar(ret) == 42**2
 
