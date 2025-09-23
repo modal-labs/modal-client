@@ -2394,9 +2394,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         attempt_token = AttemptToken.from_json(request.attempt_token)
         self.n_inputs += 1
         attempt_token.retry_count += 1
-        # self.add_function_call_input(
-        #     attempt_token.function_call_id, request.input, attempt_token.input_id, attempt_token.retry_count
-        # )
         self.add_input_plane_input(attempt_token.input_id, attempt_token.retry_count, request.input)
         await stream.send_message(api_pb2.AttemptRetryResponse(attempt_token=attempt_token.to_json()))
 
