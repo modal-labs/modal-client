@@ -47,7 +47,7 @@ message SandboxExecStartRequest {
   // Timeout in seconds for the exec'd command to exit. If the command does not
   // exit within this duration, the command will be killed. This is NOT the
   // timeout for the ExecStartRequest RPC to complete.
-  uint32 timeout_secs = 6;
+  optional uint32 timeout_secs = 6;
   // Working directory for the command.
   optional string workdir = 7;
   // Secret IDs to mount into the sandbox.
