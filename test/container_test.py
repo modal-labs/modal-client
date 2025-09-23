@@ -627,9 +627,9 @@ def _get_web_inputs(path="/", method_name=""):
 
 
 @skip_github_non_linux
-def test_success(servicer):
+def test_success(servicer, deployed_support_function_definitions):
     t0 = time.time()
-    ret = _run_container(servicer, "test.supports.functions", "square")
+    ret = _run_container_auto(servicer, "square", deployed_support_function_definitions)
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
     assert _unwrap_scalar(ret) == 42**2
 
@@ -1511,11 +1511,11 @@ def test_cls_with_image(servicer):
 
 
 @skip_github_non_linux
-def test_container_heartbeats(servicer):
-    _run_container(servicer, "test.supports.functions", "square")
+def test_container_heartbeats(servicer, deployed_support_function_definitions):
+    _run_container_auto(servicer, "square", deployed_support_function_definitions)
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
 
-    _run_container(servicer, "test.supports.functions", "snapshotting_square")
+    _run_container_auto(servicer, "snapshotting_square", deployed_support_function_definitions)
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
 
 
@@ -1882,6 +1882,9 @@ def test_batch_async_function(servicer):
 
 @skip_github_non_linux
 def test_unassociated_function(servicer):
+    # tests a function where the function decorator is not part of the global scope
+    # because of this, we can't use the _run_container_auto helper, since that relies
+    # on being able to deploy the function using the definition + decorators
     ret = _run_container(servicer, "test.supports.functions", "unassociated_function")
     assert _unwrap_scalar(ret) == 58
 
@@ -2970,39 +2973,39 @@ def test_container_app_zero_matching(servicer, event_loop):
 
 
 @skip_github_non_linux
-def test_container_app_one_matching(servicer, event_loop):
-    _run_container(servicer, "test.supports.functions", "check_container_app")
+def test_container_app_one_matching(servicer, event_loop, deployed_support_function_definitions):
+    _run_container_auto(servicer, "check_container_app", deployed_support_function_definitions)
 
 
 @skip_github_non_linux
-def test_no_event_loop(servicer, event_loop):
-    ret = _run_container(servicer, "test.supports.functions", "get_running_loop")
+def test_no_event_loop(servicer, event_loop, deployed_support_function_definitions):
+    ret = _run_container_auto(servicer, "get_running_loop", deployed_support_function_definitions)
     exc = _unwrap_exception(ret)
     assert isinstance(exc, RuntimeError)
     assert repr(exc) == "RuntimeError('no running event loop')"
 
 
 @skip_github_non_linux
-def test_is_main_thread_sync(servicer, event_loop):
-    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_sync")
+def test_is_main_thread_sync(servicer, event_loop, deployed_support_function_definitions):
+    ret = _run_container_auto(servicer, "is_main_thread_sync", deployed_support_function_definitions)
     assert _unwrap_scalar(ret) is True
 
 
 @skip_github_non_linux
-def test_is_main_thread_async(servicer, event_loop):
-    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_async")
+def test_is_main_thread_async(servicer, event_loop, deployed_support_function_definitions):
+    ret = _run_container_auto(servicer, "is_main_thread_async", deployed_support_function_definitions)
     assert _unwrap_scalar(ret) is True
 
 
 @skip_github_non_linux
-def test_import_thread_is_main_thread(servicer, event_loop):
-    ret = _run_container(servicer, "test.supports.functions", "import_thread_is_main_thread")
+def test_import_thread_is_main_thread(servicer, event_loop, deployed_support_function_definitions):
+    ret = _run_container_auto(servicer, "import_thread_is_main_thread", deployed_support_function_definitions)
     assert _unwrap_scalar(ret) is True
 
 
 @skip_github_non_linux
-def test_custom_exception(servicer, capsys):
-    ret = _run_container(servicer, "test.supports.functions", "raises_custom_exception")
+def test_custom_exception(servicer, capsys, deployed_support_function_definitions):
+    ret = _run_container_auto(servicer, "raises_custom_exception", deployed_support_function_definitions)
     exc = _unwrap_exception(ret)
     assert isinstance(exc, Exception)
     assert repr(exc) == "CustomException('Failure!')"
