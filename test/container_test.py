@@ -890,22 +890,15 @@ def test_serialized_class_with_parameters(servicer, deployed_support_function_de
 
 
 @skip_github_non_linux
-def test_webhook_serialized(servicer):
+def test_webhook_serialized(servicer, deployed_support_function_definitions):
     inputs = _get_web_inputs()
     _put_web_body(servicer, b"")
 
-    # Store a serialized webhook function on the servicer
-    def webhook(arg="world"):
-        return f"Hello, {arg}"
-
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "foo.bar.baz",
-        "f",
+        "webhook_serialized",
+        deployed_support_function_definitions,
         inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
-        function_serialized=serialize(webhook),
     )
 
     _, second_message = _unwrap_asgi(ret)

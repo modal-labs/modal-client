@@ -140,6 +140,12 @@ def webhook(arg="world"):
     return {"hello": arg}
 
 
+@app.function(serialized=True)
+@fastapi_endpoint()
+def webhook_serialized(arg="world"):
+    return {"hello": arg}
+
+
 def stream():
     for i in range(10):
         time.sleep(SLEEP_DELAY)
