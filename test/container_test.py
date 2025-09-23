@@ -713,16 +713,16 @@ def test_generator_failure_async_cleanup(servicer, tmp_path, client):
 
 
 @skip_github_non_linux
-def test_async(servicer):
+def test_async(servicer, deployed_support_function_definitions):
     t0 = time.time()
-    ret = _run_container(servicer, "test.supports.functions", "square_async")
+    ret = _run_container_auto(servicer, "square_async", deployed_support_function_definitions)
     assert SLEEP_DELAY <= time.time() - t0 < SLEEP_DELAY + EXTRA_TOLERANCE_DELAY
     assert _unwrap_scalar(ret) == 42**2
 
 
 @skip_github_non_linux
-def test_failure(servicer, capsys):
-    ret = _run_container(servicer, "test.supports.functions", "raises")
+def test_failure(servicer, deployed_support_function_definitions, capsys):
+    ret = _run_container_auto(servicer, "raises", deployed_support_function_definitions)
     exc = _unwrap_exception(ret)
     assert isinstance(exc, Exception)
     assert repr(exc) == "Exception('Failure!')"
@@ -730,8 +730,8 @@ def test_failure(servicer, capsys):
 
 
 @skip_github_non_linux
-def test_raises_base_exception(servicer, capsys):
-    ret = _run_container(servicer, "test.supports.functions", "raises_sysexit")
+def test_raises_base_exception(servicer, deployed_support_function_definitions, capsys):
+    ret = _run_container_auto(servicer, "raises_sysexit", deployed_support_function_definitions)
     exc = _unwrap_exception(ret)
     assert isinstance(exc, SystemExit)
     assert repr(exc) == "SystemExit(1)"
@@ -739,28 +739,28 @@ def test_raises_base_exception(servicer, capsys):
 
 
 @skip_github_non_linux
-def test_keyboardinterrupt(servicer):
+def test_keyboardinterrupt(servicer, deployed_support_function_definitions):
     with pytest.raises(KeyboardInterrupt):
-        _run_container(servicer, "test.supports.functions", "raises_keyboardinterrupt")
+        _run_container_auto(servicer, "raises_keyboardinterrupt", deployed_support_function_definitions)
 
 
 @skip_github_non_linux
-def test_rate_limited(servicer, event_loop):
+def test_rate_limited(servicer, deployed_support_function_definitions, event_loop):
     t0 = time.time()
     servicer.rate_limit_sleep_duration = 0.25
-    ret = _run_container(servicer, "test.supports.functions", "square")
+    ret = _run_container_auto(servicer, "square", deployed_support_function_definitions)
     assert 0.25 <= time.time() - t0 < 0.25 + EXTRA_TOLERANCE_DELAY
     assert _unwrap_scalar(ret) == 42**2
 
 
 @skip_github_non_linux
-def test_grpc_failure(servicer, event_loop):
+def test_grpc_failure(servicer, deployed_support_function_definitions, event_loop):
     # An error in "Modal code" should cause the entire container to fail
     with pytest.raises(GRPCError):
-        _run_container(
+        _run_container_auto(
             servicer,
-            "test.supports.functions",
             "square",
+            deployed_support_function_definitions,
             fail_get_inputs=True,
         )
 
@@ -2537,16 +2537,16 @@ def test_sigint_termination_exit_handler(servicer, tmp_path, exit_type):
 
 
 @skip_github_non_linux
-def test_sandbox(servicer, event_loop):
-    ret = _run_container(servicer, "test.supports.functions", "sandbox_f")
+def test_sandbox(servicer, deployed_support_function_definitions, event_loop):
+    ret = _run_container_auto(servicer, "sandbox_f", deployed_support_function_definitions)
     assert _unwrap_scalar(ret) == "sb-123"
 
 
 @skip_github_non_linux
-def test_is_local(servicer, event_loop):
+def test_is_local(servicer, deployed_support_function_definitions, event_loop):
     assert is_local() == True
 
-    ret = _run_container(servicer, "test.supports.functions", "is_local_f")
+    ret = _run_container_auto(servicer, "is_local_f", deployed_support_function_definitions)
     assert _unwrap_scalar(ret) == False
 
 
