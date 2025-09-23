@@ -140,6 +140,12 @@ def webhook(arg="world"):
     return {"hello": arg}
 
 
+@app.function(serialized=True)
+@fastapi_endpoint()
+def webhook_serialized(arg="world"):
+    return f"Hello, {arg}"
+
+
 def stream():
     for i in range(10):
         time.sleep(SLEEP_DELAY)
@@ -501,14 +507,14 @@ class LifecycleCls:
 
 
 @app.function()
-@concurrent(max_inputs=5)
+@concurrent(max_inputs=6)
 def sleep_700_sync(x):
     time.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
 
 
 @app.function()
-@concurrent(max_inputs=5)
+@concurrent(max_inputs=6)
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
@@ -651,12 +657,14 @@ def raise_large_unicode_exception():
 
 
 @app.function()
+@modal.concurrent(target_inputs=2, max_inputs=10)
 def get_input_concurrency(timeout: int):
     time.sleep(timeout)
     return get_local_input_concurrency()
 
 
 @app.function()
+@modal.concurrent(target_inputs=3, max_inputs=6)
 def set_input_concurrency(start: float):
     set_local_input_concurrency(3)
     time.sleep(1)
@@ -699,3 +707,75 @@ class CustomException(Exception):
 @app.function()
 def raises_custom_exception(x):
     raise CustomException("Failure!")
+
+
+@app.cls()
+class StopFetching:
+    @enter()
+    def init(self):
+        self.counter = 0
+
+    @method()
+    def after_two(self, x):
+        import modal.experimental
+
+        self.counter += 1
+
+        if self.counter >= 2:
+            modal.experimental.stop_fetching_inputs()
+
+        return x * x
+
+
+@app.cls(serialized=True)
+class SerializedCls:
+    @enter()
+    def enter(self):
+        self.power = 5
+
+    @method()
+    def method(self, x):
+        return x**self.power
+
+
+@app.cls(serialized=True)
+class SerializedClassWithParams:
+    p: int = modal.parameter()
+
+    @modal.method()
+    def method(self):
+        return "hello"
+
+
+@app.function(
+    volumes={
+        "/var/foo": modal.Volume.from_name("foo", create_if_missing=True),
+        "/var/bar": modal.Volume.from_name("bar", create_if_missing=True),
+    }
+)
+def function_with_volumes(should_raise: bool):
+    if should_raise:
+        raise Exception("Failure!")
+    return "success"
+
+
+@app.cls(serialized=True)
+class Foo:
+    x: str = modal.parameter()
+
+    @enter()
+    def some_enter(self):
+        self.x += "_enter"
+
+    @method()
+    def method_a(self, y):
+        return self.x + f"_a_{y}"
+
+    @method()
+    def method_b(self, y):
+        return self.x + f"_b_{y}"
+
+
+@app.function(serialized=True)
+def serialized_triple(x):
+    return 3 * x
