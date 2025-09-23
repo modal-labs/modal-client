@@ -142,7 +142,7 @@ def _get_inputs_batched_with_formats(
     kill_switch=True,
     method_name: Optional[str] = None,
 ):
-    """Helper function to create batched inputs with different data formats per item."""
+    """Create batched inputs with different data formats per item."""
     assert len(args_list) == len(data_formats), "args_list and data_formats must have same length"
     input_pbs = []
     for args, data_format in zip(args_list, data_formats):
@@ -1335,31 +1335,12 @@ def test_cls_web_asgi_construction(servicer):
 
 
 @skip_github_non_linux
-def test_serialized_cls(servicer):
-    class Cls:
-        @enter()
-        def enter(self):
-            self.power = 5
-
-        @method()
-        def method(self, x):
-            return x**self.power
-
-    app = modal.App()
-    app.cls(serialized=True)(Cls)  # prevents warnings about not turning methods into functions
-    ret = _run_container(
+def test_serialized_cls(servicer, deployed_support_function_definitions):
+    ret = _run_container_auto(
         servicer,
-        "module.doesnt.matter",
-        "function.doesnt.matter",
-        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
-        is_class=True,
+        "SerializedCls.*",
+        deployed_support_function_definitions,
         inputs=_get_inputs(method_name="method"),
-        class_serialized=serialize(Cls),
-        method_definitions={
-            "method": api_pb2.MethodDefinition(
-                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            ),
-        },
     )
     assert _unwrap_scalar(ret) == 42**5
 
@@ -1891,74 +1872,55 @@ def test_checkpoint_and_restore_success(servicer, deployed_support_function_defi
 
 
 @skip_github_non_linux
-def test_volume_commit_on_exit(servicer):
-    volume_mounts = [
-        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-123", allow_background_commits=True),
-        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-456", allow_background_commits=True),
-    ]
-    ret = _run_container(
+def test_volume_commit_on_exit(servicer, deployed_support_function_definitions):
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
-        "square",
-        volume_mounts=volume_mounts,
+        "function_with_volumes",
+        deployed_support_function_definitions,
+        inputs=_get_inputs(((False,), {})),
     )
     volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
     assert volume_commit_rpcs
-    assert {"vo-123", "vo-456"} == {r.volume_id for r in volume_commit_rpcs}
-    assert _unwrap_scalar(ret) == 42**2
+    assert {"vo-0", "vo-1"} == {r.volume_id for r in volume_commit_rpcs}
+    assert _unwrap_scalar(ret) == "success"
 
 
 @skip_github_non_linux
-def test_volume_commit_on_error(servicer, capsys):
-    volume_mounts = [
-        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-foo", allow_background_commits=True),
-        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-bar", allow_background_commits=True),
-    ]
-    _run_container(
+def test_volume_commit_on_error(servicer, capsys, deployed_support_function_definitions):
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
-        "raises",
-        volume_mounts=volume_mounts,
+        "function_with_volumes",
+        deployed_support_function_definitions,
+        inputs=_get_inputs(((True,), {})),
     )
     volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
-    assert {"vo-foo", "vo-bar"} == {r.volume_id for r in volume_commit_rpcs}
+    assert volume_commit_rpcs
+    assert {"vo-0", "vo-1"} == {r.volume_id for r in volume_commit_rpcs}
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     assert 'raise Exception("Failure!")' in capsys.readouterr().err
 
 
 @skip_github_non_linux
-def test_no_volume_commit_on_exit(servicer):
-    volume_mounts = [api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-999", allow_background_commits=False)]
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        "square",
-        volume_mounts=volume_mounts,
-    )
-    volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
-    assert not volume_commit_rpcs  # No volume commit on exit for legacy volumes
-    assert _unwrap_scalar(ret) == 42**2
+def test_volume_commit_on_exit_doesnt_fail_container(servicer, deployed_support_function_definitions):
+    with servicer.intercept() as ctx:
+        num_rpcs = 0
 
+        def responder(servicer, stream):
+            nonlocal num_rpcs
+            num_rpcs += 1
+            # non retryable error
+            raise GRPCError(Status.PERMISSION_DENIED, "Failure in service")
 
-@skip_github_non_linux
-def test_volume_commit_on_exit_doesnt_fail_container(servicer):
-    volume_mounts = [
-        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vo-999", allow_background_commits=True),
-        api_pb2.VolumeMount(
-            mount_path="/var/foo",
-            volume_id="BAD-ID-FOR-VOL",
-            allow_background_commits=True,
-        ),
-        api_pb2.VolumeMount(mount_path="/var/foo", volume_id="vol-111", allow_background_commits=True),
-    ]
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        "square",
-        volume_mounts=volume_mounts,
-    )
-    volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
-    assert len(volume_commit_rpcs) == 3
-    assert _unwrap_scalar(ret) == 42**2
+        ctx.set_responder("VolumeCommit", responder)
+        ret = _run_container_auto(
+            servicer,
+            "function_with_volumes",
+            deployed_support_function_definitions,
+            inputs=_get_inputs(((False,), {})),
+        )
+
+    assert num_rpcs == 2
+    assert _unwrap_scalar(ret) == "success"
 
 
 @skip_github_non_linux

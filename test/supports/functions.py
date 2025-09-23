@@ -728,9 +728,32 @@ class StopFetching:
 
 
 @app.cls(serialized=True)
+class SerializedCls:
+    @enter()
+    def enter(self):
+        self.power = 5
+
+    @method()
+    def method(self, x):
+        return x**self.power
+
+
+@app.cls(serialized=True)
 class SerializedClassWithParams:
     p: int = modal.parameter()
 
     @modal.method()
     def method(self):
         return "hello"
+
+
+@app.function(
+    volumes={
+        "/var/foo": modal.Volume.from_name("foo", create_if_missing=True),
+        "/var/bar": modal.Volume.from_name("bar", create_if_missing=True),
+    }
+)
+def function_with_volumes(should_raise: bool):
+    if should_raise:
+        raise Exception("Failure!")
+    return "success"
