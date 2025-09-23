@@ -101,7 +101,7 @@ class CudaCheckpointProcess:
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=5 * 60,
             )
             logger.debug(f"PID: {self.pid} Successfully toggled CUDA checkpoint state")
         except subprocess.CalledProcessError as e:
@@ -121,7 +121,7 @@ class CudaCheckpointProcess:
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=5 * 60,
             )
 
             state_str = result.stdout.strip().lower()
