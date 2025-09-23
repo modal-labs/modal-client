@@ -644,14 +644,13 @@ def test_success_auto(servicer, deployed_support_function_definitions):
 
 
 @skip_github_non_linux
-@pytest.mark.timeout(1)
+@pytest.mark.timeout(5)
 @pytest.mark.parametrize("data_format", [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR])
-def test_generator_success(servicer, data_format):
-    ret = _run_container(
+def test_generator_success(servicer, data_format, deployed_support_function_definitions):
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "gen_n",
-        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        deployed_support_function_definitions,
         inputs=_get_inputs(data_format=data_format),
     )
     items, exc = _unwrap_generator(ret, assert_data_format=data_format)
@@ -661,15 +660,15 @@ def test_generator_success(servicer, data_format):
 
 @skip_github_non_linux
 @pytest.mark.parametrize("data_format", [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR])
-def test_generator_failure(servicer, capsys, data_format):
+def test_generator_failure(servicer, capsys, data_format, deployed_support_function_definitions):
     inputs = _get_inputs(((10, 5), {}), data_format=data_format)
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "gen_n_fail_on_m",
-        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        deployed_support_function_definitions,
         inputs=inputs,
     )
+
     items, exc = _unwrap_generator(ret, assert_data_format=data_format)
     assert items == [i**2 for i in range(5)]
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
