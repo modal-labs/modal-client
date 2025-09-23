@@ -455,18 +455,20 @@ def _unwrap_batch_exception(ret: ContainerResult, batch_size):
 
 
 def _unwrap_generator(
-    ret: ContainerResult, assert_data_format: "api_pb2.DataFormat.ValueType"
+    ret: ContainerResult, assert_data_format: Optional["api_pb2.DataFormat.ValueType"] = None
 ) -> tuple[list[Any], Optional[Exception]]:
     assert len(ret.items) == 1
     item = ret.items[0]
 
     values = []
     for chunk in ret.data_chunks:
-        assert chunk.data_format == assert_data_format
+        if assert_data_format is not None:
+            assert chunk.data_format == assert_data_format
         values.append(deserialize_data_format(chunk.data, chunk.data_format, None))
 
     if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
         if item.data_format == api_pb2.DATA_FORMAT_PICKLE:
+            assert assert_data_format is None or assert_data_format == api_pb2.DATA_FORMAT_PICKLE
             exc = deserialize_data_format(item.result.data, item.data_format, ret.client)
         else:
             exc = None  # no support for exceptions unless we use pickle at the moment
