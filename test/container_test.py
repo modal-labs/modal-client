@@ -454,14 +454,22 @@ def _unwrap_batch_exception(ret: ContainerResult, batch_size):
     return outputs
 
 
-def _unwrap_generator(ret: ContainerResult) -> tuple[list[Any], Optional[Exception]]:
+def _unwrap_generator(
+    ret: ContainerResult, assert_data_format: "api_pb2.DataFormat.ValueType"
+) -> tuple[list[Any], Optional[Exception]]:
     assert len(ret.items) == 1
     item = ret.items[0]
 
-    values: list[Any] = [deserialize_data_format(chunk.data, chunk.data_format, None) for chunk in ret.data_chunks]
+    values = []
+    for chunk in ret.data_chunks:
+        assert chunk.data_format == assert_data_format
+        values.append(deserialize_data_format(chunk.data, chunk.data_format, None))
 
     if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-        exc = deserialize(item.result.data, ret.client)
+        if item.data_format == api_pb2.DATA_FORMAT_PICKLE:
+            exc = deserialize_data_format(item.result.data, item.data_format, ret.client)
+        else:
+            exc = None  # no support for exceptions unless we use pickle at the moment
         return values, exc
     elif item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         assert item.data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE
@@ -509,20 +517,15 @@ def test_generator_success(servicer, data_format):
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
         inputs=_get_inputs(data_format=data_format),
     )
-    assert len(ret.data_chunks) == 42
-    for i, data_chunk in enumerate(ret.data_chunks):
-        assert data_chunk.index == i + 1
-        assert data_chunk.data_format == data_format  # should be same as input data format
-        assert deserialize_data_format(data_chunk.data, data_chunk.data_format, ret.client) == i**2
-
-    assert deserialize_data_format(
-        ret.items[0].result.data, ret.items[0].data_format, ret.client
-    ) == api_pb2.GeneratorDone(items_total=42)
+    items, exc = _unwrap_generator(ret, assert_data_format=data_format)
+    assert items == [i**2 for i in range(42)]
+    assert exc is None
 
 
 @skip_github_non_linux
-def test_generator_failure(servicer, capsys):
-    inputs = _get_inputs(((10, 5), {}))
+@pytest.mark.parametrize("data_format", [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR])
+def test_generator_failure(servicer, capsys, data_format):
+    inputs = _get_inputs(((10, 5), {}), data_format=data_format)
     ret = _run_container(
         servicer,
         "test.supports.functions",
@@ -530,10 +533,12 @@ def test_generator_failure(servicer, capsys):
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
         inputs=inputs,
     )
-    items, exc = _unwrap_generator(ret)
+    items, exc = _unwrap_generator(ret, assert_data_format=data_format)
     assert items == [i**2 for i in range(5)]
-    assert isinstance(exc, Exception)
-    assert exc.args == ("bad",)
+    if data_format == api_pb2.DATA_FORMAT_PICKLE:
+        assert isinstance(exc, Exception)
+        assert exc.args == ("bad",)
+    # exception log should still be there regardless of data format
     assert 'raise Exception("bad")' in capsys.readouterr().err
 
 
