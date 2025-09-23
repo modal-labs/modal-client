@@ -470,7 +470,6 @@ def _run_container_auto(
     function definitions instead of constructing them
     """
     functions_dict, app_layout = deployed_support_function_definitions
-    print(app_layout)
 
     # Look up the function definition from the predeployed definitions
     if function_name not in functions_dict:
