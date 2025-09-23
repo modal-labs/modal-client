@@ -1916,13 +1916,13 @@ def test_derived_cls(servicer):
 
 
 @skip_github_non_linux
-def test_call_function_that_calls_function(servicer, credentials):
+def test_call_function_that_calls_function(servicer, credentials, deployed_support_function_definitions):
     deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
     app_layout = servicer.app_get_layout("ap-1")
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "cube",
+        deployed_support_function_definitions,
         inputs=_get_inputs(((42,), {})),
         app_layout=app_layout,
     )
@@ -2035,7 +2035,7 @@ def test_volume_commit_on_exit_doesnt_fail_container(servicer):
 
 @skip_github_non_linux
 @pytest.mark.timeout(10.0)
-def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer):
+def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer, deployed_support_function_definitions):
     synchronizer = async_utils.synchronizer
 
     # set up spys to track synchronicity calls to _translate_scalar_in/out
@@ -2052,10 +2052,10 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer)
     t0 = time.perf_counter()
     # pr = cProfile.Profile()
     # pr.enable()
-    _run_container(
+    _run_container_auto(
         servicer,
-        "test.supports.functions",
         "ident",
+        deployed_support_function_definitions,
         inputs=_get_inputs(((large_data_list,), {})),
     )
     # pr.disable()
@@ -2330,7 +2330,9 @@ def test_stop_fetching_inputs(servicer):
 
 
 @skip_github_non_linux
-def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypatch):
+def test_container_heartbeat_survives_grpc_deadlines(
+    servicer, caplog, monkeypatch, deployed_support_function_definitions
+):
     monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     num_heartbeats = 0
 
@@ -2342,10 +2344,10 @@ def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypat
 
     with servicer.intercept() as ctx:
         ctx.set_responder("ContainerHeartbeat", heartbeat_responder)
-        ret = _run_container(
+        ret = _run_container_auto(
             servicer,
-            "test.supports.functions",
             "delay",
+            deployed_support_function_definitions,
             inputs=_get_inputs(((2,), {})),
         )
         assert ret.task_result is None  # should not cause a failure result
@@ -2359,7 +2361,9 @@ def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypat
 
 
 @skip_github_non_linux
-def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeypatch):
+def test_container_heartbeat_survives_local_exceptions(
+    servicer, caplog, monkeypatch, deployed_support_function_definitions
+):
     numcalls = 0
 
     async def custom_heartbeater(self):
@@ -2372,10 +2376,10 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
         "modal._runtime.container_io_manager._ContainerIOManager._heartbeat_handle_cancellations", custom_heartbeater
     )
 
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "delay",
+        deployed_support_function_definitions,
         inputs=_get_inputs(((0.5,), {})),
     )
     assert ret.task_result is None  # should not cause a failure result
@@ -2387,12 +2391,12 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_container_doesnt_send_large_exceptions(servicer):
+def test_container_doesnt_send_large_exceptions(servicer, deployed_support_function_definitions):
     # Tests that large exception messages (>2mb are trimmed)
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "raise_large_unicode_exception",
+        deployed_support_function_definitions,
         inputs=_get_inputs(((), {})),
     )
 
@@ -2754,7 +2758,7 @@ def test_sandbox_infers_app(servicer, event_loop):
 
 
 @skip_github_non_linux
-def test_deserialization_error_returns_exception(servicer, client):
+def test_deserialization_error_returns_exception(servicer, client, deployed_support_function_definitions):
     inputs = [
         api_pb2.FunctionGetInputsResponse(
             inputs=[
@@ -2771,10 +2775,10 @@ def test_deserialization_error_returns_exception(servicer, client):
         ),
         *_get_inputs(((2,), {})),
     ]
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "square",
+        deployed_support_function_definitions,
         inputs=inputs,
     )
     assert len(ret.items) == 2
