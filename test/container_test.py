@@ -906,27 +906,26 @@ def test_webhook_serialized(servicer, deployed_support_function_definitions):
 
 
 @skip_github_non_linux
-def test_function_returning_generator(servicer):
-    ret = _run_container(
+def test_function_returning_generator(servicer, deployed_support_function_definitions):
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "fun_returning_gen",
-        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        deployed_support_function_definitions,
     )
     items, exc = _unwrap_generator(ret)
     assert len(items) == 42
+    assert not exc
 
 
 @skip_github_non_linux
-def test_asgi(servicer):
+def test_asgi(servicer, deployed_support_function_definitions):
     inputs = _get_web_inputs(path="/foo")
     _put_web_body(servicer, b"")
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "fastapi_app",
+        deployed_support_function_definitions,
         inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
     )
 
     # There should be one message for the header, and one for the body
@@ -942,21 +941,18 @@ def test_asgi(servicer):
 
 
 @skip_github_non_linux
-def test_non_blocking_web_server(servicer, monkeypatch):
+def test_non_blocking_web_server(servicer, monkeypatch, deployed_support_function_definitions):
     get_ip_address = MagicMock(wraps=asgi.get_ip_address)
     get_ip_address.return_value = "127.0.0.1"
     monkeypatch.setattr(asgi, "get_ip_address", get_ip_address)
 
     inputs = _get_web_inputs(path="/")
     _put_web_body(servicer, b"")
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.functions",
         "non_blocking_web_server",
+        deployed_support_function_definitions,
         inputs=inputs,
-        webhook_type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
-        web_server_port=8765,
-        web_server_startup_timeout=1,
     )
     first_message, second_message, _ = _unwrap_asgi(ret)
 
