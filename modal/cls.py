@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import dataclasses
 import inspect
-import os
 import typing
 from collections.abc import Collection
+from pathlib import PurePosixPath
 from typing import Any, Callable, Optional, Sequence, TypeVar, Union
 
 from google.protobuf.message import Message
@@ -33,6 +33,7 @@ from ._utils.deprecation import (
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
+from .cloud_bucket_mount import _CloudBucketMount
 from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .gpu import GPU_T
@@ -95,6 +96,7 @@ class _ServiceOptions:
     batch_wait_ms: Optional[int] = None
     scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
     cloud: Optional[str] = None
+    cloud_bucket_mounts: typing.Sequence[tuple[str, _CloudBucketMount]] = ()
 
     def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
         """Implement protobuf-like MergeFrom semantics for this dataclass.
@@ -688,7 +690,7 @@ More information on class parameterization can be found here: https://modal.com/
         gpu: GPU_T = None,
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
-        volumes: dict[Union[str, os.PathLike], _Volume] = {},
+        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         retries: Optional[Union[int, Retries]] = None,
         max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
         buffer_containers: Optional[int] = None,  # Additional containers to scale up while Function is active.
@@ -762,13 +764,19 @@ More information on class parameterization can be found here: https://modal.com/
         cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
         cls._initialize_from_other(self)
 
+        # Validate volumes
+        validated_volumes = validate_volumes(volumes)
+        cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
+        validated_volumes_no_cloud_buckets = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
+
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
         new_options = _ServiceOptions(
             secrets=secrets,
-            validated_volumes=validate_volumes(volumes),
+            validated_volumes=validated_volumes_no_cloud_buckets,
+            cloud_bucket_mounts=cloud_bucket_mounts,
             resources=resources,
             retry_policy=retry_policy,
             max_containers=max_containers,

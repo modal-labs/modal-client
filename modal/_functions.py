@@ -94,10 +94,8 @@ from .secret import _Secret
 from .volume import _Volume
 
 if TYPE_CHECKING:
-    import modal._partial_function
     import modal.app
     import modal.cls
-    import modal.partial_function
 
 MAX_INTERNAL_FAILURE_COUNT = 8
 TERMINAL_STATUSES = (
@@ -477,34 +475,34 @@ class _InputPlaneInvocation:
                 metadata=metadata,
             )
 
-            if await_response.HasField("output"):
-                if await_response.output.result.status in TERMINAL_STATUSES:
-                    return await _process_result(
-                        await_response.output.result, await_response.output.data_format, self.client.stub, self.client
-                    )
+            # Keep awaiting until we get an output.
+            if not await_response.HasField("output"):
+                continue
 
-                if await_response.output.result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
-                    internal_failure_count += 1
-                    # Limit the number of times we retry
-                    if internal_failure_count < MAX_INTERNAL_FAILURE_COUNT:
-                        # For system failures on the server, we retry immediately,
-                        # and the failure does not count towards the retry policy.
-                        self.attempt_token = await self._retry_input(metadata)
-                        continue
+            # If we have a final output, return.
+            if await_response.output.result.status in TERMINAL_STATUSES:
+                return await _process_result(
+                    await_response.output.result, await_response.output.data_format, self.client.stub, self.client
+                )
 
-                # We add delays between retries for non-internal failures.
-                delay_ms = user_retry_manager.get_delay_ms()
-                if delay_ms is None:
-                    # No more retries either because we reached the retry limit or user didn't set a retry policy
-                    # and the limit defaulted to 0.
-                    # An unsuccessful status should raise an error when it's converted to an exception.
-                    # Note: Blob download is done on the control plane stub not the input plane stub!
-                    return await _process_result(
-                        await_response.output.result, await_response.output.data_format, self.client.stub, self.client
-                    )
+            # We have a failure (internal or application), so see if there are any retries left, and if so, retry.
+            if await_response.output.result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+                internal_failure_count += 1
+                # Limit the number of times we retry internal failures.
+                if internal_failure_count < MAX_INTERNAL_FAILURE_COUNT:
+                    # We immediately retry internal failures and the failure doesn't count towards the retry policy.
+                    self.attempt_token = await self._retry_input(metadata)
+                    continue
+            elif (delay_ms := user_retry_manager.get_delay_ms()) is not None:
+                # We still have user retries left, so sleep and retry.
                 await asyncio.sleep(delay_ms / 1000)
+                self.attempt_token = await self._retry_input(metadata)
+                continue
 
-            await self._retry_input(metadata)
+            # No more retries left.
+            return await _process_result(
+                await_response.output.result, await_response.output.data_format, self.client.stub, self.client
+            )
 
     async def _retry_input(self, metadata: list[tuple[str, str]]) -> str:
         retry_request = api_pb2.AttemptRetryRequest(
@@ -513,7 +511,6 @@ class _InputPlaneInvocation:
             input=self.input_item,
             attempt_token=self.attempt_token,
         )
-        # TODO(ryan): Add exponential backoff?
         retry_response = await retry_transient_errors(
             self.stub.AttemptRetry,
             retry_request,
@@ -1233,6 +1230,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     replace_secret_ids=bool(options.secrets),
                     replace_volume_mounts=len(volume_mounts) > 0,
                     volume_mounts=volume_mounts,
+                    cloud_bucket_mounts=cloud_bucket_mounts_to_proto(options.cloud_bucket_mounts),
+                    replace_cloud_bucket_mounts=bool(options.cloud_bucket_mounts),
                     resources=options.resources,
                     retry_policy=options.retry_policy,
                     concurrency_limit=options.max_containers,
@@ -1262,7 +1261,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         def _deps():
             if options:
-                all_deps = [v for _, v in options.validated_volumes] + list(options.secrets)
+                all_deps = (
+                    [v for _, v in options.validated_volumes]
+                    + list(options.secrets)
+                    + [mount.secret for _, mount in options.cloud_bucket_mounts if mount.secret]
+                )
                 return [dep for dep in all_deps if not dep.is_hydrated]
             return []
 

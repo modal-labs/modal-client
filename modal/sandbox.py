@@ -562,11 +562,25 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return obj
 
-    async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None):
+    async def get_tags(self) -> dict[str, str]:
+        """Fetches any tags (key-value pairs) currently attached to this Sandbox from the server."""
+        req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
+        try:
+            resp = await retry_transient_errors(self._client.stub.SandboxTagsGet, req)
+        except GRPCError as exc:
+            raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+
+        return {tag.tag_name: tag.tag_value for tag in resp.tags}
+
+    async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None) -> None:
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
         environment_name = _get_environment_name()
-        if client is None:
-            client = await _Client.from_env()
+        if client is not None:
+            deprecation_warning(
+                (2025, 9, 18),
+                "The `client` parameter is deprecated. Set `client` when creating the Sandbox instead "
+                "(in e.g. `Sandbox.create()`/`.from_id()`/`.from_name()`).",
+            )
 
         tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()]
 
@@ -576,7 +590,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             tags=tags_list,
         )
         try:
-            await retry_transient_errors(client.stub.SandboxTagsSet, req)
+            await retry_transient_errors(self._client.stub.SandboxTagsSet, req)
         except GRPCError as exc:
             raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
@@ -653,19 +667,19 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._tunnels
 
     async def create_connect_token(
-        self, metadata: Optional[Union[str, dict[str, Any]]] = None
+        self, user_metadata: Optional[Union[str, dict[str, Any]]] = None
     ) -> SandboxConnectCredentials:
         """Create a token for making HTTP connections to the sandbox.
 
-        Also accepts an optional metadata string or dict to associate with the token. This metadata
+        Also accepts an optional user_metadata string or dict to associate with the token. This metadata
         will be added to the headers by the proxy when forwarding requests to the sandbox."""
-        if metadata is not None and isinstance(metadata, dict):
+        if user_metadata is not None and isinstance(user_metadata, dict):
             try:
-                metadata = json.dumps(metadata)
+                user_metadata = json.dumps(user_metadata)
             except Exception as e:
-                raise InvalidError(f"Failed to serialize metadata: {e}")
+                raise InvalidError(f"Failed to serialize user_metadata: {e}")
 
-        req = api_pb2.SandboxCreateConnectTokenRequest(sandbox_id=self.object_id, metadata=metadata)
+        req = api_pb2.SandboxCreateConnectTokenRequest(sandbox_id=self.object_id, user_metadata=user_metadata)
         resp = await retry_transient_errors(self._client.stub.SandboxCreateConnectToken, req)
         return SandboxConnectCredentials(resp.url, resp.token)
 

@@ -6,6 +6,33 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev40 (2025-09-24)
+
+- Hide the CLI spinner in interactive mode, so `modal run --interactive` now works better with breakpoints in local entrypoint functions.
+
+
+#### 1.1.5.dev34 (2025-09-19)
+
+- `Cls.with_options` supports `CloudBucketMount` in `volumes`.
+
+```python
+cloud_bucket = modal.CloudBucketMount("my-bucket", secret=aws_secret)
+MyAppCloud = modal.Cls.from_name("my-app", "MyApp").with_options(
+  volumes={"/mnt": cloud_bucket}
+)
+```
+
+
+#### 1.1.5.dev32 (2025-09-19)
+
+- Deprecated the `client` parameter to `Sandbox.set_tags()`, and the `environment_name` parameter to `Sandbox.from_name()`.
+
+
+#### 1.1.5.dev30 (2025-09-19)
+
+- Added a `.get_tags()` method to Sandbox, enabling fetching tags that were previously set using `.set_tags()`.
+
+
 #### 1.1.5.dev26 (2025-09-17)
 
 - Adds `image.build` to eagerly build an image:
