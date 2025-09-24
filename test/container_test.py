@@ -63,7 +63,7 @@ blob_download = synchronize_api(_blob_download)
 DEFAULT_APP_LAYOUT_SENTINEL: Any = object()
 
 
-def isolated_deploy(module_name: str, app_name: str):
+def isolated_deploy(module_name: str, app_variable_name: Optional[str] = None):
     """Package-scoped fixture that deploys an app using an ephemeral servicer instance
 
     Returns:
@@ -78,7 +78,7 @@ def isolated_deploy(module_name: str, app_name: str):
 
         async def _deploy_and_get_functions():
             async with servicer_factory(blob_server, credentials) as servicer:
-                deploy_app_externally(servicer, credentials, module_name, app_name, capture_output=False)
+                deploy_app_externally(servicer, credentials, module_name, app_variable_name, capture_output=False)
 
                 app_layout = servicer.app_get_layout("ap-1")
                 functions_by_name = {}
@@ -1247,43 +1247,13 @@ def test_cls_web_endpoint(servicer, deployed_sibling_hydration_app):
 
 
 @skip_github_non_linux
-def test_cls_web_asgi_construction(servicer):
-    app_layout = api_pb2.AppLayout(
-        objects=[
-            api_pb2.Object(object_id="im-1"),
-            # square function:
-            api_pb2.Object(object_id="fu-2", function_handle_metadata=api_pb2.FunctionHandleMetadata()),
-            # class service function:
-            api_pb2.Object(object_id="fu-123", function_handle_metadata=api_pb2.FunctionHandleMetadata()),
-            # class itself:
-            api_pb2.Object(object_id="cs-123", class_handle_metadata=api_pb2.ClassHandleMetadata()),
-        ],
-        function_ids={
-            "square": "fu-2",  # used to hydrate sibling function
-            "NonParamCls.*": "fu-123",
-        },
-        class_ids={
-            "NonParamCls": "cs-123",
-        },
-    )
+def test_cls_web_asgi_construction(servicer, deployed_sibling_hydration_app):
     inputs = _get_web_inputs(method_name="asgi_web")
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.sibling_hydration_app",
         "NonParamCls.*",
+        deployed_sibling_hydration_app,
         inputs=inputs,
-        is_class=True,
-        app_layout=app_layout,
-        method_definitions={
-            "web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
-            "asgi_web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
-            "generator": api_pb2.MethodDefinition(
-                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            ),
-            "f": api_pb2.MethodDefinition(
-                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            ),
-        },
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -1308,13 +1278,11 @@ def test_serialized_cls(servicer, deployed_support_function_definitions):
 
 
 @skip_github_non_linux
-def test_cls_generator(servicer):
-    ret = _run_container(
+def test_cls_generator(servicer, deployed_sibling_hydration_app):
+    ret = _run_container_auto(
         servicer,
-        "test.supports.sibling_hydration_app",
         "NonParamCls.*",
-        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
-        is_class=True,
+        deployed_sibling_hydration_app,
         inputs=_get_inputs(method_name="generator"),
     )
     items, exc = _unwrap_generator(ret)
@@ -1419,21 +1387,15 @@ def test_cli(servicer, tmp_path, credentials):
 
 
 @skip_github_non_linux
-def test_function_sibling_hydration(servicer, credentials):
-    # TODO: refactor this test to use its own source module/app instead of test.supports.functions (takes 7s to deploy)
-    deploy_app_externally(servicer, credentials, "test.supports.sibling_hydration_app", "app", capture_output=False)
-    app_layout = servicer.app_get_layout("ap-1")
-    ret = _run_container(
-        servicer, "test.supports.sibling_hydration_app", "check_sibling_hydration", app_layout=app_layout
-    )
+def test_function_sibling_hydration(servicer, credentials, deployed_sibling_hydration_app):
+    ret = _run_container_auto(servicer, "check_sibling_hydration", deployed_sibling_hydration_app)
     assert _unwrap_scalar(ret) is None
 
 
 @skip_github_non_linux
-def test_multiapp(servicer, credentials, caplog):
-    deploy_app_externally(servicer, credentials, "test.supports.multiapp", "a")
-    app_layout = servicer.app_get_layout("ap-1")
-    ret = _run_container(servicer, "test.supports.multiapp", "a_func", app_layout=app_layout)
+def test_multiapp(servicer, caplog):
+    deployed_multiapp = isolated_deploy("test.supports.multiapp", "a")
+    ret = _run_container_auto(servicer, "a_func", deployed_multiapp)
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
     # Note that the app can be inferred from the function, even though there are multiple
@@ -1444,7 +1406,8 @@ def test_multiapp(servicer, credentials, caplog):
 def test_multiapp_privately_decorated(servicer, caplog):
     # function handle does not override the original function, so we can't find the app
     # and the two apps are not named
-    ret = _run_container(servicer, "test.supports.multiapp_privately_decorated", "foo")
+    deployed_multiapp = isolated_deploy("test.supports.multiapp_privately_decorated")
+    ret = _run_container_auto(servicer, "foo", deployed_multiapp)
     assert _unwrap_scalar(ret) == 1
     assert "You have more than one unnamed app." in caplog.text
 
@@ -1453,12 +1416,9 @@ def test_multiapp_privately_decorated(servicer, caplog):
 def test_multiapp_privately_decorated_named_app(servicer, caplog):
     # function handle does not override the original function, so we can't find the app
     # but we can use the names of the apps to determine the active app
-    ret = _run_container(
-        servicer,
-        "test.supports.multiapp_privately_decorated_named_app",
-        "foo",
-        app_name="dummy",
-    )
+    deployed_multiapp = isolated_deploy("test.supports.multiapp_privately_decorated_named_app")
+    assert deployed_multiapp[0]["foo"][1].app_name == "dummy"
+    ret = _run_container_auto(servicer, "foo", deployed_multiapp)
     assert _unwrap_scalar(ret) == 1
     assert len(caplog.messages) == 0  # no warnings, since target app is named
 
