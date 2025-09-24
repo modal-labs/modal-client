@@ -7,6 +7,7 @@ package modal.client;
 import "modal_proto/options.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 
 enum AppDeployVisibility {
@@ -675,6 +676,23 @@ message BaseImage {
   string docker_tag = 2;
   reserved 4;
 }
+
+message BillingReportRequest {  // TODO think carefully about the name! We will have other billing APIs
+  google.protobuf.Timestamp start_timestamp = 1;  // TODO think about the start/end parameterization we want to support
+  google.protobuf.Timestamp end_timestamp = 2;
+  uint32 bucket_secs = 3;
+  repeated string tag_names = 4;
+}
+
+message BillingReportItem {
+  string object_id = 1;
+  string description = 2;
+  string environment_name = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  float cost = 5;
+  map<string, string> tags = 6;
+}
+
 
 message BlobCreateRequest {
   // TODO(erikbern): how are these garbage collected?
@@ -3548,6 +3566,9 @@ service ModalClient {
 
   // Auth Token
   rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);
+
+  // Billing
+  rpc BillingReport(BillingReportRequest) returns (stream BillingReportItem);
 
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
