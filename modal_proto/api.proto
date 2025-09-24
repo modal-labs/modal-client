@@ -2067,6 +2067,8 @@ message Image {
 
   // Build arguments for the image (--build-arg) for ARG substitution in Dockerfile.
   map<string, string> build_args = 22;
+
+  repeated VolumeMount volume_mounts = 23;
 }
 
 message ImageContextFile {
