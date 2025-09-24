@@ -774,3 +774,8 @@ class Foo:
     @method()
     def method_b(self, y):
         return self.x + f"_b_{y}"
+
+
+@app.function(serialized=True)
+def serialized_triple(x):
+    return 3 * x

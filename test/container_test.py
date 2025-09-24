@@ -856,16 +856,11 @@ def test_webhook_setup_failure(servicer, deployed_support_function_definitions):
 
 
 @skip_github_non_linux
-def test_serialized_function(servicer):
-    def triple(x):
-        return 3 * x
-
-    ret = _run_container(
+def test_serialized_function(servicer, deployed_support_function_definitions):
+    ret = _run_container_auto(
         servicer,
-        "",  # no module name
-        "f",
-        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
-        function_serialized=serialize(triple),
+        "serialized_triple",
+        deployed_support_function_definitions,
     )
     assert _unwrap_scalar(ret) == 3 * 42
 
