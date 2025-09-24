@@ -360,8 +360,12 @@ async def _run_app(
 
             # Yield to context
             if output_mgr := _get_output_manager():
-                with output_mgr.show_status_spinner():
+                # Don't show status spinner in interactive mode to avoid interfering with breakpoints
+                if interactive:
                     yield app
+                else:
+                    with output_mgr.show_status_spinner():
+                        yield app
             else:
                 yield app
             # successful completion!
