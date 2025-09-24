@@ -897,6 +897,7 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
+        _experimental_restrict_output: bool = False,  # Don't use pickle for return values
         # Parameters below here are deprecated. Please update your code as suggested
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
@@ -1030,6 +1031,7 @@ class _App:
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
+                restrict_output=_experimental_restrict_output,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)

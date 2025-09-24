@@ -76,7 +76,6 @@ class _PartialFunctionParams:
     target_concurrent_inputs: Optional[int] = None
     build_timeout: Optional[int] = None
     rdma: Optional[bool] = None
-    restrict_output: Optional[bool] = None
 
     def update(self, other: "_PartialFunctionParams") -> None:
         """Update self with params set in other."""
@@ -288,7 +287,6 @@ def _method(
     # Set this to True if it's a non-generator function returning
     # a [sync/async] generator object
     is_generator: Optional[bool] = None,
-    _experimental_restrict_output: bool = False,  # Prevent pickle as serializion (client 1.2+ and libmodal beta+)
 ) -> _MethodDecoratorType:
     """Decorator for methods that should be transformed into a Modal Function registered against this class's App.
 
@@ -315,7 +313,7 @@ def _method(
         if is_generator is None:
             callable = obj.raw_f if isinstance(obj, _PartialFunction) else obj
             is_generator = inspect.isgeneratorfunction(callable) or inspect.isasyncgenfunction(callable)
-        params = _PartialFunctionParams(is_generator=is_generator, restrict_output=_experimental_restrict_output)
+        params = _PartialFunctionParams(is_generator=is_generator)
 
         if isinstance(obj, _PartialFunction):
             pf = obj.stack(flags, params)

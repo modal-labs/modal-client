@@ -841,7 +841,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     method_output_formats = [api_pb2.DATA_FORMAT_ASGI]
                 else:
                     method_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-                    if partial_function.params.restrict_output:
+                    if restrict_output:
                         method_output_formats = [api_pb2.DATA_FORMAT_CBOR]
                     else:
                         method_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]

@@ -54,9 +54,9 @@ class SimpleCls:
         return x**2
 
 
-@app.cls()
+@app.cls(_experimental_restrict_output=True)
 class SimpleCbor:
-    @method(_experimental_restrict_output=True)
+    @method()
     def square(self, x: int) -> int:
         return x**2
 
