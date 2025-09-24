@@ -72,8 +72,6 @@ def isolated_deploy(module_name: str, app_name: str):
     """
     from test.conftest import blob_server_factory, servicer_factory
 
-    app_layout = None
-    functions_by_name = {}
     # Create isolated servicer instance using our new factories
     with blob_server_factory() as blob_server:
         credentials = ("test-ak-" + str(uuid.uuid4()), "test-as-" + str(uuid.uuid4()))
@@ -82,12 +80,14 @@ def isolated_deploy(module_name: str, app_name: str):
             async with servicer_factory(blob_server, credentials) as servicer:
                 deploy_app_externally(servicer, credentials, module_name, app_name, capture_output=False)
 
-                nonlocal app_layout
                 app_layout = servicer.app_get_layout("ap-1")
+                functions_by_name = {}
 
                 for func_id, func_def in servicer.app_functions.items():
                     function_name = func_def.function_name
                     functions_by_name[function_name] = (func_id, func_def)
+
+                return functions_by_name, app_layout
 
         import asyncio
 
@@ -103,7 +103,7 @@ def isolated_deploy(module_name: str, app_name: str):
 
 @pytest.fixture(scope="package")
 def deployed_support_function_definitions():
-    return deployed_support_function_definitions()
+    return isolated_deploy("test.supports.functions", "app")
 
 
 def _get_inputs(
