@@ -2373,7 +2373,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         except Exception as exc:
             serialized_exc = cloudpickle.dumps(exc)
             result = api_pb2.GenericResult(
-                status=api_pb2.GenericResult.GenericStatus.GENERIC_STATUS_FAILURE,
+                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                 data=serialized_exc,
                 exception=repr(exc),
                 traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
