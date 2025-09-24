@@ -72,23 +72,14 @@ def deployed_support_function_definitions():
     with blob_server_factory() as blob_server:
         credentials = ("test-ak-" + str(uuid.uuid4()), "test-as-" + str(uuid.uuid4()))
 
-        # Deploy test.supports.functions to get the function definitions and app layout
         async def _deploy_and_get_functions():
             async with servicer_factory(blob_server, credentials) as servicer:
-                # Deploy the test.supports.functions module
                 deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
 
-                # Get the app layout
                 app_layout = servicer.app_get_layout("ap-1")
 
-                # Return the function definitions as dict[name, (id, definition)]
-                functions_dict = {}
-                functions_dict.update(servicer.app_functions._functions)
-                functions_dict.update(servicer.app_functions._functions_data)
-
-                # Transform to dict[name, (id, definition)] structure
                 functions_by_name = {}
-                for func_id, func_def in functions_dict.items():
+                for func_id, func_def in servicer.app_functions.items():
                     function_name = func_def.function_name
                     functions_by_name[function_name] = (func_id, func_def)
 
