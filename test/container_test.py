@@ -63,27 +63,31 @@ blob_download = synchronize_api(_blob_download)
 DEFAULT_APP_LAYOUT_SENTINEL: Any = object()
 
 
-@pytest.fixture(scope="package")
-def deployed_support_function_definitions():
-    """Package-scoped fixture that deploys test.supports.functions using a separate servicer instance."""
+def isolated_deploy(module_name: str, app_name: str):
+    """Package-scoped fixture that deploys an app using an ephemeral servicer instance
+
+    Returns:
+        tuple[dict[str, tuple[str, api_pb2.Function]], api_pb2.AppLayout]:
+            The function definitions (by name) and app layout for the deployed app.
+    """
     from test.conftest import blob_server_factory, servicer_factory
 
+    app_layout = None
+    functions_by_name = {}
     # Create isolated servicer instance using our new factories
     with blob_server_factory() as blob_server:
         credentials = ("test-ak-" + str(uuid.uuid4()), "test-as-" + str(uuid.uuid4()))
 
         async def _deploy_and_get_functions():
             async with servicer_factory(blob_server, credentials) as servicer:
-                deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
+                deploy_app_externally(servicer, credentials, module_name, app_name, capture_output=False)
 
+                nonlocal app_layout
                 app_layout = servicer.app_get_layout("ap-1")
 
-                functions_by_name = {}
                 for func_id, func_def in servicer.app_functions.items():
                     function_name = func_def.function_name
                     functions_by_name[function_name] = (func_id, func_def)
-
-                return functions_by_name, app_layout
 
         import asyncio
 
@@ -95,6 +99,11 @@ def deployed_support_function_definitions():
             loop.close()
 
     return function_definitions, app_layout
+
+
+@pytest.fixture(scope="package")
+def deployed_support_function_definitions():
+    return deployed_support_function_definitions()
 
 
 def _get_inputs(
