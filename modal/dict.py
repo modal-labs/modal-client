@@ -543,11 +543,16 @@ class _Dict(_Object, type_prefix="di"):
         return await self.put(key, value)
 
     @live_method
-    async def pop(self, key: Any) -> Any:
-        """Remove a key from the Dict, returning the value if it exists."""
+    async def pop(self, key: Any, default: Any = ...) -> Any:
+        """Remove a key from the Dict, returning the value if it exists.
+
+        If key is not found, return default if provided, otherwise raise KeyError.
+        """
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
         resp = await retry_transient_errors(self._client.stub.DictPop, req)
         if not resp.found:
+            if default is not ...:
+                return default
             raise KeyError(f"{key} not in dict {self.object_id}")
         return deserialize(resp.value, self._client)
 
