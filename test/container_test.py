@@ -106,6 +106,11 @@ def deployed_support_function_definitions():
     return isolated_deploy("test.supports.functions", "app")
 
 
+@pytest.fixture(scope="package")
+def deployed_sibling_hydration_app():
+    return isolated_deploy("test.supports.sibling_hydration_app", "app")
+
+
 def _get_inputs(
     args: tuple[tuple, dict] = ((42,), {}),
     n: int = 1,
@@ -1169,23 +1174,12 @@ def test_webhook_streaming_async(servicer, deployed_support_function_definitions
 
 
 @skip_github_non_linux
-def test_cls_function(servicer):
-    ret = _run_container(
+def test_cls_function(servicer, deployed_sibling_hydration_app):
+    ret = _run_container_auto(
         servicer,
-        "test.supports.sibling_hydration_app",
         "NonParamCls.*",
-        is_class=True,
+        deployed_sibling_hydration_app,
         inputs=_get_inputs(method_name="f"),
-        method_definitions={
-            "f": api_pb2.MethodDefinition(
-                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            ),
-            "web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
-            "asgi_web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
-            "generator": api_pb2.MethodDefinition(
-                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            ),
-        },
     )
     assert _unwrap_scalar(ret) == 42 * 111
 
@@ -1213,65 +1207,39 @@ def test_lifecycle_enter_async(servicer, deployed_support_function_definitions):
 
 
 @skip_github_non_linux
-def test_param_cls_function(servicer):
+def test_param_cls_function(servicer, deployed_sibling_hydration_app):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.sibling_hydration_app",
         "ParamCls.*",
+        deployed_sibling_hydration_app,
         serialized_params=serialized_params,
-        is_class=True,
         inputs=_get_inputs(method_name="f"),
-        method_definitions={
-            "f": api_pb2.MethodDefinition(
-                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            ),
-        },
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
 
 
 @skip_github_non_linux
-def test_param_cls_function_strict_params(servicer):
+def test_param_cls_function_strict_params(servicer, deployed_sibling_hydration_app):
     serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"})
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.sibling_hydration_app",
         "ParamCls.*",
+        deployed_sibling_hydration_app,
         serialized_params=serialized_params,
-        is_class=True,
         inputs=_get_inputs(method_name="f"),
-        class_parameter_info=api_pb2.ClassParameterInfo(
-            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
-        ),
-        method_definitions={
-            "f": api_pb2.MethodDefinition(
-                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            ),
-        },
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
 
 
 @skip_github_non_linux
-def test_cls_web_endpoint(servicer):
+def test_cls_web_endpoint(servicer, deployed_sibling_hydration_app):
     inputs = _get_web_inputs(method_name="web")
-    ret = _run_container(
+    ret = _run_container_auto(
         servicer,
-        "test.supports.sibling_hydration_app",
         "NonParamCls.*",
+        deployed_sibling_hydration_app,
         inputs=inputs,
-        is_class=True,
-        method_definitions={
-            "web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
-            "asgi_web": api_pb2.MethodDefinition(supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]),
-            "generator": api_pb2.MethodDefinition(
-                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            ),
-            "f": api_pb2.MethodDefinition(
-                supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            ),
-        },
     )
 
     _, second_message = _unwrap_asgi(ret)
