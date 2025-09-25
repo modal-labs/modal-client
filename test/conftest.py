@@ -1817,6 +1817,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         _request: api_pb2.SandboxRestoreRequest = await stream.recv_message()
         await stream.send_message(api_pb2.SandboxRestoreResponse(sandbox_id="sb-123"))
 
+    async def TaskGetCommandRouterAccess(self, stream):
+        # In tests, we disable command router access so client falls back to server RPCs
+        # TODO(saltzm): Add client tests for exec via command router.
+        _request: api_pb2.TaskGetCommandRouterAccessRequest = await stream.recv_message()
+        raise GRPCError(Status.FAILED_PRECONDITION, "Command router access not enabled in tests")
+
     async def SandboxGetTaskId(self, stream):
         # only used for `modal shell` / `modal container exec`
         _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()

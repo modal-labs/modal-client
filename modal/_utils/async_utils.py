@@ -878,3 +878,36 @@ async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
                 logger.exception(f"Error closing async generator: {e}")
         if first_exception is not None:
             raise first_exception
+
+
+@asynccontextmanager
+async def timeout_at(deadline: Optional[float]):
+    """Cancel the current task when the absolute deadline is reached.
+
+    Python 3.9-compatible alternative to asyncio.timeout_at(). Converts CancelledError to
+    asyncio.TimeoutError when the deadline fires, so callers can catch TimeoutError.
+    """
+    if deadline is None:
+        yield
+        return
+
+    loop = asyncio.get_running_loop()
+    task = asyncio.current_task()
+    timed_out = False
+
+    def _fire():
+        nonlocal timed_out
+        timed_out = True
+        if task is not None and not task.done():
+            task.cancel()
+
+    remaining = max(0.0, deadline - time.monotonic())
+    handle = loop.call_later(remaining, _fire)
+    try:
+        yield
+    except asyncio.CancelledError as e:
+        if timed_out:
+            raise asyncio.TimeoutError from e
+        raise
+    finally:
+        handle.cancel()
