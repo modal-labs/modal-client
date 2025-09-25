@@ -128,9 +128,8 @@ class InputPreprocessor:
                 args,
                 kwargs,
                 self.client.stub,
-                max_object_size_bytes=self.function._max_object_size_bytes,
                 idx=idx,
-                method_name=self.function._use_method_name,
+                function=self.function,
             )
 
         return create_input
@@ -728,9 +727,8 @@ async def _map_invocation_inputplane(
             args,
             kwargs,
             client.stub,
-            max_object_size_bytes=function._max_object_size_bytes,
             idx=idx,
-            method_name=function._use_method_name,
+            function=function,
         )
         return api_pb2.MapStartOrContinueItem(input=put_item)
 

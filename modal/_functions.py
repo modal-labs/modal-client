@@ -150,8 +150,7 @@ class _Invocation:
             args,
             kwargs,
             stub,
-            max_object_size_bytes=function._max_object_size_bytes,
-            method_name=function._use_method_name,
+            function=function,
             function_call_invocation_type=function_call_invocation_type,
         )
 
@@ -439,8 +438,7 @@ class _InputPlaneInvocation:
             args,
             kwargs,
             control_plane_stub,
-            max_object_size_bytes=function._max_object_size_bytes,
-            method_name=function._use_method_name,
+            function=function,
         )
 
         request = api_pb2.AttemptStartRequest(
@@ -698,6 +696,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         experimental_options: Optional[dict[str, str]] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
+        restrict_output: bool = False,
     ) -> "_Function":
         """mdmd:hidden
 
@@ -834,17 +833,23 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_web_endpoint=is_web_endpoint,
                     ignore_first_argument=True,
                 )
+                if is_web_endpoint:
+                    method_input_formats = [api_pb2.DATA_FORMAT_ASGI]
+                    method_output_formats = [api_pb2.DATA_FORMAT_ASGI]
+                else:
+                    method_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+                    if restrict_output:
+                        method_output_formats = [api_pb2.DATA_FORMAT_CBOR]
+                    else:
+                        method_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+
                 method_definition = api_pb2.MethodDefinition(
                     webhook_config=partial_function.params.webhook_config,
                     function_type=function_type,
                     function_name=function_name,
                     function_schema=method_schema,
-                    supported_input_formats=[api_pb2.DATA_FORMAT_ASGI]
-                    if is_web_endpoint
-                    else [api_pb2.DATA_FORMAT_PICKLE],
-                    supported_output_formats=[api_pb2.DATA_FORMAT_ASGI]
-                    if is_web_endpoint
-                    else [api_pb2.DATA_FORMAT_PICKLE],
+                    supported_input_formats=method_input_formats,
+                    supported_output_formats=method_output_formats,
                 )
                 method_definitions[method_name] = method_definition
 
@@ -869,16 +874,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             return deps
 
         if info.is_service_class():
-            # classes don't have data formats themselves - methods do
+            # classes don't have data formats themselves - input/output formats are set per method above
             supported_input_formats = []
             supported_output_formats = []
         elif webhook_config is not None:
             supported_input_formats = [api_pb2.DATA_FORMAT_ASGI]
             supported_output_formats = [api_pb2.DATA_FORMAT_ASGI]
         else:
-            # TODO: add CBOR support
-            supported_input_formats = [api_pb2.DATA_FORMAT_PICKLE]
-            supported_output_formats = [api_pb2.DATA_FORMAT_PICKLE]
+            supported_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            if restrict_output:
+                supported_output_formats = [api_pb2.DATA_FORMAT_CBOR]
+            else:
+                supported_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub

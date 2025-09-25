@@ -38,7 +38,7 @@ from grpclib.events import RecvRequest, listen
 from modal import __version__, config
 from modal._functions import _Function
 from modal._runtime.container_io_manager import _ContainerIOManager
-from modal._serialization import deserialize, deserialize_params, serialize_data_format
+from modal._serialization import deserialize, deserialize_data_format, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
@@ -1303,9 +1303,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     def add_function_call_input(self, function_call_id, item: api_pb2.FunctionPutInputsItem, input_id, retry_count):
         if item.input.WhichOneof("args_oneof") == "args":
-            args, kwargs = deserialize(item.input.args, None)
+            args, kwargs = deserialize_data_format(item.input.args, item.input.data_format, None)
         else:
-            args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
+            args, kwargs = deserialize_data_format(self.blobs[item.input.args_blob_id], item.input.data_format, None)
         function_call_inputs = self.function_call_inputs.setdefault(function_call_id, [])
         function_call_inputs.append(((item.idx, input_id, retry_count), (args, kwargs)))
         self.function_call_inputs_update_event.set()
