@@ -286,10 +286,6 @@ class _Queue(_Object, type_prefix="qu"):
 
     _metadata: Optional[api_pb2.QueueMetadata] = None
 
-    def __init__(self):
-        """mdmd:hidden"""
-        raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
-
     @classproperty
     def objects(cls) -> _QueueManager:
         return _QueueManager
