@@ -475,3 +475,21 @@ def test_tags(servicer, client, mode):
 
     request = ctx.pop_request("AppPublish")
     assert request.tags == tags
+
+
+@pytest.mark.parametrize("inherit_tags", [True, False])
+def test_app_composition_tags(servicer, client, inherit_tags):
+    base_app = App(tags={"foo": "bar", "baz": "bum"})
+    base_app.function()(square)
+
+    main_app = App(tags={"baz": "qux"})
+    main_app.include(base_app, inherit_tags=inherit_tags)
+
+    with servicer.intercept() as ctx:
+        main_app.deploy(name="inherit-test", client=client)
+
+    request = ctx.pop_request("AppPublish")
+    if inherit_tags:
+        assert request.tags == {"foo": "bar", "baz": "qux"}
+    else:
+        assert request.tags == {"baz": "qux"}

@@ -1048,7 +1048,7 @@ class _App:
 
         return wrapper
 
-    def include(self, /, other_app: "_App") -> typing_extensions.Self:
+    def include(self, /, other_app: "_App", inherit_tags: bool = True) -> typing_extensions.Self:
         """Include another App's objects in this one.
 
         Useful for splitting up Modal Apps across different self-contained files.
@@ -1071,6 +1071,10 @@ class _App:
             # use function declared on the included app
             bar.remote()
         ```
+
+        When `inherit_tags=True` any tags set on the other App will be inherited by this App
+        (with this App's tags taking precedence in the case of conflicts).
+
         """
         for tag, function in other_app._functions.items():
             self._add_function(function, False)  # TODO(erikbern): webhook config?
@@ -1084,6 +1088,10 @@ class _App:
                 )
 
             self._add_class(tag, cls)
+
+        if inherit_tags:
+            self._tags = {**other_app._tags, **self._tags}
+
         return self
 
     async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
