@@ -73,6 +73,32 @@ def protoc(ctx):
             + f" --modal-grpclib-python_out=. -I . {client_proto_files}"
         )
 
+    _patch_options_pb2()
+
+
+def _patch_options_pb2():
+    # TODO: Remove when our minimum support protobuf is 4.X
+    options_pb = Path("modal_proto/options_pb2.py")
+    options_pb_patch = Path("protoc_plugin/options_pb2.py.patch").read_text()
+
+    options_pb_content = options_pb.read_text()
+    if options_pb_patch in options_pb_content:
+        return
+
+    print(f"Patching {options_pb}")
+    lines = options_pb_content.splitlines(keepends=True)
+    descriptor_idx = 0
+    for i, line in enumerate(lines):
+        if line.startswith("DESCRIPTOR"):
+            descriptor_idx = i
+            break
+    else:  # no break
+        raise RuntimeError(f"Could not find line starting with 'DESCRIPTOR' in {options_pb}")
+
+    # Replace all content after the DESCRIPTOR with our patch that is compatible with 3.X and 4.X
+    new_content = "".join(lines[: descriptor_idx + 1] + [options_pb_patch])
+    options_pb.write_text(new_content)
+
 
 @task(
     help={
