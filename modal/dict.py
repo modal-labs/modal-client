@@ -30,6 +30,14 @@ from .config import logger
 from .exception import AlreadyExistsError, InvalidError, NotFoundError, RequestSizeError
 
 
+class _NoDefaultSentinel:
+    def __repr__(self) -> str:
+        return "..."
+
+
+_NO_DEFAULT = _NoDefaultSentinel()
+
+
 def _serialize_dict(data):
     return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
 
@@ -543,11 +551,16 @@ class _Dict(_Object, type_prefix="di"):
         return await self.put(key, value)
 
     @live_method
-    async def pop(self, key: Any) -> Any:
-        """Remove a key from the Dict, returning the value if it exists."""
+    async def pop(self, key: Any, default: Any = _NO_DEFAULT) -> Any:
+        """Remove a key from the Dict, returning the value if it exists.
+
+        If key is not found, return default if provided, otherwise raise KeyError.
+        """
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
         resp = await retry_transient_errors(self._client.stub.DictPop, req)
         if not resp.found:
+            if default is not _NO_DEFAULT:
+                return default
             raise KeyError(f"{key} not in dict {self.object_id}")
         return deserialize(resp.value, self._client)
 

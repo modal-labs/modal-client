@@ -982,6 +982,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.dicts[request.dict_id][update.key] = update.value
         await stream.send_message(api_pb2.DictUpdateResponse(created=True))
 
+    async def DictPop(self, stream):
+        request: api_pb2.DictPopRequest = await stream.recv_message()
+        d = self.dicts[request.dict_id]
+        if request.key in d:
+            value = d.pop(request.key)
+            await stream.send_message(api_pb2.DictPopResponse(found=True, value=value))
+        else:
+            await stream.send_message(api_pb2.DictPopResponse(found=False))
+
+    async def DictContains(self, stream):
+        request: api_pb2.DictContainsRequest = await stream.recv_message()
+        d = self.dicts[request.dict_id]
+        found = request.key in d
+        await stream.send_message(api_pb2.DictContainsResponse(found=found))
+
     async def DictContents(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
         for k, v in self.dicts[request.dict_id].items():
