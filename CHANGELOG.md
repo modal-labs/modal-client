@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev45 (2025-09-25)
+
+* [Internal] Adds support for calling into deployed functions using a new cbor based serialization format used by beta versions of libmodal-ts and libmodal-go
+
+
 #### 1.1.5.dev44 (2025-09-25)
 
 - `Dict.pop()` now accepts an optional `default` parameter, matching Python's `dict.pop()` behavior.
