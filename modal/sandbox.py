@@ -30,6 +30,7 @@ from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from ._utils.name_utils import is_valid_object_name
+from ._utils.sandbox_utils import SandboxCommandRouterAccess
 from .client import _Client
 from .container_process import _ContainerProcess
 from .exception import AlreadyExistsError, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
@@ -121,9 +122,10 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stdout: _StreamReader[str]
     _stderr: _StreamReader[str]
     _stdin: _StreamWriter
-    _task_id: Optional[str] = None
-    _tunnels: Optional[dict[int, Tunnel]] = None
-    _enable_snapshot: bool = False
+    _task_id: Optional[str]
+    _tunnels: Optional[dict[int, Tunnel]]
+    _enable_snapshot: bool
+    _command_router_access: Optional[SandboxCommandRouterAccess]
 
     @staticmethod
     def _default_pty_info() -> api_pb2.PTYInfo:
@@ -521,6 +523,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
         self._result = None
+        self._task_id = None
+        self._tunnels = None
+        self._enable_snapshot = False
+        self._command_router_access = None
 
     @staticmethod
     async def from_name(
@@ -729,6 +735,38 @@ class _Sandbox(_Object, type_prefix="sb"):
                 await asyncio.sleep(0.5)
         return self._task_id
 
+    async def _get_command_router_access(self) -> Optional[SandboxCommandRouterAccess]:
+        """
+        Fetch a URL and JWT for direct access to a sandbox router server running
+        on the modal-worker.  This is used to issue exec commands (and other
+        operations as they become available) directly to the worker.
+
+        Returns a `SandboxCommandRouterAccess` object if the sandbox has command
+        router access (conditionally enabled by the server for gradual rollout),
+        otherwise returns `None`.
+        """
+        # TODO(saltzm): We'll need to bypass this if we need to retry when token expires.
+        if self._command_router_access is not None:
+            return self._command_router_access
+
+        try:
+            # This will retry until the sandbox has been scheduled or an error
+            # is thrown indicating that command router access is not enabled for this
+            # sandbox.
+            resp = await retry_transient_errors(
+                self._client.stub.SandboxGetCommandRouterAccess,
+                api_pb2.SandboxGetCommandRouterAccessRequest(sandbox_id=self.object_id),
+            )
+        except GRPCError as exc:
+            if exc.status == Status.FAILED_PRECONDITION:
+                # Command router access is not enabled for this sandbox.
+                return None
+            else:
+                raise exc
+
+        self._command_router_access = SandboxCommandRouterAccess(resp.url, resp.jwt)
+        return self._command_router_access
+
     @overload
     async def exec(
         self,
@@ -854,6 +892,52 @@ class _Sandbox(_Object, type_prefix="sb"):
         await TaskContext.gather(*secret_coros)
 
         task_id = await self._get_task_id()
+        # NB: This must come after the task ID is set, since the sandbox must be
+        # scheduled before we can get command router access.
+        command_router_access = await self._get_command_router_access()
+
+        if command_router_access is not None:
+            return await self._exec_through_command_router(
+                *args,
+                task_id=task_id,
+                command_router_access=command_router_access,
+                pty_info=pty_info,
+                stdout=stdout,
+                stderr=stderr,
+                timeout=timeout,
+                workdir=workdir,
+                secrets=secrets,
+                text=text,
+                bufsize=bufsize,
+            )
+        else:
+            return await self._exec_through_server(
+                *args,
+                task_id=task_id,
+                pty_info=pty_info,
+                stdout=stdout,
+                stderr=stderr,
+                timeout=timeout,
+                workdir=workdir,
+                secrets=secrets,
+                text=text,
+                bufsize=bufsize,
+            )
+
+    async def _exec_through_server(
+        self,
+        *args: str,
+        task_id: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Optional[Collection[_Secret]] = None,
+        text: bool = True,
+        bufsize: Literal[-1, 1] = -1,
+    ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
+        """Execute a command through the Modal server."""
         req = api_pb2.ContainerExecRequest(
             task_id=task_id,
             command=args,
@@ -876,6 +960,23 @@ class _Sandbox(_Object, type_prefix="sb"):
             exec_deadline=exec_deadline,
             by_line=by_line,
         )
+
+    async def _exec_through_command_router(
+        self,
+        *args: str,
+        task_id: str,
+        command_router_access: SandboxCommandRouterAccess,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Optional[Collection[_Secret]] = None,
+        text: bool = True,
+        bufsize: Literal[-1, 1] = -1,
+    ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
+        """Execute a command through a sandbox command router running on the Modal worker."""
+        raise NotImplementedError("Exec through command router is not implemented yet.")
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
         await self._get_task_id()
