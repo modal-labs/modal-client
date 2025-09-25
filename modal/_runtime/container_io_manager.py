@@ -292,7 +292,7 @@ class IOContext:
     def _determine_output_format(self, input_format: "api_pb2.DataFormat.ValueType") -> "api_pb2.DataFormat.ValueType":
         if input_format in self.finalized_function.supported_output_formats:
             return input_format
-        else:
+        elif self.finalized_function.supported_output_formats:
             # This branch would normally be hit when calling a restricted_output function with Pickle input
             # but we enforce cbor output at function definition level. In the future we might send the intended
             # output format along with the input to make this disitinction in the calling client instead
@@ -301,6 +301,11 @@ class IOContext:
                 f" using formats {self.finalized_function.supported_output_formats}"
             )
             return self.finalized_function.supported_output_formats[0]
+        else:
+            # This should never happen since self.finalized_function.supported_output_formats should be
+            # populated with defaults in case it's empty, log a warning
+            logger.warning(f"Got an input with format {input_format}, but the function has no defined output formats")
+            return api_pb2.DATA_FORMAT_PICKLE
 
     async def output_items_exception(
         self, started_at: float, task_id: str, exc: BaseException
