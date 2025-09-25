@@ -384,3 +384,28 @@ async def update_autoscaler(
 
     request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=f.object_id, settings=settings)
     await retry_transient_errors(client.stub.FunctionUpdateSchedulingParams, request)
+
+
+@synchronizer.create_blocking
+async def image_delete(
+    image_id: str,
+    *,
+    client: Optional[_Client] = None,
+) -> None:
+    """Delete an Image by its ID.
+
+    Deletion is irreversible and will prevent Apps from using the Image.
+
+    This is an experimental interface for a feature that we will be adding to
+    the main Image class. The stable form of this interface may look different.
+
+    Note: When building an Image, each chained method call will create an
+    intermediate Image layer, each with its own ID. Deleting an Image will not
+    delete any of its intermediate layers, only the image identified by the
+    provided ID.
+    """
+    if client is None:
+        client = await _Client.from_env()
+
+    req = api_pb2.ImageDeleteRequest(image_id=image_id)
+    await retry_transient_errors(client.stub.ImageDelete, req)
