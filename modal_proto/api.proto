@@ -2707,6 +2707,11 @@ message Sandbox {
 
   // Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
   optional uint32 idle_timeout_secs = 33;
+
+  // If set, the sandbox will be created with direct sandbox commands enabled.
+  // Exec commands for the sandbox will be issued directly to the sandbox
+  // command router running on the Modal worker.
+  bool direct_sandbox_commands_enabled = 34;
 }
 
 message SandboxCreateConnectTokenRequest {
