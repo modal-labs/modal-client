@@ -506,7 +506,7 @@ async def _deploy_app(
     else:
         check_object_name(name, "App")
 
-    if tag and not is_valid_tag(tag):
+    if tag and not is_valid_tag(tag, max_length=50):
         raise InvalidError(
             f"Deployment tag {tag!r} is invalid."
             "\n\nTags may only contain alphanumeric characters, dashes, periods, and underscores, "

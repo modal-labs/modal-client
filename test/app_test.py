@@ -477,6 +477,14 @@ def test_tags(servicer, client, mode):
     assert request.tags == tags
 
 
+@pytest.mark.parametrize("s", ["a:b", "x/y", "a b", "a" * 65])
+def test_invalid_tags(s):
+    with pytest.raises(InvalidError, match=f"Invalid tag key: {s!r}"):
+        App(tags={s: "bar"})
+    with pytest.raises(InvalidError, match=f"Invalid tag value: {s!r}"):
+        App(tags={"foo": s})
+
+
 @pytest.mark.parametrize("inherit_tags", [True, False])
 def test_app_composition_tags(servicer, client, inherit_tags):
     base_app = App(tags={"foo": "bar", "baz": "bum"})

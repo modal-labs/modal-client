@@ -35,7 +35,7 @@ from ._utils.deprecation import (
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
-from ._utils.name_utils import check_object_name
+from ._utils.name_utils import check_object_name, check_tag_dict
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
@@ -193,7 +193,7 @@ class _App:
 
         self._name = name
         self._description = name
-        self._tags = tags or {}
+        self._tags = check_tag_dict(tags or {})
         self._include_source_default = include_source
 
         check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of `modal.Secret` objects")
