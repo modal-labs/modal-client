@@ -2709,7 +2709,7 @@ message Sandbox {
   // authenticate the client when directly connecting to a sandbox server running on
   // the modal-worker to issue exec commands (and other operations as they
   // become available).
-  optional bytes client_to_sandbox_direct_auth_secret = 34;
+  optional bytes sandbox_command_router_auth_secret = 34;
 }
 
 message SandboxCreateConnectTokenRequest {
@@ -2735,11 +2735,11 @@ message SandboxCreateResponse {
 // Used to get a JWT and URL for direct access to a sandbox router server
 // running on the modal-worker, so the client can issue exec commands (and other
 // operations as they become available) directly to the worker.
-message SandboxGetDirectAccessRequest {
+message SandboxGetCommandRouterAccessInfoRequest {
   string sandbox_id = 1;
 }
 
-message SandboxGetDirectAccessResponse {
+message SandboxGetCommandRouterAccessInfoResponse {
   string jwt = 1;
   string url = 2;
 }
