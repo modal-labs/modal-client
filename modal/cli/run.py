@@ -516,30 +516,31 @@ def serve(
 
 
 def shell(
-    container_or_function: Optional[str] = typer.Argument(
+    ref: Optional[str] = typer.Argument(
         default=None,
         help=(
-            "ID of running container, or path to a Python file containing a Modal App."
-            " Can also include a function specifier, like `module.py::func`, if the file defines multiple functions."
+            "ID of running container or Sandbox, or path to a Python file containing an App."
+            " Can also include a Function specifier, like `module.py::func`, if the file defines multiple Functions."
         ),
-        metavar="REF",
     ),
-    cmd: str = typer.Option("/bin/bash", "-c", "--cmd", help="Command to run inside the Modal image."),
+    cmd: str = typer.Option("/bin/bash", "-c", "--cmd", help="Command to run."),
     env: str = ENV_OPTION,
     image: Optional[str] = typer.Option(
-        default=None, help="Container image tag for inside the shell (if not using REF)."
+        default=None,
+        help="Container image for inside the shell (if not using REF)."
+        " Can be a Modal Image ID starting with 'im-...' or a registry image tag.",
     ),
-    add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using REF)."),
+    add_python: Optional[str] = typer.Option(default=None, help="Add Python to the Image (if not using REF)."),
     volume: Optional[list[str]] = typer.Option(
         default=None,
         help=(
-            "Name of a `modal.Volume` to mount inside the shell at `/mnt/{name}` (if not using REF)."
+            "Name of a Volume to mount inside the shell at `/mnt/{name}` (if not using REF)."
             " Can be used multiple times."
         ),
     ),
     secret: Optional[list[str]] = typer.Option(
         default=None,
-        help=("Name of a `modal.Secret` to mount inside the shell (if not using REF). Can be used multiple times."),
+        help=("Name of a Secret to mount inside the shell (if not using REF). Can be used multiple times."),
     ),
     cpu: Optional[int] = typer.Option(default=None, help="Number of CPUs to allocate to the shell (if not using REF)."),
     memory: Optional[int] = typer.Option(
@@ -602,6 +603,12 @@ def shell(
     ```
     modal shell hello_world.py -c 'uv pip list' > env.txt
     ```
+
+    Connect to a running Sandbox by ID:
+
+    ```
+    modal shell sb-abc123xyz
+    ```
     """
     env = ensure_env(env)
 
@@ -613,19 +620,31 @@ def shell(
 
     app = App("modal shell")
 
-    if container_or_function is not None:
+    if ref is not None:
+        # `modal shell` with a sandbox ID gets the task_id, that's then handled by the `ta-*` flow below.
+        if ref.startswith("sb-") and len(ref[3:]) > 0 and ref[3:].isalnum():
+            from ..sandbox import Sandbox
+
+            try:
+                sandbox = Sandbox.from_id(ref)
+                task_id = sandbox._get_task_id()
+                ref = task_id
+            except Exception as e:
+                from ..exception import NotFoundError
+
+                if isinstance(e, NotFoundError):
+                    raise ClickException(f"Sandbox '{ref}' not found")
+                else:
+                    raise ClickException(f"Error connecting to sandbox '{ref}': {str(e)}")
+
         # `modal shell` with a container ID is a special case, alias for `modal container exec`.
-        if (
-            container_or_function.startswith("ta-")
-            and len(container_or_function[3:]) > 0
-            and container_or_function[3:].isalnum()
-        ):
+        if ref.startswith("ta-") and len(ref[3:]) > 0 and ref[3:].isalnum():
             from .container import exec
 
-            exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
+            exec(container_id=ref, command=shlex.split(cmd), pty=pty)
             return
 
-        import_ref = parse_import_ref(container_or_function, use_module_mode=use_module_mode)
+        import_ref = parse_import_ref(ref, use_module_mode=use_module_mode)
         runnable, all_usable_commands = import_and_filter(
             import_ref, base_cmd="modal shell", accept_local_entrypoint=False, accept_webhook=True
         )
@@ -669,7 +688,13 @@ def shell(
             proxy=function_spec.proxy,
         )
     else:
-        modal_image = Image.from_registry(image, add_python=add_python) if image else None
+        if image is None:
+            modal_image = None
+        elif image.startswith("im-") and len(image[3:]) > 0 and image[3:].isalnum():
+            modal_image = Image.from_id(image)
+        else:
+            modal_image = Image.from_registry(image, add_python=add_python)
+
         volumes = {} if volume is None else {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
         secrets = [] if secret is None else [Secret.from_name(s) for s in secret]
         start_shell = partial(
