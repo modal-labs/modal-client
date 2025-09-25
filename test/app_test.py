@@ -459,3 +459,19 @@ def test_overriding_function_warning(caplog):
 def test_lookup_invalid_name(name):
     with pytest.raises(InvalidError, match="Invalid App name"):
         App.lookup(name)
+
+
+@pytest.mark.parametrize("mode", ["run", "deploy"])
+def test_tags(servicer, client, mode):
+    tags = {"foo": "bar", "baz": "qux"}
+    app = App(name="tag-tester", tags=tags)
+    app.function()(square)
+    with servicer.intercept() as ctx:
+        if mode == "deploy":
+            app.deploy(client=client, tag="some-other-tag")
+        elif mode == "run":
+            with app.run(client=client):
+                pass
+
+    request = ctx.pop_request("AppPublish")
+    assert request.tags == tags

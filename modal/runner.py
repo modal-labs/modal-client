@@ -183,8 +183,9 @@ async def _publish_app(
     app_state: int,  # api_pb2.AppState.value
     functions: dict[str, _Function],
     classes: dict[str, _Cls],
-    name: str = "",  # Only relevant for deployments
-    tag: str = "",  # Only relevant for deployments
+    name: str = "",
+    tags: dict[str, str] = {},  # Additional App metadata
+    deployment_tag: str = "",  # Only relevant for deployments
     commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
 ) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
@@ -194,12 +195,13 @@ async def _publish_app(
     request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,
         name=name,
-        deployment_tag=tag,
+        tags=tags,
+        deployment_tag=deployment_tag,
+        commit_info=commit_info,
         app_state=app_state,  # type: ignore  : should be a api_pb2.AppState.value
         function_ids=running_app.function_ids,
         class_ids=running_app.class_ids,
         definition_ids=definition_ids,
-        commit_info=commit_info,
     )
 
     try:
@@ -340,7 +342,7 @@ async def _run_app(
             await _create_all_objects(client, running_app, app._functions, app._classes, environment_name)
 
             # Publish the app
-            await _publish_app(client, running_app, app_state, app._functions, app._classes)
+            await _publish_app(client, running_app, app_state, app._functions, app._classes, tags=app._tags)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
@@ -448,7 +450,14 @@ async def _serve_update(
         )
 
         # Publish the updated app
-        await _publish_app(client, running_app, api_pb2.APP_STATE_UNSPECIFIED, app._functions, app._classes)
+        await _publish_app(
+            client,
+            running_app,
+            app_state=api_pb2.APP_STATE_UNSPECIFIED,
+            functions=app._functions,
+            classes=app._classes,
+            tags=app._tags,
+        )
 
         # Communicate to the parent process
         is_ready.set()
@@ -540,12 +549,13 @@ async def _deploy_app(
             app_url, warnings = await _publish_app(
                 client,
                 running_app,
-                api_pb2.APP_STATE_DEPLOYED,
-                app._functions,
-                app._classes,
-                name,
-                tag,
-                commit_info,
+                app_state=api_pb2.APP_STATE_DEPLOYED,
+                functions=app._functions,
+                classes=app._classes,
+                name=name,
+                tags=app._tags,
+                deployment_tag=tag,
+                commit_info=commit_info,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.

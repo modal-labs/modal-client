@@ -151,6 +151,8 @@ class _App:
 
     _name: Optional[str]
     _description: Optional[str]
+    _tags: dict[str, str]
+
     _functions: dict[str, _Function]
     _classes: dict[str, _Cls]
 
@@ -171,6 +173,7 @@ class _App:
         self,
         name: Optional[str] = None,
         *,
+        tags: Optional[dict[str, str]] = None,  # Additional metadata to set on the App
         image: Optional[_Image] = None,  # Default Image for the App (otherwise default to `modal.Image.debian_slim()`)
         secrets: Sequence[_Secret] = [],  # Secrets to add for all Functions in the App
         volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # Volume mounts to use for all Functions
@@ -190,6 +193,7 @@ class _App:
 
         self._name = name
         self._description = name
+        self._tags = tags or {}
         self._include_source_default = include_source
 
         check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of `modal.Secret` objects")
@@ -371,8 +375,8 @@ class _App:
         *,
         name: Optional[str] = None,  # Name for the deployment, overriding any set on the App
         environment_name: Optional[str] = None,  # Environment to deploy the App in
-        tag: str = "",  # Optional metadata that will be visible in the deployment history
-        client: Optional[_Client] = None,  # Alternate client to use for RPCs
+        tag: str = "",  # Optional metadata that is specific to this deployment
+        client: Optional[_Client] = None,  # Alternate client to use for communication with the server
     ) -> typing_extensions.Self:
         """Deploy the App so that it is available persistently.
 
