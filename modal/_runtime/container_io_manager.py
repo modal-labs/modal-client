@@ -1145,7 +1145,8 @@ class _ContainerIOManager:
 
     @classmethod
     def stop_fetching_inputs(cls):
-        assert cls._singleton
+        if not cls._singleton:
+            raise RuntimeError("Must be called from within a Modal container.")
         cls._singleton._fetching_inputs = False
 
 
