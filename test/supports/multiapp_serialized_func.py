@@ -4,8 +4,8 @@ import modal
 app = modal.App()
 
 
-def foo(i):
-    return 1
+def foo(x):
+    return x
 
 
 foo_handle = app.function(serialized=True)(foo)
