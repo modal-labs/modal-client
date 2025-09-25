@@ -2704,12 +2704,6 @@ message Sandbox {
 
   // Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
   optional uint32 idle_timeout_secs = 33;
-
-  // Set only by the server. Must not be transmitted to the client. Used to
-  // authenticate the client when directly connecting to a sandbox server running on
-  // the modal-worker to issue exec commands (and other operations as they
-  // become available).
-  optional bytes sandbox_command_router_auth_secret = 34;
 }
 
 message SandboxCreateConnectTokenRequest {
@@ -2735,11 +2729,11 @@ message SandboxCreateResponse {
 // Used to get a JWT and URL for direct access to a sandbox router server
 // running on the modal-worker, so the client can issue exec commands (and other
 // operations as they become available) directly to the worker.
-message SandboxGetCommandRouterAccessInfoRequest {
+message SandboxGetCommandRouterAccessRequest {
   string sandbox_id = 1;
 }
 
-message SandboxGetCommandRouterAccessInfoResponse {
+message SandboxGetCommandRouterAccessResponse {
   string jwt = 1;
   string url = 2;
 }
@@ -3694,7 +3688,7 @@ service ModalClient {
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
-  rpc SandboxGetCommandRouterAccessInfo(SandboxGetCommandRouterAccessInfoRequest) returns (SandboxGetCommandRouterAccessInfoResponse);
+  rpc SandboxGetCommandRouterAccess(SandboxGetCommandRouterAccessRequest) returns (SandboxGetCommandRouterAccessResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
