@@ -124,7 +124,7 @@ async def list_(
         )
         rows.append(row)
 
-    if version or json:
+    if version:
         display_table(["Name", "Created at", "Created by", "Version"], rows, json)
     else:
         rows_without_version = [(row[0], row[1], row[2]) for row in rows]
