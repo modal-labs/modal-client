@@ -200,7 +200,8 @@ class CudaCheckpointSession:
                 [CUDA_CHECKPOINT_PATH, "--get-state", "--pid", str(pid)],
                 capture_output=True,
                 text=True,
-                timeout=CUDA_CHECKPOINT_TIMEOUT,
+                # This should be quick since no checkpoint has taken place yet
+                timeout=5,
             )
 
             # If the command succeeds (return code 0), this PID has a CUDA session
