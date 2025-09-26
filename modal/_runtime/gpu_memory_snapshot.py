@@ -21,7 +21,7 @@ CUDA_CHECKPOINT_PATH: str = config.get("cuda_checkpoint_path")
 # Maximum total duration for an entire toggle operation.
 CUDA_CHECKPOINT_TOGGLE_TIMEOUT: float = 5 * 60.0
 
-# Maximum total duration for each individiaul `cuda-checkpoint` invocation.
+# Maximum total duration for each individual `cuda-checkpoint` invocation.
 CUDA_CHECKPOINT_TIMEOUT: float = 90
 
 
