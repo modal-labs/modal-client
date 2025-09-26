@@ -117,14 +117,14 @@ async def list_(
     for obj in volumes:
         info = await obj.info()
         row = (
-            info.name, 
-            timestamp_to_localized_str(info.created_at.timestamp(), json), 
-            info.created_by, 
+            info.name,
+            timestamp_to_localized_str(info.created_at.timestamp(), json),
+            info.created_by,
             info.version
         )
         rows.append(row)
 
-    if version:
+    if version or json:
         display_table(["Name", "Created at", "Created by", "Version"], rows, json)
     else:
         rows_without_version = [(row[0], row[1], row[2]) for row in rows]
