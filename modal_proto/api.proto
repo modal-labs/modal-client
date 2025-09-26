@@ -1329,6 +1329,7 @@ message FlashProxyUpstreamRequest {
 }
 
 message FlashSetTargetSlotsMetricsRequest {
+  // TODO(claudia): add other metrics to use in autoscaling decisions
   string function_id = 1;
   uint32 target_slots = 2;
 }
