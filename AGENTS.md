@@ -1,8 +1,3 @@
----
-description: Rules for working with LLMs on the Modal client codebase
-globs:
-alwaysApply: true
----
 # Rules for working with LLMs on the Modal client codebase
 
 This file provides guidance to LLMs when working with code in this repository.

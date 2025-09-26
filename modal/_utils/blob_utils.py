@@ -85,7 +85,7 @@ async def _upload_to_s3_url(
         ) as resp:
             # S3 signal to slow down request rate.
             if resp.status == 503:
-                logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+                logger.debug("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
                 await asyncio.sleep(1)
 
             if resp.status != 200:
@@ -283,7 +283,7 @@ async def blob_upload_with_r2_failure_info(payload: bytes, stub: ModalClientModa
     logger.debug(f"Uploading large blob of size {size_mib:.2f} MiB")
     t0 = time.time()
     if isinstance(payload, str):
-        logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
+        logger.debug("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
     upload_hashes = get_upload_hashes(payload)
     blob_id, r2_failed, r2_throughput_bytes_s = await _blob_upload(upload_hashes, payload, stub)
@@ -298,6 +298,10 @@ async def blob_upload_with_r2_failure_info(payload: bytes, stub: ModalClientModa
 async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
     blob_id, _, _ = await blob_upload_with_r2_failure_info(payload, stub)
     return blob_id
+
+
+async def format_blob_data(data: bytes, api_stub: ModalClientModal) -> dict[str, Any]:
+    return {"data_blob_id": await blob_upload(data, api_stub)} if len(data) > MAX_OBJECT_SIZE_BYTES else {"data": data}
 
 
 async def blob_upload_file(
@@ -317,7 +321,7 @@ async def _download_from_url(download_url: str) -> bytes:
     async with ClientSessionRegistry.get_session().get(download_url) as s3_resp:
         # S3 signal to slow down request rate.
         if s3_resp.status == 503:
-            logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+            logger.debug("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
             await asyncio.sleep(1)
 
         if s3_resp.status != 200:
@@ -349,7 +353,7 @@ async def blob_iter(blob_id: str, stub: ModalClientModal) -> AsyncIterator[bytes
     async with ClientSessionRegistry.get_session().get(download_url) as s3_resp:
         # S3 signal to slow down request rate.
         if s3_resp.status == 503:
-            logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
+            logger.debug("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
             await asyncio.sleep(1)
 
         if s3_resp.status != 200:

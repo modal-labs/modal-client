@@ -407,7 +407,10 @@ def test_sandbox_list_app(client, servicer):
 @skip_non_subprocess
 def test_sandbox_list_tags(app, client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
-    sb.set_tags({"foo": "bar", "baz": "qux"}, client=client)
+    assert sb.get_tags() == {}
+    sb.set_tags({"foo": "bar", "baz": "qux"})
+    assert sb.get_tags() == {"foo": "bar", "baz": "qux"}
+
     assert len(list(Sandbox.list(tags={"foo": "bar"}, client=client))) == 1
     assert not list(Sandbox.list(tags={"foo": "notbar"}, client=client))
     sb.terminate()
@@ -628,3 +631,28 @@ def test_sandbox_volume(app, servicer, read_only):
         )
         req = ctx.pop_request("SandboxCreate")
         assert req.definition.volume_mounts[0].read_only == read_only
+
+
+@skip_non_subprocess
+def test_sandbox_create_pty(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox.create("echo", "hi", pty=True, app=app)
+        req = ctx.pop_request("SandboxCreate")
+
+        assert req.definition.pty_info is not None
+        assert req.definition.pty_info.enabled is True
+        assert req.definition.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL
+        assert req.definition.pty_info.no_terminate_on_idle_stdin is True
+
+
+@skip_non_subprocess
+def test_sandbox_exec_pty(app, servicer):
+    with servicer.intercept() as ctx:
+        sb = Sandbox.create("sleep", "infinity", app=app)
+        sb.exec("echo", "hello", pty=True)
+        req = ctx.pop_request("ContainerExec")
+
+        assert req.pty_info is not None
+        assert req.pty_info.enabled is True
+        assert req.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL
+        assert req.pty_info.no_terminate_on_idle_stdin is True

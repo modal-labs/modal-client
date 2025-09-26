@@ -6,6 +6,86 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev50 (2025-09-26)
+
+- Fixed bug where large outputs in debug shells would sometimes freeze until key-press.
+
+
+#### 1.1.5.dev49 (2025-09-26)
+
+- Arbitrary key-value metadata can now be attached to Apps by setting `modal.App(tags={...})`. The tags can be useful for tracking information that may be relevant to your organization, such as the team that owns the App. We'll support the inclusion of tags in some forthcoming APIs related to cost insights.
+
+
+#### 1.1.5.dev45 (2025-09-25)
+
+* [Internal] Adds support for calling into deployed functions using a new cbor based serialization format used by beta versions of libmodal-ts and libmodal-go
+
+
+#### 1.1.5.dev44 (2025-09-25)
+
+- `Dict.pop()` now accepts an optional `default` parameter, matching Python's `dict.pop()` behavior.
+
+
+#### 1.1.5.dev40 (2025-09-24)
+
+- Hide the CLI spinner in interactive mode, so `modal run --interactive` now works better with breakpoints in local entrypoint functions.
+
+
+#### 1.1.5.dev34 (2025-09-19)
+
+- `Cls.with_options` supports `CloudBucketMount` in `volumes`.
+
+```python
+cloud_bucket = modal.CloudBucketMount("my-bucket", secret=aws_secret)
+MyAppCloud = modal.Cls.from_name("my-app", "MyApp").with_options(
+  volumes={"/mnt": cloud_bucket}
+)
+```
+
+
+#### 1.1.5.dev32 (2025-09-19)
+
+- Deprecated the `client` parameter to `Sandbox.set_tags()`, and the `environment_name` parameter to `Sandbox.from_name()`.
+
+
+#### 1.1.5.dev30 (2025-09-19)
+
+- Added a `.get_tags()` method to Sandbox, enabling fetching tags that were previously set using `.set_tags()`.
+
+
+#### 1.1.5.dev26 (2025-09-17)
+
+- Adds `image.build` to eagerly build an image:
+ 
+```python
+image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
+app = modal.App("build-image")
+with modal.enable_output(), app.run():
+    image.build(app)
+
+# Save the image id
+my_image_id = image.object_id
+
+# Reference the image by id
+built_image = Image.from_id(my_image_id)
+```
+
+
+#### 1.1.5.dev21 (2025-09-16)
+
+- Added `env` parameters to several methods, as a more discoverable convenience method for passing non-secret environment variables to containers.
+
+
+#### 1.1.5.dev20 (2025-09-15)
+
+- Added an option to enable a PTY for Sandboxes via `Sandbox.create(..., pty=True)` and `Sandbox.exec(..., pty=True)`. Also deprecated the old `pty_info` parameters.
+
+
+#### 1.1.5.dev16 (2025-09-10)
+
+- Adds a `create_connect_token()` method for Sandboxes which may be used to generate credentials for making HTTP / Websocket requests to a server running in a Sandbox.
+
+
 ### 1.1.4 (2025-09-03)
 
 - Added a `startup_timeout` parameter to the `@app.function()` and `@app.cls()` decorators. When used, this configures the timeout applied to each container's startup period separately from the input `timeout`. For backwards compatibility, `timeout` still applies to the startup phase when `startup_timeout` is unset.

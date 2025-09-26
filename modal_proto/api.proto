@@ -111,6 +111,7 @@ enum DataFormat {
   DATA_FORMAT_PICKLE = 1; // Cloudpickle
   DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
   DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
+  DATA_FORMAT_CBOR = 4;
 }
 
 enum DeploymentNamespace {
@@ -444,6 +445,7 @@ message AppPublishRequest {
   uint32 rollback_version = 8;  // Unused by client, but used internally
   string client_version = 9;  // Unused by client, but used internally
   CommitInfo commit_info = 10;  // Git information for deployment tracking
+  map<string, string> tags = 11;  // Additional metadata to attach to the App
 }
 
 message AppPublishResponse {
@@ -628,11 +630,26 @@ message AuthTokenGetResponse {
   string token = 1;
 }
 
+// Message representing the current (coalesced) state of the autoscaler configuration
+// As well as the different sources that were used to create it.
+message AutoscalerConfiguration {
+  // The settings that are currently in effect.
+  AutoscalerSettings settings = 1;
+  // For tracking the source of the overridden value; keys correspond to fields in `settings`.
+  map<string, UserActionInfo> override_events = 2;
+  // The default settings that are used when no static settings are provided and no overrides are in effect.
+  AutoscalerSettings default_settings = 3;
+  // The static settings that were used to initialize the configuration.
+  AutoscalerSettings static_settings = 4;
+  // The merge of all overrides that were used to create the current configuration.
+  AutoscalerSettings override_settings = 5;
+}
+
 message AutoscalerSettings {
   // A collection of user-configurable settings for Function autoscaling
   // These are used for static configuration and for dynamic autoscaler updates
 
-  // Minimum containers when scale-to-zero is not deisired; pka "keep_warm" or "warm_pool_size"
+  // Minimum containers when scale-to-zero is not desired; pka "keep_warm" or "warm_pool_size"
   optional uint32 min_containers = 1;
   // Limit on the number of containers that can be running for each Function; pka "concurrency_limit"
   optional uint32 max_containers = 2;
@@ -1497,6 +1514,8 @@ message Function {
   bool enable_gpu_snapshot = 85; // GPU memory snapshotting (alpha)
 
   uint32 startup_timeout_secs = 86;
+  repeated DataFormat supported_input_formats = 87; // can be used as inputs
+  repeated DataFormat supported_output_formats = 88;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1672,6 +1691,8 @@ message FunctionData {
   string flash_service_label = 35;
 
   uint32 startup_timeout_secs = 36;
+  repeated DataFormat supported_input_formats = 37;
+  repeated DataFormat supported_output_formats = 38;
 }
 
 message FunctionExtended {
@@ -1821,6 +1842,8 @@ message FunctionHandleMetadata {
   // Use optional to ensure unset values default to None instead of 0
   optional uint64 max_object_size_bytes = 48;
   repeated string _experimental_flash_urls = 49; // (Optional) urls for flash services
+  repeated DataFormat supported_input_formats = 50;
+  repeated DataFormat supported_output_formats = 51;
 }
 
 message FunctionInput {
@@ -1872,6 +1895,8 @@ message FunctionOptions {
   optional uint64 batch_linger_ms = 16;
   optional SchedulerPlacement scheduler_placement = 17;
   optional string cloud_provider_str = 18;
+  bool replace_cloud_bucket_mounts = 19;
+  repeated CloudBucketMount cloud_bucket_mounts = 20;
 }
 
 message FunctionPrecreateRequest {
@@ -1885,6 +1910,8 @@ message FunctionPrecreateRequest {
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 8;
   FunctionSchema function_schema = 9;
+  repeated DataFormat supported_input_formats = 10;
+  repeated DataFormat supported_output_formats = 11;
 }
 
 message FunctionPrecreateResponse {
@@ -2049,6 +2076,9 @@ message Image {
 
   // Build arguments for the image (--build-arg) for ARG substitution in Dockerfile.
   map<string, string> build_args = 22;
+
+  // Volume mount for RUN commands
+  repeated VolumeMount volume_mounts = 23;
 }
 
 message ImageContextFile {
@@ -2164,7 +2194,10 @@ message ListPagination {
 }
 
 message MapAwaitRequest {
-  string function_call_id = 1;
+  oneof call_info {
+    string function_call_id = 1;
+    string map_token = 5;
+  }
   string last_entry_id = 2;
   double requested_at = 3; // Used for waypoints.
   float timeout = 4;
@@ -2193,11 +2226,18 @@ message MapStartOrContinueItem {
 message MapStartOrContinueRequest {
   string function_id = 1;
   string parent_input_id = 2;
-  optional string function_call_id = 3; // This is given iff this is a map continue request.
+  // Clients will send call_info on map continue requests.
+  oneof call_info {
+    string function_call_id = 3;
+    string map_token = 5;
+  }
   repeated MapStartOrContinueItem items = 4;
 }
 
 message MapStartOrContinueResponse {
+  // function_id and function_call_id are not necessary if map_token is provided.
+  // All 3 will be sent until it is safe to only send map_token.
+  string map_token = 6;
   string function_id = 1;
   string function_call_id = 2;
   uint32 max_inputs_outstanding = 3;
@@ -2213,6 +2253,8 @@ message MethodDefinition {
   WebUrlInfo web_url_info = 5;
   repeated CustomDomainInfo custom_domain_info = 6;
   FunctionSchema function_schema = 7;
+  repeated DataFormat supported_input_formats = 8;
+  repeated DataFormat supported_output_formats = 9;
 }
 
 message MountFile {
@@ -2373,6 +2415,7 @@ message PTYInfo {
     PTY_TYPE_SHELL = 2;  // Replace function with shell
   }
   PTYType pty_type = 7;
+  bool no_terminate_on_idle_stdin = 8;
 }
 
 message PortSpec {
@@ -2673,14 +2716,19 @@ message Sandbox {
 
   // Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
   optional uint32 idle_timeout_secs = 33;
+
+  // If set, the sandbox will be created with direct sandbox commands enabled.
+  // Exec commands for the sandbox will be issued directly to the sandbox
+  // command router running on the Modal worker.
+  bool direct_sandbox_commands_enabled = 34;
 }
 
-message SandboxCreateConnectCredentialsRequest {
+message SandboxCreateConnectTokenRequest {
   string sandbox_id = 1;
-  string metadata = 2;
+  string user_metadata = 2;
 }
 
-message SandboxCreateConnectCredentialsResponse {
+message SandboxCreateConnectTokenResponse {
   string url = 1;
   string token = 2;
 }
@@ -2693,6 +2741,18 @@ message SandboxCreateRequest {
 
 message SandboxCreateResponse {
   string sandbox_id = 1;
+}
+
+// Used to get a JWT and URL for direct access to a sandbox router server
+// running on the modal-worker, so the client can issue exec commands (and other
+// operations as they become available) directly to the worker.
+message SandboxGetCommandRouterAccessRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetCommandRouterAccessResponse {
+  string jwt = 1;
+  string url = 2;
 }
 
 message SandboxGetFromNameRequest {
@@ -2850,6 +2910,14 @@ message SandboxStdinWriteResponse {
 message SandboxTag {
   string tag_name = 1;
   string tag_value = 2;
+}
+
+message SandboxTagsGetRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxTagsGetResponse {
+  repeated SandboxTag tags = 1;
 }
 
 message SandboxTagsSetRequest {
@@ -3212,6 +3280,12 @@ message TunnelStopResponse {
 
 message UploadUrlList {
   repeated string items = 1;
+}
+
+// Used for capturing context about an action performed by a user
+message UserActionInfo {
+  string user_id = 1;
+  double timestamp = 2;
 }
 
 message VolumeCommitRequest {
@@ -3631,7 +3705,8 @@ service ModalClient {
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
-  rpc SandboxCreateConnectCredentials(SandboxCreateConnectCredentialsRequest) returns (SandboxCreateConnectCredentialsResponse);
+  rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
+  rpc SandboxGetCommandRouterAccess(SandboxGetCommandRouterAccessRequest) returns (SandboxGetCommandRouterAccessResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
@@ -3646,6 +3721,7 @@ service ModalClient {
   rpc SandboxSnapshotGet(SandboxSnapshotGetRequest) returns (SandboxSnapshotGetResponse);
   rpc SandboxSnapshotWait(SandboxSnapshotWaitRequest) returns (SandboxSnapshotWaitResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
+  rpc SandboxTagsGet(SandboxTagsGetRequest) returns (SandboxTagsGetResponse);
   rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);

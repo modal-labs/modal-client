@@ -27,6 +27,7 @@ from modal.partial_function import (
     PartialFunction,
     asgi_app,
     fastapi_endpoint,
+    web_server,
 )
 from modal.runner import deploy_app
 from modal.running_app import RunningApp
@@ -56,7 +57,7 @@ class NoParamsCls:
         return x**2
 
 
-@app.cls(cpu=42)
+@app.cls(cpu=42, _experimental_restrict_output=True)
 class Foo:
     @method()
     def bar(self, x: int) -> float:
@@ -65,6 +66,10 @@ class Foo:
     @method()
     def baz(self, y: int) -> float:
         return y**4
+
+    @web_server(8080)
+    def web(self):
+        pass
 
 
 def test_run_class(client, servicer):
@@ -89,6 +94,7 @@ def test_run_class(client, servicer):
     assert objects["Foo"] == class_id
     assert class_function_id.startswith("fu-")
     assert servicer.app_functions[class_function_id].is_class
+
     assert servicer.app_functions[class_function_id].method_definitions == {
         "bar": api_pb2.MethodDefinition(
             function_name="Foo.bar",
@@ -107,6 +113,8 @@ def test_run_class(client, servicer):
                     base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
                 ),
             ),
+            supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+            supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],
         ),
         "baz": api_pb2.MethodDefinition(
             function_name="Foo.baz",
@@ -125,6 +133,21 @@ def test_run_class(client, servicer):
                     base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
                 ),
             ),
+            supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+            supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],
+        ),
+        "web": api_pb2.MethodDefinition(
+            function_name="Foo.web",
+            function_type=api_pb2.Function.FunctionType.FUNCTION_TYPE_FUNCTION,
+            webhook_config=api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+                web_server_port=8080,
+                web_server_startup_timeout=5,
+            ),
+            supported_input_formats=[api_pb2.DATA_FORMAT_ASGI],
+            supported_output_formats=[api_pb2.DATA_FORMAT_ASGI],
+            web_url="http://web.internal",
         ),
     }
 
@@ -155,11 +178,15 @@ def test_call_class_sync(client, servicer, set_env_client):
 def test_class_with_options(client, servicer):
     unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
     unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
+    unhydrated_aws_secret = modal.Secret.from_dict(
+        {"AWS_ACCESS_KEY_ID": "my-key", "AWS_SECRET_ACCESS_KEY": "my-secret"}
+    )
+    cloud_bucket_mount = modal.CloudBucketMount(bucket_name="s3-bucket-name", secret=unhydrated_aws_secret)
     with servicer.intercept() as ctx:
         foo = Foo.with_options(  # type: ignore
             cpu=48,
             retries=5,
-            volumes={"/vol": unhydrated_volume},
+            volumes={"/vol": unhydrated_volume, "/cloud_mnt": cloud_bucket_mount},
             secrets=[unhydrated_secret],
             region="us-east-1",
             cloud="aws",
@@ -175,9 +202,15 @@ def test_class_with_options(client, servicer):
             assert function_bind_params.function_options.resources.milli_cpu == 48000
             assert function_bind_params.function_options.scheduler_placement.regions == ["us-east-1"]
             assert function_bind_params.function_options.cloud_provider_str == "aws"
+            assert function_bind_params.function_options.replace_cloud_bucket_mounts
+            assert function_bind_params.function_options.replace_secret_ids
+            cloud_bucket_mounts = function_bind_params.function_options.cloud_bucket_mounts
+            assert len(cloud_bucket_mounts) == 1
+            assert cloud_bucket_mounts[0].mount_path == "/cloud_mnt"
+            assert cloud_bucket_mounts[0].bucket_name == "s3-bucket-name"
 
             assert len(ctx.get_requests("VolumeGetOrCreate")) == 1
-            assert len(ctx.get_requests("SecretGetOrCreate")) == 1
+            assert len(ctx.get_requests("SecretGetOrCreate")) == 2
 
         with servicer.intercept() as ctx:
             res = foo.bar.remote(2)

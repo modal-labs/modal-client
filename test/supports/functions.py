@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import threading
 import time
+from typing import Sequence
 
 import modal
 from modal import (
@@ -23,6 +24,7 @@ from modal import (
 )
 from modal._utils.deprecation import deprecation_warning
 from modal.experimental import get_local_input_concurrency, set_local_input_concurrency
+from modal.queue import Queue
 
 SLEEP_DELAY = 0.1
 
@@ -32,6 +34,31 @@ app = App()
 @app.function()
 def square(x: int):
     return x * x
+
+
+@app.function(_experimental_restrict_output=True)
+def square_restrict_output(x: int):
+    return x * x
+
+
+@app.function(_experimental_restrict_output=True)
+def cbor_incompatible_output(x: int):
+    with Queue.ephemeral() as q:
+        return q
+
+
+@app.cls()
+class SimpleCls:
+    @method()
+    def square(self, x: int) -> int:
+        return x**2
+
+
+@app.cls(_experimental_restrict_output=True)
+class SimpleCbor:
+    @method()
+    def square(self, x: int) -> int:
+        return x**2
 
 
 @app.function()
@@ -494,6 +521,20 @@ def batch_function_sync(x: tuple[int], y: tuple[int]):
     for x_i, y_i in zip(x, y):
         outputs.append(x_i / y_i)
     return outputs
+
+
+@app.function()
+@batched(max_batch_size=4, wait_ms=500)
+def batch_function_cbor_tester(c_list: list[Sequence[str]]) -> Sequence[Sequence[str]]:
+    # batch processing so we process all entries before returning:
+    res = []
+    for input_entry in c_list:
+        if input_entry[0] == "error":
+            raise Exception("custom error!")
+        input_type = type(input_entry).__name__  # if input was cbor this becomes "list", if pickle then "tuple"
+        res.append((input_type,))  # returns a tuple per input (gets transformed to list for cbor)
+
+    return res
 
 
 @app.function()
