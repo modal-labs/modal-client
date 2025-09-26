@@ -18,6 +18,10 @@ from modal.config import config, logger
 
 CUDA_CHECKPOINT_PATH: str = config.get("cuda_checkpoint_path")
 
+# Maximum total duration for an entire toggle operation.
+CUDA_CHECKPOINT_TOGGLE_TIMEOUT: float = 5 * 60.0
+
+# Maximum total duration for each individiaul `cuda-checkpoint` invocation.
 CUDA_CHECKPOINT_TIMEOUT: float = 90
 
 
@@ -46,9 +50,7 @@ class CudaCheckpointProcess:
     pid: int
     state: CudaCheckpointState
 
-    def toggle(
-        self, target_state: CudaCheckpointState, timeout_secs: float = 5 * 60.0, skip_first_refresh: bool = False
-    ) -> None:
+    def toggle(self, target_state: CudaCheckpointState, skip_first_refresh: bool = False) -> None:
         """Toggle CUDA checkpoint state for current process, moving GPU memory to the
         CPU and back depending on the current process state when called.
         """
@@ -60,7 +62,7 @@ class CudaCheckpointProcess:
 
         is_first_attempt = True
         while self._should_continue_toggle(
-            target_state, start_time, timeout_secs, refresh=not (skip_first_refresh and is_first_attempt)
+            target_state, start_time, refresh=not (skip_first_refresh and is_first_attempt)
         ):
             is_first_attempt = False
             try:
@@ -82,7 +84,7 @@ class CudaCheckpointProcess:
         logger.debug(f"PID: {self.pid} Target state {target_state.value} reached")
 
     def _should_continue_toggle(
-        self, target_state: CudaCheckpointState, start_time: float, timeout_secs: float, refresh: bool = True
+        self, target_state: CudaCheckpointState, start_time: float, refresh: bool = True
     ) -> bool:
         """Check if toggle operation should continue based on current state and timeout."""
         if refresh:
@@ -95,7 +97,7 @@ class CudaCheckpointProcess:
             raise CudaCheckpointException(f"PID: {self.pid} CUDA process state is {self.state}")
 
         elapsed = time.monotonic() - start_time
-        if elapsed >= timeout_secs:
+        if elapsed >= CUDA_CHECKPOINT_TOGGLE_TIMEOUT:
             raise CudaCheckpointException(
                 f"PID: {self.pid} Timeout after {elapsed:.2f}s waiting for state {target_state.value}. "
                 f"Current state: {self.state}"
