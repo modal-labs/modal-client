@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev49 (2025-09-26)
+
+- Arbitrary key-value metadata can now be attached to Apps by setting `modal.App(tags={...})`. The tags can be useful for tracking information that may be relevant to your organization, such as the team that owns the App. We'll support the inclusion of tags in some forthcoming APIs related to cost insights.
+
+
 #### 1.1.5.dev45 (2025-09-25)
 
 * [Internal] Adds support for calling into deployed functions using a new cbor based serialization format used by beta versions of libmodal-ts and libmodal-go
