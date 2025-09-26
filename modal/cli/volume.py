@@ -106,15 +106,29 @@ async def get(
     rich_help_panel="Management",
 )
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(
+    env: Optional[str] = ENV_OPTION,
+    json: Optional[bool] = False,
+    version: bool = Option(False, "--version", help="Show volume filesystem version.")
+):
     env = ensure_env(env)
     volumes = await _Volume.objects.list(environment_name=env)
     rows = []
     for obj in volumes:
         info = await obj.info()
-        rows.append((info.name, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by))
+        row = (
+            info.name, 
+            timestamp_to_localized_str(info.created_at.timestamp(), json), 
+            info.created_by, 
+            info.version
+        )
+        rows.append(row)
 
-    display_table(["Name", "Created at", "Created by"], rows, json)
+    if version:
+        display_table(["Name", "Created at", "Created by", "Version"], rows, json)
+    else:
+        rows_without_version = [(row[0], row[1], row[2]) for row in rows]
+        display_table(["Name", "Created at", "Created by"], rows_without_version, json)
 
 
 @volume_cli.command(
