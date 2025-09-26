@@ -3517,6 +3517,14 @@ message WebhookConfig {
   bool requires_proxy_auth = 10;
 }
 
+message WorkerType {
+  string cloud = 1;
+  string region = 2;
+  string zone = 3;
+  bool spot = 4;
+  string instance_type = 5;
+}
+
 message WorkspaceNameLookupResponse {
   string workspace_name = 1 [deprecated=true];
   string username = 2;
