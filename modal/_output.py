@@ -35,7 +35,7 @@ from modal._utils.time_utils import timestamp_to_localized_str
 from modal_proto import api_pb2
 
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
-from ._utils.shell_utils import stream_from_stdin
+from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .config import logger
 
@@ -507,17 +507,32 @@ async def put_pty_content(log: api_pb2.TaskLogs, stdout):
         # because the progress spinner can't interfere with output.
 
         data = log.data.encode("utf-8")
-        written = 0
-        n_retries = 0
-        while written < len(data):
-            try:
-                written += stdout.buffer.write(data[written:])
-                stdout.flush()
-            except BlockingIOError:
-                if n_retries >= 5:
-                    raise
-                n_retries += 1
-                await asyncio.sleep(0.1)
+        # Non-blocking terminals can fill the kernel buffer on output bursts, making flush() raise
+        # BlockingIOError (EAGAIN) and appear frozen until a key is pressed (this happened e.g. when
+        # printing large data from a pdb breakpoint). If stdout has a real fd, we await a
+        # non-blocking fd write (write_to_fd) instead.
+        fd = None
+        try:
+            if hasattr(stdout, "fileno"):
+                fd = stdout.fileno()
+        except Exception:
+            fd = None
+
+        if fd is not None:
+            await write_to_fd(fd, data)
+        else:
+            # For streams without fileno(), use the normal write/flush path.
+            written = 0
+            n_retries = 0
+            while written < len(data):
+                try:
+                    written += stdout.buffer.write(data[written:])
+                    stdout.flush()
+                except BlockingIOError:
+                    if n_retries >= 5:
+                        raise
+                    n_retries += 1
+                    await asyncio.sleep(0.1)
     else:
         # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
         # io.StringIO).
