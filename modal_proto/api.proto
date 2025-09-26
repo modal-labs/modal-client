@@ -1333,9 +1333,7 @@ message FlashSetTargetContainersRequest {
   int32 target_containers = 2;
 }
 
-message FlashSetTargetContainersResponse {
-  bool success = 1;
-}
+message FlashSetTargetContainersResponse {}
 
 message Function {
   string module_name = 1;
