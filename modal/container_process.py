@@ -8,6 +8,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.sandbox_utils import SandboxRouterClient
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .config import logger
@@ -18,7 +19,7 @@ from .stream_type import StreamType
 T = TypeVar("T", str, bytes)
 
 
-class _ContainerProcess(Generic[T]):
+class _ContainerProcessThroughServer(Generic[T]):
     _process_id: Optional[str] = None
     _stdout: _StreamReader[T]
     _stderr: _StreamReader[T]
@@ -191,6 +192,166 @@ class _ContainerProcess(Generic[T]):
                 stdout_task.cancel()
                 stderr_task.cancel()
                 raise InteractiveTimeoutError("Failed to establish connection to container. Please try again.")
+
+
+class _ContainerProcessThroughCommandRouter(Generic[T]):
+    """
+    Container process implementation  that works via direct communication with
+    the Modal worker where the container is running.
+    """
+
+    def __init__(
+        self,
+        process_id: str,
+        client: _Client,
+        *,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        exec_deadline: Optional[float] = None,
+        text: bool = True,
+        by_line: bool = False,
+        router_client: SandboxRouterClient,
+        task_id: Optional[str] = None,
+    ) -> None:
+        self._client = client
+        self._router_client = router_client
+        self._process_id = process_id
+        self._exec_deadline = exec_deadline
+        self._text = text
+        self._by_line = by_line
+        self._task_id = task_id or ""
+        self._stdout = _StreamReader[T](
+            api_pb2.FILE_DESCRIPTOR_STDOUT,
+            process_id,
+            "container_process",
+            self._client,
+            stream_type=stdout,
+            text=text,
+            by_line=by_line,
+            deadline=exec_deadline,
+            router_client=self._router_client,
+            task_id=self._task_id,
+        )
+        self._stderr = _StreamReader[T](
+            api_pb2.FILE_DESCRIPTOR_STDERR,
+            process_id,
+            "container_process",
+            self._client,
+            stream_type=stderr,
+            text=text,
+            by_line=by_line,
+            deadline=exec_deadline,
+            router_client=self._router_client,
+            task_id=self._task_id,
+        )
+        self._stdin = _StreamWriter(
+            process_id,
+            "container_process",
+            self._client,
+            router_client=self._router_client,
+            task_id=self._task_id,
+        )
+
+    @property
+    def stdout(self) -> _StreamReader[T]:
+        return self._stdout
+
+    @property
+    def stderr(self) -> _StreamReader[T]:
+        return self._stderr
+
+    @property
+    def stdin(self) -> _StreamWriter:
+        return self._stdin
+
+    @property
+    def returncode(self) -> int:
+        pass
+
+    async def poll(self) -> Optional[int]:
+        pass
+
+    async def wait(self) -> int:
+        return await self._router_client.exec_wait(self._task_id, self._process_id)
+
+    async def attach(self):
+        pass
+
+
+class _ContainerProcess(Generic[T]):
+    """Represents a running process in a container."""
+
+    def __init__(
+        self,
+        process_id: str,
+        client: _Client,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        exec_deadline: Optional[float] = None,
+        text: bool = True,
+        by_line: bool = False,
+        router_client: Optional[SandboxRouterClient] = None,
+        task_id: Optional[str] = None,
+    ) -> None:
+        if router_client is None:
+            self._impl = _ContainerProcessThroughServer(
+                process_id,
+                client,
+                stdout=stdout,
+                stderr=stderr,
+                exec_deadline=exec_deadline,
+                text=text,
+                by_line=by_line,
+            )
+        else:
+            self._impl = _ContainerProcessThroughCommandRouter(
+                process_id,
+                client,
+                stdout=stdout,
+                stderr=stderr,
+                exec_deadline=exec_deadline,
+                text=text,
+                by_line=by_line,
+                router_client=router_client,
+                task_id=task_id,
+            )
+
+    def __repr__(self) -> str:
+        return self._impl.__repr__()
+
+    @property
+    def stdout(self) -> _StreamReader[T]:
+        """StreamReader for the container process's stdout stream."""
+        return self._impl.stdout
+
+    @property
+    def stderr(self) -> _StreamReader[T]:
+        """StreamReader for the container process's stderr stream."""
+        return self._impl.stderr
+
+    @property
+    def stdin(self) -> _StreamWriter:
+        """StreamWriter for the container process's stdin stream."""
+        return self._impl.stdin
+
+    @property
+    def returncode(self) -> int:
+        return self._impl.returncode
+
+    async def poll(self) -> Optional[int]:
+        """Check if the container process has finished running.
+
+        Returns `None` if the process is still running, else returns the exit code.
+        """
+        return await self._impl.poll()
+
+    async def wait(self) -> int:
+        """Wait for the container process to finish running. Returns the exit code."""
+        return await self._impl.wait()
+
+    async def attach(self):
+        """mdmd:hidden"""
+        await self._impl.attach()
 
 
 ContainerProcess = synchronize_api(_ContainerProcess)
