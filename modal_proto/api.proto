@@ -1328,12 +1328,12 @@ message FlashProxyUpstreamRequest {
   double timestamp = 2; 
 }
 
-message FlashSetTargetContainersRequest {
+message FlashSetTargetSlotsMetricsRequest {
   string function_id = 1;
-  uint32 target_containers = 2;
+  uint32 target_slots = 2;
 }
 
-message FlashSetTargetContainersResponse {}
+message FlashSetTargetSlotsMetricsResponse {}
 
 message Function {
   string module_name = 1;
@@ -3562,7 +3562,7 @@ service ModalClient {
   rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
   rpc FlashContainerList(FlashContainerListRequest) returns (FlashContainerListResponse);
   rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
-  rpc FlashSetTargetContainers(FlashSetTargetContainersRequest) returns (FlashSetTargetContainersResponse);
+  rpc FlashSetTargetSlotsMetrics(FlashSetTargetSlotsMetricsRequest) returns (FlashSetTargetSlotsMetricsResponse);
 
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
