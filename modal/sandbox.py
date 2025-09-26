@@ -669,7 +669,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def create_connect_token(
         self, user_metadata: Optional[Union[str, dict[str, Any]]] = None
     ) -> SandboxConnectCredentials:
-        """[Alpha] Create a token for making HTTP connections to the sandbox.
+        """mdmd:hidden
+        [Alpha] Create a token for making HTTP connections to the sandbox.
 
         Also accepts an optional user_metadata string or dict to associate with the token. This metadata
         will be added to the headers by the proxy when forwarding requests to the sandbox."""
