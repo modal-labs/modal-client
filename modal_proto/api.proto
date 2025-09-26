@@ -2606,6 +2606,7 @@ message RuntimeInputMessage {
   bytes message = 1;
   uint64 message_index = 2;
   bool eof = 3;
+  string writer_id = 4;
 }
 
 message RuntimeOutputBatch {
@@ -2876,6 +2877,7 @@ message SandboxStdinWriteRequest {
   bytes input = 2;
   uint32 index = 3;
   bool eof = 4;
+  string writer_id = 5;
 }
 
 message SandboxStdinWriteResponse {

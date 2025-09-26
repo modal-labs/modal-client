@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import time
+import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import (
     TYPE_CHECKING,
@@ -370,6 +371,7 @@ class _StreamWriter:
         self._client = client
         self._is_closed = False
         self._buffer = bytearray()
+        self.writer_id = str(uuid.uuid4())
 
     def _get_next_index(self) -> int:
         index = self._index
@@ -449,7 +451,11 @@ class _StreamWriter:
                 await retry_transient_errors(
                     self._client.stub.SandboxStdinWrite,
                     api_pb2.SandboxStdinWriteRequest(
-                        sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
+                        sandbox_id=self._object_id,
+                        index=index,
+                        eof=self._is_closed,
+                        input=data,
+                        writer_id=self.writer_id,
                     ),
                 )
             else:
