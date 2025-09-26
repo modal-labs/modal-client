@@ -60,17 +60,16 @@ class CudaCheckpointProcess:
         retry_count = 0
         max_retries = 3
 
-        is_first_attempt = True
-        while self._should_continue_toggle(
-            target_state, start_time, refresh=not (skip_first_refresh and is_first_attempt)
-        ):
-            is_first_attempt = False
+        attempts = 0
+        while self._should_continue_toggle(target_state, start_time):
+            if not (skip_first_refresh and attempts == 0):
+                self.refresh_state()
+            attempts += 1
             try:
                 self._execute_toggle_command()
                 # Use exponential backoff for retries
                 sleep_time = min(0.1 * (2**retry_count), 1.0)
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
+                time.sleep(sleep_time)
                 retry_count = 0
             except CudaCheckpointException as e:
                 retry_count += 1
@@ -83,13 +82,8 @@ class CudaCheckpointProcess:
 
         logger.debug(f"PID: {self.pid} Target state {target_state.value} reached")
 
-    def _should_continue_toggle(
-        self, target_state: CudaCheckpointState, start_time: float, refresh: bool = True
-    ) -> bool:
+    def _should_continue_toggle(self, target_state: CudaCheckpointState, start_time: float) -> bool:
         """Check if toggle operation should continue based on current state and timeout."""
-        if refresh:
-            self.refresh_state()
-
         if self.state == target_state:
             return False
 
