@@ -111,6 +111,7 @@ class VolumeInfo:
     name: Optional[str]
     created_at: datetime
     created_by: Optional[str]
+    version: str
 
 
 class _VolumeManager:
@@ -568,12 +569,24 @@ class _Volume(_Object, type_prefix="vo"):
         """Return information about the Volume object."""
         metadata = self._get_metadata()
         if not metadata:
-            return VolumeInfo()
+            return VolumeInfo(name=None, created_at=datetime.min, created_by=None, version="v1")
         creation_info = metadata.creation_info
+
+        version_str = "v1"  # Default for backward compatibility
+        if metadata.version == api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V2:
+            version_str = "v2"
+        elif metadata.version in [
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1,
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
+            None,
+        ]:
+            version_str = "v1"
+
         return VolumeInfo(
             name=metadata.name or None,
             created_at=timestamp_to_localized_dt(creation_info.created_at),
             created_by=creation_info.created_by or None,
+            version=version_str,
         )
 
     @live_method
