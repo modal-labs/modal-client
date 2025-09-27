@@ -113,22 +113,20 @@ async def list_(
 ):
     env = ensure_env(env)
     volumes = await _Volume.objects.list(environment_name=env)
+
+    headers = ["Name", "Created at", "Created by"]
+    if version:
+        headers.append("Version")
+
     rows = []
     for obj in volumes:
         info = await obj.info()
-        row = (
-            info.name,
-            timestamp_to_localized_str(info.created_at.timestamp(), json),
-            info.created_by,
-            info.version
-        )
-        rows.append(row)
+        row = [info.name, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by]
+        if version:
+            row.append(info.version)
+        rows.append(tuple(row))
 
-    if version:
-        display_table(["Name", "Created at", "Created by", "Version"], rows, json)
-    else:
-        rows_without_version = [(row[0], row[1], row[2]) for row in rows]
-        display_table(["Name", "Created at", "Created by"], rows_without_version, json)
+    display_table(headers, rows, json)
 
 
 @volume_cli.command(
