@@ -18,6 +18,12 @@ from modal.config import config, logger
 
 CUDA_CHECKPOINT_PATH: str = config.get("cuda_checkpoint_path")
 
+# Maximum total duration for an entire toggle operation.
+CUDA_CHECKPOINT_TOGGLE_TIMEOUT: float = 5 * 60.0
+
+# Maximum total duration for each individual `cuda-checkpoint` invocation.
+CUDA_CHECKPOINT_TIMEOUT: float = 90
+
 
 class CudaCheckpointState(Enum):
     """State representation from the CUDA API [1].
@@ -44,7 +50,7 @@ class CudaCheckpointProcess:
     pid: int
     state: CudaCheckpointState
 
-    def toggle(self, target_state: CudaCheckpointState, timeout_secs: float = 5 * 60.0) -> None:
+    def toggle(self, target_state: CudaCheckpointState, skip_first_refresh: bool = False) -> None:
         """Toggle CUDA checkpoint state for current process, moving GPU memory to the
         CPU and back depending on the current process state when called.
         """
@@ -54,7 +60,11 @@ class CudaCheckpointProcess:
         retry_count = 0
         max_retries = 3
 
-        while self._should_continue_toggle(target_state, start_time, timeout_secs):
+        attempts = 0
+        while self._should_continue_toggle(
+            target_state, start_time, refresh=not (skip_first_refresh and attempts == 0)
+        ):
+            attempts += 1
             try:
                 self._execute_toggle_command()
                 # Use exponential backoff for retries
@@ -73,10 +83,11 @@ class CudaCheckpointProcess:
         logger.debug(f"PID: {self.pid} Target state {target_state.value} reached")
 
     def _should_continue_toggle(
-        self, target_state: CudaCheckpointState, start_time: float, timeout_secs: float
+        self, target_state: CudaCheckpointState, start_time: float, refresh: bool = True
     ) -> bool:
         """Check if toggle operation should continue based on current state and timeout."""
-        self.refresh_state()
+        if refresh:
+            self.refresh_state()
 
         if self.state == target_state:
             return False
@@ -85,7 +96,7 @@ class CudaCheckpointProcess:
             raise CudaCheckpointException(f"PID: {self.pid} CUDA process state is {self.state}")
 
         elapsed = time.monotonic() - start_time
-        if elapsed >= timeout_secs:
+        if elapsed >= CUDA_CHECKPOINT_TOGGLE_TIMEOUT:
             raise CudaCheckpointException(
                 f"PID: {self.pid} Timeout after {elapsed:.2f}s waiting for state {target_state.value}. "
                 f"Current state: {self.state}"
@@ -101,7 +112,7 @@ class CudaCheckpointProcess:
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=CUDA_CHECKPOINT_TIMEOUT,
             )
             logger.debug(f"PID: {self.pid} Successfully toggled CUDA checkpoint state")
         except subprocess.CalledProcessError as e:
@@ -121,7 +132,7 @@ class CudaCheckpointProcess:
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=CUDA_CHECKPOINT_TIMEOUT,
             )
 
             state_str = result.stdout.strip().lower()
@@ -190,6 +201,7 @@ class CudaCheckpointSession:
                 [CUDA_CHECKPOINT_PATH, "--get-state", "--pid", str(pid)],
                 capture_output=True,
                 text=True,
+                # This should be quick since no checkpoint has taken place yet
                 timeout=5,
             )
 
@@ -256,20 +268,11 @@ class CudaCheckpointSession:
             logger.debug("No CUDA sessions to restore.")
             return
 
-        # Validate all states first
-        for proc in self.cuda_processes:
-            proc.refresh_state()  # Refresh state before validation
-            if proc.state != CudaCheckpointState.CHECKPOINTED:
-                raise CudaCheckpointException(
-                    f"PID {proc.pid}: CUDA session not in {CudaCheckpointState.CHECKPOINTED.value} state. "
-                    f"Current state: {proc.state.value}"
-                )
-
         # See checkpoint() for rationale about parallelism.
         start = time.perf_counter()
 
         def restore_process(proc: CudaCheckpointProcess) -> None:
-            proc.toggle(CudaCheckpointState.RUNNING)
+            proc.toggle(CudaCheckpointState.RUNNING, skip_first_refresh=True)
 
         with ThreadPoolExecutor() as executor:
             futures = [executor.submit(restore_process, proc) for proc in self.cuda_processes]
