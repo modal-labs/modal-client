@@ -35,7 +35,7 @@ from ._utils.deprecation import (
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
-from ._utils.name_utils import check_object_name
+from ._utils.name_utils import check_object_name, check_tag_dict
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
@@ -151,6 +151,8 @@ class _App:
 
     _name: Optional[str]
     _description: Optional[str]
+    _tags: dict[str, str]
+
     _functions: dict[str, _Function]
     _classes: dict[str, _Cls]
 
@@ -173,6 +175,7 @@ class _App:
         self,
         name: Optional[str] = None,
         *,
+        tags: Optional[dict[str, str]] = None,  # Additional metadata to set on the App
         image: Optional[_Image] = None,  # Default Image for the App (otherwise default to `modal.Image.debian_slim()`)
         secrets: Sequence[_Secret] = [],  # Secrets to add for all Functions in the App
         volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # Volume mounts to use for all Functions
@@ -193,6 +196,7 @@ class _App:
 
         self._name = name
         self._description = name
+        self._tags = check_tag_dict(tags or {})
         self._include_source_default = include_source
 
         check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of `modal.Secret` objects")
@@ -379,8 +383,8 @@ class _App:
         *,
         name: Optional[str] = None,  # Name for the deployment, overriding any set on the App
         environment_name: Optional[str] = None,  # Environment to deploy the App in
-        tag: str = "",  # Optional metadata that will be visible in the deployment history
-        client: Optional[_Client] = None,  # Alternate client to use for RPCs
+        tag: str = "",  # Optional metadata that is specific to this deployment
+        client: Optional[_Client] = None,  # Alternate client to use for communication with the server
     ) -> typing_extensions.Self:
         """Deploy the App so that it is available persistently.
 
@@ -675,6 +679,7 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
+        _experimental_restrict_output: bool = False,  # Don't use pickle for return values
         # Parameters below here are deprecated. Please update your code as suggested
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
@@ -843,6 +848,7 @@ class _App:
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
+                restrict_output=_experimental_restrict_output,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -903,6 +909,7 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
+        _experimental_restrict_output: bool = False,  # Don't use pickle for return values
         # Parameters below here are deprecated. Please update your code as suggested
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
@@ -1036,6 +1043,7 @@ class _App:
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
+                restrict_output=_experimental_restrict_output,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
@@ -1048,7 +1056,7 @@ class _App:
 
         return wrapper
 
-    def include(self, /, other_app: "_App") -> typing_extensions.Self:
+    def include(self, /, other_app: "_App", inherit_tags: bool = True) -> typing_extensions.Self:
         """Include another App's objects in this one.
 
         Useful for splitting up Modal Apps across different self-contained files.
@@ -1071,6 +1079,10 @@ class _App:
             # use function declared on the included app
             bar.remote()
         ```
+
+        When `inherit_tags=True` any tags set on the other App will be inherited by this App
+        (with this App's tags taking precedence in the case of conflicts).
+
         """
         for tag, function in other_app._functions.items():
             self._add_function(function, False)  # TODO(erikbern): webhook config?
@@ -1084,6 +1096,10 @@ class _App:
                 )
 
             self._add_class(tag, cls)
+
+        if inherit_tags:
+            self._tags = {**other_app._tags, **self._tags}
+
         return self
 
     async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
