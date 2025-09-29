@@ -545,7 +545,6 @@ async def get_app_logs_loop(
             print("\r", end="")  # move cursor to beginning of line
             pty_shell_finish_event.set()
             pty_shell_finish_event = None
-            await asyncio.sleep(0)  # yield to handle_exec_input() so it can disable raw terminal
 
             if pty_shell_input_task:
                 try:
