@@ -914,6 +914,7 @@ class _ContainerIOManager:
             print_exception(type(exc), exc, exc.__traceback__)
 
             serialized_tb, tb_line_cache = pickle_traceback(exc, self.task_id)
+
             data_or_blob = await format_blob_data(pickle_exception(exc), self._client.stub)
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
