@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import time
+import uuid
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
@@ -20,7 +21,7 @@ from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.mount import _Mount
 from modal.volume import _Volume
-from modal_proto import api_pb2
+from modal_proto import api_pb2, sandbox_router_pb2 as sr_pb2
 
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
@@ -977,7 +978,58 @@ class _Sandbox(_Object, type_prefix="sb"):
         bufsize: Literal[-1, 1] = -1,
     ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
         """Execute a command through a sandbox command router running on the Modal worker."""
-        raise NotImplementedError("Exec through command router is not implemented yet.")
+
+        # Generate a random process ID to use as a combination of idempotency key/process identifier.
+        process_id = str(uuid.uuid4())
+        # TODO(saltzm): Instantiate this once per sandbox?
+        router_client = SandboxRouterClient(command_router_access.url, command_router_access.jwt)
+        if stdout == StreamType.PIPE:
+            stdout_config = sr_pb2.SandboxExecStdoutConfig.SANDBOX_EXEC_STDOUT_CONFIG_PIPE
+        elif stdout == StreamType.DEVNULL:
+            stdout_config = sr_pb2.SandboxExecStdoutConfig.SANDBOX_EXEC_STDOUT_CONFIG_DEVNULL
+        elif stdout == StreamType.STDOUT:
+            # TODO(saltzm): This is a behavior change from the old implementation. Seek PR feedback.
+            raise ValueError("Invalid StreamType STDOUT for stdout")
+        else:
+            raise ValueError("Unsupported StreamType for stdout")
+
+        if stderr == StreamType.PIPE:
+            stderr_config = sr_pb2.SandboxExecStderrConfig.SANDBOX_EXEC_STDERR_CONFIG_PIPE
+        elif stderr == StreamType.DEVNULL:
+            stderr_config = sr_pb2.SandboxExecStderrConfig.SANDBOX_EXEC_STDERR_CONFIG_DEVNULL
+        elif stderr == StreamType.STDOUT:
+            stderr_config = sr_pb2.SandboxExecStderrConfig.SANDBOX_EXEC_STDERR_CONFIG_STDOUT
+        else:
+            raise ValueError("Unsupported StreamType for stderr")
+
+        # Start the process.
+        start_req = sr_pb2.SandboxExecStartRequest(
+            task_id=task_id,
+            exec_id=process_id,
+            command_args=args,
+            stdout_config=stdout_config,
+            stderr_config=stderr_config,
+            timeout_secs=timeout,
+            workdir=workdir,
+            secret_ids=[secret.object_id for secret in secrets],
+            pty_info=pty_info,
+            runtime_debug=config.get("function_runtime_debug"),
+        )
+
+        # TODO(saltzm): Handle exec_start errors/retries.
+        _ = await router_client.exec_start(start_req)
+
+        return _ContainerProcess(
+            process_id,
+            self._client,
+            router_client=router_client,
+            stdout=stdout,
+            stderr=stderr,
+            text=text,
+            by_line=bufsize == 1,
+            exec_deadline=time.monotonic() + int(timeout) if timeout else None,
+            task_id=task_id,
+        )
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
         await self._get_task_id()
