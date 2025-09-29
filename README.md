@@ -1,4 +1,4 @@
-# Modal Python Library
+# Amazing Modal Python Library
 
 [![PyPI Version](https://img.shields.io/pypi/v/modal.svg)](https://pypi.org/project/modal/)
 [![License](https://img.shields.io/badge/license-apache_2.0-darkviolet.svg)](https://github.com/modal-labs/modal-client/blob/master/LICENSE)
