@@ -550,8 +550,6 @@ async def get_app_logs_loop(
             if pty_shell_input_task:
                 try:
                     await pty_shell_input_task
-                except asyncio.CancelledError:
-                    pass
                 except Exception as exc:
                     logger.exception(f"Exception in PTY shell input task: {exc}")
                 finally:
