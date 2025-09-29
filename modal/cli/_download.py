@@ -4,6 +4,7 @@ import functools
 import os
 import shutil
 import sys
+import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path, PurePosixPath
 from typing import Callable, Optional, Union
@@ -84,14 +85,21 @@ async def _volume_download(
                         output_path.parent.mkdir(parents=True, exist_ok=True)
                         file_progress_cb = functools.partial(progress_cb, task_id=progress_task_id)
 
-                        with output_path.open("wb") as fp:
-                            if isinstance(volume, _Volume):
-                                b = await volume.read_file_into_fileobj(entry.path, fp, file_progress_cb)
-                            else:
-                                b = 0
-                                async for chunk in volume.read_file(entry.path):
-                                    b += fp.write(chunk)
-                                    file_progress_cb(advance=len(chunk))
+                        temp_fd, temp_path = tempfile.mkstemp(dir=output_path.parent, prefix=f".{output_path.name}.")
+                        try:
+                            with os.fdopen(temp_fd, "wb") as fp:
+                                if isinstance(volume, _Volume):
+                                    b = await volume.read_file_into_fileobj(entry.path, fp, file_progress_cb)
+                                else:
+                                    b = 0
+                                    async for chunk in volume.read_file(entry.path):
+                                        b += fp.write(chunk)
+                                        file_progress_cb(advance=len(chunk))
+
+                            os.rename(temp_path, output_path)
+                        except:
+                            Path(temp_path).unlink(missing_ok=True)
+                            raise
 
                         logger.debug(f"Wrote {b} bytes to {output_path}")
                         file_progress_cb(complete=True)
