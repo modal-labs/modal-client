@@ -97,12 +97,11 @@ async def _volume_download(
                                         file_progress_cb(advance=len(chunk))
 
                             os.rename(temp_path, output_path)
+                            logger.debug(f"Wrote {b} bytes to {output_path}")
+                            file_progress_cb(complete=True)
                         except:
                             Path(temp_path).unlink(missing_ok=True)
                             raise
-
-                        logger.debug(f"Wrote {b} bytes to {output_path}")
-                        file_progress_cb(complete=True)
                     elif entry.type == FileEntryType.DIRECTORY:
                         output_path.mkdir(parents=True, exist_ok=True)
             finally:
