@@ -10,6 +10,7 @@ import os
 import time
 import typing
 from collections.abc import AsyncGenerator
+from contextlib import nullcontext
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
@@ -363,11 +364,9 @@ async def _run_app(
             # Yield to context
             if output_mgr := _get_output_manager():
                 # Don't show status spinner in interactive mode to avoid interfering with breakpoints
-                if interactive:
+                spinner_ctx = nullcontext() if interactive else output_mgr.show_status_spinner()
+                with spinner_ctx:
                     yield app
-                else:
-                    with output_mgr.show_status_spinner():
-                        yield app
             else:
                 yield app
             # successful completion!
