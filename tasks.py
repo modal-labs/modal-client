@@ -456,10 +456,12 @@ def update_changelog(ctx, sha: str = ""):
         return
 
     # Parse the PR description to get a changelog update
-    comment_pattern = r"<!--.+?-->"
+    # Remove HTML comments except for end-changelog markers
+    comment_pattern = r"<!--(?!\s*end-changelog\s*).+?-->"
     pr_description = re.sub(comment_pattern, "", pr_description, flags=re.DOTALL)
 
-    changelog_pattern = r"## Changelog\s*(.+)$"
+    # Extract changelog content, optionally stopping at end marker
+    changelog_pattern = r"## Changelog\s*(.+?)(?:<!--\s*end-changelog\s*-->|$)"
     m = re.search(changelog_pattern, pr_description, flags=re.DOTALL)
     if m:
         update = m.group(1).strip()
