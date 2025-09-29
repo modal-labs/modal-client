@@ -41,3 +41,5 @@ See https://modal.com/docs/reference/changelog for examples and try to use a con
 Provide short code examples, indented under the relevant bullet point, if they would be helpful.
 Cross-linking to relevant documentation is also encouraged.
 -->
+
+<!-- end-changelog -->
