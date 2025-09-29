@@ -492,7 +492,12 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
     elif result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
         raise InternalFailure(result.exception)
     elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-        if data and data_format == api_pb2.DATA_FORMAT_PICKLE:
+        if data and data_format in (api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_UNSPECIFIED):
+            # *Unspecified data format here but data present usually means that the exception
+            # was created by the server representing an exception that occurred during container
+            # startup (crash looping) that eventually got escalated to input failures.
+            # TaskResult doesn't specify data format, so these results don't have that metadata
+            # the moment.
             try:
                 exc = deserialize(data, client)
             except DeserializationError as deser_exc:
