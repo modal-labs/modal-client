@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev56 (2025-09-29)
+
+- Added `modal.experimental.image_delete()` to allow deleting Images (e.g. Sandbox FS snapshot images).
+
+
 #### 1.1.5.dev50 (2025-09-26)
 
 - Fixed bug where large outputs in debug shells would sometimes freeze until key-press.
