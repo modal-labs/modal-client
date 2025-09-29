@@ -2014,6 +2014,8 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         """Returns a structure representing the call graph from a given root
         call ID, along with the status of execution for each node.
 
+        Not designed for high throughput, use sparingly.
+
         See [`modal.call_graph`](https://modal.com/docs/reference/modal.call_graph) reference page
         for documentation on the structure of the returned `InputInfo` items.
         """
