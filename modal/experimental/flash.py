@@ -307,6 +307,7 @@ class _FlashPrometheusAutoscaler:
                 await self.autoscaling_decisions_dict.put("current_replicas", actual_target_containers)
 
                 await self.cls.update_autoscaler(min_containers=actual_target_containers)
+                # await self.cls.uses(target_slots=actual_target_containers)
 
                 if time.time() - autoscaling_time < self.autoscaling_interval_seconds:
                     await asyncio.sleep(self.autoscaling_interval_seconds - (time.time() - autoscaling_time))
