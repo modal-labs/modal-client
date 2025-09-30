@@ -306,7 +306,6 @@ class _FlashPrometheusAutoscaler:
                 )
                 await self.autoscaling_decisions_dict.put("current_replicas", actual_target_containers)
 
-                # await self.cls.update_autoscaler(min_containers=actual_target_containers)
                 await self._set_target_slots(actual_target_containers)
 
                 if time.time() - autoscaling_time < self.autoscaling_interval_seconds:
@@ -521,6 +520,31 @@ class _FlashPrometheusAutoscaler:
         Returns:
             The target number of containers.
         """
+
+        # Look inside of autoscaling_decisions, if it has been 1 min since the last change to a different number,
+        # set it to a random number between 1 and 5.
+
+        import random
+
+        if autoscaling_decisions:
+            # Sort by timestamp to ensure order
+            autoscaling_decisions.sort(key=lambda rec: rec[0])
+            last_ts, last_val = autoscaling_decisions[-1]
+            # Find the last time the value changed
+            prev_val = last_val
+            last_change_ts = last_ts
+            for ts, val in reversed(autoscaling_decisions):
+                if val != prev_val:
+                    last_change_ts = ts
+                    prev_val = val
+            # If it has been >= 60 seconds since the last change to a different number
+            now_ts = autoscaling_decisions[-1][0]
+            if now_ts - last_change_ts < 60:
+                return last_val
+
+        random_number = random.randint(1, 5)
+        return random_number
+
         if not autoscaling_decisions:
             # Without data we can’t make a new decision – stay where we are.
             return current_replicas
