@@ -6,6 +6,22 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev57 (2025-09-30)
+
+---
+
+> [!NOTE]
+> Blobify container startup exception payloads to handle large errors, with tests verifying blob-backed serialization.
+> 
+> - **Runtime**
+>   - Blobify startup exception data in `modal/_runtime/container_io_manager.py` by using `format_blob_data(pickle_exception(...))` and passing `**data_or_blob` to `api_pb2.GenericResult`.
+> - **Tests**
+>   - Add `test_startup_failure_big_exception` validating blob-backed exception (`data==b""`, `data_blob_id` set, 5M-char message).
+>   - Add support module `test/supports/startup_failure_bigexception.py` raising a large `BigException` when not local.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit f6d66af222c8f2ea9bf96cf5cde49db44454a2b2. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
 #### 1.1.5.dev56 (2025-09-29)
 
 - Added `modal.experimental.image_delete()` to allow deleting Images (e.g. Sandbox FS snapshot images).
