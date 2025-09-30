@@ -552,14 +552,22 @@ async def get_app_logs_loop(
     pty_shell_stdout = None
     pty_shell_finish_event: asyncio.Event | None = None
     pty_shell_task_id: str | None = None
+    pty_shell_input_task: asyncio.Task | None = None
 
     async def stop_pty_shell():
-        nonlocal pty_shell_finish_event
+        nonlocal pty_shell_finish_event, pty_shell_input_task
         if pty_shell_finish_event:
             print("\r", end="")  # move cursor to beginning of line
             pty_shell_finish_event.set()
             pty_shell_finish_event = None
-            await asyncio.sleep(0)  # yield to handle_exec_input() so it can disable raw terminal
+
+            if pty_shell_input_task:
+                try:
+                    await pty_shell_input_task
+                except Exception as exc:
+                    logger.exception(f"Exception in PTY shell input task: {exc}")
+                finally:
+                    pty_shell_input_task = None
 
     async def _put_log(log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
         if log.task_state:
@@ -587,7 +595,7 @@ async def get_app_logs_loop(
 
     async def _get_logs():
         nonlocal last_log_batch_entry_id
-        nonlocal pty_shell_stdout, pty_shell_finish_event, pty_shell_task_id
+        nonlocal pty_shell_stdout, pty_shell_finish_event, pty_shell_task_id, pty_shell_input_task
 
         request = api_pb2.AppGetLogsRequest(
             app_id=app_id or "",
@@ -622,7 +630,9 @@ async def get_app_logs_loop(
                     pty_shell_finish_event = asyncio.Event()
                     pty_shell_task_id = log_batch.task_id
                     output_mgr.disable()
-                    asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
+                    pty_shell_input_task = asyncio.create_task(
+                        stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event)
+                    )
             else:
                 for log in log_batch.items:
                     await _put_log(log_batch, log)

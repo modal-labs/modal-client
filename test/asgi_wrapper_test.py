@@ -321,7 +321,7 @@ async def test_lifespan_supported():
     _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(asgi_app, mock_manager)
 
-    asyncio.create_task(lifespan_manager.background_task())
+    bt = asyncio.create_task(lifespan_manager.background_task())
     await lifespan_manager.lifespan_startup()
 
     assert lifespan_startup_complete
@@ -341,6 +341,7 @@ async def test_lifespan_supported():
     assert lifespan_shutdown_complete
 
     assert lifespan_manager._lifespan_supported
+    await bt
 
 
 @pytest.mark.asyncio
@@ -357,7 +358,7 @@ async def test_lifespan_unsupported():
     wrapped_app, lifespan_manager = asgi_app_wrapper(asgi_app, mock_manager)
 
     # Failing lifespan should not affect the app
-    asyncio.create_task(lifespan_manager.background_task())
+    bt = asyncio.create_task(lifespan_manager.background_task())
     await lifespan_manager.lifespan_startup()
 
     # works with stuff after
@@ -374,3 +375,4 @@ async def test_lifespan_unsupported():
     await lifespan_manager.lifespan_shutdown()
 
     assert not lifespan_manager._lifespan_supported
+    await bt
