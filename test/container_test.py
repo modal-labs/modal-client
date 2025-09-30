@@ -668,6 +668,20 @@ def test_startup_failure(servicer, capsys):
 
 
 @skip_github_non_linux
+def test_startup_failure_big_exception(servicer, capsys):
+    _run_container(servicer, "test.supports.startup_failure_bigexception", "f")
+
+    assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+
+    assert servicer.task_result.data == b""
+    assert servicer.task_result.data_blob_id
+    blob_data = servicer.blobs[servicer.task_result.data_blob_id]
+    exc = deserialize(blob_data, None)
+    assert len(exc.full_message) == 5_000_000
+    assert "BigException: aaaaaaaaaa" in capsys.readouterr().err
+
+
+@skip_github_non_linux
 def test_from_local_python_packages_inside_container(servicer):
     """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into

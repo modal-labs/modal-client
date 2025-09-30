@@ -6,6 +6,37 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev57 (2025-09-30)
+
+---
+
+> [!NOTE]
+> Blobify container startup exception payloads to handle large errors, with tests verifying blob-backed serialization.
+> 
+> - **Runtime**
+>   - Blobify startup exception data in `modal/_runtime/container_io_manager.py` by using `format_blob_data(pickle_exception(...))` and passing `**data_or_blob` to `api_pb2.GenericResult`.
+> - **Tests**
+>   - Add `test_startup_failure_big_exception` validating blob-backed exception (`data==b""`, `data_blob_id` set, 5M-char message).
+>   - Add support module `test/supports/startup_failure_bigexception.py` raising a large `BigException` when not local.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit f6d66af222c8f2ea9bf96cf5cde49db44454a2b2. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
+#### 1.1.5.dev56 (2025-09-29)
+
+- Added `modal.experimental.image_delete()` to allow deleting Images (e.g. Sandbox FS snapshot images).
+
+
+#### 1.1.5.dev50 (2025-09-26)
+
+- Fixed bug where large outputs in debug shells would sometimes freeze until key-press.
+
+
+#### 1.1.5.dev49 (2025-09-26)
+
+- Arbitrary key-value metadata can now be attached to Apps by setting `modal.App(tags={...})`. The tags can be useful for tracking information that may be relevant to your organization, such as the team that owns the App. We'll support the inclusion of tags in some forthcoming APIs related to cost insights.
+
+
 #### 1.1.5.dev45 (2025-09-25)
 
 * [Internal] Adds support for calling into deployed functions using a new cbor based serialization format used by beta versions of libmodal-ts and libmodal-go
