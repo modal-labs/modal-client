@@ -139,10 +139,13 @@ async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, 
     else:
         handler_assertion = contextlib.nullcontext()
 
-    asyncio.create_task(change_file_after_delay())
-    with handler_assertion:
-        async with app.run.aio(client=client):
-            ...
+    at = asyncio.create_task(change_file_after_delay())
+    try:
+        with handler_assertion:
+            async with app.run.aio(client=client):
+                ...
+    finally:
+        await at
 
 
 def test_deploy_app_namespace_deprecated(servicer, client):
