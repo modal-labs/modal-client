@@ -15,6 +15,7 @@ authors = [
 ]
 dependencies = [
     "aiohttp",
+    "cbor2",
     "certifi",
     "click~=8.1",
     "grpclib>=0.4.7,<0.4.9",
@@ -98,7 +99,13 @@ exclude = [
 ]
 line-length = 120
 lint.ignore = ['E741']
-lint.select = ['E', 'F', 'W', 'I']
+lint.select = [
+    'E',
+    'F',
+    'W',
+    'I',
+    'RUF006', # asyncio-dangling-task
+]
 
 [tool.ruff.lint.per-file-ignores]
 "*_test.py" = ['E712']
@@ -116,3 +123,4 @@ extra-standard-library = ["pytest"]
 
 [tool.pyright]
 reportUnnecessaryComparison = true
+venvPath = ".venv/"

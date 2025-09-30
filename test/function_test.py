@@ -1699,6 +1699,9 @@ def test_function_supported_input_formats(client, servicer):
     @modal.fastapi_endpoint()
     def web_f(): ...
 
+    @app.function(serialized=True, _experimental_restrict_output=True)
+    def cbor_f(a): ...
+
     @app.cls(serialized=True)
     class A:
         @modal.method()
@@ -1709,18 +1712,27 @@ def test_function_supported_input_formats(client, servicer):
 
     deploy_app(app, client=client)
     f_metadata = f._get_metadata()
-    assert set(f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE}
-    assert f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    assert set(f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+    assert set(f_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     g_metadata = g._get_metadata()
-    assert set(g_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE}
-    assert g_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    assert set(g_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+    assert set(g_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     web_f_metadata = web_f._get_metadata()
     assert set(web_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_ASGI}
     assert web_f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
+    cbor_f_metadata = cbor_f._get_metadata()
+    assert set(cbor_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+    assert set(cbor_f_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_CBOR}
 
     cls_metadata = typing.cast(modal.Cls, A)._get_class_service_function()._get_metadata()
-    assert cls_metadata.method_handle_metadata["f"].supported_input_formats == [api_pb2.DATA_FORMAT_PICKLE]
-    assert cls_metadata.method_handle_metadata["f"].supported_output_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    assert set(cls_metadata.method_handle_metadata["f"].supported_input_formats) == {
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+    }
+    assert set(cls_metadata.method_handle_metadata["f"].supported_output_formats) == {
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+    }
     assert cls_metadata.method_handle_metadata["web_f"].supported_input_formats == [api_pb2.DATA_FORMAT_ASGI]
     assert cls_metadata.method_handle_metadata["web_f"].supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
 
@@ -1738,6 +1750,171 @@ def test_function_schema_excludes_web_endpoints(client, servicer):
     deploy_app(app, client=client)
     schema = webbie._get_schema()
     assert schema.schema_type == api_pb2.FunctionSchema.FUNCTION_SCHEMA_UNSPECIFIED
+
+
+@pytest.mark.usefixtures("set_env_client")
+def test_cbor_output_complex_data_types(client, servicer):
+    """Test that a received cbor payload is decoded as such, even if the submitted input is pickle"""
+    app = App("app")
+
+    @app.function(serialized=True)
+    def complex_cbor_function(data: list) -> dict:
+        return {"processed": True, "data": data}
+
+    deploy_app(app, client=client)
+
+    # Test with complex nested data structures
+    complex_result = {
+        "processed": True,
+        "data": [1, 2.5, "string", {"nested": True, "values": [None, False, True]}],
+        "metadata": {
+            "timestamp": 1234567890,
+            "tags": ("test", "cbor", "serialization"),
+            "config": {"enabled": True, "count": 42},
+        },
+    }
+    expected_decoded_output = {
+        "processed": True,
+        "data": [1, 2.5, "string", {"nested": True, "values": [None, False, True]}],
+        "metadata": {
+            "timestamp": 1234567890,
+            "tags": ["test", "cbor", "serialization"],  # same but tuple converted to list since cbor doesnt distinguish
+            "config": {"enabled": True, "count": 42},
+        },
+    }
+
+    with servicer.intercept() as ctx:
+        from modal._serialization import serialize_data_format
+
+        # Create CBOR-encoded complex data
+        cbor_encoded_data = serialize_data_format(complex_result, api_pb2.DATA_FORMAT_CBOR)
+
+        # Inject FunctionGetOutputs response with complex CBOR data
+        ctx.add_response(
+            "FunctionGetOutputs",
+            api_pb2.FunctionGetOutputsResponse(
+                outputs=[
+                    api_pb2.FunctionGetOutputsItem(
+                        input_id="complex-test-id",
+                        idx=0,
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, data=cbor_encoded_data
+                        ),
+                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        retry_count=0,
+                    )
+                ]
+            ),
+        )
+
+        # Call the function remotely
+        result = complex_cbor_function.remote(["doesnt_matter"])
+
+        # Verify that the input was submitted as pickle format (default)
+        function_map_requests = ctx.get_requests("FunctionMap")
+        assert len(function_map_requests) == 1
+        function_map_request = function_map_requests[0]
+        assert function_map_request.pipelined_inputs[0].input.data_format == api_pb2.DATA_FORMAT_PICKLE
+
+        # Verify complex data structure is properly decoded
+        assert result == expected_decoded_output
+
+
+@pytest.mark.usefixtures("set_env_client")
+def test_cbor_output_failed_result_handling(client, servicer):
+    """Test that CBOR output format is handled correctly even when the result failed"""
+    app = App("app")
+
+    @app.function(serialized=True)
+    def failing_cbor_function(x: int) -> int:
+        return x * 2
+
+    deploy_app(app, client=client)
+
+    with servicer.intercept() as ctx:
+        # Inject a failed FunctionGetOutputs response with CBOR data format
+        # but no data field set (only exception text)
+        ctx.add_response(
+            "FunctionGetOutputs",
+            api_pb2.FunctionGetOutputsResponse(
+                outputs=[
+                    api_pb2.FunctionGetOutputsItem(
+                        input_id="failed-test-id",
+                        idx=0,
+                        # simulate that the function was cbor only and had an exception
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                            exception="ValueError: Something went wrong in the function",
+                            traceback=(
+                                "Traceback (most recent call last):\n"
+                                '  File "test.py", line 1, in <module>\n'
+                                "ValueError: Something went wrong in the function\n"
+                            ),
+                        ),
+                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        retry_count=0,
+                    )
+                ]
+            ),
+        )
+
+        # Call the function remotely and expect it to raise the exception
+        with pytest.raises(RemoteError, match="Something went wrong in the function"):
+            failing_cbor_function.remote(42)
+
+        # Verify that the input was submitted as pickle format (default)
+        function_map_requests = ctx.get_requests("FunctionMap")
+        assert len(function_map_requests) == 1
+        function_map_request = function_map_requests[0]
+        assert function_map_request.pipelined_inputs[0].input.data_format == api_pb2.DATA_FORMAT_PICKLE
+
+
+@pytest.mark.usefixtures("set_env_client")
+def test_cbor_input_only_function_uses_cbor_input(client, servicer):
+    """Test that if a Function has supported_input_formats set to CBOR only in its handle metadata,
+    the client will use CBOR encoded FunctionMap when calling it."""
+
+    # Use an existing function from a previous test
+    cbor_only_function = Function.from_name("app", "f")
+
+    with servicer.intercept() as ctx:
+        # Mock the FunctionGet response to return metadata with CBOR-only input format
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test-function-id",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    function_name="f",
+                    function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+                    supported_input_formats=[api_pb2.DATA_FORMAT_CBOR],
+                    supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+                ),
+            ),
+        )
+
+        # Call the function remotely
+        cbor_only_function.remote(42)
+
+        # Verify that the input was submitted as CBOR format
+        function_map_requests = ctx.get_requests("FunctionMap")
+        assert len(function_map_requests) == 1
+        function_map_request = function_map_requests[0]
+
+        # The client should use CBOR encoding when the function only supports CBOR input
+        assert function_map_request.pipelined_inputs[0].input.data_format == api_pb2.DATA_FORMAT_CBOR
+
+        # Verify the CBOR-encoded data can be properly decoded
+        cbor_encoded_args = function_map_request.pipelined_inputs[0].input.args
+        from modal._serialization import deserialize_data_format
+
+        decoded_args = deserialize_data_format(cbor_encoded_args, api_pb2.DATA_FORMAT_CBOR, client)
+        expected_args = [
+            [
+                42,
+            ],
+            {},
+        ]  # (args, kwargs) tuple
+        assert decoded_args == expected_args
 
 
 @pytest.mark.usefixtures("set_env_client")

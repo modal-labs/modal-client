@@ -38,7 +38,7 @@ from grpclib.events import RecvRequest, listen
 from modal import __version__, config
 from modal._functions import _Function
 from modal._runtime.container_io_manager import _ContainerIOManager
-from modal._serialization import deserialize, deserialize_params, serialize_data_format
+from modal._serialization import deserialize, deserialize_data_format, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
@@ -982,6 +982,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.dicts[request.dict_id][update.key] = update.value
         await stream.send_message(api_pb2.DictUpdateResponse(created=True))
 
+    async def DictPop(self, stream):
+        request: api_pb2.DictPopRequest = await stream.recv_message()
+        d = self.dicts[request.dict_id]
+        if request.key in d:
+            value = d.pop(request.key)
+            await stream.send_message(api_pb2.DictPopResponse(found=True, value=value))
+        else:
+            await stream.send_message(api_pb2.DictPopResponse(found=False))
+
+    async def DictContains(self, stream):
+        request: api_pb2.DictContainsRequest = await stream.recv_message()
+        d = self.dicts[request.dict_id]
+        found = request.key in d
+        await stream.send_message(api_pb2.DictContainsResponse(found=found))
+
     async def DictContents(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
         for k, v in self.dicts[request.dict_id].items():
@@ -1288,9 +1303,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     def add_function_call_input(self, function_call_id, item: api_pb2.FunctionPutInputsItem, input_id, retry_count):
         if item.input.WhichOneof("args_oneof") == "args":
-            args, kwargs = deserialize(item.input.args, None)
+            args, kwargs = deserialize_data_format(item.input.args, item.input.data_format, None)
         else:
-            args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
+            args, kwargs = deserialize_data_format(self.blobs[item.input.args_blob_id], item.input.data_format, None)
         function_call_inputs = self.function_call_inputs.setdefault(function_call_id, [])
         function_call_inputs.append(((item.idx, input_id, retry_count), (args, kwargs)))
         self.function_call_inputs_update_event.set()
@@ -1491,6 +1506,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 ),
             )
         )
+
+    async def ImageDelete(self, stream):
+        request: api_pb2.ImageDeleteRequest = await stream.recv_message()
+        if request.image_id not in self.images:
+            raise GRPCError(Status.NOT_FOUND, f"Image {request.image_id} not found")
+
+        self.images.pop(request.image_id)
+        self.image_build_function_ids.pop(request.image_id, None)
+        self.image_builder_versions.pop(request.image_id, None)
+        if request.image_id in self.force_built_images:
+            self.force_built_images.remove(request.image_id)
+
+        await stream.send_message(Empty())
 
     ### Mount
 

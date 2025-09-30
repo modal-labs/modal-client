@@ -25,11 +25,12 @@ from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from typing_extensions import Self
 
+from modal._serialization import serialize_data_format
 from modal_proto import api_pb2
 
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
-from ._serialization import serialize
+from ._serialization import get_preferred_payload_format, serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import deprecation_warning
@@ -2347,13 +2348,19 @@ class _Image(_Object, type_prefix="im"):
             include_source=include_source,
         )
         if len(args) + len(kwargs) > 0:
-            args_serialized = serialize((args, kwargs))
+            data_format = get_preferred_payload_format()
+            args_serialized = serialize_data_format((args, kwargs), data_format)
+
             if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
                 raise InvalidError(
                     f"Arguments to `run_function` are too large ({len(args_serialized)} bytes). "
                     f"Maximum size is {MAX_OBJECT_SIZE_BYTES} bytes."
                 )
-            build_function_input = api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE)
+
+            build_function_input = api_pb2.FunctionInput(
+                args=args_serialized,
+                data_format=data_format,
+            )
         else:
             build_function_input = None
         return _Image._from_args(
