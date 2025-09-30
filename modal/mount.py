@@ -41,11 +41,11 @@ MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 # These can be updated safely, but changes will trigger a rebuild for all images
 # that rely on `add_python()` in their constructor.
 PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
-    "3.9": ("20230826", "3.9.18"),
-    "3.10": ("20230826", "3.10.13"),
-    "3.11": ("20230826", "3.11.5"),
-    "3.12": ("20240107", "3.12.1"),
-    "3.13": ("20241008", "3.13.0"),
+    "3.9": ("20250918", "3.9.18"),
+    "3.10": ("20250918", "3.10.13"),
+    "3.11": ("20250918", "3.11.5"),
+    "3.12": ("20250918", "3.12.1"),
+    "3.13": ("20250918", "3.13.0"),
 }
 
 MOUNT_DEPRECATION_MESSAGE_PATTERN = """modal.Mount usage will soon be deprecated.
