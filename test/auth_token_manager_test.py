@@ -24,6 +24,7 @@ def valid_jwt_token():
     payload = {"exp": exp, "type": "valid"}
     return jwt.encode(payload, "my-secret-key", algorithm="HS256")
 
+
 @pytest.fixture
 def another_valid_jwt_token():
     """Create a valid JWT token with expiry."""
@@ -31,6 +32,7 @@ def another_valid_jwt_token():
     exp = int(time.time()) + 3600
     payload = {"exp": exp, "type": "another_valid"}
     return jwt.encode(payload, "my-secret-key", algorithm="HS256")
+
 
 @pytest.fixture
 def expired_jwt_token():
@@ -268,9 +270,11 @@ def test_is_expired_false(auth_token_manager):
 async def test_multiple_refresh_cycles(auth_token_manager, servicer):
     """Test multiple refresh cycles work correctly."""
     exp = int(time.time()) + 3600
-    tokens = [jwt.encode({"exp": exp, "name": "t0"}, "my-secret-key", algorithm="HS256"),
-              jwt.encode({"exp": exp, "name": "t1"}, "my-secret-key", algorithm="HS256"),
-              jwt.encode({"exp": exp, "name": "t2"}, "my-secret-key", algorithm="HS256")]
+    tokens = [
+        jwt.encode({"exp": exp, "name": "t0"}, "my-secret-key", algorithm="HS256"),
+        jwt.encode({"exp": exp, "name": "t1"}, "my-secret-key", algorithm="HS256"),
+        jwt.encode({"exp": exp, "name": "t2"}, "my-secret-key", algorithm="HS256"),
+    ]
 
     @synchronize_api
     async def wrapped_get_token():
@@ -296,6 +300,7 @@ async def test_multiple_refresh_cycles(auth_token_manager, servicer):
     servicer.auth_token = tokens[2]
     token2 = await wrapped_get_token.aio()
     assert token2 == tokens[2]
+
 
 def exp_time(token: str):
     return jwt.decode(token, options={"verify_signature": False})["exp"]

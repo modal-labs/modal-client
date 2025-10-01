@@ -81,7 +81,8 @@ def protoc(ctx):
 )
 def lint(ctx, fix=False):
     """Run linter on all files."""
-    ctx.run(f"ruff check . {'--fix' if fix else ''}", pty=True)
+    ctx.run(f"ruff check {'--fix' if fix else ''}", pty=True, echo=True)
+    ctx.run(f"ruff format {'' if fix else '--diff'}", pty=True, echo=True)
 
 
 def lint_protos_impl(ctx, proto_fname: str):
