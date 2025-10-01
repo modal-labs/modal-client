@@ -413,39 +413,6 @@ class _Mount(_Object, type_prefix="mo"):
         )
 
     @staticmethod
-    def from_local_dir(
-        local_path: Union[str, Path],
-        *,
-        # Where the directory is placed within in the mount
-        remote_path: Union[str, PurePosixPath, None] = None,
-        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
-        # Defaults to including all files.
-        condition: Optional[Callable[[str], bool]] = None,
-        # add files from subdirectories as well
-        recursive: bool = True,
-    ) -> "_Mount":
-        """
-        **Deprecated:** Use image.add_local_dir() instead
-
-        Create a `Mount` from a local directory.
-
-        **Usage**
-
-        ```python notest
-        assets = modal.Mount.from_local_dir(
-            "~/assets",
-            condition=lambda pth: not ".venv" in pth,
-            remote_path="/assets",
-        )
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 8),
-            MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"),
-        )
-        return _Mount._from_local_dir(local_path, remote_path=remote_path, condition=condition, recursive=recursive)
-
-    @staticmethod
     def _from_local_dir(
         local_path: Union[str, Path],
         *,
@@ -479,29 +446,6 @@ class _Mount(_Object, type_prefix="mo"):
                 remote_path=PurePosixPath(remote_path),
             ),
         )
-
-    @staticmethod
-    def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
-        """
-        **Deprecated**: Use image.add_local_file() instead
-
-        Create a `Mount` mounting a single local file.
-
-        **Usage**
-
-        ```python notest
-        # Mount the DBT profile in user's home directory into container.
-        dbt_profiles = modal.Mount.from_local_file(
-            local_path="~/profiles.yml",
-            remote_path="/root/dbt_profile/profiles.yml",
-        )
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 8),
-            MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"),
-        )
-        return _Mount._from_local_file(local_path, remote_path)
 
     @staticmethod
     def _from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
@@ -653,45 +597,6 @@ class _Mount(_Object, type_prefix="mo"):
 
         logger.debug(f"Uploaded {total_uploads} new files and {total_bytes} bytes in {time.monotonic() - t0}s")
         self._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
-
-    @staticmethod
-    def from_local_python_packages(
-        *module_names: str,
-        remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
-        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
-        # Defaults to including all files.
-        condition: Optional[Callable[[str], bool]] = None,
-        ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
-    ) -> "_Mount":
-        """
-        **Deprecated**: Use image.add_local_python_source instead
-
-        Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
-        This works by mounting the local path of each module's package to a directory inside the container
-        that's on `PYTHONPATH`.
-
-        **Usage**
-
-        ```python notest
-        import modal
-        import my_local_module
-
-        app = modal.App()
-
-        @app.function(mounts=[
-            modal.Mount.from_local_python_packages("my_local_module", "my_other_module"),
-        ])
-        def f():
-            my_local_module.do_stuff()
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 8),
-            MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_python_source"),
-        )
-        return _Mount._from_local_python_packages(
-            *module_names, remote_dir=remote_dir, condition=condition, ignore=ignore
-        )
 
     @staticmethod
     def _from_local_python_packages(
