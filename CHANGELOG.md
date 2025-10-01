@@ -6,6 +6,16 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev62 (2025-10-01)
+
+---
+
+> [!NOTE]
+> Add `uv.lock` to `.gitignore`.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 955ac2531f1fc28fca8a4e7103b21e8aa7ab9da2. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
 #### 1.1.5.dev57 (2025-09-30)
 
 ---
