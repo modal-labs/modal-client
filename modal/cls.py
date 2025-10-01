@@ -32,7 +32,6 @@ from ._utils.deprecation import (
 )
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
-from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError
@@ -851,46 +850,6 @@ More information on class parameterization can be found here: https://modal.com/
         batching_options = _ServiceOptions(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
         cls._options.merge_options(batching_options)
         return cls
-
-    @staticmethod
-    async def lookup(
-        app_name: str,
-        name: str,
-        namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-    ) -> "_Cls":
-        """mdmd:hidden
-        Lookup a Cls from a deployed App by its name.
-
-        DEPRECATED: This method is deprecated in favor of `modal.Cls.from_name`.
-
-        In contrast to `modal.Cls.from_name`, this is an eager method
-        that will hydrate the local object with metadata from Modal servers.
-
-        ```python notest
-        Model = modal.Cls.from_name("other-app", "Model")
-        model = Model()
-        model.inference(...)
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Cls.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Cls.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-        warn_if_passing_namespace(namespace, "modal.Cls.lookup")
-        obj = _Cls.from_name(
-            app_name,
-            name,
-            environment_name=environment_name,
-        )
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
 
     @synchronizer.no_input_translation
     def __call__(self, *args, **kwargs) -> _Obj:

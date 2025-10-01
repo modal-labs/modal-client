@@ -389,45 +389,6 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, rep, is_another_app=True, hydrate_lazily=True, name=name)
 
     @staticmethod
-    async def lookup(
-        name: str,
-        namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-        create_if_missing: bool = False,
-    ) -> "_Queue":
-        """mdmd:hidden
-        Lookup a named Queue.
-
-        DEPRECATED: This method is deprecated in favor of `modal.Queue.from_name`.
-
-        In contrast to `modal.Queue.from_name`, this is an eager method
-        that will hydrate the local object with metadata from Modal servers.
-
-        ```python notest
-        q = modal.Queue.lookup("my-queue")
-        q.put(123)
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Queue.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Queue.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-        warn_if_passing_namespace(namespace, "modal.Queue.lookup")
-        obj = _Queue.from_name(
-            name,
-            environment_name=environment_name,
-            create_if_missing=create_if_missing,
-        )
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
-
-    @staticmethod
     async def delete(name: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
         """mdmd:hidden
         Delete a named Queue.
