@@ -882,6 +882,7 @@ class _ContainerIOManager:
         # There are multiple outputs for a single IOContext in the case of @modal.batched.
         # Limit the batch size to 20 to stay within message size limits and buffer size limits.
         output_batch_size = 20
+        print(f"_send_outputs {outputs=}")
         for i in range(0, len(outputs), output_batch_size):
             await retry_transient_errors(
                 self._client.stub.FunctionPutOutputs,
@@ -889,6 +890,7 @@ class _ContainerIOManager:
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                 max_retries=None,  # Retry indefinitely, trying every 1s.
             )
+        print("_send_outputs finishing")
         input_ids = [output.input_id for output in outputs]
         self.exit_context(started_at, input_ids)
 

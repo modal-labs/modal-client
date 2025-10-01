@@ -224,6 +224,7 @@ class _Invocation:
         clear_on_success: bool = False,
         input_jwts: Optional[list[str]] = None,
     ) -> api_pb2.FunctionGetOutputsResponse:
+        print("pop_function_call_outputs")
         t0 = time.time()
         if timeout is None:
             backend_timeout = OUTPUTS_TIMEOUT
@@ -243,11 +244,13 @@ class _Invocation:
                 start_idx=index,
                 end_idx=index,
             )
+            print(f"calling FunctionGetOutputs: {request=}")
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
                 request,
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
+            print(f"output FunctionGetOutputs: {response=}")
 
             if len(response.outputs) > 0:
                 return response
