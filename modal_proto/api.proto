@@ -669,6 +669,7 @@ message AutoscalingMetrics {
   double memory_usage_percent = 2;
   uint32 concurrent_requests = 3;
   double timestamp = 4;
+  uint32 num_concurrent_requests = 5;
 }
 
 message BaseImage {
