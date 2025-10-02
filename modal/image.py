@@ -33,7 +33,6 @@ from ._resolver import Resolver
 from ._serialization import get_preferred_payload_format, serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
-from ._utils.deprecation import deprecation_warning
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
@@ -284,24 +283,12 @@ def _create_context_mount_function(
     ignore: Union[Sequence[str], Callable[[Path], bool], _AutoDockerIgnoreSentinel],
     dockerfile_cmds: list[str] = [],
     dockerfile_path: Optional[Path] = None,
-    context_mount: Optional[_Mount] = None,
     context_dir: Optional[Union[Path, str]] = None,
 ):
     if dockerfile_path and dockerfile_cmds:
         raise InvalidError("Cannot provide both dockerfile and docker commands")
 
-    if context_mount:
-        if ignore is not AUTO_DOCKERIGNORE:
-            raise InvalidError("Cannot set both `context_mount` and `ignore`")
-        if context_dir is not None:
-            raise InvalidError("Cannot set both `context_mount` and `context_dir`")
-
-        def identity_context_mount_fn() -> Optional[_Mount]:
-            return context_mount
-
-        return identity_context_mount_fn
-
-    elif ignore is AUTO_DOCKERIGNORE:
+    if ignore is AUTO_DOCKERIGNORE:
 
         def auto_created_context_mount_fn() -> Optional[_Mount]:
             nonlocal context_dir
@@ -1596,7 +1583,6 @@ class _Image(_Object, type_prefix="im"):
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
-        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
@@ -1642,12 +1628,6 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        if context_mount is not None:
-            deprecation_warning(
-                (2025, 1, 13),
-                "The `context_mount` parameter of `Image.dockerfile_commands` is deprecated."
-                " Files are now automatically added to the build context based on the commands.",
-            )
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
             return self
@@ -1665,7 +1645,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
             context_mount_function=_create_context_mount_function(
-                ignore=ignore, dockerfile_cmds=cmds, context_mount=context_mount, context_dir=context_dir
+                ignore=ignore, dockerfile_cmds=cmds, context_dir=context_dir
             ),
             force_build=self.force_build or force_build,
         )
@@ -2022,7 +2002,6 @@ class _Image(_Object, type_prefix="im"):
     def from_dockerfile(
         path: Union[str, Path],  # Filepath to Dockerfile.
         *,
-        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
         env: Optional[dict[str, Optional[str]]] = None,
@@ -2086,13 +2065,6 @@ class _Image(_Object, type_prefix="im"):
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
-        if context_mount is not None:
-            deprecation_warning(
-                (2025, 1, 13),
-                "The `context_mount` parameter of `Image.from_dockerfile` is deprecated."
-                " Files are now automatically added to the build context based on the commands in the Dockerfile.",
-            )
-
         # --- Build the base dockerfile
 
         def build_dockerfile_base(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -2104,7 +2076,7 @@ class _Image(_Object, type_prefix="im"):
         base_image = _Image._from_args(
             dockerfile_function=build_dockerfile_base,
             context_mount_function=_create_context_mount_function(
-                ignore=ignore, dockerfile_path=Path(path), context_mount=context_mount, context_dir=context_dir
+                ignore=ignore, dockerfile_path=Path(path), context_dir=context_dir
             ),
             gpu_config=gpu_config,
             secrets=secrets,
