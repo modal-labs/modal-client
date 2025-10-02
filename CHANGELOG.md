@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev64 (2025-10-02)
+
+- Replaced the `--no-confirm` option with `--yes` in the `modal environment delete` CLI to align with similar interfaces.
+
+
 #### 1.1.5.dev63 (2025-10-02)
 
 - Added `modal shell` support for connecting to a running Sandbox (`modal shell sb-id`).
