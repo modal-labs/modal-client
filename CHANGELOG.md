@@ -6,6 +6,28 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev65 (2025-10-02)
+
+- Removed previously deprecated `.lookup` methods from most Modal object classes (but not `modal.App.lookup`, which remains supported). The lazy `.from_name()` method is recommended for accessing deployed objects going forward.
+
+
+---
+
+> [!NOTE]
+> Removes all deprecated `.lookup` methods across core objects, updates error messaging to reference `.from_name`, and adjusts tests accordingly.
+> 
+> - **API removals (deprecated)**:
+>   - Drop `.lookup` for: `modal.Function`, `modal.Cls`, `modal.Dict`, `modal.Environment`, `modal.Mount`, `modal.NetworkFileSystem`, `modal.Queue`, `modal.Secret`, `modal.Volume`.
+> - **Behavior/messaging**:
+>   - `Function.local()` error now references `Function.from_name` and using remote invocation methods.
+>   - Minor import cleanups related to deprecation utilities.
+> - **Tests**:
+>   - Remove/adjust tests that used `.lookup` (e.g., `test_lookup` in `cls_test.py`).
+>   - Update `Secret` tests to warn only on deprecated `namespace` param and use `.from_name`.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit b298b465535755278f312f1afc8006458219daaf. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
 #### 1.1.5.dev64 (2025-10-02)
 
 - Replaced the `--no-confirm` option with `--yes` in the `modal environment delete` CLI to align with similar interfaces.
