@@ -1429,40 +1429,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         warn_if_passing_namespace(namespace, "modal.Function.from_name")
         return cls._from_name(app_name, name, environment_name=environment_name)
 
-    @staticmethod
-    async def lookup(
-        app_name: str,
-        name: str,
-        namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-    ) -> "_Function":
-        """mdmd:hidden
-        Lookup a Function from a deployed App by its name.
-
-        DEPRECATED: This method is deprecated in favor of `modal.Function.from_name`.
-
-        In contrast to `modal.Function.from_name`, this is an eager method
-        that will hydrate the local object with metadata from Modal servers.
-
-        ```python notest
-        f = modal.Function.lookup("other-app", "function")
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Function.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Function.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-        warn_if_passing_namespace(namespace, "modal.Function.lookup")
-        obj = _Function.from_name(app_name, name, environment_name=environment_name)
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
-
     @property
     def tag(self) -> str:
         """mdmd:hidden"""
@@ -1811,8 +1777,9 @@ Use the `Function.get_web_url()` method instead.
         # "user code" to run on the synchronicity thread, which seems bad
         if not self._is_local():
             msg = (
-                "The definition for this function is missing here so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
+                "The definition for this Function is missing, so it is not possible to invoke it locally. "
+                "If this function was retrieved via `Function.from_name`, "
+                "you need to use one of the remote invocation methods instead."
             )
             raise ExecutionError(msg)
 
