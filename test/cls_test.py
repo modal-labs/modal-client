@@ -513,42 +513,6 @@ if TYPE_CHECKING:
     # assert_type(Foo().bar, Function[[int], float])
 
 
-def test_lookup(client, servicer):
-    # basically same test as test_from_name_lazy_method_resolve, but assumes everything is hydrated
-    deploy_app(app, "my-cls-app", client=client)
-
-    with pytest.warns(DeprecationError, match="Cls.lookup"):
-        cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
-
-    # objects are resolved
-    assert cls.object_id.startswith("cs-")
-    assert cls._get_class_service_function().object_id.startswith("fu-")
-
-    # Check that function properties are preserved
-    assert cls().bar.is_generator is False
-
-    # Make sure we can instantiate the class
-    with servicer.intercept() as ctx:
-        obj = cls("foo", 234)
-        assert len(ctx.calls) == 0  # no rpc requests for class instantiation
-
-        # Make sure we can call methods
-        # (mock servicer just returns the sum of the squares of the args)
-        assert obj.bar.remote(42) == 1764
-        assert len(ctx.get_requests("FunctionBindParams")) == 1  # bind params
-
-        assert obj.baz.remote(41) == 1681
-        assert len(ctx.get_requests("FunctionBindParams")) == 1  # call to other method shouldn't need a bind
-
-    # Not allowed for remote classes:
-    with pytest.raises(NotFoundError, match="can't be accessed for remote classes"):
-        assert obj.a == "foo"
-
-    # Make sure local calls fail
-    with pytest.raises(ExecutionError):
-        assert obj.bar.local(1, 2)
-
-
 def test_from_name_lazy_method_hydration(client, servicer):
     deploy_app(app, "my-cls-app", client=client)
     cls: Cls = Cls.from_name("my-cls-app", "Foo")

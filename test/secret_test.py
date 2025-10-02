@@ -118,11 +118,8 @@ def test_secret_namespace_deprecated(servicer, client):
             "my-secret", {"FOO": "123"}, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client=client
         )
 
-    with pytest.warns() as record:
-        Secret.lookup("my-secret", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client=client)
-    # Should warn about both the deprecated lookup method and the deprecated namespace parameter
-    assert len(record) >= 2
-    assert any(isinstance(w.message, DeprecationError) for w in record)
+    with pytest.warns(DeprecationError, match="The `namespace` parameter"):
+        Secret.from_name("my-secret", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
 
 
 def test_secret_list(servicer, client):
