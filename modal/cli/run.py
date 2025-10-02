@@ -18,7 +18,7 @@ from ..app import App, LocalEntrypoint
 from ..cls import _get_class_constructor_signature
 from ..config import config
 from ..environments import ensure_env
-from ..exception import ExecutionError, InvalidError, NotFoundError, _CliUserExecutionError
+from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
 from ..functions import Function
 from ..output import enable_output
 from ..runner import deploy_app, run_app

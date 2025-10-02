@@ -1,22 +1,68 @@
 # Copyright Modal Labs 2025
+import dataclasses
 import platform
 import shlex
-from functools import partial
-from typing import Optional
+from collections.abc import Collection, Sequence
+from pathlib import PurePosixPath
+from typing import Any, Optional, Union, cast
 
 import typer
 from click import ClickException
 
 from .._functions import _FunctionSpec
 from ..app import App
+from ..cloud_bucket_mount import _CloudBucketMount
 from ..exception import InvalidError, NotFoundError
 from ..functions import Function
-from ..image import Image
+from ..gpu import GPU_T
+from ..image import Image, _Image
+from ..mount import _Mount
+from ..network_file_system import _NetworkFileSystem
+from ..proxy import _Proxy
 from ..runner import interactive_shell
-from ..secret import Secret
-from ..volume import Volume
+from ..secret import Secret, _Secret
+from ..volume import Volume, _Volume
 from .import_refs import MethodReference, import_and_filter, parse_import_ref
-from .utils import ENV_OPTION, is_tty
+from .utils import ENV_OPTION, is_tty, is_valid_modal_id
+
+
+@dataclasses.dataclass
+class _ShellKwargs:
+    """Container for shell keyword arguments that can be passed to Sandbox._create."""
+
+    image: Optional[_Image] = None
+    mounts: Optional[Sequence[_Mount]] = None
+    secrets: Optional[Collection[_Secret]] = None
+    network_file_systems: Optional[dict[Union[str, PurePosixPath], _NetworkFileSystem]] = None
+    gpu: Optional[Union[GPU_T, list[GPU_T]]] = None
+    cloud: Optional[str] = None
+    cpu: Optional[float | tuple[float, float]] = None
+    memory: Optional[int | tuple[int, int]] = None
+    volumes: Optional[dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]] = None
+    region: Optional[Union[str, Sequence[str]]] = None
+    proxy: Optional[_Proxy] = None
+    pty: Optional[bool] = None
+
+    def to_kwargs(self) -> dict[str, Any]:
+        """Convert to dict, excluding None values."""
+        return {k: v for k, v in dataclasses.asdict(self).items() if v is not None}
+
+    @staticmethod
+    def from_function_spec(function_spec: _FunctionSpec) -> "_ShellKwargs":
+        """Create _ShellKwargs from a function spec."""
+        return _ShellKwargs(
+            image=function_spec.image,
+            mounts=function_spec.mounts,
+            secrets=function_spec.secrets,
+            network_file_systems=function_spec.network_file_systems,
+            gpu=function_spec.gpus,
+            cloud=function_spec.cloud,
+            cpu=function_spec.cpu,
+            memory=function_spec.memory,
+            volumes=function_spec.volumes,
+            region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
+            proxy=function_spec.proxy,
+        )
 
 
 def _get_runnable_list(all_usable_commands) -> str:
@@ -26,6 +72,64 @@ def _get_runnable_list(all_usable_commands) -> str:
         usable_command_lines.append(cmd_names)
 
     return "\n".join(usable_command_lines)
+
+
+def _shell_in_container(task_id: str, cmd: str, pty: bool, sandbox_id: Optional[str] = None) -> None:
+    from .container import exec
+
+    sandbox_str = f" (Sandbox '{sandbox_id}')" if sandbox_id else ""
+    try:
+        exec(container_id=task_id, command=shlex.split(cmd), pty=pty)
+    except NotFoundError:
+        raise ClickException(f"Container '{task_id}'{sandbox_str} not found. Is it running?")
+    except Exception as e:
+        raise ClickException(f"Error connecting to container '{task_id}'{sandbox_str}: {str(e)}")
+
+
+def _shell_in_sandbox(sandbox_id: str, cmd: str, pty: bool) -> None:
+    from ..sandbox import Sandbox
+
+    try:
+        sandbox = Sandbox.from_id(sandbox_id)
+        task_id = sandbox._get_task_id()
+    except NotFoundError:
+        raise ClickException(f"Sandbox '{sandbox_id}' not found")
+    except Exception as e:
+        raise ClickException(f"Error identifying container for Sandbox '{sandbox_id}': {str(e)}")
+
+    _shell_in_container(task_id, cmd, pty)
+
+
+def _ref_to_function_spec(ref: str, use_module_mode: bool) -> _FunctionSpec:
+    import_ref = parse_import_ref(ref, use_module_mode=use_module_mode)
+    runnable, all_usable_commands = import_and_filter(
+        import_ref, base_cmd="modal shell", accept_local_entrypoint=False, accept_webhook=True
+    )
+    if not runnable:
+        help_header = (
+            "Specify a Modal function to start a shell session for. E.g.\n"
+            f"> modal shell {import_ref.file_or_module}::my_function"
+        )
+
+        if all_usable_commands:
+            help_footer = f"The selected module '{import_ref.file_or_module}' has the following choices:\n\n"
+            help_footer += _get_runnable_list(all_usable_commands)
+        else:
+            help_footer = f"The selected module '{import_ref.file_or_module}' has no Modal functions or classes."
+
+        raise ClickException(f"{help_header}\n\n{help_footer}")
+
+    function_spec: _FunctionSpec
+    if isinstance(runnable, MethodReference):
+        # TODO: let users specify a class instead of a method, since they use the same environment
+        class_service_function = runnable.cls._get_class_service_function()
+        function_spec = class_service_function.spec
+    elif isinstance(runnable, Function):
+        function_spec = runnable.spec
+    else:
+        raise ValueError("Referenced entity is not a Modal function or class")
+
+    return function_spec
 
 
 def shell(
@@ -131,89 +235,61 @@ def shell(
     if platform.system() == "Windows":
         raise InvalidError("`modal shell` is currently not supported on Windows")
 
-    app = App("modal shell")
+    if ref and (is_valid_modal_id(ref, "sb") or is_valid_modal_id(ref, "ta")):
+        mutually_exclusive = {
+            "--image": image,
+            "--add-python": add_python,
+            "--volume": volume,
+            "--secret": secret,
+            "--cpu": cpu,
+            "--memory": memory,
+            "--gpu": gpu,
+            "--cloud": cloud,
+            "--region": region,
+        }
+        if provided := [k for k, v in mutually_exclusive.items() if v]:
+            raise InvalidError(f"Cannot use {', '.join(provided)} with a Modal container/sandbox ID")
 
-    if ref is not None:
-        # `modal shell` with a sandbox ID gets the task_id, that's then handled by the `ta-*` flow below.
-        if ref.startswith("sb-") and len(ref[3:]) > 0 and ref[3:].isalnum():
-            from ..sandbox import Sandbox
+    if ref and is_valid_modal_id(ref, "sb"):
+        _shell_in_sandbox(ref, cmd, pty)
+        return
 
-            try:
-                sandbox = Sandbox.from_id(ref)
-                task_id = sandbox._get_task_id()
-                ref = task_id
-            except NotFoundError as e:
-                raise ClickException(f"Sandbox '{ref}' not found")
-            except Exception as e:
-                raise ClickException(f"Error connecting to sandbox '{ref}': {str(e)}")
+    if ref and is_valid_modal_id(ref, "ta"):
+        _shell_in_container(ref, cmd, pty)
+        return
 
-        # `modal shell` with a container ID is a special case, alias for `modal container exec`.
-        if ref.startswith("ta-") and len(ref[3:]) > 0 and ref[3:].isalnum():
-            from .container import exec
+    function_spec = _ref_to_function_spec(ref, use_module_mode) if ref else None
 
-            exec(container_id=ref, command=shlex.split(cmd), pty=pty)
-            return
+    # Start with function spec kwargs if available
+    shell_kwargs = _ShellKwargs.from_function_spec(function_spec) if function_spec else _ShellKwargs()
 
-        import_ref = parse_import_ref(ref, use_module_mode=use_module_mode)
-        runnable, all_usable_commands = import_and_filter(
-            import_ref, base_cmd="modal shell", accept_local_entrypoint=False, accept_webhook=True
-        )
-        if not runnable:
-            help_header = (
-                "Specify a Modal function to start a shell session for. E.g.\n"
-                f"> modal shell {import_ref.file_or_module}::my_function"
-            )
-
-            if all_usable_commands:
-                help_footer = f"The selected module '{import_ref.file_or_module}' has the following choices:\n\n"
-                help_footer += _get_runnable_list(all_usable_commands)
-            else:
-                help_footer = f"The selected module '{import_ref.file_or_module}' has no Modal functions or classes."
-
-            raise ClickException(f"{help_header}\n\n{help_footer}")
-
-        function_spec: _FunctionSpec
-        if isinstance(runnable, MethodReference):
-            # TODO: let users specify a class instead of a method, since they use the same environment
-            class_service_function = runnable.cls._get_class_service_function()
-            function_spec = class_service_function.spec
-        elif isinstance(runnable, Function):
-            function_spec = runnable.spec
-        else:
-            raise ValueError("Referenced entity is not a Modal function or class")
-
-        start_shell = partial(
-            interactive_shell,
-            image=function_spec.image,
-            mounts=function_spec.mounts,
-            secrets=function_spec.secrets,
-            network_file_systems=function_spec.network_file_systems,
-            gpu=function_spec.gpus,
-            cloud=function_spec.cloud,
-            cpu=function_spec.cpu,
-            memory=function_spec.memory,
-            volumes=function_spec.volumes,
-            region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
-            pty=pty,
-            proxy=function_spec.proxy,
-        )
-    else:
-        modal_image = Image.from_registry(image, add_python=add_python) if image else None
-        volumes = {} if volume is None else {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
-        secrets = [] if secret is None else [Secret.from_name(s) for s in secret]
-        start_shell = partial(
-            interactive_shell,
-            image=modal_image,
-            cpu=cpu,
-            memory=memory,
-            gpu=gpu,
-            cloud=cloud,
-            volumes=volumes,
-            secrets=secrets,
-            region=region.split(",") if region else [],
-            pty=pty,
-        )
+    # Override with CLI arguments
+    if image is not None:
+        shell_kwargs.image = cast(_Image, Image.from_registry(image, add_python=add_python))
+    if volume is not None:
+        shell_kwargs.volumes = {f"/mnt/{vol}": cast(_Volume, Volume.from_name(vol)) for vol in volume}
+    if secret is not None:
+        shell_kwargs.secrets = [cast(_Secret, Secret.from_name(s)) for s in secret]
+    if cpu is not None:
+        shell_kwargs.cpu = cpu
+    if memory is not None:
+        shell_kwargs.memory = memory
+    if gpu is not None:
+        shell_kwargs.gpu = gpu
+    if cloud is not None:
+        shell_kwargs.cloud = cloud
+    if region is not None:
+        shell_kwargs.region = region.split(",")
+    shell_kwargs.pty = pty
 
     # NB: invoking under bash makes --cmd a lot more flexible.
     cmds = shlex.split(f'/bin/bash -c "{cmd}"')
-    start_shell(app, cmds=cmds, environment_name=env, timeout=3600)
+
+    app = App("modal shell")
+    interactive_shell(
+        app,
+        cmds=cmds,
+        environment_name=env,
+        timeout=3600,
+        **shell_kwargs.to_kwargs(),
+    )

@@ -68,6 +68,14 @@ def is_tty() -> bool:
     return make_console().is_terminal
 
 
+def is_valid_modal_id(id_str: str, prefix: str) -> bool:
+    expected_prefix = f"{prefix}-"
+    if not id_str.startswith(expected_prefix):
+        return False
+    suffix = id_str[len(expected_prefix) :]
+    return len(suffix) > 0 and suffix.isalnum()
+
+
 def display_table(
     columns: Sequence[Union[Column, str]],
     rows: Sequence[Sequence[Union[Text, str]]],
