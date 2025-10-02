@@ -1094,7 +1094,9 @@ class _App:
 
         return self
 
-    async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
+    async def _logs(
+        self, client: Optional[_Client] = None, function_call_id: Optional[str] = None
+    ) -> AsyncGenerator[str, None]:
         """Stream logs from the app.
 
         This method is considered private and its interface may change - use at your own risk!
@@ -1110,6 +1112,7 @@ class _App:
                 app_id=self._app_id,
                 timeout=55,
                 last_entry_id=last_log_batch_entry_id,
+                function_call_id=function_call_id,
             )
             async for log_batch in client.stub.AppGetLogs.unary_stream(request):
                 if log_batch.entry_id:
