@@ -1104,6 +1104,9 @@ class _App:
         if not self._app_id:
             raise InvalidError("`app._logs` requires a running/stopped app.")
 
+        if function_call_id is not None and not function_call_id.startswith("fc"):
+            raise InvalidError(f"function_call_id must start with 'fc' got {function_call_id}")
+
         client = client or self._client or await _Client.from_env()
 
         last_log_batch_entry_id: Optional[str] = None

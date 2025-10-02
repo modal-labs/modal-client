@@ -358,6 +358,19 @@ def test_app_logs(servicer, client):
     assert logs == ["hello, world (1)\n"]
 
 
+def test_app_logs_error(servicer, client):
+    app = App()
+
+    f = app.function()(dummy)
+
+    with app.run(client=client):
+        f.remote()
+
+    msg = "function_call_id must start with 'fc'"
+    with pytest.raises(InvalidError, match=msg):
+        next(app._logs(client=client, function_call_id="ts-231232132"))
+
+
 def test_app_interactive(servicer, client, capsys):
     app = App()
 
