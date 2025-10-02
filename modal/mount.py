@@ -738,28 +738,6 @@ class _Mount(_Object, type_prefix="mo"):
 
         return _Mount._from_loader(_load, "Mount()", hydrate_lazily=True)
 
-    @classmethod
-    async def lookup(
-        cls: type["_Mount"],
-        name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-    ) -> "_Mount":
-        """mdmd:hidden"""
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Mount.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Mount.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-        obj = _Mount.from_name(name, namespace=namespace, environment_name=environment_name)
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
-
     async def _deploy(
         self: "_Mount",
         deployment_name: Optional[str] = None,

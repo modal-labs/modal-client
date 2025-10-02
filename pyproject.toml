@@ -98,14 +98,19 @@ exclude = [
     'modal/_vendor',
 ]
 line-length = 120
-lint.ignore = ['E741']
-lint.select = [
+
+[tool.ruff.lint]
+ignore = ['E741', 'F841']
+select = [
     'E',
     'F',
     'W',
     'I',
     'RUF006', # asyncio-dangling-task
 ]
+preview = true
+explicit-preview-rules = true
+extend-select = ['PLR1702']
 
 [tool.ruff.lint.per-file-ignores]
 "*_test.py" = ['E712']
@@ -120,6 +125,9 @@ known-first-party = [
     "modal_version",
 ]
 extra-standard-library = ["pytest"]
+
+[tool.ruff.lint.pylint]
+max-nested-blocks = 7
 
 [tool.pyright]
 reportUnnecessaryComparison = true

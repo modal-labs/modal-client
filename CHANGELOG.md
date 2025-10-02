@@ -6,6 +6,63 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev65 (2025-10-02)
+
+- Removed previously deprecated `.lookup` methods from most Modal object classes (but not `modal.App.lookup`, which remains supported). The lazy `.from_name()` method is recommended for accessing deployed objects going forward.
+
+
+---
+
+> [!NOTE]
+> Removes all deprecated `.lookup` methods across core objects, updates error messaging to reference `.from_name`, and adjusts tests accordingly.
+> 
+> - **API removals (deprecated)**:
+>   - Drop `.lookup` for: `modal.Function`, `modal.Cls`, `modal.Dict`, `modal.Environment`, `modal.Mount`, `modal.NetworkFileSystem`, `modal.Queue`, `modal.Secret`, `modal.Volume`.
+> - **Behavior/messaging**:
+>   - `Function.local()` error now references `Function.from_name` and using remote invocation methods.
+>   - Minor import cleanups related to deprecation utilities.
+> - **Tests**:
+>   - Remove/adjust tests that used `.lookup` (e.g., `test_lookup` in `cls_test.py`).
+>   - Update `Secret` tests to warn only on deprecated `namespace` param and use `.from_name`.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit b298b465535755278f312f1afc8006458219daaf. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
+#### 1.1.5.dev64 (2025-10-02)
+
+- Replaced the `--no-confirm` option with `--yes` in the `modal environment delete` CLI to align with similar interfaces.
+
+
+#### 1.1.5.dev63 (2025-10-02)
+
+- Added `modal shell` support for connecting to a running Sandbox (`modal shell sb-id`).
+
+
+
+---
+
+> [!NOTE]
+> Enable `modal shell sb-<id>` to connect to a running Sandbox (resolving to its task ID), rename the argument to `ref`, and keep `ta-<id>` container exec passthrough.
+> 
+> - **CLI: `modal shell`**
+>   - **Sandbox support**: Accepts `sb-<id>` and resolves to corresponding task ID via `Sandbox.from_id(...)._get_task_id()`; surfaces not-found/connection errors as `ClickException`.
+>   - **Arg rename**: `container_or_function` → `ref`; updated help text to mention Sandboxes and Functions.
+>   - **Container passthrough**: Retains `ta-<id>` fast path by delegating to `container exec`.
+>   - **Docs**: Adds example usage for connecting to a Sandbox by ID.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 6bbb4695bf81fc8f746e1ebf4b5a2b051fcb7315. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
+#### 1.1.5.dev62 (2025-10-01)
+
+---
+
+> [!NOTE]
+> Add `uv.lock` to `.gitignore`.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 955ac2531f1fc28fca8a4e7103b21e8aa7ab9da2. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
 #### 1.1.5.dev57 (2025-09-30)
 
 ---
