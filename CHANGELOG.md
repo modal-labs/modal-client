@@ -6,6 +6,26 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev63 (2025-10-02)
+
+- Added `modal shell` support for connecting to a running Sandbox (`modal shell sb-id`).
+
+
+
+---
+
+> [!NOTE]
+> Enable `modal shell sb-<id>` to connect to a running Sandbox (resolving to its task ID), rename the argument to `ref`, and keep `ta-<id>` container exec passthrough.
+> 
+> - **CLI: `modal shell`**
+>   - **Sandbox support**: Accepts `sb-<id>` and resolves to corresponding task ID via `Sandbox.from_id(...)._get_task_id()`; surfaces not-found/connection errors as `ClickException`.
+>   - **Arg rename**: `container_or_function` → `ref`; updated help text to mention Sandboxes and Functions.
+>   - **Container passthrough**: Retains `ta-<id>` fast path by delegating to `container exec`.
+>   - **Docs**: Adds example usage for connecting to a Sandbox by ID.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 6bbb4695bf81fc8f746e1ebf4b5a2b051fcb7315. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
 #### 1.1.5.dev62 (2025-10-01)
 
 ---
