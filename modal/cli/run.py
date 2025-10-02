@@ -22,7 +22,7 @@ from ..app import App, LocalEntrypoint
 from ..cls import _get_class_constructor_signature
 from ..config import config
 from ..environments import ensure_env
-from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
+from ..exception import ExecutionError, InvalidError, NotFoundError, _CliUserExecutionError
 from ..functions import Function
 from ..image import Image
 from ..output import enable_output
@@ -627,13 +627,10 @@ def shell(
                 sandbox = Sandbox.from_id(ref)
                 task_id = sandbox._get_task_id()
                 ref = task_id
+            except NotFoundError as e:
+                raise ClickException(f"Sandbox '{ref}' not found")
             except Exception as e:
-                from ..exception import NotFoundError
-
-                if isinstance(e, NotFoundError):
-                    raise ClickException(f"Sandbox '{ref}' not found")
-                else:
-                    raise ClickException(f"Error connecting to sandbox '{ref}': {str(e)}")
+                raise ClickException(f"Error connecting to sandbox '{ref}': {str(e)}")
 
         # `modal shell` with a container ID is a special case, alias for `modal container exec`.
         if ref.startswith("ta-") and len(ref[3:]) > 0 and ref[3:].isalnum():
