@@ -77,6 +77,14 @@ class SandboxRouterClient:
         self._stub = SandboxRouterStub(self._channel)
         self._connected = False
 
+    def __del__(self) -> None:
+        # Best-effort cleanup to avoid noisy "Unclosed connection" warnings.
+        try:
+            self._channel.close()
+        except Exception:
+            # Avoid raising during interpreter shutdown.
+            pass
+
     async def _ensure_connected(self) -> None:
         if not self._connected:
             await connect_channel(self._channel)
