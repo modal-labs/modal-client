@@ -6,6 +6,15 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev70 (2025-10-03)
+
+` up to a Cursor auto-comment or end: `r"## Changelog\s*(.+?)(?:|$)"`.
+>   - Strip HTML comments from the extracted changelog section only (not the entire PR description).
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 62e4b7b7abdb4b5513e7f32d0a8225be5dc5c4c3. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
+
 #### 1.1.5.dev69 (2025-10-03)
 
 - Removed the `modal.experimental.update_autoscaler` function; this functionality now has a stable API as `modal.Function.update_autoscaler`.
