@@ -737,7 +737,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 raise InvalidError("Generator functions do not support retries.")
 
         if timeout is None:  # type: ignore[unreachable]  # Help users who aren't using type checkers
-            raise InvalidError("The `timeout` parameter cannot be set to None.")
+            raise InvalidError("The `timeout` parameter cannot be set to None: https://modal.com/docs/guide/timeouts")
 
         secrets = secrets or []
         if env:
