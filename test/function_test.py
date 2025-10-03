@@ -1181,6 +1181,27 @@ def test_autoscaler_settings_deprecations(new, old):
         app.function(**{old: 10})(dummy)  # type: ignore
 
 
+def test_timeout(servicer, client):
+    app = App()
+
+    with pytest.raises(InvalidError, match="cannot be set to None"):
+
+        @app.function(serialized=True, timeout=None)
+        def f():
+            pass
+
+    @app.function(serialized=True)
+    def g():
+        pass
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    req = ctx.pop_request("FunctionCreate")
+    assert req.function.timeout_secs == 300
+
+
 def test_not_hydrated():
     with pytest.raises(ExecutionError):
         assert foo.remote(2, 4) == 20

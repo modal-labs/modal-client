@@ -6,6 +6,28 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev66 (2025-10-02)
+
+- Final removal of the `context_mount=` parameter of some modal.Image methods.
+
+
+---
+
+> [!NOTE]
+> Removes `context_mount` support from `Image` build APIs and deletes deprecated `modal.Mount` public constructors.
+> 
+> - **API removals**:
+>   - **Image**:
+>     - Drop `context_mount` parameter from `Image.dockerfile_commands()` and `Image.from_dockerfile()`; remove related deprecation warnings.
+>     - Simplify `_create_context_mount_function` by deleting `context_mount` handling; context is now inferred (with `AUTO_DOCKERIGNORE` support).
+>   - **Mount**:
+>     - Remove deprecated public constructors: `Mount.from_local_dir`, `Mount.from_local_file`, and `Mount.from_local_python_packages`.
+> - **Cleanup**:
+>   - Remove unused deprecation wiring/imports tied to the deleted parameters and methods.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit e59d3e06092cf8c53892851e7049134ebf5dbe12. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
 #### 1.1.5.dev65 (2025-10-02)
 
 - Removed previously deprecated `.lookup` methods from most Modal object classes (but not `modal.App.lookup`, which remains supported). The lazy `.from_name()` method is recommended for accessing deployed objects going forward.
