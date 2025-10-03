@@ -6,6 +6,26 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev69 (2025-10-03)
+
+- Removed the `modal.experimental.update_autoscaler` function; this functionality now has a stable API as `modal.Function.update_autoscaler`.
+
+
+---
+
+> [!NOTE]
+> Remove `modal.experimental.update_autoscaler` and delete its associated tests; keep image deletion and app object listing unchanged.
+> 
+> - **API Removal**:
+>   - Delete `modal.experimental.update_autoscaler` and related deprecation path.
+> - **Tests**:
+>   - Remove `test_update_autoscaler*` suites and deprecation assertions.
+> - **Misc**:
+>   - Adjust imports and types to reflect the API removal.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 7dcaae12b35ffcac9123e5f0d9c615638acbcbc2. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
 #### 1.1.5.dev66 (2025-10-02)
 
 - Final removal of the `context_mount=` parameter of some modal.Image methods.
