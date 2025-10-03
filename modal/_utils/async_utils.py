@@ -336,32 +336,47 @@ class TimestampPriorityQueue(Generic[T]):
 
 
 async def queue_batch_iterator(
-    q: Union[asyncio.Queue, TimestampPriorityQueue], max_batch_size=100, debounce_time=0.015
-):
+    q: Union[asyncio.Queue, TimestampPriorityQueue], max_batch_size: int = 100, debounce_time: float = 0.015
+) -> AsyncGenerator[list[Any], None]:
     """
-    Read from a queue but return lists of items when queue is large
+    Reads from a queue and yields batches of items for efficient processing.
 
-    Treats a None value as end of queue items
+    This function collects items from a queue into batches, balancing between
+    throughput (larger batches) and latency (timely processing). It will:
+    - Yield immediately when max_batch_size is reached
+    - Wait up to debounce_time for additional items before yielding partial batches
+    - Treat None as an end-of-queue sentinel value
     """
-    item_list: list[Any] = []
+    batch: list[Any] = []
 
     while True:
-        if q.empty() and len(item_list) > 0:
-            yield item_list
-            item_list = []
-            await asyncio.sleep(debounce_time)
-
-        res = await q.get()
-
-        if len(item_list) >= max_batch_size:
-            yield item_list
-            item_list = []
-
-        if res is None:
-            if len(item_list) > 0:
-                yield item_list
+        # Always get the first item for this batch (blocking)
+        first_item = await q.get()
+        if first_item is None:
+            if batch:  # Should never happen due to loop structure, but safety check
+                yield batch
             break
-        item_list.append(res)
+        batch.append(first_item)
+
+        # Collect additional items up to batch size or until debounce timeout
+        while len(batch) < max_batch_size:
+            try:
+                additional_item = await asyncio.wait_for(q.get(), timeout=debounce_time)
+
+                if additional_item is None:
+                    # End-of-queue sentinel reached
+                    yield batch
+                    return
+
+                batch.append(additional_item)
+
+            except asyncio.TimeoutError:
+                # No more items available within debounce time, yield current batch
+                break
+
+        # Yield the completed batch and reset for next iteration
+        yield batch
+        batch = []
 
 
 class _WarnIfGeneratorIsNotConsumed:
