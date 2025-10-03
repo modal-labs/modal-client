@@ -2,7 +2,6 @@
 import asyncio
 import ssl
 import urllib.parse
-from dataclasses import dataclass
 from typing import AsyncIterator, Optional
 
 import grpclib.client
@@ -15,12 +14,6 @@ from modal_proto import sandbox_router_pb2 as sr_pb2
 from modal_proto.sandbox_router_grpc import SandboxRouterStub
 
 from .grpc_utils import connect_channel
-
-
-@dataclass
-class SandboxCommandRouterAccess:
-    url: str
-    jwt: str
 
 
 class SandboxRouterClient:
