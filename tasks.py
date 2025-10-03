@@ -456,11 +456,10 @@ def update_changelog(ctx, sha: str = ""):
         print("Aborting: No PR description in response from GitHub API")
         return
 
-    # Parse the PR description to get a changelog update
-    comment_pattern = r"<!--.+?-->"
-    pr_description = re.sub(comment_pattern, "", pr_description, flags=re.DOTALL)
+    # Parse the PR description to get a changelog update, which is all text between
+    # the changelog header and any auto comments appended by Cursor
 
-    changelog_pattern = r"## Changelog\s*(.+)$"
+    changelog_pattern = r"## Changelog\s*(.+?)(?:<!--\s*\w*CURSOR\w*\s*-->|$)"
     m = re.search(changelog_pattern, pr_description, flags=re.DOTALL)
     if m:
         update = m.group(1).strip()
@@ -470,6 +469,10 @@ def update_changelog(ctx, sha: str = ""):
     if not update:
         print("Aborting: Empty changelog in PR description")
         return
+
+    # Remove any HTML comments
+    comment_pattern = r"<!--.+?-->"
+    update = re.sub(comment_pattern, "", update, flags=re.DOTALL)
 
     # Read the existing changelog and split after the header so we can prepend new content
     with open("CHANGELOG.md") as fid:
