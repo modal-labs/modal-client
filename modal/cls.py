@@ -694,7 +694,7 @@ More information on class parameterization can be found here: https://modal.com/
         max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
         buffer_containers: Optional[int] = None,  # Additional containers to scale up while Function is active.
         scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
-        timeout: Optional[int] = None,
+        timeout: Optional[int] = None,  # Max execution time for inputs and startup in seconds. None results in 300s.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         # The following parameters are deprecated
