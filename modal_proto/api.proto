@@ -3096,7 +3096,7 @@ message SharedVolumeMount {
   string mount_path = 1;
   string shared_volume_id = 2;
   CloudProvider cloud_provider = 3;
-  bool allow_cross_region = 4;
+  reserved 4; // allow_cross_region
 }
 
 message SharedVolumePutFileRequest {
