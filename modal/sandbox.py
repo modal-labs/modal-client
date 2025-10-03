@@ -535,6 +535,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._tunnels = None
         self._enable_snapshot = False
         self._command_router_access = None
+        self._command_router_client = None
 
     @staticmethod
     async def from_name(
@@ -981,8 +982,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         # Generate a random process ID to use as a combination of idempotency key/process identifier.
         process_id = str(uuid.uuid4())
-        # TODO(saltzm): Instantiate this once per sandbox?
-        router_client = SandboxRouterClient(command_router_access.url, command_router_access.jwt)
+        router_client = await self._get_command_router_client(command_router_access)
         if stdout == StreamType.PIPE:
             stdout_config = sr_pb2.SandboxExecStdoutConfig.SANDBOX_EXEC_STDOUT_CONFIG_PIPE
         elif stdout == StreamType.DEVNULL:
