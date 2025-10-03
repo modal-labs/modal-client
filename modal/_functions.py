@@ -736,6 +736,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             if is_generator:
                 raise InvalidError("Generator functions do not support retries.")
 
+        if timeout is None:  # type: ignore[unreachable]  # Help users who aren't using type checkers
+            raise InvalidError("The `timeout` parameter cannot be set to None.")
+
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
