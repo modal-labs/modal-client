@@ -362,8 +362,8 @@ def get_preferred_payload_format() -> "api_pb2.DataFormat.ValueType":
 
 CBOR_ERROR_MESSAGE = """Serialization error due to missing cbor2 package.
 
-Please redeploy the function using the Modal image builder version >= 2025.06, """
-"""or manually install the cbor2 package in your image.
+Please redeploy the function using the Modal image builder version >= 2025.06, \
+or manually install the cbor2 package in your Image.
 See https://modal.com/settings/modal-labs/image-config for more information."""
 
 
