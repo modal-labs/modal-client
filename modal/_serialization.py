@@ -360,6 +360,13 @@ def get_preferred_payload_format() -> "api_pb2.DataFormat.ValueType":
     return data_format
 
 
+CBOR_ERROR_MESSAGE = """Serialization error due to missing cbor2 package.
+
+Please redeploy the function using the Modal image builder version >= 2025.06, """
+"""or manually install the cbor2 package in your image.
+See https://modal.com/settings/modal-labs/image-config for more information."""
+
+
 def serialize_data_format(obj: Any, data_format: int) -> bytes:
     """Similar to serialize(), but supports other data formats."""
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
@@ -371,7 +378,7 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
         return obj.SerializeToString(deterministic=True)
     elif data_format == api_pb2.DATA_FORMAT_CBOR:
         if cbor2 is None:
-            raise InvalidError("CBOR support requires the 'cbor2' package to be installed.")
+            raise InvalidError(CBOR_ERROR_MESSAGE)
         try:
             return cbor2.dumps(obj)
         except cbor2.CBOREncodeTypeError:
@@ -397,7 +404,7 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
         return api_pb2.GeneratorDone.FromString(s)
     elif data_format == api_pb2.DATA_FORMAT_CBOR:
         if cbor2 is None:
-            raise InvalidError("CBOR support requires the 'cbor2' package to be installed.")
+            raise InvalidError(CBOR_ERROR_MESSAGE)
         return cbor2.loads(s)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
