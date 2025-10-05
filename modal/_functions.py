@@ -605,6 +605,21 @@ class _FunctionSpec:
     proxy: Optional[_Proxy]
 
 
+def _get_supported_input_output_formats(is_web_endpoint: bool, is_generator: bool, restrict_output: bool):
+    if is_web_endpoint:
+        supported_input_formats = [api_pb2.DATA_FORMAT_ASGI]
+        supported_output_formats = [api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE]
+    else:
+        supported_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+        if restrict_output:
+            supported_output_formats = [api_pb2.DATA_FORMAT_CBOR]
+        else:
+            supported_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+        if is_generator:
+            supported_output_formats.append(api_pb2.DATA_FORMAT_GENERATOR_DONE)
+    return supported_input_formats, supported_output_formats
+
+
 P = typing_extensions.ParamSpec("P")
 ReturnType = typing.TypeVar("ReturnType", covariant=True)
 OriginalReturnType = typing.TypeVar(
@@ -836,17 +851,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_web_endpoint=is_web_endpoint,
                     ignore_first_argument=True,
                 )
-                if is_web_endpoint:
-                    method_input_formats = [api_pb2.DATA_FORMAT_ASGI]
-                    method_output_formats = [api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE]
-                else:
-                    method_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-                    if restrict_output:
-                        method_output_formats = [api_pb2.DATA_FORMAT_CBOR]
-                    else:
-                        method_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-                    if partial_function.params.is_generator:
-                        method_output_formats.append(api_pb2.DATA_FORMAT_GENERATOR_DONE)
+                method_input_formats, method_output_formats = _get_supported_input_output_formats(
+                    is_web_endpoint, partial_function.params.is_generator or False, restrict_output
+                )
 
                 method_definition = api_pb2.MethodDefinition(
                     webhook_config=partial_function.params.webhook_config,
@@ -882,17 +889,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             # classes don't have data formats themselves - input/output formats are set per method above
             supported_input_formats = []
             supported_output_formats = []
-        elif webhook_config is not None:
-            supported_input_formats = [api_pb2.DATA_FORMAT_ASGI]
-            supported_output_formats = [api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE]
         else:
-            supported_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            if restrict_output:
-                supported_output_formats = [api_pb2.DATA_FORMAT_CBOR]
-            else:
-                supported_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
-            if is_generator:
-                supported_output_formats.append(api_pb2.DATA_FORMAT_GENERATOR_DONE)
+            is_web_endpoint = webhook_config is not None and webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED
+            supported_input_formats, supported_output_formats = _get_supported_input_output_formats(
+                is_web_endpoint, is_generator, restrict_output
+            )
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
