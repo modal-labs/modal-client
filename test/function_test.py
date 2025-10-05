@@ -1748,7 +1748,7 @@ def test_function_supported_input_formats(client, servicer):
     }
     web_f_metadata = web_f._get_metadata()
     assert set(web_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_ASGI}
-    assert web_f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
+    assert web_f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE]
     cbor_f_metadata = cbor_f._get_metadata()
     assert set(cbor_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     assert set(cbor_f_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_CBOR}
@@ -1763,7 +1763,10 @@ def test_function_supported_input_formats(client, servicer):
         api_pb2.DATA_FORMAT_CBOR,
     }
     assert cls_metadata.method_handle_metadata["web_f"].supported_input_formats == [api_pb2.DATA_FORMAT_ASGI]
-    assert cls_metadata.method_handle_metadata["web_f"].supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
+    assert cls_metadata.method_handle_metadata["web_f"].supported_output_formats == [
+        api_pb2.DATA_FORMAT_ASGI,
+        api_pb2.DATA_FORMAT_GENERATOR_DONE,
+    ]
     assert set(cls_metadata.method_handle_metadata["g"].supported_input_formats) == {
         api_pb2.DATA_FORMAT_PICKLE,
         api_pb2.DATA_FORMAT_CBOR,

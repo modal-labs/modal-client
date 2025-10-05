@@ -838,7 +838,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
                 if is_web_endpoint:
                     method_input_formats = [api_pb2.DATA_FORMAT_ASGI]
-                    method_output_formats = [api_pb2.DATA_FORMAT_ASGI]
+                    method_output_formats = [api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE]
                 else:
                     method_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
                     if restrict_output:
@@ -884,7 +884,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             supported_output_formats = []
         elif webhook_config is not None:
             supported_input_formats = [api_pb2.DATA_FORMAT_ASGI]
-            supported_output_formats = [api_pb2.DATA_FORMAT_ASGI]
+            supported_output_formats = [api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE]
         else:
             supported_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
             if restrict_output:
