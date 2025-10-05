@@ -845,6 +845,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         method_output_formats = [api_pb2.DATA_FORMAT_CBOR]
                     else:
                         method_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+                    if is_generator:
+                        method_output_formats.append(api_pb2.DATA_FORMAT_GENERATOR_DONE)
 
                 method_definition = api_pb2.MethodDefinition(
                     webhook_config=partial_function.params.webhook_config,
@@ -889,6 +891,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 supported_output_formats = [api_pb2.DATA_FORMAT_CBOR]
             else:
                 supported_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            if is_generator:
+                supported_output_formats.append(api_pb2.DATA_FORMAT_GENERATOR_DONE)
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
