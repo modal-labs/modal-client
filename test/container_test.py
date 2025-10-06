@@ -1228,19 +1228,6 @@ def test_lifecycle_enter_async(servicer, deployed_support_function_definitions):
 
 
 @skip_github_non_linux
-def test_param_cls_function(servicer, deployed_sibling_hydration_app):
-    serialized_params = pickle.dumps(([111], {"y": "foo"}))
-    ret = _run_container_auto(
-        servicer,
-        "ParamCls.*",
-        deployed_sibling_hydration_app,
-        serialized_params=serialized_params,
-        inputs=_get_inputs(method_name="f"),
-    )
-    assert _unwrap_scalar(ret) == "111 foo 42"
-
-
-@skip_github_non_linux
 def test_param_cls_function_strict_params(servicer, deployed_sibling_hydration_app):
     serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"})
     ret = _run_container_auto(
