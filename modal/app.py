@@ -677,7 +677,6 @@ class _App:
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
-        allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal Function with this App."""
@@ -697,8 +696,6 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
-        if allow_cross_region_volumes is not None:
-            deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
         secrets = secrets or []
         if env:
@@ -908,7 +905,6 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
-        allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](https://modal.com/docs/reference/modal.Cls) with this App.
@@ -929,8 +925,6 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
-        if allow_cross_region_volumes is not None:
-            deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
         secrets = secrets or []
         if env:
