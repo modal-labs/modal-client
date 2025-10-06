@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import re
+from collections.abc import Mapping
 
 from ..exception import InvalidError
 
@@ -37,7 +38,7 @@ def is_valid_tag(tag: str, max_length: int = 50) -> bool:
     return bool(re.match(pattern, tag))
 
 
-def check_tag_dict(tags: dict[str, str]) -> dict[str, str]:
+def check_tag_dict(tags: Mapping[str, str]) -> None:
     rules = (
         "\n\nTags may contain only alphanumeric characters, dashes, periods, or underscores, "
         "and must be 63 characters or less."
@@ -48,8 +49,6 @@ def check_tag_dict(tags: dict[str, str]) -> dict[str, str]:
             raise InvalidError(f"Invalid tag key: {key!r}.{rules}")
         if not is_valid_tag(value, max_length):
             raise InvalidError(f"Invalid tag value: {value!r}.{rules}")
-
-    return tags
 
 
 def check_object_name(name: str, object_type: str) -> None:
