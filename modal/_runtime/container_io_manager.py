@@ -283,6 +283,7 @@ class IOContext:
             api_pb2.FunctionPutOutputsItem(
                 input_id=input_id,
                 input_started_at=started_at,
+                output_created_at=time.time(),
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED),
                 retry_count=retry_count,
             )
@@ -358,6 +359,7 @@ class IOContext:
             api_pb2.FunctionPutOutputsItem(
                 input_id=input_id,
                 input_started_at=started_at,
+                output_created_at=time.time(),
                 retry_count=retry_count,
                 **data_format_specific_output(function_input.data_format),
             )
