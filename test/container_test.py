@@ -1416,6 +1416,7 @@ def test_function_sibling_hydration(servicer, credentials, deployed_sibling_hydr
 
 @skip_github_non_linux
 def test_multiapp(servicer, caplog):
+    # TODO: this tests side effects of creating apps, needs to run in pristine interpreter
     deployed_multiapp = isolated_deploy("test.supports.multiapp", "a")
     ret = _run_container_auto(servicer, "a_func", deployed_multiapp)
     assert _unwrap_scalar(ret) is None
@@ -1429,6 +1430,7 @@ def test_multiapp_privately_decorated(servicer, caplog):
     # function handle does not override the original function, so we can't find the app
     # and the two apps are not named
     deployed_multiapp = isolated_deploy("test.supports.multiapp_privately_decorated")
+    # TODO: this tests side effects of creating apps, needs to run in pristine interpreter
     ret = _run_container_auto(servicer, "foo", deployed_multiapp)
     assert _unwrap_scalar(ret) == 1
     assert "You have more than one unnamed app." in caplog.text
@@ -1439,6 +1441,7 @@ def test_multiapp_privately_decorated_named_app(servicer, caplog):
     # function handle does not override the original function, so we can't find the app
     # but we can use the names of the apps to determine the active app
     deployed_multiapp = isolated_deploy("test.supports.multiapp_privately_decorated_named_app")
+    # TODO: this tests side effects of creating apps, needs to run in pristine interpreter
     assert deployed_multiapp[0]["foo"][1].app_name == "dummy"
     ret = _run_container_auto(servicer, "foo", deployed_multiapp)
     assert _unwrap_scalar(ret) == 1
@@ -1449,6 +1452,7 @@ def test_multiapp_privately_decorated_named_app(servicer, caplog):
 def test_multiapp_same_name_warning(servicer, caplog, capsys):
     # function handle does not override the original function, so we can't find the app
     # two apps with the same name - warn since we won't know which one to hydrate
+    # TODO: this tests side effects of creating apps, needs to run in pristine interpreter
     deployed_multiapp = isolated_deploy("test.supports.multiapp_same_name")
     ret = _run_container_auto(servicer, "foo", deployed_multiapp)
     assert _unwrap_scalar(ret) == 1
@@ -1457,7 +1461,7 @@ def test_multiapp_same_name_warning(servicer, caplog, capsys):
 
 
 @skip_github_non_linux
-# @pytest.mark.skip("Investigate why this test changed?")
+@pytest.mark.skip("this tests side effects of creating apps, needs to run in pristine interpreter")
 def test_multiapp_serialized_func(servicer, caplog):
     # serialized functions shouldn't warn about multiple/not finding apps, since
     # they shouldn't load the module to begin with
