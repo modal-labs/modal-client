@@ -278,12 +278,13 @@ class IOContext:
         logger.debug(f"Finished generator input {self.input_ids}")
 
     async def output_items_cancellation(self, started_at: float):
+        output_created_at = time.time()
         # Create terminated outputs for these inputs to signal that the cancellations have been completed.
         return [
             api_pb2.FunctionPutOutputsItem(
                 input_id=input_id,
                 input_started_at=started_at,
-                output_created_at=time.time(),
+                output_created_at=output_created_at,
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED),
                 retry_count=retry_count,
             )
@@ -355,11 +356,12 @@ class IOContext:
                 }
 
         # all inputs in the batch get the same failure:
+        output_created_at = time.time()
         return [
             api_pb2.FunctionPutOutputsItem(
                 input_id=input_id,
                 input_started_at=started_at,
-                output_created_at=time.time(),
+                output_created_at=output_created_at,
                 retry_count=retry_count,
                 **data_format_specific_output(function_input.data_format),
             )
