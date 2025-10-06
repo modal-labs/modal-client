@@ -729,6 +729,7 @@ def test_failure(servicer, deployed_support_function_definitions, capsys):
     assert isinstance(exc, Exception)
     assert repr(exc) == "Exception('Failure!')"
     assert 'raise Exception("Failure!")' in capsys.readouterr().err  # traceback
+    assert ret.items[0].output_created_at > 0.0
 
 
 @skip_github_non_linux
@@ -2286,6 +2287,7 @@ def test_sigint_termination_input(servicer, tmp_path, method):
         items = _flatten_outputs(servicer.container_outputs)
         assert len(items) == 1
         assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+        assert items[0].output_created_at > 0.0
 
     assert (
         container_process.returncode == 0
