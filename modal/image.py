@@ -868,7 +868,7 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
 
         app = modal.App("build-image")
-        with modal.enable_output(), app.run():
+        with app.run(), modal.enable_output():
             image.build(app)
 
         # Save the image id
