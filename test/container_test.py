@@ -2775,9 +2775,20 @@ def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
 
 
 @skip_github_non_linux
-def test_container_app_zero_matching(servicer, event_loop):
-    ret = _run_container(servicer, "test.supports.function_without_app", "f")
-    assert _unwrap_scalar(ret) == 123
+@pytest.mark.usefixtures("server_url_env")
+def test_container_app_zero_matching(servicer, tmp_path):
+    with _run_container_process(
+        servicer,
+        tmp_path,
+        "test.supports.function_without_app",
+        "f",
+        inputs=[("", (10,), {})],
+    ) as p:
+        assert p.wait() == 0
+
+    assert servicer.container_outputs[0].outputs[0].result == api_pb2.GenericResult(
+        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, data=serialize_data_format(123, api_pb2.DATA_FORMAT_PICKLE)
+    )
 
 
 @skip_github_non_linux
