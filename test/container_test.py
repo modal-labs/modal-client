@@ -477,7 +477,7 @@ def _run_container_auto(
     deployed_support_function_definitions,
     *,
     inputs=None,
-    serialized_params: Optional[bytes] = None,
+    serialized_params: bytes = b"",
     is_checkpointing_function: bool = False,
 ) -> ContainerResult:
     """
@@ -819,12 +819,11 @@ def test_startup_failure_big_exception(servicer, capsys):
 
 
 @skip_github_non_linux
-@pytest.mark.skip("Investigate how this test changed?")
 def test_from_local_python_packages_inside_container(servicer, deployed_support_function_definitions):
     """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""
-    ret = _run_container_auto(servicer, "dummy", deployed_support_function_definitions)
+    ret = _run_container(servicer, "test.supports.package_mount", "dummy")
     assert _unwrap_scalar(ret) == 0
 
 
@@ -1458,14 +1457,14 @@ def test_multiapp_same_name_warning(servicer, caplog, capsys):
 
 
 @skip_github_non_linux
-@pytest.mark.skip("Investigate why this test changed?")
+# @pytest.mark.skip("Investigate why this test changed?")
 def test_multiapp_serialized_func(servicer, caplog):
     # serialized functions shouldn't warn about multiple/not finding apps, since
     # they shouldn't load the module to begin with
     deployed_multiapp = isolated_deploy("test.supports.multiapp_serialized_func")
     ret = _run_container_auto(servicer, "foo", deployed_multiapp)
     assert _unwrap_scalar(ret) == 42
-    assert len(caplog.messages) == 0
+    assert caplog.messages == []
 
 
 @skip_github_non_linux
