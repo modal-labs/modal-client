@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import functools
+import multiprocessing
 import os
 import shutil
 import sys
@@ -23,12 +24,19 @@ async def _volume_download(
     remote_path: str,
     local_destination: Path,
     overwrite: bool,
-    progress_cb: Callable,
+    parallelism: int = multiprocessing.cpu_count(),
+    progress_cb: Optional[Callable] = None,
 ):
+    if progress_cb is None:
+
+        def progress_cb(*_, **__):
+            pass
+
     is_pipe = local_destination == PIPE_PATH
 
     q: asyncio.Queue[tuple[Optional[Path], Optional[FileEntry]]] = asyncio.Queue()
-    num_consumers = 1 if is_pipe else 10  # concurrency limit for downloading files
+    num_consumers = 1 if is_pipe else parallelism  # concurrency limit for downloading files
+    download_semaphore = asyncio.Semaphore(parallelism)
 
     async def producer():
         iterator: AsyncIterator[FileEntry]
@@ -86,7 +94,12 @@ async def _volume_download(
 
                         with output_path.open("wb") as fp:
                             if isinstance(volume, _Volume):
-                                b = await volume.read_file_into_fileobj(entry.path, fp, file_progress_cb)
+                                b = await volume.read_file_into_fileobj(
+                                    path=entry.path,
+                                    fileobj=fp,
+                                    download_semaphore=download_semaphore,
+                                    progress_cb=file_progress_cb,
+                                )
                             else:
                                 b = 0
                                 async for chunk in volume.read_file(entry.path):

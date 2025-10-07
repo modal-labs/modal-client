@@ -670,7 +670,12 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def read_file_into_fileobj(
-        self, path: str, fileobj: typing.IO[bytes], progress_cb: Optional[Callable[..., Any]] = None
+        self,
+        path: str,
+        fileobj: typing.IO[bytes],
+        parallelism: int = multiprocessing.cpu_count(),
+        download_semaphore: Optional[asyncio.Semaphore] = None,
+        progress_cb: Optional[Callable[..., Any]] = None,
     ) -> int:
         """mdmd:hidden
         Read volume file into file-like IO object.
@@ -687,8 +692,9 @@ class _Volume(_Object, type_prefix="vo"):
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 
-        # TODO(dflemstr): Sane default limit? Make configurable?
-        download_semaphore = asyncio.Semaphore(multiprocessing.cpu_count())
+        if download_semaphore is None:
+            download_semaphore = asyncio.Semaphore(parallelism)
+
         write_lock = asyncio.Lock()
         start_pos = fileobj.tell()
 
