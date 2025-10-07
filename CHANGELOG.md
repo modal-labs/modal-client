@@ -6,6 +6,21 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev80 (2025-10-07)
+
+---
+
+> [!NOTE]
+> Reorders `update_changelog` in `tasks.py` to remove HTML comments, then trim, and only then validate non-empty changelog content.
+> 
+> - **Changelog processing**:
+>   - `tasks.py:update_changelog`:
+>     - Remove HTML comments before trimming the changelog text.
+>     - Perform empty-content check after trimming; aborts if empty.
+> 
+> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 7c93b70e94979a3879178749096b2000be810e4d. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
+
+
 #### 1.1.5.dev78 (2025-10-07)
 
 - Also adds `App.set_tags()` and `App.get_tags()` which should be rolled into the changelog update for tags, generally speaking.
