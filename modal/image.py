@@ -1448,6 +1448,8 @@ class _Image(_Object, type_prefix="im"):
         This ensures that updates to your project code wouldn't require reinstalling third-party dependencies
         after every change.
 
+        uv workspaces are currently not supported.
+
         Added in v1.1.0.
         """
 
