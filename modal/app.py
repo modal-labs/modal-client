@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import inspect
 import typing
-from collections.abc import AsyncGenerator, Collection, Coroutine, Sequence
+from collections.abc import AsyncGenerator, Collection, Coroutine, Mapping, Sequence
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
@@ -191,9 +191,12 @@ class _App:
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
+        if tags is not None:
+            check_tag_dict(tags)
+
         self._name = name
         self._description = name
-        self._tags = check_tag_dict(tags or {})
+        self._tags = tags or {}
         self._include_source_default = include_source
 
         check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of `modal.Secret` objects")
@@ -1087,6 +1090,41 @@ class _App:
             self._tags = {**other_app._tags, **self._tags}
 
         return self
+
+    async def set_tags(self, tags: Mapping[str, str], *, client: Optional[_Client] = None) -> None:
+        """Attach key-value metadata to the App.
+
+        Tag metadata can be used to add organization-specific context to the App and can be
+        included in billing reports and other informational APIs. Tags can also be set in
+        the App constructor.
+
+        Any tags set on the App before calling this method will be removed if they are not
+        included in the argument (i.e., this method does not have `.update()` semantics).
+
+        """
+        # Note that we are requiring the App to be "running" before we set the tags.
+        # Alternatively, we could hold onto the tags (i.e. in `self._tags`) and then pass
+        # then up when AppPublish gets called. I'm not certain we want to support it, though.
+        # It might not be obvious to users that `.set_tags()` is eager and has immediate effect
+        # when the App is running, but lazy (and potentially ignored) otherwise. There would be
+        # other complications, like what do you do with any tags set in the constructor, and
+        # what should  `.get_tags()` do when it's called before the App is running?
+        if self._app_id is None:
+            raise InvalidError("`App.set_tags` cannot be called before the App is running.")
+        check_tag_dict(tags)
+        req = api_pb2.AppSetTagsRequest(app_id=self._app_id, tags=tags)
+
+        client = client or self._client or await _Client.from_env()
+        await retry_transient_errors(client.stub.AppSetTags, req)
+
+    async def get_tags(self, *, client: Optional[_Client] = None) -> dict[str, str]:
+        """Get the tags that are currently attached to the App."""
+        if self._app_id is None:
+            raise InvalidError("`App.get_tags` cannot be called before the App is running.")
+        req = api_pb2.AppGetTagsRequest(app_id=self._app_id)
+        client = client or self._client or await _Client.from_env()
+        resp = await retry_transient_errors(client.stub.AppGetTags, req)
+        return dict(resp.tags)
 
     async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
         """Stream logs from the app.

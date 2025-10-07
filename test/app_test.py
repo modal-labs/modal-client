@@ -501,3 +501,16 @@ def test_app_composition_tags(servicer, client, inherit_tags):
         assert request.tags == {"foo": "bar", "baz": "qux"}
     else:
         assert request.tags == {"baz": "qux"}
+
+
+def test_app_set_tags(servicer, client):
+    app = App()
+    app.function()(square)
+    app.deploy(name="set-tags-test", client=client)
+
+    tags = {"x": "1", "y": "2"}
+    with servicer.intercept() as ctx:
+        app.set_tags(tags, client=client)
+
+    request = ctx.pop_request("AppSetTags")
+    assert request.tags == tags
