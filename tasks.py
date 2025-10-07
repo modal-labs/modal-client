@@ -459,7 +459,7 @@ def update_changelog(ctx, sha: str = ""):
     # Parse the PR description to get a changelog update, which is all text between
     # the changelog header and any auto comments appended by Cursor
 
-    changelog_pattern = r"## Changelog\s*(.+?)(?:<!--\s*\w*CURSOR\w*\s*-->|$)"
+    changelog_pattern = r"## Changelog\s*(.*?)(?:<!--\s*\w*CURSOR\w*\s*-->|$)"
     m = re.search(changelog_pattern, pr_description, flags=re.DOTALL)
     if m:
         update = m.group(1)
