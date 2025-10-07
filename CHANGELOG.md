@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev78 (2025-10-07)
+
+- Also adds `App.set_tags()` and `App.get_tags()` which should be rolled into the changelog update for tags, generally speaking.
+
+
 #### 1.1.5.dev77 (2025-10-07)
 
 
