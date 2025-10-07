@@ -202,6 +202,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             }
         ]
         self.app_objects = {}
+        self.app_tags: dict[str, dict[str, str]] = {}
         self.app_unindexed_objects = {}
         self.max_object_size_bytes = MAX_OBJECT_SIZE_BYTES
         self.n_inputs = 0
@@ -705,6 +706,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 )
             )
         await stream.send_message(api_pb2.AppListResponse(apps=apps))
+
+    async def AppSetTags(self, stream):
+        request: api_pb2.AppSetTagsRequest = await stream.recv_message()
+        self.app_tags[request.app_id] = dict(request.tags)
+        await stream.send_message(Empty())
 
     async def AppStop(self, stream):
         request: api_pb2.AppStopRequest = await stream.recv_message()
