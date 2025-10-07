@@ -399,6 +399,14 @@ message AppGetOrCreateResponse {
   string app_id = 1;
 }
 
+message AppGetTagsRequest {
+  string app_id = 1;
+}
+
+message AppGetTagsResponse {
+  map<string, string> tags = 1;
+}
+
 message AppHeartbeatRequest {
   string app_id = 1;
 }
@@ -467,6 +475,12 @@ message AppSetObjectsRequest {
   AppState new_app_state = 5; // promotes an app from initializing to this new state
   reserved 6;
 }
+
+message AppSetTagsRequest {
+  string app_id = 1;
+  map<string, string> tags = 2;
+}
+
 
 message AppStopRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
@@ -3582,12 +3596,14 @@ service ModalClient {
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppGetOrCreate(AppGetOrCreateRequest) returns (AppGetOrCreateResponse);
+  rpc AppGetTags(AppGetTagsRequest) returns (AppGetTagsResponse);
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
   rpc AppPublish(AppPublishRequest) returns (AppPublishResponse);
   rpc AppRollback(AppRollbackRequest) returns (google.protobuf.Empty);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
+  rpc AppSetTags(AppSetTagsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 
   // Input Plane
