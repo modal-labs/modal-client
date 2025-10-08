@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev86 (2025-10-08)
+
+- Improves compatibility with newer versions of protobuf.
+
+
 #### 1.1.5.dev83 (2025-10-07)
 
 - Improved support for protobuf 5+ when using the Python implementation of the Protobuf runtime.
