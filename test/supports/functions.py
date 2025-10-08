@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import threading
 import time
+from typing import Sequence
 
 import modal
 from modal import (
@@ -23,6 +24,7 @@ from modal import (
 )
 from modal._utils.deprecation import deprecation_warning
 from modal.experimental import get_local_input_concurrency, set_local_input_concurrency
+from modal.queue import Queue
 
 SLEEP_DELAY = 0.1
 
@@ -32,6 +34,31 @@ app = App()
 @app.function()
 def square(x: int):
     return x * x
+
+
+@app.function(_experimental_restrict_output=True)
+def square_restrict_output(x: int):
+    return x * x
+
+
+@app.function(_experimental_restrict_output=True)
+def cbor_incompatible_output(x: int):
+    with Queue.ephemeral() as q:
+        return q
+
+
+@app.cls()
+class SimpleCls:
+    @method()
+    def square(self, x: int) -> int:
+        return x**2
+
+
+@app.cls(_experimental_restrict_output=True)
+class SimpleCbor:
+    @method()
+    def square(self, x: int) -> int:
+        return x**2
 
 
 @app.function()
@@ -111,6 +138,12 @@ def deprecated_function(x):
 @fastapi_endpoint()
 def webhook(arg="world"):
     return {"hello": arg}
+
+
+@app.function(serialized=True)
+@fastapi_endpoint()
+def webhook_serialized(arg="world"):
+    return f"Hello, {arg}"
 
 
 def stream():
@@ -474,14 +507,14 @@ class LifecycleCls:
 
 
 @app.function()
-@concurrent(max_inputs=5)
+@concurrent(max_inputs=6)
 def sleep_700_sync(x):
     time.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
 
 
 @app.function()
-@concurrent(max_inputs=5)
+@concurrent(max_inputs=6)
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
@@ -494,6 +527,20 @@ def batch_function_sync(x: tuple[int], y: tuple[int]):
     for x_i, y_i in zip(x, y):
         outputs.append(x_i / y_i)
     return outputs
+
+
+@app.function()
+@batched(max_batch_size=4, wait_ms=500)
+def batch_function_cbor_tester(c_list: list[Sequence[str]]) -> Sequence[Sequence[str]]:
+    # batch processing so we process all entries before returning:
+    res = []
+    for input_entry in c_list:
+        if input_entry[0] == "error":
+            raise Exception("custom error!")
+        input_type = type(input_entry).__name__  # if input was cbor this becomes "list", if pickle then "tuple"
+        res.append((input_type,))  # returns a tuple per input (gets transformed to list for cbor)
+
+    return res
 
 
 @app.function()
@@ -610,12 +657,14 @@ def raise_large_unicode_exception():
 
 
 @app.function()
+@modal.concurrent(target_inputs=2, max_inputs=10)
 def get_input_concurrency(timeout: int):
     time.sleep(timeout)
     return get_local_input_concurrency()
 
 
 @app.function()
+@modal.concurrent(target_inputs=3, max_inputs=6)
 def set_input_concurrency(start: float):
     set_local_input_concurrency(3)
     time.sleep(1)
@@ -658,3 +707,75 @@ class CustomException(Exception):
 @app.function()
 def raises_custom_exception(x):
     raise CustomException("Failure!")
+
+
+@app.cls()
+class StopFetching:
+    @enter()
+    def init(self):
+        self.counter = 0
+
+    @method()
+    def after_two(self, x):
+        import modal.experimental
+
+        self.counter += 1
+
+        if self.counter >= 2:
+            modal.experimental.stop_fetching_inputs()
+
+        return x * x
+
+
+@app.cls(serialized=True)
+class SerializedCls:
+    @enter()
+    def enter(self):
+        self.power = 5
+
+    @method()
+    def method(self, x):
+        return x**self.power
+
+
+@app.cls(serialized=True)
+class SerializedClassWithParams:
+    p: int = modal.parameter()
+
+    @modal.method()
+    def method(self):
+        return "hello"
+
+
+@app.function(
+    volumes={
+        "/var/foo": modal.Volume.from_name("foo", create_if_missing=True),
+        "/var/bar": modal.Volume.from_name("bar", create_if_missing=True),
+    }
+)
+def function_with_volumes(should_raise: bool):
+    if should_raise:
+        raise Exception("Failure!")
+    return "success"
+
+
+@app.cls(serialized=True)
+class Foo:
+    x: str = modal.parameter()
+
+    @enter()
+    def some_enter(self):
+        self.x += "_enter"
+
+    @method()
+    def method_a(self, y):
+        return self.x + f"_a_{y}"
+
+    @method()
+    def method_b(self, y):
+        return self.x + f"_b_{y}"
+
+
+@app.function(serialized=True)
+def serialized_triple(x):
+    return 3 * x

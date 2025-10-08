@@ -81,7 +81,8 @@ def protoc(ctx):
 )
 def lint(ctx, fix=False):
     """Run linter on all files."""
-    ctx.run(f"ruff check . {'--fix' if fix else ''}", pty=True)
+    ctx.run(f"ruff check {'--fix' if fix else ''}", pty=True, echo=True)
+    ctx.run(f"ruff format {'' if fix else '--diff'}", pty=True, echo=True)
 
 
 def lint_protos_impl(ctx, proto_fname: str):
@@ -455,17 +456,21 @@ def update_changelog(ctx, sha: str = ""):
         print("Aborting: No PR description in response from GitHub API")
         return
 
-    # Parse the PR description to get a changelog update
-    comment_pattern = r"<!--.+?-->"
-    pr_description = re.sub(comment_pattern, "", pr_description, flags=re.DOTALL)
+    # Parse the PR description to get a changelog update, which is all text between
+    # the changelog header and any auto comments appended by Cursor
 
-    changelog_pattern = r"## Changelog\s*(.+)$"
+    changelog_pattern = r"## Changelog\s*(.*?)(?:<!--\s*\w*CURSOR\w*\s*-->|$)"
     m = re.search(changelog_pattern, pr_description, flags=re.DOTALL)
     if m:
-        update = m.group(1).strip()
+        update = m.group(1)
     else:
         print("Aborting: No changelog section in PR description")
         return
+
+    # Remove any HTML comments
+    comment_pattern = r"<!--.+?-->"
+    update = re.sub(comment_pattern, "", update, flags=re.DOTALL).strip()
+
     if not update:
         print("Aborting: Empty changelog in PR description")
         return

@@ -16,6 +16,7 @@ from typing import (
     Any,
     Callable,
     ClassVar,
+    Generator,
     Optional,
     cast,
 )
@@ -24,18 +25,22 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
-import modal_proto.api_pb2
 from modal._runtime import gpu_memory_snapshot
-from modal._serialization import deserialize, serialize, serialize_data_format
-from modal._traceback import extract_traceback, print_exception
-from modal._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
-from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
+from modal._serialization import (
+    deserialize_data_format,
+    pickle_exception,
+    pickle_traceback,
+    serialize_data_format,
+)
+from modal._traceback import print_exception
+from modal._utils.async_utils import TaskContext, aclosing, asyncify, synchronize_api, synchronizer
+from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload, format_blob_data
 from modal._utils.function_utils import _stream_function_call_data
 from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.package_utils import parse_major_minor_version
 from modal.client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from modal.config import config, logger
-from modal.exception import ClientClosed, InputCancellation, InvalidError, SerializationError
+from modal.exception import ClientClosed, InputCancellation, InvalidError
 from modal_proto import api_pb2
 
 if TYPE_CHECKING:
@@ -151,9 +156,13 @@ class IOContext:
         # deserializing here instead of the constructor
         # to make sure we handle user exceptions properly
         # and don't retry
-        deserialized_args = [
-            deserialize(input.args, self._client) if input.args else ((), {}) for input in self.function_inputs
-        ]
+        deserialized_args = []
+        for input in self.function_inputs:
+            if input.args:
+                data_format = input.data_format
+                deserialized_args.append(deserialize_data_format(input.args, data_format, self._client))
+            else:
+                deserialized_args.append(((), {}))
         if not self._is_batched:
             return deserialized_args[0]
 
@@ -191,25 +200,229 @@ class IOContext:
         }
         return (), formatted_kwargs
 
-    def call_finalized_function(self) -> Any:
-        logger.debug(f"Starting input {self.input_ids}")
-        args, kwargs = self._args_and_kwargs()
-        res = self.finalized_function.callable(*args, **kwargs)
-        logger.debug(f"Finished input {self.input_ids}")
-        return res
+    def _generator_output_format(self) -> "api_pb2.DataFormat.ValueType":
+        return self._determine_output_format(self.function_inputs[0].data_format)
 
-    def validate_output_data(self, data: Any) -> list[Any]:
-        if not self._is_batched:
+    def _prepare_batch_output(self, data: Any) -> list[Any]:
+        # validate that output is valid for batch
+        if self._is_batched:
+            # assert data is list etc.
+            function_name = self.finalized_function.callable.__name__
+
+            if not isinstance(data, list):
+                raise InvalidError(f"Output of batched function {function_name} must be a list.")
+            if len(data) != len(self.input_ids):
+                raise InvalidError(
+                    f"Output of batched function {function_name} must be a list of equal length as its inputs."
+                )
+            return data
+        else:
             return [data]
 
-        function_name = self.finalized_function.callable.__name__
-        if not isinstance(data, list):
-            raise InvalidError(f"Output of batched function {function_name} must be a list.")
-        if len(data) != len(self.input_ids):
+    def call_function_sync(self) -> list[Any]:
+        logger.debug(f"Starting input {self.input_ids}")
+        args, kwargs = self._args_and_kwargs()
+        expected_value_or_values = self.finalized_function.callable(*args, **kwargs)
+        if (
+            inspect.iscoroutine(expected_value_or_values)
+            or inspect.isgenerator(expected_value_or_values)
+            or inspect.isasyncgen(expected_value_or_values)
+        ):
             raise InvalidError(
-                f"Output of batched function {function_name} must be a list of equal length as its inputs."
+                f"Sync (non-generator) function return value of type {type(expected_value_or_values)}."
+                " You might need to use @app.function(..., is_generator=True)."
             )
-        return data
+        logger.debug(f"Finished input {self.input_ids}")
+        return self._prepare_batch_output(expected_value_or_values)
+
+    async def call_function_async(self) -> list[Any]:
+        logger.debug(f"Starting input {self.input_ids}")
+        args, kwargs = self._args_and_kwargs()
+        expected_coro = self.finalized_function.callable(*args, **kwargs)
+        if (
+            not inspect.iscoroutine(expected_coro)
+            or inspect.isgenerator(expected_coro)
+            or inspect.isasyncgen(expected_coro)
+        ):
+            raise InvalidError(
+                f"Async (non-generator) function returned value of type {type(expected_coro)}"
+                " You might need to use @app.function(..., is_generator=True)."
+            )
+        value = await expected_coro
+        logger.debug(f"Finished input {self.input_ids}")
+        return self._prepare_batch_output(value)
+
+    def call_generator_sync(self) -> Generator[Any, None, None]:
+        assert not self._is_batched
+        logger.debug(f"Starting generator input {self.input_ids}")
+        args, kwargs = self._args_and_kwargs()
+        expected_gen = self.finalized_function.callable(*args, **kwargs)
+        if not inspect.isgenerator(expected_gen):
+            raise InvalidError(f"Generator function returned value of type {type(expected_gen)}")
+
+        for result in expected_gen:
+            yield result
+        logger.debug(f"Finished generator input {self.input_ids}")
+
+    async def call_generator_async(self) -> AsyncGenerator[Any, None]:
+        assert not self._is_batched
+        logger.debug(f"Starting generator input {self.input_ids}")
+        args, kwargs = self._args_and_kwargs()
+        expected_async_gen = self.finalized_function.callable(*args, **kwargs)
+        if not inspect.isasyncgen(expected_async_gen):
+            raise InvalidError(f"Async generator function returned value of type {type(expected_async_gen)}")
+
+        async with aclosing(expected_async_gen) as gen:
+            async for result in gen:
+                yield result
+        logger.debug(f"Finished generator input {self.input_ids}")
+
+    async def output_items_cancellation(self, started_at: float):
+        output_created_at = time.time()
+        # Create terminated outputs for these inputs to signal that the cancellations have been completed.
+        return [
+            api_pb2.FunctionPutOutputsItem(
+                input_id=input_id,
+                input_started_at=started_at,
+                output_created_at=output_created_at,
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED),
+                retry_count=retry_count,
+            )
+            for input_id, retry_count in zip(self.input_ids, self.retry_counts)
+        ]
+
+    def _determine_output_format(self, input_format: "api_pb2.DataFormat.ValueType") -> "api_pb2.DataFormat.ValueType":
+        if input_format in self.finalized_function.supported_output_formats:
+            return input_format
+        elif self.finalized_function.supported_output_formats:
+            # This branch would normally be hit when calling a restricted_output function with Pickle input
+            # but we enforce cbor output at function definition level. In the future we might send the intended
+            # output format along with the input to make this disitinction in the calling client instead
+            logger.debug(
+                f"Got an input with format {input_format}, but can only produce output"
+                f" using formats {self.finalized_function.supported_output_formats}"
+            )
+            return self.finalized_function.supported_output_formats[0]
+        else:
+            # This should never happen since self.finalized_function.supported_output_formats should be
+            # populated with defaults in case it's empty, log a warning
+            logger.warning(f"Got an input with format {input_format}, but the function has no defined output formats")
+            return api_pb2.DATA_FORMAT_PICKLE
+
+    async def output_items_exception(
+        self, started_at: float, task_id: str, exc: BaseException
+    ) -> list[api_pb2.FunctionPutOutputsItem]:
+        # Note: we're not pickling the traceback since it contains
+        # local references that means we can't unpickle it. We *are*
+        # pickling the exception, which may have some issues (there
+        # was an earlier note about it that it might not be possible
+        # to unpickle it in some cases). Let's watch out for issues.
+        repr_exc = repr(exc)
+        if len(repr_exc) >= MAX_OBJECT_SIZE_BYTES:
+            # We prevent large exception messages to avoid
+            # unhandled exceptions causing inf loops
+            # and just send backa trimmed version
+            trimmed_bytes = len(repr_exc) - MAX_OBJECT_SIZE_BYTES - 1000
+            repr_exc = repr_exc[: MAX_OBJECT_SIZE_BYTES - 1000]
+            repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
+
+        data: bytes = pickle_exception(exc)
+        data_result_part = await format_blob_data(data, self._client.stub)
+        serialized_tb, tb_line_cache = pickle_traceback(exc, task_id)
+
+        # Failure outputs for when input exceptions occur
+        def data_format_specific_output(input_format: "api_pb2.DataFormat.ValueType") -> dict:
+            output_format = self._determine_output_format(input_format)
+            if output_format == api_pb2.DATA_FORMAT_PICKLE:
+                return {
+                    "data_format": output_format,
+                    "result": api_pb2.GenericResult(
+                        status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                        exception=repr_exc,
+                        traceback=traceback.format_exc(),
+                        serialized_tb=serialized_tb,
+                        tb_line_cache=tb_line_cache,
+                        **data_result_part,
+                    ),
+                }
+            else:
+                return {
+                    "data_format": output_format,
+                    "result": api_pb2.GenericResult(
+                        status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                        exception=repr_exc,
+                        traceback=traceback.format_exc(),
+                    ),
+                }
+
+        # all inputs in the batch get the same failure:
+        output_created_at = time.time()
+        return [
+            api_pb2.FunctionPutOutputsItem(
+                input_id=input_id,
+                input_started_at=started_at,
+                output_created_at=output_created_at,
+                retry_count=retry_count,
+                **data_format_specific_output(function_input.data_format),
+            )
+            for input_id, retry_count, function_input in zip(self.input_ids, self.retry_counts, self.function_inputs)
+        ]
+
+    def output_items_generator_done(self, started_at: float, items_total: int) -> list[api_pb2.FunctionPutOutputsItem]:
+        assert not self._is_batched, "generators are not supported with batched inputs"
+        assert len(self.function_inputs) == 1, "generators are expected to have 1 input"
+        # Serialize and format the data
+        serialized_bytes = serialize_data_format(
+            api_pb2.GeneratorDone(items_total=items_total), data_format=api_pb2.DATA_FORMAT_GENERATOR_DONE
+        )
+        return [
+            api_pb2.FunctionPutOutputsItem(
+                input_id=self.input_ids[0],
+                input_started_at=started_at,
+                output_created_at=time.time(),
+                result=api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                    data=serialized_bytes,
+                ),
+                data_format=api_pb2.DATA_FORMAT_GENERATOR_DONE,
+                retry_count=self.retry_counts[0],
+            )
+        ]
+
+    async def output_items(self, started_at: float, data: list[Any]) -> list[api_pb2.FunctionPutOutputsItem]:
+        output_created_at = time.time()
+
+        # Process all items concurrently and create output items directly
+        async def package_output(
+            item: Any, input_id: str, retry_count: int, input_format: "api_pb2.DataFormat.ValueType"
+        ) -> api_pb2.FunctionPutOutputsItem:
+            output_format = self._determine_output_format(input_format)
+
+            serialized_bytes = serialize_data_format(item, data_format=output_format)
+            formatted = await format_blob_data(serialized_bytes, self._client.stub)
+            # Create the result
+            result = api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                **formatted,
+            )
+            return api_pb2.FunctionPutOutputsItem(
+                input_id=input_id,
+                input_started_at=started_at,
+                output_created_at=output_created_at,
+                result=result,
+                data_format=output_format,
+                retry_count=retry_count,
+            )
+
+        # Process all items concurrently
+        return await asyncio.gather(
+            *[
+                package_output(item, input_id, retry_count, function_input.data_format)
+                for item, input_id, retry_count, function_input in zip(
+                    data, self.input_ids, self.retry_counts, self.function_inputs
+                )
+            ]
+        )
 
 
 class InputSlots:
@@ -472,17 +685,6 @@ class _ContainerIOManager:
 
             await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
-    @synchronizer.no_io_translation
-    def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
-        return serialize_data_format(obj, data_format)
-
-    async def format_blob_data(self, data: bytes) -> dict[str, Any]:
-        return (
-            {"data_blob_id": await blob_upload(data, self._client.stub)}
-            if len(data) > MAX_OBJECT_SIZE_BYTES
-            else {"data": data}
-        )
-
     async def get_data_in(self, function_call_id: str, attempt_token: Optional[str]) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
         stub = self._client.stub
@@ -499,7 +701,7 @@ class _ContainerIOManager:
         function_call_id: str,
         attempt_token: str,
         start_index: int,
-        data_format: int,
+        data_format: "api_pb2.DataFormat.ValueType",
         serialized_messages: list[Any],
     ) -> None:
         """Put data onto the `data_out` stream of a function call.
@@ -529,7 +731,11 @@ class _ContainerIOManager:
 
     @asynccontextmanager
     async def generator_output_sender(
-        self, function_call_id: str, attempt_token: str, data_format: int, message_rx: asyncio.Queue
+        self,
+        function_call_id: str,
+        attempt_token: str,
+        data_format: "api_pb2.DataFormat.ValueType",
+        message_rx: asyncio.Queue,
     ) -> AsyncGenerator[None, None]:
         """Runs background task that feeds generator outputs into a function call's `data_out` stream."""
         GENERATOR_STOP_SENTINEL = Sentinel()
@@ -672,31 +878,11 @@ class _ContainerIOManager:
                 self.current_input_id, self.current_input_started_at = io_context.input_ids[0], time.time()
                 yield io_context
                 self.current_input_id, self.current_input_started_at = (None, None)
-
             # collect all active input slots, meaning all inputs have wrapped up.
             await self._input_slots.close()
 
-    @synchronizer.no_io_translation
-    async def _push_outputs(
-        self,
-        io_context: IOContext,
-        started_at: float,
-        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
-        results: list[api_pb2.GenericResult],
-    ) -> None:
-        output_created_at = time.time()
-        outputs = [
-            api_pb2.FunctionPutOutputsItem(
-                input_id=input_id,
-                input_started_at=started_at,
-                output_created_at=output_created_at,
-                result=result,
-                data_format=data_format,
-                retry_count=retry_count,
-            )
-            for input_id, retry_count, result in zip(io_context.input_ids, io_context.retry_counts, results)
-        ]
-
+    async def _send_outputs(self, started_at: float, outputs: list[api_pb2.FunctionPutOutputsItem]) -> None:
+        """Send pre-built output items with retry and chunking."""
         # There are multiple outputs for a single IOContext in the case of @modal.batched.
         # Limit the batch size to 20 to stay within message size limits and buffer size limits.
         output_batch_size = 20
@@ -707,27 +893,8 @@ class _ContainerIOManager:
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                 max_retries=None,  # Retry indefinitely, trying every 1s.
             )
-
-    def serialize_exception(self, exc: BaseException) -> bytes:
-        try:
-            return serialize(exc)
-        except Exception as serialization_exc:
-            # We can't always serialize exceptions.
-            err = f"Failed to serialize exception {exc} of type {type(exc)}: {serialization_exc}"
-            logger.info(err)
-            return serialize(SerializationError(err))
-
-    def serialize_traceback(self, exc: BaseException) -> tuple[Optional[bytes], Optional[bytes]]:
-        serialized_tb, tb_line_cache = None, None
-
-        try:
-            tb_dict, line_cache = extract_traceback(exc, self.task_id)
-            serialized_tb = serialize(tb_dict)
-            tb_line_cache = serialize(line_cache)
-        except Exception:
-            logger.info("Failed to serialize exception traceback.")
-
-        return serialized_tb, tb_line_cache
+        input_ids = [output.input_id for output in outputs]
+        self.exit_context(started_at, input_ids)
 
     @asynccontextmanager
     async def handle_user_exception(self) -> AsyncGenerator[None, None]:
@@ -750,11 +917,14 @@ class _ContainerIOManager:
             # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
             print_exception(type(exc), exc, exc.__traceback__)
 
-            serialized_tb, tb_line_cache = self.serialize_traceback(exc)
+            serialized_tb, tb_line_cache = pickle_traceback(exc, self.task_id)
 
+            data_or_blob = await format_blob_data(pickle_exception(exc), self._client.stub)
             result = api_pb2.GenericResult(
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-                data=self.serialize_exception(exc),
+                **data_or_blob,
+                # TODO: there is no way to communicate the data format here
+                #   since it usually goes on the envelope outside of GenericResult
                 exception=repr(exc),
                 traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
                 serialized_tb=serialized_tb or b"",
@@ -784,18 +954,8 @@ class _ContainerIOManager:
             #    for the yield. Typically on event loop shutdown
             raise
         except (InputCancellation, asyncio.CancelledError):
-            # Create terminated outputs for these inputs to signal that the cancellations have been completed.
-            results = [
-                api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
-                for _ in io_context.input_ids
-            ]
-            await self._push_outputs(
-                io_context=io_context,
-                started_at=started_at,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
-                results=results,
-            )
-            self.exit_context(started_at, io_context.input_ids)
+            outputs = await io_context.output_items_cancellation(started_at)
+            await self._send_outputs(started_at, outputs)
             logger.warning(f"Successfully canceled input {io_context.input_ids}")
             return
         except BaseException as exc:
@@ -805,44 +965,8 @@ class _ContainerIOManager:
 
             # print exception so it's logged
             print_exception(*sys.exc_info())
-
-            serialized_tb, tb_line_cache = self.serialize_traceback(exc)
-
-            # Note: we're not serializing the traceback since it contains
-            # local references that means we can't unpickle it. We *are*
-            # serializing the exception, which may have some issues (there
-            # was an earlier note about it that it might not be possible
-            # to unpickle it in some cases). Let's watch out for issues.
-
-            repr_exc = repr(exc)
-            if len(repr_exc) >= MAX_OBJECT_SIZE_BYTES:
-                # We prevent large exception messages to avoid
-                # unhandled exceptions causing inf loops
-                # and just send backa trimmed version
-                trimmed_bytes = len(repr_exc) - MAX_OBJECT_SIZE_BYTES - 1000
-                repr_exc = repr_exc[: MAX_OBJECT_SIZE_BYTES - 1000]
-                repr_exc = f"{repr_exc}...\nTrimmed {trimmed_bytes} bytes from original exception"
-
-            data: bytes = self.serialize_exception(exc) or b""
-            data_result_part = await self.format_blob_data(data)
-            results = [
-                api_pb2.GenericResult(
-                    status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
-                    exception=repr_exc,
-                    traceback=traceback.format_exc(),
-                    serialized_tb=serialized_tb or b"",
-                    tb_line_cache=tb_line_cache or b"",
-                    **data_result_part,
-                )
-                for _ in io_context.input_ids
-            ]
-            await self._push_outputs(
-                io_context=io_context,
-                started_at=started_at,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
-                results=results,
-            )
-            self.exit_context(started_at, io_context.input_ids)
+            outputs = await io_context.output_items_exception(started_at, self.task_id, exc)
+            await self._send_outputs(started_at, outputs)
 
     def exit_context(self, started_at, input_ids: list[str]):
         self.total_user_time += time.time() - started_at
@@ -853,32 +977,17 @@ class _ContainerIOManager:
 
         self._input_slots.release()
 
+    # skip inspection of user-generated output_data for synchronicity input translation
     @synchronizer.no_io_translation
     async def push_outputs(
         self,
         io_context: IOContext,
         started_at: float,
-        data: Any,
-        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
+        output_data: list[Any],  # one per output
     ) -> None:
-        data = io_context.validate_output_data(data)
-        formatted_data = await asyncio.gather(
-            *[self.format_blob_data(self.serialize_data_format(d, data_format)) for d in data]
-        )
-        results = [
-            api_pb2.GenericResult(
-                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                **d,
-            )
-            for d in formatted_data
-        ]
-        await self._push_outputs(
-            io_context=io_context,
-            started_at=started_at,
-            data_format=data_format,
-            results=results,
-        )
-        self.exit_context(started_at, io_context.input_ids)
+        # The standard output encoding+sending method for successful function outputs
+        outputs = await io_context.output_items(started_at, output_data)
+        await self._send_outputs(started_at, outputs)
 
     async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
@@ -1048,7 +1157,8 @@ class _ContainerIOManager:
 
     @classmethod
     def stop_fetching_inputs(cls):
-        assert cls._singleton
+        if not cls._singleton:
+            raise RuntimeError("Must be called from within a Modal container.")
         cls._singleton._fetching_inputs = False
 
 

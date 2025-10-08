@@ -8,7 +8,7 @@ from rich.text import Text
 
 from modal import environments
 from modal._utils.name_utils import check_environment_name
-from modal.cli.utils import display_table
+from modal.cli.utils import YES_OPTION, display_table
 from modal.config import config
 from modal.exception import InvalidError
 
@@ -80,9 +80,10 @@ Deletes all apps in the selected environment and deletes the environment irrevoc
 @environment_cli.command(name="delete", help=ENVIRONMENT_DELETE_HELP)
 def delete(
     name: str = typer.Argument(help="Name of the environment to be deleted. Case sensitive"),
-    confirm: bool = typer.Option(default=False, help="Set this flag to delete without prompting for confirmation"),
+    *,
+    yes: bool = YES_OPTION,
 ):
-    if not confirm:
+    if not yes:
         typer.confirm(
             (
                 f"Are you sure you want to irrevocably delete the environment '{name}' and"

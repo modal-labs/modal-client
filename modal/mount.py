@@ -24,7 +24,6 @@ from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
-from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
@@ -413,39 +412,6 @@ class _Mount(_Object, type_prefix="mo"):
         )
 
     @staticmethod
-    def from_local_dir(
-        local_path: Union[str, Path],
-        *,
-        # Where the directory is placed within in the mount
-        remote_path: Union[str, PurePosixPath, None] = None,
-        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
-        # Defaults to including all files.
-        condition: Optional[Callable[[str], bool]] = None,
-        # add files from subdirectories as well
-        recursive: bool = True,
-    ) -> "_Mount":
-        """
-        **Deprecated:** Use image.add_local_dir() instead
-
-        Create a `Mount` from a local directory.
-
-        **Usage**
-
-        ```python notest
-        assets = modal.Mount.from_local_dir(
-            "~/assets",
-            condition=lambda pth: not ".venv" in pth,
-            remote_path="/assets",
-        )
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 8),
-            MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"),
-        )
-        return _Mount._from_local_dir(local_path, remote_path=remote_path, condition=condition, recursive=recursive)
-
-    @staticmethod
     def _from_local_dir(
         local_path: Union[str, Path],
         *,
@@ -479,29 +445,6 @@ class _Mount(_Object, type_prefix="mo"):
                 remote_path=PurePosixPath(remote_path),
             ),
         )
-
-    @staticmethod
-    def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
-        """
-        **Deprecated**: Use image.add_local_file() instead
-
-        Create a `Mount` mounting a single local file.
-
-        **Usage**
-
-        ```python notest
-        # Mount the DBT profile in user's home directory into container.
-        dbt_profiles = modal.Mount.from_local_file(
-            local_path="~/profiles.yml",
-            remote_path="/root/dbt_profile/profiles.yml",
-        )
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 8),
-            MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"),
-        )
-        return _Mount._from_local_file(local_path, remote_path)
 
     @staticmethod
     def _from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
@@ -655,45 +598,6 @@ class _Mount(_Object, type_prefix="mo"):
         self._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
 
     @staticmethod
-    def from_local_python_packages(
-        *module_names: str,
-        remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
-        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
-        # Defaults to including all files.
-        condition: Optional[Callable[[str], bool]] = None,
-        ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
-    ) -> "_Mount":
-        """
-        **Deprecated**: Use image.add_local_python_source instead
-
-        Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
-        This works by mounting the local path of each module's package to a directory inside the container
-        that's on `PYTHONPATH`.
-
-        **Usage**
-
-        ```python notest
-        import modal
-        import my_local_module
-
-        app = modal.App()
-
-        @app.function(mounts=[
-            modal.Mount.from_local_python_packages("my_local_module", "my_other_module"),
-        ])
-        def f():
-            my_local_module.do_stuff()
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 8),
-            MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_python_source"),
-        )
-        return _Mount._from_local_python_packages(
-            *module_names, remote_dir=remote_dir, condition=condition, ignore=ignore
-        )
-
-    @staticmethod
     def _from_local_python_packages(
         *module_names: str,
         remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
@@ -737,28 +641,6 @@ class _Mount(_Object, type_prefix="mo"):
             provider._hydrate(response.mount_id, resolver.client, response.handle_metadata)
 
         return _Mount._from_loader(_load, "Mount()", hydrate_lazily=True)
-
-    @classmethod
-    async def lookup(
-        cls: type["_Mount"],
-        name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-    ) -> "_Mount":
-        """mdmd:hidden"""
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Mount.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Mount.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-        obj = _Mount.from_name(name, namespace=namespace, environment_name=environment_name)
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
 
     async def _deploy(
         self: "_Mount",

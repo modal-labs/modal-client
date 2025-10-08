@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import os
+import typing
 from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -17,7 +18,9 @@ from modal_proto.modal_api_grpc import ModalClientModal
 from .._serialization import (
     deserialize,
     deserialize_data_format,
+    get_preferred_payload_format,
     serialize,
+    serialize_data_format as _serialize_data_format,
     signature_to_parameter_specs,
 )
 from .._traceback import append_modal_tb
@@ -37,6 +40,9 @@ from .blob_utils import (
     blob_upload_with_r2_failure_info,
 )
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
+
+if typing.TYPE_CHECKING:
+    import modal._functions
 
 
 class FunctionInfoType(Enum):
@@ -486,7 +492,12 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
     elif result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
         raise InternalFailure(result.exception)
     elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-        if data:
+        if data and data_format in (api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_UNSPECIFIED):
+            # *Unspecified data format here but data present usually means that the exception
+            # was created by the server representing an exception that occurred during container
+            # startup (crash looping) that eventually got escalated to input failures.
+            # TaskResult doesn't specify data format, so these results don't have that metadata
+            # the moment.
             try:
                 exc = deserialize(data, client)
             except DeserializationError as deser_exc:
@@ -549,27 +560,35 @@ async def _create_input(
     kwargs,
     stub: ModalClientModal,
     *,
-    max_object_size_bytes: int,
+    function: "modal._functions._Function",
     idx: Optional[int] = None,
-    method_name: Optional[str] = None,
     function_call_invocation_type: Optional["api_pb2.FunctionCallInvocationType.ValueType"] = None,
 ) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
     """
+    method_name = function._use_method_name
+    max_object_size_bytes = function._max_object_size_bytes
+
     if idx is None:
         idx = 0
-    if method_name is None:
-        method_name = ""  # proto compatible
 
-    args_serialized = serialize((args, kwargs))
+    data_format = get_preferred_payload_format()
+    if not function._metadata:
+        raise ExecutionError("Attempted to call function that has not been hydrated with metadata")
+
+    supported_input_formats = function._metadata.supported_input_formats or [api_pb2.DATA_FORMAT_PICKLE]
+    if data_format not in supported_input_formats:
+        data_format = supported_input_formats[0]
+
+    args_serialized = _serialize_data_format((args, kwargs), data_format)
 
     if should_upload(len(args_serialized), max_object_size_bytes, function_call_invocation_type):
         args_blob_id, r2_failed, r2_throughput_bytes_s = await blob_upload_with_r2_failure_info(args_serialized, stub)
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(
                 args_blob_id=args_blob_id,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                data_format=data_format,
                 method_name=method_name,
             ),
             idx=idx,
@@ -580,7 +599,7 @@ async def _create_input(
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(
                 args=args_serialized,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                data_format=data_format,
                 method_name=method_name,
             ),
             idx=idx,

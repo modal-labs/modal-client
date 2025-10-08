@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import re
+from collections.abc import Mapping
 
 from ..exception import InvalidError
 
@@ -31,10 +32,23 @@ def is_valid_environment_name(name: str) -> bool:
     return len(name) <= 64 and re.match(r"^[a-zA-Z0-9][a-zA-Z0-9-_.]+$", name) is not None
 
 
-def is_valid_tag(tag: str) -> bool:
-    """Tags are alphanumeric, dashes, periods, and underscores, and must be 50 characters or less"""
-    pattern = r"^[a-zA-Z0-9._-]{1,50}$"
+def is_valid_tag(tag: str, max_length: int = 50) -> bool:
+    """Tags are alphanumeric, dashes, periods, and underscores, and not longer than the max_length."""
+    pattern = rf"^[a-zA-Z0-9._-]{{1,{max_length}}}$"
     return bool(re.match(pattern, tag))
+
+
+def check_tag_dict(tags: Mapping[str, str]) -> None:
+    rules = (
+        "\n\nTags may contain only alphanumeric characters, dashes, periods, or underscores, "
+        "and must be 63 characters or less."
+    )
+    max_length = 63
+    for key, value in tags.items():
+        if not is_valid_tag(key, max_length):
+            raise InvalidError(f"Invalid tag key: {key!r}.{rules}")
+        if not is_valid_tag(value, max_length):
+            raise InvalidError(f"Invalid tag value: {value!r}.{rules}")
 
 
 def check_object_name(name: str, object_type: str) -> None:

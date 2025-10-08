@@ -6,6 +6,7 @@ package modal.client;
 
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 
 enum AppDeployVisibility {
@@ -397,6 +398,14 @@ message AppGetOrCreateResponse {
   string app_id = 1;
 }
 
+message AppGetTagsRequest {
+  string app_id = 1;
+}
+
+message AppGetTagsResponse {
+  map<string, string> tags = 1;
+}
+
 message AppHeartbeatRequest {
   string app_id = 1;
 }
@@ -444,6 +453,7 @@ message AppPublishRequest {
   uint32 rollback_version = 8;  // Unused by client, but used internally
   string client_version = 9;  // Unused by client, but used internally
   CommitInfo commit_info = 10;  // Git information for deployment tracking
+  map<string, string> tags = 11;  // Additional metadata to attach to the App
 }
 
 message AppPublishResponse {
@@ -464,6 +474,12 @@ message AppSetObjectsRequest {
   AppState new_app_state = 5; // promotes an app from initializing to this new state
   reserved 6;
 }
+
+message AppSetTagsRequest {
+  string app_id = 1;
+  map<string, string> tags = 2;
+}
+
 
 message AppStopRequest {
   string app_id = 1;
@@ -1343,6 +1359,14 @@ message FlashProxyUpstreamRequest {
   double timestamp = 2;
 }
 
+message FlashSetTargetSlotsMetricsRequest {
+  // TODO(claudia): add other metrics to use in autoscaling decisions
+  string function_id = 1;
+  uint32 target_slots = 2;
+}
+
+message FlashSetTargetSlotsMetricsResponse {}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -2066,6 +2090,9 @@ message Image {
 
   // Build arguments for the image (--build-arg) for ARG substitution in Dockerfile.
   map<string, string> build_args = 22;
+
+  // Volume mount for RUN commands
+  repeated VolumeMount volume_mounts = 23;
 }
 
 message ImageContextFile {
@@ -2703,6 +2730,11 @@ message Sandbox {
 
   // Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
   optional uint32 idle_timeout_secs = 33;
+
+  // If set, the sandbox will be created with direct sandbox commands enabled.
+  // Exec commands for the sandbox will be issued directly to the sandbox
+  // command router running on the Modal worker.
+  bool direct_sandbox_commands_enabled = 34;
 }
 
 message SandboxCreateConnectTokenRequest {
@@ -2723,6 +2755,18 @@ message SandboxCreateRequest {
 
 message SandboxCreateResponse {
   string sandbox_id = 1;
+}
+
+// Used to get a JWT and URL for direct access to a sandbox router server
+// running on the modal-worker, so the client can issue exec commands (and other
+// operations as they become available) directly to the worker.
+message SandboxGetCommandRouterAccessRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetCommandRouterAccessResponse {
+  string jwt = 1;
+  string url = 2;
 }
 
 message SandboxGetFromNameRequest {
@@ -3065,7 +3109,7 @@ message SharedVolumeMount {
   string mount_path = 1;
   string shared_volume_id = 2;
   CloudProvider cloud_provider = 3;
-  bool allow_cross_region = 4;
+  reserved 4; // allow_cross_region
 }
 
 message SharedVolumePutFileRequest {
@@ -3516,6 +3560,24 @@ message WebhookConfig {
   bool requires_proxy_auth = 10;
 }
 
+
+message WorkspaceBillingReportItem {
+  string object_id = 1;
+  string description = 2;
+  string environment_name = 3;
+  google.protobuf.Timestamp interval = 4;
+  string cost = 5;
+  map<string, string> tags = 6;
+}
+
+message WorkspaceBillingReportRequest {
+  // Workspace ID will be implicit in the request metadata
+  google.protobuf.Timestamp start_timestamp = 1;
+  google.protobuf.Timestamp end_timestamp = 2;
+  string resolution = 3;  // e.g. 'd' or 'h'; server defines what we accept
+  repeated string tag_names = 4;
+}
+
 message WorkspaceNameLookupResponse {
   string workspace_name = 1 [deprecated=true];
   string username = 2;
@@ -3533,12 +3595,14 @@ service ModalClient {
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppGetOrCreate(AppGetOrCreateRequest) returns (AppGetOrCreateResponse);
+  rpc AppGetTags(AppGetTagsRequest) returns (AppGetTagsResponse);
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
   rpc AppPublish(AppPublishRequest) returns (AppPublishResponse);
   rpc AppRollback(AppRollbackRequest) returns (google.protobuf.Empty);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
+  rpc AppSetTags(AppSetTagsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 
   // Input Plane
@@ -3607,6 +3671,7 @@ service ModalClient {
   rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
   rpc FlashContainerList(FlashContainerListRequest) returns (FlashContainerListResponse);
   rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
+  rpc FlashSetTargetSlotsMetrics(FlashSetTargetSlotsMetricsRequest) returns (FlashSetTargetSlotsMetricsResponse);
 
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
@@ -3675,6 +3740,7 @@ service ModalClient {
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
+  rpc SandboxGetCommandRouterAccess(SandboxGetCommandRouterAccessRequest) returns (SandboxGetCommandRouterAccessResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
@@ -3745,5 +3811,6 @@ service ModalClient {
   rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);
 
   // Workspaces
+  rpc WorkspaceBillingReport(WorkspaceBillingReportRequest) returns (stream WorkspaceBillingReportItem);
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
 }

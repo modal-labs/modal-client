@@ -485,47 +485,6 @@ class _Volume(_Object, type_prefix="vo"):
             )
 
     @staticmethod
-    async def lookup(
-        name: str,
-        namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-        create_if_missing: bool = False,
-        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
-    ) -> "_Volume":
-        """mdmd:hidden
-        Lookup a named Volume.
-
-        DEPRECATED: This method is deprecated in favor of `modal.Volume.from_name`.
-
-        In contrast to `modal.Volume.from_name`, this is an eager method
-        that will hydrate the local object with metadata from Modal servers.
-
-        ```python notest
-        vol = modal.Volume.from_name("my-volume")
-        print(vol.listdir("/"))
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Volume.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Volume.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-        warn_if_passing_namespace(namespace, "modal.Volume.lookup")
-        obj = _Volume.from_name(
-            name,
-            environment_name=environment_name,
-            create_if_missing=create_if_missing,
-            version=version,
-        )
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
-
-    @staticmethod
     async def create_deployed(
         deployment_name: str,
         namespace=None,  # mdmd:line-hidden

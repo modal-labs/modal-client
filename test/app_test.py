@@ -459,3 +459,58 @@ def test_overriding_function_warning(caplog):
 def test_lookup_invalid_name(name):
     with pytest.raises(InvalidError, match="Invalid App name"):
         App.lookup(name)
+
+
+@pytest.mark.parametrize("mode", ["run", "deploy"])
+def test_tags(servicer, client, mode):
+    tags = {"foo": "bar", "baz": "qux"}
+    app = App(name="tag-tester", tags=tags)
+    app.function()(square)
+    with servicer.intercept() as ctx:
+        if mode == "deploy":
+            app.deploy(client=client, tag="some-other-tag")
+        elif mode == "run":
+            with app.run(client=client):
+                pass
+
+    request = ctx.pop_request("AppPublish")
+    assert request.tags == tags
+
+
+@pytest.mark.parametrize("s", ["a:b", "x/y", "a b", "a" * 65])
+def test_invalid_tags(s):
+    with pytest.raises(InvalidError, match=f"Invalid tag key: {s!r}"):
+        App(tags={s: "bar"})
+    with pytest.raises(InvalidError, match=f"Invalid tag value: {s!r}"):
+        App(tags={"foo": s})
+
+
+@pytest.mark.parametrize("inherit_tags", [True, False])
+def test_app_composition_tags(servicer, client, inherit_tags):
+    base_app = App(tags={"foo": "bar", "baz": "bum"})
+    base_app.function()(square)
+
+    main_app = App(tags={"baz": "qux"})
+    main_app.include(base_app, inherit_tags=inherit_tags)
+
+    with servicer.intercept() as ctx:
+        main_app.deploy(name="inherit-test", client=client)
+
+    request = ctx.pop_request("AppPublish")
+    if inherit_tags:
+        assert request.tags == {"foo": "bar", "baz": "qux"}
+    else:
+        assert request.tags == {"baz": "qux"}
+
+
+def test_app_set_tags(servicer, client):
+    app = App()
+    app.function()(square)
+    app.deploy(name="set-tags-test", client=client)
+
+    tags = {"x": "1", "y": "2"}
+    with servicer.intercept() as ctx:
+        app.set_tags(tags, client=client)
+
+    request = ctx.pop_request("AppSetTags")
+    assert request.tags == tags

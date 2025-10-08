@@ -27,6 +27,7 @@ from modal.partial_function import (
     PartialFunction,
     asgi_app,
     fastapi_endpoint,
+    web_server,
 )
 from modal.runner import deploy_app
 from modal.running_app import RunningApp
@@ -56,7 +57,7 @@ class NoParamsCls:
         return x**2
 
 
-@app.cls(cpu=42)
+@app.cls(cpu=42, _experimental_restrict_output=True)
 class Foo:
     @method()
     def bar(self, x: int) -> float:
@@ -65,6 +66,10 @@ class Foo:
     @method()
     def baz(self, y: int) -> float:
         return y**4
+
+    @web_server(8080)
+    def web(self):
+        pass
 
 
 def test_run_class(client, servicer):
@@ -89,6 +94,7 @@ def test_run_class(client, servicer):
     assert objects["Foo"] == class_id
     assert class_function_id.startswith("fu-")
     assert servicer.app_functions[class_function_id].is_class
+
     assert servicer.app_functions[class_function_id].method_definitions == {
         "bar": api_pb2.MethodDefinition(
             function_name="Foo.bar",
@@ -107,8 +113,8 @@ def test_run_class(client, servicer):
                     base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
                 ),
             ),
-            supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE],
-            supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE],
+            supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+            supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],
         ),
         "baz": api_pb2.MethodDefinition(
             function_name="Foo.baz",
@@ -127,8 +133,21 @@ def test_run_class(client, servicer):
                     base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
                 ),
             ),
-            supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE],
-            supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE],
+            supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+            supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],
+        ),
+        "web": api_pb2.MethodDefinition(
+            function_name="Foo.web",
+            function_type=api_pb2.Function.FunctionType.FUNCTION_TYPE_FUNCTION,
+            webhook_config=api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+                web_server_port=8080,
+                web_server_startup_timeout=5,
+            ),
+            supported_input_formats=[api_pb2.DATA_FORMAT_ASGI],
+            supported_output_formats=[api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE],
+            web_url="http://web.internal",
         ),
     }
 
@@ -492,42 +511,6 @@ if TYPE_CHECKING:
     # can't use assert_type with named arguments, as it will diff in the name
     # vs the anonymous argument in the assertion type
     # assert_type(Foo().bar, Function[[int], float])
-
-
-def test_lookup(client, servicer):
-    # basically same test as test_from_name_lazy_method_resolve, but assumes everything is hydrated
-    deploy_app(app, "my-cls-app", client=client)
-
-    with pytest.warns(DeprecationError, match="Cls.lookup"):
-        cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
-
-    # objects are resolved
-    assert cls.object_id.startswith("cs-")
-    assert cls._get_class_service_function().object_id.startswith("fu-")
-
-    # Check that function properties are preserved
-    assert cls().bar.is_generator is False
-
-    # Make sure we can instantiate the class
-    with servicer.intercept() as ctx:
-        obj = cls("foo", 234)
-        assert len(ctx.calls) == 0  # no rpc requests for class instantiation
-
-        # Make sure we can call methods
-        # (mock servicer just returns the sum of the squares of the args)
-        assert obj.bar.remote(42) == 1764
-        assert len(ctx.get_requests("FunctionBindParams")) == 1  # bind params
-
-        assert obj.baz.remote(41) == 1681
-        assert len(ctx.get_requests("FunctionBindParams")) == 1  # call to other method shouldn't need a bind
-
-    # Not allowed for remote classes:
-    with pytest.raises(NotFoundError, match="can't be accessed for remote classes"):
-        assert obj.a == "foo"
-
-    # Make sure local calls fail
-    with pytest.raises(ExecutionError):
-        assert obj.bar.local(1, 2)
 
 
 def test_from_name_lazy_method_hydration(client, servicer):

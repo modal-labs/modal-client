@@ -28,6 +28,26 @@ enum SandboxExecStdoutConfig {
   SANDBOX_EXEC_STDOUT_CONFIG_PIPE = 1;
 }
 
+message SandboxExecPollRequest {
+  // The task ID of the sandbox running the exec'd command.
+  string task_id = 1;
+  // The execution ID of the command to wait on.
+  string exec_id = 2;
+}
+
+// The response to a SandboxExecPollRequest. If the exec'd command has not
+// completed, exit_status will be unset.
+message SandboxExecPollResponse {
+  oneof exit_status {
+    // The exit code of the command.
+    int32 code = 1;
+    // The signal that terminated the command.
+    int32 signal = 2;
+  }
+  // TODO(saltzm): Give a way for the user to distinguish between normal exit
+  // and termination by Modal (due to sandbox timeout, exec exceeded deadline, etc.)
+}
+
 message SandboxExecStartRequest {
   // The task ID of the sandbox to execute the command in.
   string task_id = 1;
@@ -47,7 +67,7 @@ message SandboxExecStartRequest {
   // Timeout in seconds for the exec'd command to exit. If the command does not
   // exit within this duration, the command will be killed. This is NOT the
   // timeout for the ExecStartRequest RPC to complete.
-  uint32 timeout_secs = 6;
+  optional uint32 timeout_secs = 6;
   // Working directory for the command.
   optional string workdir = 7;
   // Secret IDs to mount into the sandbox.
@@ -105,15 +125,17 @@ message SandboxExecWaitRequest {
 message SandboxExecWaitResponse {
   oneof exit_status {
     // The exit code of the command.
-    int32 code = 3;
+    int32 code = 1;
     // The signal that terminated the command.
-    int32 signal = 4;
+    int32 signal = 2;
   }
   // TODO(saltzm): Give a way for the user to distinguish between normal exit
   // and termination by Modal (due to sandbox timeout, exec exceeded deadline, etc.)
 }
 
 service SandboxRouter {
+  // Poll for the exit status of an exec'd command.
+  rpc SandboxExecPoll(SandboxExecPollRequest) returns (SandboxExecPollResponse);
   // Execute a command in the sandbox.
   rpc SandboxExecStart(SandboxExecStartRequest) returns (SandboxExecStartResponse);
  // Write to the stdin stream of an exec'd command.
