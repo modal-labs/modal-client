@@ -6,204 +6,61 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.1.5.dev80 (2025-10-07)
+#### 1.1.5.dev83 (2025-10-07)
 
----
-
-> [!NOTE]
-> Reorders `update_changelog` in `tasks.py` to remove HTML comments, then trim, and only then validate non-empty changelog content.
-> 
-> - **Changelog processing**:
->   - `tasks.py:update_changelog`:
->     - Remove HTML comments before trimming the changelog text.
->     - Perform empty-content check after trimming; aborts if empty.
-> 
-> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 7c93b70e94979a3879178749096b2000be810e4d. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
-
+- Improved support for protobuf 5+ when using the Python implementation of the Protobuf runtime.
 
 #### 1.1.5.dev78 (2025-10-07)
 
 - Also adds `App.set_tags()` and `App.get_tags()` which should be rolled into the changelog update for tags, generally speaking.
 
-
-#### 1.1.5.dev77 (2025-10-07)
-
-
-
-
 #### 1.1.5.dev75 (2025-10-06)
 
-- Removed the unused `allow_cross_region_volumes`
-
-
-#### 1.1.5.dev74 (2025-10-06)
-
-
-
-
-#### 1.1.5.dev73 (2025-10-06)
-
-
-
-
-#### 1.1.5.dev72 (2025-10-06)
-
-
-
-
-#### 1.1.5.dev70 (2025-10-03)
-
-` up to a Cursor auto-comment or end: `r"## Changelog\s*(.+?)(?:|$)"`.
->   - Strip HTML comments from the extracted changelog section only (not the entire PR description).
-> 
-> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 62e4b7b7abdb4b5513e7f32d0a8225be5dc5c4c3. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
-
-
+- Removed the unused `allow_cross_region_volumes` parameter
 
 #### 1.1.5.dev69 (2025-10-03)
 
 - Removed the `modal.experimental.update_autoscaler` function; this functionality now has a stable API as `modal.Function.update_autoscaler`.
 
-
----
-
-> [!NOTE]
-> Remove `modal.experimental.update_autoscaler` and delete its associated tests; keep image deletion and app object listing unchanged.
-> 
-> - **API Removal**:
->   - Delete `modal.experimental.update_autoscaler` and related deprecation path.
-> - **Tests**:
->   - Remove `test_update_autoscaler*` suites and deprecation assertions.
-> - **Misc**:
->   - Adjust imports and types to reflect the API removal.
-> 
-> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 7dcaae12b35ffcac9123e5f0d9c615638acbcbc2. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
-
-
 #### 1.1.5.dev66 (2025-10-02)
 
 - Final removal of the `context_mount=` parameter of some modal.Image methods.
-
-
----
-
-> [!NOTE]
-> Removes `context_mount` support from `Image` build APIs and deletes deprecated `modal.Mount` public constructors.
-> 
-> - **API removals**:
->   - **Image**:
->     - Drop `context_mount` parameter from `Image.dockerfile_commands()` and `Image.from_dockerfile()`; remove related deprecation warnings.
->     - Simplify `_create_context_mount_function` by deleting `context_mount` handling; context is now inferred (with `AUTO_DOCKERIGNORE` support).
->   - **Mount**:
->     - Remove deprecated public constructors: `Mount.from_local_dir`, `Mount.from_local_file`, and `Mount.from_local_python_packages`.
-> - **Cleanup**:
->   - Remove unused deprecation wiring/imports tied to the deleted parameters and methods.
-> 
-> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit e59d3e06092cf8c53892851e7049134ebf5dbe12. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
-
 
 #### 1.1.5.dev65 (2025-10-02)
 
 - Removed previously deprecated `.lookup` methods from most Modal object classes (but not `modal.App.lookup`, which remains supported). The lazy `.from_name()` method is recommended for accessing deployed objects going forward.
 
-
----
-
-> [!NOTE]
-> Removes all deprecated `.lookup` methods across core objects, updates error messaging to reference `.from_name`, and adjusts tests accordingly.
-> 
-> - **API removals (deprecated)**:
->   - Drop `.lookup` for: `modal.Function`, `modal.Cls`, `modal.Dict`, `modal.Environment`, `modal.Mount`, `modal.NetworkFileSystem`, `modal.Queue`, `modal.Secret`, `modal.Volume`.
-> - **Behavior/messaging**:
->   - `Function.local()` error now references `Function.from_name` and using remote invocation methods.
->   - Minor import cleanups related to deprecation utilities.
-> - **Tests**:
->   - Remove/adjust tests that used `.lookup` (e.g., `test_lookup` in `cls_test.py`).
->   - Update `Secret` tests to warn only on deprecated `namespace` param and use `.from_name`.
-> 
-> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit b298b465535755278f312f1afc8006458219daaf. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
-
-
 #### 1.1.5.dev64 (2025-10-02)
 
 - Replaced the `--no-confirm` option with `--yes` in the `modal environment delete` CLI to align with similar interfaces.
-
 
 #### 1.1.5.dev63 (2025-10-02)
 
 - Added `modal shell` support for connecting to a running Sandbox (`modal shell sb-id`).
 
-
-
----
-
-> [!NOTE]
-> Enable `modal shell sb-<id>` to connect to a running Sandbox (resolving to its task ID), rename the argument to `ref`, and keep `ta-<id>` container exec passthrough.
-> 
-> - **CLI: `modal shell`**
->   - **Sandbox support**: Accepts `sb-<id>` and resolves to corresponding task ID via `Sandbox.from_id(...)._get_task_id()`; surfaces not-found/connection errors as `ClickException`.
->   - **Arg rename**: `container_or_function` → `ref`; updated help text to mention Sandboxes and Functions.
->   - **Container passthrough**: Retains `ta-<id>` fast path by delegating to `container exec`.
->   - **Docs**: Adds example usage for connecting to a Sandbox by ID.
-> 
-> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 6bbb4695bf81fc8f746e1ebf4b5a2b051fcb7315. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
-
-
-#### 1.1.5.dev62 (2025-10-01)
-
----
-
-> [!NOTE]
-> Add `uv.lock` to `.gitignore`.
-> 
-> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit 955ac2531f1fc28fca8a4e7103b21e8aa7ab9da2. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
-
-
-#### 1.1.5.dev57 (2025-09-30)
-
----
-
-> [!NOTE]
-> Blobify container startup exception payloads to handle large errors, with tests verifying blob-backed serialization.
-> 
-> - **Runtime**
->   - Blobify startup exception data in `modal/_runtime/container_io_manager.py` by using `format_blob_data(pickle_exception(...))` and passing `**data_or_blob` to `api_pb2.GenericResult`.
-> - **Tests**
->   - Add `test_startup_failure_big_exception` validating blob-backed exception (`data==b""`, `data_blob_id` set, 5M-char message).
->   - Add support module `test/supports/startup_failure_bigexception.py` raising a large `BigException` when not local.
-> 
-> <sup>Written by [Cursor Bugbot](https://cursor.com/dashboard?tab=bugbot) for commit f6d66af222c8f2ea9bf96cf5cde49db44454a2b2. This will update automatically on new commits. Configure [here](https://cursor.com/dashboard?tab=bugbot).</sup>
-
-
 #### 1.1.5.dev56 (2025-09-29)
 
 - Added `modal.experimental.image_delete()` to allow deleting Images (e.g. Sandbox FS snapshot images).
-
 
 #### 1.1.5.dev50 (2025-09-26)
 
 - Fixed bug where large outputs in debug shells would sometimes freeze until key-press.
 
-
 #### 1.1.5.dev49 (2025-09-26)
 
 - Arbitrary key-value metadata can now be attached to Apps by setting `modal.App(tags={...})`. The tags can be useful for tracking information that may be relevant to your organization, such as the team that owns the App. We'll support the inclusion of tags in some forthcoming APIs related to cost insights.
 
-
 #### 1.1.5.dev45 (2025-09-25)
 
-* [Internal] Adds support for calling into deployed functions using a new cbor based serialization format used by beta versions of libmodal-ts and libmodal-go
-
+- [Internal] Adds support for calling into deployed functions using a new cbor based serialization format used by beta versions of modal-ts and modal-go
 
 #### 1.1.5.dev44 (2025-09-25)
 
-- `Dict.pop()` now accepts an optional `default` parameter, matching Python's `dict.pop()` behavior.
-
+- `modal.Dict.pop()` now accepts an optional `default` parameter, matching Python's `dict.pop()` behavior.
 
 #### 1.1.5.dev40 (2025-09-24)
 
 - Hide the CLI spinner in interactive mode, so `modal run --interactive` now works better with breakpoints in local entrypoint functions.
-
 
 #### 1.1.5.dev34 (2025-09-19)
 
@@ -216,21 +73,18 @@ MyAppCloud = modal.Cls.from_name("my-app", "MyApp").with_options(
 )
 ```
 
-
 #### 1.1.5.dev32 (2025-09-19)
 
 - Deprecated the `client` parameter to `Sandbox.set_tags()`, and the `environment_name` parameter to `Sandbox.from_name()`.
-
 
 #### 1.1.5.dev30 (2025-09-19)
 
 - Added a `.get_tags()` method to Sandbox, enabling fetching tags that were previously set using `.set_tags()`.
 
-
 #### 1.1.5.dev26 (2025-09-17)
 
 - Adds `image.build` to eagerly build an image:
- 
+
 ```python
 image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
 app = modal.App("build-image")
@@ -244,21 +98,17 @@ my_image_id = image.object_id
 built_image = Image.from_id(my_image_id)
 ```
 
-
 #### 1.1.5.dev21 (2025-09-16)
 
 - Added `env` parameters to several methods, as a more discoverable convenience method for passing non-secret environment variables to containers.
-
 
 #### 1.1.5.dev20 (2025-09-15)
 
 - Added an option to enable a PTY for Sandboxes via `Sandbox.create(..., pty=True)` and `Sandbox.exec(..., pty=True)`. Also deprecated the old `pty_info` parameters.
 
-
 #### 1.1.5.dev16 (2025-09-10)
 
 - Adds a `create_connect_token()` method for Sandboxes which may be used to generate credentials for making HTTP / Websocket requests to a server running in a Sandbox.
-
 
 ### 1.1.4 (2025-09-03)
 
