@@ -4,7 +4,6 @@ option go_package = "github.com/modal-labs/modal/go/proto";
 
 package modal.client;
 
-import "modal_proto/options.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
@@ -298,7 +297,7 @@ message AppClientDisconnectRequest {
 }
 
 message AppCreateRequest {
-  string client_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string client_id = 1;
   string description = 2;    // Human readable label for the app
   string environment_name = 5;
   AppState app_state = 6;
@@ -311,7 +310,7 @@ message AppCreateResponse {
 }
 
 message AppDeployRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1;
   reserved 2; // namespace
   string name = 3;
   string object_entity = 4;
@@ -444,7 +443,7 @@ message AppLookupResponse {
 }
 
 message AppPublishRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1;
   string name = 2;
   string deployment_tag = 3;  // Additional metadata to identify a deployment
   AppState app_state = 4;  // Published app will be in this state
@@ -483,7 +482,7 @@ message AppSetTagsRequest {
 
 
 message AppStopRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1;
   AppStopSource source = 2;
 }
 
@@ -744,7 +743,7 @@ message CheckpointInfo {
 }
 
 message ClassCreateRequest {
-  string app_id = 1  [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1 ;
   string existing_class_id = 2;
   repeated ClassMethod methods = 3;
   reserved 4; // removed class_function_id
@@ -1078,7 +1077,7 @@ message ContainerReloadVolumesRequest {
 message ContainerReloadVolumesResponse { }
 
 message ContainerStopRequest {
-  string task_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string task_id = 1;
 }
 
 message ContainerStopResponse {
@@ -1146,7 +1145,7 @@ message DictEntry {
 }
 
 message DictGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -1213,7 +1212,7 @@ message DictPopResponse {
 }
 
 message DictUpdateRequest {
-  string dict_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string dict_id = 1;
   repeated DictEntry updates = 2;
   bool if_not_exists = 3;
 }
@@ -1239,7 +1238,7 @@ message DomainCertificateVerifyResponse {
 }
 
 message DomainCreateRequest {
-  string domain_name = 1  [ (modal.options.audit_target_attr) = true ];
+  string domain_name = 1 ;
 }
 
 message DomainCreateResponse {
@@ -1255,14 +1254,14 @@ message DomainListResponse {
 }
 
 message EnvironmentCreateRequest {
-  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 1;
 }
 
 message EnvironmentDeleteRequest {
-  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 1;
 }
 message EnvironmentGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   ObjectCreationType object_creation_type = 2;
 }
 
@@ -1298,7 +1297,7 @@ message EnvironmentSettings {
 }
 
 message EnvironmentUpdateRequest {
-  string current_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string current_name = 1;
   google.protobuf.StringValue name = 2;
   google.protobuf.StringValue web_suffix = 3;
 }
@@ -1357,7 +1356,7 @@ message FlashContainerRegisterResponse {
 
 message FlashProxyUpstreamRequest {
   uint32 upstream_requests = 1;
-  double timestamp = 2; 
+  double timestamp = 2;
 }
 
 message FlashSetTargetSlotsMetricsRequest {
@@ -1621,7 +1620,7 @@ message FunctionCallPutDataRequest {
 
 message FunctionCreateRequest {
   Function function = 1;
-  string app_id = 2  [ (modal.options.audit_target_attr) = true ];
+  string app_id = 2 ;
   Schedule schedule = 6 [deprecated=true]; // Deprecated: now passed in the Function definition
   string existing_function_id = 7;
   reserved 8;  // defer_updates
@@ -1916,7 +1915,7 @@ message FunctionOptions {
 
 message FunctionPrecreateRequest {
   string app_id = 1;
-  string function_name = 2  [ (modal.options.audit_target_attr) = true ];
+  string function_name = 2 ;
   string existing_function_id = 3;
   Function.FunctionType function_type = 4;
   WebhookConfig webhook_config = 5;
@@ -1965,8 +1964,8 @@ message FunctionPutOutputsItem {
   double output_created_at = 4;
   DataFormat data_format = 7; // for result.data_oneof
   uint32 retry_count = 8;
-  string function_call_id = 9; // injected by the worker 
-  optional int32 function_map_idx = 10; // injected by the worker 
+  string function_call_id = 9; // injected by the worker
+  optional int32 function_map_idx = 10; // injected by the worker
 }
 
 message FunctionPutOutputsRequest {
@@ -2116,7 +2115,7 @@ message ImageFromIdResponse {
 
 message ImageGetOrCreateRequest {
   Image image = 2;
-  string app_id = 4 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 4;
   string existing_image_id = 5;  // ignored
   string build_function_id = 6;
   bool force_build = 7;
@@ -2226,7 +2225,7 @@ message MapAwaitResponse {
 message MapCheckInputsRequest {
   string last_entry_id = 1;
   float timeout = 2;
-  repeated string attempt_tokens = 3;  
+  repeated string attempt_tokens = 3;
 }
 
 message MapCheckInputsResponse {
@@ -2452,7 +2451,7 @@ message Proxy {
 }
 
 message ProxyAddIpRequest {
-  string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string proxy_id = 1;
 }
 
 message ProxyAddIpResponse {
@@ -2460,7 +2459,7 @@ message ProxyAddIpResponse {
 }
 
 message ProxyCreateRequest {
-  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 1;
   string environment_name = 2;
 }
 
@@ -2469,11 +2468,11 @@ message ProxyCreateResponse {
 }
 
 message ProxyDeleteRequest {
-  string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string proxy_id = 1;
 }
 
 message ProxyGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   reserved 2; // namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
@@ -2484,7 +2483,7 @@ message ProxyGetOrCreateResponse {
 }
 
 message ProxyGetRequest {
-  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 1;
   string environment_name = 2;
 }
 
@@ -2512,7 +2511,7 @@ message ProxyListResponse {
 }
 
 message ProxyRemoveIpRequest {
-  string proxy_ip = 1 [ (modal.options.audit_target_attr) = true ];
+  string proxy_ip = 1;
 }
 
 message QueueClearRequest {
@@ -2522,7 +2521,7 @@ message QueueClearRequest {
 }
 
 message QueueDeleteRequest {
-  string queue_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string queue_id = 1;
 }
 
 message QueueGetOrCreateRequest {
@@ -2749,7 +2748,7 @@ message SandboxCreateConnectTokenResponse {
 }
 
 message SandboxCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1;
   Sandbox definition = 2;
   string environment_name = 3; // *DEPRECATED* 7/16/2025
 }
@@ -2995,7 +2994,7 @@ message SchedulerPlacement {
 
 message SecretCreateRequest {  // Not used by client anymore
   map<string, string> env_dict = 1;
-  string app_id = 2 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 2;
   string template_type = 3;  // todo: not used?
   string existing_secret_id = 4;
 }
@@ -3009,7 +3008,7 @@ message SecretDeleteRequest {
 }
 
 message SecretGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
@@ -3066,7 +3065,7 @@ message SharedVolumeGetFileResponse {
 }
 
 message SharedVolumeGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -3114,7 +3113,7 @@ message SharedVolumeMount {
 }
 
 message SharedVolumePutFileRequest {
-  string shared_volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string shared_volume_id = 1;
   string path = 2;
   string sha256_hex = 3;
   oneof data_oneof {
@@ -3129,7 +3128,7 @@ message SharedVolumePutFileResponse {
 }
 
 message SharedVolumeRemoveFileRequest {
-  string shared_volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string shared_volume_id = 1;
   string path = 2;
   bool recursive = 3;
 }
@@ -3306,7 +3305,7 @@ message UserActionInfo {
 message VolumeCommitRequest {
   // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
   // a volume mount.
-  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string volume_id = 1;
 }
 
 message VolumeCommitResponse {
@@ -3364,7 +3363,7 @@ message VolumeGetFileResponse {
 }
 
 message VolumeGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -3516,19 +3515,19 @@ message VolumeReloadRequest {
 }
 
 message VolumeRemoveFile2Request {
-  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string volume_id = 1;
   string path = 2;
   bool recursive = 3;
 }
 
 message VolumeRemoveFileRequest {
-  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string volume_id = 1;
   string path = 2;
   bool recursive = 3;
 }
 
 message VolumeRenameRequest {
-  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string volume_id = 1;
   string name = 2;
 }
 
