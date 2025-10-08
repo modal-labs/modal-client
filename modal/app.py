@@ -227,7 +227,12 @@ class _App:
 
     @property
     def is_interactive(self) -> bool:
-        """Whether the current app for the app is running in interactive mode."""
+        """mdmd:hidden
+        Whether the current app for the app is running in interactive mode.
+
+        Note: this method will likely be deprecated in the future.
+
+        """
         # return self._name
         if self._running_app:
             return self._running_app.interactive
@@ -285,6 +290,11 @@ class _App:
         return app
 
     def set_description(self, description: str):
+        """mdmd:hidden
+        Set the description of the App before it starts running.
+
+        Note: we don't recommend using the method and may deprecate it in the future.
+        """
         self._description = description
 
     def _validate_blueprint_value(self, key: str, value: Any):
@@ -293,10 +303,18 @@ class _App:
 
     @property
     def image(self) -> _Image:
+        """mdmd:hidden
+        Retrieve the Image that will be used as the default for any Functions registered to the App.
+
+        Note: This property is only relevant in the build phase and won't be populated on a deployed
+        App that is retrieved via `modal.App.lookup`. It is likely to be deprecated in the future.
+
+        """
         return self._image
 
     @image.setter
     def image(self, value):
+        """mdmd:hidden"""
         self._image = value
 
     def _uncreate_all_objects(self):
@@ -515,37 +533,48 @@ class _App:
 
     @property
     def registered_functions(self) -> dict[str, _Function]:
-        """All modal.Function objects registered on the app.
+        """mdmd:hidden
+        All modal.Function objects registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
         expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        This method is likely to be deprecated in the future in favor of a different
+        approach for retrieving the layout of a deployed App.
         """
         return self._functions
 
     @property
     def registered_classes(self) -> dict[str, _Cls]:
-        """All modal.Cls objects registered on the app.
+        """mdmd:hidden
+        All modal.Cls objects registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
         expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        This method is likely to be deprecated in the future in favor of a different
+        approach for retrieving the layout of a deployed App.
         """
         return self._classes
 
     @property
     def registered_entrypoints(self) -> dict[str, _LocalEntrypoint]:
-        """All local CLI entrypoints registered on the app.
+        """mdmd:hidden
+        All local CLI entrypoints registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
         expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        This method is likely to be deprecated in the future.
         """
         return self._local_entrypoints
 
     @property
     def registered_web_endpoints(self) -> list[str]:
-        """Names of web endpoint (ie. webhook) functions registered on the app.
+        """mdmd:hidden
+        Names of web endpoint (ie. webhook) functions registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
         expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        This method is likely to be deprecated in the future in favor of a different
+        approach for retrieving the layout of a deployed App.
         """
         return self._web_endpoints
 
