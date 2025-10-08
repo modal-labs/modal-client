@@ -12,6 +12,16 @@ from .exception import InvalidError
 __all__ = ["workspace_billing_report"]
 
 
+# Synchronicity type stub generation doesn't understand the class declaration syntax
+# class WorkspaceBillingReportItem(TypedDict):
+#     object_id: str
+#     description: str
+#     environment_name: str
+#     interval_start: datetime
+#     cost: Decimal
+#     tags: dict[str, str]
+
+
 @synchronizer.create_blocking
 async def workspace_billing_report(
     *,
@@ -68,9 +78,8 @@ async def workspace_billing_report(
             "environment_name": pb_item.environment_name,
             "interval_start": pb_item.interval.ToDatetime().replace(tzinfo=timezone.utc),
             "cost": Decimal(pb_item.cost),
+            "tags": dict(pb_item.tags),
         }
-        if tag_names:
-            item["tags"] = dict(pb_item.tags)
         rows.append(item)
 
     return rows
