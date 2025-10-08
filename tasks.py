@@ -55,7 +55,7 @@ def protoc(ctx):
 
     Generates Python stubs for api.proto and options.proto."""
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
-    client_proto_files = "modal_proto/api.proto"
+    client_proto_files = "modal_proto/api.proto modal_proto/options.proto"
     sandbox_router_proto_file = "modal_proto/sandbox_router.proto"
     py_protoc = (
         protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
