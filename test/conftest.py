@@ -2409,12 +2409,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # If map_token is provided, this is a continue request, otherwise it's a start
         if request.map_token:
             map_token = request.map_token
-            function_call_id = request.map_token[3:]
+            function_call_id = request.map_token.split(":")[1]
         else:
             self.fcidx += 1
             function_call_id = f"fc-{self.fcidx}"
             self.function_id_for_function_call[function_call_id] = request.function_id
-            map_token = f"mt-{function_call_id}"
+            map_token = f"test-map-token:{function_call_id}"
 
         # Process inputs and store them for MapAwait to pick up later
         attempt_tokens = []
@@ -2448,7 +2448,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def MapAwait(self, stream):
         request: api_pb2.MapAwaitRequest = await stream.recv_message()
-        function_call_id = request.map_token[3:]
+        function_call_id = request.map_token.split(":")[1]
 
         # Check if we have any function call inputs for this function call
         fc_inputs = self.function_call_inputs.setdefault(function_call_id, [])
