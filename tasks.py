@@ -53,9 +53,9 @@ def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
 def protoc(ctx):
     """Compile protocol buffer files for gRPC and Modal-specific wrappers.
 
-    Generates Python stubs for api.proto and options.proto."""
+    Generates Python stubs for api.proto."""
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
-    client_proto_files = "modal_proto/api.proto modal_proto/options.proto"
+    client_proto_files = "modal_proto/api.proto"
     sandbox_router_proto_file = "modal_proto/sandbox_router.proto"
     py_protoc = (
         protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
