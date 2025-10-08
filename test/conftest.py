@@ -2412,13 +2412,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def MapStartOrContinue(self, stream):
         request: api_pb2.MapStartOrContinueRequest = await stream.recv_message()
 
-        # If function_call_id is provided, this is a continue request, otherwise it's a start
-        if request.function_call_id:
-            function_call_id = request.function_call_id
+        # If map_token is provided, this is a continue request, otherwise it's a start
+        if request.map_token:
+            map_token = request.map_token
         else:
             self.fcidx += 1
-            function_call_id = f"fc-{self.fcidx}"
-            self.function_id_for_function_call[function_call_id] = request.function_id
+            map_token = f"test-map-token:{self.fcidx}"
+            self.function_id_for_function_call[map_token] = request.function_id
 
         # Process inputs and store them for MapAwait to pick up later
         attempt_tokens = []
@@ -2430,15 +2430,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
             # Store inputs for MapAwait to process
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
-            self.add_function_call_input(function_call_id, item.input, input_id, retry_count)
+            self.add_function_call_input(map_token, item.input, input_id, retry_count)
 
         # Get retry policy from function definition if available
         fn_definition = self.app_functions.get(request.function_id)
         retry_policy = fn_definition.retry_policy if fn_definition else None
 
+        # We don't send fcID since that is what the server will do eventually.
         response = api_pb2.MapStartOrContinueResponse(
             function_id=request.function_id,
-            function_call_id=function_call_id,
+            map_token=map_token,
             max_inputs_outstanding=1000,
             attempt_tokens=attempt_tokens,
             retry_policy=retry_policy,
@@ -2451,9 +2452,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def MapAwait(self, stream):
         request: api_pb2.MapAwaitRequest = await stream.recv_message()
+        map_token = request.map_token
 
         # Check if we have any function call inputs for this function call
-        fc_inputs = self.function_call_inputs.setdefault(request.function_call_id, [])
+        fc_inputs = self.function_call_inputs.setdefault(map_token, [])
         outputs = []
 
         if fc_inputs and not self.function_is_running:
@@ -2470,7 +2472,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     count = 0
                     for item in res:
                         count += 1
-                        await self.fc_data_out[request.function_call_id].put(
+                        await self.fc_data_out[map_token].put(
                             api_pb2.DataChunk(
                                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                                 data=serialize_data_format(item, api_pb2.DATA_FORMAT_PICKLE),
