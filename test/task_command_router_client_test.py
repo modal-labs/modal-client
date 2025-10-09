@@ -138,6 +138,7 @@ class _FakeStream:
             self._controller._timeout_on_first_iter_attempts.remove(self._controller._attempt)
             await asyncio.sleep((self._timeout or 0.2) + 0.05)
             raise asyncio.TimeoutError()
+
         try:
             item = await self._controller.next_item(self._emitted_in_attempt)
         except StopAsyncIteration:
@@ -214,7 +215,7 @@ async def test_exec_stdio_read_auth_retry_resumes_from_correct_offset(monkeypatc
 
 @pytest.mark.asyncio
 async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset(monkeypatch):
-    # 2 pieces, then transient error; then resume with remaining pieces
+    # 2 pieces, then transient error; then resume with remaining pieces.
     pieces = [b"one", b"two", b"three"]
 
     client = TaskCommandRouterClient(server_client=None, task_id="sb-1", server_url="https://router.test", jwt="t")
@@ -245,7 +246,6 @@ async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset
 async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(monkeypatch):
     pieces = [b"x", b"y"]
 
-    # Configure small retry delay and attempts for fast test
     client = TaskCommandRouterClient(
         server_client=None,
         task_id="sb-1",
@@ -253,7 +253,7 @@ async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(monkeypatch):
         jwt="t",
     )
 
-    # Fail UNAUTHENTICATED on both first and second attempts (send_message)
+    # Fail UNAUTHENTICATED on both first and second attempts  to call send_message).
     controller = _FakeStreamController(
         pieces,
         auth_error_on_send_attempts={1, 2},
@@ -284,7 +284,7 @@ async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch):
-    # Simulate UNAVAILABLE on every attempt immediately upon starting iteration
+    # Simulate UNAVAILABLE on every attempt immediately upon starting iteration.
     pieces = [b"irrelevant"]
 
     client = TaskCommandRouterClient(
@@ -297,7 +297,7 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch)
         stream_stdio_max_retries=5,
     )
 
-    # Prepare an iter_error_plan that forces UNAVAILABLE on many attempts
+    # Prepare an iter_error_plan that forces UNAVAILABLE on many attempts.
     iter_error_plan = {attempt: (0, GRPCError(Status.UNAVAILABLE, "unavailable")) for attempt in range(1, 50)}
     controller = _FakeStreamController(pieces, iter_error_plan=iter_error_plan)
     fake_stub = _FakeStub(controller)
@@ -319,16 +319,13 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_exec_stdio_read_deadline_exceeded_on_send(monkeypatch):
+async def test_exec_stdio_read_deadline_exceeded_on_send_raises_exec_timeout_error(monkeypatch):
     # Configure client with small retry windows; set deadline ~200ms from now
     client = TaskCommandRouterClient(
         server_client=None,
         task_id="sb-1",
         server_url="https://router.test",
         jwt="t",
-        stream_stdio_retry_delay=0.01,
-        stream_stdio_retry_delay_factor=1.0,
-        stream_stdio_max_retries=0,
     )
 
     controller = _FakeStreamController(pieces=[b"x"], timeout_on_send_attempts={1})
@@ -351,16 +348,13 @@ async def test_exec_stdio_read_deadline_exceeded_on_send(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_exec_stdio_read_deadline_exceeded_on_first_item(monkeypatch):
+async def test_exec_stdio_read_deadline_exceeded_on_first_item_raises_exec_timeout_error(monkeypatch):
     # Configure client with small retry windows; set deadline ~200ms from now
     client = TaskCommandRouterClient(
         server_client=None,
         task_id="sb-1",
         server_url="https://router.test",
         jwt="t",
-        stream_stdio_retry_delay=0.01,
-        stream_stdio_retry_delay_factor=1.0,
-        stream_stdio_max_retries=0,
     )
 
     controller = _FakeStreamController(pieces=[b"hello"], timeout_on_first_iter_attempts={1})

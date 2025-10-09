@@ -243,6 +243,7 @@ class TaskCommandRouterClient:
         else:
             raise ValueError(f"Invalid file descriptor: {file_descriptor}")
 
+        # TODO(saltzm): Probably want an asyncio timeout around the entire iterator somehow.
         async for item in self._stream_stdio(task_id, exec_id, sr_fd, deadline):
             yield item
 
