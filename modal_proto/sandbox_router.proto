@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/modal-labs/modal/go/proto/sandbox_router";
+option go_package = "github.com/modal-labs/modal/go/proto";
 
 import "modal_proto/api.proto";
 
