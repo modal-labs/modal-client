@@ -15,11 +15,12 @@ from typing import (
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
-from modal.exception import ClientClosed, InvalidError
+from modal.exception import ClientClosed, ExecTimeoutError, InvalidError
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .config import logger
 from .stream_type import StreamType
@@ -83,27 +84,8 @@ async def _container_process_logs_iterator(
 T = TypeVar("T", str, bytes)
 
 
-class _StreamReader(Generic[T]):
-    """Retrieve logs from a stream (`stdout` or `stderr`).
-
-    As an asynchronous iterable, the object supports the `for` and `async for`
-    statements. Just loop over the object to read in chunks.
-
-    **Usage**
-
-    ```python fixture:running_app
-    from modal import Sandbox
-
-    sandbox = Sandbox.create(
-        "bash",
-        "-c",
-        "for i in $(seq 1 10); do echo foo; sleep 0.1; done",
-        app=running_app,
-    )
-    for message in sandbox.stdout:
-        print(f"Message: {message}")
-    ```
-    """
+class _StreamReaderThroughServer(Generic[T]):
+    """A StreamReader implementation that reads from the server."""
 
     _stream: Optional[AsyncGenerator[Optional[bytes], None]]
 
@@ -166,19 +148,7 @@ class _StreamReader(Generic[T]):
         return self._file_descriptor
 
     async def read(self) -> T:
-        """Fetch the entire contents of the stream until EOF.
-
-        **Usage**
-
-        ```python fixture:running_app
-        from modal import Sandbox
-
-        sandbox = Sandbox.create("echo", "hello", app=running_app)
-        sandbox.wait()
-
-        print(sandbox.stdout.read())
-        ```
-        """
+        """Fetch the entire contents of the stream until EOF."""
         data_str = ""
         data_bytes = b""
         logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read starting")
@@ -330,11 +300,6 @@ class _StreamReader(Generic[T]):
                 self._stream = self._get_logs()
         return self._stream
 
-    def __aiter__(self) -> AsyncIterator[T]:
-        """mdmd:hidden"""
-        self._ensure_stream()
-        return self
-
     async def __anext__(self) -> T:
         """mdmd:hidden"""
         stream = self._ensure_stream()
@@ -356,10 +321,213 @@ class _StreamReader(Generic[T]):
             await self._stream.aclose()
 
 
+async def _decode_bytes_stream_to_str(stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[str, None]:
+    async for item in stream:
+        yield item.decode("utf-8")
+
+
+class _StreamReaderThroughCommandRouter(Generic[T]):
+    """
+    Placeholder StreamReader implementation that will read directly from the worker
+    that hosts the sandbox.
+    """
+
+    def __init__(
+        self,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        object_id: str,
+        command_router_client: TaskCommandRouterClient,
+        # TODO(saltzm): We should probably just construct a different kind of dummy object
+        # if the user has DEVNULL for the stream_type. Or None.
+        # TODO(saltzm): The current implementation of STDOUT stream type in the original
+        # implementation seems inconsistent with what it means in python subprocess. Do we
+        # want to keep it or change it to match subprocess?
+        stream_type: StreamType = StreamType.PIPE,
+        text: bool = True,
+        by_line: bool = False,
+        deadline: Optional[float] = None,
+        task_id: Optional[str] = None,
+    ) -> None:
+        self._file_descriptor = file_descriptor
+        self._object_id = object_id
+        self._command_router_client = command_router_client
+        self._stream_type = stream_type
+        self._text = text
+        self._by_line = by_line
+        self._deadline = deadline
+        self.eof = False
+        self._task_id = task_id or ""
+        self._stream = None
+
+    @property
+    def file_descriptor(self) -> int:
+        return self._file_descriptor
+
+    async def read(self) -> T:
+        if self._text:
+            data_str = ""
+            async for part in self:
+                data_str += cast(str, part)
+            self.eof = True
+            return cast(T, data_str)
+        else:
+            data_bytes = b""
+            async for part in self:
+                data_bytes += cast(bytes, part)
+            self.eof = True
+            return cast(T, data_bytes)
+
+    async def _get_stdio_stream(self) -> AsyncGenerator[bytes, None]:
+        """Stream raw bytes from the router client."""
+        if self._stream_type != StreamType.PIPE:
+            raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+
+        stream = self._command_router_client.exec_stdio_read(
+            self._task_id, self._object_id, self._file_descriptor, self._deadline
+        )
+        try:
+            async for item in stream:
+                # TODO(saltzm): Figure out origin of "liveness" comment in other implementation.
+                if len(item.data) == 0:
+                    # This is an error.
+                    raise ValueError("Received empty message streaming stdio from sandbox.")
+
+                yield item.data
+        except ExecTimeoutError:
+            logger.debug(f"Deadline exceeded while streaming stdio for exec {self._object_id}")
+            # TODO(saltzm): This is a weird API, but customers currently may rely on it. We
+            # should probably raise this error rather than just ending the stream.
+            return
+
+    async def _get_stdio_stream_by_line(self) -> AsyncGenerator[bytes, None]:
+        """Yield complete lines only (ending with \n), buffering partial lines until complete."""
+        line_buffer = b""
+        async for message in self._get_stdio_stream():
+            assert isinstance(message, bytes)
+            line_buffer += message
+            while b"\n" in line_buffer:
+                line, line_buffer = line_buffer.split(b"\n", 1)
+                yield line + b"\n"
+
+        if line_buffer:
+            yield line_buffer
+
+    def _ensure_stream(self) -> Union[AsyncGenerator[bytes, None], AsyncGenerator[str, None]]:
+        if self._stream:
+            return self._stream
+
+        if self._by_line:
+            stream = self._get_stdio_stream_by_line()
+        else:
+            stream = self._get_stdio_stream()
+
+        if self._text:
+            self._stream = _decode_bytes_stream_to_str(stream)
+        else:
+            self._stream = stream
+
+        return self._stream
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self
+
+    async def __anext__(self) -> T:
+        stream = self._ensure_stream()
+        # This raises StopAsyncIteration if the stream is at EOF.
+        return cast(T, await stream.__anext__())
+
+    async def aclose(self):
+        if self._stream:
+            await self._stream.aclose()
+
+
+class _StreamReader(Generic[T]):
+    """Retrieve logs from a stream (`stdout` or `stderr`).
+
+    As an asynchronous iterable, the object supports the `for` and `async for`
+    statements. Just loop over the object to read in chunks.
+
+    **Usage**
+
+    ```python fixture:running_app
+    from modal import Sandbox
+
+    sandbox = Sandbox.create(
+        "bash",
+        "-c",
+        "for i in $(seq 1 10); do echo foo; sleep 0.1; done",
+        app=running_app,
+    )
+    for message in sandbox.stdout:
+        print(f"Message: {message}")
+    ```
+    """
+
+    def __init__(
+        self,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        client: _Client,
+        stream_type: StreamType = StreamType.PIPE,
+        text: bool = True,
+        by_line: bool = False,
+        deadline: Optional[float] = None,
+        command_router_client: Optional[TaskCommandRouterClient] = None,
+        task_id: Optional[str] = None,
+    ) -> None:
+        """mdmd:hidden"""
+        if command_router_client is None:
+            self._impl = _StreamReaderThroughServer(
+                file_descriptor, object_id, object_type, client, stream_type, text, by_line, deadline
+            )
+        else:
+            self._impl = _StreamReaderThroughCommandRouter(
+                file_descriptor, object_id, command_router_client, stream_type, text, by_line, deadline, task_id
+            )
+
+    @property
+    def file_descriptor(self) -> int:
+        """Possible values are `1` for stdout and `2` for stderr."""
+        return self._impl.file_descriptor
+
+    async def read(self) -> T:
+        """Fetch the entire contents of the stream until EOF.
+
+        **Usage**
+
+        ```python fixture:running_app
+        from modal import Sandbox
+
+        sandbox = Sandbox.create("echo", "hello", app=running_app)
+        sandbox.wait()
+
+        print(sandbox.stdout.read())
+        ```
+        """
+        return await self._impl.read()
+
+    # TODO(saltzm): I'd prefer to have the implementation classes only implement __aiter__
+    # and have them return generator functions directly, but synchronicity doesn't let us
+    # return self._impl.__aiter__() here because it won't properly wrap the implementation
+    # classes.
+    def __aiter__(self) -> AsyncIterator[T]:
+        """mdmd:hidden"""
+        return self
+
+    async def __anext__(self) -> T:
+        """mdmd:hidden"""
+        return await self._impl.__anext__()
+
+    async def aclose(self):
+        """mdmd:hidden"""
+        await self._impl.aclose()
+
+
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
 
 
-class _StreamWriter:
+class _StreamWriterThroughServer:
     """Provides an interface to buffer and write logs to a sandbox or container process stream (`stdin`)."""
 
     def __init__(self, object_id: str, object_type: Literal["sandbox", "container_process"], client: _Client) -> None:
@@ -381,25 +549,6 @@ class _StreamWriter:
 
         This is non-blocking and queues the data to an internal buffer. Must be
         used along with the `drain()` method, which flushes the buffer.
-
-        **Usage**
-
-        ```python fixture:running_app
-        from modal import Sandbox
-
-        sandbox = Sandbox.create(
-            "bash",
-            "-c",
-            "while read line; do echo $line; done",
-            app=running_app,
-        )
-        sandbox.stdin.write(b"foo\\n")
-        sandbox.stdin.write(b"bar\\n")
-        sandbox.stdin.write_eof()
-
-        sandbox.stdin.drain()
-        sandbox.wait()
-        ```
         """
         if self._is_closed:
             raise ValueError("Stdin is closed. Cannot write to it.")
@@ -426,19 +575,6 @@ class _StreamWriter:
 
         This is a flow control method that blocks until data is sent. It returns
         when it is appropriate to continue writing data to the stream.
-
-        **Usage**
-
-        ```python notest
-        writer.write(data)
-        writer.drain()
-        ```
-
-        Async usage:
-        ```python notest
-        writer.write(data)  # not a blocking operation
-        await writer.drain.aio()
-        ```
         """
         data = bytes(self._buffer)
         self._buffer.clear()
@@ -465,6 +601,123 @@ class _StreamWriter:
                 raise ValueError(exc.message)
             else:
                 raise exc
+
+
+class _StreamWriterThroughCommandRouter:
+    def __init__(
+        self,
+        object_id: str,
+        command_router_client: TaskCommandRouterClient,
+        *,
+        task_id: Optional[str] = None,
+    ) -> None:
+        self._object_id = object_id
+        self._command_router_client = command_router_client
+        self._task_id = task_id or ""
+        self._is_closed = False
+        self._buffer = bytearray()
+        self._offset = 0
+
+    def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
+        if self._is_closed:
+            raise ValueError("Stdin is closed. Cannot write to it.")
+        if isinstance(data, (bytes, bytearray, memoryview, str)):
+            if isinstance(data, str):
+                data = data.encode("utf-8")
+            if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
+                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
+            self._buffer.extend(data)
+        else:
+            raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
+
+    def write_eof(self) -> None:
+        self._is_closed = True
+
+    async def drain(self) -> None:
+        data = bytes(self._buffer)
+        self._buffer.clear()
+        start_offset = self._offset
+
+        if data or self._is_closed:
+            await self._command_router_client.exec_stdin_write(
+                task_id=self._task_id, exec_id=self._object_id, offset=start_offset, data=data, eof=self._is_closed
+            )
+            self._offset += len(data)
+
+
+class _StreamWriter:
+    """Provides an interface to buffer and write logs to a sandbox or container process stream (`stdin`)."""
+
+    def __init__(
+        self,
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        client: _Client,
+        command_router_client: Optional[TaskCommandRouterClient] = None,
+        task_id: Optional[str] = None,
+    ) -> None:
+        """mdmd:hidden"""
+        if command_router_client is None:
+            self._impl = _StreamWriterThroughServer(object_id, object_type, client)
+        else:
+            self._impl = _StreamWriterThroughCommandRouter(object_id, command_router_client, task_id=task_id)
+
+    def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
+        """Write data to the stream but does not send it immediately.
+
+        This is non-blocking and queues the data to an internal buffer. Must be
+        used along with the `drain()` method, which flushes the buffer.
+
+        **Usage**
+
+        ```python fixture:running_app
+        from modal import Sandbox
+
+        sandbox = Sandbox.create(
+            "bash",
+            "-c",
+            "while read line; do echo $line; done",
+            app=running_app,
+        )
+        sandbox.stdin.write(b"foo\\n")
+        sandbox.stdin.write(b"bar\\n")
+        sandbox.stdin.write_eof()
+
+        sandbox.stdin.drain()
+        sandbox.wait()
+        ```
+        """
+        self._impl.write(data)
+
+    def write_eof(self) -> None:
+        """Close the write end of the stream after the buffered data is drained.
+
+        If the process was blocked on input, it will become unblocked after
+        `write_eof()`. This method needs to be used along with the `drain()`
+        method, which flushes the EOF to the process.
+        """
+        self._impl.write_eof()
+
+    async def drain(self) -> None:
+        """Flush the write buffer and send data to the running process.
+
+        This is a flow control method that blocks until data is sent. It returns
+        when it is appropriate to continue writing data to the stream.
+
+        **Usage**
+
+        ```python notest
+        writer.write(data)
+        writer.drain()
+        ```
+
+        Async usage:
+        ```python notest
+        writer.write(data)  # not a blocking operation
+        await writer.drain.aio()
+        ```
+        """
+        await self._impl.drain()
 
 
 StreamReader = synchronize_api(_StreamReader)
