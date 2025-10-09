@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev90 (2025-10-09)
+
+- It is no longer possible to invoke a method on a Modal Cls without "instantiating" the Cls first.
+
+
 #### 1.1.5.dev86 (2025-10-08)
 
 - Improves compatibility with newer versions of protobuf.
