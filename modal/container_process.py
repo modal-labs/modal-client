@@ -8,8 +8,8 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.sandbox_utils import SandboxRouterClient
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
+from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .config import logger
 from .exception import ExecTimeoutError, InteractiveTimeoutError, InvalidError
@@ -226,11 +226,11 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
         exec_deadline: Optional[float] = None,
         text: bool = True,
         by_line: bool = False,
-        router_client: SandboxRouterClient,
+        command_router_client: TaskCommandRouterClient,
         task_id: Optional[str] = None,
     ) -> None:
         self._client = client
-        self._router_client = router_client
+        self._command_router_client = command_router_client
         self._process_id = process_id
         self._exec_deadline = exec_deadline
         self._text = text
@@ -245,7 +245,7 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
             text=text,
             by_line=by_line,
             deadline=exec_deadline,
-            router_client=self._router_client,
+            command_router_client=self._command_router_client,
             task_id=self._task_id,
         )
         self._stderr = _StreamReader[T](
@@ -257,14 +257,14 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
             text=text,
             by_line=by_line,
             deadline=exec_deadline,
-            router_client=self._router_client,
+            command_router_client=self._command_router_client,
             task_id=self._task_id,
         )
         self._stdin = _StreamWriter(
             process_id,
             "container_process",
             self._client,
-            router_client=self._router_client,
+            command_router_client=self._command_router_client,
             task_id=self._task_id,
         )
         self._returncode = None
@@ -294,7 +294,9 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
         if self._returncode is not None:
             return self._returncode
         try:
-            resp = await asyncio.wait_for(self._router_client.exec_poll(self._task_id, self._process_id), timeout=10)
+            resp = await asyncio.wait_for(
+                self._command_router_client.exec_poll(self._task_id, self._process_id), timeout=10
+            )
             which = resp.WhichOneof("exit_status")
             if which is None:
                 return None
@@ -317,7 +319,7 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
             return self._returncode
 
         try:
-            resp = await self._router_client.exec_wait(self._task_id, self._process_id, self._exec_deadline)
+            resp = await self._command_router_client.exec_wait(self._task_id, self._process_id, self._exec_deadline)
             which = resp.WhichOneof("exit_status")
             if which == "code":
                 self._returncode = int(resp.code)
@@ -395,10 +397,10 @@ class _ContainerProcess(Generic[T]):
         exec_deadline: Optional[float] = None,
         text: bool = True,
         by_line: bool = False,
-        router_client: Optional[SandboxRouterClient] = None,
+        command_router_client: Optional[TaskCommandRouterClient] = None,
         task_id: Optional[str] = None,
     ) -> None:
-        if router_client is None:
+        if command_router_client is None:
             self._impl = _ContainerProcessThroughServer(
                 process_id,
                 client,
@@ -417,7 +419,7 @@ class _ContainerProcess(Generic[T]):
                 exec_deadline=exec_deadline,
                 text=text,
                 by_line=by_line,
-                router_client=router_client,
+                command_router_client=command_router_client,
                 task_id=task_id,
             )
 

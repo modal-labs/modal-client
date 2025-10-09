@@ -20,7 +20,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
-from ._utils.sandbox_utils import SandboxRouterClient
+from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .config import logger
 from .stream_type import StreamType
@@ -336,7 +336,7 @@ class _StreamReaderThroughCommandRouter(Generic[T]):
         self,
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
         object_id: str,
-        router_client: SandboxRouterClient,
+        command_router_client: TaskCommandRouterClient,
         # TODO(saltzm): We should probably just construct a different kind of dummy object
         # if the user has DEVNULL for the stream_type. Or None.
         # TODO(saltzm): The current implementation of STDOUT stream type in the original
@@ -350,7 +350,7 @@ class _StreamReaderThroughCommandRouter(Generic[T]):
     ) -> None:
         self._file_descriptor = file_descriptor
         self._object_id = object_id
-        self._router_client = router_client
+        self._command_router_client = command_router_client
         self._stream_type = stream_type
         self._text = text
         self._by_line = by_line
@@ -382,7 +382,7 @@ class _StreamReaderThroughCommandRouter(Generic[T]):
         if self._stream_type != StreamType.PIPE:
             raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
 
-        stream = self._router_client.exec_stdio_read(
+        stream = self._command_router_client.exec_stdio_read(
             self._task_id, self._object_id, self._file_descriptor, self._deadline
         )
         try:
@@ -473,17 +473,17 @@ class _StreamReader(Generic[T]):
         text: bool = True,
         by_line: bool = False,
         deadline: Optional[float] = None,
-        router_client: Optional[SandboxRouterClient] = None,
+        command_router_client: Optional[TaskCommandRouterClient] = None,
         task_id: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
-        if router_client is None:
+        if command_router_client is None:
             self._impl = _StreamReaderThroughServer(
                 file_descriptor, object_id, object_type, client, stream_type, text, by_line, deadline
             )
         else:
             self._impl = _StreamReaderThroughCommandRouter(
-                file_descriptor, object_id, router_client, stream_type, text, by_line, deadline, task_id
+                file_descriptor, object_id, command_router_client, stream_type, text, by_line, deadline, task_id
             )
 
     @property
@@ -607,12 +607,12 @@ class _StreamWriterThroughCommandRouter:
     def __init__(
         self,
         object_id: str,
-        router_client: SandboxRouterClient,
+        command_router_client: TaskCommandRouterClient,
         *,
         task_id: Optional[str] = None,
     ) -> None:
         self._object_id = object_id
-        self._router_client = router_client
+        self._command_router_client = command_router_client
         self._task_id = task_id or ""
         self._is_closed = False
         self._buffer = bytearray()
@@ -639,7 +639,7 @@ class _StreamWriterThroughCommandRouter:
         start_offset = self._offset
 
         if data or self._is_closed:
-            await self._router_client.exec_stdin_write(
+            await self._command_router_client.exec_stdin_write(
                 task_id=self._task_id, exec_id=self._object_id, offset=start_offset, data=data, eof=self._is_closed
             )
             self._offset += len(data)
@@ -653,14 +653,14 @@ class _StreamWriter:
         object_id: str,
         object_type: Literal["sandbox", "container_process"],
         client: _Client,
-        router_client: Optional[SandboxRouterClient] = None,
+        command_router_client: Optional[TaskCommandRouterClient] = None,
         task_id: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
-        if router_client is None:
+        if command_router_client is None:
             self._impl = _StreamWriterThroughServer(object_id, object_type, client)
         else:
-            self._impl = _StreamWriterThroughCommandRouter(object_id, router_client, task_id=task_id)
+            self._impl = _StreamWriterThroughCommandRouter(object_id, command_router_client, task_id=task_id)
 
     def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
         """Write data to the stream but does not send it immediately.

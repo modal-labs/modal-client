@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2025
 """
-Unit tests for sandbox utils streaming behavior.
+Unit tests for task command router client.
 """
 
 import asyncio
@@ -11,15 +11,15 @@ from typing import List, Optional, Tuple
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 
-from modal._utils.sandbox_utils import SandboxRouterClient
+from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.exception import ExecTimeoutError
-from modal_proto import api_pb2, sandbox_router_pb2 as sr_pb2
+from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
 class _FakeStreamController:
     """Controls behavior of fake gRPC stream across attempts.
 
-    This controller simulates server-side behavior for SandboxExecStdioRead.
+    This controller simulates server-side behavior for TaskExecStdioRead.
     It can inject authentication failures on send, and transient errors during iteration,
     while ensuring resumed reads start from the provided offset.
     """
@@ -35,7 +35,7 @@ class _FakeStreamController:
     ) -> None:
         self._pieces = pieces
         self._attempt = 0
-        self._last_req: Optional[sr_pb2.SandboxExecStdioReadRequest] = None
+        self._last_req: Optional[sr_pb2.TaskExecStdioReadRequest] = None
         self._auth_error_on_send_attempts = auth_error_on_send_attempts or set()
         # Map attempt -> (after_n_pieces_emitted_in_attempt, exception)
         self._iter_error_plan = iter_error_plan or {}
@@ -47,7 +47,7 @@ class _FakeStreamController:
         # A new FakeStream per open()
         return _FakeStream(self)
 
-    async def on_send_message(self, req: sr_pb2.SandboxExecStdioReadRequest) -> None:
+    async def on_send_message(self, req: sr_pb2.TaskExecStdioReadRequest) -> None:
         # Possibly fail authentication for this attempt on initial send
         if self._attempt in self._auth_error_on_send_attempts:
             # Only fail once for this attempt
@@ -86,7 +86,7 @@ class _FakeStreamController:
         if next_idx >= len(self._pieces):
             raise StopAsyncIteration
         data = self._pieces[next_idx]
-        return sr_pb2.SandboxExecStdioReadResponse(data=data)
+        return sr_pb2.TaskExecStdioReadResponse(data=data)
 
 
 class _FakeUnaryStreamMethod:
@@ -101,7 +101,7 @@ class _FakeUnaryStreamMethod:
 
 class _FakeStub:
     def __init__(self, controller: _FakeStreamController):
-        self.SandboxExecStdioRead = _FakeUnaryStreamMethod(controller)
+        self.TaskExecStdioRead = _FakeUnaryStreamMethod(controller)
 
 
 class _FakeStream:
@@ -116,7 +116,7 @@ class _FakeStream:
     async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201 - test helper
         return False
 
-    async def send_message(self, req: sr_pb2.SandboxExecStdioReadRequest, end: bool = True):  # noqa: ARG002
+    async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
         # Simulate timeout on send for this attempt by sleeping beyond the timeout and then raising
         if self._controller._attempt in self._controller._timeout_on_send_attempts:
             # ensure one-time behavior per attempt
@@ -151,7 +151,7 @@ async def test_exec_stdio_read_streams_stdout_batches(monkeypatch):
     pieces = [b"hello ", b"world", b"!\n"]
 
     # Create client and stub fakes
-    client = SandboxRouterClient(server_client=None, sandbox_id="sb-1", server_url="https://router.test", jwt="t")
+    client = TaskCommandRouterClient(server_client=None, task_id="sb-1", server_url="https://router.test", jwt="t")
 
     controller = _FakeStreamController(pieces)
     fake_stub = _FakeStub(controller)
@@ -178,7 +178,7 @@ async def test_exec_stdio_read_auth_retry_resumes_from_correct_offset(monkeypatc
     # 2 pieces, then disconnect; next attempt fails auth on send once; then resume with remaining pieces
     pieces = [b"AA", b"BB", b"CC", b"DD"]
 
-    client = SandboxRouterClient(server_client=None, sandbox_id="sb-1", server_url="https://router.test", jwt="t")
+    client = TaskCommandRouterClient(server_client=None, task_id="sb-1", server_url="https://router.test", jwt="t")
 
     controller = _FakeStreamController(
         pieces,
@@ -217,7 +217,7 @@ async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset
     # 2 pieces, then transient error; then resume with remaining pieces
     pieces = [b"one", b"two", b"three"]
 
-    client = SandboxRouterClient(server_client=None, sandbox_id="sb-1", server_url="https://router.test", jwt="t")
+    client = TaskCommandRouterClient(server_client=None, task_id="sb-1", server_url="https://router.test", jwt="t")
 
     controller = _FakeStreamController(
         pieces,
@@ -246,9 +246,9 @@ async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(monkeypatch):
     pieces = [b"x", b"y"]
 
     # Configure small retry delay and attempts for fast test
-    client = SandboxRouterClient(
+    client = TaskCommandRouterClient(
         server_client=None,
-        sandbox_id="sb-1",
+        task_id="sb-1",
         server_url="https://router.test",
         jwt="t",
     )
@@ -287,9 +287,9 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch)
     # Simulate UNAVAILABLE on every attempt immediately upon starting iteration
     pieces = [b"irrelevant"]
 
-    client = SandboxRouterClient(
+    client = TaskCommandRouterClient(
         server_client=None,
-        sandbox_id="sb-1",
+        task_id="sb-1",
         server_url="https://router.test",
         jwt="t",
         stream_stdio_retry_delay=0.001,
@@ -321,9 +321,9 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch)
 @pytest.mark.asyncio
 async def test_exec_stdio_read_deadline_exceeded_on_send(monkeypatch):
     # Configure client with small retry windows; set deadline ~200ms from now
-    client = SandboxRouterClient(
+    client = TaskCommandRouterClient(
         server_client=None,
-        sandbox_id="sb-1",
+        task_id="sb-1",
         server_url="https://router.test",
         jwt="t",
         stream_stdio_retry_delay=0.01,
@@ -353,9 +353,9 @@ async def test_exec_stdio_read_deadline_exceeded_on_send(monkeypatch):
 @pytest.mark.asyncio
 async def test_exec_stdio_read_deadline_exceeded_on_first_item(monkeypatch):
     # Configure client with small retry windows; set deadline ~200ms from now
-    client = SandboxRouterClient(
+    client = TaskCommandRouterClient(
         server_client=None,
-        sandbox_id="sb-1",
+        task_id="sb-1",
         server_url="https://router.test",
         jwt="t",
         stream_stdio_retry_delay=0.01,

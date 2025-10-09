@@ -13,8 +13,8 @@ from grpclib.exceptions import StreamTerminatedError
 
 from modal.config import config, logger
 from modal.exception import ExecTimeoutError
-from modal_proto import api_pb2, sandbox_router_pb2 as sr_pb2
-from modal_proto.sandbox_router_grpc import SandboxRouterStub
+from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
+from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel, retry_transient_errors
 
@@ -68,25 +68,25 @@ async def call_with_retries_on_transient_errors(
                 raise ConnectionError(str(e))
 
 
-async def fetch_command_router_access(server_client, sandbox_id: str) -> api_pb2.SandboxGetCommandRouterAccessResponse:
+async def fetch_command_router_access(server_client, task_id: str) -> api_pb2.TaskGetCommandRouterAccessResponse:
     """Fetch direct command router access info from Modal server."""
     return await retry_transient_errors(
-        server_client.stub.SandboxGetCommandRouterAccess,
-        api_pb2.SandboxGetCommandRouterAccessRequest(sandbox_id=sandbox_id),
+        server_client.stub.TaskGetCommandRouterAccess,
+        api_pb2.TaskGetCommandRouterAccessRequest(task_id=task_id),
     )
 
 
-class SandboxRouterClient:
+class TaskCommandRouterClient:
     """
-    Client used to talk directly to SandboxRouterService on worker hosts.
+    Client used to talk directly to TaskCommandRouter service on worker hosts.
 
-    A new instance should be created per sandbox.
+    A new instance should be created per task.
     """
 
     def __init__(
         self,
         server_client,
-        sandbox_id: str,
+        task_id: str,
         server_url: str,
         jwt: str,
         *,
@@ -94,10 +94,10 @@ class SandboxRouterClient:
         stream_stdio_retry_delay_factor: float = 2,
         stream_stdio_max_retries: int = 10,
     ) -> None:
-        """Callers should not use this directly. Use SandboxRouterClient.try_init() instead."""
+        """Callers should not use this directly. Use TaskCommandRouterClient.try_init() instead."""
         # Attach bearer token on all requests to the worker-side router service.
         self._server_client = server_client
-        self._sandbox_id = sandbox_id
+        self._task_id = task_id
         self._jwt = jwt
         self._server_url = server_url
         # Retry configuration for stdio streaming
@@ -105,21 +105,21 @@ class SandboxRouterClient:
         self.stream_stdio_retry_delay_factor = stream_stdio_retry_delay_factor
         self.stream_stdio_max_retries = stream_stdio_max_retries
 
-        # Only https URLs are supported for the sandbox router. Build a channel with a TLS context.
+        # Only https URLs are supported for the task command router. Build a channel with a TLS context.
         o = urllib.parse.urlparse(server_url)
         if o.scheme != "https":
-            raise ValueError(f"Sandbox router URL must be https, got: {server_url}")
+            raise ValueError(f"Task router URL must be https, got: {server_url}")
 
         host, _, port_str = o.netloc.partition(":")
         port = int(port_str) if port_str else 443
         ssl_context = ssl.create_default_context()
 
         # Allow insecure TLS when explicitly enabled via config (respects env
-        # var MODAL_SANDBOX_ROUTER_INSECURE). Used for local testing.
+        # var MODAL_TASK_COMMAND_ROUTER_INSECURE). Used for local testing.
         #
         # TODO(saltzm): There's probably a better way to do this using a local
         # cert. Seek PR feedback.
-        if config["sandbox_router_insecure"]:
+        if config["task_command_router_insecure"]:
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
 
@@ -142,36 +142,36 @@ class SandboxRouterClient:
         self._channel = channel
 
         # Don't access this directly, use _get_stub() instead.
-        self._stub = SandboxRouterStub(self._channel)
+        self._stub = TaskCommandRouterStub(self._channel)
         self._connected = False
 
     @classmethod
     async def try_init(
         cls,
         server_client,
-        sandbox_id: str,
-    ) -> Optional["SandboxRouterClient"]:
-        """Attempt to initialize a SandboxRouterClient by fetching direct access.
+        task_id: str,
+    ) -> Optional["TaskCommandRouterClient"]:
+        """Attempt to initialize a TaskCommandRouterClient by fetching direct access.
 
         Returns None if command router access is not enabled (FAILED_PRECONDITION).
         """
         try:
-            resp = await fetch_command_router_access(server_client, sandbox_id)
+            resp = await fetch_command_router_access(server_client, task_id)
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 return None
             raise
 
-        return cls(server_client, sandbox_id, resp.url, resp.jwt)
+        return cls(server_client, task_id, resp.url, resp.jwt)
 
     async def _refresh_jwt(self) -> None:
         # TODO(saltzm): This is inefficient in the event that multiple execs are issued concurrently,
         # since each concurrent request will fetch a new token. It doesn't matter for correctness
         # because the last written token will still be valid and usable by all execs, but it's
         # confusing and inefficient. We need to fix this.
-        resp = await fetch_command_router_access(self._server_client, self._sandbox_id)
+        resp = await fetch_command_router_access(self._server_client, self._task_id)
         # Ensure the server URL remains stable for the lifetime of this client
-        assert resp.url == self._server_url, "Sandbox router URL changed during session"
+        assert resp.url == self._server_url, "Task router URL changed during session"
         self._jwt = resp.jwt
 
     async def _call_with_auth_retry(self, func):
@@ -196,7 +196,7 @@ class SandboxRouterClient:
             await connect_channel(self._channel)
             self._connected = True
 
-    async def _get_stub(self) -> SandboxRouterStub:
+    async def _get_stub(self) -> TaskCommandRouterStub:
         await self._ensure_connected()
         return self._stub
 
@@ -204,10 +204,10 @@ class SandboxRouterClient:
         self._channel.close()
         self._connected = False
 
-    async def exec_start(self, request: sr_pb2.SandboxExecStartRequest) -> sr_pb2.SandboxExecStartResponse:
+    async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
         stub = await self._get_stub()
         return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(lambda: stub.SandboxExecStart(request))
+            lambda: self._call_with_auth_retry(lambda: stub.TaskExecStart(request))
         )
 
     async def exec_stdio_read(
@@ -217,27 +217,27 @@ class SandboxRouterClient:
         # Quotes around the type required for protobuf 3.19.
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
         deadline: Optional[float] = None,
-    ) -> AsyncIterator[sr_pb2.SandboxExecStdioReadResponse]:
-        """Stream stdout/stderr batches from the sandbox, properly retrying on transient errors.
+    ) -> AsyncIterator[sr_pb2.TaskExecStdioReadResponse]:
+        """Stream stdout/stderr batches from the task, properly retrying on transient errors.
 
         Args:
-            task_id: The task ID of the sandbox running the exec'd command.
+            task_id: The task ID of the task running the exec'd command.
             exec_id: The execution ID of the command to read from.
             file_descriptor: The file descriptor to read from.
             deadline: The deadline by which all output must be streamed. If
               None, wait forever. If the deadline is exceeded, raises an
               ExecTimeoutError.
         Returns:
-            AsyncIterator[sr_pb2.SandboxExecStdioReadResponse]: A stream of stdout/stderr batches.
+            AsyncIterator[sr_pb2.TaskExecStdioReadResponse]: A stream of stdout/stderr batches.
         Raises:
             ExecTimeoutError: If the deadline is exceeded.
             Other errors: If retries are exhausted on transient errors or if there's an error
               from the RPC itself.
         """
         if file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
-            sr_fd = sr_pb2.SANDBOX_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT
+            sr_fd = sr_pb2.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT
         elif file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
-            sr_fd = sr_pb2.SANDBOX_EXEC_STDIO_FILE_DESCRIPTOR_STDERR
+            sr_fd = sr_pb2.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR
         elif file_descriptor == api_pb2.FILE_DESCRIPTOR_INFO or file_descriptor == api_pb2.FILE_DESCRIPTOR_UNSPECIFIED:
             raise ValueError(f"Unsupported file descriptor: {file_descriptor}")
         else:
@@ -251,10 +251,10 @@ class SandboxRouterClient:
         task_id: str,
         exec_id: str,
         # Quotes around the type required for protobuf 3.19.
-        file_descriptor: "sr_pb2.SandboxExecStdioFileDescriptor.ValueType",
+        file_descriptor: "sr_pb2.TaskExecStdioFileDescriptor.ValueType",
         deadline: Optional[float] = None,
-    ) -> AsyncIterator[sr_pb2.SandboxExecStdioReadResponse]:
-        """Stream stdio from the sandbox, properly updating the offset and retrying on transient errors.
+    ) -> AsyncIterator[sr_pb2.TaskExecStdioReadResponse]:
+        """Stream stdio from the task, properly updating the offset and retrying on transient errors.
         Raises ExecTimeoutError if the deadline is exceeded.
         """
         offset = 0
@@ -276,10 +276,10 @@ class SandboxRouterClient:
             timeout = deadline - time.monotonic() if deadline is not None else None
             if timeout is not None and timeout <= 0:
                 raise ExecTimeoutError(f"Deadline exceeded while streaming stdio for exec {exec_id}")
-            stream = stub.SandboxExecStdioRead.open(timeout=timeout)
+            stream = stub.TaskExecStdioRead.open(timeout=timeout)
             try:
                 async with stream as s:
-                    req = sr_pb2.SandboxExecStdioReadRequest(
+                    req = sr_pb2.TaskExecStdioReadRequest(
                         task_id=task_id,
                         exec_id=exec_id,
                         offset=offset,
@@ -344,11 +344,11 @@ class SandboxRouterClient:
 
     async def exec_stdin_write(
         self, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool
-    ) -> sr_pb2.SandboxExecStdinWriteResponse:
+    ) -> sr_pb2.TaskExecStdinWriteResponse:
         """Write to the stdin stream of an exec'd command, properly retrying on transient errors.
 
         Args:
-            task_id: The task ID of the sandbox running the exec'd command.
+            task_id: The task ID of the task running the exec'd command.
             exec_id: The execution ID of the command to write to.
             offset: The offset to start writing to.
             data: The data to write to the stdin stream.
@@ -358,30 +358,28 @@ class SandboxRouterClient:
               from the RPC itself.
         """
         stub = await self._get_stub()
-        request = sr_pb2.SandboxExecStdinWriteRequest(
-            task_id=task_id, exec_id=exec_id, offset=offset, data=data, eof=eof
-        )
+        request = sr_pb2.TaskExecStdinWriteRequest(task_id=task_id, exec_id=exec_id, offset=offset, data=data, eof=eof)
         return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(lambda: stub.SandboxExecStdinWrite(request))
+            lambda: self._call_with_auth_retry(lambda: stub.TaskExecStdinWrite(request))
         )
 
-    async def exec_poll(self, task_id: str, exec_id: str) -> sr_pb2.SandboxExecPollResponse:
+    async def exec_poll(self, task_id: str, exec_id: str) -> sr_pb2.TaskExecPollResponse:
         """Poll for the exit status of an exec'd command, properly retrying on transient errors.
 
         Args:
-            task_id: The task ID of the sandbox running the exec'd command.
+            task_id: The task ID of the task running the exec'd command.
             exec_id: The execution ID of the command to poll on.
         Returns:
-            sr_pb2.SandboxExecPollResponse: The exit status of the command if it has completed.
+            sr_pb2.TaskExecPollResponse: The exit status of the command if it has completed.
 
         Raises:
             Other errors: If retries are exhausted on transient errors or if there's an error
               from the RPC itself.
         """
         stub = await self._get_stub()
-        request = sr_pb2.SandboxExecPollRequest(task_id=task_id, exec_id=exec_id)
+        request = sr_pb2.TaskExecPollRequest(task_id=task_id, exec_id=exec_id)
         return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(lambda: stub.SandboxExecPoll(request))
+            lambda: self._call_with_auth_retry(lambda: stub.TaskExecPoll(request))
         )
 
     async def exec_wait(
@@ -389,20 +387,20 @@ class SandboxRouterClient:
         task_id: str,
         exec_id: str,
         deadline: Optional[float] = None,
-    ) -> sr_pb2.SandboxExecWaitResponse:
+    ) -> sr_pb2.TaskExecWaitResponse:
         """Wait for an exec'd command to exit and return the exit code, properly retrying on transient errors.
 
         Args:
-            task_id: The task ID of the sandbox running the exec'd command.
+            task_id: The task ID of the task running the exec'd command.
             exec_id: The execution ID of the command to wait on.
         Returns:
-            Optional[sr_pb2.SandboxExecWaitResponse]: The exit code of the command.
+            Optional[sr_pb2.TaskExecWaitResponse]: The exit code of the command.
         Raises:
             ExecTimeoutError: If the deadline is exceeded.
             Other errors: If there's an error from the RPC itself.
         """
         stub = await self._get_stub()
-        request = sr_pb2.SandboxExecWaitRequest(task_id=task_id, exec_id=exec_id)
+        request = sr_pb2.TaskExecWaitRequest(task_id=task_id, exec_id=exec_id)
         timeout = deadline - time.monotonic() if deadline is not None else None
         if timeout is not None and timeout <= 0:
             raise ExecTimeoutError(f"Deadline exceeded while waiting for exec {exec_id}")
@@ -414,12 +412,12 @@ class SandboxRouterClient:
                     # timeout is exceeded, so we'll retry every 60s until the command exits.
                     #
                     # Safety:
-                    # * If just the sandbox shuts down, the sandbox router will return a NOT_FOUND error,
+                    # * If just the task shuts down, the task command router will return a NOT_FOUND error,
                     #   and we'll stop retrying.
-                    # * If the sandbox shut down AND the worker shut down, this could
+                    # * If the task shut down AND the worker shut down, this could
                     #   infinitely retry. For callers without an exec deadline, this
                     #   could hang indefinitely.
-                    lambda: self._call_with_auth_retry(lambda: stub.SandboxExecWait(request, timeout=60)),
+                    lambda: self._call_with_auth_retry(lambda: stub.TaskExecWait(request, timeout=60)),
                     base_delay=1,  # Retry after 1s since total time is expected to be long.
                     delay_factor=1,  # Fixed delay.
                     max_retries=None,  # Retry forever.
