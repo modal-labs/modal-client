@@ -1129,15 +1129,22 @@ def test_unsupported_function_decorators_on_methods():
 def test_using_method_on_uninstantiated_cls(set_env_client):
     app = App()
 
-    @app.cls(serialized=True)
+    @app.cls()
     class C:
+        some_non_param_variable = 10
+
         @method()
         def method(self):
             pass
 
-    # The following should warn since it's accessed on the class directly
+    assert C.some_non_param_variable == 10
+
+    with pytest.raises(AttributeError, match="blah"):
+        C.blah  # noqa
+
     with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
-        C.method.remote()  # noqa  # triggers a deprecation warning
+        # The following should error since the class is supposed to be instantiated first
+        C.method.remote()  # noqa
 
 
 def test_using_method_on_uninstantiated_hydrated_cls(set_env_client, client):
@@ -1145,22 +1152,29 @@ def test_using_method_on_uninstantiated_hydrated_cls(set_env_client, client):
 
     @app.cls(serialized=True)
     class C:
+        some_non_param_variable = 10
+
         @method()
         def method(self):
             pass
 
     with app.run(client=client):
-        # The following should warn since it's accessed on the class directly
+        assert C.some_non_param_variable == 10
+
+        with pytest.raises(AttributeError, match="blah"):
+            C.blah  # noqa
+
         with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
-            C.method.remote()  # noqa  # triggers a deprecation warning
+            # The following should error since the class is supposed to be instantiated first
+            C.method.remote()  # noqa
 
 
 def test_using_method_on_uninstantiated_remote_cls(set_env_client):
     C = modal.Cls.from_name("app", "C")
 
-    # The following should warn since it's accessed on the class directly
     with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
-        C.method.remote()  # noqa  # triggers a deprecation warning
+        # The following should error since the class is supposed to be instantiated first
+        C.method.remote()  # noqa
 
 
 def test_bytes_serialization_validation(servicer, client, set_env_client):

@@ -881,7 +881,7 @@ More information on class parameterization can be found here: https://modal.com/
 
         return _Function._from_loader(
             method_loader,
-            rep=f"Maybe({self._name}.{k})",
+            rep=f"UnboundMethod({self._name}.{k})",
             deps=lambda: [],
             hydrate_lazily=True,
         )
