@@ -15,7 +15,6 @@ from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -91,7 +90,7 @@ class _SecretManager:
             env_dict=env_dict,
         )
         try:
-            await retry_transient_errors(client.stub.SecretGetOrCreate, req)
+            await client.stub.SecretGetOrCreate(req)
         except GRPCError as exc:
             if exc.status == Status.ALREADY_EXISTS and not allow_existing:
                 raise AlreadyExistsError(exc.message)
@@ -143,7 +142,7 @@ class _SecretManager:
             req = api_pb2.SecretListRequest(
                 environment_name=_get_environment_name(environment_name), pagination=pagination
             )
-            resp = await retry_transient_errors(client.stub.SecretList, req)
+            resp = await client.stub.SecretList(req)
             items.extend(resp.items)
             finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
             return finished
@@ -200,7 +199,7 @@ class _SecretManager:
                 raise
         else:
             req = api_pb2.SecretDeleteRequest(secret_id=obj.object_id)
-            await retry_transient_errors(obj._client.stub.SecretDelete, req)
+            await obj._client.stub.SecretDelete(req)
 
 
 SecretManager = synchronize_api(_SecretManager)
@@ -454,7 +453,7 @@ class _Secret(_Object, type_prefix="st"):
             object_creation_type=object_creation_type,
             env_dict=env_dict,
         )
-        resp = await retry_transient_errors(client.stub.SecretGetOrCreate, request)
+        resp = await client.stub.SecretGetOrCreate(request)
         return resp.secret_id
 
     @live_method
