@@ -94,7 +94,7 @@ async def _volume_download(
 
                         with output_path.open("wb") as fp:
                             if isinstance(volume, _Volume):
-                                b = await volume.read_file_into_fileobj(
+                                b = await volume._read_file_into_fileobj(
                                     path=entry.path,
                                     fileobj=fp,
                                     download_semaphore=download_semaphore,
