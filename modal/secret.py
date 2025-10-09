@@ -412,35 +412,6 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret._from_loader(_load, rep, hydrate_lazily=True, name=name)
 
     @staticmethod
-    async def lookup(
-        name: str,
-        namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-        required_keys: list[str] = [],
-    ) -> "_Secret":
-        """mdmd:hidden"""
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Secret.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Secret.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-
-        warn_if_passing_namespace(namespace, "modal.Secret.lookup")
-
-        obj = _Secret.from_name(
-            name,
-            environment_name=environment_name,
-            required_keys=required_keys,
-        )
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
-
-    @staticmethod
     async def create_deployed(
         deployment_name: str,
         env_dict: dict[str, str],

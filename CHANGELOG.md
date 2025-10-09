@@ -6,10 +6,90 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.5.dev86 (2025-10-08)
+
+- Improves compatibility with newer versions of protobuf.
+
+
+#### 1.1.5.dev83 (2025-10-07)
+
+- Improved support for protobuf 5+ when using the Python implementation of the Protobuf runtime.
+
+#### 1.1.5.dev78 (2025-10-07)
+
+- Also adds `App.set_tags()` and `App.get_tags()` which should be rolled into the changelog update for tags, generally speaking.
+
+#### 1.1.5.dev75 (2025-10-06)
+
+- Removed the unused `allow_cross_region_volumes` parameter
+
+#### 1.1.5.dev69 (2025-10-03)
+
+- Removed the `modal.experimental.update_autoscaler` function; this functionality now has a stable API as `modal.Function.update_autoscaler`.
+
+#### 1.1.5.dev66 (2025-10-02)
+
+- Final removal of the `context_mount=` parameter of some modal.Image methods.
+
+#### 1.1.5.dev65 (2025-10-02)
+
+- Removed previously deprecated `.lookup` methods from most Modal object classes (but not `modal.App.lookup`, which remains supported). The lazy `.from_name()` method is recommended for accessing deployed objects going forward.
+
+#### 1.1.5.dev64 (2025-10-02)
+
+- Replaced the `--no-confirm` option with `--yes` in the `modal environment delete` CLI to align with similar interfaces.
+
+#### 1.1.5.dev63 (2025-10-02)
+
+- Added `modal shell` support for connecting to a running Sandbox (`modal shell sb-id`).
+
+#### 1.1.5.dev56 (2025-09-29)
+
+- Added `modal.experimental.image_delete()` to allow deleting Images (e.g. Sandbox FS snapshot images).
+
+#### 1.1.5.dev50 (2025-09-26)
+
+- Fixed bug where large outputs in debug shells would sometimes freeze until key-press.
+
+#### 1.1.5.dev49 (2025-09-26)
+
+- Arbitrary key-value metadata can now be attached to Apps by setting `modal.App(tags={...})`. The tags can be useful for tracking information that may be relevant to your organization, such as the team that owns the App. We'll support the inclusion of tags in some forthcoming APIs related to cost insights.
+
+#### 1.1.5.dev45 (2025-09-25)
+
+- [Internal] Adds support for calling into deployed functions using a new cbor based serialization format used by beta versions of modal-ts and modal-go
+
+#### 1.1.5.dev44 (2025-09-25)
+
+- `modal.Dict.pop()` now accepts an optional `default` parameter, matching Python's `dict.pop()` behavior.
+
+#### 1.1.5.dev40 (2025-09-24)
+
+- Hide the CLI spinner in interactive mode, so `modal run --interactive` now works better with breakpoints in local entrypoint functions.
+
+#### 1.1.5.dev34 (2025-09-19)
+
+- `Cls.with_options` supports `CloudBucketMount` in `volumes`.
+
+```python
+cloud_bucket = modal.CloudBucketMount("my-bucket", secret=aws_secret)
+MyAppCloud = modal.Cls.from_name("my-app", "MyApp").with_options(
+  volumes={"/mnt": cloud_bucket}
+)
+```
+
+#### 1.1.5.dev32 (2025-09-19)
+
+- Deprecated the `client` parameter to `Sandbox.set_tags()`, and the `environment_name` parameter to `Sandbox.from_name()`.
+
+#### 1.1.5.dev30 (2025-09-19)
+
+- Added a `.get_tags()` method to Sandbox, enabling fetching tags that were previously set using `.set_tags()`.
+
 #### 1.1.5.dev26 (2025-09-17)
 
 - Adds `image.build` to eagerly build an image:
- 
+
 ```python
 image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
 app = modal.App("build-image")
@@ -23,21 +103,17 @@ my_image_id = image.object_id
 built_image = Image.from_id(my_image_id)
 ```
 
-
 #### 1.1.5.dev21 (2025-09-16)
 
 - Added `env` parameters to several methods, as a more discoverable convenience method for passing non-secret environment variables to containers.
-
 
 #### 1.1.5.dev20 (2025-09-15)
 
 - Added an option to enable a PTY for Sandboxes via `Sandbox.create(..., pty=True)` and `Sandbox.exec(..., pty=True)`. Also deprecated the old `pty_info` parameters.
 
-
 #### 1.1.5.dev16 (2025-09-10)
 
 - Adds a `create_connect_token()` method for Sandboxes which may be used to generate credentials for making HTTP / Websocket requests to a server running in a Sandbox.
-
 
 ### 1.1.4 (2025-09-03)
 

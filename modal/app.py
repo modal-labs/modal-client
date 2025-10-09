@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import inspect
 import typing
-from collections.abc import AsyncGenerator, Collection, Coroutine, Sequence
+from collections.abc import AsyncGenerator, Collection, Coroutine, Mapping, Sequence
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
@@ -34,7 +34,7 @@ from ._utils.deprecation import (
 )
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.mount_utils import validate_volumes
-from ._utils.name_utils import check_object_name
+from ._utils.name_utils import check_object_name, check_tag_dict
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
@@ -150,6 +150,8 @@ class _App:
 
     _name: Optional[str]
     _description: Optional[str]
+    _tags: dict[str, str]
+
     _functions: dict[str, _Function]
     _classes: dict[str, _Cls]
 
@@ -170,6 +172,7 @@ class _App:
         self,
         name: Optional[str] = None,
         *,
+        tags: Optional[dict[str, str]] = None,  # Additional metadata to set on the App
         image: Optional[_Image] = None,  # Default Image for the App (otherwise default to `modal.Image.debian_slim()`)
         secrets: Sequence[_Secret] = [],  # Secrets to add for all Functions in the App
         volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # Volume mounts to use for all Functions
@@ -187,8 +190,12 @@ class _App:
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
+        if tags is not None:
+            check_tag_dict(tags)
+
         self._name = name
         self._description = name
+        self._tags = tags or {}
         self._include_source_default = include_source
 
         check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of `modal.Secret` objects")
@@ -219,7 +226,12 @@ class _App:
 
     @property
     def is_interactive(self) -> bool:
-        """Whether the current app for the app is running in interactive mode."""
+        """mdmd:hidden
+        Whether the current app for the app is running in interactive mode.
+
+        Note: this method will likely be deprecated in the future.
+
+        """
         # return self._name
         if self._running_app:
             return self._running_app.interactive
@@ -277,6 +289,11 @@ class _App:
         return app
 
     def set_description(self, description: str):
+        """mdmd:hidden
+        Set the description of the App before it starts running.
+
+        Note: we don't recommend using the method and may deprecate it in the future.
+        """
         self._description = description
 
     def _validate_blueprint_value(self, key: str, value: Any):
@@ -285,10 +302,18 @@ class _App:
 
     @property
     def image(self) -> _Image:
+        """mdmd:hidden
+        Retrieve the Image that will be used as the default for any Functions registered to the App.
+
+        Note: This property is only relevant in the build phase and won't be populated on a deployed
+        App that is retrieved via `modal.App.lookup`. It is likely to be deprecated in the future.
+
+        """
         return self._image
 
     @image.setter
     def image(self, value):
+        """mdmd:hidden"""
         self._image = value
 
     def _uncreate_all_objects(self):
@@ -370,8 +395,8 @@ class _App:
         *,
         name: Optional[str] = None,  # Name for the deployment, overriding any set on the App
         environment_name: Optional[str] = None,  # Environment to deploy the App in
-        tag: str = "",  # Optional metadata that will be visible in the deployment history
-        client: Optional[_Client] = None,  # Alternate client to use for RPCs
+        tag: str = "",  # Optional metadata that is specific to this deployment
+        client: Optional[_Client] = None,  # Alternate client to use for communication with the server
     ) -> typing_extensions.Self:
         """Deploy the App so that it is available persistently.
 
@@ -507,37 +532,48 @@ class _App:
 
     @property
     def registered_functions(self) -> dict[str, _Function]:
-        """All modal.Function objects registered on the app.
+        """mdmd:hidden
+        All modal.Function objects registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
         expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        This method is likely to be deprecated in the future in favor of a different
+        approach for retrieving the layout of a deployed App.
         """
         return self._functions
 
     @property
     def registered_classes(self) -> dict[str, _Cls]:
-        """All modal.Cls objects registered on the app.
+        """mdmd:hidden
+        All modal.Cls objects registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
         expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        This method is likely to be deprecated in the future in favor of a different
+        approach for retrieving the layout of a deployed App.
         """
         return self._classes
 
     @property
     def registered_entrypoints(self) -> dict[str, _LocalEntrypoint]:
-        """All local CLI entrypoints registered on the app.
+        """mdmd:hidden
+        All local CLI entrypoints registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
         expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        This method is likely to be deprecated in the future.
         """
         return self._local_entrypoints
 
     @property
     def registered_web_endpoints(self) -> list[str]:
-        """Names of web endpoint (ie. webhook) functions registered on the app.
+        """mdmd:hidden
+        Names of web endpoint (ie. webhook) functions registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
         expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        This method is likely to be deprecated in the future in favor of a different
+        approach for retrieving the layout of a deployed App.
         """
         return self._web_endpoints
 
@@ -666,12 +702,12 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
+        _experimental_restrict_output: bool = False,  # Don't use pickle for return values
         # Parameters below here are deprecated. Please update your code as suggested
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
-        allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal Function with this App."""
@@ -691,8 +727,6 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
-        if allow_cross_region_volumes is not None:
-            deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
         secrets = secrets or []
         if env:
@@ -834,6 +868,7 @@ class _App:
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
+                restrict_output=_experimental_restrict_output,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -894,13 +929,13 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
+        _experimental_restrict_output: bool = False,  # Don't use pickle for return values
         # Parameters below here are deprecated. Please update your code as suggested
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
-        allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](https://modal.com/docs/reference/modal.Cls) with this App.
@@ -921,8 +956,6 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
-        if allow_cross_region_volumes is not None:
-            deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
         secrets = secrets or []
         if env:
@@ -1027,6 +1060,7 @@ class _App:
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
+                restrict_output=_experimental_restrict_output,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
@@ -1039,7 +1073,7 @@ class _App:
 
         return wrapper
 
-    def include(self, /, other_app: "_App") -> typing_extensions.Self:
+    def include(self, /, other_app: "_App", inherit_tags: bool = True) -> typing_extensions.Self:
         """Include another App's objects in this one.
 
         Useful for splitting up Modal Apps across different self-contained files.
@@ -1062,6 +1096,10 @@ class _App:
             # use function declared on the included app
             bar.remote()
         ```
+
+        When `inherit_tags=True` any tags set on the other App will be inherited by this App
+        (with this App's tags taking precedence in the case of conflicts).
+
         """
         for tag, function in other_app._functions.items():
             self._add_function(function, False)  # TODO(erikbern): webhook config?
@@ -1075,7 +1113,46 @@ class _App:
                 )
 
             self._add_class(tag, cls)
+
+        if inherit_tags:
+            self._tags = {**other_app._tags, **self._tags}
+
         return self
+
+    async def set_tags(self, tags: Mapping[str, str], *, client: Optional[_Client] = None) -> None:
+        """Attach key-value metadata to the App.
+
+        Tag metadata can be used to add organization-specific context to the App and can be
+        included in billing reports and other informational APIs. Tags can also be set in
+        the App constructor.
+
+        Any tags set on the App before calling this method will be removed if they are not
+        included in the argument (i.e., this method does not have `.update()` semantics).
+
+        """
+        # Note that we are requiring the App to be "running" before we set the tags.
+        # Alternatively, we could hold onto the tags (i.e. in `self._tags`) and then pass
+        # then up when AppPublish gets called. I'm not certain we want to support it, though.
+        # It might not be obvious to users that `.set_tags()` is eager and has immediate effect
+        # when the App is running, but lazy (and potentially ignored) otherwise. There would be
+        # other complications, like what do you do with any tags set in the constructor, and
+        # what should  `.get_tags()` do when it's called before the App is running?
+        if self._app_id is None:
+            raise InvalidError("`App.set_tags` cannot be called before the App is running.")
+        check_tag_dict(tags)
+        req = api_pb2.AppSetTagsRequest(app_id=self._app_id, tags=tags)
+
+        client = client or self._client or await _Client.from_env()
+        await client.stub.AppSetTags(req)
+
+    async def get_tags(self, *, client: Optional[_Client] = None) -> dict[str, str]:
+        """Get the tags that are currently attached to the App."""
+        if self._app_id is None:
+            raise InvalidError("`App.get_tags` cannot be called before the App is running.")
+        req = api_pb2.AppGetTagsRequest(app_id=self._app_id)
+        client = client or self._client or await _Client.from_env()
+        resp = await client.stub.AppGetTags(req)
+        return dict(resp.tags)
 
     async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
         """Stream logs from the app.

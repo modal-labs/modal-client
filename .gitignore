@@ -13,3 +13,4 @@ build/
 **/*.txt
 **/.DS_Store
 .claude/settings.local.json
+uv.lock

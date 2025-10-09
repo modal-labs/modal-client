@@ -15,6 +15,7 @@ authors = [
 ]
 dependencies = [
     "aiohttp",
+    "cbor2",
     "certifi",
     "click~=8.1",
     "grpclib>=0.4.7,<0.4.9",
@@ -97,8 +98,19 @@ exclude = [
     'modal/_vendor',
 ]
 line-length = 120
-lint.ignore = ['E741']
-lint.select = ['E', 'F', 'W', 'I']
+
+[tool.ruff.lint]
+ignore = ['E741', 'F841']
+select = [
+    'E',
+    'F',
+    'W',
+    'I',
+    'RUF006', # asyncio-dangling-task
+]
+preview = true
+explicit-preview-rules = true
+extend-select = ['PLR1702']
 
 [tool.ruff.lint.per-file-ignores]
 "*_test.py" = ['E712']
@@ -114,5 +126,9 @@ known-first-party = [
 ]
 extra-standard-library = ["pytest"]
 
+[tool.ruff.lint.pylint]
+max-nested-blocks = 7
+
 [tool.pyright]
 reportUnnecessaryComparison = true
+venvPath = ".venv/"

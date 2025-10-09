@@ -128,9 +128,8 @@ class InputPreprocessor:
                 args,
                 kwargs,
                 self.client.stub,
-                max_object_size_bytes=self.function._max_object_size_bytes,
                 idx=idx,
-                method_name=self.function._use_method_name,
+                function=self.function,
             )
 
         return create_input
@@ -666,8 +665,8 @@ async def _map_invocation_inputplane(
     last_entry_id = ""
 
     # The input-plane server returns this after the first request.
-    function_call_id = None
-    function_call_id_received = asyncio.Event()
+    map_token = None
+    map_token_received = asyncio.Event()
 
     # Single priority queue that holds *both* fresh inputs (timestamp == now)
     # and future retries (timestamp > now).
@@ -722,9 +721,8 @@ async def _map_invocation_inputplane(
             args,
             kwargs,
             client.stub,
-            max_object_size_bytes=function._max_object_size_bytes,
             idx=idx,
-            method_name=function._use_method_name,
+            function=function,
         )
         return api_pb2.MapStartOrContinueItem(input=put_item)
 
@@ -747,7 +745,7 @@ async def _map_invocation_inputplane(
         yield
 
     async def pump_inputs():
-        nonlocal function_call_id, max_inputs_outstanding
+        nonlocal map_token, max_inputs_outstanding
         async for batch in queue_batch_iterator(queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
             # Convert the queued items into the proto format expected by the RPC.
             request_items: list[api_pb2.MapStartOrContinueItem] = [
@@ -759,7 +757,7 @@ async def _map_invocation_inputplane(
             # Build request
             request = api_pb2.MapStartOrContinueRequest(
                 function_id=function.object_id,
-                function_call_id=function_call_id,
+                map_token=map_token,
                 parent_input_id=current_input_id() or "",
                 items=request_items,
             )
@@ -784,9 +782,9 @@ async def _map_invocation_inputplane(
 
             # Set the function call id and actual retry policy with the data from the first response.
             # This conditional is skipped for subsequent iterations of this for-loop.
-            if function_call_id is None:
-                function_call_id = response.function_call_id
-                function_call_id_received.set()
+            if map_token is None:
+                map_token = response.map_token
+                map_token_received.set()
                 max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
                 map_items_manager.set_retry_policy(response.retry_policy)
                 # Update the retry policy for the first batch of inputs.
@@ -799,8 +797,8 @@ async def _map_invocation_inputplane(
         nonlocal last_entry_id  # shared with get_all_outputs
         try:
             while not map_done_event.is_set():
-                if function_call_id is None:
-                    await function_call_id_received.wait()
+                if map_token is None:
+                    await map_token_received.wait()
                     continue
 
                 sleep_task = asyncio.create_task(asyncio.sleep(1))
@@ -842,12 +840,12 @@ async def _map_invocation_inputplane(
             last_entry_id
 
         while not map_done_event.is_set():
-            if function_call_id is None:
-                await function_call_id_received.wait()
+            if map_token is None:
+                await map_token_received.wait()
                 continue
 
             request = api_pb2.MapAwaitRequest(
-                function_call_id=function_call_id,
+                map_token=map_token,
                 last_entry_id=last_entry_id,
                 requested_at=time.time(),
                 timeout=OUTPUTS_TIMEOUT,
@@ -957,7 +955,7 @@ async def _map_invocation_inputplane(
                 f"Map stats:\nsuccessful_completions={successful_completions} failed_completions={failed_completions} "
                 f"no_context_duplicates={no_context_duplicates} stale_retry_duplicates={stale_retry_duplicates} "
                 f"already_complete_duplicates={already_complete_duplicates} retried_outputs={retried_outputs} "
-                f"function_call_id={function_call_id} max_inputs_outstanding={max_inputs_outstanding} "
+                f"map_token={map_token} max_inputs_outstanding={max_inputs_outstanding} "
                 f"map_items_manager_size={len(map_items_manager)} input_queue_size={input_queue_size}"
             )
 

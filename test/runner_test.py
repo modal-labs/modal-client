@@ -139,10 +139,13 @@ async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, 
     else:
         handler_assertion = contextlib.nullcontext()
 
-    asyncio.create_task(change_file_after_delay())
-    with handler_assertion:
-        async with app.run.aio(client=client):
-            ...
+    at = asyncio.create_task(change_file_after_delay())
+    try:
+        with handler_assertion:
+            async with app.run.aio(client=client):
+                ...
+    finally:
+        await at
 
 
 def test_deploy_app_namespace_deprecated(servicer, client):
@@ -164,3 +167,20 @@ def test_deploy_app_namespace_deprecated(servicer, client):
     # Filter out any unrelated warnings
     namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
     assert len(namespace_warnings) == 0
+
+
+def test_run_app_interactive_no_spinner(servicer, client):
+    """Don't show status spinner in interactive mode to avoid interfering with breakpoints."""
+    app = modal.App()
+
+    with mock.patch("modal._output.OutputManager.show_status_spinner") as mock_spinner:
+        with modal.enable_output():
+            with run_app(app, client=client, interactive=True):
+                pass
+        mock_spinner.return_value.__enter__.assert_not_called()
+
+    with mock.patch("modal._output.OutputManager.show_status_spinner") as mock_spinner:
+        with modal.enable_output():
+            with run_app(app, client=client, interactive=False):
+                pass
+        mock_spinner.return_value.__enter__.assert_called_once()

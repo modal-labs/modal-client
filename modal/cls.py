@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import dataclasses
 import inspect
-import os
 import typing
 from collections.abc import Collection
+from pathlib import PurePosixPath
 from typing import Any, Callable, Optional, Sequence, TypeVar, Union
 
 from google.protobuf.message import Message
@@ -31,7 +31,7 @@ from ._utils.deprecation import (
     warn_on_renamed_autoscaler_settings,
 )
 from ._utils.mount_utils import validate_volumes
-from .client import _Client
+from .cloud_bucket_mount import _CloudBucketMount
 from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .gpu import GPU_T
@@ -94,6 +94,7 @@ class _ServiceOptions:
     batch_wait_ms: Optional[int] = None
     scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
     cloud: Optional[str] = None
+    cloud_bucket_mounts: typing.Sequence[tuple[str, _CloudBucketMount]] = ()
 
     def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
         """Implement protobuf-like MergeFrom semantics for this dataclass.
@@ -687,7 +688,7 @@ More information on class parameterization can be found here: https://modal.com/
         gpu: GPU_T = None,
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
-        volumes: dict[Union[str, os.PathLike], _Volume] = {},
+        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         retries: Optional[Union[int, Retries]] = None,
         max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
         buffer_containers: Optional[int] = None,  # Additional containers to scale up while Function is active.
@@ -761,13 +762,19 @@ More information on class parameterization can be found here: https://modal.com/
         cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
         cls._initialize_from_other(self)
 
+        # Validate volumes
+        validated_volumes = validate_volumes(volumes)
+        cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
+        validated_volumes_no_cloud_buckets = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
+
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
         new_options = _ServiceOptions(
             secrets=secrets,
-            validated_volumes=validate_volumes(volumes),
+            validated_volumes=validated_volumes_no_cloud_buckets,
+            cloud_bucket_mounts=cloud_bucket_mounts,
             resources=resources,
             retry_policy=retry_policy,
             max_containers=max_containers,
@@ -842,46 +849,6 @@ More information on class parameterization can be found here: https://modal.com/
         batching_options = _ServiceOptions(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
         cls._options.merge_options(batching_options)
         return cls
-
-    @staticmethod
-    async def lookup(
-        app_name: str,
-        name: str,
-        namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-    ) -> "_Cls":
-        """mdmd:hidden
-        Lookup a Cls from a deployed App by its name.
-
-        DEPRECATED: This method is deprecated in favor of `modal.Cls.from_name`.
-
-        In contrast to `modal.Cls.from_name`, this is an eager method
-        that will hydrate the local object with metadata from Modal servers.
-
-        ```python notest
-        Model = modal.Cls.from_name("other-app", "Model")
-        model = Model()
-        model.inference(...)
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Cls.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Cls.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-        warn_if_passing_namespace(namespace, "modal.Cls.lookup")
-        obj = _Cls.from_name(
-            app_name,
-            name,
-            environment_name=environment_name,
-        )
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
 
     @synchronizer.no_input_translation
     def __call__(self, *args, **kwargs) -> _Obj:

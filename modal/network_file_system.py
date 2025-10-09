@@ -21,7 +21,7 @@ from ._object import (
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
-from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
+from ._utils.deprecation import warn_if_passing_namespace
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -169,45 +169,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 is_another_app=True,
                 rep="modal.NetworkFileSystem.ephemeral()",
             )
-
-    @staticmethod
-    async def lookup(
-        name: str,
-        namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-        create_if_missing: bool = False,
-    ) -> "_NetworkFileSystem":
-        """mdmd:hidden
-        Lookup a named NetworkFileSystem.
-
-        DEPRECATED: This method is deprecated in favor of `modal.NetworkFileSystem.from_name`.
-
-        In contrast to `modal.NetworkFileSystem.from_name`, this is an eager method
-        that will hydrate the local object with metadata from Modal servers.
-
-        ```python notest
-        nfs = modal.NetworkFileSystem.lookup("my-nfs")
-        print(nfs.listdir("/"))
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.NetworkFileSystem.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.NetworkFileSystem.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.lookup")
-        obj = _NetworkFileSystem.from_name(
-            name,
-            environment_name=environment_name,
-            create_if_missing=create_if_missing,
-        )
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
 
     @staticmethod
     async def create_deployed(

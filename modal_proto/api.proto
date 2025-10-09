@@ -4,9 +4,9 @@ option go_package = "github.com/modal-labs/modal/go/proto";
 
 package modal.client;
 
-import "modal_proto/options.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 
 enum AppDeployVisibility {
@@ -111,6 +111,7 @@ enum DataFormat {
   DATA_FORMAT_PICKLE = 1; // Cloudpickle
   DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
   DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
+  DATA_FORMAT_CBOR = 4;
 }
 
 enum DeploymentNamespace {
@@ -296,7 +297,7 @@ message AppClientDisconnectRequest {
 }
 
 message AppCreateRequest {
-  string client_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string client_id = 1;
   string description = 2;    // Human readable label for the app
   string environment_name = 5;
   AppState app_state = 6;
@@ -309,7 +310,7 @@ message AppCreateResponse {
 }
 
 message AppDeployRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1;
   reserved 2; // namespace
   string name = 3;
   string object_entity = 4;
@@ -397,6 +398,14 @@ message AppGetOrCreateResponse {
   string app_id = 1;
 }
 
+message AppGetTagsRequest {
+  string app_id = 1;
+}
+
+message AppGetTagsResponse {
+  map<string, string> tags = 1;
+}
+
 message AppHeartbeatRequest {
   string app_id = 1;
 }
@@ -434,7 +443,7 @@ message AppLookupResponse {
 }
 
 message AppPublishRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1;
   string name = 2;
   string deployment_tag = 3;  // Additional metadata to identify a deployment
   AppState app_state = 4;  // Published app will be in this state
@@ -444,6 +453,7 @@ message AppPublishRequest {
   uint32 rollback_version = 8;  // Unused by client, but used internally
   string client_version = 9;  // Unused by client, but used internally
   CommitInfo commit_info = 10;  // Git information for deployment tracking
+  map<string, string> tags = 11;  // Additional metadata to attach to the App
 }
 
 message AppPublishResponse {
@@ -465,8 +475,14 @@ message AppSetObjectsRequest {
   reserved 6;
 }
 
+message AppSetTagsRequest {
+  string app_id = 1;
+  map<string, string> tags = 2;
+}
+
+
 message AppStopRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1;
   AppStopSource source = 2;
 }
 
@@ -727,7 +743,7 @@ message CheckpointInfo {
 }
 
 message ClassCreateRequest {
-  string app_id = 1  [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1 ;
   string existing_class_id = 2;
   repeated ClassMethod methods = 3;
   reserved 4; // removed class_function_id
@@ -1061,7 +1077,7 @@ message ContainerReloadVolumesRequest {
 message ContainerReloadVolumesResponse { }
 
 message ContainerStopRequest {
-  string task_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string task_id = 1;
 }
 
 message ContainerStopResponse {
@@ -1129,7 +1145,7 @@ message DictEntry {
 }
 
 message DictGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -1196,7 +1212,7 @@ message DictPopResponse {
 }
 
 message DictUpdateRequest {
-  string dict_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string dict_id = 1;
   repeated DictEntry updates = 2;
   bool if_not_exists = 3;
 }
@@ -1222,7 +1238,7 @@ message DomainCertificateVerifyResponse {
 }
 
 message DomainCreateRequest {
-  string domain_name = 1  [ (modal.options.audit_target_attr) = true ];
+  string domain_name = 1 ;
 }
 
 message DomainCreateResponse {
@@ -1238,14 +1254,14 @@ message DomainListResponse {
 }
 
 message EnvironmentCreateRequest {
-  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 1;
 }
 
 message EnvironmentDeleteRequest {
-  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 1;
 }
 message EnvironmentGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   ObjectCreationType object_creation_type = 2;
 }
 
@@ -1281,7 +1297,7 @@ message EnvironmentSettings {
 }
 
 message EnvironmentUpdateRequest {
-  string current_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string current_name = 1;
   google.protobuf.StringValue name = 2;
   google.protobuf.StringValue web_suffix = 3;
 }
@@ -1340,8 +1356,16 @@ message FlashContainerRegisterResponse {
 
 message FlashProxyUpstreamRequest {
   uint32 upstream_requests = 1;
-  double timestamp = 2; 
+  double timestamp = 2;
 }
+
+message FlashSetTargetSlotsMetricsRequest {
+  // TODO(claudia): add other metrics to use in autoscaling decisions
+  string function_id = 1;
+  uint32 target_slots = 2;
+}
+
+message FlashSetTargetSlotsMetricsResponse {}
 
 message Function {
   string module_name = 1;
@@ -1504,6 +1528,8 @@ message Function {
   bool enable_gpu_snapshot = 85; // GPU memory snapshotting (alpha)
 
   uint32 startup_timeout_secs = 86;
+  repeated DataFormat supported_input_formats = 87; // can be used as inputs
+  repeated DataFormat supported_output_formats = 88;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1594,7 +1620,7 @@ message FunctionCallPutDataRequest {
 
 message FunctionCreateRequest {
   Function function = 1;
-  string app_id = 2  [ (modal.options.audit_target_attr) = true ];
+  string app_id = 2 ;
   Schedule schedule = 6 [deprecated=true]; // Deprecated: now passed in the Function definition
   string existing_function_id = 7;
   reserved 8;  // defer_updates
@@ -1679,6 +1705,8 @@ message FunctionData {
   string flash_service_label = 35;
 
   uint32 startup_timeout_secs = 36;
+  repeated DataFormat supported_input_formats = 37;
+  repeated DataFormat supported_output_formats = 38;
 }
 
 message FunctionExtended {
@@ -1828,6 +1856,8 @@ message FunctionHandleMetadata {
   // Use optional to ensure unset values default to None instead of 0
   optional uint64 max_object_size_bytes = 48;
   repeated string _experimental_flash_urls = 49; // (Optional) urls for flash services
+  repeated DataFormat supported_input_formats = 50;
+  repeated DataFormat supported_output_formats = 51;
 }
 
 message FunctionInput {
@@ -1879,11 +1909,13 @@ message FunctionOptions {
   optional uint64 batch_linger_ms = 16;
   optional SchedulerPlacement scheduler_placement = 17;
   optional string cloud_provider_str = 18;
+  bool replace_cloud_bucket_mounts = 19;
+  repeated CloudBucketMount cloud_bucket_mounts = 20;
 }
 
 message FunctionPrecreateRequest {
   string app_id = 1;
-  string function_name = 2  [ (modal.options.audit_target_attr) = true ];
+  string function_name = 2 ;
   string existing_function_id = 3;
   Function.FunctionType function_type = 4;
   WebhookConfig webhook_config = 5;
@@ -1892,6 +1924,8 @@ message FunctionPrecreateRequest {
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 8;
   FunctionSchema function_schema = 9;
+  repeated DataFormat supported_input_formats = 10;
+  repeated DataFormat supported_output_formats = 11;
 }
 
 message FunctionPrecreateResponse {
@@ -1930,8 +1964,8 @@ message FunctionPutOutputsItem {
   double output_created_at = 4;
   DataFormat data_format = 7; // for result.data_oneof
   uint32 retry_count = 8;
-  string function_call_id = 9; // injected by the worker 
-  optional int32 function_map_idx = 10; // injected by the worker 
+  string function_call_id = 9; // injected by the worker
+  optional int32 function_map_idx = 10; // injected by the worker
 }
 
 message FunctionPutOutputsRequest {
@@ -2056,6 +2090,9 @@ message Image {
 
   // Build arguments for the image (--build-arg) for ARG substitution in Dockerfile.
   map<string, string> build_args = 22;
+
+  // Volume mount for RUN commands
+  repeated VolumeMount volume_mounts = 23;
 }
 
 message ImageContextFile {
@@ -2078,7 +2115,7 @@ message ImageFromIdResponse {
 
 message ImageGetOrCreateRequest {
   Image image = 2;
-  string app_id = 4 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 4;
   string existing_image_id = 5;  // ignored
   string build_function_id = 6;
   bool force_build = 7;
@@ -2188,7 +2225,7 @@ message MapAwaitResponse {
 message MapCheckInputsRequest {
   string last_entry_id = 1;
   float timeout = 2;
-  repeated string attempt_tokens = 3;  
+  repeated string attempt_tokens = 3;
 }
 
 message MapCheckInputsResponse {
@@ -2230,6 +2267,8 @@ message MethodDefinition {
   WebUrlInfo web_url_info = 5;
   repeated CustomDomainInfo custom_domain_info = 6;
   FunctionSchema function_schema = 7;
+  repeated DataFormat supported_input_formats = 8;
+  repeated DataFormat supported_output_formats = 9;
 }
 
 message MountFile {
@@ -2412,7 +2451,7 @@ message Proxy {
 }
 
 message ProxyAddIpRequest {
-  string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string proxy_id = 1;
 }
 
 message ProxyAddIpResponse {
@@ -2420,7 +2459,7 @@ message ProxyAddIpResponse {
 }
 
 message ProxyCreateRequest {
-  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 1;
   string environment_name = 2;
 }
 
@@ -2429,11 +2468,11 @@ message ProxyCreateResponse {
 }
 
 message ProxyDeleteRequest {
-  string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string proxy_id = 1;
 }
 
 message ProxyGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   reserved 2; // namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
@@ -2444,7 +2483,7 @@ message ProxyGetOrCreateResponse {
 }
 
 message ProxyGetRequest {
-  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 1;
   string environment_name = 2;
 }
 
@@ -2472,7 +2511,7 @@ message ProxyListResponse {
 }
 
 message ProxyRemoveIpRequest {
-  string proxy_ip = 1 [ (modal.options.audit_target_attr) = true ];
+  string proxy_ip = 1;
 }
 
 message QueueClearRequest {
@@ -2482,7 +2521,7 @@ message QueueClearRequest {
 }
 
 message QueueDeleteRequest {
-  string queue_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string queue_id = 1;
 }
 
 message QueueGetOrCreateRequest {
@@ -2691,11 +2730,16 @@ message Sandbox {
 
   // Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
   optional uint32 idle_timeout_secs = 33;
+
+  // If set, the sandbox will be created with direct sandbox commands enabled.
+  // Exec commands for the sandbox will be issued directly to the sandbox
+  // command router running on the Modal worker.
+  bool direct_sandbox_commands_enabled = 34;
 }
 
 message SandboxCreateConnectTokenRequest {
   string sandbox_id = 1;
-  string metadata = 2;
+  string user_metadata = 2;
 }
 
 message SandboxCreateConnectTokenResponse {
@@ -2704,13 +2748,25 @@ message SandboxCreateConnectTokenResponse {
 }
 
 message SandboxCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 1;
   Sandbox definition = 2;
   string environment_name = 3; // *DEPRECATED* 7/16/2025
 }
 
 message SandboxCreateResponse {
   string sandbox_id = 1;
+}
+
+// Used to get a JWT and URL for direct access to a sandbox router server
+// running on the modal-worker, so the client can issue exec commands (and other
+// operations as they become available) directly to the worker.
+message SandboxGetCommandRouterAccessRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetCommandRouterAccessResponse {
+  string jwt = 1;
+  string url = 2;
 }
 
 message SandboxGetFromNameRequest {
@@ -2870,6 +2926,14 @@ message SandboxTag {
   string tag_value = 2;
 }
 
+message SandboxTagsGetRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxTagsGetResponse {
+  repeated SandboxTag tags = 1;
+}
+
 message SandboxTagsSetRequest {
   string environment_name = 1;
   string sandbox_id = 2;
@@ -2930,7 +2994,7 @@ message SchedulerPlacement {
 
 message SecretCreateRequest {  // Not used by client anymore
   map<string, string> env_dict = 1;
-  string app_id = 2 [ (modal.options.audit_target_attr) = true ];
+  string app_id = 2;
   string template_type = 3;  // todo: not used?
   string existing_secret_id = 4;
 }
@@ -2944,7 +3008,7 @@ message SecretDeleteRequest {
 }
 
 message SecretGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
@@ -3001,7 +3065,7 @@ message SharedVolumeGetFileResponse {
 }
 
 message SharedVolumeGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -3045,11 +3109,11 @@ message SharedVolumeMount {
   string mount_path = 1;
   string shared_volume_id = 2;
   CloudProvider cloud_provider = 3;
-  bool allow_cross_region = 4;
+  reserved 4; // allow_cross_region
 }
 
 message SharedVolumePutFileRequest {
-  string shared_volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string shared_volume_id = 1;
   string path = 2;
   string sha256_hex = 3;
   oneof data_oneof {
@@ -3064,7 +3128,7 @@ message SharedVolumePutFileResponse {
 }
 
 message SharedVolumeRemoveFileRequest {
-  string shared_volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string shared_volume_id = 1;
   string path = 2;
   bool recursive = 3;
 }
@@ -3241,7 +3305,7 @@ message UserActionInfo {
 message VolumeCommitRequest {
   // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
   // a volume mount.
-  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string volume_id = 1;
 }
 
 message VolumeCommitResponse {
@@ -3299,7 +3363,7 @@ message VolumeGetFileResponse {
 }
 
 message VolumeGetOrCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  string deployment_name = 1;
   reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
@@ -3451,19 +3515,19 @@ message VolumeReloadRequest {
 }
 
 message VolumeRemoveFile2Request {
-  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string volume_id = 1;
   string path = 2;
   bool recursive = 3;
 }
 
 message VolumeRemoveFileRequest {
-  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string volume_id = 1;
   string path = 2;
   bool recursive = 3;
 }
 
 message VolumeRenameRequest {
-  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string volume_id = 1;
   string name = 2;
 }
 
@@ -3496,6 +3560,24 @@ message WebhookConfig {
   bool requires_proxy_auth = 10;
 }
 
+
+message WorkspaceBillingReportItem {
+  string object_id = 1;
+  string description = 2;
+  string environment_name = 3;
+  google.protobuf.Timestamp interval = 4;
+  string cost = 5;
+  map<string, string> tags = 6;
+}
+
+message WorkspaceBillingReportRequest {
+  // Workspace ID will be implicit in the request metadata
+  google.protobuf.Timestamp start_timestamp = 1;
+  google.protobuf.Timestamp end_timestamp = 2;
+  string resolution = 3;  // e.g. 'd' or 'h'; server defines what we accept
+  repeated string tag_names = 4;
+}
+
 message WorkspaceNameLookupResponse {
   string workspace_name = 1 [deprecated=true];
   string username = 2;
@@ -3513,12 +3595,14 @@ service ModalClient {
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppGetOrCreate(AppGetOrCreateRequest) returns (AppGetOrCreateResponse);
+  rpc AppGetTags(AppGetTagsRequest) returns (AppGetTagsResponse);
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
   rpc AppPublish(AppPublishRequest) returns (AppPublishResponse);
   rpc AppRollback(AppRollbackRequest) returns (google.protobuf.Empty);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
+  rpc AppSetTags(AppSetTagsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 
   // Input Plane
@@ -3587,6 +3671,7 @@ service ModalClient {
   rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
   rpc FlashContainerList(FlashContainerListRequest) returns (FlashContainerListResponse);
   rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
+  rpc FlashSetTargetSlotsMetrics(FlashSetTargetSlotsMetricsRequest) returns (FlashSetTargetSlotsMetricsResponse);
 
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
@@ -3655,6 +3740,7 @@ service ModalClient {
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
+  rpc SandboxGetCommandRouterAccess(SandboxGetCommandRouterAccessRequest) returns (SandboxGetCommandRouterAccessResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
@@ -3669,6 +3755,7 @@ service ModalClient {
   rpc SandboxSnapshotGet(SandboxSnapshotGetRequest) returns (SandboxSnapshotGetResponse);
   rpc SandboxSnapshotWait(SandboxSnapshotWaitRequest) returns (SandboxSnapshotWaitResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
+  rpc SandboxTagsGet(SandboxTagsGetRequest) returns (SandboxTagsGetResponse);
   rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
@@ -3724,5 +3811,6 @@ service ModalClient {
   rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);
 
   // Workspaces
+  rpc WorkspaceBillingReport(WorkspaceBillingReportRequest) returns (stream WorkspaceBillingReportItem);
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
 }

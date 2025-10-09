@@ -302,7 +302,7 @@ class _FlashPrometheusAutoscaler:
                 )
                 await self.autoscaling_decisions_dict.put("current_replicas", actual_target_containers)
 
-                await self.cls.update_autoscaler(min_containers=actual_target_containers)
+                await self._set_target_slots(actual_target_containers)
 
                 if time.time() - autoscaling_time < self.autoscaling_interval_seconds:
                     await asyncio.sleep(self.autoscaling_interval_seconds - (time.time() - autoscaling_time))
@@ -484,6 +484,11 @@ class _FlashPrometheusAutoscaler:
         resp = await self.client.stub.FlashContainerList(req)
         return resp.containers
 
+    async def _set_target_slots(self, target_slots: int):
+        req = api_pb2.FlashSetTargetSlotsMetricsRequest(function_id=self.fn.object_id, target_slots=target_slots)
+        await self.client.stub.FlashSetTargetSlotsMetrics(req)
+        return
+
     def _make_scaling_decision(
         self,
         current_replicas: int,
@@ -511,6 +516,7 @@ class _FlashPrometheusAutoscaler:
         Returns:
             The target number of containers.
         """
+
         if not autoscaling_decisions:
             # Without data we can’t make a new decision – stay where we are.
             return current_replicas

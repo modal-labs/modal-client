@@ -13,10 +13,9 @@ from .._object import _get_environment_name
 from .._partial_function import _clustered
 from .._runtime.container_io_manager import _ContainerIOManager
 from .._utils.async_utils import synchronize_api, synchronizer
-from .._utils.deprecation import deprecation_warning
 from ..app import _App
 from ..client import _Client
-from ..cls import _Cls, _Obj
+from ..cls import _Cls
 from ..exception import InvalidError
 from ..image import DockerfileSpec, ImageBuilderVersion, _Image, _ImageRegistryConfig
 from ..secret import _Secret
@@ -340,46 +339,25 @@ async def notebook_base_image(*, python_version: Optional[str] = None, force_bui
 
 
 @synchronizer.create_blocking
-async def update_autoscaler(
-    obj: Union[_Function, _Obj],
+async def image_delete(
+    image_id: str,
     *,
-    min_containers: Optional[int] = None,
-    max_containers: Optional[int] = None,
-    buffer_containers: Optional[int] = None,
-    scaledown_window: Optional[int] = None,
     client: Optional[_Client] = None,
 ) -> None:
-    """Update the autoscaler settings for a Function or Obj (instance of a Cls).
+    """Delete an Image by its ID.
+
+    Deletion is irreversible and will prevent Apps from using the Image.
 
     This is an experimental interface for a feature that we will be adding to
-    replace the existing `.keep_warm()` method. The stable form of this interface
-    may look different (i.e., it may be a standalone function or a method).
+    the main Image class. The stable form of this interface may look different.
 
+    Note: When building an Image, each chained method call will create an
+    intermediate Image layer, each with its own ID. Deleting an Image will not
+    delete any of its intermediate layers, only the image identified by the
+    provided ID.
     """
-    deprecation_warning(
-        (2025, 5, 5),
-        "The modal.experimental.update_autoscaler(...) function is now deprecated in favor of"
-        " a stable `.update_autoscaler(...) method on the corresponding object.",
-        show_source=True,
-    )
-
-    settings = api_pb2.AutoscalerSettings(
-        min_containers=min_containers,
-        max_containers=max_containers,
-        buffer_containers=buffer_containers,
-        scaledown_window=scaledown_window,
-    )
-
     if client is None:
         client = await _Client.from_env()
 
-    if isinstance(obj, _Function):
-        f = obj
-    else:
-        assert obj._cls._class_service_function is not None
-        await obj._cls._class_service_function.hydrate(client=client)
-        f = obj._cached_service_function()
-    await f.hydrate(client=client)
-
-    request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=f.object_id, settings=settings)
-    await client.stub.FunctionUpdateSchedulingParams(request)
+    req = api_pb2.ImageDeleteRequest(image_id=image_id)
+    await client.stub.ImageDelete(req)

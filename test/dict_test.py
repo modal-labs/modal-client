@@ -127,3 +127,17 @@ def test_dict_create(servicer, client):
     Dict.objects.create(name="test-dict-create", allow_existing=True, client=client)
     with pytest.raises(InvalidError, match="Invalid Dict name"):
         Dict.objects.create(name="has space", client=client)
+
+
+def test_dict_pop(servicer, client):
+    with Dict.ephemeral(client=client, _heartbeat_sleep=1) as d:
+        d["existing_key"] = "existing_value"
+
+        assert d.pop("existing_key") == "existing_value"
+        assert "existing_key" not in d
+
+        assert d.pop("non_existent_key", "default_value") == "default_value"
+        assert d.pop("non_existent_key", None) is None
+
+        with pytest.raises(KeyError):
+            d.pop("non_existent_key")

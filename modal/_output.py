@@ -35,7 +35,7 @@ from modal._utils.time_utils import timestamp_to_localized_str
 from modal_proto import api_pb2
 
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
-from ._utils.shell_utils import stream_from_stdin
+from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .config import logger
 
@@ -506,17 +506,32 @@ async def put_pty_content(log: api_pb2.TaskLogs, stdout):
         # because the progress spinner can't interfere with output.
 
         data = log.data.encode("utf-8")
-        written = 0
-        n_retries = 0
-        while written < len(data):
-            try:
-                written += stdout.buffer.write(data[written:])
-                stdout.flush()
-            except BlockingIOError:
-                if n_retries >= 5:
-                    raise
-                n_retries += 1
-                await asyncio.sleep(0.1)
+        # Non-blocking terminals can fill the kernel buffer on output bursts, making flush() raise
+        # BlockingIOError (EAGAIN) and appear frozen until a key is pressed (this happened e.g. when
+        # printing large data from a pdb breakpoint). If stdout has a real fd, we await a
+        # non-blocking fd write (write_to_fd) instead.
+        fd = None
+        try:
+            if hasattr(stdout, "fileno"):
+                fd = stdout.fileno()
+        except Exception:
+            fd = None
+
+        if fd is not None:
+            await write_to_fd(fd, data)
+        else:
+            # For streams without fileno(), use the normal write/flush path.
+            written = 0
+            n_retries = 0
+            while written < len(data):
+                try:
+                    written += stdout.buffer.write(data[written:])
+                    stdout.flush()
+                except BlockingIOError:
+                    if n_retries >= 5:
+                        raise
+                    n_retries += 1
+                    await asyncio.sleep(0.1)
     else:
         # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
         # io.StringIO).
@@ -536,14 +551,22 @@ async def get_app_logs_loop(
     pty_shell_stdout = None
     pty_shell_finish_event: asyncio.Event | None = None
     pty_shell_task_id: str | None = None
+    pty_shell_input_task: asyncio.Task | None = None
 
     async def stop_pty_shell():
-        nonlocal pty_shell_finish_event
+        nonlocal pty_shell_finish_event, pty_shell_input_task
         if pty_shell_finish_event:
             print("\r", end="")  # move cursor to beginning of line
             pty_shell_finish_event.set()
             pty_shell_finish_event = None
-            await asyncio.sleep(0)  # yield to handle_exec_input() so it can disable raw terminal
+
+            if pty_shell_input_task:
+                try:
+                    await pty_shell_input_task
+                except Exception as exc:
+                    logger.exception(f"Exception in PTY shell input task: {exc}")
+                finally:
+                    pty_shell_input_task = None
 
     async def _put_log(log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
         if log.task_state:
@@ -571,7 +594,7 @@ async def get_app_logs_loop(
 
     async def _get_logs():
         nonlocal last_log_batch_entry_id
-        nonlocal pty_shell_stdout, pty_shell_finish_event, pty_shell_task_id
+        nonlocal pty_shell_stdout, pty_shell_finish_event, pty_shell_task_id, pty_shell_input_task
 
         request = api_pb2.AppGetLogsRequest(
             app_id=app_id or "",
@@ -606,7 +629,9 @@ async def get_app_logs_loop(
                     pty_shell_finish_event = asyncio.Event()
                     pty_shell_task_id = log_batch.task_id
                     output_mgr.disable()
-                    asyncio.create_task(stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event))
+                    pty_shell_input_task = asyncio.create_task(
+                        stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event)
+                    )
             else:
                 for log in log_batch.items:
                     await _put_log(log_batch, log)

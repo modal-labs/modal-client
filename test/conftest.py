@@ -38,7 +38,7 @@ from grpclib.events import RecvRequest, listen
 from modal import __version__, config
 from modal._functions import _Function
 from modal._runtime.container_io_manager import _ContainerIOManager
-from modal._serialization import deserialize, deserialize_params, serialize_data_format
+from modal._serialization import deserialize, deserialize_data_format, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
@@ -202,6 +202,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             }
         ]
         self.app_objects = {}
+        self.app_tags: dict[str, dict[str, str]] = {}
         self.app_unindexed_objects = {}
         self.max_object_size_bytes = MAX_OBJECT_SIZE_BYTES
         self.n_inputs = 0
@@ -316,11 +317,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_get_server_warnings = None
         self.resp_jitter_secs: float = 0.0
         self.port = port
-        # AttemptAwait will return a failure until this is 0. It is decremented by 1 each time AttemptAwait is called.
-        self.attempt_await_failures_remaining = 0
+        # Set a list of custom, fixed responses for the AttemptAwait RPC.
+        # This mock server will return responses in order. The regular behavior will resume once this list is exhausted.
+        self.attempt_await_responses: list[api_pb2.AttemptAwaitResponse] = []
         # Value returned by AuthTokenGet
         self.auth_token = jwt.encode({"exp": int(time.time()) + 3600}, "my-secret-key", algorithm="HS256")
         self.auth_tokens_generated = 0
+        self.function_id_to_definition_id: dict[str, str] = {}
+        # Number of times AttemptAwait was called.
+        self.attempt_await_count = 0
+        # Number of times the user's function was called.
+        self.function_call_count = 0
+        self.function_call_result: Any = None
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -428,16 +436,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         input_plane_region = definition.experimental_options.get("input_plane_region")
         return input_plane_region
 
-    def get_function_metadata(self, object_id: str) -> api_pb2.FunctionHandleMetadata:
-        definition: api_pb2.Function = self.app_functions[object_id]
+    def get_function_metadata(self, function_id: str) -> api_pb2.FunctionHandleMetadata:
+        function_proto: api_pb2.Function = self.app_functions[function_id]
+        definition_id = self.function_id_to_definition_id[function_id]
+
         return api_pb2.FunctionHandleMetadata(
-            function_name=definition.function_name,
-            function_type=definition.function_type,
-            web_url=definition.web_url,
-            is_method=definition.is_method,
-            use_method_name=definition.use_method_name,
-            use_function_id=definition.use_function_id,
-            class_parameter_info=definition.class_parameter_info,
+            function_name=function_proto.function_name,
+            function_type=function_proto.function_type,
+            web_url=function_proto.web_url,
+            is_method=function_proto.is_method,
+            use_method_name=function_proto.use_method_name,
+            use_function_id=function_proto.use_function_id,
+            class_parameter_info=function_proto.class_parameter_info,
             method_handle_metadata={
                 method_name: api_pb2.FunctionHandleMetadata(
                     function_name=method_definition.function_name,
@@ -446,13 +456,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     is_method=True,
                     use_method_name=method_name,
                     function_schema=method_definition.function_schema,
+                    supported_input_formats=method_definition.supported_input_formats,
+                    supported_output_formats=method_definition.supported_output_formats,
                 )
-                for method_name, method_definition in definition.method_definitions.items()
+                for method_name, method_definition in function_proto.method_definitions.items()
             },
-            function_schema=definition.function_schema,
-            input_plane_url=self._get_input_plane_url(definition),
-            input_plane_region=self._get_input_plane_region(definition),
+            function_schema=function_proto.function_schema,
+            input_plane_url=self._get_input_plane_url(function_proto),
+            input_plane_region=self._get_input_plane_region(function_proto),
             max_object_size_bytes=self.max_object_size_bytes,
+            definition_id=definition_id,
+            supported_input_formats=function_proto.supported_input_formats,
+            supported_output_formats=function_proto.supported_output_formats,
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -501,12 +516,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for tag, object_id in app_objects.items():
             if _Function._is_id_type(object_id):
                 function_ids[tag] = object_id
-                definition = self.app_functions[object_id]
-                if isinstance(definition, api_pb2.FunctionData):
-                    for ranked_fn in definition.ranked_functions:
+                function_proto = self.app_functions[object_id]
+                if isinstance(function_proto, api_pb2.FunctionData):
+                    for ranked_fn in function_proto.ranked_functions:
                         object_ids |= {obj.object_id for obj in ranked_fn.function.object_dependencies}
                 else:
-                    object_ids |= {obj.object_id for obj in definition.object_dependencies}
+                    object_ids |= {obj.object_id for obj in function_proto.object_dependencies}
             elif _Cls._is_id_type(object_id):
                 class_ids[tag] = object_id
 
@@ -691,6 +706,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 )
             )
         await stream.send_message(api_pb2.AppListResponse(apps=apps))
+
+    async def AppSetTags(self, stream):
+        request: api_pb2.AppSetTagsRequest = await stream.recv_message()
+        self.app_tags[request.app_id] = dict(request.tags)
+        await stream.send_message(Empty())
 
     async def AppStop(self, stream):
         request: api_pb2.AppStopRequest = await stream.recv_message()
@@ -968,6 +988,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.dicts[request.dict_id][update.key] = update.value
         await stream.send_message(api_pb2.DictUpdateResponse(created=True))
 
+    async def DictPop(self, stream):
+        request: api_pb2.DictPopRequest = await stream.recv_message()
+        d = self.dicts[request.dict_id]
+        if request.key in d:
+            value = d.pop(request.key)
+            await stream.send_message(api_pb2.DictPopResponse(found=True, value=value))
+        else:
+            await stream.send_message(api_pb2.DictPopResponse(found=False))
+
+    async def DictContains(self, stream):
+        request: api_pb2.DictContainsRequest = await stream.recv_message()
+        d = self.dicts[request.dict_id]
+        found = request.key in d
+        await stream.send_message(api_pb2.DictContainsResponse(found=found))
+
     async def DictContents(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
         for k, v in self.dicts[request.dict_id].items():
@@ -1014,6 +1049,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             bound_func = api_pb2.Function()
             bound_func.CopyFrom(base_function)
             self.app_functions[function_id] = bound_func
+            self.function_id_to_definition_id[function_id] = self.function_id_to_definition_id[request.function_id]
             self.bound_functions[(request.function_id, request.serialized_params)] = function_id
             self.function_params[function_id] = deserialize_params(request.serialized_params, bound_func, None)
             self.function_options[function_id] = request.function_options
@@ -1093,6 +1129,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 function_type=method_definition.function_type,
                 web_url=method_web_url,
                 function_schema=method_definition.function_schema,
+                supported_input_formats=method_definition.supported_input_formats,
+                supported_output_formats=method_definition.supported_output_formats,
             )
         await stream.send_message(
             api_pb2.FunctionPrecreateResponse(
@@ -1144,6 +1182,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if method_definition.webhook_config.type:
                 method_definition.web_url = f"http://{method_name}.internal"
         self.app_functions[function_id] = function_defn
+        self.function_id_to_definition_id[function_id] = f"de-{len(self.function_id_to_definition_id)}"
 
         if function_defn.schedule:
             self.function2schedule[function_id] = function_defn.schedule
@@ -1156,31 +1195,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             api_pb2.FunctionCreateResponse(
                 function_id=function_id,
                 function=function,
-                # TODO: use self.get_function_metadata here
-                handle_metadata=api_pb2.FunctionHandleMetadata(
-                    function_name=function_defn.function_name,
-                    function_type=function_defn.function_type,
-                    web_url=function_defn.web_url,
-                    use_function_id=function_defn.use_function_id or function_id,
-                    use_method_name=function_defn.use_method_name,
-                    definition_id=f"de-{self.n_functions}",
-                    method_handle_metadata={
-                        method_name: api_pb2.FunctionHandleMetadata(
-                            function_name=method_definition.function_name,
-                            function_type=method_definition.function_type,
-                            web_url=method_definition.web_url,
-                            is_method=True,
-                            use_method_name=method_name,
-                            function_schema=method_definition.function_schema,
-                        )
-                        for method_name, method_definition in function_defn.method_definitions.items()
-                    },
-                    class_parameter_info=function_defn.class_parameter_info,
-                    function_schema=function_defn.function_schema,
-                    input_plane_url=self._get_input_plane_url(function_defn),
-                    input_plane_region=self._get_input_plane_region(function_defn),
-                    max_object_size_bytes=self.max_object_size_bytes,
-                ),
+                handle_metadata=self.get_function_metadata(function_id),
                 server_warnings=warnings,
             )
         )
@@ -1294,9 +1309,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     def add_function_call_input(self, function_call_id, item: api_pb2.FunctionPutInputsItem, input_id, retry_count):
         if item.input.WhichOneof("args_oneof") == "args":
-            args, kwargs = deserialize(item.input.args, None)
+            args, kwargs = deserialize_data_format(item.input.args, item.input.data_format, None)
         else:
-            args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
+            args, kwargs = deserialize_data_format(self.blobs[item.input.args_blob_id], item.input.data_format, None)
         function_call_inputs = self.function_call_inputs.setdefault(function_call_id, [])
         function_call_inputs.append(((item.idx, input_id, retry_count), (args, kwargs)))
         self.function_call_inputs_update_event.set()
@@ -1497,6 +1512,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 ),
             )
         )
+
+    async def ImageDelete(self, stream):
+        request: api_pb2.ImageDeleteRequest = await stream.recv_message()
+        if request.image_id not in self.images:
+            raise GRPCError(Status.NOT_FOUND, f"Image {request.image_id} not found")
+
+        self.images.pop(request.image_id)
+        self.image_build_function_ids.pop(request.image_id, None)
+        self.image_builder_versions.pop(request.image_id, None)
+        if request.image_id in self.force_built_images:
+            self.force_built_images.remove(request.image_id)
+
+        await stream.send_message(Empty())
 
     ### Mount
 
@@ -1743,6 +1771,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     )
                 ]
             )
+        )
+
+    async def SandboxTagsGet(self, stream):
+        _request: api_pb2.SandboxTagsGetRequest = await stream.recv_message()
+        tags = getattr(self, "sandbox_tags", {})
+        await stream.send_message(
+            api_pb2.SandboxTagsGetResponse(tags=[api_pb2.SandboxTag(tag_name=k, tag_value=v) for k, v in tags.items()])
         )
 
     async def SandboxTagsSet(self, stream):
@@ -2324,28 +2359,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def AttemptAwait(self, stream):
+        self.attempt_await_count += 1
         # TODO(dxia): implement attempt token logic
 
-        # To test client retries for internal failures, tests can configure outputs to fail some number of times.
+        if len(self.attempt_await_responses) > 0:
+            await stream.send_message(self.attempt_await_responses.pop(0))
+            return
+
         status = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        if self.attempt_await_failures_remaining > 0:
-            status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
-            self.attempt_await_failures_remaining = self.attempt_await_failures_remaining - 1
 
         if self.function_call_inputs:
             function_call_id = f"fc-{self.fcidx}"
             (idx, input_id, retry_count), (args, kwargs) = self.function_call_inputs.pop(function_call_id)[0]
             self.fcidx -= 1
             try:
-                res = self._function_body(*args, **kwargs)
+                self.function_call_count += 1
+                self.function_call_result = self._function_body(*args, **kwargs)
             except Exception as e:
-                res = e
+                self.function_call_result = e
                 status = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
         else:
             input_id = "in-1"
             idx = 0
             retry_count = 0
-            res = "attempt_await_bogus_response"
 
         await stream.send_message(
             api_pb2.AttemptAwaitResponse(
@@ -2354,7 +2390,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     idx=idx,
                     result=api_pb2.GenericResult(
                         status=status,
-                        data=serialize_data_format(res, api_pb2.DATA_FORMAT_PICKLE),
+                        data=serialize_data_format(self.function_call_result, api_pb2.DATA_FORMAT_PICKLE),
                     ),
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
                     retry_count=retry_count,
@@ -2376,13 +2412,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def MapStartOrContinue(self, stream):
         request: api_pb2.MapStartOrContinueRequest = await stream.recv_message()
 
-        # If function_call_id is provided, this is a continue request, otherwise it's a start
-        if request.function_call_id:
-            function_call_id = request.function_call_id
+        # If map_token is provided, this is a continue request, otherwise it's a start
+        if request.map_token:
+            map_token = request.map_token
         else:
             self.fcidx += 1
-            function_call_id = f"fc-{self.fcidx}"
-            self.function_id_for_function_call[function_call_id] = request.function_id
+            map_token = f"test-map-token:{self.fcidx}"
+            self.function_id_for_function_call[map_token] = request.function_id
 
         # Process inputs and store them for MapAwait to pick up later
         attempt_tokens = []
@@ -2394,15 +2430,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
             # Store inputs for MapAwait to process
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
-            self.add_function_call_input(function_call_id, item.input, input_id, retry_count)
+            self.add_function_call_input(map_token, item.input, input_id, retry_count)
 
         # Get retry policy from function definition if available
         fn_definition = self.app_functions.get(request.function_id)
         retry_policy = fn_definition.retry_policy if fn_definition else None
 
+        # We don't send fcID since that is what the server will do eventually.
         response = api_pb2.MapStartOrContinueResponse(
             function_id=request.function_id,
-            function_call_id=function_call_id,
+            map_token=map_token,
             max_inputs_outstanding=1000,
             attempt_tokens=attempt_tokens,
             retry_policy=retry_policy,
@@ -2415,9 +2452,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def MapAwait(self, stream):
         request: api_pb2.MapAwaitRequest = await stream.recv_message()
+        map_token = request.map_token
 
         # Check if we have any function call inputs for this function call
-        fc_inputs = self.function_call_inputs.setdefault(request.function_call_id, [])
+        fc_inputs = self.function_call_inputs.setdefault(map_token, [])
         outputs = []
 
         if fc_inputs and not self.function_is_running:
@@ -2434,7 +2472,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     count = 0
                     for item in res:
                         count += 1
-                        await self.fc_data_out[request.function_call_id].put(
+                        await self.fc_data_out[map_token].put(
                             api_pb2.DataChunk(
                                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                                 data=serialize_data_format(item, api_pb2.DATA_FORMAT_PICKLE),
@@ -2509,8 +2547,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.MapCheckInputsResponse(lost=lost))
 
 
-@pytest.fixture
-def blob_server():
+@contextlib.contextmanager
+def blob_server_factory():
+    """Utility context manager to create a blob server for testing. Yields (host, blobs, blocks, files_sha2data)."""
     blobs = {}
     blob_parts: dict[str, dict[int, bytes]] = defaultdict(dict)
     blocks = {}
@@ -2629,15 +2668,17 @@ def blob_server():
     thread = threading.Thread(target=run_server_other_thread)
     thread.start()
     started.wait()
-    yield host, blobs, blocks, files_sha2data
-    stop_server.set()
-    thread.join()
+    try:
+        yield host, blobs, blocks, files_sha2data
+    finally:
+        stop_server.set()
+        thread.join()
 
 
-@pytest_asyncio.fixture(scope="function")
-def temporary_sock_path():
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        yield os.path.join(tmpdirname, "servicer.sock")
+@pytest.fixture
+def blob_server():
+    with blob_server_factory() as server:
+        yield server
 
 
 @contextlib.asynccontextmanager
@@ -2677,19 +2718,25 @@ def credentials():
     return (token_id, token_secret)
 
 
-@pytest_asyncio.fixture(scope="function")
-async def servicer(blob_server, temporary_sock_path, credentials) -> AsyncGenerator[MockClientServicer, None]:
+@contextlib.asynccontextmanager
+async def servicer_factory(blob_server, credentials):
+    """
+    Utility function to create a servicer for testing.
+    Returns an async context manager that yields a MockClientServicer.
+    """
     port = find_free_port()
 
     blob_host, blobs, blocks, files_sha2data = blob_server
     servicer = MockClientServicer(blob_host, blobs, blocks, files_sha2data, credentials, port)  # type: ignore
 
     if platform.system() != "Windows":
-        async with run_server(servicer, host="0.0.0.0", port=port):
-            async with run_server(servicer, path=temporary_sock_path):
-                servicer.client_addr = f"http://127.0.0.1:{port}"
-                servicer.container_addr = f"unix://{temporary_sock_path}"
-                yield servicer
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            temporary_sock_path = os.path.join(tmpdirname, "servicer.sock")
+            async with run_server(servicer, host="0.0.0.0", port=port):
+                async with run_server(servicer, path=temporary_sock_path):
+                    servicer.client_addr = f"http://127.0.0.1:{port}"
+                    servicer.container_addr = f"unix://{temporary_sock_path}"
+                    yield servicer
     else:
         # Use a regular TCP socket for the container connection
         container_port = find_free_port()
@@ -2698,6 +2745,12 @@ async def servicer(blob_server, temporary_sock_path, credentials) -> AsyncGenera
                 servicer.client_addr = f"http://127.0.0.1:{port}"
                 servicer.container_addr = f"http://127.0.0.1:{container_port}"
                 yield servicer
+
+
+@pytest_asyncio.fixture(scope="function")
+async def servicer(blob_server, credentials) -> AsyncGenerator[MockClientServicer, None]:
+    async with servicer_factory(blob_server, credentials) as s:
+        yield s
 
 
 @pytest_asyncio.fixture(scope="function")

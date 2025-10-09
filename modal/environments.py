@@ -11,7 +11,6 @@ from modal_proto import api_pb2
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import deprecation_warning
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import config, logger
@@ -77,25 +76,6 @@ class _Environment(_Object, type_prefix="en"):
 
         # TODO environment name (and id?) in the repr? (We should make reprs consistently more useful)
         return _Environment._from_loader(_load, "Environment()", is_another_app=True, hydrate_lazily=True)
-
-    @staticmethod
-    async def lookup(
-        name: str,
-        client: Optional[_Client] = None,
-        create_if_missing: bool = False,
-    ):
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Environment.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Environment.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-        obj = _Environment.from_name(name, create_if_missing=create_if_missing)
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
 
 
 Environment = synchronize_api(_Environment)

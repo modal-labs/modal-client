@@ -29,7 +29,7 @@ class FinalizedFunction:
     callable: Callable[..., Any]
     is_async: bool
     is_generator: bool
-    data_format: int  # api_pb2.DataFormat
+    supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"]
     lifespan_manager: Optional["LifespanManager"] = None
 
 
@@ -108,6 +108,7 @@ class ImportedFunction(Service):
         is_generator = fun_def.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
 
         webhook_config = fun_def.webhook_config
+
         if not webhook_config.type:
             # for non-webhooks, the runnable is straight forward:
             return {
@@ -115,7 +116,10 @@ class ImportedFunction(Service):
                     callable=self._user_defined_callable,
                     is_async=is_async,
                     is_generator=is_generator,
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    supported_output_formats=fun_def.supported_output_formats
+                    # FIXME (elias): the following `or [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]` is only
+                    # needed for tests
+                    or [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
                 )
             }
 
@@ -129,7 +133,8 @@ class ImportedFunction(Service):
                 lifespan_manager=lifespan_manager,
                 is_async=True,
                 is_generator=True,
-                data_format=api_pb2.DATA_FORMAT_ASGI,
+                # FIXME (elias): the following `or [api_pb2.DATA_FORMAT_ASGI]` is only needed for tests
+                supported_output_formats=fun_def.supported_output_formats or [api_pb2.DATA_FORMAT_ASGI],
             )
         }
 
@@ -154,6 +159,7 @@ class ImportedClass(Service):
             # Use the function definition for whether this is a generator (overriden by webhooks)
             is_generator = _partial.params.is_generator
             webhook_config = _partial.params.webhook_config
+            method_def = fun_def.method_definitions[method_name]
 
             bound_func = user_func.__get__(self.user_cls_instance)
 
@@ -163,7 +169,10 @@ class ImportedClass(Service):
                     callable=bound_func,
                     is_async=is_async,
                     is_generator=bool(is_generator),
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    # FIXME (elias): the following `or [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]` is only
+                    # needed for tests
+                    supported_output_formats=method_def.supported_output_formats
+                    or [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
                 )
             else:
                 web_callable, lifespan_manager = construct_webhook_callable(
@@ -174,7 +183,8 @@ class ImportedClass(Service):
                     lifespan_manager=lifespan_manager,
                     is_async=True,
                     is_generator=True,
-                    data_format=api_pb2.DATA_FORMAT_ASGI,
+                    # FIXME (elias): the following `or [api_pb2.DATA_FORMAT_ASGI]` is only needed for tests
+                    supported_output_formats=method_def.supported_output_formats or [api_pb2.DATA_FORMAT_ASGI],
                 )
             finalized_functions[method_name] = finalized_function
         return finalized_functions
