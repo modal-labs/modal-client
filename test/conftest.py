@@ -2007,6 +2007,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def WorkspaceBillingReport(self, stream):
+        # Dummy implementation
+        await stream.recv_message()
+
+        item = api_pb2.WorkspaceBillingReportItem(
+            object_id="ap-123",
+            description="app1",
+            environment_name="test",
+            cost="100.123456",
+            tags={"team": "eng", "project": "p7r"},
+        )
+        item.interval.FromDatetime(datetime.datetime(2025, 1, 1, 0, 0, 0))
+        await stream.send_message(item)
+
     async def WorkspaceNameLookup(self, stream):
         await stream.send_message(api_pb2.WorkspaceNameLookupResponse(username="test-username"))
 
