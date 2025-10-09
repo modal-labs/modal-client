@@ -6,119 +6,77 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.1.5.dev90 (2025-10-09)
+### 1.2.0 (2025-10-09)
 
-- It is no longer possible to invoke a method on a Modal Cls without "instantiating" the Cls first.
-
-
-#### 1.1.5.dev86 (2025-10-08)
-
-- Improves compatibility with newer versions of protobuf.
-
-
-#### 1.1.5.dev83 (2025-10-07)
-
-- Improved support for protobuf 5+ when using the Python implementation of the Protobuf runtime.
-
-#### 1.1.5.dev78 (2025-10-07)
-
-- Also adds `App.set_tags()` and `App.get_tags()` which should be rolled into the changelog update for tags, generally speaking.
-
-#### 1.1.5.dev75 (2025-10-06)
-
-- Removed the unused `allow_cross_region_volumes` parameter
-
-#### 1.1.5.dev69 (2025-10-03)
-
-- Removed the `modal.experimental.update_autoscaler` function; this functionality now has a stable API as `modal.Function.update_autoscaler`.
-
-#### 1.1.5.dev66 (2025-10-02)
-
-- Final removal of the `context_mount=` parameter of some modal.Image methods.
-
-#### 1.1.5.dev65 (2025-10-02)
-
-- Removed previously deprecated `.lookup` methods from most Modal object classes (but not `modal.App.lookup`, which remains supported). The lazy `.from_name()` method is recommended for accessing deployed objects going forward.
-
-#### 1.1.5.dev64 (2025-10-02)
-
-- Replaced the `--no-confirm` option with `--yes` in the `modal environment delete` CLI to align with similar interfaces.
-
-#### 1.1.5.dev63 (2025-10-02)
-
-- Added `modal shell` support for connecting to a running Sandbox (`modal shell sb-id`).
-
-#### 1.1.5.dev56 (2025-09-29)
-
-- Added `modal.experimental.image_delete()` to allow deleting Images (e.g. Sandbox FS snapshot images).
-
-#### 1.1.5.dev50 (2025-09-26)
-
-- Fixed bug where large outputs in debug shells would sometimes freeze until key-press.
-
-#### 1.1.5.dev49 (2025-09-26)
-
-- Arbitrary key-value metadata can now be attached to Apps by setting `modal.App(tags={...})`. The tags can be useful for tracking information that may be relevant to your organization, such as the team that owns the App. We'll support the inclusion of tags in some forthcoming APIs related to cost insights.
-
-#### 1.1.5.dev45 (2025-09-25)
-
-- [Internal] Adds support for calling into deployed functions using a new cbor based serialization format used by beta versions of modal-ts and modal-go
-
-#### 1.1.5.dev44 (2025-09-25)
-
-- `modal.Dict.pop()` now accepts an optional `default` parameter, matching Python's `dict.pop()` behavior.
-
-#### 1.1.5.dev40 (2025-09-24)
-
-- Hide the CLI spinner in interactive mode, so `modal run --interactive` now works better with breakpoints in local entrypoint functions.
-
-#### 1.1.5.dev34 (2025-09-19)
-
-- `Cls.with_options` supports `CloudBucketMount` in `volumes`.
+In this release, we're introducing the concept of "App tags", which are simple key-value metadata that can be included to provide additional organizational context. Tags can be defined as part of the `modal.App` constructor:
 
 ```python
-cloud_bucket = modal.CloudBucketMount("my-bucket", secret=aws_secret)
-MyAppCloud = modal.Cls.from_name("my-app", "MyApp").with_options(
-  volumes={"/mnt": cloud_bucket}
-)
+app = modal.App("llm-inference-server", tags={"team": "genai-platform"})
 ```
 
-#### 1.1.5.dev32 (2025-09-19)
+Tags can also be added to an active App via the new `modal.App.set_tags()` method, and current tags can be retrieved with the new `modal.App.get_tags()`.
 
-- Deprecated the `client` parameter to `Sandbox.set_tags()`, and the `environment_name` parameter to `Sandbox.from_name()`.
+This release also introduces a new API for generating a tabular billing report: `modal.billing.workspace_billing_report()`. The billing API will report the cost incurred by each App, aggregated over time intervals (currently supporting a daily or hourly resolution). The report can optionally include App tags, allowing you to perform cost allocation using your own organizational schema.
 
-#### 1.1.5.dev30 (2025-09-19)
+Note that the initial release of the billing API is a private beta. Please get in touch to discuss access.
 
-- Added a `.get_tags()` method to Sandbox, enabling fetching tags that were previously set using `.set_tags()`.
+This release also includes some internal changes to Function input/output serialization. These changes will provide better support for calling into Modal Functions from our `modal-js` and `modal-go` SDKs. Versions 0.4 or later of `modal-js` and `modal-go` will only be able to invoke Functions in Apps deployed with version 1.2 or later of the Python SDK.
 
-#### 1.1.5.dev26 (2025-09-17)
+Other new features and improvements:
 
-- Adds `image.build` to eagerly build an image:
+- The new `modal.Sandbox.create_connect_token()` method facilitates authentication for making HTTP / Websocket requests to a server running in a Sandbox:
 
-```python
-image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
-app = modal.App("build-image")
-with modal.enable_output(), app.run():
-    image.build(app)
+  ```python notest
+  sb = modal.Sandbox.create(...)
 
-# Save the image id
-my_image_id = image.object_id
+  # Create a connect token, optionally including arbitrary user metadata
+  creds = sb.create_connect_token(user_metadata={"user_id": "user123"})
 
-# Reference the image by id
-built_image = Image.from_id(my_image_id)
-```
+  # Make an http request, passing the token in the authorization header
+  requests.get(creds.url, headers={"authorization": f"bearer {creds.token}"})
+  ```
 
-#### 1.1.5.dev21 (2025-09-16)
+  See the [Sandbox guide](https://modal.com/docs/guide/sandbox) for more information.
 
-- Added `env` parameters to several methods, as a more discoverable convenience method for passing non-secret environment variables to containers.
+- The new `modal.Image.build()` method allows you to eagerly trigger an Image build. This is particularly helpful when working with Sandboxes, as otherwise the Image build would happen lazily inside `modal.Sandbox.create()`:
 
-#### 1.1.5.dev20 (2025-09-15)
+  ```python notest
+  app = modal.App.lookup("sandbox-app")
+  image = modal.Image.from_registry("ubuntu")
 
-- Added an option to enable a PTY for Sandboxes via `Sandbox.create(..., pty=True)` and `Sandbox.exec(..., pty=True)`. Also deprecated the old `pty_info` parameters.
+  # This step will block until the build completes
+  image.build(app)
 
-#### 1.1.5.dev16 (2025-09-10)
+  # Now the Sandbox will be created and scheduled immediately
+  sb = modal.Sandbox.create(app=app, image=image)
+  ```
 
-- Adds a `create_connect_token()` method for Sandboxes which may be used to generate credentials for making HTTP / Websocket requests to a server running in a Sandbox.
+- We've added an `env` parameter to a number of methods that configure Function, Sandbox, or Image execution. This parameter accepts a dictionary and adds the contents as environment variables in the relevant Modal container. This allows for simpler inclusion of non-sensitive information compared to using a `modal.Secret`.
+- It's now possible to pass a `modal.CloudBucketMount` instance to the `volumes=` parameter of `modal.Cls.with_options` (previously, only dynamic addition of `modal.Volume` mounts was supported).
+- The new `modal.Sandbox.get_tags()` method will fetch the tags currently in use by the Sandbox (i.e., after calling `modal.Sandbox.set_tags()`). Note that Sandbox tags are distinct from the new concept of App tags.
+- `modal.Dict.pop()` now accepts an optional `default` parameter, akin to Python's `dict.pop()`.
+- It's now possible to `modal shell` into a running Sandbox by passing its Sandbox ID (`modal shell sb-123`).
+- Sandboxes can now be configured to expose a PTY device via `Sandbox.create(..., pty=True)` and `Sandbox.exec(..., pty=True)`. This provides better support for Claude Code.
+- The new `modal.experimental.image_delete()` function can be used to delete the final layer of an Image given its ID, which can be particularly useful for cleaning up Sandbox Filesystem Snapshots.
+- Using `modal run --interactive` (or `-i`) will now suppress Modal's status spinner to avoid interfering with breakpoints in local entrypoint functions. We've also improved support for printing large objects when attached to a debugger.
+- We've improved support for Protobuf 5+ when using the Python implementation of the Protobuf runtime.
+
+This release also introduces a small number of new deprecations:
+
+- We deprecated the `client` parameter from `Sandbox.set_tags()`. To use an explicit Client when interacting with the Sandbox, pass it into `modal.Sandbox.create()` instead.
+- We deprecated the `pty_info` parameter from `Sandbox.create()` and `Sandbox.exec()`. This was a private parameter accepting an internal Protobuf type. See the new boolean `pty` parameter instead.
+- We replaced the `--no-confirm` option with `--yes` in the `modal environment delete` CLI to align with other CLI commands that normally require confirmation.
+
+Finally, some functionality that began issuing deprecation warnings prior to v0.73 has now been completely removed:
+
+- It is now required to "instantiate" a `modal.Cls` before invoking one of its methods.
+- The eager `.lookup()` method has been removed from most Modal object classes (but not from `modal.App.lookup`, which remains supported). The lazy `.from_name()` method is recommended for accessing deployed objects going forward.
+- The public constructors on the `modal.mount.Mount` object have been removed; this is now an entirely internal class.
+- The `context_mount=` parameter has accordingly been removed from Docker-oriented `modal.Image` methods.
+- The unused `allow_cross_region_volumes` parameter has been removed from the function decorators.
+- The `modal.experimental.update_autoscaler()` function has been removed; this functionality now has a stable API as `modal.Function.update_autoscaler()`.
+
+## 1.1
 
 ### 1.1.4 (2025-09-03)
 
