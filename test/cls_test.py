@@ -1140,7 +1140,7 @@ def test_using_method_on_uninstantiated_cls():
     assert C.some_non_param_variable == 10
 
     with pytest.raises(AttributeError, match="blah"):
-        C.blah  # noqa
+        C.blah  # type: ignore
 
     with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
         # The following should error since the class is supposed to be instantiated first
@@ -1162,7 +1162,7 @@ def test_using_method_on_uninstantiated_hydrated_cls(set_env_client, client):
         assert C.some_non_param_variable == 10
 
         with pytest.raises(AttributeError, match="blah"):
-            C.blah  # noqa
+            C.blah  # type: ignore
 
         with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
             # The following should error since the class is supposed to be instantiated first
