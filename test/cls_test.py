@@ -1126,10 +1126,10 @@ def test_unsupported_function_decorators_on_methods():
                 pass
 
 
-def test_using_method_on_uninstantiated_cls(set_env_client):
+def test_using_method_on_uninstantiated_cls():
     app = App()
 
-    @app.cls()
+    @app.cls(serialized=True)
     class C:
         some_non_param_variable = 10
 
