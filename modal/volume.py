@@ -673,7 +673,7 @@ class _Volume(_Object, type_prefix="vo"):
         self,
         path: str,
         fileobj: typing.IO[bytes],
-        parallelism: int = multiprocessing.cpu_count(),
+        concurrency: int = multiprocessing.cpu_count(),
         download_semaphore: Optional[asyncio.Semaphore] = None,
         progress_cb: Optional[Callable[..., Any]] = None,
     ) -> int:
@@ -693,7 +693,7 @@ class _Volume(_Object, type_prefix="vo"):
             raise FileNotFoundError(exc.args[0])
 
         if download_semaphore is None:
-            download_semaphore = asyncio.Semaphore(parallelism)
+            download_semaphore = asyncio.Semaphore(concurrency)
 
         write_lock = asyncio.Lock()
         start_pos = fileobj.tell()

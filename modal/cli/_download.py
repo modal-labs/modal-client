@@ -24,7 +24,7 @@ async def _volume_download(
     remote_path: str,
     local_destination: Path,
     overwrite: bool,
-    parallelism: int = multiprocessing.cpu_count(),
+    concurrency: int = max(128, 2 * multiprocessing.cpu_count()),
     progress_cb: Optional[Callable] = None,
 ):
     if progress_cb is None:
@@ -35,8 +35,8 @@ async def _volume_download(
     is_pipe = local_destination == PIPE_PATH
 
     q: asyncio.Queue[tuple[Optional[Path], Optional[FileEntry]]] = asyncio.Queue()
-    num_consumers = 1 if is_pipe else parallelism  # concurrency limit for downloading files
-    download_semaphore = asyncio.Semaphore(parallelism)
+    num_consumers = 1 if is_pipe else concurrency  # concurrency limit for downloading files
+    download_semaphore = asyncio.Semaphore(concurrency)
 
     async def producer():
         iterator: AsyncIterator[FileEntry]

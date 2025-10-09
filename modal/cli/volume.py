@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import multiprocessing
 import os
 import sys
 from pathlib import Path
@@ -76,9 +75,6 @@ async def get(
     local_destination: str = Argument("."),
     force: bool = False,
     env: Optional[str] = ENV_OPTION,
-    parallelism: int = Option(
-        default=multiprocessing.cpu_count(), help="Max number of parallel transfers; defaults to number of CPUs"
-    ),
 ):
     """Download files from a modal.Volume object.
 
@@ -105,7 +101,6 @@ async def get(
             remote_path=remote_path,
             local_destination=destination,
             overwrite=force,
-            parallelism=parallelism,
             progress_cb=progress_handler.progress,
         )
     console.print(OutputManager.step_completed("Finished downloading files to local!"))
