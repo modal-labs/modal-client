@@ -130,7 +130,7 @@ message TaskExecWaitResponse {
   // and termination by Modal (due to task timeout, exec exceeded deadline, etc.)
 }
 
-service TaskRouter {
+service TaskCommandRouter {
   // Poll for the exit status of an exec'd command.
   rpc TaskExecPoll(TaskExecPollRequest) returns (TaskExecPollResponse);
   // Execute a command in the task.
