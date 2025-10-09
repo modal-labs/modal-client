@@ -1126,7 +1126,7 @@ def test_unsupported_function_decorators_on_methods():
                 pass
 
 
-def test_using_method_on_uninstantiated_cls(recwarn):
+def test_using_method_on_uninstantiated_cls(set_env_client):
     app = App()
 
     @app.cls(serialized=True)
@@ -1135,21 +1135,32 @@ def test_using_method_on_uninstantiated_cls(recwarn):
         def method(self):
             pass
 
-    assert len(recwarn) == 0
-    with pytest.raises(AttributeError):
-        C.blah  # type: ignore   # noqa
-    assert len(recwarn) == 0
+    # The following should warn since it's accessed on the class directly
+    with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
+        C.method.remote()  # noqa  # triggers a deprecation warning
 
-    assert isinstance(C().method, Function)  # should be fine to access on an instance of the class
-    assert len(recwarn) == 0
+
+def test_using_method_on_uninstantiated_hydrated_cls(set_env_client, client):
+    app = App()
+
+    @app.cls(serialized=True)
+    class C:
+        @method()
+        def method(self):
+            pass
+
+    with app.run(client=client):
+        # The following should warn since it's accessed on the class directly
+        with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
+            C.method.remote()  # noqa  # triggers a deprecation warning
+
+
+def test_using_method_on_uninstantiated_remote_cls(set_env_client):
+    C = modal.Cls.from_name("app", "C")
 
     # The following should warn since it's accessed on the class directly
-    C.method  # noqa  # triggers a deprecation warning
-    # TODO: this will be an AttributeError or return a non-modal unbound function in the future:
-    assert len(recwarn) == 1
-    warning_string = str(recwarn[0].message)
-    assert "instantiate the class first" in warning_string
-    assert "C().method instead of C.method" in warning_string
+    with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
+        C.method.remote()  # noqa  # triggers a deprecation warning
 
 
 def test_bytes_serialization_validation(servicer, client, set_env_client):
