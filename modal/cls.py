@@ -863,18 +863,28 @@ More information on class parameterization can be found here: https://modal.com/
         )
 
     def __getattr__(self, k):
-        # TODO: remove this method - access to attributes on classes (not instances) should be discouraged
-        if not self._is_local() or k in self._method_partials:
-            # if not local (== k *could* be a method) or it is local and we know k is a method
-            deprecation_warning(
-                (2025, 1, 13),
-                "Calling a method on an uninstantiated class will soon be deprecated; "
-                "update your code to instantiate the class first, i.e.:\n"
-                f"{self._name}().{k} instead of {self._name}.{k}",
+        if self._user_cls is not None:
+            # local class, we can check if there are static attributes and let the user access them
+            # except if they are PartialFunction (i.e. methods)
+            v = getattr(self._user_cls, k)
+            if not isinstance(v, modal.partial_function.PartialFunction):
+                return v
+
+        # We create a synthetic dummy Function that is guaranteed to raise an AttributeError when
+        # a user tries to use any of its "live methods" - this lets us raise exceptions for users
+        # only if they try to access methods on a Cls as if they were methods on the instance.
+        async def method_loader(fun: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            raise AttributeError(
+                "You can't access methods on a Cls directly - Did you forget to instantiate the class first?\n"
+                "e.g. instead of MyClass.method.remote(), do MyClass().method.remote()"
             )
-            return getattr(self(), k)
-        # non-method attribute access on local class - arguably shouldn't be used either:
-        return getattr(self._user_cls, k)
+
+        return _Function._from_loader(
+            method_loader,
+            rep=f"UnboundMethod({self._name}.{k})",
+            deps=lambda: [],
+            hydrate_lazily=True,
+        )
 
     def _is_local(self) -> bool:
         return self._user_cls is not None
