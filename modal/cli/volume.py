@@ -96,7 +96,13 @@ async def get(
     console = make_console()
     progress_handler = ProgressHandler(type="download", console=console)
     with progress_handler.live:
-        await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
+        await _volume_download(
+            volume=volume,
+            remote_path=remote_path,
+            local_destination=destination,
+            overwrite=force,
+            progress_cb=progress_handler.progress,
+        )
     console.print(OutputManager.step_completed("Finished downloading files to local!"))
 
 
