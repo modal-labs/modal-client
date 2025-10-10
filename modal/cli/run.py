@@ -496,6 +496,12 @@ def serve(
     ```
     modal serve hello_world.py
     ```
+
+    Modal-generated URLs will have a `-dev` suffix appended to them when running with `modal serve`.
+    To customize this suffix (i.e., to avoid collisions with other users in your workspace who are
+    concurrently serving the App), you can set the `dev_suffix` in your `.modal.toml` file or the
+    `MODAL_DEV_SUFFIX` environment variable.
+
     """
     env = ensure_env(env)
     import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)

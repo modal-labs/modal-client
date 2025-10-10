@@ -178,3 +178,14 @@ def test_malformed_config_better(modal_config):
     with pytest.raises(InvalidError, match="Key name found without value"):
         with modal_config(modal_toml):
             pass
+
+
+@pytest.mark.parametrize("suffix", ["a" * 9, "abc-xyz"])
+def test_dev_suffix_rules(modal_config, suffix):
+    modal_toml = f"""
+    [default]
+    dev_suffix = "{suffix}"
+    """
+    with modal_config(modal_toml):
+        with pytest.raises(InvalidError, match="alphanumeric string"):
+            Config().get("dev_suffix")
