@@ -81,9 +81,11 @@ async def _init_local_app_new(
     app_state: int,  # ValueType
     environment_name: str = "",
     interactive: bool = False,
+    dev_suffix: str = "",
 ) -> RunningApp:
     app_req = api_pb2.AppCreateRequest(
         description=description,
+        dev_suffix=dev_suffix,
         environment_name=environment_name,
         app_state=app_state,  # type: ignore
     )
@@ -266,6 +268,7 @@ async def _run_app(
     detach: bool = False,
     environment_name: Optional[str] = None,
     interactive: bool = False,
+    dev_suffix: str = "",
 ) -> AsyncGenerator[_App, None]:
     """mdmd:hidden"""
     if environment_name is None:
@@ -306,6 +309,7 @@ async def _run_app(
         environment_name=environment_name or "",
         app_state=app_state,
         interactive=interactive,
+        dev_suffix=dev_suffix,
     )
 
     logs_timeout = config["logs_timeout"]

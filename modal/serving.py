@@ -99,6 +99,7 @@ async def _run_watch_loop(
 async def _serve_app(
     app: "_App",
     import_ref: ImportRef,
+    suffix: str = "",
     *,
     _watcher: Optional[AsyncGenerator[set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
@@ -108,7 +109,7 @@ async def _serve_app(
 
     client = await _Client.from_env()
 
-    async with _run_app(app, client=client, environment_name=environment_name):
+    async with _run_app(app, client=client, dev_suffix=suffix, environment_name=environment_name):
         if _watcher is not None:
             watcher = _watcher  # Only used by tests
         else:

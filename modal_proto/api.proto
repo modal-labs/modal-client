@@ -301,6 +301,7 @@ message AppCreateRequest {
   string description = 2;    // Human readable label for the app
   string environment_name = 5;
   AppState app_state = 6;
+  string dev_suffix = 7;  // Suffix used for ephemeral web endpoints
 }
 
 message AppCreateResponse {

@@ -488,6 +488,7 @@ def serve(
     use_module_mode: bool = typer.Option(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
+    suffix=typer.Option("", help="Suffix applied to web endpoint urls"),
 ):
     """Run a web endpoint(s) associated with a Modal app and hot-reload code.
 
@@ -504,7 +505,7 @@ def serve(
         app.set_description(_get_clean_app_description(app_ref))
 
     with enable_output():
-        with serve_app(app, import_ref, environment_name=env):
+        with serve_app(app, import_ref, suffix=suffix, environment_name=env):
             if timeout is None:
                 timeout = config["serve_timeout"]
             if timeout is None:
