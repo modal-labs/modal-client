@@ -71,6 +71,10 @@ Other possible configuration options are:
   The log formatting pattern that will be used by the modal client itself.
   See https://docs.python.org/3/library/logging.html#logrecord-attributes for available
   log attributes.
+* `dev_suffix` (in the .toml file) / `MODAL_DEV_SUFFIX` (as an env var).
+  Overrides the default `-dev` suffix added to URLs generated for web endpoints
+  when the App is ephemeral (i.e., created via `modal serve`). Must be a short
+  alphanumeric string.
 
 Meta-configuration
 ------------------
@@ -85,6 +89,7 @@ Some "meta-options" are set using environment variables only:
 
 import logging
 import os
+import re
 import typing
 import warnings
 from typing import Any, Callable, Optional
@@ -206,6 +211,12 @@ def _check_value(options: list[str]) -> Callable[[str], str]:
     return checker
 
 
+def _enforce_suffix_rules(x: str) -> str:
+    if x and not re.match(r"^[a-zA-Z0-9]{1,8}$", x):
+        raise ValueError("Suffix must be an alphanumeric string of no more than 8 characters.")
+    return x
+
+
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
@@ -244,6 +255,7 @@ _SETTINGS = {
         "pickle",
         transform=lambda s: _check_value(["pickle", "cbor"])(s.lower()),
     ),
+    "dev_suffix": _Setting("", transform=_enforce_suffix_rules),
 }
 
 
