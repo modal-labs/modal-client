@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.1.dev2 (2025-10-10)
+
+- `modal run --detach ...` will now exit more gracefully if you lose internet connection while your App is running.
+
+
 ### 1.2.0 (2025-10-09)
 
 In this release, we're introducing the concept of "App tags", which are simple key-value metadata that can be included to provide additional organizational context. Tags can be defined as part of the `modal.App` constructor:
