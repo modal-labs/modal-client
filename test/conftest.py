@@ -2648,13 +2648,33 @@ def blob_server_factory():
         return aiohttp.web.Response(body=body)
 
     app = aiohttp.web.Application()
-    app.add_routes([aiohttp.web.put("/upload", upload)])
-    app.add_routes([aiohttp.web.get("/download", download)])
-    app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
+    app.router.add_route("PUT", "/upload", upload)
+    app.router.add_route("GET", "/download", download)
+    app.router.add_route("POST", "/complete_multipart", complete_multipart)
+
+    async def check_expect(request):
+        if request.version != aiohttp.HttpVersion11:
+            return None
+
+        if (expect := request.headers.get("Expect")) != "100-continue":
+            raise aiohttp.web.HTTPExpectationFailed(text=f"Unknown Expect: {expect}")
+
+        location = request.url.with_path("/redirected" + request.url.path)
+        return aiohttp.web.HTTPTemporaryRedirect(location=location)
+
+    async def handle_redirect(request):
+        print("hi")
+        body = await request.read()
+        print(len(body))
+        location = request.url.with_path("/redirected" + request.url.path)
+        print(location)
+        return aiohttp.web.HTTPTemporaryRedirect(location=location)
 
     # API used for volume version 2 blocks:
-    app.add_routes([aiohttp.web.get("/block/{token}", get_block)])
-    app.add_routes([aiohttp.web.put("/block/{token}", put_block)])
+    app.router.add_route("GET", "/block/{token}", handle_redirect, expect_handler=check_expect)
+    app.router.add_route("GET", "/redirected/block/{token}", get_block)
+    app.router.add_route("PUT", "/block/{token}", handle_redirect, expect_handler=check_expect)
+    app.router.add_route("PUT", "/redirected/block/{token}", put_block)
 
     started = threading.Event()
     stop_server = threading.Event()

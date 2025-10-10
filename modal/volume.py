@@ -1250,6 +1250,7 @@ async def _put_missing_blocks(
             with payload.reset_on_error(subtract_progress=True):
                 async with ClientSessionRegistry.get_session().put(
                     missing_block.put_url,
+                    expect100=True,
                     data=payload,
                 ) as response:
                     response.raise_for_status()
