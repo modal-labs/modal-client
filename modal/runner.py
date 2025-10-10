@@ -35,7 +35,7 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .cls import _Cls
 from .config import config, logger
 from .environments import _get_environment_cached
-from .exception import InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
+from .exception import ConnectionError, InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
 from .output import _get_output_manager, enable_output
 from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
@@ -405,6 +405,16 @@ async def _run_app(
                         )
                     )
             return
+        except ConnectionError as e:
+            # If we lose connection to the server after a detached App has started running, it will continue
+            # I think we can only exit "nicely" if we are able to print output though, otherwise we should raise
+            if detach and (output_mgr := _get_output_manager()):
+                output_mgr.print(
+                    "Connection lost, but detached App will continue running: "
+                    f"[magenta]{running_app.app_page_url}[/magenta]"
+                )
+                return
+            raise
         except BaseException as e:
             logger.info("Exception during app run")
             await _status_based_disconnect(client, running_app.app_id, e)
