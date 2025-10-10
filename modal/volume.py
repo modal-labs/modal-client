@@ -673,18 +673,19 @@ class _Volume(_Object, type_prefix="vo"):
         self,
         path: str,
         fileobj: typing.IO[bytes],
+        progress_cb: Optional[Callable[..., Any]] = None,
     ) -> int:
         """mdmd:hidden
         Read volume file into file-like IO object.
         """
-        return await self._read_file_into_fileobj(path, fileobj)
+        return await self._read_file_into_fileobj(path, fileobj, progress_cb=progress_cb)
 
     @live_method
     async def _read_file_into_fileobj(
         self,
         path: str,
         fileobj: typing.IO[bytes],
-        concurrency: int = multiprocessing.cpu_count(),
+        concurrency: Optional[int] = None,
         download_semaphore: Optional[asyncio.Semaphore] = None,
         progress_cb: Optional[Callable[..., Any]] = None,
     ) -> int:
@@ -692,6 +693,9 @@ class _Volume(_Object, type_prefix="vo"):
 
             def progress_cb(*_, **__):
                 pass
+
+        if concurrency is None:
+            concurrency = multiprocessing.cpu_count()
 
         req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
 

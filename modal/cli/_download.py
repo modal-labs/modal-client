@@ -24,13 +24,16 @@ async def _volume_download(
     remote_path: str,
     local_destination: Path,
     overwrite: bool,
-    concurrency: int = max(128, 2 * multiprocessing.cpu_count()),
+    concurrency: Optional[int] = None,
     progress_cb: Optional[Callable] = None,
 ):
     if progress_cb is None:
 
         def progress_cb(*_, **__):
             pass
+
+    if concurrency is None:
+        concurrency = max(128, 2 * multiprocessing.cpu_count())
 
     is_pipe = local_destination == PIPE_PATH
 
