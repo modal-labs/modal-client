@@ -2,7 +2,7 @@
 import inspect
 import typing
 from collections.abc import AsyncGenerator, Collection, Coroutine, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
@@ -119,15 +119,15 @@ class _FunctionDecoratorType:
 class _LocalAppState:
     """All state for apps that's part of the local/definition state"""
 
-    functions: dict[str, _Function] = field(default_factory=dict)
-    classes: dict[str, _Cls] = field(default_factory=dict)
-    image: Optional[_Image] = None
-    secrets: Sequence[_Secret] = field(default_factory=list)
-    volumes: dict[Union[str, PurePosixPath], _Volume] = field(default_factory=dict)
-    web_endpoints: list[str] = field(default_factory=list)  # Used by the CLI
-    local_entrypoints: dict[str, _LocalEntrypoint] = field(default_factory=dict)
-    tags: dict[str, str] = field(default_factory=dict)
-    include_source_default: bool = True
+    functions: dict[str, _Function]
+    classes: dict[str, _Cls]
+    image: Optional[_Image]
+    secrets: Sequence[_Secret]
+    volumes: dict[Union[str, PurePosixPath], _Volume]
+    web_endpoints: list[str]  # Used by the CLI
+    local_entrypoints: dict[str, _LocalEntrypoint]
+    tags: dict[str, str]
+    include_source_default: bool
 
 
 class _App:
@@ -217,10 +217,14 @@ class _App:
             raise InvalidError("`image=` has to be a `modal.Image` object")
 
         self._local_state = _LocalAppState(
-            include_source_default=include_source,
+            functions={},
+            classes={},
             image=image,
             secrets=secrets,
             volumes=volumes,
+            include_source_default=include_source,
+            web_endpoints=[],
+            local_entrypoints={},
             tags=tags or {},
         )
 
@@ -1086,6 +1090,11 @@ class _App:
             self._add_function(cls_func, is_web_endpoint=False)
 
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
+            for method_name, partial_function in cls._method_partials.items():
+                if partial_function.params.webhook_config is not None:
+                    full_name = f"{user_cls.__name__}.{method_name}"
+                    self._local_state.web_endpoints.append(full_name)
+                partial_function.registered = True
 
             tag: str = user_cls.__name__
             self._add_class(tag, cls)

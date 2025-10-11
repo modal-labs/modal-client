@@ -43,7 +43,7 @@ from .secret import _Secret
 from .stream_type import StreamType
 
 if TYPE_CHECKING:
-    from .app import _App, _LocalAppState
+    import modal.app
 
 
 V = TypeVar("V")
@@ -124,7 +124,7 @@ async def _init_local_app_from_name(
 async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
-    local_app_state: "_LocalAppState",
+    local_app_state: "modal.app._LocalAppState",
     environment_name: str,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
@@ -179,7 +179,7 @@ async def _publish_app(
     client: _Client,
     running_app: RunningApp,
     app_state: int,  # api_pb2.AppState.value
-    app_local_state: "_LocalAppState",
+    app_local_state: "modal.app._LocalAppState",
     name: str = "",
     deployment_tag: str = "",  # Only relevant for deployments
     commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
@@ -255,13 +255,13 @@ async def _status_based_disconnect(client: _Client, app_id: str, exc_info: Optio
 
 @asynccontextmanager
 async def _run_app(
-    app: "_App",
+    app: "modal.app._App",
     *,
     client: Optional[_Client] = None,
     detach: bool = False,
     environment_name: Optional[str] = None,
     interactive: bool = False,
-) -> AsyncGenerator["_App", None]:
+) -> AsyncGenerator["modal.app._App", None]:
     """mdmd:hidden"""
     if environment_name is None:
         environment_name = typing.cast(str, config.get("environment"))
@@ -434,7 +434,7 @@ async def _run_app(
 
 
 async def _serve_update(
-    app: "_App",
+    app: "modal.app._App",
     existing_app_id: str,
     is_ready: Event,
     environment_name: str,
@@ -479,7 +479,7 @@ class DeployResult:
 
 
 async def _deploy_app(
-    app: "_App",
+    app: "modal.app._App",
     name: Optional[str] = None,
     namespace: Any = None,  # mdmd:line-hidden
     client: Optional[_Client] = None,
@@ -574,7 +574,7 @@ async def _deploy_app(
 
 
 async def _interactive_shell(
-    _app: "_App", cmds: list[str], environment_name: str = "", pty: bool = True, **kwargs: Any
+    _app: "modal.app._App", cmds: list[str], environment_name: str = "", pty: bool = True, **kwargs: Any
 ) -> None:
     """Run an interactive shell (like `bash`) within the image for this app.
 
