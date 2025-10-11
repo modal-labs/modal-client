@@ -580,11 +580,11 @@ More information on class parameterization can be found here: https://modal.com/
         method_partials: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.interface_flags()
         )
-
+        local_app_state = app._get_local_state()
         for method_name, partial_function in method_partials.items():
             if partial_function.params.webhook_config is not None:
                 full_name = f"{user_cls.__name__}.{method_name}"
-                app._web_endpoints.append(full_name)
+                local_app_state.web_endpoints.append(full_name)
             partial_function.registered = True
 
         # Disable the warning that lifecycle methods are not wrapped
