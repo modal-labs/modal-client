@@ -912,7 +912,7 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError("App has not been initialized yet. Use the content manager `app.run()` or `App.lookup`")
 
         app_id = app.app_id
-        app_client = app._client or await _Client.from_env()
+        app_client = app._deferred_client.get()
 
         resolver = Resolver(app_client, app_id=app_id)
         await resolver.load(self)

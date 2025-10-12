@@ -292,6 +292,7 @@ async def _run_app(
 
     if client is None:
         client = await _Client.from_env()
+    app._deferred_client.set(client)
 
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
 
@@ -445,7 +446,7 @@ async def _serve_update(
 ) -> None:
     """mdmd:hidden"""
     # Used by child process to reinitialize a served app
-    client = await _Client.from_env()
+    client = app._deferred_client.get()
     try:
         running_app: RunningApp = await _init_local_app_existing(client, existing_app_id, environment_name)
 
@@ -524,6 +525,8 @@ async def _deploy_app(
 
     if client is None:
         client = await _Client.from_env()
+
+    app._deferred_client.set(client)
 
     t0 = time.time()
 

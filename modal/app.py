@@ -114,6 +114,30 @@ class _FunctionDecoratorType:
     def __call__(self, func): ...
 
 
+class _DeferredClient:
+    """A client reference that is passable by reference before it's initialized.
+
+    This means this object can be passed from an App to all of its functions etc.
+    and have the information propagate once the *app* gets a proper client assigned
+    at a later point in its lifecycle (e.g. during App.run)"""
+
+    _client: Optional[_Client] = None
+
+    def get(self) -> _Client:
+        if not self._client:
+            raise ValueError("Client not initialized")
+
+        return self._client
+
+    def set(self, client: _Client) -> None:
+        self._client = client
+
+    def is_set(self) -> bool:
+        # typically shouldn't be needed, in most cases we should be able to
+        # assume the client *is* set when we use it
+        return self._client is not None
+
+
 class _App:
     """A Modal App is a group of functions and classes that are deployed together.
 
@@ -161,13 +185,15 @@ class _App:
     _volumes: dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: list[str]  # Used by the CLI
     _local_entrypoints: dict[str, _LocalEntrypoint]
+    _include_source_default: Optional[bool] = None
 
     # Running apps only (container apps or running local)
     _app_id: Optional[str]  # Kept after app finishes
     _running_app: Optional[RunningApp]  # Various app info
-    _client: Optional[_Client]
 
-    _include_source_default: Optional[bool] = None
+    # client is special - the *deferred* client is always available,
+    # but it will only resolve to a real client after the app has started running
+    _deferred_client: _DeferredClient
 
     def __init__(
         self,
@@ -188,6 +214,8 @@ class _App:
         app = modal.App(image=image, secrets=[secret], volumes={"/mnt/data": volume})
         ```
         """
+        self._deferred_client = _DeferredClient()
+
         if name is not None and not isinstance(name, str):
             raise InvalidError("Invalid value for `name`: Must be string.")
 
@@ -215,7 +243,6 @@ class _App:
 
         self._app_id = None
         self._running_app = None  # Set inside container, OR during the time an app is running locally
-        self._client = None
 
         # Register this app. This is used to look up the app in the container, when we can't get it from the function
         _App._all_apps.setdefault(self._name, []).append(self)
@@ -285,7 +312,7 @@ class _App:
 
         app = _App(name)
         app._app_id = response.app_id
-        app._client = client
+        app._deferred_client.set(client)
         app._running_app = RunningApp(response.app_id, interactive=False)
         return app
 
@@ -328,12 +355,12 @@ class _App:
     async def _set_local_app(self, client: _Client, running_app: RunningApp) -> AsyncGenerator[None, None]:
         self._app_id = running_app.app_id
         self._running_app = running_app
-        self._client = client
+        self._deferred_client.set(client)
         try:
             yield
         finally:
             self._running_app = None
-            self._client = None
+            self._deferred_client.set(None)
             self._uncreate_all_objects()
 
     @asynccontextmanager
@@ -493,7 +520,7 @@ class _App:
             if function.tag in self._running_app.function_ids:
                 object_id: str = self._running_app.function_ids[function.tag]
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
-                function._hydrate(object_id, self._client, metadata)
+                function._hydrate(object_id, self._deferred_client.get(), metadata)
 
         self._functions[function.tag] = function
         if is_web_endpoint:
@@ -506,14 +533,14 @@ class _App:
             if tag in self._running_app.class_ids:
                 object_id: str = self._running_app.class_ids[tag]
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
-                cls._hydrate(object_id, self._client, metadata)
+                cls._hydrate(object_id, self._deferred_client.get(), metadata)
 
         self._classes[tag] = cls
 
     def _init_container(self, client: _Client, running_app: RunningApp):
         self._app_id = running_app.app_id
         self._running_app = running_app
-        self._client = client
+        self._deferred_client.set(client)
 
         _App._container_app = self
 
@@ -1143,7 +1170,10 @@ class _App:
         check_tag_dict(tags)
         req = api_pb2.AppSetTagsRequest(app_id=self._app_id, tags=tags)
 
-        client = client or self._client or await _Client.from_env()
+        if not client:
+            # TODO: deprecate explicit client use here
+            client = self._deferred_client.get()
+
         await retry_transient_errors(client.stub.AppSetTags, req)
 
     async def get_tags(self, *, client: Optional[_Client] = None) -> dict[str, str]:
@@ -1151,7 +1181,7 @@ class _App:
         if self._app_id is None:
             raise InvalidError("`App.get_tags` cannot be called before the App is running.")
         req = api_pb2.AppGetTagsRequest(app_id=self._app_id)
-        client = client or self._client or await _Client.from_env()
+        client = self._deferred_client.get()  # this should never fail if the app is running!
         resp = await retry_transient_errors(client.stub.AppGetTags, req)
         return dict(resp.tags)
 
@@ -1163,7 +1193,9 @@ class _App:
         if not self._app_id:
             raise InvalidError("`app._logs` requires a running/stopped app.")
 
-        client = client or self._client or await _Client.from_env()
+        # if not client:
+        #     # TODO: deprecate explicit client use here
+        #     client = self._deferred_client.get()  # this should never fail if the app is running!
 
         last_log_batch_entry_id: Optional[str] = None
         while True:

@@ -510,7 +510,7 @@ def test_app_set_tags(servicer, client):
 
     tags = {"x": "1", "y": "2"}
     with servicer.intercept() as ctx:
-        app.set_tags(tags, client=client)
+        app.set_tags(tags)
 
     request = ctx.pop_request("AppSetTags")
     assert request.tags == tags

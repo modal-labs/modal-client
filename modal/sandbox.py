@@ -492,10 +492,10 @@ class _Sandbox(_Object, type_prefix="sb"):
                 )
 
             app_id = app.app_id
-            app_client = app._client
+            app_client = app._deferred_client.get()
         elif (container_app := _App._get_container_app()) is not None:
             app_id = container_app.app_id
-            app_client = container_app._client
+            app_client = container_app._deferred_client.get()
         else:
             raise InvalidError(
                 "Sandboxes require an App when created outside of a Modal container.\n\n"
