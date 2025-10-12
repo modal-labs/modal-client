@@ -4,7 +4,7 @@ import platform
 from collections.abc import AsyncGenerator
 from multiprocessing.context import SpawnProcess
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Optional, TypeVar
+from typing import TYPE_CHECKING, Optional
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -14,15 +14,13 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.logger import logger
 from ._watcher import watch
 from .cli.import_refs import ImportRef, import_app_from_ref
-from .client import _Client
 from .config import config
 from .output import _get_output_manager, enable_output
 from .runner import _run_app, serve_update
 
 if TYPE_CHECKING:
-    from .app import _App
-else:
-    _App = TypeVar("_App")
+    import modal.app
+    import modal.client
 
 
 def _run_serve(
@@ -97,18 +95,18 @@ async def _run_watch_loop(
 
 @asynccontextmanager
 async def _serve_app(
-    app: "_App",
+    app: "modal.app._App",
     import_ref: ImportRef,
     *,
     _watcher: Optional[AsyncGenerator[set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
-) -> AsyncGenerator["_App", None]:
+    client: Optional["modal.client._Client"] = None,
+) -> AsyncGenerator["modal.app._App", None]:
+    # TODO: add optional client arg?
     if environment_name is None:
         environment_name = config.get("environment")
 
-    client = await _Client.from_env()
-
-    async with _run_app(app, client=client, environment_name=environment_name):
+    async with _run_app(app, environment_name=environment_name):
         if _watcher is not None:
             watcher = _watcher  # Only used by tests
         else:
