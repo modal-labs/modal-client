@@ -446,7 +446,10 @@ async def _serve_update(
 ) -> None:
     """mdmd:hidden"""
     # Used by child process to reinitialize a served app
-    client = app._deferred_client.get()
+
+    # Note that we have to use the env client here because this is run in a child process
+    # TODO: add a away to send a client config to child processes through some Config.as_dict/from_dict method
+    client = await modal.client._Client.from_env()
     try:
         running_app: RunningApp = await _init_local_app_existing(client, existing_app_id, environment_name)
 

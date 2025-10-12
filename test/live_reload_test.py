@@ -38,7 +38,7 @@ async def test_live_reload_with_logs(import_ref, server_url_env, token_env, serv
 
 
 @skip_windows("live-reload not supported on windows")
-def test_file_changes_trigger_reloads(import_ref, server_url_env, token_env, servicer, capfd):
+def test_file_changes_trigger_reloads(import_ref, server_url_env, token_env, servicer, capfd, client):
     watcher_done = threading.Event()
 
     async def fake_watch():
@@ -46,7 +46,7 @@ def test_file_changes_trigger_reloads(import_ref, server_url_env, token_env, ser
             yield {"/some/file"}
         watcher_done.set()
 
-    with serve_app(app, import_ref, _watcher=fake_watch()):
+    with serve_app(app, import_ref, _watcher=fake_watch(), client=client):
         watcher_done.wait()  # wait until watcher loop is done
         foo: Function = app.registered_functions["foo"]
         assert foo.get_web_url().startswith("http://")

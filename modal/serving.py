@@ -106,7 +106,7 @@ async def _serve_app(
     if environment_name is None:
         environment_name = config.get("environment")
 
-    async with _run_app(app, environment_name=environment_name):
+    async with _run_app(app, environment_name=environment_name, client=client):
         if _watcher is not None:
             watcher = _watcher  # Only used by tests
         else:
