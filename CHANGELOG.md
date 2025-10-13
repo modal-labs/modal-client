@@ -38,10 +38,10 @@ Other new features and improvements:
   creds = sb.create_connect_token(user_metadata={"user_id": "user123"})
 
   # Make an http request, passing the token in the authorization header
-  requests.get(creds.url, headers={"authorization": f"bearer {creds.token}"})
+  requests.get(creds.url, headers={"Authorization": f"Bearer {creds.token}"})
   ```
 
-  See the [Sandbox guide](https://modal.com/docs/guide/sandbox) for more information.
+  See the [Sandbox Networking guide](https://modal.com/docs/guide/sandbox-networking) for more information.
 
 - The new `modal.Image.build()` method allows you to eagerly trigger an Image build. This is particularly helpful when working with Sandboxes, as otherwise the Image build would happen lazily inside `modal.Sandbox.create()`:
 
