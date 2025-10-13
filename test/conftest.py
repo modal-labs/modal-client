@@ -2657,11 +2657,12 @@ def blob_server_factory():
         if request.version != aiohttp.HttpVersion11:
             return None
 
-        if (expect := request.headers.get("Expect")) != "100-continue":
-            raise aiohttp.web.HTTPExpectationFailed(text=f"Unknown Expect: {expect}")
-
-        location = request.url.with_path("/redirected" + request.url.path)
-        return aiohttp.web.HTTPTemporaryRedirect(location=location)
+        expect = request.headers.get("Expect")
+        if expect.lower() == "100-continue":
+            location = request.url.with_path("/redirected" + request.url.path)
+            raise aiohttp.web.HTTPTemporaryRedirect(location)
+        else:
+            raise aiohttp.web.HTTPExpectationFailed(text="unknown expect")
 
     async def handle_redirect(request):
         print("hi")
@@ -2669,7 +2670,7 @@ def blob_server_factory():
         print(len(body))
         location = request.url.with_path("/redirected" + request.url.path)
         print(location)
-        return aiohttp.web.HTTPTemporaryRedirect(location=location)
+        raise aiohttp.web.HTTPTemporaryRedirect(location)
 
     # API used for volume version 2 blocks:
     app.add_routes([aiohttp.web.get("/block/{token}", handle_redirect)])
