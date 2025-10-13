@@ -64,7 +64,9 @@ async def run_temporary_http_server(app: "Application"):
     port = sock.getsockname()[1]
     host = f"http://127.0.0.1:{port}"
 
-    runner = AppRunner(app)
+    # TODO: wtf
+    # https://github.com/aio-libs/aiohttp/blob/master/aiohttp/_http_parser.pyx#L810-L810
+    runner = AppRunner(app, shutdown_timeout=4)
     await runner.setup()
     site = SockSite(runner, sock=sock)
     await site.start()
