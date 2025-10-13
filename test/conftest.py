@@ -2570,6 +2570,7 @@ def blob_server_factory():
     files_sha2data: dict[str, dict] = {}
 
     async def upload(request):
+        print("*** UPLOAD")
         blob_id = request.query["blob_id"]
         content = await request.content.read()
         if content == b"FAILURE":
@@ -2584,6 +2585,7 @@ def blob_server_factory():
         return aiohttp.web.Response(text="Hello, world", headers={"ETag": etag})
 
     async def complete_multipart(request):
+        print("*** COMPLETE_MULTIPART")
         blob_id = request.query["blob_id"]
         blob_nums = range(min(blob_parts[blob_id].keys()), max(blob_parts[blob_id].keys()) + 1)
         content = b""
@@ -2599,32 +2601,42 @@ def blob_server_factory():
         return aiohttp.web.Response(text=f"<etag>{etag}</etag>")
 
     async def download(request):
+        print("*** DOWNLOAD")
         blob_id = request.query["blob_id"]
         if blob_id == "bl-failure":
             return aiohttp.web.Response(status=500)
         return aiohttp.web.Response(body=blobs[blob_id])
 
     async def put_block(request):
+        print("*** PUT BLOCK")
         token = request.match_info["token"]
+        # content = await request.content.read()
         if token != "test-put-request":
+            print("*** PUT BAD TOKEN", token)
             return aiohttp.web.Response(status=400, text="bad token")
 
+        print("*** PUT BLOCK: READING CONTENT..")
         content = await request.content.read()
+        print("*** PUT BLOCK: CONTENT READ")
         if content == b"FAILURE":
             return aiohttp.web.Response(status=500, text="simulated server error")
 
         if len(content) > BLOCK_SIZE:
+            print("*** PUT BLOCK: BLOCK TOO BIG")
             return aiohttp.web.Response(status=413, text="block too big")
 
         block_id = hashlib.sha256(content).hexdigest()
         blocks[block_id] = content
+        print("*** PUT BLOCK: HASHED")
         return aiohttp.web.Response(text=f"test-put-response:{block_id}")
 
     async def get_block(request):
+        print("*** GET BLOCK")
         token = request.match_info["token"]
 
         magic, version, *rest = token.split(":")
         if magic != "test-get-request":
+            print("*** GET BAD TOKEN", magic)
             return aiohttp.web.Response(status=400, text="bad token")
 
         if version == "v1":
@@ -2653,8 +2665,10 @@ def blob_server_factory():
     app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
 
     async def expect_handler(request):
+        print("*** expect_handler")
 
         if request.version != aiohttp.HttpVersion11:
+            print("*** not http1.1")
             return None
 
         expect = request.headers.get("Expect")
@@ -2666,6 +2680,7 @@ def blob_server_factory():
 
     async def handle_redirect(request):
         location = request.url.with_path("/redirected" + request.url.path)
+        # await request.content.read()
         raise aiohttp.web.HTTPTemporaryRedirect(location)
 
     # API used for volume version 2 blocks:
@@ -2688,8 +2703,11 @@ def blob_server_factory():
                 host = _host
                 started.set()
                 await loop.run_in_executor(None, stop_server.wait)
+                print("*** ending temporary")
 
         loop.run_until_complete(async_main())
+
+        print("*** LOOP DONE")
 
         # clean up event loop
         loop.run_until_complete(loop.shutdown_asyncgens())
@@ -2703,6 +2721,7 @@ def blob_server_factory():
     try:
         yield host, blobs, blocks, files_sha2data
     finally:
+        print("*** stop server set")
         stop_server.set()
         thread.join()
 

@@ -489,7 +489,9 @@ def on_shutdown(coro):
         try:
             await asyncio.sleep(1e10)  # never awake except for exceptions
         finally:
+            print("*** on_shutdown")
             await coro
+            print("*** on_shutdown RAISE")
             raise
 
     _shutdown_tasks.append(asyncio.create_task(wrapper()))

@@ -1248,6 +1248,7 @@ async def _put_missing_blocks(
         @retry(n_attempts=1)  # 5, base_delay=0.5, timeout=None)
         async def put_missing_block_attempt(payload: BytesIOSegmentPayload) -> bytes:
             with payload.reset_on_error(subtract_progress=True):
+                print("*** PUT URL", missing_block.put_url)
                 async with ClientSessionRegistry.get_session().put(
                     missing_block.put_url,
                     expect100=True,
