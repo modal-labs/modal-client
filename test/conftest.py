@@ -2665,11 +2665,7 @@ def blob_server_factory():
             raise aiohttp.web.HTTPExpectationFailed(text="unknown expect")
 
     async def handle_redirect(request):
-        print("hi")
-        body = await request.read()
-        print(len(body))
         location = request.url.with_path("/redirected" + request.url.path)
-        print(location)
         raise aiohttp.web.HTTPTemporaryRedirect(location)
 
     # API used for volume version 2 blocks:
