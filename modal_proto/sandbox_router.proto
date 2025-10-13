@@ -55,10 +55,6 @@ message SandboxExecStartRequest {
   string task_id = 1;
   // Execution ID. This ID will be used to identify the execution for other
   // requests and ensure exec commands are idempotent.
-  //
-  // TODO(saltzm): Could instead have a separate idempotency key from the exec_id
-  // like present day, and have the server generate the exec_id and return it in
-  // the ExecStartResponse.
   string exec_id = 2;
   // Command arguments to execute.
   repeated string command_args= 3;

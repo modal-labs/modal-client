@@ -42,6 +42,10 @@ class SandboxTimeoutError(TimeoutError):
     """Raised when a Sandbox exceeds its execution duration limit and times out."""
 
 
+class ExecTimeoutError(TimeoutError):
+    """Raised when a container process exceeds its execution duration limit and times out."""
+
+
 class SandboxTerminatedError(Error):
     """Raised when a Sandbox is terminated for an internal reason."""
 
