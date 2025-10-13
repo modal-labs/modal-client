@@ -302,7 +302,8 @@ class _App:
 
         response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
 
-        app = _App(name)
+        app = _App(name)  # TODO: this should probably be a distinct constructor, possibly even a distinct type
+        app._local_state = None  # this is not a locally defined App, so no local state
         app._app_id = response.app_id
         app._client = client
         app._running_app = RunningApp(response.app_id, interactive=False)
@@ -329,18 +330,19 @@ class _App:
         App that is retrieved via `modal.App.lookup`. It is likely to be deprecated in the future.
 
         """
-        return self._local_state.image
+        return self._get_local_state().image
 
     @image.setter
     def image(self, value):
         """mdmd:hidden"""
-        self._local_state.image = value
+        self._get_local_state().image = value
 
     def _uncreate_all_objects(self):
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
-        for obj in self._local_state.functions.values():
+        local_state = self._get_local_state()
+        for obj in local_state.functions.values():
             obj._unhydrate()
-        for obj in self._local_state.classes.values():
+        for obj in local_state.classes.values():
             obj._unhydrate()
 
     @asynccontextmanager
@@ -476,8 +478,9 @@ class _App:
         return self
 
     def _get_default_image(self):
-        if self._local_state.image:
-            return self._local_state.image
+        local_state = self._get_local_state()
+        if local_state.image:
+            return local_state.image
         else:
             return _default_image
 
@@ -492,7 +495,8 @@ class _App:
         return [m for m in all_mounts if m.is_local()]
 
     def _add_function(self, function: _Function, is_web_endpoint: bool):
-        if old_function := self._local_state.functions.get(function.tag, None):
+        local_state = self._get_local_state()
+        if old_function := local_state.functions.get(function.tag, None):
             if old_function is function:
                 return  # already added the same exact instance, ignore
 
@@ -503,7 +507,7 @@ class _App:
                     f"[{old_function._info.module_name}].{old_function._info.function_name}"
                     f" with new function [{function._info.module_name}].{function._info.function_name}"
                 )
-        if function.tag in self._local_state.classes:
+        if function.tag in local_state.classes:
             logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
 
         if self._running_app:
@@ -514,9 +518,9 @@ class _App:
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 function._hydrate(object_id, self._client, metadata)
 
-        self._local_state.functions[function.tag] = function
+        local_state.functions[function.tag] = function
         if is_web_endpoint:
-            self._local_state.web_endpoints.append(function.tag)
+            local_state.web_endpoints.append(function.tag)
 
     def _add_class(self, tag: str, cls: _Cls):
         if self._running_app:
@@ -527,7 +531,7 @@ class _App:
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 cls._hydrate(object_id, self._client, metadata)
 
-        self._local_state.classes[tag] = cls
+        self._get_local_state().classes[tag] = cls
 
     def _init_container(self, client: _Client, running_app: RunningApp):
         self._app_id = running_app.app_id
@@ -535,18 +539,18 @@ class _App:
         self._client = client
 
         _App._container_app = self
-
+        local_state = self._get_local_state()
         # Hydrate function objects
         for tag, object_id in running_app.function_ids.items():
-            if tag in self._local_state.functions:
-                obj = self._local_state.functions[tag]
+            if tag in local_state.functions:
+                obj = local_state.functions[tag]
                 handle_metadata = running_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, client, handle_metadata)
 
         # Hydrate class objects
         for tag, object_id in running_app.class_ids.items():
-            if tag in self._local_state.classes:
-                obj = self._local_state.classes[tag]
+            if tag in local_state.classes:
+                obj = local_state.classes[tag]
                 handle_metadata = running_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, client, handle_metadata)
 
@@ -560,7 +564,7 @@ class _App:
         This method is likely to be deprecated in the future in favor of a different
         approach for retrieving the layout of a deployed App.
         """
-        return self._local_state.functions
+        return self._get_local_state().functions
 
     @property
     def registered_classes(self) -> dict[str, _Cls]:
@@ -572,7 +576,7 @@ class _App:
         This method is likely to be deprecated in the future in favor of a different
         approach for retrieving the layout of a deployed App.
         """
-        return self._local_state.classes
+        return self._get_local_state().classes
 
     @property
     def registered_entrypoints(self) -> dict[str, _LocalEntrypoint]:
@@ -583,7 +587,7 @@ class _App:
         expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
         This method is likely to be deprecated in the future.
         """
-        return self._local_state.local_entrypoints
+        return self._get_local_state().local_entrypoints
 
     @property
     def registered_web_endpoints(self) -> list[str]:
@@ -595,7 +599,7 @@ class _App:
         This method is likely to be deprecated in the future in favor of a different
         approach for retrieving the layout of a deployed App.
         """
-        return self._local_state.web_endpoints
+        return self._get_local_state().web_endpoints
 
     def local_entrypoint(
         self, _warn_parentheses_missing: Any = None, *, name: Optional[str] = None
@@ -656,10 +660,11 @@ class _App:
         def wrapped(raw_f: Callable[..., Any]) -> _LocalEntrypoint:
             info = FunctionInfo(raw_f)
             tag = name if name is not None else raw_f.__qualname__
-            if tag in self._local_state.local_entrypoints:
+            local_state = self._get_local_state()
+            if tag in local_state.local_entrypoints:
                 # TODO: get rid of this limitation.
                 raise InvalidError(f"Duplicate local entrypoint name: {tag}. Local entrypoint names must be unique.")
-            entrypoint = self._local_state.local_entrypoints[tag] = _LocalEntrypoint(info, self)
+            entrypoint = local_state.local_entrypoints[tag] = _LocalEntrypoint(info, self)
             return entrypoint
 
         return wrapped
@@ -751,7 +756,8 @@ class _App:
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
-        secrets = [*self._local_state.secrets, *secrets]
+        local_state = self._get_local_state()
+        secrets = [*local_state.secrets, *secrets]
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
@@ -859,7 +865,7 @@ class _App:
                 is_generator=is_generator,
                 gpu=gpu,
                 network_file_systems=network_file_systems,
-                volumes={**self._local_state.volumes, **volumes},
+                volumes={**local_state.volumes, **volumes},
                 cpu=cpu,
                 memory=memory,
                 ephemeral_disk=ephemeral_disk,
@@ -885,9 +891,7 @@ class _App:
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
                 rdma=rdma,
-                include_source=include_source
-                if include_source is not None
-                else self._local_state.include_source_default,
+                include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 restrict_output=_experimental_restrict_output,
@@ -984,6 +988,7 @@ class _App:
             secrets = [*secrets, _Secret.from_dict(env)]
 
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
+            local_state = self._get_local_state()
             # Check if the decorated object is a class
             if isinstance(wrapped_cls, _PartialFunction):
                 wrapped_cls.registered = True
@@ -1050,10 +1055,10 @@ class _App:
                 info,
                 app=self,
                 image=image or self._get_default_image(),
-                secrets=[*self._local_state.secrets, *secrets],
+                secrets=[*local_state.secrets, *secrets],
                 gpu=gpu,
                 network_file_systems=network_file_systems,
-                volumes={**self._local_state.volumes, **volumes},
+                volumes={**local_state.volumes, **volumes},
                 cpu=cpu,
                 memory=memory,
                 ephemeral_disk=ephemeral_disk,
@@ -1078,9 +1083,7 @@ class _App:
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
                 rdma=rdma,
-                include_source=include_source
-                if include_source is not None
-                else self._local_state.include_source_default,
+                include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
@@ -1093,7 +1096,7 @@ class _App:
             for method_name, partial_function in cls._method_partials.items():
                 if partial_function.params.webhook_config is not None:
                     full_name = f"{user_cls.__name__}.{method_name}"
-                    self._local_state.web_endpoints.append(full_name)
+                    local_state.web_endpoints.append(full_name)
                 partial_function.registered = True
 
             tag: str = user_cls.__name__
@@ -1131,11 +1134,13 @@ class _App:
 
         """
         other_app_local_state = other_app._get_local_state()
+        this_local_state = self._get_local_state()
+
         for tag, function in other_app_local_state.functions.items():
             self._add_function(function, False)  # TODO(erikbern): webhook config?
 
         for tag, cls in other_app_local_state.classes.items():
-            existing_cls = self._local_state.classes.get(tag)
+            existing_cls = this_local_state.classes.get(tag)
             if existing_cls and existing_cls != cls:
                 logger.warning(
                     f"Named app class {tag} with existing value {existing_cls} is being "
@@ -1145,7 +1150,7 @@ class _App:
             self._add_class(tag, cls)
 
         if inherit_tags:
-            self._local_state.tags = {**other_app_local_state.tags, **self._local_state.tags}
+            this_local_state.tags = {**other_app_local_state.tags, **this_local_state.tags}
 
         return self
 
@@ -1161,7 +1166,7 @@ class _App:
 
         """
         # Note that we are requiring the App to be "running" before we set the tags.
-        # Alternatively, we could hold onto the tags (i.e. in `self._local_state.tags`) and then pass
+        # Alternatively, we could hold onto the tags (i.e. in `self._get_local_state().tags`) and then pass
         # then up when AppPublish gets called. I'm not certain we want to support it, though.
         # It might not be obvious to users that `.set_tags()` is eager and has immediate effect
         # when the App is running, but lazy (and potentially ignored) otherwise. There would be
