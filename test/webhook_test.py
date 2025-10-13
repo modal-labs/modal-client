@@ -218,3 +218,24 @@ def test_positional_method(servicer, client):
         asgi_app("baz")
     with pytest.raises(InvalidError, match="label="):
         wsgi_app("baz")
+
+
+@pytest.mark.asyncio
+async def test_dev_suffix(servicer, client, modal_config):
+    modal_toml = """
+    [default]
+    dev_suffix = "test"
+    """
+    with modal_config(modal_toml):
+        app = modal.App()
+
+        @app.function(serialized=True)
+        @fastapi_endpoint()
+        async def f(x): ...
+
+        with servicer.intercept() as ctx:
+            async with app.run(client=client):
+                ...
+
+            request = ctx.pop_request("FunctionCreate")
+            assert request.function.webhook_config.ephemeral_suffix == "test"

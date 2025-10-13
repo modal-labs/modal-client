@@ -3575,7 +3575,6 @@ message WebhookConfig {
   string ephemeral_suffix = 11;  // Additional URL suffix added for ephemeral Apps
 }
 
-
 message WorkspaceBillingReportItem {
   string object_id = 1;
   string description = 2;
