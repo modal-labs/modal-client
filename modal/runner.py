@@ -351,6 +351,14 @@ async def _run_app(
             await _status_based_disconnect(client, running_app.app_id, e)
             raise
 
+        detached_disconnect_msg = (
+            "The detached App will keep running. You can track its progress on the Dashboard: "
+            f"[magenta underline]{running_app.app_page_url}[/magenta underline]"
+            "\n"
+            f"\nStream logs: [green]modal app logs {running_app.app_id}[/green]"
+            f"\nStop the App: [green]modal app stop {running_app.app_id}[/green]"
+        )
+
         try:
             # Show logs from dynamically created images.
             # TODO: better way to do this
@@ -373,11 +381,7 @@ async def _run_app(
             if detach:
                 if output_mgr := _get_output_manager():
                     output_mgr.print(output_mgr.step_completed("Shutting down Modal client."))
-                    output_mgr.print(
-                        "The detached app keeps running. You can track its progress at: "
-                        f"[magenta]{running_app.app_page_url}[/magenta]"
-                        ""
-                    )
+                    output_mgr.print(detached_disconnect_msg)
                 if logs_loop:
                     logs_loop.cancel()
                 await _status_based_disconnect(client, running_app.app_id, e)
@@ -405,10 +409,8 @@ async def _run_app(
             # If we lose connection to the server after a detached App has started running, it will continue
             # I think we can only exit "nicely" if we are able to print output though, otherwise we should raise
             if detach and (output_mgr := _get_output_manager()):
-                output_mgr.print(
-                    "Connection lost, but detached App will continue running: "
-                    f"[magenta]{running_app.app_page_url}[/magenta]"
-                )
+                output_mgr.print(":white_exclamation_mark: Connection lost!")
+                output_mgr.print(detached_disconnect_msg)
                 return
             raise
         except BaseException as e:

@@ -19,7 +19,7 @@ from ._functions import _Function
 from ._utils.async_utils import synchronizer
 from ._utils.deprecation import deprecation_warning
 from ._utils.function_utils import callable_has_non_self_params
-from .config import logger
+from .config import config, logger
 from .exception import InvalidError
 
 MAX_MAX_BATCH_SIZE = 1000
@@ -378,6 +378,7 @@ def _fastapi_endpoint(
         method=method,
         web_endpoint_docs=docs,
         requested_suffix=label or "",
+        ephemeral_suffix=config.get("dev_suffix"),
         async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
         custom_domains=_parse_custom_domains(custom_domains),
         requires_proxy_auth=requires_proxy_auth,
@@ -446,6 +447,7 @@ def _web_endpoint(
         method=method,
         web_endpoint_docs=docs,
         requested_suffix=label or "",
+        ephemeral_suffix=config.get("dev_suffix"),
         async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
         custom_domains=_parse_custom_domains(custom_domains),
         requires_proxy_auth=requires_proxy_auth,
@@ -505,6 +507,7 @@ def _asgi_app(
     webhook_config = api_pb2.WebhookConfig(
         type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
         requested_suffix=label or "",
+        ephemeral_suffix=config.get("dev_suffix"),
         async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
         custom_domains=_parse_custom_domains(custom_domains),
         requires_proxy_auth=requires_proxy_auth,
@@ -562,6 +565,7 @@ def _wsgi_app(
     webhook_config = api_pb2.WebhookConfig(
         type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
         requested_suffix=label or "",
+        ephemeral_suffix=config.get("dev_suffix"),
         async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
         custom_domains=_parse_custom_domains(custom_domains),
         requires_proxy_auth=requires_proxy_auth,
@@ -623,6 +627,7 @@ def _web_server(
     webhook_config = api_pb2.WebhookConfig(
         type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
         requested_suffix=label or "",
+        ephemeral_suffix=config.get("dev_suffix"),
         async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
         custom_domains=_parse_custom_domains(custom_domains),
         web_server_port=port,
