@@ -663,6 +663,12 @@ message AutoscalerSettings {
   reserved 6;
 }
 
+message FlashAutoscalerSettings {
+  optional uint32 scale_up_stabilization_window_seconds = 1;
+  optional uint32 scale_down_stabilization_window_seconds = 2;
+  optional float target_metric_value = 3;
+}
+
 // Used for flash autoscaling
 message AutoscalingMetrics {
   double cpu_usage_percent = 1;
@@ -1517,6 +1523,7 @@ message Function {
   uint32 startup_timeout_secs = 86;
   repeated DataFormat supported_input_formats = 87; // can be used as inputs
   repeated DataFormat supported_output_formats = 88;
+
 }
 
 message FunctionAsyncInvokeRequest {
