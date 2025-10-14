@@ -301,7 +301,6 @@ class _Object:
                 self._is_rehydrated = True
                 logger.debug(f"rehydrated {self} with client {id(self.client)}")
         elif not self._hydrate_lazily:
-            # TODO(michael) can remove _hydrate lazily? I think all objects support it now?
             self._validate_is_hydrated()
         else:
             # Set the client on LoadMetadata before loading

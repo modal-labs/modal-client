@@ -13,8 +13,6 @@ from modal_proto import api_pb2
 
 from ._load_metadata import LoadMetadata
 from ._utils.async_utils import TaskContext
-from .client import _Client
-from .config import config
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -125,15 +123,8 @@ class Resolver:
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
-                # Create a new merged LoadMetadata without mutating the object's metadata
-                # This ensures dependencies get app_id etc. from their parent context
-                load_metadata = obj._load_metadata.merged_with(parent_load_metadata)
-                if load_metadata.client is None:
-                    load_metadata.client = await _Client.from_env()
-                if load_metadata.environment_name is None:
-                    load_metadata.environment_name = config.get("environment")
+                load_metadata = await obj._load_metadata.merged_with(parent_load_metadata).apply_defaults()
 
-                # Wait for all its dependencies, passing the merged load_metadata
                 # TODO(erikbern): do we need existing_object_id for those?
                 await TaskContext.gather(*[self.load(dep, load_metadata) for dep in obj.deps()])
 

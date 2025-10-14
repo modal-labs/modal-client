@@ -924,7 +924,10 @@ More information on class parameterization can be found here: https://modal.com/
             rep=f"UnboundMethod({self._name}.{k})",
             deps=lambda: [],
             hydrate_lazily=True,
-            load_metadata=self._load_metadata,
+            # mini optimization - LoadMetadata.no_defaults()
+            # to avoid creating an EnvClient if we just want to raise an error
+            # on disallowed method use
+            load_metadata=LoadMetadata.no_defaults(),
         )
 
     def _is_local(self) -> bool:
