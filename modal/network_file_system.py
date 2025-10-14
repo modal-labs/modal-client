@@ -11,6 +11,7 @@ from synchronicity.async_wrap import asynccontextmanager
 import modal
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -114,7 +115,9 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         check_object_name(name, "NetworkFileSystem")
         warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.from_name")
 
-        async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _NetworkFileSystem, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=_get_environment_name(environment_name, resolver),

@@ -8,6 +8,7 @@ from google.protobuf.wrappers_pb2 import StringValue
 
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
@@ -62,7 +63,9 @@ class _Environment(_Object, type_prefix="en"):
             # environments as part of public API when we make this class more useful.
             check_object_name(name, "Environment")
 
-        async def _load(self: _Environment, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Environment, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             request = api_pb2.EnvironmentGetOrCreateRequest(
                 deployment_name=name,
                 object_creation_type=(

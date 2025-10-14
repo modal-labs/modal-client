@@ -10,6 +10,7 @@ from typing_extensions import Self
 
 from modal._traceback import suppress_tb_frames
 
+from ._load_metadata import LoadMetadata
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing
 from ._utils.deprecation import deprecation_warning
@@ -34,13 +35,14 @@ class _Object:
     _prefix_to_type: ClassVar[dict[str, type]] = {}
 
     # For constructors
-    _load: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]]
+    _load: Optional[Callable[[Self, Resolver, LoadMetadata, Optional[str]], Awaitable[None]]]
     _preload: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]]
     _rep: str
     _is_another_app: bool
     _hydrate_lazily: bool
     _deps: Optional[Callable[..., Sequence["_Object"]]]
     _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
+    _load_metadata: LoadMetadata
 
     # For hydrated objects
     _object_id: Optional[str]
@@ -66,13 +68,14 @@ class _Object:
     def _init(
         self,
         rep: str,
-        load: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]] = None,
+        load: Optional[Callable[[Self, Resolver, LoadMetadata, Optional[str]], Awaitable[None]]] = None,
         is_another_app: bool = False,
         preload: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
         name: Optional[str] = None,
+        load_metadata: Optional[LoadMetadata] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -82,6 +85,7 @@ class _Object:
         self._hydrate_lazily = hydrate_lazily
         self._deps = deps
         self._deduplication_key = deduplication_key
+        self._load_metadata = load_metadata if load_metadata is not None else LoadMetadata()
 
         self._object_id = None
         self._client = None
@@ -163,7 +167,7 @@ class _Object:
     @classmethod
     def _from_loader(
         cls,
-        load: Callable[[Self, Resolver, Optional[str]], Awaitable[None]],
+        load: Callable[[Self, Resolver, LoadMetadata, Optional[str]], Awaitable[None]],
         rep: str,
         is_another_app: bool = False,
         preload: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]] = None,
@@ -171,10 +175,11 @@ class _Object:
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
         name: Optional[str] = None,
+        load_metadata: Optional[LoadMetadata] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key, name)
+        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key, name, load_metadata)
         return obj
 
     @staticmethod

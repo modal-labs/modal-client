@@ -129,8 +129,15 @@ async def _create_all_objects(
     functions: dict[str, _Function],
     classes: dict[str, _Cls],
     environment_name: str,
+    app: Optional["modal.app._App"] = None,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
+    # Set the App's LoadMetadata before resolving objects
+    if app:
+        app._load_metadata.client = client
+        app._load_metadata.environment_name = environment_name
+        app._load_metadata.app_id = running_app.app_id
+
     indexed_objects: dict[str, _Object] = {**functions, **classes}
     resolver = Resolver(
         client,
@@ -340,7 +347,7 @@ async def _run_app(
 
         try:
             # Create all members
-            await _create_all_objects(client, running_app, app._functions, app._classes, environment_name)
+            await _create_all_objects(client, running_app, app._functions, app._classes, environment_name, app=app)
 
             # Publish the app
             await _publish_app(client, running_app, app_state, app._functions, app._classes, tags=app._tags)
@@ -456,6 +463,7 @@ async def _serve_update(
             app._functions,
             app._classes,
             environment_name,
+            app=app,
         )
 
         # Publish the updated app
@@ -547,6 +555,7 @@ async def _deploy_app(
                 app._functions,
                 app._classes,
                 environment_name=environment_name,
+                app=app,
             )
 
             commit_info = None

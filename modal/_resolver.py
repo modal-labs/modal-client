@@ -143,7 +143,7 @@ class Resolver:
                 if not obj._load:
                     raise Exception(f"Object {obj} has no loader function")
 
-                await obj._load(obj, self, existing_object_id)
+                await obj._load(obj, self, obj._load_metadata, existing_object_id)
 
                 # Check that the id of functions didn't change
                 # Persisted refs are ignored because their life cycle is managed independently.

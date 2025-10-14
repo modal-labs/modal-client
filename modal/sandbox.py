@@ -22,6 +22,7 @@ from modal.mount import _Mount
 from modal.volume import _Volume
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -199,7 +200,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 deps.append(proxy)
             return deps
 
-        async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
+        async def _load(
+            self: _Sandbox, resolver: Resolver, load_metadata: LoadMetadata, _existing_object_id: Optional[str]
+        ):
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
                 api_pb2.VolumeMount(
@@ -610,7 +613,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         image_id = resp.image_id
         metadata = resp.image_metadata
 
-        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Image, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             # no need to hydrate again since we do it eagerly below
             pass
 
@@ -892,7 +897,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         if wait_resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
             raise ExecutionError(wait_resp.result.exception)
 
-        async def _load(self: _SandboxSnapshot, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _SandboxSnapshot, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             # we eagerly hydrate the sandbox snapshot below
             pass
 

@@ -477,6 +477,7 @@ class _Mount(_Object, type_prefix="mo"):
     async def _load_mount(
         self: "_Mount",
         resolver: Resolver,
+        load_metadata,
         existing_object_id: Optional[str],
     ):
         t0 = time.monotonic()
@@ -631,7 +632,7 @@ class _Mount(_Object, type_prefix="mo"):
     ) -> "_Mount":
         """mdmd:hidden"""
 
-        async def _load(provider: _Mount, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(provider: _Mount, resolver: Resolver, load_metadata, existing_object_id: Optional[str]):
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=name,
                 namespace=namespace,

@@ -10,6 +10,7 @@ from synchronicity import classproperty
 
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._object import _get_environment_name, _Object, live_method
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
@@ -260,7 +261,9 @@ class _Secret(_Object, type_prefix="st"):
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Secret, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             if resolver.app_id is not None:
                 object_creation_type = api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
             else:
@@ -331,7 +334,9 @@ class _Secret(_Object, type_prefix="st"):
         ```
         """
 
-        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Secret, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             try:
                 from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
@@ -394,7 +399,9 @@ class _Secret(_Object, type_prefix="st"):
         """
         warn_if_passing_namespace(namespace, "modal.Secret.from_name")
 
-        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Secret, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=_get_environment_name(environment_name, resolver),

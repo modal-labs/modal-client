@@ -11,6 +11,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -368,7 +369,9 @@ class _Dict(_Object, type_prefix="di"):
                 "Passing data to `modal.Dict.from_name` is deprecated and will stop working in a future release.",
             )
 
-        async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Dict, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=name,

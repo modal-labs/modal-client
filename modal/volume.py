@@ -33,6 +33,7 @@ import modal_proto.api_pb2
 from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -362,7 +363,9 @@ class _Volume(_Object, type_prefix="vo"):
         Added in v1.0.5.
         """
 
-        async def _load(new_volume: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            new_volume: _Volume, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             new_volume._initialize_from_other(self)
             new_volume._read_only = True
 
@@ -429,7 +432,9 @@ class _Volume(_Object, type_prefix="vo"):
         check_object_name(name, "Volume")
         warn_if_passing_namespace(namespace, "modal.Volume.from_name")
 
-        async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Volume, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             req = api_pb2.VolumeGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=_get_environment_name(environment_name, resolver),

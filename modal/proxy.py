@@ -3,6 +3,7 @@ from typing import Optional
 
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
@@ -28,7 +29,9 @@ class _Proxy(_Object, type_prefix="pr"):
 
         """
 
-        async def _load(self: _Proxy, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Proxy, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             req = api_pb2.ProxyGetRequest(
                 name=name,
                 environment_name=_get_environment_name(environment_name, resolver),

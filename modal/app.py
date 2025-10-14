@@ -21,6 +21,7 @@ from modal_proto import api_pb2
 
 from ._functions import _Function
 from ._ipython import is_notebook
+from ._load_metadata import LoadMetadata
 from ._object import _get_environment_name, _Object
 from ._partial_function import (
     _find_partial_methods_for_user_cls,
@@ -168,6 +169,7 @@ class _App:
     _client: Optional[_Client]
 
     _include_source_default: Optional[bool] = None
+    _load_metadata: LoadMetadata  # Metadata for loading objects within this app
 
     def __init__(
         self,
@@ -216,6 +218,7 @@ class _App:
         self._app_id = None
         self._running_app = None  # Set inside container, OR during the time an app is running locally
         self._client = None
+        self._load_metadata = LoadMetadata()  # Initialize empty LoadMetadata
 
         # Register this app. This is used to look up the app in the container, when we can't get it from the function
         _App._all_apps.setdefault(self._name, []).append(self)

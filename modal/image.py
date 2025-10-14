@@ -28,6 +28,7 @@ from typing_extensions import Self
 from modal._serialization import serialize_data_format
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import get_preferred_payload_format, serialize
@@ -433,7 +434,9 @@ class _Image(_Object, type_prefix="im"):
 
         base_image = self
 
-        async def _load(self2: "_Image", resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self2: "_Image", resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             self2._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
             self2._deferred_mounts = tuple(base_image._deferred_mounts) + (mount,)
             self2._serve_mounts = base_image._serve_mounts | ({mount} if mount.is_local() else set())
@@ -516,7 +519,9 @@ class _Image(_Object, type_prefix="im"):
                 deps += (image_registry_config.secret,)
             return deps
 
-        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Image, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             context_mount = context_mount_function() if context_mount_function else None
             if context_mount:
                 await resolver.load(context_mount)
@@ -847,7 +852,9 @@ class _Image(_Object, type_prefix="im"):
         if client is None:
             client = await _Client.from_env()
 
-        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Image, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             resp = await retry_transient_errors(client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, resolver.client, resp.metadata)
 

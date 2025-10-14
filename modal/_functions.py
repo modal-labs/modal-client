@@ -19,6 +19,7 @@ from synchronicity.combined_types import MethodWithAio
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
+from ._load_metadata import LoadMetadata
 from ._object import _get_environment_name, _Object, live_method, live_method_gen
 from ._pty import get_pty_info
 from ._resolver import Resolver
@@ -919,7 +920,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Function, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 timeout_secs = timeout
@@ -1145,7 +1148,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
-        obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
+        # Pass a reference to the App's LoadMetadata
+        load_metadata = app._load_metadata if app else None
+        obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps, load_metadata=load_metadata)
 
         obj._raw_f = info.raw_f
         obj._info = info
@@ -1187,7 +1192,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         parent = self
 
-        async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            param_bound_func: _Function,
+            resolver: Resolver,
+            load_metadata: LoadMetadata,
+            existing_object_id: Optional[str],
+        ):
             if not parent.is_hydrated:
                 # While the base Object.hydrate() method appears to be idempotent, it's not always safe
                 await parent.hydrate()
@@ -1380,7 +1390,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     ):
         # internal function lookup implementation that allows lookup of class "service functions"
         # in addition to non-class functions
-        async def _load_remote(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load_remote(
+            self: _Function, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
@@ -2037,7 +2049,9 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         if client is None:
             client = await _Client.from_env()
 
-        async def _load(self: _FunctionCall, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _FunctionCall, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             request = api_pb2.FunctionCallFromIdRequest(function_call_id=function_call_id)
             resp = await retry_transient_errors(resolver.client.stub.FunctionCallFromId, request)
             self._hydrate(function_call_id, resolver.client, resp)

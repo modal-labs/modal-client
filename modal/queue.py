@@ -14,6 +14,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -376,7 +377,9 @@ class _Queue(_Object, type_prefix="qu"):
         check_object_name(name, "Queue")
         warn_if_passing_namespace(namespace, "modal.Queue.from_name")
 
-        async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Queue, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             req = api_pb2.QueueGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=_get_environment_name(environment_name, resolver),
