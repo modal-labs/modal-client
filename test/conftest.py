@@ -2671,12 +2671,11 @@ def blob_server_factory():
             print("*** not http1.1")
             return None
 
-        expect = request.headers.get("Expect")
-        if expect.lower() == "100-continue":
-            location = request.url.with_path("/redirected" + request.url.path)
-            raise aiohttp.web.HTTPTemporaryRedirect(location)
-        else:
+        if request.headers.get("Expect") != "100-continue":
             raise aiohttp.web.HTTPExpectationFailed(text="unknown expect")
+
+        location = request.url.with_path("/redirected" + request.url.path)
+        raise aiohttp.web.HTTPTemporaryRedirect(location)
 
     async def handle_redirect(request):
         location = request.url.with_path("/redirected" + request.url.path)
