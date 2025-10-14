@@ -1523,7 +1523,6 @@ message Function {
   uint32 startup_timeout_secs = 86;
   repeated DataFormat supported_input_formats = 87; // can be used as inputs
   repeated DataFormat supported_output_formats = 88;
-
 }
 
 message FunctionAsyncInvokeRequest {
