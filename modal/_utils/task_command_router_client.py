@@ -18,7 +18,6 @@ from modal.exception import ExecTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
-from .async_utils import timeout_at
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel, retry_transient_errors
 
 
@@ -273,12 +272,8 @@ class TaskCommandRouterClient:
         else:
             raise ValueError(f"Invalid file descriptor: {file_descriptor}")
 
-        try:
-            async with timeout_at(deadline):
-                async for item in self._stream_stdio(task_id, exec_id, sr_fd, deadline):
-                    yield item
-        except asyncio.TimeoutError:
-            raise ExecTimeoutError(f"Deadline exceeded while streaming stdio for exec {exec_id}")
+        async for item in self._stream_stdio(task_id, exec_id, sr_fd, deadline):
+            yield item
 
     async def exec_stdin_write(
         self, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool
@@ -450,6 +445,9 @@ class TaskCommandRouterClient:
         async def sleep_and_update_delay_and_num_retries_remaining(e: Exception):
             nonlocal delay, num_retries_remaining
             logger.debug(f"Retrying stdio read with delay {delay}s due to error: {e}")
+            if deadline is not None and deadline - time.monotonic() <= delay:
+                raise ExecTimeoutError(f"Deadline exceeded while streaming stdio for exec {exec_id}")
+
             await asyncio.sleep(delay)
             delay *= delay_factor
             num_retries_remaining -= 1
