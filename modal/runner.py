@@ -333,7 +333,7 @@ async def _run_app(
                 get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
             )
 
-        local_app_state = app._get_local_state()
+        local_app_state = app._local_state
         try:
             # Create all members
             await _create_all_objects(client, running_app, local_app_state, environment_name)
@@ -444,7 +444,7 @@ async def _serve_update(
     client = await _Client.from_env()
     try:
         running_app: RunningApp = await _init_local_app_existing(client, existing_app_id, environment_name)
-        local_app_state = app._get_local_state()
+        local_app_state = app._local_state
         # Create objects
         await _create_all_objects(
             client,
@@ -537,7 +537,7 @@ async def _deploy_app(
             await _create_all_objects(
                 client,
                 running_app,
-                app._get_local_state(),
+                app._local_state,
                 environment_name=environment_name,
             )
 
@@ -551,7 +551,7 @@ async def _deploy_app(
                 client,
                 running_app,
                 api_pb2.APP_STATE_DEPLOYED,
-                app._get_local_state(),
+                app._local_state,
                 name=name,
                 deployment_tag=tag,
                 commit_info=commit_info,
