@@ -366,6 +366,30 @@ async def test_volume2_upload_large_blank_file(client, tmp_path, servicer, blob_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"abc",
+        b"\0\0\0",  # <- this is the only case that works fine, we maybe don't do anything?
+        b"\0\0\0abc",
+        b"abc\0\0\0def",
+        b"abc\0\0\0",
+    ],
+)
+async def test_volume2_upload_small_blank_file(client, tmp_path, servicer, blob_server, data):
+    local_file_path = tmp_path / "smallfile"
+    local_file_path.write_bytes(data)
+
+    async with modal.Volume.ephemeral(client=client, version=api_pb2.VOLUME_FS_VERSION_V2) as vol:
+        async with vol.batch_upload() as batch:
+            batch.put_file(local_file_path, "/a")
+        object_id = vol.object_id
+
+    assert servicer.volumes[object_id].files.keys() == {"/a"}
+    assert_eq_large(servicer.volumes[object_id].files["/a"].data, data)
+
+
+@pytest.mark.asyncio
 async def test_volume_upload_large_stream(client, servicer, blob_server):
     with mock.patch("modal._utils.blob_utils.LARGE_FILE_LIMIT", 10):
         stream = io.BytesIO(b"hello world, this is a lot of text")
