@@ -283,8 +283,23 @@ def test_with_options_from_name(servicer, client):
 
     with servicer.intercept() as ctx:
         SomeClass = modal.Cls.from_name("some_app", "SomeClass", client=client)
+        print(
+            "1",
+            id(synchronizer._translate_in(SomeClass)._load_metadata),
+            synchronizer._translate_in(SomeClass)._load_metadata.client,
+        )
         OptionedClass = SomeClass.with_options(cpu=10, secrets=[unhydrated_secret], volumes={"/vol": unhydrated_volume})
+        print(
+            "2",
+            id(synchronizer._translate_in(OptionedClass)._load_metadata),
+            synchronizer._translate_in(OptionedClass)._load_metadata.client,
+        )
         inst = OptionedClass(x=10)
+        print(
+            "3",
+            id(synchronizer._translate_in(inst.blah)._load_metadata),
+            synchronizer._translate_in(inst.blah)._load_metadata.client,
+        )
         assert len(ctx.calls) == 0
 
     with servicer.intercept() as ctx:
@@ -1189,7 +1204,7 @@ def test_bytes_serialization_validation(servicer, client):
             return self.foo
 
     with servicer.intercept() as ctx:
-        with app.run():
+        with app.run(client=client):
             with pytest.raises(TypeError, match="Expected bytes"):
                 C(foo="this is a string").get_foo.spawn()  # type: ignore   # string should not be allowed, unspecified encoding
 

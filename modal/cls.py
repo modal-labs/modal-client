@@ -157,7 +157,9 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
 
     rep = f"Method({cls._name}.{method_name})"
 
-    # Bound methods should reference their parent Cls's LoadMetadata
+    # Bound methods should *reference* their parent Cls's LoadMetadata
+    # so that it can be modified in place on the parent and be reflected in the method
+    print("METHOD METADATA", method_name, cls._load_metadata)
     fun = _Function._from_loader(
         _load,
         rep,
@@ -428,7 +430,6 @@ class _Obj:
         # Not hydrated Cls, and we don't have the class - typically a Cls.from_name that
         # has not yet been loaded. So use a special loader that loads it lazily:
         async def method_loader(fun, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id):
-            await resolver.load(self._cls, load_metadata)  # load class so we get info about methods
             method_function = _get_maybe_method()
             if method_function is None:
                 raise NotFoundError(
@@ -442,7 +443,7 @@ class _Obj:
         return _Function._from_loader(
             method_loader,
             rep=f"Method({self._cls._name}.{k})",
-            deps=lambda: [],  # TODO: use cls as dep instead of loading inside method_loader?
+            deps=lambda: [self._cls],
             hydrate_lazily=True,
             load_metadata=self._cls._load_metadata,
         )

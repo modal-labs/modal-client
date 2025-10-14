@@ -95,12 +95,6 @@ class Resolver:
         *,
         existing_object_id: Optional[str] = None,
     ):
-        if parent_load_metadata.client is None:
-            print(f"DEFAULTING CLIENT of {obj}")
-            parent_load_metadata.client = await _Client.from_env()
-        if parent_load_metadata.environment_name is None:
-            parent_load_metadata.environment_name = config.get("environment")
-
         if obj._is_hydrated and obj._is_another_app:
             # No need to reload this, it won't typically change
             if obj.local_uuid not in self._local_uuid_to_future:
@@ -134,6 +128,10 @@ class Resolver:
                 # Create a new merged LoadMetadata without mutating the object's metadata
                 # This ensures dependencies get app_id etc. from their parent context
                 load_metadata = obj._load_metadata.merged_with(parent_load_metadata)
+                if load_metadata.client is None:
+                    load_metadata.client = await _Client.from_env()
+                if load_metadata.environment_name is None:
+                    load_metadata.environment_name = config.get("environment")
 
                 # Wait for all its dependencies, passing the merged load_metadata
                 # TODO(erikbern): do we need existing_object_id for those?
