@@ -1468,6 +1468,15 @@ class _Image(_Object, type_prefix="im"):
         The `pyproject.toml` and `uv.lock` in `uv_project_dir` are automatically added to the build context. The
         `uv_project_dir` is relative to the current working directory of where `modal` is called.
 
+        NOTE: This does *not* install the project itself into the environment (this is equivalent to the
+        `--no-install-project` flag in the `uv sync` command) and you would be expected to add any local python source
+        files using `Image.add_local_python_source` or similar methods after this call.
+
+        This ensures that updates to your project code wouldn't require reinstalling third-party dependencies
+        after every change.
+
+        uv workspaces are currently not supported.
+
         Added in v1.1.0.
         """
 

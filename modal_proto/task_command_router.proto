@@ -4,42 +4,42 @@ option go_package = "github.com/modal-labs/modal/go/proto";
 
 import "modal_proto/api.proto";
 
-package modal.sandbox_router;
+package modal.task_command_router;
 
-enum SandboxExecStderrConfig {
+enum TaskExecStderrConfig {
   // The output will be discarded.
-  SANDBOX_EXEC_STDERR_CONFIG_DEVNULL = 0;
+  TASK_EXEC_STDERR_CONFIG_DEVNULL = 0;
   // The output will be streamed to the client.
-  SANDBOX_EXEC_STDERR_CONFIG_PIPE = 1;
+  TASK_EXEC_STDERR_CONFIG_PIPE = 1;
   // A special value that can be used to indicate that the stderr stream should
   // be merged with the stdout stream.
-  SANDBOX_EXEC_STDERR_CONFIG_STDOUT = 2;
+  TASK_EXEC_STDERR_CONFIG_STDOUT = 2;
 }
 
-enum SandboxExecStdioFileDescriptor {
+enum TaskExecStdioFileDescriptor {
   // Read from stdout.
-  SANDBOX_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT = 0;
+  TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT = 0;
   // Read from stderr.
-  SANDBOX_EXEC_STDIO_FILE_DESCRIPTOR_STDERR = 1;
+  TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR = 1;
 }
 
-enum SandboxExecStdoutConfig {
+enum TaskExecStdoutConfig {
   // The output will be discarded.
-  SANDBOX_EXEC_STDOUT_CONFIG_DEVNULL = 0;
+  TASK_EXEC_STDOUT_CONFIG_DEVNULL = 0;
   // The output will be streamed to the client.
-  SANDBOX_EXEC_STDOUT_CONFIG_PIPE = 1;
+  TASK_EXEC_STDOUT_CONFIG_PIPE = 1;
 }
 
-message SandboxExecPollRequest {
-  // The task ID of the sandbox running the exec'd command.
+message TaskExecPollRequest {
+  // The ID of the task running the exec'd command.
   string task_id = 1;
   // The execution ID of the command to wait on.
   string exec_id = 2;
 }
 
-// The response to a SandboxExecPollRequest. If the exec'd command has not
+// The response to a TaskExecPollRequest. If the exec'd command has not
 // completed, exit_status will be unset.
-message SandboxExecPollResponse {
+message TaskExecPollResponse {
   oneof exit_status {
     // The exit code of the command.
     int32 code = 1;
@@ -47,32 +47,28 @@ message SandboxExecPollResponse {
     int32 signal = 2;
   }
   // TODO(saltzm): Give a way for the user to distinguish between normal exit
-  // and termination by Modal (due to sandbox timeout, exec exceeded deadline, etc.)
+  // and termination by Modal (due to task timeout, exec exceeded deadline, etc.)
 }
 
-message SandboxExecStartRequest {
-  // The task ID of the sandbox to execute the command in.
+message TaskExecStartRequest {
+  // The ID of the task to execute the command in.
   string task_id = 1;
   // Execution ID. This ID will be used to identify the execution for other
   // requests and ensure exec commands are idempotent.
-  //
-  // TODO(saltzm): Could instead have a separate idempotency key from the exec_id
-  // like present day, and have the server generate the exec_id and return it in
-  // the ExecStartResponse.
   string exec_id = 2;
   // Command arguments to execute.
   repeated string command_args= 3;
   // Configures how the stdout of the command will be handled.
-  SandboxExecStdoutConfig stdout_config = 4;
+  TaskExecStdoutConfig stdout_config = 4;
   // Configures how the stderr of the command will be handled.
-  SandboxExecStderrConfig stderr_config = 5;
+  TaskExecStderrConfig stderr_config = 5;
   // Timeout in seconds for the exec'd command to exit. If the command does not
   // exit within this duration, the command will be killed. This is NOT the
   // timeout for the ExecStartRequest RPC to complete.
   optional uint32 timeout_secs = 6;
   // Working directory for the command.
   optional string workdir = 7;
-  // Secret IDs to mount into the sandbox.
+  // Secret IDs to mount into the task.
   repeated string secret_ids = 8;
   // PTY info for the command.
   optional modal.client.PTYInfo pty_info = 9;
@@ -81,10 +77,10 @@ message SandboxExecStartRequest {
   bool runtime_debug = 10;
 }
 
-message SandboxExecStartResponse { }
+message TaskExecStartResponse { }
 
-message SandboxExecStdinWriteRequest {
-  // The task ID of the sandbox running the exec'd command.
+message TaskExecStdinWriteRequest {
+  // The ID of the task running the exec'd command.
   string task_id = 1;
   // The execution ID of the command to write to.
   string exec_id = 2;
@@ -97,11 +93,10 @@ message SandboxExecStdinWriteRequest {
   bool eof = 5;
 }
 
-message SandboxExecStdinWriteResponse { }
+message TaskExecStdinWriteResponse { }
 
-
-message SandboxExecStdioReadRequest {
-  // The task ID of the sandbox running the exec'd command.
+message TaskExecStdioReadRequest {
+  // The ID of the task running the exec'd command.
   string task_id = 1;
   // The execution ID of the command to read from.
   string exec_id = 2;
@@ -109,22 +104,22 @@ message SandboxExecStdioReadRequest {
   // last read position if the connection is closed and reopened.
   uint64 offset = 3;
   // Which file descriptor to read from.
-  SandboxExecStdioFileDescriptor file_descriptor = 4;
+  TaskExecStdioFileDescriptor file_descriptor = 4;
 }
 
-message SandboxExecStdioReadResponse {
+message TaskExecStdioReadResponse {
   // The data read from the file descriptor.
   bytes data = 1;
 }
 
-message SandboxExecWaitRequest {
-  // The task ID of the sandbox running the exec'd command.
+message TaskExecWaitRequest {
+  // The ID of the task running the exec'd command.
   string task_id = 1;
   // The execution ID of the command to wait on. 
   string exec_id = 2;
 }
 
-message SandboxExecWaitResponse {
+message TaskExecWaitResponse {
   oneof exit_status {
     // The exit code of the command.
     int32 code = 1;
@@ -132,18 +127,18 @@ message SandboxExecWaitResponse {
     int32 signal = 2;
   }
   // TODO(saltzm): Give a way for the user to distinguish between normal exit
-  // and termination by Modal (due to sandbox timeout, exec exceeded deadline, etc.)
+  // and termination by Modal (due to task timeout, exec exceeded deadline, etc.)
 }
 
-service SandboxRouter {
+service TaskCommandRouter {
   // Poll for the exit status of an exec'd command.
-  rpc SandboxExecPoll(SandboxExecPollRequest) returns (SandboxExecPollResponse);
-  // Execute a command in the sandbox.
-  rpc SandboxExecStart(SandboxExecStartRequest) returns (SandboxExecStartResponse);
+  rpc TaskExecPoll(TaskExecPollRequest) returns (TaskExecPollResponse);
+  // Execute a command in the task.
+  rpc TaskExecStart(TaskExecStartRequest) returns (TaskExecStartResponse);
  // Write to the stdin stream of an exec'd command.
-  rpc SandboxExecStdinWrite(SandboxExecStdinWriteRequest) returns (SandboxExecStdinWriteResponse);
+  rpc TaskExecStdinWrite(TaskExecStdinWriteRequest) returns (TaskExecStdinWriteResponse);
   // Get a stream of output from the stdout or stderr stream of an exec'd command.
-  rpc SandboxExecStdioRead(SandboxExecStdioReadRequest) returns (stream SandboxExecStdioReadResponse);
+  rpc TaskExecStdioRead(TaskExecStdioReadRequest) returns (stream TaskExecStdioReadResponse);
   // Wait for an exec'd command to exit and return the exit code.
-  rpc SandboxExecWait(SandboxExecWaitRequest) returns (SandboxExecWaitResponse);
+  rpc TaskExecWait(TaskExecWaitRequest) returns (TaskExecWaitResponse);
 }

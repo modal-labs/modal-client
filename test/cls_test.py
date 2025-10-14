@@ -146,7 +146,7 @@ def test_run_class(client, servicer):
                 web_server_startup_timeout=5,
             ),
             supported_input_formats=[api_pb2.DATA_FORMAT_ASGI],
-            supported_output_formats=[api_pb2.DATA_FORMAT_ASGI],
+            supported_output_formats=[api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE],
             web_url="http://web.internal",
         ),
     }
@@ -1126,30 +1126,55 @@ def test_unsupported_function_decorators_on_methods():
                 pass
 
 
-def test_using_method_on_uninstantiated_cls(recwarn):
+def test_using_method_on_uninstantiated_cls():
     app = App()
 
     @app.cls(serialized=True)
     class C:
+        some_non_param_variable = 10
+
         @method()
         def method(self):
             pass
 
-    assert len(recwarn) == 0
-    with pytest.raises(AttributeError):
-        C.blah  # type: ignore   # noqa
-    assert len(recwarn) == 0
+    assert C.some_non_param_variable == 10
 
-    assert isinstance(C().method, Function)  # should be fine to access on an instance of the class
-    assert len(recwarn) == 0
+    with pytest.raises(AttributeError, match="blah"):
+        C.blah  # type: ignore
 
-    # The following should warn since it's accessed on the class directly
-    C.method  # noqa  # triggers a deprecation warning
-    # TODO: this will be an AttributeError or return a non-modal unbound function in the future:
-    assert len(recwarn) == 1
-    warning_string = str(recwarn[0].message)
-    assert "instantiate the class first" in warning_string
-    assert "C().method instead of C.method" in warning_string
+    with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
+        # The following should error since the class is supposed to be instantiated first
+        C.method.remote()  # noqa
+
+
+def test_using_method_on_uninstantiated_hydrated_cls(set_env_client, client):
+    app = App()
+
+    @app.cls(serialized=True)
+    class C:
+        some_non_param_variable = 10
+
+        @method()
+        def method(self):
+            pass
+
+    with app.run(client=client):
+        assert C.some_non_param_variable == 10
+
+        with pytest.raises(AttributeError, match="blah"):
+            C.blah  # type: ignore
+
+        with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
+            # The following should error since the class is supposed to be instantiated first
+            C.method.remote()  # noqa
+
+
+def test_using_method_on_uninstantiated_remote_cls(set_env_client):
+    C = modal.Cls.from_name("app", "C")
+
+    with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
+        # The following should error since the class is supposed to be instantiated first
+        C.method.remote()  # noqa
 
 
 def test_bytes_serialization_validation(servicer, client, set_env_client):

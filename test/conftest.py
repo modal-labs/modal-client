@@ -202,6 +202,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             }
         ]
         self.app_objects = {}
+        self.app_tags: dict[str, dict[str, str]] = {}
         self.app_unindexed_objects = {}
         self.max_object_size_bytes = MAX_OBJECT_SIZE_BYTES
         self.n_inputs = 0
@@ -705,6 +706,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 )
             )
         await stream.send_message(api_pb2.AppListResponse(apps=apps))
+
+    async def AppSetTags(self, stream):
+        request: api_pb2.AppSetTagsRequest = await stream.recv_message()
+        self.app_tags[request.app_id] = dict(request.tags)
+        await stream.send_message(Empty())
 
     async def AppStop(self, stream):
         request: api_pb2.AppStopRequest = await stream.recv_message()
@@ -2001,6 +2007,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def WorkspaceBillingReport(self, stream):
+        # Dummy implementation
+        await stream.recv_message()
+
+        item = api_pb2.WorkspaceBillingReportItem(
+            object_id="ap-123",
+            description="app1",
+            environment_name="test",
+            cost="100.123456",
+            tags={"team": "eng", "project": "p7r"},
+        )
+        item.interval.FromDatetime(datetime.datetime(2025, 1, 1, 0, 0, 0))
+        await stream.send_message(item)
+
     async def WorkspaceNameLookup(self, stream):
         await stream.send_message(api_pb2.WorkspaceNameLookupResponse(username="test-username"))
 
@@ -2406,13 +2426,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def MapStartOrContinue(self, stream):
         request: api_pb2.MapStartOrContinueRequest = await stream.recv_message()
 
-        # If function_call_id is provided, this is a continue request, otherwise it's a start
-        if request.function_call_id:
-            function_call_id = request.function_call_id
+        # If map_token is provided, this is a continue request, otherwise it's a start
+        if request.map_token:
+            map_token = request.map_token
         else:
             self.fcidx += 1
-            function_call_id = f"fc-{self.fcidx}"
-            self.function_id_for_function_call[function_call_id] = request.function_id
+            map_token = f"test-map-token:{self.fcidx}"
+            self.function_id_for_function_call[map_token] = request.function_id
 
         # Process inputs and store them for MapAwait to pick up later
         attempt_tokens = []
@@ -2424,15 +2444,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
             # Store inputs for MapAwait to process
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
-            self.add_function_call_input(function_call_id, item.input, input_id, retry_count)
+            self.add_function_call_input(map_token, item.input, input_id, retry_count)
 
         # Get retry policy from function definition if available
         fn_definition = self.app_functions.get(request.function_id)
         retry_policy = fn_definition.retry_policy if fn_definition else None
 
+        # We don't send fcID since that is what the server will do eventually.
         response = api_pb2.MapStartOrContinueResponse(
             function_id=request.function_id,
-            function_call_id=function_call_id,
+            map_token=map_token,
             max_inputs_outstanding=1000,
             attempt_tokens=attempt_tokens,
             retry_policy=retry_policy,
@@ -2445,9 +2466,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def MapAwait(self, stream):
         request: api_pb2.MapAwaitRequest = await stream.recv_message()
+        map_token = request.map_token
 
         # Check if we have any function call inputs for this function call
-        fc_inputs = self.function_call_inputs.setdefault(request.function_call_id, [])
+        fc_inputs = self.function_call_inputs.setdefault(map_token, [])
         outputs = []
 
         if fc_inputs and not self.function_is_running:
@@ -2464,7 +2486,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     count = 0
                     for item in res:
                         count += 1
-                        await self.fc_data_out[request.function_call_id].put(
+                        await self.fc_data_out[map_token].put(
                             api_pb2.DataChunk(
                                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                                 data=serialize_data_format(item, api_pb2.DATA_FORMAT_PICKLE),
@@ -2539,8 +2561,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.MapCheckInputsResponse(lost=lost))
 
 
-@pytest.fixture
-def blob_server():
+@contextlib.contextmanager
+def blob_server_factory():
+    """Utility context manager to create a blob server for testing. Yields (host, blobs, blocks, files_sha2data)."""
     blobs = {}
     blob_parts: dict[str, dict[int, bytes]] = defaultdict(dict)
     blocks = {}
@@ -2659,15 +2682,17 @@ def blob_server():
     thread = threading.Thread(target=run_server_other_thread)
     thread.start()
     started.wait()
-    yield host, blobs, blocks, files_sha2data
-    stop_server.set()
-    thread.join()
+    try:
+        yield host, blobs, blocks, files_sha2data
+    finally:
+        stop_server.set()
+        thread.join()
 
 
-@pytest_asyncio.fixture(scope="function")
-def temporary_sock_path():
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        yield os.path.join(tmpdirname, "servicer.sock")
+@pytest.fixture
+def blob_server():
+    with blob_server_factory() as server:
+        yield server
 
 
 @contextlib.asynccontextmanager
@@ -2707,19 +2732,25 @@ def credentials():
     return (token_id, token_secret)
 
 
-@pytest_asyncio.fixture(scope="function")
-async def servicer(blob_server, temporary_sock_path, credentials) -> AsyncGenerator[MockClientServicer, None]:
+@contextlib.asynccontextmanager
+async def servicer_factory(blob_server, credentials):
+    """
+    Utility function to create a servicer for testing.
+    Returns an async context manager that yields a MockClientServicer.
+    """
     port = find_free_port()
 
     blob_host, blobs, blocks, files_sha2data = blob_server
     servicer = MockClientServicer(blob_host, blobs, blocks, files_sha2data, credentials, port)  # type: ignore
 
     if platform.system() != "Windows":
-        async with run_server(servicer, host="0.0.0.0", port=port):
-            async with run_server(servicer, path=temporary_sock_path):
-                servicer.client_addr = f"http://127.0.0.1:{port}"
-                servicer.container_addr = f"unix://{temporary_sock_path}"
-                yield servicer
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            temporary_sock_path = os.path.join(tmpdirname, "servicer.sock")
+            async with run_server(servicer, host="0.0.0.0", port=port):
+                async with run_server(servicer, path=temporary_sock_path):
+                    servicer.client_addr = f"http://127.0.0.1:{port}"
+                    servicer.container_addr = f"unix://{temporary_sock_path}"
+                    yield servicer
     else:
         # Use a regular TCP socket for the container connection
         container_port = find_free_port()
@@ -2728,6 +2759,12 @@ async def servicer(blob_server, temporary_sock_path, credentials) -> AsyncGenera
                 servicer.client_addr = f"http://127.0.0.1:{port}"
                 servicer.container_addr = f"http://127.0.0.1:{container_port}"
                 yield servicer
+
+
+@pytest_asyncio.fixture(scope="function")
+async def servicer(blob_server, credentials) -> AsyncGenerator[MockClientServicer, None]:
+    async with servicer_factory(blob_server, credentials) as s:
+        yield s
 
 
 @pytest_asyncio.fixture(scope="function")
