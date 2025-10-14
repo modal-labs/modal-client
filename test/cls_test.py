@@ -554,7 +554,7 @@ def test_from_name_lazy_method_hydration(client, servicer):
         obj.non_exist.remote("hello")
 
 
-def test_lookup_lazy_remote(client, servicer):
+def test_lookup_lazy_remote(client):
     # See #972 (PR) and #985 (revert PR): adding unit test to catch regression
     deploy_app(app, "my-cls-app", client=client)
     cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
@@ -562,15 +562,15 @@ def test_lookup_lazy_remote(client, servicer):
     assert obj.bar.remote(42, 77) == 7693
 
 
-def test_lookup_lazy_remote_legacy_syntax(client, servicer):
+def test_lookup_lazy_remote_legacy_syntax(client):
     # See #972 (PR) and #985 (revert PR): adding unit test to catch regression
     deploy_app(app, "my-cls-app", client=client)
-    cls: Cls = Cls.from_name("my-cls-app", "Foo").hydrate(client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
     obj = cls("foo", 234)
     assert obj.bar.remote(42, 77) == 7693
 
 
-def test_lookup_lazy_spawn(client, servicer):
+def test_lookup_lazy_spawn(client):
     # See #1071
     deploy_app(app, "my-cls-app", client=client)
     cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
@@ -579,7 +579,7 @@ def test_lookup_lazy_spawn(client, servicer):
     assert function_call.get() == 7693
 
 
-def test_failed_lookup_error(client, servicer):
+def test_failed_lookup_error(client):
     with pytest.raises(NotFoundError, match="Lookup failed for Cls 'Foo' from the 'my-cls-app' app"):
         Cls.from_name("my-cls-app", "Foo", client=client).hydrate()
 
@@ -1416,9 +1416,9 @@ def test_clustered_cls_with_multiple_methods(client, servicer):
                 return x * 3
 
 
-def test_cls_get_flash_url(servicer):
+def test_cls_get_flash_url(servicer, client):
     """Test get_flash_url method on Cls.from_name instances"""
-    cls = Cls.from_name("dummy-app", "MyClass")
+    cls = Cls.from_name("dummy-app", "MyClass", client=client)
 
     with servicer.intercept() as ctx:
         ctx.add_response(
