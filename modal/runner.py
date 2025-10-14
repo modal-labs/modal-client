@@ -43,9 +43,7 @@ from .secret import _Secret
 from .stream_type import StreamType
 
 if TYPE_CHECKING:
-    from .app import _App
-else:
-    _App = TypeVar("_App")
+    import modal.app
 
 
 V = TypeVar("V")
@@ -126,12 +124,11 @@ async def _init_local_app_from_name(
 async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
-    functions: dict[str, _Function],
-    classes: dict[str, _Cls],
+    local_app_state: "modal.app._LocalAppState",
     environment_name: str,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
-    indexed_objects: dict[str, _Object] = {**functions, **classes}
+    indexed_objects: dict[str, _Object] = {**local_app_state.functions, **local_app_state.classes}
     resolver = Resolver(
         client,
         environment_name=environment_name,
@@ -182,21 +179,19 @@ async def _publish_app(
     client: _Client,
     running_app: RunningApp,
     app_state: int,  # api_pb2.AppState.value
-    functions: dict[str, _Function],
-    classes: dict[str, _Cls],
+    app_local_state: "modal.app._LocalAppState",
     name: str = "",
-    tags: dict[str, str] = {},  # Additional App metadata
     deployment_tag: str = "",  # Only relevant for deployments
     commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
 ) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
-
+    functions = app_local_state.functions
     definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in functions.values()}  # type: ignore
 
     request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,
         name=name,
-        tags=tags,
+        tags=app_local_state.tags,
         deployment_tag=deployment_tag,
         commit_info=commit_info,
         app_state=app_state,  # type: ignore  : should be a api_pb2.AppState.value
@@ -260,13 +255,13 @@ async def _status_based_disconnect(client: _Client, app_id: str, exc_info: Optio
 
 @asynccontextmanager
 async def _run_app(
-    app: _App,
+    app: "modal.app._App",
     *,
     client: Optional[_Client] = None,
     detach: bool = False,
     environment_name: Optional[str] = None,
     interactive: bool = False,
-) -> AsyncGenerator[_App, None]:
+) -> AsyncGenerator["modal.app._App", None]:
     """mdmd:hidden"""
     if environment_name is None:
         environment_name = typing.cast(str, config.get("environment"))
@@ -338,12 +333,13 @@ async def _run_app(
                 get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
             )
 
+        local_app_state = app._local_state
         try:
             # Create all members
-            await _create_all_objects(client, running_app, app._functions, app._classes, environment_name)
+            await _create_all_objects(client, running_app, local_app_state, environment_name)
 
             # Publish the app
-            await _publish_app(client, running_app, app_state, app._functions, app._classes, tags=app._tags)
+            await _publish_app(client, running_app, app_state, local_app_state)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
@@ -440,7 +436,7 @@ async def _run_app(
 
 
 async def _serve_update(
-    app: _App,
+    app: "modal.app._App",
     existing_app_id: str,
     is_ready: Event,
     environment_name: str,
@@ -450,13 +446,12 @@ async def _serve_update(
     client = await _Client.from_env()
     try:
         running_app: RunningApp = await _init_local_app_existing(client, existing_app_id, environment_name)
-
+        local_app_state = app._local_state
         # Create objects
         await _create_all_objects(
             client,
             running_app,
-            app._functions,
-            app._classes,
+            local_app_state,
             environment_name,
         )
 
@@ -465,9 +460,7 @@ async def _serve_update(
             client,
             running_app,
             app_state=api_pb2.APP_STATE_UNSPECIFIED,
-            functions=app._functions,
-            classes=app._classes,
-            tags=app._tags,
+            app_local_state=local_app_state,
         )
 
         # Communicate to the parent process
@@ -488,7 +481,7 @@ class DeployResult:
 
 
 async def _deploy_app(
-    app: _App,
+    app: "modal.app._App",
     name: Optional[str] = None,
     namespace: Any = None,  # mdmd:line-hidden
     client: Optional[_Client] = None,
@@ -546,8 +539,7 @@ async def _deploy_app(
             await _create_all_objects(
                 client,
                 running_app,
-                app._functions,
-                app._classes,
+                app._local_state,
                 environment_name=environment_name,
             )
 
@@ -560,11 +552,9 @@ async def _deploy_app(
             app_url, warnings = await _publish_app(
                 client,
                 running_app,
-                app_state=api_pb2.APP_STATE_DEPLOYED,
-                functions=app._functions,
-                classes=app._classes,
+                api_pb2.APP_STATE_DEPLOYED,
+                app._local_state,
                 name=name,
-                tags=app._tags,
                 deployment_tag=tag,
                 commit_info=commit_info,
             )
@@ -586,7 +576,7 @@ async def _deploy_app(
 
 
 async def _interactive_shell(
-    _app: _App, cmds: list[str], environment_name: str = "", pty: bool = True, **kwargs: Any
+    _app: "modal.app._App", cmds: list[str], environment_name: str = "", pty: bool = True, **kwargs: Any
 ) -> None:
     """Run an interactive shell (like `bash`) within the image for this app.
 
