@@ -50,7 +50,7 @@ class _Object:
 
     # For constructors
     _load: Optional[Callable[[Self, Resolver, LoadMetadata, Optional[str]], Awaitable[None]]]
-    _preload: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]]
+    _preload: Optional[Callable[[Self, Resolver, LoadMetadata, Optional[str]], Awaitable[None]]]
     _rep: str
     _is_another_app: bool
     _hydrate_lazily: bool
@@ -304,7 +304,7 @@ class _Object:
                 # Set the client on LoadMetadata before loading
                 parent_metadata = LoadMetadata(client=c)
                 resolver = Resolver()
-                await resolver.load(typing.cast(_Object, self), parent_load_metadata=parent_metadata)
+                await resolver.load(typing.cast(_Object, self), parent_metadata, existing_object_id=None)
                 self._is_rehydrated = True
                 logger.debug(f"rehydrated {self} with client {id(c)}")
         elif not self._hydrate_lazily:
@@ -316,7 +316,7 @@ class _Object:
             parent_metadata = LoadMetadata(client=c)
             resolver = Resolver()
             with suppress_tb_frames(1):  # skip this frame by default
-                await resolver.load(self, parent_load_metadata=parent_metadata)
+                await resolver.load(self, parent_metadata)
         return self
 
 

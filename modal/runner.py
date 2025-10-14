@@ -165,7 +165,7 @@ async def _create_all_objects(
             # Note: preload only currently implemented for Functions, returns None otherwise
             # this is to ensure that directly referenced functions from the global scope has
             # ids associated with them when they are serialized into other functions
-            await resolver.preload(obj, existing_object_id)
+            await resolver.preload(obj, parent_load_metadata, existing_object_id)
             if obj.is_hydrated:
                 tag_to_object_id[tag] = obj.object_id
 
@@ -174,7 +174,7 @@ async def _create_all_objects(
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
             # Pass parent_load_metadata so dependencies can inherit app_id, client, etc.
-            await resolver.load(obj, existing_object_id, parent_load_metadata=parent_load_metadata)
+            await resolver.load(obj, parent_load_metadata, existing_object_id=existing_object_id)
             if _Function._is_id_type(obj.object_id):
                 running_app.function_ids[tag] = obj.object_id
             elif _Cls._is_id_type(obj.object_id):

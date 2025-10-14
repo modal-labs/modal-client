@@ -524,7 +524,7 @@ class _Image(_Object, type_prefix="im"):
         ):
             context_mount = context_mount_function() if context_mount_function else None
             if context_mount:
-                await resolver.load(context_mount)
+                await resolver.load(context_mount, load_metadata)
 
             if _do_assert_no_mount_layers:
                 for image in base_images.values():
@@ -918,15 +918,8 @@ class _Image(_Object, type_prefix="im"):
         if app.app_id is None:
             raise InvalidError("App has not been initialized yet. Use the content manager `app.run()` or `App.lookup`")
 
-        app_id = app.app_id
-        app_client = app._client or await _Client.from_env()
-
-        # Set the image's LoadMetadata before resolving
-        self._load_metadata.client = app_client
-        self._load_metadata.app_id = app_id
-
         resolver = Resolver()
-        await resolver.load(self)
+        await resolver.load(self, app._load_metadata)
         return self
 
     def pip_install(

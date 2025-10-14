@@ -78,15 +78,19 @@ class Resolver:
     def build_start(self) -> float:
         return self._build_start
 
-    async def preload(self, obj, existing_object_id: Optional[str]):
+    async def preload(
+        self, obj: "modal._object._Object", parent_load_metadata: "LoadMetadata", existing_object_id: Optional[str]
+    ):
         if obj._preload is not None:
-            await obj._preload(obj, self, existing_object_id)
+            load_metadata = obj._load_metadata.merged_with(parent_load_metadata)
+            await obj._preload(obj, self, load_metadata, existing_object_id)
 
     async def load(
         self,
         obj: "modal._object._Object",
+        parent_load_metadata: "LoadMetadata",
+        *,
         existing_object_id: Optional[str] = None,
-        parent_load_metadata: Optional["LoadMetadata"] = None,
     ):
         if obj._is_hydrated and obj._is_another_app:
             # No need to reload this, it won't typically change
@@ -118,20 +122,13 @@ class Resolver:
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
-                # Merge parent metadata into object's metadata if not set
+                # Create a new merged LoadMetadata without mutating the object's metadata
                 # This ensures dependencies get app_id etc. from their parent context
-                load_metadata = obj._load_metadata
-                if parent_load_metadata:
-                    if load_metadata.app_id is None and parent_load_metadata.app_id is not None:
-                        load_metadata.app_id = parent_load_metadata.app_id
-                    if load_metadata.client is None and parent_load_metadata.client is not None:
-                        load_metadata.client = parent_load_metadata.client
-                    if load_metadata.environment_name is None and parent_load_metadata.environment_name is not None:
-                        load_metadata.environment_name = parent_load_metadata.environment_name
+                load_metadata = obj._load_metadata.merged_with(parent_load_metadata)
 
                 # Wait for all its dependencies, passing the merged load_metadata
                 # TODO(erikbern): do we need existing_object_id for those?
-                await TaskContext.gather(*[self.load(dep, parent_load_metadata=load_metadata) for dep in obj.deps()])
+                await TaskContext.gather(*[self.load(dep, load_metadata) for dep in obj.deps()])
 
                 # Load the object itself
                 if not obj._load:

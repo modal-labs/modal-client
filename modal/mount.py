@@ -661,7 +661,10 @@ class _Mount(_Object, type_prefix="mo"):
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver()
-        await resolver.load(self)
+        from ._load_metadata import LoadMetadata
+
+        parent_metadata = LoadMetadata(client=client, environment_name=environment_name)
+        await resolver.load(self, parent_metadata)
 
     def _get_metadata(self) -> api_pb2.MountHandleMetadata:
         if self._content_checksum_sha256_hex is None:

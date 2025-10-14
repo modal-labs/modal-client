@@ -516,7 +516,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         obj._load_metadata.app_id = app_id
 
         resolver = Resolver()
-        await resolver.load(obj)
+        from ._load_metadata import LoadMetadata
+
+        parent_metadata = LoadMetadata(client=client, app_id=app_id)
+        await resolver.load(obj, parent_metadata)
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):

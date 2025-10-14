@@ -427,14 +427,14 @@ class _Obj:
 
         # Not hydrated Cls, and we don't have the class - typically a Cls.from_name that
         # has not yet been loaded. So use a special loader that loads it lazily:
-        async def method_loader(fun, resolver: Resolver, existing_object_id):
-            await resolver.load(self._cls)  # load class so we get info about methods
+        async def method_loader(fun, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id):
+            await resolver.load(self._cls, load_metadata)  # load class so we get info about methods
             method_function = _get_maybe_method()
             if method_function is None:
                 raise NotFoundError(
                     f"Class has no method {k}, and attributes can't be accessed for `Cls.from_name` instances"
                 )
-            await resolver.load(method_function)  # get the appropriate method handle (lazy)
+            await resolver.load(method_function, load_metadata)  # get the appropriate method handle (lazy)
             fun._hydrate_from_other(method_function)
 
         # The reason we don't *always* use this lazy loader is because it precludes attribute access
@@ -673,7 +673,7 @@ More information on class parameterization can be found here: https://modal.com/
                     raise
 
             print_server_warnings(response.server_warnings)
-            await resolver.load(self._class_service_function)
+            await resolver.load(self._class_service_function, load_metadata)
             self._hydrate(response.class_id, load_metadata.client, response.handle_metadata)
 
         environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
@@ -763,7 +763,7 @@ More information on class parameterization can be found here: https://modal.com/
             if not self.is_hydrated:
                 # this should only happen for Cls.from_name instances
                 # other classes should already be hydrated!
-                await resolver.load(self)
+                await resolver.load(self, load_metadata)
 
             new_cls._initialize_from_other(self)
 
@@ -817,7 +817,7 @@ More information on class parameterization can be found here: https://modal.com/
 
         async def _load_from_base(new_cls, resolver, load_metadata, existing_object_id):
             if not self.is_hydrated:
-                await resolver.load(self)
+                await resolver.load(self, load_metadata)
             new_cls._initialize_from_other(self)
 
         def _deps():
@@ -846,7 +846,7 @@ More information on class parameterization can be found here: https://modal.com/
 
         async def _load_from_base(new_cls, resolver, load_metadata, existing_object_id):
             if not self.is_hydrated:
-                await resolver.load(self)
+                await resolver.load(self, load_metadata)
             new_cls._initialize_from_other(self)
 
         def _deps():

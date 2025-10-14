@@ -896,7 +896,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 is_web_endpoint, is_generator, restrict_output
             )
 
-        async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _preload(
+            self: _Function, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+        ):
             assert load_metadata.client and load_metadata.client.stub
 
             assert load_metadata.app_id
