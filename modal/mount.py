@@ -519,7 +519,7 @@ class _Mount(_Object, type_prefix="mo"):
 
             request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
             accounted_hashes.add(file_spec.sha256_hex)
-            response = await retry_transient_errors(resolver.client.stub.MountPutFile, request, base_delay=1)
+            response = await retry_transient_errors(load_metadata.client.stub.MountPutFile, request, base_delay=1)
 
             if response.exists:
                 n_finished += 1
@@ -533,7 +533,7 @@ class _Mount(_Object, type_prefix="mo"):
                 async with blob_upload_concurrency:
                     with file_spec.source() as fp:
                         blob_id = await blob_upload_file(
-                            fp, resolver.client.stub, sha256_hex=file_spec.sha256_hex, md5_hex=file_spec.md5_hex
+                            fp, load_metadata.client.stub, sha256_hex=file_spec.sha256_hex, md5_hex=file_spec.md5_hex
                         )
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
@@ -545,7 +545,7 @@ class _Mount(_Object, type_prefix="mo"):
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
-                response = await retry_transient_errors(resolver.client.stub.MountPutFile, request2, base_delay=1)
+                response = await retry_transient_errors(load_metadata.client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
                     n_finished += 1
                     return mount_file
@@ -589,14 +589,14 @@ class _Mount(_Object, type_prefix="mo"):
             req = api_pb2.MountGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
                 files=files,
-                environment_name=resolver.environment_name,
+                environment_name=load_metadata.environment_name,
             )
 
-        resp = await retry_transient_errors(resolver.client.stub.MountGetOrCreate, req, base_delay=1)
+        resp = await retry_transient_errors(load_metadata.client.stub.MountGetOrCreate, req, base_delay=1)
         status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {total_uploads} new files and {total_bytes} bytes in {time.monotonic() - t0}s")
-        self._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
+        self._hydrate(resp.mount_id, load_metadata.client, resp.handle_metadata)
 
     @staticmethod
     def _from_local_python_packages(
@@ -636,10 +636,10 @@ class _Mount(_Object, type_prefix="mo"):
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=name,
                 namespace=namespace,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
             )
-            response = await resolver.client.stub.MountGetOrCreate(req)
-            provider._hydrate(response.mount_id, resolver.client, response.handle_metadata)
+            response = await load_metadata.client.stub.MountGetOrCreate(req)
+            provider._hydrate(response.mount_id, load_metadata.client, response.handle_metadata)
 
         return _Mount._from_loader(_load, "Mount()", hydrate_lazily=True)
 
@@ -660,7 +660,7 @@ class _Mount(_Object, type_prefix="mo"):
         self._allow_overwrite = allow_overwrite
         if client is None:
             client = await _Client.from_env()
-        resolver = Resolver(client=client, environment_name=environment_name)
+        resolver = Resolver()
         await resolver.load(self)
 
     def _get_metadata(self) -> api_pb2.MountHandleMetadata:

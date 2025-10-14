@@ -897,7 +897,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            assert resolver.client and resolver.client.stub
+            assert load_metadata.client and load_metadata.client.stub
 
             assert load_metadata.app_id
             req = api_pb2.FunctionPrecreateRequest(
@@ -917,13 +917,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             elif webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
 
-            response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            response = await retry_transient_errors(load_metadata.client.stub.FunctionPrecreate, req)
+            self._hydrate(response.function_id, load_metadata.client, response.handle_metadata)
 
         async def _load(
             self: _Function, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
         ):
-            assert resolver.client and resolver.client.stub
+            assert load_metadata.client and load_metadata.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 timeout_secs = timeout
 
@@ -1129,7 +1129,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
-                        resolver.client.stub.FunctionCreate, request
+                        load_metadata.client.stub.FunctionCreate, request
                     )
                 except GRPCError as exc:
                     if exc.status == Status.INVALID_ARGUMENT:
@@ -1145,7 +1145,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             serve_mounts = {m for m in all_mounts if m.is_local()}
             serve_mounts |= image._serve_mounts
             obj._serve_mounts = frozenset(serve_mounts)
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, load_metadata.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         # Pass a reference to the App's LoadMetadata
@@ -1230,7 +1230,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 param_bound_func._hydrate_from_other(parent)
                 return
 
-            environment_name = _get_environment_name(None, resolver)
+            environment_name = _get_environment_name(None, load_metadata=load_metadata)
             assert parent is not None and parent.is_hydrated
 
             if options:
@@ -1393,14 +1393,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _load_remote(
             self: _Function, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
         ):
-            assert resolver.client and resolver.client.stub
+            assert load_metadata.client and load_metadata.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                environment_name=_get_environment_name(environment_name, resolver) or "",
+                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata) or "",
             )
             try:
-                response = await retry_transient_errors(resolver.client.stub.FunctionGet, request)
+                response = await retry_transient_errors(load_metadata.client.stub.FunctionGet, request)
             except NotFoundError as exc:
                 # refine the error message
                 env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
@@ -1410,7 +1410,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             print_server_warnings(response.server_warnings)
 
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, load_metadata.client, response.handle_metadata)
 
         environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
         rep = f"modal.Function.from_name('{app_name}', '{name}'{environment_rep})"
@@ -2053,8 +2053,8 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             self: _FunctionCall, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
         ):
             request = api_pb2.FunctionCallFromIdRequest(function_call_id=function_call_id)
-            resp = await retry_transient_errors(resolver.client.stub.FunctionCallFromId, request)
-            self._hydrate(function_call_id, resolver.client, resp)
+            resp = await retry_transient_errors(load_metadata.client.stub.FunctionCallFromId, request)
+            self._hydrate(function_call_id, load_metadata.client, resp)
 
         rep = f"FunctionCall.from_id({function_call_id!r})"
         fc: _FunctionCall[Any] = _FunctionCall._from_loader(_load, rep, hydrate_lazily=True)

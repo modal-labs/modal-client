@@ -34,10 +34,10 @@ class _Proxy(_Object, type_prefix="pr"):
         ):
             req = api_pb2.ProxyGetRequest(
                 name=name,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
             )
-            response: api_pb2.ProxyGetResponse = await resolver.client.stub.ProxyGet(req)
-            self._hydrate(response.proxy.proxy_id, resolver.client, None)
+            response: api_pb2.ProxyGetResponse = await load_metadata.client.stub.ProxyGet(req)
+            self._hydrate(response.proxy.proxy_id, load_metadata.client, None)
 
         rep = _Proxy._repr(name, environment_name)
         return _Proxy._from_loader(_load, rep, is_another_app=True)

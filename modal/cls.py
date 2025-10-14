@@ -614,8 +614,8 @@ More information on class parameterization can be found here: https://modal.com/
             req = api_pb2.ClassCreateRequest(
                 app_id=load_metadata.app_id, existing_class_id=existing_object_id, only_class_function=True
             )
-            resp = await resolver.client.stub.ClassCreate(req)
-            self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
+            resp = await load_metadata.client.stub.ClassCreate(req)
+            self._hydrate(resp.class_id, load_metadata.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
         # Pass a reference to the App's LoadMetadata
@@ -660,7 +660,7 @@ More information on class parameterization can be found here: https://modal.com/
                 only_class_function=True,
             )
             try:
-                response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
+                response = await retry_transient_errors(load_metadata.client.stub.ClassGet, request)
             except NotFoundError as exc:
                 env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
                 raise NotFoundError(
@@ -674,7 +674,7 @@ More information on class parameterization can be found here: https://modal.com/
 
             print_server_warnings(response.server_warnings)
             await resolver.load(self._class_service_function)
-            self._hydrate(response.class_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.class_id, load_metadata.client, response.handle_metadata)
 
         environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
         rep = f"Cls.from_name({app_name!r}, {name!r}{environment_rep})"

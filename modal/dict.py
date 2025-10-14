@@ -375,13 +375,13 @@ class _Dict(_Object, type_prefix="di"):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 data=serialized,
             )
-            response = await resolver.client.stub.DictGetOrCreate(req)
+            response = await load_metadata.client.stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
-            self._hydrate(response.dict_id, resolver.client, response.metadata)
+            self._hydrate(response.dict_id, load_metadata.client, response.metadata)
 
         rep = _Dict._repr(name, environment_name)
         return _Dict._from_loader(_load, rep, is_another_app=True, hydrate_lazily=True, name=name)

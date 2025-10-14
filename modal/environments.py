@@ -74,9 +74,9 @@ class _Environment(_Object, type_prefix="en"):
                     else api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
                 ),
             )
-            response = await retry_transient_errors(resolver.client.stub.EnvironmentGetOrCreate, request)
+            response = await retry_transient_errors(load_metadata.client.stub.EnvironmentGetOrCreate, request)
             logger.debug(f"Created environment with id {response.environment_id}")
-            self._hydrate(response.environment_id, resolver.client, response.metadata)
+            self._hydrate(response.environment_id, load_metadata.client, response.metadata)
 
         # TODO environment name (and id?) in the repr? (We should make reprs consistently more useful)
         return _Environment._from_loader(_load, "Environment()", is_another_app=True, hydrate_lazily=True)

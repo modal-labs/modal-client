@@ -120,12 +120,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
             try:
-                response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
-                self._hydrate(response.shared_volume_id, resolver.client, None)
+                response = await load_metadata.client.stub.SharedVolumeGetOrCreate(req)
+                self._hydrate(response.shared_volume_id, load_metadata.client, None)
             except modal.exception.NotFoundError as exc:
                 if exc.args[0] == "App has wrong entity vo":
                     raise InvalidError(

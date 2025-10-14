@@ -532,7 +532,7 @@ class _Image(_Object, type_prefix="im"):
                     image._assert_no_mount_layers()
 
             assert load_metadata.app_id  # type narrowing
-            environment = await _get_environment_cached(resolver.environment_name or "", resolver.client)
+            environment = await _get_environment_cached(load_metadata.environment_name or "", load_metadata.client)
             # A bit hacky,but assume that the environment provides a valid builder version
             image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
             builder_version = _get_image_builder_version(image_builder_version)
@@ -624,7 +624,7 @@ class _Image(_Object, type_prefix="im"):
                 allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT") == "1",
                 ignore_cache=config.get("ignore_cache"),
             )
-            resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
+            resp = await retry_transient_errors(load_metadata.client.stub.ImageGetOrCreate, req)
             image_id = resp.image_id
             result: api_pb2.GenericResult
             metadata: Optional[api_pb2.ImageMetadata] = None
@@ -637,7 +637,7 @@ class _Image(_Object, type_prefix="im"):
             else:
                 # not built or in the process of building - wait for build
                 logger.debug("Waiting for image %s" % image_id)
-                resp = await _image_await_build_result(image_id, resolver.client)
+                resp = await _image_await_build_result(image_id, load_metadata.client)
                 result = resp.result
                 if resp.HasField("metadata"):
                     metadata = resp.metadata
@@ -667,7 +667,7 @@ class _Image(_Object, type_prefix="im"):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            self._hydrate(image_id, resolver.client, metadata)
+            self._hydrate(image_id, load_metadata.client, metadata)
             local_mounts = set()
             for base in base_images.values():
                 local_mounts |= base._serve_mounts
@@ -856,7 +856,7 @@ class _Image(_Object, type_prefix="im"):
             self: _Image, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
         ):
             resp = await retry_transient_errors(client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id))
-            self._hydrate(resp.image_id, resolver.client, resp.metadata)
+            self._hydrate(resp.image_id, load_metadata.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
         obj = _Image._from_loader(_load, rep)
@@ -925,7 +925,7 @@ class _Image(_Object, type_prefix="im"):
         self._load_metadata.client = app_client
         self._load_metadata.app_id = app_id
 
-        resolver = Resolver(app_client)
+        resolver = Resolver()
         await resolver.load(self)
         return self
 

@@ -382,11 +382,11 @@ class _Queue(_Object, type_prefix="qu"):
         ):
             req = api_pb2.QueueGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
-            response = await resolver.client.stub.QueueGetOrCreate(req)
-            self._hydrate(response.queue_id, resolver.client, response.metadata)
+            response = await load_metadata.client.stub.QueueGetOrCreate(req)
+            self._hydrate(response.queue_id, load_metadata.client, response.metadata)
 
         rep = _Queue._repr(name, environment_name)
         return _Queue._from_loader(_load, rep, is_another_app=True, hydrate_lazily=True, name=name)

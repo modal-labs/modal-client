@@ -273,14 +273,14 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             create_req = api_pb2.SandboxCreateRequest(app_id=load_metadata.app_id, definition=definition)
             try:
-                create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
+                create_resp = await retry_transient_errors(load_metadata.client.stub.SandboxCreate, create_req)
             except GRPCError as exc:
                 if exc.status == Status.ALREADY_EXISTS:
                     raise AlreadyExistsError(exc.message)
                 raise exc
 
             sandbox_id = create_resp.sandbox_id
-            self._hydrate(sandbox_id, resolver.client, None)
+            self._hydrate(sandbox_id, load_metadata.client, None)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
 
@@ -515,7 +515,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         obj._load_metadata.client = client
         obj._load_metadata.app_id = app_id
 
-        resolver = Resolver(client)
+        resolver = Resolver()
         await resolver.load(obj)
         return obj
 

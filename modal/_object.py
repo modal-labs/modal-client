@@ -21,11 +21,25 @@ from .exception import ExecutionError, InvalidError
 EPHEMERAL_OBJECT_HEARTBEAT_SLEEP: int = 300
 
 
-def _get_environment_name(environment_name: Optional[str] = None, resolver: Optional[Resolver] = None) -> Optional[str]:
+def _get_environment_name(
+    environment_name: Optional[str] = None,
+    resolver: Optional[Resolver] = None,
+    load_metadata: Optional[LoadMetadata] = None,
+) -> Optional[str]:
+    """Get environment name from various sources.
+
+    Args:
+        environment_name: Explicitly provided environment name (highest priority)
+        resolver: Deprecated - kept for backwards compatibility
+        load_metadata: LoadMetadata containing environment_name
+
+    Returns:
+        Environment name from first available source, or config default
+    """
     if environment_name:
         return environment_name
-    elif resolver and resolver.environment_name:
-        return resolver.environment_name
+    elif load_metadata and load_metadata.environment_name:
+        return load_metadata.environment_name
     else:
         return config.get("environment")
 
@@ -287,8 +301,10 @@ class _Object:
                 logger.debug(f"rehydrating {self} after snapshot")
                 self._is_hydrated = False  # un-hydrate and re-resolve
                 c = client if client is not None else await _Client.from_env()
-                resolver = Resolver(c)
-                await resolver.load(typing.cast(_Object, self))
+                # Set the client on LoadMetadata before loading
+                parent_metadata = LoadMetadata(client=c)
+                resolver = Resolver()
+                await resolver.load(typing.cast(_Object, self), parent_load_metadata=parent_metadata)
                 self._is_rehydrated = True
                 logger.debug(f"rehydrated {self} with client {id(c)}")
         elif not self._hydrate_lazily:
@@ -296,9 +312,11 @@ class _Object:
             self._validate_is_hydrated()
         else:
             c = client if client is not None else await _Client.from_env()
-            resolver = Resolver(c)
+            # Set the client on LoadMetadata before loading
+            parent_metadata = LoadMetadata(client=c)
+            resolver = Resolver()
             with suppress_tb_frames(1):  # skip this frame by default
-                await resolver.load(self)
+                await resolver.load(self, parent_load_metadata=parent_metadata)
         return self
 
 

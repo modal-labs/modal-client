@@ -139,13 +139,10 @@ async def _create_all_objects(
         app._load_metadata.app_id = running_app.app_id
 
     indexed_objects: dict[str, _Object] = {**functions, **classes}
-    # Pass the app's LoadMetadata as context so dependencies can use it
-    context_load_metadata = app._load_metadata if app else None
-    resolver = Resolver(
-        client,
-        environment_name=environment_name,
-        context_load_metadata=context_load_metadata,
-    )
+    resolver = Resolver()
+    # Get the app's LoadMetadata to pass to resolver.load() for all top-level objects
+    parent_load_metadata = app._load_metadata if app else None
+
     with resolver.display():
         # Get current objects, and reset all objects
         tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
@@ -176,7 +173,8 @@ async def _create_all_objects(
 
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
-            await resolver.load(obj, existing_object_id)
+            # Pass parent_load_metadata so dependencies can inherit app_id, client, etc.
+            await resolver.load(obj, existing_object_id, parent_load_metadata=parent_load_metadata)
             if _Function._is_id_type(obj.object_id):
                 running_app.function_ids[tag] = obj.object_id
             elif _Cls._is_id_type(obj.object_id):

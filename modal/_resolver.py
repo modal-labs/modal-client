@@ -11,14 +11,14 @@ from typing import TYPE_CHECKING, Optional
 from modal._traceback import suppress_tb_frames
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
 from ._utils.async_utils import TaskContext
-from .client import _Client
 
 if TYPE_CHECKING:
     from rich.tree import Tree
 
     import modal._object
+
+    from ._load_metadata import LoadMetadata
 
 
 class StatusRow:
@@ -49,19 +49,10 @@ class StatusRow:
 
 class Resolver:
     _local_uuid_to_future: dict[str, Future]
-    _environment_name: Optional[str]
     _deduplication_cache: dict[Hashable, Future]
-    _client: _Client
     _build_start: float
-    _context_load_metadata: LoadMetadata  # Context for loading objects without their own metadata
 
-    def __init__(
-        self,
-        client: _Client,
-        *,
-        environment_name: Optional[str] = None,
-        context_load_metadata: Optional[LoadMetadata] = None,
-    ):
+    def __init__(self):
         try:
             # TODO(michael) If we don't clean this up more thoroughly, it would probably
             # be good to have a single source of truth for "rich is installed" rather than
@@ -76,26 +67,12 @@ class Resolver:
 
         self._local_uuid_to_future = {}
         self._tree = tree
-        self._client = client
-        self._environment_name = environment_name
         self._deduplication_cache = {}
-
-        self._context_load_metadata = context_load_metadata or LoadMetadata(
-            client=client, environment_name=environment_name
-        )
 
         with tempfile.TemporaryFile() as temp_file:
             # Use file mtime to track build start time because we will later compare this baseline
             # to the mtime on mounted files, and want those measurements to have the same resolution.
             self._build_start = os.fstat(temp_file.fileno()).st_mtime
-
-    @property
-    def client(self):
-        return self._client
-
-    @property
-    def environment_name(self):
-        return self._environment_name
 
     @property
     def build_start(self) -> float:
@@ -105,7 +82,12 @@ class Resolver:
         if obj._preload is not None:
             await obj._preload(obj, self, existing_object_id)
 
-    async def load(self, obj: "modal._object._Object", existing_object_id: Optional[str] = None):
+    async def load(
+        self,
+        obj: "modal._object._Object",
+        existing_object_id: Optional[str] = None,
+        parent_load_metadata: Optional["LoadMetadata"] = None,
+    ):
         if obj._is_hydrated and obj._is_another_app:
             # No need to reload this, it won't typically change
             if obj.local_uuid not in self._local_uuid_to_future:
@@ -129,29 +111,31 @@ class Resolver:
             cached_future = self._deduplication_cache.get(deduplication_key)
             if cached_future:
                 hydrated_object = await cached_future
-                obj._hydrate(hydrated_object.object_id, self._client, hydrated_object._get_metadata())
+                # Use the client from the already-hydrated object
+                obj._hydrate(hydrated_object.object_id, hydrated_object.client, hydrated_object._get_metadata())
                 return obj
 
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
-                # Wait for all its dependencies
+                # Merge parent metadata into object's metadata if not set
+                # This ensures dependencies get app_id etc. from their parent context
+                load_metadata = obj._load_metadata
+                if parent_load_metadata:
+                    if load_metadata.app_id is None and parent_load_metadata.app_id is not None:
+                        load_metadata.app_id = parent_load_metadata.app_id
+                    if load_metadata.client is None and parent_load_metadata.client is not None:
+                        load_metadata.client = parent_load_metadata.client
+                    if load_metadata.environment_name is None and parent_load_metadata.environment_name is not None:
+                        load_metadata.environment_name = parent_load_metadata.environment_name
+
+                # Wait for all its dependencies, passing the merged load_metadata
                 # TODO(erikbern): do we need existing_object_id for those?
-                await TaskContext.gather(*[self.load(dep) for dep in obj.deps()])
+                await TaskContext.gather(*[self.load(dep, parent_load_metadata=load_metadata) for dep in obj.deps()])
 
                 # Load the object itself
                 if not obj._load:
                     raise Exception(f"Object {obj} has no loader function")
-
-                # Merge context metadata into object's metadata if not set
-                # This ensures dependencies get app_id etc. from the resolver context
-                load_metadata = obj._load_metadata
-                if load_metadata.app_id is None and self._context_load_metadata.app_id is not None:
-                    load_metadata.app_id = self._context_load_metadata.app_id
-                if load_metadata.client is None and self._context_load_metadata.client is not None:
-                    load_metadata.client = self._context_load_metadata.client
-                if load_metadata.environment_name is None and self._context_load_metadata.environment_name is not None:
-                    load_metadata.environment_name = self._context_load_metadata.environment_name
 
                 await obj._load(obj, self, load_metadata, existing_object_id)
 

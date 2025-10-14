@@ -273,17 +273,17 @@ class _Secret(_Object, type_prefix="st"):
                 object_creation_type=object_creation_type,
                 env_dict=env_dict_filtered,
                 app_id=load_metadata.app_id,
-                environment_name=resolver.environment_name,
+                environment_name=load_metadata.environment_name,
             )
             try:
-                resp = await resolver.client.stub.SecretGetOrCreate(req)
+                resp = await load_metadata.client.stub.SecretGetOrCreate(req)
             except GRPCError as exc:
                 if exc.status == Status.INVALID_ARGUMENT:
                     raise InvalidError(exc.message)
                 if exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
                 raise
-            self._hydrate(resp.secret_id, resolver.client, resp.metadata)
+            self._hydrate(resp.secret_id, load_metadata.client, resp.metadata)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep, hydrate_lazily=True)
@@ -367,9 +367,9 @@ class _Secret(_Object, type_prefix="st"):
                 env_dict=env_dict,
                 app_id=load_metadata.app_id,
             )
-            resp = await resolver.client.stub.SecretGetOrCreate(req)
+            resp = await load_metadata.client.stub.SecretGetOrCreate(req)
 
-            self._hydrate(resp.secret_id, resolver.client, resp.metadata)
+            self._hydrate(resp.secret_id, load_metadata.client, resp.metadata)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
 
@@ -404,17 +404,17 @@ class _Secret(_Object, type_prefix="st"):
         ):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
                 required_keys=required_keys,
             )
             try:
-                response = await resolver.client.stub.SecretGetOrCreate(req)
+                response = await load_metadata.client.stub.SecretGetOrCreate(req)
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
                     raise NotFoundError(exc.message)
                 else:
                     raise
-            self._hydrate(response.secret_id, resolver.client, response.metadata)
+            self._hydrate(response.secret_id, load_metadata.client, response.metadata)
 
         rep = _Secret._repr(name, environment_name)
         return _Secret._from_loader(_load, rep, hydrate_lazily=True, name=name)

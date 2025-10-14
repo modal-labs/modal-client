@@ -437,12 +437,12 @@ class _Volume(_Object, type_prefix="vo"):
         ):
             req = api_pb2.VolumeGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 version=version,
             )
-            response = await resolver.client.stub.VolumeGetOrCreate(req)
-            self._hydrate(response.volume_id, resolver.client, response.metadata)
+            response = await load_metadata.client.stub.VolumeGetOrCreate(req)
+            self._hydrate(response.volume_id, load_metadata.client, response.metadata)
 
         rep = _Volume._repr(name, environment_name)
         return _Volume._from_loader(_load, rep, hydrate_lazily=True, name=name)
