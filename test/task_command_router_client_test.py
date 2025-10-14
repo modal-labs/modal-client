@@ -616,3 +616,52 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(monkeypatch):
     elapsed = time.monotonic() - start
     assert elapsed < 0.15
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_error(monkeypatch):
+    client = TaskCommandRouterClient(
+        server_client=None,
+        task_id="sb-1",
+        server_url="https://router.test",
+        jwt="t",
+        channel=create_dummy_channel(),
+    )
+
+    class _Stream:
+        def __init__(self, timeout: Optional[float]):
+            self._timeout = timeout
+
+        async def __aenter__(self):
+            # Simulate grpclib honoring per-RPC timeout during open
+            assert self._timeout is not None
+            await asyncio.sleep(self._timeout + 0.05)
+            raise asyncio.TimeoutError()
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201 - test helper
+            return False
+
+        async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
+            return None
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    def _open(timeout: Optional[float] = None):
+        return _Stream(timeout)
+
+    client._stub = _Stub(_open)  # type: ignore[assignment]
+
+    # Set a small deadline; expect prompt ExecTimeoutError.
+    deadline = time.monotonic() + 0.05
+    start = time.monotonic()
+    with pytest.raises(ExecTimeoutError):
+        async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
+            pass
+    elapsed = time.monotonic() - start
+    # Should not significantly exceed the deadline (allow small overhead)
+    assert elapsed < 0.2
+    await client.close()
