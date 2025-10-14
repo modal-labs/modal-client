@@ -8,7 +8,7 @@ from grpclib.exceptions import GRPCError
 
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter
-from modal.io_streams import StreamReader
+from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line
 from modal_proto import api_pb2
 
 
@@ -327,3 +327,98 @@ async def test_stream_reader_timeout(servicer, client):
             # message 3 should not be received, due to the timeout
             assert output == [f"msg{i}\n" for i in range(2)]
             assert time.monotonic() - time_first_send <= 4
+
+
+async def _bytes_stream(items: list[bytes]):
+    for item in items:
+        yield item
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_yields_nothing_with_empty_input_stream():
+    stream = _stream_by_line(_bytes_stream([]))
+    result = [chunk async for chunk in stream]
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_yields_entire_chunk_without_newline_at_end():
+    stream = _stream_by_line(_bytes_stream([b"hello world"]))
+    result = [chunk async for chunk in stream]
+    assert result == [b"hello world"]
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_splits_single_chunk_into_multiple_lines():
+    stream = _stream_by_line(_bytes_stream([b"a\nb\nc\n"]))
+    result = [chunk async for chunk in stream]
+    assert result == [b"a\n", b"b\n", b"c\n"]
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_merges_chunks_until_newline_then_yields_one_line():
+    # "ab" + "c\n" should yield "abc\n" as a single line
+    stream = _stream_by_line(_bytes_stream([b"ab", b"c\n", b"de\n"]))
+    result = [chunk async for chunk in stream]
+    assert result == [b"abc\n", b"de\n"]
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_yields_leftover_without_newline_at_end():
+    stream = _stream_by_line(_bytes_stream([b"line1\nline2"]))
+    result = [chunk async for chunk in stream]
+    assert result == [b"line1\n", b"line2"]
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_handles_consecutive_empty_lines():
+    stream = _stream_by_line(_bytes_stream([b"\n\n", b"a\n", b"\n"]))
+    result = [chunk async for chunk in stream]
+    assert result == [b"\n", b"\n", b"a\n", b"\n"]
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_raises_assertion_error_for_non_bytes_items():
+    async def _bad_stream():
+        yield "not-bytes"  # type: ignore[misc]
+
+    with pytest.raises(AssertionError):
+        async for _ in _stream_by_line(_bad_stream()):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_decode_bytes_stream_to_str_yields_nothing_with_empty_input_stream():
+    stream = _decode_bytes_stream_to_str(_bytes_stream([]))
+    result = [chunk async for chunk in stream]
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_decode_bytes_stream_to_str_decodes_single_ascii_chunk():
+    stream = _decode_bytes_stream_to_str(_bytes_stream([b"hello"]))
+    result = [chunk async for chunk in stream]
+    assert result == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_decode_bytes_stream_to_str_decodes_multiple_chunks_in_order():
+    stream = _decode_bytes_stream_to_str(_bytes_stream([b"hello", b" ", b"world"]))
+    result = [chunk async for chunk in stream]
+    assert result == ["hello", " ", "world"]
+
+
+@pytest.mark.asyncio
+async def test_decode_bytes_stream_to_str_decodes_utf8_multibyte_characters_in_single_chunk():
+    stream = _decode_bytes_stream_to_str(_bytes_stream(["café".encode("utf-8")]))
+    result = [chunk async for chunk in stream]
+    assert result == ["café"]
+
+
+@pytest.mark.asyncio
+async def test_decode_bytes_stream_to_str_raises_when_multibyte_sequence_split_across_chunks():
+    # 'é' in UTF-8 is b"\xc3\xa9"; splitting across chunks should raise during decode
+    stream = _decode_bytes_stream_to_str(_bytes_stream([b"caf\xc3", b"\xa9"]))
+    with pytest.raises(UnicodeDecodeError):
+        async for _ in stream:
+            pass
