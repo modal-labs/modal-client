@@ -20,7 +20,7 @@ from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._load_metadata import LoadMetadata
-from ._object import _get_environment_name, _Object, live_method, live_method_gen
+from ._object import _Object, live_method, live_method_gen
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -1232,7 +1232,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 param_bound_func._hydrate_from_other(parent)
                 return
 
-            environment_name = _get_environment_name(None, load_metadata=load_metadata)
             assert parent is not None and parent.is_hydrated
 
             if options:
@@ -1272,7 +1271,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_id=parent.object_id,
                 serialized_params=serialized_params,
                 function_options=options_pb,
-                environment_name=environment_name
+                environment_name=load_metadata.environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
 
@@ -1289,7 +1288,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 return [dep for dep in all_deps if not dep.is_hydrated]
             return []
 
-        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True, deps=_deps)
+        fun: _Function = _Function._from_loader(
+            _load, "Function(parametrized)", hydrate_lazily=True, deps=_deps, load_metadata=self._load_metadata
+        )
 
         fun._info = self._info
         fun._obj = obj
@@ -1387,8 +1388,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cls,
         app_name: str,
         name: str,
-        namespace=None,  # mdmd:line-hidden
-        environment_name: Optional[str] = None,
+        load_metadata: LoadMetadata,
     ):
         # internal function lookup implementation that allows lookup of class "service functions"
         # in addition to non-class functions
@@ -1399,13 +1399,17 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata) or "",
+                environment_name=load_metadata.environment_name,
             )
             try:
                 response = await retry_transient_errors(load_metadata.client.stub.FunctionGet, request)
             except NotFoundError as exc:
                 # refine the error message
-                env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                env_context = (
+                    f" (in the '{load_metadata.environment_name}' environment)"
+                    if load_metadata.environment_name
+                    else ""
+                )
                 raise NotFoundError(
                     f"Lookup failed for Function '{name}' from the '{app_name}' app{env_context}: {exc}."
                 ) from None
@@ -1414,7 +1418,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             self._hydrate(response.function_id, load_metadata.client, response.handle_metadata)
 
-        environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
+        environment_rep = (
+            f", environment_name={load_metadata.environment_name!r}" if load_metadata.environment_name else ""
+        )
         rep = f"modal.Function.from_name('{app_name}', '{name}'{environment_rep})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
@@ -1426,6 +1432,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         *,
         namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
+        client: Optional[_Client] = None,
     ) -> "_Function":
         """Reference a Function from a deployed App by its name.
 
@@ -1449,7 +1456,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
 
         warn_if_passing_namespace(namespace, "modal.Function.from_name")
-        return cls._from_name(app_name, name, environment_name=environment_name)
+        return cls._from_name(
+            app_name, name, load_metadata=LoadMetadata(environment_name=environment_name, client=client)
+        )
 
     @property
     def tag(self) -> str:

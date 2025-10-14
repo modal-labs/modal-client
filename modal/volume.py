@@ -437,7 +437,7 @@ class _Volume(_Object, type_prefix="vo"):
         ):
             req = api_pb2.VolumeGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
+                environment_name=load_metadata.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 version=version,
             )

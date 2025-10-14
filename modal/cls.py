@@ -33,8 +33,8 @@ from ._utils.deprecation import (
 )
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
+from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
-from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .gpu import GPU_T
 from .retries import Retries
@@ -444,6 +444,7 @@ class _Obj:
             rep=f"Method({self._cls._name}.{k})",
             deps=lambda: [],  # TODO: use cls as dep instead of loading inside method_loader?
             hydrate_lazily=True,
+            load_metadata=self._cls._load_metadata,
         )
 
 
@@ -490,6 +491,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._callables = other._callables
         self._name = other._name
         self._method_metadata = other._method_metadata
+        self._load_metadata = other._load_metadata
 
     def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
@@ -636,6 +638,7 @@ More information on class parameterization can be found here: https://modal.com/
         *,
         namespace: Any = None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
+        client: Optional["_Client"] = None,
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
 
@@ -648,7 +651,6 @@ More information on class parameterization can be found here: https://modal.com/
         ```
         """
         warn_if_passing_namespace(namespace, "modal.Cls.from_name")
-        _environment_name = environment_name or config.get("environment")
 
         async def _load_remote(
             self: _Cls, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
@@ -656,13 +658,17 @@ More information on class parameterization can be found here: https://modal.com/
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                environment_name=_environment_name,
+                environment_name=load_metadata.environment_name,
                 only_class_function=True,
             )
             try:
                 response = await retry_transient_errors(load_metadata.client.stub.ClassGet, request)
             except NotFoundError as exc:
-                env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                env_context = (
+                    f" (in the '{load_metadata.environment_name}' environment)"
+                    if load_metadata.environment_name
+                    else ""
+                )
                 raise NotFoundError(
                     f"Lookup failed for Cls '{name}' from the '{app_name}' app{env_context}: {exc}."
                 ) from None
@@ -678,14 +684,21 @@ More information on class parameterization can be found here: https://modal.com/
 
         environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
         rep = f"Cls.from_name({app_name!r}, {name!r}{environment_rep})"
-        cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
+
+        load_metadata = LoadMetadata(client=client, environment_name=environment_name)
+        cls = cls._from_loader(
+            _load_remote,
+            rep,
+            is_another_app=True,
+            hydrate_lazily=True,
+            load_metadata=load_metadata,
+        )
 
         class_service_name = f"{name}.*"  # special name of the base service function for the class
         cls._class_service_function = _Function._from_name(
             app_name,
             class_service_name,
-            namespace=namespace,
-            environment_name=_environment_name,
+            load_metadata=load_metadata,
         )
         cls._name = name
         return cls
@@ -770,7 +783,13 @@ More information on class parameterization can be found here: https://modal.com/
         def _deps():
             return []
 
-        cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
+        cls = _Cls._from_loader(
+            _load_from_base,
+            rep=f"{self._name}.with_options(...)",
+            is_another_app=True,
+            deps=_deps,
+            load_metadata=self._load_metadata,
+        )
         cls._initialize_from_other(self)
 
         # Validate volumes
@@ -824,7 +843,11 @@ More information on class parameterization can be found here: https://modal.com/
             return []
 
         cls = _Cls._from_loader(
-            _load_from_base, rep=f"{self._name}.with_concurrency(...)", is_another_app=True, deps=_deps
+            _load_from_base,
+            rep=f"{self._name}.with_concurrency(...)",
+            is_another_app=True,
+            deps=_deps,
+            load_metadata=self._load_metadata,
         )
         cls._initialize_from_other(self)
 
@@ -853,7 +876,11 @@ More information on class parameterization can be found here: https://modal.com/
             return []
 
         cls = _Cls._from_loader(
-            _load_from_base, rep=f"{self._name}.with_concurrency(...)", is_another_app=True, deps=_deps
+            _load_from_base,
+            rep=f"{self._name}.with_concurrency(...)",
+            is_another_app=True,
+            deps=_deps,
+            load_metadata=self._load_metadata,
         )
         cls._initialize_from_other(self)
 
@@ -896,6 +923,7 @@ More information on class parameterization can be found here: https://modal.com/
             rep=f"UnboundMethod({self._name}.{k})",
             deps=lambda: [],
             hydrate_lazily=True,
+            load_metadata=self._load_metadata,
         )
 
     def _is_local(self) -> bool:

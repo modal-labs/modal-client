@@ -1476,3 +1476,35 @@ def test_startup_timeout_default_copies_timeout(client, servicer):
     assert len(function_creates_requests) == 1
     function_request = function_creates_requests[0]
     assert function_request.function.startup_timeout_secs == 20
+
+
+def test_cls_load_metadata_transfers_to_methods():
+    C = modal.Cls.from_name("dummy-app", "MyClass")
+    c = C(p=1)
+    d = C(p=2)
+    t = synchronizer._translate_in
+    # the *instance* of LoadMetadata from the Cls should be the same as the child
+    expected_load_metadata = t(C)._load_metadata
+    assert t(c.some_method)._load_metadata is expected_load_metadata
+    assert t(c.some_method)._load_metadata is t(d.some_method)._load_metadata
+    assert t(C.with_options(gpu="A100")().some_method)._load_metadata is expected_load_metadata
+
+
+def test_cls_load_metadata_transfers_to_methods_local():
+    app = modal.App()
+
+    @app.cls(serialized=True)
+    class C:
+        p: str = modal.parameter()
+
+        @method()
+        def some_method(self):
+            pass
+
+    t = synchronizer._translate_in
+    c = C(p=1)
+    assert t(c.some_method)._load_metadata is t(C)._load_metadata
+
+    # the *instance* of LoadMetadata from the Cls should be the same as the child
+    d = C(p=2)
+    assert t(c.some_method)._load_metadata is t(d.some_method)._load_metadata

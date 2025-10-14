@@ -20,7 +20,8 @@ import modal.file_pattern_matcher
 from modal_proto import api_pb2
 from modal_version import __version__
 
-from ._object import _get_environment_name, _Object
+from ._load_metadata import LoadMetadata
+from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
@@ -310,7 +311,7 @@ class _Mount(_Object, type_prefix="mo"):
     _entries: Optional[list[_MountEntry]] = None
     _deployment_name: Optional[str] = None
     _namespace: Optional[int] = None
-    _environment_name: Optional[str] = None
+
     _allow_overwrite: bool = False
     _content_checksum_sha256_hex: Optional[str] = None
 
@@ -477,7 +478,7 @@ class _Mount(_Object, type_prefix="mo"):
     async def _load_mount(
         self: "_Mount",
         resolver: Resolver,
-        load_metadata,
+        load_metadata: LoadMetadata,
         existing_object_id: Optional[str],
     ):
         t0 = time.monotonic()
@@ -575,7 +576,7 @@ class _Mount(_Object, type_prefix="mo"):
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=self._deployment_name,
                 namespace=self._namespace,
-                environment_name=self._environment_name,
+                environment_name=load_metadata.environment_name,
                 object_creation_type=creation_type,
                 files=files,
             )
@@ -629,6 +630,7 @@ class _Mount(_Object, type_prefix="mo"):
         *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
+        client: Optional[_Client] = None,
     ) -> "_Mount":
         """mdmd:hidden"""
 
@@ -636,12 +638,17 @@ class _Mount(_Object, type_prefix="mo"):
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=name,
                 namespace=namespace,
-                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
+                environment_name=load_metadata.environment_name,
             )
             response = await load_metadata.client.stub.MountGetOrCreate(req)
             provider._hydrate(response.mount_id, load_metadata.client, response.handle_metadata)
 
-        return _Mount._from_loader(_load, "Mount()", hydrate_lazily=True)
+        return _Mount._from_loader(
+            _load,
+            "Mount()",
+            hydrate_lazily=True,
+            load_metadata=LoadMetadata(environment_name=environment_name, client=client),
+        )
 
     async def _deploy(
         self: "_Mount",
@@ -653,16 +660,10 @@ class _Mount(_Object, type_prefix="mo"):
         client: Optional[_Client] = None,
     ) -> None:
         check_object_name(deployment_name, "Mount")
-        environment_name = _get_environment_name(environment_name, resolver=None)
         self._deployment_name = deployment_name
         self._namespace = namespace
-        self._environment_name = environment_name
         self._allow_overwrite = allow_overwrite
-        if client is None:
-            client = await _Client.from_env()
         resolver = Resolver()
-        from ._load_metadata import LoadMetadata
-
         parent_metadata = LoadMetadata(client=client, environment_name=environment_name)
         await resolver.load(self, parent_metadata)
 

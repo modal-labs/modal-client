@@ -23,23 +23,17 @@ EPHEMERAL_OBJECT_HEARTBEAT_SLEEP: int = 300
 
 def _get_environment_name(
     environment_name: Optional[str] = None,
-    resolver: Optional[Resolver] = None,
-    load_metadata: Optional[LoadMetadata] = None,
 ) -> Optional[str]:
     """Get environment name from various sources.
 
     Args:
         environment_name: Explicitly provided environment name (highest priority)
-        resolver: Deprecated - kept for backwards compatibility
-        load_metadata: LoadMetadata containing environment_name
 
     Returns:
         Environment name from first available source, or config default
     """
     if environment_name:
         return environment_name
-    elif load_metadata and load_metadata.environment_name:
-        return load_metadata.environment_name
     else:
         return config.get("environment")
 
@@ -99,7 +93,7 @@ class _Object:
         self._hydrate_lazily = hydrate_lazily
         self._deps = deps
         self._deduplication_key = deduplication_key
-        self._load_metadata = load_metadata if load_metadata is not None else LoadMetadata()
+        self._load_metadata = load_metadata if load_metadata is not None else LoadMetadata.empty()
 
         self._object_id = None
         self._client = None
@@ -300,20 +294,18 @@ class _Object:
                 # on restore to handle staleness.
                 logger.debug(f"rehydrating {self} after snapshot")
                 self._is_hydrated = False  # un-hydrate and re-resolve
-                c = client if client is not None else await _Client.from_env()
                 # Set the client on LoadMetadata before loading
-                parent_metadata = LoadMetadata(client=c)
+                parent_metadata = LoadMetadata(client=client)
                 resolver = Resolver()
                 await resolver.load(typing.cast(_Object, self), parent_metadata, existing_object_id=None)
                 self._is_rehydrated = True
-                logger.debug(f"rehydrated {self} with client {id(c)}")
+                logger.debug(f"rehydrated {self} with client {id(self.client)}")
         elif not self._hydrate_lazily:
             # TODO(michael) can remove _hydrate lazily? I think all objects support it now?
             self._validate_is_hydrated()
         else:
-            c = client if client is not None else await _Client.from_env()
             # Set the client on LoadMetadata before loading
-            parent_metadata = LoadMetadata(client=c)
+            parent_metadata = LoadMetadata(client=client)
             resolver = Resolver()
             with suppress_tb_frames(1):  # skip this frame by default
                 await resolver.load(self, parent_metadata)

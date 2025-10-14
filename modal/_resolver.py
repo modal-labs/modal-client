@@ -11,7 +11,10 @@ from typing import TYPE_CHECKING, Optional
 from modal._traceback import suppress_tb_frames
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._utils.async_utils import TaskContext
+from .client import _Client
+from .config import config
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -92,6 +95,12 @@ class Resolver:
         *,
         existing_object_id: Optional[str] = None,
     ):
+        if parent_load_metadata.client is None:
+            print(f"DEFAULTING CLIENT of {obj}")
+            parent_load_metadata.client = await _Client.from_env()
+        if parent_load_metadata.environment_name is None:
+            parent_load_metadata.environment_name = config.get("environment")
+
         if obj._is_hydrated and obj._is_another_app:
             # No need to reload this, it won't typically change
             if obj.local_uuid not in self._local_uuid_to_future:

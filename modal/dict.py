@@ -348,6 +348,7 @@ class _Dict(_Object, type_prefix="di"):
         namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        client: Optional[_Client] = None,
     ) -> "_Dict":
         """Reference a named Dict, creating if necessary.
 
@@ -375,7 +376,7 @@ class _Dict(_Object, type_prefix="di"):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
+                environment_name=load_metadata.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 data=serialized,
             )
@@ -384,7 +385,14 @@ class _Dict(_Object, type_prefix="di"):
             self._hydrate(response.dict_id, load_metadata.client, response.metadata)
 
         rep = _Dict._repr(name, environment_name)
-        return _Dict._from_loader(_load, rep, is_another_app=True, hydrate_lazily=True, name=name)
+        return _Dict._from_loader(
+            _load,
+            rep,
+            is_another_app=True,
+            hydrate_lazily=True,
+            name=name,
+            load_metadata=LoadMetadata(environment_name=environment_name, client=client),
+        )
 
     @staticmethod
     async def delete(
