@@ -115,19 +115,20 @@ class _FunctionDecoratorType:
     def __call__(self, func): ...
 
 
-@dataclass
+@dataclass(kw_only=True)
 class _LocalAppState:
     """All state for apps that's part of the local/definition state"""
 
     functions: dict[str, _Function]
     classes: dict[str, _Cls]
-    image: Optional[_Image]
-    secrets: Sequence[_Secret]
-    volumes: dict[Union[str, PurePosixPath], _Volume]
+    image_default: Optional[_Image]
     web_endpoints: list[str]  # Used by the CLI
     local_entrypoints: dict[str, _LocalEntrypoint]
     tags: dict[str, str]
+
     include_source_default: bool
+    secrets_default: Sequence[_Secret]
+    volumes_default: dict[Union[str, PurePosixPath], _Volume]
 
 
 class _App:
@@ -220,9 +221,9 @@ class _App:
         self._local_state_attr = _LocalAppState(
             functions={},
             classes={},
-            image=image,
-            secrets=secrets,
-            volumes=volumes,
+            image_default=image,
+            secrets_default=secrets,
+            volumes_default=volumes,
             include_source_default=include_source,
             web_endpoints=[],
             local_entrypoints={},
@@ -331,12 +332,12 @@ class _App:
         App that is retrieved via `modal.App.lookup`. It is likely to be deprecated in the future.
 
         """
-        return self._local_state.image
+        return self._local_state.image_default
 
     @image.setter
     def image(self, value):
         """mdmd:hidden"""
-        self._local_state.image = value
+        self._local_state.image_default = value
 
     def _uncreate_all_objects(self):
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
@@ -480,8 +481,8 @@ class _App:
 
     def _get_default_image(self):
         local_state = self._local_state
-        if local_state.image:
-            return local_state.image
+        if local_state.image_default:
+            return local_state.image_default
         else:
             return _default_image
 
@@ -758,7 +759,7 @@ class _App:
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
         local_state = self._local_state
-        secrets = [*local_state.secrets, *secrets]
+        secrets = [*local_state.secrets_default, *secrets]
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
@@ -866,7 +867,7 @@ class _App:
                 is_generator=is_generator,
                 gpu=gpu,
                 network_file_systems=network_file_systems,
-                volumes={**local_state.volumes, **volumes},
+                volumes={**local_state.volumes_default, **volumes},
                 cpu=cpu,
                 memory=memory,
                 ephemeral_disk=ephemeral_disk,
@@ -1056,10 +1057,10 @@ class _App:
                 info,
                 app=self,
                 image=image or self._get_default_image(),
-                secrets=[*local_state.secrets, *secrets],
+                secrets=[*local_state.secrets_default, *secrets],
                 gpu=gpu,
                 network_file_systems=network_file_systems,
-                volumes={**local_state.volumes, **volumes},
+                volumes={**local_state.volumes_default, **volumes},
                 cpu=cpu,
                 memory=memory,
                 ephemeral_disk=ephemeral_disk,
