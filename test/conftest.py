@@ -2677,16 +2677,20 @@ def blob_server_factory():
         location = request.url.with_path("/redirected" + request.url.path)
         raise aiohttp.web.HTTPTemporaryRedirect(location)
 
+    async def expect_handler2(request):
+        # XXX: remove this since it's basically the default expect handler
+        print("*** EXPECT_HANDLER_2")
+        request.transport.write(b"HTTP/1.1 100 Continue\r\n\r\n")
+
     async def handle_redirect(request):
         location = request.url.with_path("/redirected" + request.url.path)
-        # await request.content.read()
         raise aiohttp.web.HTTPTemporaryRedirect(location)
 
     # API used for volume version 2 blocks:
     app.add_routes([aiohttp.web.get("/block/{token}", handle_redirect)])
     app.add_routes([aiohttp.web.put("/block/{token}", handle_redirect, expect_handler=expect_handler)])
     app.add_routes([aiohttp.web.get("/redirected/block/{token}", get_block)])
-    app.add_routes([aiohttp.web.put("/redirected/block/{token}", put_block)])
+    app.add_routes([aiohttp.web.put("/redirected/block/{token}", put_block, expect_handler=expect_handler2)])
 
     started = threading.Event()
     stop_server = threading.Event()
