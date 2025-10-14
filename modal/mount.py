@@ -579,11 +579,11 @@ class _Mount(_Object, type_prefix="mo"):
                 object_creation_type=creation_type,
                 files=files,
             )
-        elif resolver.app_id is not None:
+        elif load_metadata.app_id is not None:
             req = api_pb2.MountGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 files=files,
-                app_id=resolver.app_id,
+                app_id=load_metadata.app_id,
             )
         else:
             req = api_pb2.MountGetOrCreateRequest(

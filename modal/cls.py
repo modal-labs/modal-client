@@ -612,7 +612,7 @@ More information on class parameterization can be found here: https://modal.com/
             self: "_Cls", resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
         ):
             req = api_pb2.ClassCreateRequest(
-                app_id=resolver.app_id, existing_class_id=existing_object_id, only_class_function=True
+                app_id=load_metadata.app_id, existing_class_id=existing_object_id, only_class_function=True
             )
             resp = await resolver.client.stub.ClassCreate(req)
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Optional
 from modal._traceback import suppress_tb_frames
 from modal_proto import api_pb2
 
+from ._load_metadata import LoadMetadata
 from ._utils.async_utils import TaskContext
 from .client import _Client
 
@@ -49,17 +50,17 @@ class StatusRow:
 class Resolver:
     _local_uuid_to_future: dict[str, Future]
     _environment_name: Optional[str]
-    _app_id: Optional[str]
     _deduplication_cache: dict[Hashable, Future]
     _client: _Client
     _build_start: float
+    _context_load_metadata: LoadMetadata  # Context for loading objects without their own metadata
 
     def __init__(
         self,
         client: _Client,
         *,
         environment_name: Optional[str] = None,
-        app_id: Optional[str] = None,
+        context_load_metadata: Optional[LoadMetadata] = None,
     ):
         try:
             # TODO(michael) If we don't clean this up more thoroughly, it would probably
@@ -76,18 +77,17 @@ class Resolver:
         self._local_uuid_to_future = {}
         self._tree = tree
         self._client = client
-        self._app_id = app_id
         self._environment_name = environment_name
         self._deduplication_cache = {}
+
+        self._context_load_metadata = context_load_metadata or LoadMetadata(
+            client=client, environment_name=environment_name
+        )
 
         with tempfile.TemporaryFile() as temp_file:
             # Use file mtime to track build start time because we will later compare this baseline
             # to the mtime on mounted files, and want those measurements to have the same resolution.
             self._build_start = os.fstat(temp_file.fileno()).st_mtime
-
-    @property
-    def app_id(self) -> Optional[str]:
-        return self._app_id
 
     @property
     def client(self):
@@ -143,7 +143,17 @@ class Resolver:
                 if not obj._load:
                     raise Exception(f"Object {obj} has no loader function")
 
-                await obj._load(obj, self, obj._load_metadata, existing_object_id)
+                # Merge context metadata into object's metadata if not set
+                # This ensures dependencies get app_id etc. from the resolver context
+                load_metadata = obj._load_metadata
+                if load_metadata.app_id is None and self._context_load_metadata.app_id is not None:
+                    load_metadata.app_id = self._context_load_metadata.app_id
+                if load_metadata.client is None and self._context_load_metadata.client is not None:
+                    load_metadata.client = self._context_load_metadata.client
+                if load_metadata.environment_name is None and self._context_load_metadata.environment_name is not None:
+                    load_metadata.environment_name = self._context_load_metadata.environment_name
+
+                await obj._load(obj, self, load_metadata, existing_object_id)
 
                 # Check that the id of functions didn't change
                 # Persisted refs are ignored because their life cycle is managed independently.

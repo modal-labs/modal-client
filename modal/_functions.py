@@ -899,9 +899,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
 
-            assert resolver.app_id
+            assert load_metadata.app_id
             req = api_pb2.FunctionPrecreateRequest(
-                app_id=resolver.app_id,
+                app_id=load_metadata.app_id,
                 function_name=info.function_name,
                 function_type=function_type,
                 existing_function_id=existing_object_id or "",
@@ -1119,10 +1119,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         ),
                     )
 
-                assert resolver.app_id
+                assert load_metadata.app_id
                 assert (function_definition is None) != (function_data is None)  # xor
                 request = api_pb2.FunctionCreateRequest(
-                    app_id=resolver.app_id,
+                    app_id=load_metadata.app_id,
                     function=function_definition,
                     function_data=function_data,
                     existing_function_id=existing_object_id or "",

@@ -531,7 +531,7 @@ class _Image(_Object, type_prefix="im"):
                     # base images can't have
                     image._assert_no_mount_layers()
 
-            assert resolver.app_id  # type narrowing
+            assert load_metadata.app_id  # type narrowing
             environment = await _get_environment_cached(resolver.environment_name or "", resolver.client)
             # A bit hacky,but assume that the environment provides a valid builder version
             image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
@@ -612,7 +612,7 @@ class _Image(_Object, type_prefix="im"):
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
-                app_id=resolver.app_id,
+                app_id=load_metadata.app_id,
                 image=image_definition,
                 existing_image_id=existing_object_id or "",  # TODO: ignored
                 build_function_id=build_function_id,
@@ -921,7 +921,11 @@ class _Image(_Object, type_prefix="im"):
         app_id = app.app_id
         app_client = app._client or await _Client.from_env()
 
-        resolver = Resolver(app_client, app_id=app_id)
+        # Set the image's LoadMetadata before resolving
+        self._load_metadata.client = app_client
+        self._load_metadata.app_id = app_id
+
+        resolver = Resolver(app_client)
         await resolver.load(self)
         return self
 

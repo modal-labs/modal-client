@@ -271,7 +271,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 experimental_options=experimental_options,
             )
 
-            create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
+            create_req = api_pb2.SandboxCreateRequest(app_id=load_metadata.app_id, definition=definition)
             try:
                 create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
             except GRPCError as exc:
@@ -511,7 +511,11 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         client = client or app_client or await _Client.from_env()
 
-        resolver = Resolver(client, app_id=app_id)
+        # Set the object's LoadMetadata before resolving
+        obj._load_metadata.client = client
+        obj._load_metadata.app_id = app_id
+
+        resolver = Resolver(client)
         await resolver.load(obj)
         return obj
 

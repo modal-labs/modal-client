@@ -139,10 +139,12 @@ async def _create_all_objects(
         app._load_metadata.app_id = running_app.app_id
 
     indexed_objects: dict[str, _Object] = {**functions, **classes}
+    # Pass the app's LoadMetadata as context so dependencies can use it
+    context_load_metadata = app._load_metadata if app else None
     resolver = Resolver(
         client,
         environment_name=environment_name,
-        app_id=running_app.app_id,
+        context_load_metadata=context_load_metadata,
     )
     with resolver.display():
         # Get current objects, and reset all objects
