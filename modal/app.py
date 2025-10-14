@@ -115,7 +115,7 @@ class _FunctionDecoratorType:
     def __call__(self, func): ...
 
 
-@dataclass(kw_only=True)
+@dataclass()
 class _LocalAppState:
     """All state for apps that's part of the local/definition state"""
 
