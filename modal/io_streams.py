@@ -464,6 +464,25 @@ class _TextStreamReaderThroughCommandRouter(Generic[T]):
             await self._stream.aclose()
 
 
+class _DevnullStreamReader(Generic[T]):
+    """StreamReader implementation for a stream configured with
+    StreamType.DEVNULL. Throws an error if read or any other method is
+    called.
+    """
+
+    async def read(self) -> T:
+        raise ValueError("read is not supported for a stream configured with StreamType.DEVNULL")
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        raise ValueError("__aiter__ is not supported for a stream configured with StreamType.DEVNULL")
+
+    async def __anext__(self) -> T:
+        raise ValueError("__anext__ is not supported for a stream configured with StreamType.DEVNULL")
+
+    async def aclose(self):
+        raise ValueError("aclose is not supported for a stream configured with StreamType.DEVNULL")
+
+
 class _StreamReader(Generic[T]):
     """Retrieve logs from a stream (`stdout` or `stderr`).
 
@@ -513,29 +532,30 @@ class _StreamReader(Generic[T]):
             # when the StreamReader is created.
             assert task_id is not None
             assert object_type == "container_process"
-            # DEVNULL should be intercepted before constructing a _StreamReader and None should be returned.
-            assert stream_type == StreamType.PIPE or stream_type == StreamType.STDOUT
-            # TODO(saltzm): The original implementation of STDOUT StreamType in
-            # _StreamReaderThroughServer prints to stdout immediately. This doesn't match
-            # python subprocess.run, which uses None to print to stdout immediately, and uses
-            # STDOUT as an argument to stderr to redirect stderr to the stdout stream. We should
-            # implement the old behavior here before moving out of beta, but after that
-            # we should consider changing the API to match python subprocess.run. I don't expect
-            # many customers are using this in any case, so I think it's fine to leave this
-            # unimplemented for now.
-            if stream_type == StreamType.STDOUT:
-                raise NotImplementedError(
-                    "Currently only the PIPE stream type is supported when using exec "
-                    "through a task command router, which is currently in beta."
-                )
-
-            params = _StreamReaderThroughCommandRouterParams(
-                file_descriptor, task_id, object_id, command_router_client, deadline
-            )
-            if text:
-                self._impl = _TextStreamReaderThroughCommandRouter(params, by_line)
+            if stream_type == StreamType.DEVNULL:
+                self._impl = _DevnullStreamReader()
             else:
-                self._impl = _BytesStreamReaderThroughCommandRouter(params)
+                assert stream_type == StreamType.PIPE or stream_type == StreamType.STDOUT
+                # TODO(saltzm): The original implementation of STDOUT StreamType in
+                # _StreamReaderThroughServer prints to stdout immediately. This doesn't match
+                # python subprocess.run, which uses None to print to stdout immediately, and uses
+                # STDOUT as an argument to stderr to redirect stderr to the stdout stream. We should
+                # implement the old behavior here before moving out of beta, but after that
+                # we should consider changing the API to match python subprocess.run. I don't expect
+                # many customers are using this in any case, so I think it's fine to leave this
+                # unimplemented for now.
+                if stream_type == StreamType.STDOUT:
+                    raise NotImplementedError(
+                        "Currently only the PIPE stream type is supported when using exec "
+                        "through a task command router, which is currently in beta."
+                    )
+                params = _StreamReaderThroughCommandRouterParams(
+                    file_descriptor, task_id, object_id, command_router_client, deadline
+                )
+                if text:
+                    self._impl = _TextStreamReaderThroughCommandRouter(params, by_line)
+                else:
+                    self._impl = _BytesStreamReaderThroughCommandRouter(params)
 
     @property
     def file_descriptor(self) -> int:
