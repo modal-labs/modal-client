@@ -585,21 +585,14 @@ More information on class parameterization can be found here: https://modal.com/
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        method_partials: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
-            user_cls, _PartialFunctionFlags.interface_flags()
-        )
-
-        for method_name, partial_function in method_partials.items():
-            if partial_function.params.webhook_config is not None:
-                full_name = f"{user_cls.__name__}.{method_name}"
-                app._web_endpoints.append(full_name)
-            partial_function.registered = True
-
         # Disable the warning that lifecycle methods are not wrapped
-        for partial_function in _find_partial_methods_for_user_cls(
+        lifecycle_method_partials = _find_partial_methods_for_user_cls(
             user_cls, ~_PartialFunctionFlags.interface_flags()
-        ).values():
+        )
+        for partial_function in lifecycle_method_partials.values():
             partial_function.registered = True
+
+        method_partials = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.interface_flags())
 
         # Get all callables
         callables: dict[str, Callable] = {
