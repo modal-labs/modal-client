@@ -177,8 +177,9 @@ class TaskCommandRouterClient:
         # Attach bearer token on all requests to the worker-side router service.
         self._server_client = server_client
         self._task_id = task_id
-        self._jwt = jwt
         self._server_url = server_url
+        self._jwt = jwt
+        self._channel = channel
         # Retry configuration for stdio streaming
         self.stream_stdio_retry_delay_secs = stream_stdio_retry_delay_secs
         self.stream_stdio_retry_delay_factor = stream_stdio_retry_delay_factor
@@ -188,8 +189,10 @@ class TaskCommandRouterClient:
         self._jwt_exp: Optional[float] = _parse_jwt_expiration(jwt)
         self._jwt_refresh_lock = asyncio.Lock()
         self._jwt_refresh_event = asyncio.Event()
-        self._jwt_refresh_task: Optional[asyncio.Task] = None
         self._closed = False
+
+        # Start background task to eagerly refresh JWT 30s before expiration.
+        self._jwt_refresh_task = asyncio.create_task(self._jwt_refresh_loop())
 
         async def send_request(event: grpclib.events.SendRequest) -> None:
             # This will get the most recent JWT for every request. No need to
@@ -197,47 +200,40 @@ class TaskCommandRouterClient:
             # single-threaded event loop and variable assignment is atomic.
             event.metadata["authorization"] = f"Bearer {self._jwt}"
 
-        grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+        grpclib.events.listen(self._channel, grpclib.events.SendRequest, send_request)
 
-        self._channel = channel
         self._stub = TaskCommandRouterStub(self._channel)
-
-        # Start background task to eagerly refresh JWT 30s before expiration.
-        self._jwt_refresh_task = asyncio.create_task(self._jwt_refresh_loop())
 
     def __del__(self) -> None:
         """Clean up the client when it's garbage collected."""
+        if self._closed:
+            return
+
+        self._jwt_refresh_task.cancel()
+
         try:
-            # Use getattr in case __init__ threw an exception before setting
-            # these attributes.
-            task = getattr(self, "_jwt_refresh_task", None)
-            if task is not None:
-                try:
-                    task.cancel()
-                except Exception:
-                    pass
-            channel = getattr(self, "_channel", None)
-            if channel is not None:
-                channel.close()
+            self._channel.close()
         except Exception:
             pass
 
     async def close(self) -> None:
         """Close the client and stop the background JWT refresh task."""
+        if self._closed:
+            return
+
         self._closed = True
-        if self._jwt_refresh_task is not None:
-            self._jwt_refresh_task.cancel()
-            try:
-                await self._jwt_refresh_task
-            except asyncio.CancelledError:
-                pass
-        if self._channel is not None:
-            self._channel.close()
+        self._jwt_refresh_task.cancel()
+        try:
+            logger.debug(f"Waiting for JWT refresh task to complete for exec with task ID {self._task_id}")
+            await self._jwt_refresh_task
+        except asyncio.CancelledError:
+            pass
+        self._channel.close()
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
         """Start an exec'd command, properly retrying on transient errors."""
         return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(lambda: self._stub.TaskExecStart(request))
+            lambda: self._call_with_auth_retry(self._stub.TaskExecStart, request)
         )
 
     async def exec_stdio_read(
@@ -293,7 +289,7 @@ class TaskCommandRouterClient:
         """
         request = sr_pb2.TaskExecStdinWriteRequest(task_id=task_id, exec_id=exec_id, offset=offset, data=data, eof=eof)
         return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(lambda: self._stub.TaskExecStdinWrite(request))
+            lambda: self._call_with_auth_retry(self._stub.TaskExecStdinWrite, request)
         )
 
     async def exec_poll(self, task_id: str, exec_id: str) -> sr_pb2.TaskExecPollResponse:
@@ -311,7 +307,7 @@ class TaskCommandRouterClient:
         """
         request = sr_pb2.TaskExecPollRequest(task_id=task_id, exec_id=exec_id)
         return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(lambda: self._stub.TaskExecPoll(request))
+            lambda: self._call_with_auth_retry(self._stub.TaskExecPoll, request)
         )
 
     async def exec_wait(
@@ -348,8 +344,8 @@ class TaskCommandRouterClient:
                     # * If the task shut down AND the worker shut down, this could
                     #   infinitely retry. For callers without an exec deadline, this
                     #   could hang indefinitely.
-                    lambda: self._call_with_auth_retry(lambda: self._stub.TaskExecWait(request, timeout=60)),
-                    base_delay=1,  # Retry after 1s since total time is expected to be long.
+                    lambda: self._call_with_auth_retry(self._stub.TaskExecWait, request, timeout=60),
+                    base_delay_secs=1,  # Retry after 1s since total time is expected to be long.
                     delay_factor=1,  # Fixed delay.
                     max_retries=None,  # Retry forever.
                 ),
@@ -386,9 +382,9 @@ class TaskCommandRouterClient:
             # Wake up the background loop to recompute its next sleep.
             self._jwt_refresh_event.set()
 
-    async def _call_with_auth_retry(self, func):
+    async def _call_with_auth_retry(self, func, *args, **kwargs):
         try:
-            return await func()
+            return await func(*args, **kwargs)
         except GRPCError as exc:
             if exc.status == Status.UNAUTHENTICATED:
                 await self._refresh_jwt()
