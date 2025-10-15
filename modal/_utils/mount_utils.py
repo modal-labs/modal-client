@@ -3,7 +3,9 @@ import posixpath
 import typing
 from collections.abc import Mapping, Sequence
 from pathlib import PurePath, PurePosixPath
-from typing import Optional, TypeGuard, Union
+from typing import Optional, Union
+
+from typing_extensions import TypeGuard
 
 from ..cloud_bucket_mount import _CloudBucketMount
 from ..exception import InvalidError
