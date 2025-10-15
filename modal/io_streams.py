@@ -470,6 +470,13 @@ class _DevnullStreamReader(Generic[T]):
     called.
     """
 
+    def __init__(self, file_descriptor: "api_pb2.FileDescriptor.ValueType") -> None:
+        self._file_descriptor = file_descriptor
+
+    @property
+    def file_descriptor(self) -> int:
+        return self._file_descriptor
+
     async def read(self) -> T:
         raise ValueError("read is not supported for a stream configured with StreamType.DEVNULL")
 
@@ -533,7 +540,7 @@ class _StreamReader(Generic[T]):
             assert task_id is not None
             assert object_type == "container_process"
             if stream_type == StreamType.DEVNULL:
-                self._impl = _DevnullStreamReader()
+                self._impl = _DevnullStreamReader(file_descriptor)
             else:
                 assert stream_type == StreamType.PIPE or stream_type == StreamType.STDOUT
                 # TODO(saltzm): The original implementation of STDOUT StreamType in
