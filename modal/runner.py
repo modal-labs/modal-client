@@ -354,9 +354,10 @@ async def _run_app(
         detached_disconnect_msg = (
             "The detached App will keep running. You can track its progress on the Dashboard: "
             f"[magenta underline]{running_app.app_page_url}[/magenta underline]"
-            "\n"
-            f"\nStream logs: [green]modal app logs {running_app.app_id}[/green]"
-            f"\nStop the App: [green]modal app stop {running_app.app_id}[/green]"
+            "\n\nStream App logs:\n"
+            f"[green]modal app logs {running_app.app_id}[/green]"
+            "\n\nStop the App:\n"
+            f"[green]modal app stop {running_app.app_id}[/green]"
         )
 
         try:
