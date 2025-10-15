@@ -98,7 +98,7 @@ ENVIRONMENT_CACHE: dict[str, _Environment] = {}
 async def _get_environment_cached(name: str, client: _Client) -> _Environment:
     if name in ENVIRONMENT_CACHE:
         return ENVIRONMENT_CACHE[name]
-    environment = await _Environment.from_name(name).hydrate(client)
+    environment = await _Environment.from_name(name, client=client).hydrate()
     ENVIRONMENT_CACHE[name] = environment
     return environment
 

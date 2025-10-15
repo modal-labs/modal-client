@@ -673,20 +673,20 @@ More information on class parameterization can be found here: https://modal.com/
         environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
         rep = f"Cls.from_name({app_name!r}, {name!r}{environment_rep})"
 
-        load_context = LoadContext(client=client, environment_name=environment_name)
+        load_context_overrides = LoadContext(client=client, environment_name=environment_name)
         cls = cls._from_loader(
             _load_remote,
             rep,
             is_another_app=True,
             hydrate_lazily=True,
-            load_context_overrides=load_context,
+            load_context_overrides=load_context_overrides,
         )
 
         class_service_name = f"{name}.*"  # special name of the base service function for the class
         cls._class_service_function = _Function._from_name(
             app_name,
             class_service_name,
-            load_context=load_context,
+            load_context_overrides=load_context_overrides,
         )
         cls._name = name
         return cls

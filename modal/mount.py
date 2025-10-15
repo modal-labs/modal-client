@@ -330,7 +330,7 @@ class _Mount(_Object, type_prefix="mo"):
             _Mount._load_mount,
             rep,
             deduplication_key=mount_content_deduplication_key,
-            load_context_overrides=LoadContext.no_defaults(),  # should always get full context from parent
+            load_context_overrides=LoadContext.empty(),
         )
         obj._entries = entries
         obj._is_local = True
@@ -669,8 +669,8 @@ class _Mount(_Object, type_prefix="mo"):
         self._namespace = namespace
         self._allow_overwrite = allow_overwrite
         resolver = Resolver()
-        parent_metadata = LoadContext(client=client, environment_name=environment_name)
-        await resolver.load(self, parent_metadata)
+        root_metadata = LoadContext(client=client, environment_name=environment_name)
+        await resolver.load(self, root_metadata)
 
     def _get_metadata(self) -> api_pb2.MountHandleMetadata:
         if self._content_checksum_sha256_hex is None:

@@ -1388,7 +1388,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cls,
         app_name: str,
         name: str,
-        load_context: LoadContext,
+        *,
+        load_context_overrides: LoadContext,
     ):
         # internal function lookup implementation that allows lookup of class "service functions"
         # in addition to non-class functions
@@ -1417,11 +1418,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self._hydrate(response.function_id, load_context.client, response.handle_metadata)
 
         environment_rep = (
-            f", environment_name={load_context.environment_name!r}" if load_context.environment_name else ""
+            f", environment_name={load_context_overrides.environment_name!r}"
+            if load_context_overrides._environment_name  # slightly ugly - checking if _environment_name is overridden
+            else ""
         )
         rep = f"modal.Function.from_name('{app_name}', '{name}'{environment_rep})"
         return cls._from_loader(
-            _load_remote, rep, is_another_app=True, hydrate_lazily=True, load_context_overrides=load_context
+            _load_remote, rep, is_another_app=True, hydrate_lazily=True, load_context_overrides=load_context_overrides
         )
 
     @classmethod
@@ -1457,7 +1460,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         warn_if_passing_namespace(namespace, "modal.Function.from_name")
         return cls._from_name(
-            app_name, name, load_context=LoadContext(environment_name=environment_name, client=client)
+            app_name, name, load_context_overrides=LoadContext(environment_name=environment_name, client=client)
         )
 
     @property
