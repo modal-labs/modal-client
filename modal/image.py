@@ -851,7 +851,9 @@ class _Image(_Object, type_prefix="im"):
         """
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
-            resp = await retry_transient_errors(client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id))
+            resp = await retry_transient_errors(
+                load_context.client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id)
+            )
             self._hydrate(resp.image_id, load_context.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"

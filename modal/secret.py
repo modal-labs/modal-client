@@ -366,13 +366,15 @@ class _Secret(_Object, type_prefix="st"):
             req = api_pb2.SecretGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 env_dict=env_dict,
-                app_id=load_context.app_id,
+                app_id=load_context.app_id,  # TODO: what if app_id isn't set here (e.g. .hydrate())
             )
             resp = await load_context.client.stub.SecretGetOrCreate(req)
 
             self._hydrate(resp.secret_id, load_context.client, resp.metadata)
 
-        return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
+        return _Secret._from_loader(
+            _load, "Secret.from_dotenv()", hydrate_lazily=True, load_context_overrides=LoadContext.empty()
+        )
 
     @staticmethod
     def from_name(

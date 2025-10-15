@@ -25,6 +25,7 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
         """
         Construct a `SandboxSnapshot` object from a sandbox snapshot ID.
         """
+        client = client or await _Client.from_env()
 
         async def _load(
             self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
@@ -36,6 +37,7 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
 
         rep = "SandboxSnapshot()"
         obj = _SandboxSnapshot._from_loader(_load, rep, load_context_overrides=LoadContext(client=client))
+        # TODO: should this be a _Object._new_hydrated instead?
         obj._hydrate(sandbox_snapshot_id, client, None)
 
         return obj
