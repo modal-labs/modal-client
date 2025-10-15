@@ -298,7 +298,7 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
         if self._returncode is not None:
             return self._returncode
         try:
-            resp = self._command_router_client.exec_poll(self._task_id, self._process_id, self._exec_deadline)
+            resp = await self._command_router_client.exec_poll(self._task_id, self._process_id, self._exec_deadline)
             which = resp.WhichOneof("exit_status")
             if which is None:
                 return None
