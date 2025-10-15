@@ -283,23 +283,8 @@ def test_with_options_from_name(servicer, client):
 
     with servicer.intercept() as ctx:
         SomeClass = modal.Cls.from_name("some_app", "SomeClass", client=client)
-        print(
-            "1",
-            id(synchronizer._translate_in(SomeClass)._load_context),
-            synchronizer._translate_in(SomeClass)._load_context.client,
-        )
         OptionedClass = SomeClass.with_options(cpu=10, secrets=[unhydrated_secret], volumes={"/vol": unhydrated_volume})
-        print(
-            "2",
-            id(synchronizer._translate_in(OptionedClass)._load_context),
-            synchronizer._translate_in(OptionedClass)._load_context.client,
-        )
         inst = OptionedClass(x=10)
-        print(
-            "3",
-            id(synchronizer._translate_in(inst.blah)._load_context),
-            synchronizer._translate_in(inst.blah)._load_context.client,
-        )
         assert len(ctx.calls) == 0
 
     with servicer.intercept() as ctx:
@@ -1511,10 +1496,10 @@ def test_cls_load_context_transfers_to_methods():
     d = C(p=2)
     t = synchronizer._translate_in
     # the *instance* of LoadContext from the Cls should be the same as the child
-    expected_load_context = t(C)._load_context
-    assert t(c.some_method)._load_context is expected_load_context  # noqa
-    assert t(c.some_method)._load_context is t(d.some_method)._load_context  # noqa
-    assert t(C.with_options(gpu="A100")().some_method)._load_context is expected_load_context  # noqa
+    expected_load_context = t(C)._load_context  # type: ignore
+    assert t(c.some_method)._load_context is expected_load_context  # type: ignore
+    assert t(c.some_method)._load_context is t(d.some_method)._load_context  # type: ignore
+    assert t(C.with_options(gpu="A100")().some_method)._load_context is expected_load_context  # type: ignore
 
 
 def test_cls_load_context_transfers_to_methods_local():
@@ -1529,9 +1514,9 @@ def test_cls_load_context_transfers_to_methods_local():
             pass
 
     t = synchronizer._translate_in
-    c = C(p=1)
-    assert t(c.some_method)._load_context is t(C)._load_context  # noqa
+    c = C(p="1")
+    assert t(c.some_method)._load_context is t(C)._load_context  # type: ignore
 
     # the *instance* of LoadContext from the Cls should be the same as the child
-    d = C(p=2)
-    assert t(c.some_method)._load_context is t(d.some_method)._load_context  # noqa
+    d = C(p="2")
+    assert t(c.some_method)._load_context is t(d.some_method)._load_context  # type: ignore

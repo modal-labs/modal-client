@@ -62,15 +62,6 @@ class LoadContext:
         """
         return cls(client=None, environment_name=None, app_id=None, _apply_defaults=False)
 
-    def merge_from(self, other: "LoadContext") -> None:
-        """Merge non-None values from other into this metadata."""
-        if other.client is not None:
-            self.client = other.client
-        if other.environment_name is not None:
-            self.environment_name = other.environment_name
-        if other.app_id is not None:
-            self.app_id = other.app_id
-
     def copy(self) -> "LoadContext":
         """Create a shallow copy of this metadata."""
         return LoadContext(
