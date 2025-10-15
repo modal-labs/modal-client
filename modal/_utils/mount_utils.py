@@ -90,6 +90,8 @@ def validate_only_modal_volumes(
 
     validated_volumes = validate_volumes(volumes)
 
+    # Although the typing forbids `_CloudBucketMount` for type checking, one can still pass a `_CloudBucketMount`
+    # during runtime, so we'll check the type here.
     def all_modal_volumes(
         vols: Sequence[tuple[str, Union[_Volume, _CloudBucketMount]]],
     ) -> TypeGuard[Sequence[tuple[str, _Volume]]]:
