@@ -81,7 +81,7 @@ def validate_volumes(
 
 
 def validate_only_modal_volumes(
-    volumes: Optional[Mapping[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]],
+    volumes: Optional[Optional[dict[Union[str, PurePosixPath], _Volume]]],
     caller_name: str,
 ) -> Sequence[tuple[str, _Volume]]:
     """Validate all volumes are `modal.Volume`."""
