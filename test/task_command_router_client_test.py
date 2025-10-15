@@ -656,3 +656,56 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
     # Should not significantly exceed the deadline (allow small overhead)
     assert elapsed_secs < 0.2
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
+    client = TaskCommandRouterClient(
+        server_client=None,
+        task_id="sb-1",
+        server_url="https://router.test",
+        jwt="t",
+        channel=create_dummy_channel(),
+    )
+
+    calls: List[tuple[sr_pb2.TaskExecWaitRequest, Optional[float]]] = []
+
+    class _WaitMethod:
+        def __init__(self):
+            self._first = True
+
+        async def __call__(self, request: sr_pb2.TaskExecWaitRequest, *, timeout: Optional[float] = None):
+            calls.append((request, timeout))
+            if self._first:
+                self._first = False
+                raise GRPCError(Status.UNAUTHENTICATED, "auth required")
+            # Return a successful response on retry
+            return sr_pb2.TaskExecWaitResponse(code=0)
+
+    class _Stub2:
+        def __init__(self):
+            self.TaskExecWait = _WaitMethod()
+
+    refreshes = 0
+
+    async def _refresh_jwt():
+        nonlocal refreshes
+        refreshes += 1
+
+    client._refresh_jwt = _refresh_jwt  # type: ignore[assignment]
+    client._stub = _Stub2()  # type: ignore[assignment]
+
+    # No explicit deadline -> internal call uses timeout=60 and should preserve it across auth retry
+    resp = await client.exec_wait("task-1", "exec-1")
+    assert isinstance(resp, sr_pb2.TaskExecWaitResponse)
+    assert resp.code == 0
+
+    # Should have attempted twice: once failing with UNAUTHENTICATED, once succeeding.
+    assert len(calls) == 2
+    req1, to1 = calls[0]
+    req2, to2 = calls[1]
+    assert req1.task_id == "task-1" and req1.exec_id == "exec-1"
+    assert req2.task_id == "task-1" and req2.exec_id == "exec-1"
+    assert to1 == 60 and to2 == 60
+    assert refreshes == 1
+    await client.close()

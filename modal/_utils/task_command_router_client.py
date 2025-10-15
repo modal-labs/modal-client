@@ -43,7 +43,7 @@ def _parse_jwt_expiration(jwt_token: str) -> Optional[float]:
             return float(exp)
     except Exception:
         # Avoid raising on malformed tokens; fall back to server-driven refresh logic.
-        logger.warning(f"Failed to parse JWT expiration: {jwt_token}")
+        logger.warning("Failed to parse JWT expiration")
         return None
     return None
 
@@ -388,7 +388,8 @@ class TaskCommandRouterClient:
         except GRPCError as exc:
             if exc.status == Status.UNAUTHENTICATED:
                 await self._refresh_jwt()
-                return await func()
+                # Retry with the original arguments preserved
+                return await func(*args, **kwargs)
             raise
 
     async def _jwt_refresh_loop(self) -> None:
