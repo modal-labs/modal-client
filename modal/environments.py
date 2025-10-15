@@ -11,7 +11,6 @@ from modal_proto import api_pb2
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import config, logger
@@ -71,7 +70,7 @@ class _Environment(_Object, type_prefix="en"):
                     else api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
                 ),
             )
-            response = await retry_transient_errors(resolver.client.stub.EnvironmentGetOrCreate, request)
+            response = await resolver.client.stub.EnvironmentGetOrCreate(request)
             logger.debug(f"Created environment with id {response.environment_id}")
             self._hydrate(response.environment_id, resolver.client, response.metadata)
 

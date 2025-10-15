@@ -12,7 +12,6 @@ from google.protobuf.message import Message
 from modal import App, interact
 from modal._runtime.container_io_manager import ContainerIOManager
 from modal._utils.async_utils import synchronize_api
-from modal._utils.grpc_utils import retry_transient_errors
 from modal.exception import InvalidError
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
@@ -64,7 +63,7 @@ def square(x):
 @synchronize_api
 async def stop_app(client, app_id):
     # helper to ensur we run the rpc from the synchronicity loop - otherwise we can run into weird deadlocks
-    return await retry_transient_errors(client.stub.AppStop, api_pb2.AppStopRequest(app_id=app_id))
+    return await client.stub.AppStop(api_pb2.AppStopRequest(app_id=app_id))
 
 
 @contextmanager

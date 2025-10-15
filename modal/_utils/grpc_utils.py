@@ -9,11 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import (
-    Any,
-    Optional,
-    TypeVar,
-)
+from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -28,6 +24,7 @@ from grpclib.protocol import H2Protocol
 from modal.exception import AuthError, ConnectionError
 from modal_version import __version__
 
+from .._traceback import suppress_tb_frames
 from .async_utils import retry
 from .logger import logger
 
@@ -174,8 +171,11 @@ async def unary_stream(
         yield item
 
 
+R = TypeVar("R")
+
+
 async def retry_transient_errors(
-    fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]",
+    fn: Callable[..., Awaitable[R]],
     *args,
     base_delay: float = 0.1,
     max_delay: float = 1,
@@ -187,7 +187,8 @@ async def retry_transient_errors(
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
     retry_warning_message: Optional[RetryWarningMessage] = None,
     metadata: list[tuple[str, str]] = [],
-) -> ResponseType:
+    fn_name: Optional[str] = None,
+) -> R:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
 
@@ -223,7 +224,8 @@ async def retry_transient_errors(
         else:
             timeout = None
         try:
-            return await fn(*args, metadata=attempt_metadata, timeout=timeout)
+            with suppress_tb_frames(1):
+                return await fn(*args, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 if exc.status == Status.UNAUTHENTICATED:
@@ -238,25 +240,27 @@ async def retry_transient_errors(
             else:
                 final_attempt = False
 
-            if final_attempt:
-                logger.debug(
-                    f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
-                    f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
-                )
-                if isinstance(exc, OSError):
-                    raise ConnectionError(str(exc))
-                elif isinstance(exc, asyncio.TimeoutError):
-                    raise ConnectionError(str(exc))
-                else:
+            fn_name = fn_name or fn.__name__
+            with suppress_tb_frames(1):
+                if final_attempt:
+                    logger.debug(
+                        f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                        f"{total_deadline=} for {fn_name} ({idempotency_key[:8]})"
+                    )
+                    if isinstance(exc, OSError):
+                        raise ConnectionError(str(exc))
+                    elif isinstance(exc, asyncio.TimeoutError):
+                        raise ConnectionError(str(exc))
+                    else:
+                        raise exc
+
+                if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
+                    # StreamTerminatedError are not properly raised in grpclib<=0.4.7
+                    # fixed in https://github.com/vmagamedov/grpclib/issues/185
+                    # TODO: update to newer version (>=0.4.8) once stable
                     raise exc
 
-            if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
-                # StreamTerminatedError are not properly raised in grpclib<=0.4.7
-                # fixed in https://github.com/vmagamedov/grpclib/issues/185
-                # TODO: update to newer version (>=0.4.8) once stable
-                raise exc
-
-            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
+            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})")
 
             n_retries += 1
 
