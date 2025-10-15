@@ -45,16 +45,140 @@ from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import find_free_port
 from modal._utils.http_utils import run_temporary_http_server
 from modal._utils.jwt_utils import DecodedJwt
+from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.client import Client
 from modal.cls import _Cls
 from modal.image import ImageBuilderVersion
 from modal.mount import PYTHON_STANDALONE_VERSIONS, client_mount_name, python_standalone_mount_name
-from modal_proto import api_grpc, api_pb2
+from modal_proto import api_grpc, api_pb2, task_command_router_pb2 as sr_pb2
 
 VALID_GPU_TYPES = ["ANY", "T4", "L4", "A10G", "L40S", "A100", "A100-40GB", "A100-80GB", "H100"]
 VALID_CLOUD_PROVIDERS = ["AWS", "GCP", "OCI", "AUTO", "XYZ"]
+
+
+class FakeTaskCommandRouterClient:
+    """Test helper that mimics the task command router API using a local subprocess."""
+
+    def __init__(self, server_client):
+        self._procs: dict[str, asyncio.subprocess.Process] = {}
+        self._stdin_offsets: dict[str, int] = {}
+
+    async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
+        # Spawn the command locally.
+        proc = await asyncio.subprocess.create_subprocess_exec(
+            *list(request.command_args),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE,
+            cwd=(request.workdir or None),
+        )
+        self._procs[request.exec_id] = proc
+        self._stdin_offsets[request.exec_id] = 0
+        return sr_pb2.TaskExecStartResponse()
+
+    async def exec_stdio_read(
+        self,
+        task_id: str,
+        exec_id: str,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        deadline: float | None = None,
+    ):
+        proc = self._procs[exec_id]
+        if file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            stream = proc.stdout
+        elif file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
+            stream = proc.stderr
+        else:
+            raise ValueError("Unsupported file descriptor")
+
+        while True:
+            try:
+                timeout = (deadline - time.monotonic()) if deadline is not None else None
+                chunk = await asyncio.wait_for(stream.read(4096), timeout=timeout)
+            except asyncio.TimeoutError:
+                from modal.exception import ExecTimeoutError
+
+                raise ExecTimeoutError("deadline exceeded")
+
+            if not chunk:
+                return
+            yield sr_pb2.TaskExecStdioReadResponse(data=chunk)
+
+    async def exec_stdin_write(self, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool):
+        proc = self._procs[exec_id]
+        # Simple offset handling: ignore if offset is behind current.
+        current = self._stdin_offsets[exec_id]
+        if offset != current:
+            # For tests, assume sequential writes; ignore mismatches.
+            pass
+        if data:
+            proc.stdin.write(data)
+            await proc.stdin.drain()
+            self._stdin_offsets[exec_id] = current + len(data)
+        if eof:
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
+        return sr_pb2.TaskExecStdinWriteResponse()
+
+    async def exec_poll(self, task_id: str, exec_id: str, deadline: float | None = None) -> sr_pb2.TaskExecPollResponse:
+        proc = self._procs[exec_id]
+        if deadline is not None and time.monotonic() >= deadline:
+            from modal.exception import ExecTimeoutError
+
+            raise ExecTimeoutError("deadline exceeded")
+
+        if proc.returncode is None:
+            return sr_pb2.TaskExecPollResponse()
+        else:
+            return sr_pb2.TaskExecPollResponse(code=proc.returncode)
+
+    async def exec_wait(self, task_id: str, exec_id: str, deadline: float | None = None) -> sr_pb2.TaskExecWaitResponse:
+        proc = self._procs[exec_id]
+        try:
+            if deadline is None:
+                await proc.wait()
+            else:
+                timeout = max(0, deadline - time.monotonic())
+                await asyncio.wait_for(proc.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            from modal.exception import ExecTimeoutError
+
+            raise ExecTimeoutError("deadline exceeded")
+
+        return sr_pb2.TaskExecWaitResponse(code=proc.returncode)
+
+
+@pytest.fixture
+def exec_backend(request, monkeypatch, client):
+    """Parametrized fixture to toggle between server and command-router exec backends.
+
+    Usage: add to test via parametrize with values ["server", "router"].
+    """
+    backend = getattr(request, "param", "server")
+
+    if backend == "server":
+        # Force server path by making try_init return None
+        async def _no_router(*args, **kwargs):
+            return None
+
+        async def _try_init(cls, *a, **k):
+            return await _no_router()
+
+        monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_try_init))
+    elif backend == "router":
+
+        async def _mk_router(cls, server_client, task_id):
+            return FakeTaskCommandRouterClient(server_client)
+
+        monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+    else:
+        raise ValueError(f"Unknown exec backend: {backend}")
+
+    return backend
 
 
 @dataclasses.dataclass
@@ -1816,6 +1940,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxRestore(self, stream):
         _request: api_pb2.SandboxRestoreRequest = await stream.recv_message()
         await stream.send_message(api_pb2.SandboxRestoreResponse(sandbox_id="sb-123"))
+
+    async def TaskGetCommandRouterAccess(self, stream):
+        # In tests, we disable command router access so client falls back to server RPCs,
+        # unless the exec_backend is "router".
+        _request: api_pb2.TaskGetCommandRouterAccessRequest = await stream.recv_message()
+        raise GRPCError(Status.FAILED_PRECONDITION, "Command router access not enabled in tests")
 
     async def SandboxGetTaskId(self, stream):
         # only used for `modal shell` / `modal container exec`

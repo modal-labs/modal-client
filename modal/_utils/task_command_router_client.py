@@ -442,12 +442,10 @@ class TaskCommandRouterClient:
                 logger.debug(f"Cancelled JWT refresh loop for exec with task ID {self._task_id}")
                 break
             except Exception as e:
+                # Exceptions here can stem from non-transient errors against the server sending
+                # the TaskGetCommandRouterAccess RPC, for instance, if the task has finished.
                 logger.warning(f"Background JWT refresh failed for exec with task ID {self._task_id}: {e}")
-                try:
-                    await asyncio.sleep(1.0)
-                except Exception:
-                    # Ignore sleep issues; loop will re-check closed flag.
-                    pass
+                break
 
     async def _stream_stdio(
         self,
