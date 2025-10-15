@@ -622,7 +622,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             pass
 
         rep = "Image()"
-        image = _Image._from_loader(_load, rep, hydrate_lazily=True)
+        # TODO: use ._new_hydrated instead
+        image = _Image._from_loader(_load, rep, hydrate_lazily=True, load_metadata=LoadMetadata.empty())
         image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
 
         return image
@@ -906,7 +907,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             pass
 
         rep = "SandboxSnapshot()"
-        obj = _SandboxSnapshot._from_loader(_load, rep, hydrate_lazily=True)
+        # TODO: use ._new_hydrated instead
+        obj = _SandboxSnapshot._from_loader(_load, rep, hydrate_lazily=True, load_metadata=LoadMetadata.empty())
         obj._hydrate(snapshot_id, self._client, None)
 
         return obj
