@@ -8,7 +8,7 @@ from grpclib.exceptions import GRPCError
 
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter
-from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line
+from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line, _StreamWriter
 from modal_proto import api_pb2
 
 
@@ -421,3 +421,119 @@ async def test_decode_bytes_stream_to_str_handles_multibyte_split_across_chunks(
     stream = _decode_bytes_stream_to_str(_bytes_stream([b"caf\xc3", b"\xa9"]))
     result = [chunk async for chunk in stream]
     assert result == ["caf", "é"]
+
+
+# ---------------------------------------
+# _StreamWriter (command router) tests
+# ---------------------------------------
+
+
+class _FakeCommandRouterClient:
+    def __init__(self):
+        self.calls: list[dict[str, object]] = []
+
+    async def exec_stdin_write(self, *, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool) -> None:
+        self.calls.append(
+            {
+                "task_id": task_id,
+                "exec_id": exec_id,
+                "offset": offset,
+                "data": data,
+                "eof": eof,
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_stream_writer_drain_calls_exec_stdin_with_eof_when_closed_and_no_data():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,  # unused when command_router_client is provided
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+    )
+
+    writer.write_eof()
+    await writer.drain()
+
+    assert len(router.calls) == 1
+    call = router.calls[0]
+    assert call["task_id"] == "task-1"
+    assert call["exec_id"] == "tp-123"
+    assert call["offset"] == 0
+    assert call["data"] == b""
+    assert call["eof"] is True
+
+
+@pytest.mark.asyncio
+async def test_stream_writer_drain_writes_all_written_data_since_last_drain():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+    )
+
+    writer.write(b"abc")
+    writer.write(b"def")
+    await writer.drain()
+
+    assert len(router.calls) == 1
+    call = router.calls[0]
+    assert call["offset"] == 0
+    assert call["data"] == b"abcdef"
+    assert call["eof"] is False
+
+
+@pytest.mark.asyncio
+async def test_stream_writer_drain_does_not_rewrite_data_written_prior_to_last_drain():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+    )
+
+    writer.write(b"ab")
+    await writer.drain()
+
+    writer.write(b"cd")
+    await writer.drain()
+
+    assert len(router.calls) == 2
+    first, second = router.calls
+    assert first["offset"] == 0
+    assert first["data"] == b"ab"
+    assert first["eof"] is False
+
+    assert second["offset"] == 2  # advances by len(b"ab")
+    assert second["data"] == b"cd"
+    assert second["eof"] is False
+
+
+@pytest.mark.asyncio
+async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with_both():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+    )
+
+    writer.write(b"xyz")
+    writer.write_eof()
+    await writer.drain()
+
+    assert len(router.calls) == 1
+    call = router.calls[0]
+    assert call["offset"] == 0
+    assert call["data"] == b"xyz"
+    assert call["eof"] is True
