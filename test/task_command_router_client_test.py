@@ -299,7 +299,7 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch)
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
-        stream_stdio_retry_delay=0.001,
+        stream_stdio_retry_delay_secs=0.001,
         stream_stdio_retry_delay_factor=1.0,
         stream_stdio_max_retries=5,
     )
@@ -489,13 +489,10 @@ async def test_exec_stdio_read_deadline_respected_on_attribute_error(monkeypatch
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
-        stream_stdio_retry_delay=0.2,  # longer than remaining time
+        stream_stdio_retry_delay_secs=0.2,  # longer than remaining time
     )
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
-            self._timeout = timeout
-
         async def __aenter__(self):
             return self
 
@@ -512,7 +509,7 @@ async def test_exec_stdio_read_deadline_respected_on_attribute_error(monkeypatch
             raise AttributeError("_write_appdata")
 
     def _open(timeout: Optional[float] = None):
-        return _Stream(timeout)
+        return _Stream()
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
@@ -522,9 +519,9 @@ async def test_exec_stdio_read_deadline_respected_on_attribute_error(monkeypatch
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
-    elapsed = time.monotonic() - start
+    elapsed_secs = time.monotonic() - start
     # Should not sleep the full retry delay (0.2s); expect prompt timeout (< 0.15s).
-    assert elapsed < 0.15
+    assert elapsed_secs < 0.15
     await client.close()
 
 
@@ -536,13 +533,10 @@ async def test_exec_stdio_read_deadline_respected_on_stream_terminated_error(mon
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
-        stream_stdio_retry_delay=0.2,
+        stream_stdio_retry_delay_secs=0.2,
     )
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
-            self._timeout = timeout
-
         async def __aenter__(self):
             return self
 
@@ -559,7 +553,7 @@ async def test_exec_stdio_read_deadline_respected_on_stream_terminated_error(mon
             raise StreamTerminatedError("closed")
 
     def _open(timeout: Optional[float] = None):
-        return _Stream(timeout)
+        return _Stream()
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
@@ -568,8 +562,8 @@ async def test_exec_stdio_read_deadline_respected_on_stream_terminated_error(mon
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
-    elapsed = time.monotonic() - start
-    assert elapsed < 0.15
+    elapsed_secs = time.monotonic() - start
+    assert elapsed_secs < 0.15
     await client.close()
 
 
@@ -581,13 +575,10 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
-        stream_stdio_retry_delay=0.2,
+        stream_stdio_retry_delay_secs=0.2,
     )
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
-            self._timeout = timeout
-
         async def __aenter__(self):
             return self
 
@@ -604,7 +595,7 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(monkeypatch):
             raise OSError("network down")
 
     def _open(timeout: Optional[float] = None):
-        return _Stream(timeout)
+        return _Stream()
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
@@ -613,8 +604,8 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(monkeypatch):
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
-    elapsed = time.monotonic() - start
-    assert elapsed < 0.15
+    elapsed_secs = time.monotonic() - start
+    assert elapsed_secs < 0.15
     await client.close()
 
 
@@ -661,7 +652,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
-    elapsed = time.monotonic() - start
+    elapsed_secs = time.monotonic() - start
     # Should not significantly exceed the deadline (allow small overhead)
-    assert elapsed < 0.2
+    assert elapsed_secs < 0.2
     await client.close()

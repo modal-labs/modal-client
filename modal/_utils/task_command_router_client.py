@@ -43,6 +43,7 @@ def _parse_jwt_expiration(jwt_token: str) -> Optional[float]:
             return float(exp)
     except Exception:
         # Avoid raising on malformed tokens; fall back to server-driven refresh logic.
+        logger.warning(f"Failed to parse JWT expiration: {jwt_token}")
         return None
     return None
 
@@ -50,7 +51,7 @@ def _parse_jwt_expiration(jwt_token: str) -> Optional[float]:
 async def call_with_retries_on_transient_errors(
     func,
     *,
-    base_delay: float = 0.01,
+    base_delay_secs: float = 0.01,
     delay_factor: float = 2,
     max_retries: Optional[int] = 10,
 ):
@@ -58,14 +59,14 @@ async def call_with_retries_on_transient_errors(
 
     Authentication retries are expected to be handled by the caller.
     """
-    delay = base_delay
+    delay_secs = base_delay_secs
     num_retries = 0
 
     async def sleep_and_update_delay_and_num_retries_remaining(e: Exception):
-        nonlocal delay, num_retries
-        logger.debug(f"Retrying RPC with delay {delay}s due to error: {e}")
-        await asyncio.sleep(delay)
-        delay *= delay_factor
+        nonlocal delay_secs, num_retries
+        logger.debug(f"Retrying RPC with delay {delay_secs}s due to error: {e}")
+        await asyncio.sleep(delay_secs)
+        delay_secs *= delay_factor
         num_retries += 1
 
     while True:
@@ -168,7 +169,7 @@ class TaskCommandRouterClient:
         jwt: str,
         channel: grpclib.client.Channel,
         *,
-        stream_stdio_retry_delay: float = 0.01,
+        stream_stdio_retry_delay_secs: float = 0.01,
         stream_stdio_retry_delay_factor: float = 2,
         stream_stdio_max_retries: int = 10,
     ) -> None:
@@ -179,7 +180,7 @@ class TaskCommandRouterClient:
         self._jwt = jwt
         self._server_url = server_url
         # Retry configuration for stdio streaming
-        self.stream_stdio_retry_delay = stream_stdio_retry_delay
+        self.stream_stdio_retry_delay_secs = stream_stdio_retry_delay_secs
         self.stream_stdio_retry_delay_factor = stream_stdio_retry_delay_factor
         self.stream_stdio_max_retries = stream_stdio_max_retries
 
@@ -365,6 +366,18 @@ class TaskCommandRouterClient:
         async with self._jwt_refresh_lock:
             if self._closed:
                 return
+
+            # If the current JWT expiration is already far enough in the future, don't refresh.
+            if self._jwt_exp is not None and self._jwt_exp - time.time() > 30:
+                # This can happen if multiple concurrent requests to the task command router
+                # get UNAUTHENTICATED errors and all refresh at the same time - one of them
+                # will win and the others will not refresh.
+                logger.debug(
+                    f"Skipping JWT refresh for exec with task ID {self._task_id} "
+                    "because its expiration is already far enough in the future"
+                )
+                return
+
             resp = await fetch_command_router_access(self._server_client, self._task_id)
             # Ensure the server URL remains stable for the lifetime of this client.
             assert resp.url == self._server_url, "Task router URL changed during session"
@@ -437,19 +450,19 @@ class TaskCommandRouterClient:
         Raises ExecTimeoutError if the deadline is exceeded.
         """
         offset = 0
-        delay = self.stream_stdio_retry_delay
+        delay_secs = self.stream_stdio_retry_delay_secs
         delay_factor = self.stream_stdio_retry_delay_factor
         num_retries_remaining = self.stream_stdio_max_retries
         num_auth_retries = 0
 
         async def sleep_and_update_delay_and_num_retries_remaining(e: Exception):
-            nonlocal delay, num_retries_remaining
-            logger.debug(f"Retrying stdio read with delay {delay}s due to error: {e}")
-            if deadline is not None and deadline - time.monotonic() <= delay:
+            nonlocal delay_secs, num_retries_remaining
+            logger.debug(f"Retrying stdio read with delay {delay_secs}s due to error: {e}")
+            if deadline is not None and deadline - time.monotonic() <= delay_secs:
                 raise ExecTimeoutError(f"Deadline exceeded while streaming stdio for exec {exec_id}")
 
-            await asyncio.sleep(delay)
-            delay *= delay_factor
+            await asyncio.sleep(delay_secs)
+            delay_secs *= delay_factor
             num_retries_remaining -= 1
 
         while True:
@@ -479,7 +492,7 @@ class TaskCommandRouterClient:
 
                     async for item in s:
                         # Reset retry backoff after any successful chunk.
-                        delay = self.stream_stdio_retry_delay
+                        delay_secs = self.stream_stdio_retry_delay_secs
                         offset += len(item.data)
                         yield item
 
