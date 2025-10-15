@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import codecs
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
@@ -319,8 +320,20 @@ class _StreamReaderThroughServer(Generic[T]):
 
 
 async def _decode_bytes_stream_to_str(stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[str, None]:
+    """Incrementally decode a bytes async generator as UTF-8 without breaking on chunk boundaries.
+
+    This function uses a streaming UTF-8 decoder so that multi-byte characters split across
+    chunks are handled correctly instead of raising ``UnicodeDecodeError``.
+    """
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
     async for item in stream:
-        yield item.decode("utf-8")
+        text = decoder.decode(item, final=False)
+        if text:
+            yield text
+    # Flush any buffered partial character at end-of-stream
+    tail = decoder.decode(b"", final=True)
+    if tail:
+        yield tail
 
 
 async def _stream_by_line(stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[bytes, None]:
