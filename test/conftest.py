@@ -2667,15 +2667,12 @@ def blob_server_factory():
     async def expect_handler(request):
         print("*** expect_handler")
 
-        if request.version != aiohttp.HttpVersion11:
-            print("*** not http1.1")
-            return None
-
-        if request.headers.get("Expect") != "100-continue":
-            raise aiohttp.web.HTTPExpectationFailed(text="unknown expect")
-
-        location = request.url.with_path("/redirected" + request.url.path)
-        raise aiohttp.web.HTTPTemporaryRedirect(location)
+        if request.version == aiohttp.HttpVersion11:
+            if request.headers.get("Expect") == "100-continue":
+                location = request.url.with_path("/redirected" + request.url.path)
+                raise aiohttp.web.HTTPTemporaryRedirect(location)
+            else:
+                raise aiohttp.web.HTTPExpectationFailed(text="unknown expect")
 
     async def expect_handler2(request):
         # XXX: remove this since it's basically the default expect handler
