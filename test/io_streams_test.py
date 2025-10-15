@@ -416,9 +416,8 @@ async def test_decode_bytes_stream_to_str_decodes_utf8_multibyte_characters_in_s
 
 
 @pytest.mark.asyncio
-async def test_decode_bytes_stream_to_str_raises_when_multibyte_sequence_split_across_chunks():
-    # 'é' in UTF-8 is b"\xc3\xa9"; splitting across chunks should raise during decode
+async def test_decode_bytes_stream_to_str_handles_multibyte_split_across_chunks():
+    # 'é' in UTF-8 is b"\xc3\xa9"; splitting across chunks should be decoded incrementally
     stream = _decode_bytes_stream_to_str(_bytes_stream([b"caf\xc3", b"\xa9"]))
-    with pytest.raises(UnicodeDecodeError):
-        async for _ in stream:
-            pass
+    result = [chunk async for chunk in stream]
+    assert result == ["caf", "é"]
