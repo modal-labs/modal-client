@@ -40,9 +40,9 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
     q = _Queue.from_name(name, environment_name=env, create_if_missing=True)
     client = await _Client.from_env()
     resolver = Resolver()
-    from modal._load_metadata import LoadMetadata
+    from modal._load_context import LoadContext
 
-    parent_metadata = LoadMetadata(client=client, environment_name=env)
+    parent_metadata = LoadContext(client=client, environment_name=env)
     await resolver.load(q, parent_metadata)
 
 

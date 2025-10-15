@@ -33,7 +33,7 @@ import modal_proto.api_pb2
 from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -364,13 +364,13 @@ class _Volume(_Object, type_prefix="vo"):
         """
 
         async def _load(
-            new_volume: _Volume, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            new_volume: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             new_volume._initialize_from_other(self)
             new_volume._read_only = True
 
         obj = _Volume._from_loader(
-            _load, "Volume()", hydrate_lazily=True, deps=lambda: [self], load_metadata=self._load_metadata
+            _load, "Volume()", hydrate_lazily=True, deps=lambda: [self], load_context_overrides=self._load_context
         )
         return obj
 
@@ -436,16 +436,16 @@ class _Volume(_Object, type_prefix="vo"):
         warn_if_passing_namespace(namespace, "modal.Volume.from_name")
 
         async def _load(
-            self: _Volume, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             req = api_pb2.VolumeGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=load_metadata.environment_name,
+                environment_name=load_context.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 version=version,
             )
-            response = await load_metadata.client.stub.VolumeGetOrCreate(req)
-            self._hydrate(response.volume_id, load_metadata.client, response.metadata)
+            response = await load_context.client.stub.VolumeGetOrCreate(req)
+            self._hydrate(response.volume_id, load_context.client, response.metadata)
 
         rep = _Volume._repr(name, environment_name)
         return _Volume._from_loader(
@@ -453,7 +453,7 @@ class _Volume(_Object, type_prefix="vo"):
             rep,
             hydrate_lazily=True,
             name=name,
-            load_metadata=LoadMetadata(client=client, environment_name=environment_name),
+            load_context_overrides=LoadContext(client=client, environment_name=environment_name),
         )
 
     @classmethod

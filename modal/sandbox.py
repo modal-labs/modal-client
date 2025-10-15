@@ -22,7 +22,7 @@ from modal.mount import _Mount
 from modal.volume import _Volume
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -201,7 +201,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             return deps
 
         async def _load(
-            self: _Sandbox, resolver: Resolver, load_metadata: LoadMetadata, _existing_object_id: Optional[str]
+            self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
         ):
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
@@ -271,18 +271,18 @@ class _Sandbox(_Object, type_prefix="sb"):
                 experimental_options=experimental_options,
             )
 
-            create_req = api_pb2.SandboxCreateRequest(app_id=load_metadata.app_id, definition=definition)
+            create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
             try:
-                create_resp = await retry_transient_errors(load_metadata.client.stub.SandboxCreate, create_req)
+                create_resp = await retry_transient_errors(load_context.client.stub.SandboxCreate, create_req)
             except GRPCError as exc:
                 if exc.status == Status.ALREADY_EXISTS:
                     raise AlreadyExistsError(exc.message)
                 raise exc
 
             sandbox_id = create_resp.sandbox_id
-            self._hydrate(sandbox_id, load_metadata.client, None)
+            self._hydrate(sandbox_id, load_context.client, None)
 
-        return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_metadata=LoadMetadata.empty())
+        return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_context_overrides=LoadContext.empty())
 
     @staticmethod
     async def create(
@@ -513,7 +513,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         client = client or app_client
 
         resolver = Resolver()
-        parent_metadata = LoadMetadata(client=client, app_id=app_id)
+        parent_metadata = LoadContext(client=client, app_id=app_id)
         await resolver.load(obj, parent_metadata)
         return obj
 
@@ -615,15 +615,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         image_id = resp.image_id
         metadata = resp.image_metadata
 
-        async def _load(
-            self: _Image, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             # no need to hydrate again since we do it eagerly below
             pass
 
         rep = "Image()"
         # TODO: use ._new_hydrated instead
-        image = _Image._from_loader(_load, rep, hydrate_lazily=True, load_metadata=LoadMetadata.empty())
+        image = _Image._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
         image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
 
         return image
@@ -901,14 +899,14 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise ExecutionError(wait_resp.result.exception)
 
         async def _load(
-            self: _SandboxSnapshot, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             # we eagerly hydrate the sandbox snapshot below
             pass
 
         rep = "SandboxSnapshot()"
         # TODO: use ._new_hydrated instead
-        obj = _SandboxSnapshot._from_loader(_load, rep, hydrate_lazily=True, load_metadata=LoadMetadata.empty())
+        obj = _SandboxSnapshot._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
         obj._hydrate(snapshot_id, self._client, None)
 
         return obj

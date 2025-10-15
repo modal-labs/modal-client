@@ -3,7 +3,7 @@ from typing import Optional
 
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
@@ -31,19 +31,17 @@ class _Proxy(_Object, type_prefix="pr"):
 
         """
 
-        async def _load(
-            self: _Proxy, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Proxy, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             req = api_pb2.ProxyGetRequest(
                 name=name,
-                environment_name=load_metadata.environment_name,
+                environment_name=load_context.environment_name,
             )
-            response: api_pb2.ProxyGetResponse = await load_metadata.client.stub.ProxyGet(req)
-            self._hydrate(response.proxy.proxy_id, load_metadata.client, None)
+            response: api_pb2.ProxyGetResponse = await load_context.client.stub.ProxyGet(req)
+            self._hydrate(response.proxy.proxy_id, load_context.client, None)
 
         rep = _Proxy._repr(name, environment_name)
         return _Proxy._from_loader(
-            _load, rep, is_another_app=True, load_metadata=LoadMetadata(environment_name=environment_name)
+            _load, rep, is_another_app=True, load_context_overrides=LoadContext(environment_name=environment_name)
         )
 
 

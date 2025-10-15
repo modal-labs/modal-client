@@ -3,7 +3,7 @@ from typing import Optional
 
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
@@ -27,15 +27,15 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
         """
 
         async def _load(
-            self: _SandboxSnapshot, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             await retry_transient_errors(
-                load_metadata.client.stub.SandboxSnapshotGet,
+                load_context.client.stub.SandboxSnapshotGet,
                 api_pb2.SandboxSnapshotGetRequest(snapshot_id=sandbox_snapshot_id),
             )
 
         rep = "SandboxSnapshot()"
-        obj = _SandboxSnapshot._from_loader(_load, rep, load_metadata=LoadMetadata(client=client))
+        obj = _SandboxSnapshot._from_loader(_load, rep, load_context_overrides=LoadContext(client=client))
         obj._hydrate(sandbox_snapshot_id, client, None)
 
         return obj

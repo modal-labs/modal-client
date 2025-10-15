@@ -126,20 +126,20 @@ async def _create_all_objects(
     running_app: RunningApp,
     local_app_state: "modal.app._LocalAppState",
     environment_name: str,
-    app: Optional["modal.app._App"] = None,
+    app: "modal.app._App",
 ) -> None:
+    assert app is not None
     """Create objects that have been defined but not created on the server."""
-    # Set the App's LoadMetadata before resolving objects
-    if app:
-        app._load_metadata.client = client
-        app._load_metadata.environment_name = environment_name
-        app._load_metadata.app_id = running_app.app_id
+    # TODO(elias): Haxx - clean this up:
+    app._load_context._client = client
+    app._load_context._environment_name = environment_name
+    app._load_context._app_id = running_app.app_id
 
     indexed_objects: dict[str, _Object] = {**local_app_state.functions, **local_app_state.classes}
 
     resolver = Resolver()
-    # Get the app's LoadMetadata to pass to resolver.load() for all top-level objects
-    parent_load_metadata = app._load_metadata if app else None
+    # Get the app's LoadContext to pass to resolver.load() for all top-level objects
+    parent_load_context = app._load_context if app else None
 
     with resolver.display():
         # Get current objects, and reset all objects
@@ -163,7 +163,7 @@ async def _create_all_objects(
             # Note: preload only currently implemented for Functions, returns None otherwise
             # this is to ensure that directly referenced functions from the global scope has
             # ids associated with them when they are serialized into other functions
-            await resolver.preload(obj, parent_load_metadata, existing_object_id)
+            await resolver.preload(obj, parent_load_context, existing_object_id)
             if obj.is_hydrated:
                 tag_to_object_id[tag] = obj.object_id
 
@@ -171,8 +171,8 @@ async def _create_all_objects(
 
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
-            # Pass parent_load_metadata so dependencies can inherit app_id, client, etc.
-            await resolver.load(obj, parent_load_metadata, existing_object_id=existing_object_id)
+            # Pass parent_load_context so dependencies can inherit app_id, client, etc.
+            await resolver.load(obj, parent_load_context, existing_object_id=existing_object_id)
             if _Function._is_id_type(obj.object_id):
                 running_app.function_ids[tag] = obj.object_id
             elif _Cls._is_id_type(obj.object_id):

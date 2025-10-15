@@ -14,7 +14,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -378,16 +378,14 @@ class _Queue(_Object, type_prefix="qu"):
         check_object_name(name, "Queue")
         warn_if_passing_namespace(namespace, "modal.Queue.from_name")
 
-        async def _load(
-            self: _Queue, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Queue, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             req = api_pb2.QueueGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=load_metadata.environment_name,
+                environment_name=load_context.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
-            response = await load_metadata.client.stub.QueueGetOrCreate(req)
-            self._hydrate(response.queue_id, load_metadata.client, response.metadata)
+            response = await load_context.client.stub.QueueGetOrCreate(req)
+            self._hydrate(response.queue_id, load_context.client, response.metadata)
 
         rep = _Queue._repr(name, environment_name)
         return _Queue._from_loader(
@@ -396,7 +394,7 @@ class _Queue(_Object, type_prefix="qu"):
             is_another_app=True,
             hydrate_lazily=True,
             name=name,
-            load_metadata=LoadMetadata(environment_name=environment_name, client=client),
+            load_context_overrides=LoadContext(environment_name=environment_name, client=client),
         )
 
     @staticmethod

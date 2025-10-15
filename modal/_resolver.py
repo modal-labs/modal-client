@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Optional
 from modal._traceback import suppress_tb_frames
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._utils.async_utils import TaskContext
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
     import modal._object
 
-    from ._load_metadata import LoadMetadata
+    from ._load_context import LoadContext
 
 
 class StatusRow:
@@ -80,16 +80,16 @@ class Resolver:
         return self._build_start
 
     async def preload(
-        self, obj: "modal._object._Object", parent_load_metadata: "LoadMetadata", existing_object_id: Optional[str]
+        self, obj: "modal._object._Object", parent_load_context: "LoadContext", existing_object_id: Optional[str]
     ):
         if obj._preload is not None:
-            load_metadata = obj._load_metadata.merged_with(parent_load_metadata)
-            await obj._preload(obj, self, load_metadata, existing_object_id)
+            load_context = obj._load_context.merged_with(parent_load_context)
+            await obj._preload(obj, self, load_context, existing_object_id)
 
     async def load(
         self,
         obj: "modal._object._Object",
-        parent_load_metadata: "LoadMetadata",
+        parent_load_context: "LoadContext",
         *,
         existing_object_id: Optional[str] = None,
     ):
@@ -123,16 +123,16 @@ class Resolver:
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
-                load_metadata = await obj._load_metadata.merged_with(parent_load_metadata).apply_defaults()
+                load_context = await obj._load_context.merged_with(parent_load_context).apply_defaults()
 
                 # TODO(erikbern): do we need existing_object_id for those?
-                await TaskContext.gather(*[self.load(dep, load_metadata) for dep in obj.deps()])
+                await TaskContext.gather(*[self.load(dep, load_context) for dep in obj.deps()])
 
                 # Load the object itself
                 if not obj._load:
                     raise Exception(f"Object {obj} has no loader function")
 
-                await obj._load(obj, self, load_metadata, existing_object_id)
+                await obj._load(obj, self, load_context, existing_object_id)
 
                 # Check that the id of functions didn't change
                 # Persisted refs are ignored because their life cycle is managed independently.

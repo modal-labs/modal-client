@@ -8,7 +8,7 @@ from google.protobuf.wrappers_pb2 import StringValue
 
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
@@ -65,7 +65,7 @@ class _Environment(_Object, type_prefix="en"):
             check_object_name(name, "Environment")
 
         async def _load(
-            self: _Environment, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _Environment, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             request = api_pb2.EnvironmentGetOrCreateRequest(
                 deployment_name=name,
@@ -75,16 +75,16 @@ class _Environment(_Object, type_prefix="en"):
                     else api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
                 ),
             )
-            response = await retry_transient_errors(load_metadata.client.stub.EnvironmentGetOrCreate, request)
+            response = await retry_transient_errors(load_context.client.stub.EnvironmentGetOrCreate, request)
             logger.debug(f"Created environment with id {response.environment_id}")
-            self._hydrate(response.environment_id, load_metadata.client, response.metadata)
+            self._hydrate(response.environment_id, load_context.client, response.metadata)
 
         return _Environment._from_loader(
             _load,
             f"Environment.from_name({name!r})",
             is_another_app=True,
             hydrate_lazily=True,
-            load_metadata=LoadMetadata(client=client),
+            load_context_overrides=LoadContext(client=client),
         )
 
 

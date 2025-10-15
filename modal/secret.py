@@ -10,7 +10,7 @@ from synchronicity import classproperty
 
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object, live_method
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
@@ -262,9 +262,9 @@ class _Secret(_Object, type_prefix="st"):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
         async def _load(
-            self: _Secret, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            if load_metadata.app_id is not None:
+            if load_context.app_id is not None:
                 object_creation_type = api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
             else:
                 object_creation_type = api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL
@@ -272,22 +272,22 @@ class _Secret(_Object, type_prefix="st"):
             req = api_pb2.SecretGetOrCreateRequest(
                 object_creation_type=object_creation_type,
                 env_dict=env_dict_filtered,
-                app_id=load_metadata.app_id,
-                environment_name=load_metadata.environment_name,
+                app_id=load_context.app_id,
+                environment_name=load_context.environment_name,
             )
             try:
-                resp = await load_metadata.client.stub.SecretGetOrCreate(req)
+                resp = await load_context.client.stub.SecretGetOrCreate(req)
             except GRPCError as exc:
                 if exc.status == Status.INVALID_ARGUMENT:
                     raise InvalidError(exc.message)
                 if exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
                 raise
-            self._hydrate(resp.secret_id, load_metadata.client, resp.metadata)
+            self._hydrate(resp.secret_id, load_context.client, resp.metadata)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         # TODO: scoping - these should probably not be lazily hydrated without having an app and/or sandbox association
-        return _Secret._from_loader(_load, rep, hydrate_lazily=True, load_metadata=LoadMetadata.empty())
+        return _Secret._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
 
     @staticmethod
     def from_local_environ(
@@ -336,7 +336,7 @@ class _Secret(_Object, type_prefix="st"):
         """
 
         async def _load(
-            self: _Secret, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             try:
                 from dotenv import dotenv_values, find_dotenv
@@ -366,11 +366,11 @@ class _Secret(_Object, type_prefix="st"):
             req = api_pb2.SecretGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 env_dict=env_dict,
-                app_id=load_metadata.app_id,
+                app_id=load_context.app_id,
             )
-            resp = await load_metadata.client.stub.SecretGetOrCreate(req)
+            resp = await load_context.client.stub.SecretGetOrCreate(req)
 
-            self._hydrate(resp.secret_id, load_metadata.client, resp.metadata)
+            self._hydrate(resp.secret_id, load_context.client, resp.metadata)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
 
@@ -402,21 +402,21 @@ class _Secret(_Object, type_prefix="st"):
         warn_if_passing_namespace(namespace, "modal.Secret.from_name")
 
         async def _load(
-            self: _Secret, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=load_metadata.environment_name,
+                environment_name=load_context.environment_name,
                 required_keys=required_keys,
             )
             try:
-                response = await load_metadata.client.stub.SecretGetOrCreate(req)
+                response = await load_context.client.stub.SecretGetOrCreate(req)
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
                     raise NotFoundError(exc.message)
                 else:
                     raise
-            self._hydrate(response.secret_id, load_metadata.client, response.metadata)
+            self._hydrate(response.secret_id, load_context.client, response.metadata)
 
         rep = _Secret._repr(name, environment_name)
         return _Secret._from_loader(
@@ -424,7 +424,7 @@ class _Secret(_Object, type_prefix="st"):
             rep,
             hydrate_lazily=True,
             name=name,
-            load_metadata=LoadMetadata(environment_name=environment_name, client=client),
+            load_context_overrides=LoadContext(environment_name=environment_name, client=client),
         )
 
     @staticmethod

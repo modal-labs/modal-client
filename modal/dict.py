@@ -11,7 +11,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -370,19 +370,17 @@ class _Dict(_Object, type_prefix="di"):
                 "Passing data to `modal.Dict.from_name` is deprecated and will stop working in a future release.",
             )
 
-        async def _load(
-            self: _Dict, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Dict, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=load_metadata.environment_name,
+                environment_name=load_context.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 data=serialized,
             )
-            response = await load_metadata.client.stub.DictGetOrCreate(req)
+            response = await load_context.client.stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
-            self._hydrate(response.dict_id, load_metadata.client, response.metadata)
+            self._hydrate(response.dict_id, load_context.client, response.metadata)
 
         rep = _Dict._repr(name, environment_name)
         return _Dict._from_loader(
@@ -391,7 +389,7 @@ class _Dict(_Object, type_prefix="di"):
             is_another_app=True,
             hydrate_lazily=True,
             name=name,
-            load_metadata=LoadMetadata(environment_name=environment_name, client=client),
+            load_context_overrides=LoadContext(environment_name=environment_name, client=client),
         )
 
     @staticmethod

@@ -19,7 +19,7 @@ from synchronicity.combined_types import MethodWithAio
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._object import _Object, live_method, live_method_gen
 from ._pty import get_pty_info
 from ._resolver import Resolver
@@ -897,13 +897,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
 
         async def _preload(
-            self: _Function, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            assert load_metadata.client and load_metadata.client.stub
+            assert load_context.client and load_context.client.stub
 
-            assert load_metadata.app_id
+            assert load_context.app_id
             req = api_pb2.FunctionPrecreateRequest(
-                app_id=load_metadata.app_id,
+                app_id=load_context.app_id,
                 function_name=info.function_name,
                 function_type=function_type,
                 existing_function_id=existing_object_id or "",
@@ -919,13 +919,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             elif webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
 
-            response = await retry_transient_errors(load_metadata.client.stub.FunctionPrecreate, req)
-            self._hydrate(response.function_id, load_metadata.client, response.handle_metadata)
+            response = await retry_transient_errors(load_context.client.stub.FunctionPrecreate, req)
+            self._hydrate(response.function_id, load_context.client, response.handle_metadata)
 
         async def _load(
-            self: _Function, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            assert load_metadata.client and load_metadata.client.stub
+            assert load_context.client and load_context.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 timeout_secs = timeout
 
@@ -1121,17 +1121,17 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         ),
                     )
 
-                assert load_metadata.app_id
+                assert load_context.app_id
                 assert (function_definition is None) != (function_data is None)  # xor
                 request = api_pb2.FunctionCreateRequest(
-                    app_id=load_metadata.app_id,
+                    app_id=load_context.app_id,
                     function=function_definition,
                     function_data=function_data,
                     existing_function_id=existing_object_id or "",
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
-                        load_metadata.client.stub.FunctionCreate, request
+                        load_context.client.stub.FunctionCreate, request
                     )
                 except GRPCError as exc:
                     if exc.status == Status.INVALID_ARGUMENT:
@@ -1147,12 +1147,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             serve_mounts = {m for m in all_mounts if m.is_local()}
             serve_mounts |= image._serve_mounts
             obj._serve_mounts = frozenset(serve_mounts)
-            self._hydrate(response.function_id, load_metadata.client, response.handle_metadata)
+            self._hydrate(response.function_id, load_context.client, response.handle_metadata)
 
         rep = f"Function({tag})"
-        # Pass a reference to the App's LoadMetadata
-        load_metadata = app._load_metadata if app else LoadMetadata.empty()
-        obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps, load_metadata=load_metadata)
+        # Pass a reference to the App's LoadContext
+        load_context = app._load_context if app else LoadContext.empty()
+        obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps, load_context_overrides=load_context)
 
         obj._raw_f = info.raw_f
         obj._info = info
@@ -1197,7 +1197,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _load(
             param_bound_func: _Function,
             resolver: Resolver,
-            load_metadata: LoadMetadata,
+            load_context: LoadContext,
             existing_object_id: Optional[str],
         ):
             if not parent.is_hydrated:
@@ -1271,7 +1271,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_id=parent.object_id,
                 serialized_params=serialized_params,
                 function_options=options_pb,
-                environment_name=load_metadata.environment_name
+                environment_name=load_context.environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
 
@@ -1289,7 +1289,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             return []
 
         fun: _Function = _Function._from_loader(
-            _load, "Function(parametrized)", hydrate_lazily=True, deps=_deps, load_metadata=self._load_metadata
+            _load, "Function(parametrized)", hydrate_lazily=True, deps=_deps, load_context_overrides=self._load_context
         )
 
         fun._info = self._info
@@ -1388,27 +1388,25 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cls,
         app_name: str,
         name: str,
-        load_metadata: LoadMetadata,
+        load_context: LoadContext,
     ):
         # internal function lookup implementation that allows lookup of class "service functions"
         # in addition to non-class functions
         async def _load_remote(
-            self: _Function, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            assert load_metadata.client and load_metadata.client.stub
+            assert load_context.client and load_context.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                environment_name=load_metadata.environment_name,
+                environment_name=load_context.environment_name,
             )
             try:
-                response = await retry_transient_errors(load_metadata.client.stub.FunctionGet, request)
+                response = await retry_transient_errors(load_context.client.stub.FunctionGet, request)
             except NotFoundError as exc:
                 # refine the error message
                 env_context = (
-                    f" (in the '{load_metadata.environment_name}' environment)"
-                    if load_metadata.environment_name
-                    else ""
+                    f" (in the '{load_context.environment_name}' environment)" if load_context.environment_name else ""
                 )
                 raise NotFoundError(
                     f"Lookup failed for Function '{name}' from the '{app_name}' app{env_context}: {exc}."
@@ -1416,14 +1414,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             print_server_warnings(response.server_warnings)
 
-            self._hydrate(response.function_id, load_metadata.client, response.handle_metadata)
+            self._hydrate(response.function_id, load_context.client, response.handle_metadata)
 
         environment_rep = (
-            f", environment_name={load_metadata.environment_name!r}" if load_metadata.environment_name else ""
+            f", environment_name={load_context.environment_name!r}" if load_context.environment_name else ""
         )
         rep = f"modal.Function.from_name('{app_name}', '{name}'{environment_rep})"
         return cls._from_loader(
-            _load_remote, rep, is_another_app=True, hydrate_lazily=True, load_metadata=load_metadata
+            _load_remote, rep, is_another_app=True, hydrate_lazily=True, load_context_overrides=load_context
         )
 
     @classmethod
@@ -1459,7 +1457,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         warn_if_passing_namespace(namespace, "modal.Function.from_name")
         return cls._from_name(
-            app_name, name, load_metadata=LoadMetadata(environment_name=environment_name, client=client)
+            app_name, name, load_context=LoadContext(environment_name=environment_name, client=client)
         )
 
     @property
@@ -2061,15 +2059,15 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         """
 
         async def _load(
-            self: _FunctionCall, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _FunctionCall, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             request = api_pb2.FunctionCallFromIdRequest(function_call_id=function_call_id)
-            resp = await retry_transient_errors(load_metadata.client.stub.FunctionCallFromId, request)
-            self._hydrate(function_call_id, load_metadata.client, resp)
+            resp = await retry_transient_errors(load_context.client.stub.FunctionCallFromId, request)
+            self._hydrate(function_call_id, load_context.client, resp)
 
         rep = f"FunctionCall.from_id({function_call_id!r})"
         fc: _FunctionCall[Any] = _FunctionCall._from_loader(
-            _load, rep, hydrate_lazily=True, load_metadata=LoadMetadata(client=client)
+            _load, rep, hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
         )
 
         # TODO(elias): Remove these

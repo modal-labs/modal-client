@@ -285,20 +285,20 @@ def test_with_options_from_name(servicer, client):
         SomeClass = modal.Cls.from_name("some_app", "SomeClass", client=client)
         print(
             "1",
-            id(synchronizer._translate_in(SomeClass)._load_metadata),
-            synchronizer._translate_in(SomeClass)._load_metadata.client,
+            id(synchronizer._translate_in(SomeClass)._load_context),
+            synchronizer._translate_in(SomeClass)._load_context.client,
         )
         OptionedClass = SomeClass.with_options(cpu=10, secrets=[unhydrated_secret], volumes={"/vol": unhydrated_volume})
         print(
             "2",
-            id(synchronizer._translate_in(OptionedClass)._load_metadata),
-            synchronizer._translate_in(OptionedClass)._load_metadata.client,
+            id(synchronizer._translate_in(OptionedClass)._load_context),
+            synchronizer._translate_in(OptionedClass)._load_context.client,
         )
         inst = OptionedClass(x=10)
         print(
             "3",
-            id(synchronizer._translate_in(inst.blah)._load_metadata),
-            synchronizer._translate_in(inst.blah)._load_metadata.client,
+            id(synchronizer._translate_in(inst.blah)._load_context),
+            synchronizer._translate_in(inst.blah)._load_context.client,
         )
         assert len(ctx.calls) == 0
 
@@ -1505,19 +1505,19 @@ def test_startup_timeout_default_copies_timeout(client, servicer):
     assert function_request.function.startup_timeout_secs == 20
 
 
-def test_cls_load_metadata_transfers_to_methods():
+def test_cls_load_context_transfers_to_methods():
     C = modal.Cls.from_name("dummy-app", "MyClass")
     c = C(p=1)
     d = C(p=2)
     t = synchronizer._translate_in
-    # the *instance* of LoadMetadata from the Cls should be the same as the child
-    expected_load_metadata = t(C)._load_metadata
-    assert t(c.some_method)._load_metadata is expected_load_metadata  # noqa
-    assert t(c.some_method)._load_metadata is t(d.some_method)._load_metadata  # noqa
-    assert t(C.with_options(gpu="A100")().some_method)._load_metadata is expected_load_metadata  # noqa
+    # the *instance* of LoadContext from the Cls should be the same as the child
+    expected_load_context = t(C)._load_context
+    assert t(c.some_method)._load_context is expected_load_context  # noqa
+    assert t(c.some_method)._load_context is t(d.some_method)._load_context  # noqa
+    assert t(C.with_options(gpu="A100")().some_method)._load_context is expected_load_context  # noqa
 
 
-def test_cls_load_metadata_transfers_to_methods_local():
+def test_cls_load_context_transfers_to_methods_local():
     app = modal.App()
 
     @app.cls(serialized=True)
@@ -1530,8 +1530,8 @@ def test_cls_load_metadata_transfers_to_methods_local():
 
     t = synchronizer._translate_in
     c = C(p=1)
-    assert t(c.some_method)._load_metadata is t(C)._load_metadata  # noqa
+    assert t(c.some_method)._load_context is t(C)._load_context  # noqa
 
-    # the *instance* of LoadMetadata from the Cls should be the same as the child
+    # the *instance* of LoadContext from the Cls should be the same as the child
     d = C(p=2)
-    assert t(c.some_method)._load_metadata is t(d.some_method)._load_metadata  # noqa
+    assert t(c.some_method)._load_context is t(d.some_method)._load_context  # noqa

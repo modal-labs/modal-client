@@ -11,7 +11,7 @@ from synchronicity.async_wrap import asynccontextmanager
 import modal
 from modal_proto import api_pb2
 
-from ._load_metadata import LoadMetadata
+from ._load_context import LoadContext
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -117,16 +117,16 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.from_name")
 
         async def _load(
-            self: _NetworkFileSystem, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
+            self: _NetworkFileSystem, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=load_metadata.environment_name,
+                environment_name=load_context.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
             try:
-                response = await load_metadata.client.stub.SharedVolumeGetOrCreate(req)
-                self._hydrate(response.shared_volume_id, load_metadata.client, None)
+                response = await load_context.client.stub.SharedVolumeGetOrCreate(req)
+                self._hydrate(response.shared_volume_id, load_context.client, None)
             except modal.exception.NotFoundError as exc:
                 if exc.args[0] == "App has wrong entity vo":
                     raise InvalidError(
@@ -138,7 +138,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             _load,
             "NetworkFileSystem()",
             hydrate_lazily=True,
-            load_metadata=LoadMetadata(environment_name=environment_name, client=client),
+            load_context_overrides=LoadContext(environment_name=environment_name, client=client),
         )
 
     @classmethod
