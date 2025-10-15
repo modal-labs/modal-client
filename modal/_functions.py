@@ -899,8 +899,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _preload(
             self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            assert load_context.client and load_context.client.stub
-
             assert load_context.app_id
             req = api_pb2.FunctionPrecreateRequest(
                 app_id=load_context.app_id,
@@ -925,7 +923,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _load(
             self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            assert load_context.client and load_context.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 timeout_secs = timeout
 
@@ -1396,7 +1393,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _load_remote(
             self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            assert load_context.client and load_context.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
                 object_tag=name,
