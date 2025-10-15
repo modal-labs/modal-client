@@ -742,7 +742,18 @@ class FooUnhydrated:
     def bar(self, x): ...
 
 
-def test_unhydrated():
+def test_unhydrated(set_env_client):
+    # TODO: get rid of set_env_client here.
+    #  It's needed since the Resolver will
+    #  currently try to infer a Client here before it gets to the load code that
+    #  raises the exception (which happens because the client has not been added
+    #  to the load context by the app "run" in this case)
+    #  The crux is that a Method Function is *conditionally* lazily loadable
+    #  depending on if the root Cls is defined through from_name() or via @app.cls()
+    #  and in the latter case if the app is already running...
+    #  We would need something like the resolver checking that all dependencies of
+    #  a lazy object if they are either hydrated or lazily loadable to determine
+    #  if we should attempt lazy loads
     foo = FooUnhydrated()
     with pytest.raises(ExecutionError, match="hydrated"):
         foo.bar.remote(42)
@@ -804,7 +815,8 @@ def test_cls_update_autoscaler(client, servicer):
         assert instance_service_defn.concurrency_limit == instance_autoscaler_settings.max_containers == 10
 
 
-def test_cls_lookup_update_autoscaler(client, servicer):
+def test_cls_lookup_update_autoscaler(client, servicer, set_env_client):
+    # TODO: get rid of set_env_client, see `test_unhydrated`
     app = App(name := "my-cls-app")
 
     @app.cls(serialized=True)
