@@ -670,7 +670,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @staticmethod
     def from_local(
         info: FunctionInfo,
-        app,
+        app: Optional["modal.app._App"],  # App here should only be None in case of Image.run_function
         image: _Image,
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
