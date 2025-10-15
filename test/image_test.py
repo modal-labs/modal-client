@@ -577,7 +577,7 @@ def test_run_commands_with_cloud_bucket_mnt_error(servicer, client):
     secret = modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "1", "AWS_SECRET_ACCESS_KEY": "2"})
     cld_bckt_mnt = modal.CloudBucketMount(bucket_name="foo", secret=secret)
 
-    msg = "Image builds only support mounting modal.Volume"
+    msg = "Image.run_commands only supports mounting modal.Volume"
     with pytest.raises(InvalidError, match=msg):
         modal.Image.debian_slim().run_commands("echo 'hello'", volumes={"/root/foo": cld_bckt_mnt})  # type: ignore
 

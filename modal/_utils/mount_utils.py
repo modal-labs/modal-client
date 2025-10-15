@@ -3,7 +3,7 @@ import posixpath
 import typing
 from collections.abc import Mapping, Sequence
 from pathlib import PurePath, PurePosixPath
-from typing import Union
+from typing import Optional, TypeGuard, Union
 
 from ..cloud_bucket_mount import _CloudBucketMount
 from ..exception import InvalidError
@@ -74,5 +74,26 @@ def validate_volumes(
             raise InvalidError(
                 f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
             )
+
+    return validated_volumes
+
+
+def validate_only_modal_volumes(
+    volumes: Optional[Mapping[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]],
+    caller_name: str,
+) -> Sequence[tuple[str, _Volume]]:
+    """Validate all volumes are `modal.Volume`."""
+    if volumes is None:
+        return []
+
+    validated_volumes = validate_volumes(volumes)
+
+    def all_modal_volumes(
+        vols: Sequence[tuple[str, Union[_Volume, _CloudBucketMount]]],
+    ) -> TypeGuard[Sequence[tuple[str, _Volume]]]:
+        return all(isinstance(v, _Volume) for _, v in vols)
+
+    if not all_modal_volumes(validated_volumes):
+        raise InvalidError(f"{caller_name} only supports volumes that are modal.Volume")
 
     return validated_volumes

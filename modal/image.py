@@ -39,7 +39,7 @@ from ._utils.docker_utils import (
 )
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
-from ._utils.mount_utils import validate_volumes
+from ._utils.mount_utils import validate_only_modal_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
@@ -488,7 +488,7 @@ class _Image(_Object, type_prefix="im"):
         context_mount_function: Optional[Callable[[], Optional[_Mount]]] = None,
         force_build: bool = False,
         build_args: dict[str, str] = {},
-        volumes: Optional[dict[Union[str, PurePosixPath], _Volume]] = None,
+        validated_volumes: Optional[Sequence[tuple[str, _Volume]]] = None,
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
@@ -496,8 +496,8 @@ class _Image(_Object, type_prefix="im"):
         if base_images is None:
             base_images = {}
 
-        if volumes is None:
-            volumes = {}
+        if validated_volumes is None:
+            validated_volumes = []
 
         if secrets is None:
             secrets = []
@@ -513,21 +513,13 @@ class _Image(_Object, type_prefix="im"):
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
 
-        validated_volumes = validate_volumes(volumes)
-        validated_volumes_: list[tuple[str, _Volume]] = []
-
-        for k, v in validated_volumes:
-            if isinstance(v, _CloudBucketMount):
-                raise InvalidError("Image builds only support mounting modal.Volume")
-            validated_volumes_.append((k, v))
-
         def _deps() -> Sequence[_Object]:
             deps = tuple(base_images.values()) + tuple(secrets)
             if build_function:
                 deps += (build_function,)
             if image_registry_config and image_registry_config.secret:
                 deps += (image_registry_config.secret,)
-            for _, vol in validated_volumes_:
+            for _, vol in validated_volumes:
                 deps += (vol,)
             return deps
 
@@ -615,7 +607,7 @@ class _Image(_Object, type_prefix="im"):
                     allow_background_commits=True,
                     read_only=volume._read_only,
                 )
-                for path, volume in validated_volumes_
+                for path, volume in validated_volumes
             ]
 
             image_definition = api_pb2.Image(
@@ -1740,7 +1732,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
             force_build=self.force_build or force_build,
-            volumes=volumes,
+            validated_volumes=validate_only_modal_volumes(volumes, "Image.run_commands"),
         )
 
     @staticmethod

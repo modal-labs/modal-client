@@ -1,7 +1,13 @@
 # Copyright Modal Labs 2024
 import pytest
 
-from modal._utils.mount_utils import validate_mount_points, validate_network_file_systems, validate_volumes
+from modal._utils.mount_utils import (
+    validate_mount_points,
+    validate_network_file_systems,
+    validate_only_modal_volumes,
+    validate_volumes,
+)
+from modal.cloud_bucket_mount import _CloudBucketMount
 from modal.exception import InvalidError
 from modal.network_file_system import _NetworkFileSystem
 from modal.volume import _Volume
@@ -52,3 +58,19 @@ def test_validate_volumes(client, servicer):
     bad_path_volumes = {"/my/path": vol, "/my/other/path": vol}
     with pytest.raises(InvalidError, match="Volume"):
         validate_volumes(bad_path_volumes)  # type: ignore
+
+
+def test_validate_only_modal_volumes():
+    valid_volumes = {"/my/path": _Volume.from_name("foo", create_if_missing=False)}
+    output = validate_only_modal_volumes(valid_volumes, "test_function")  # type: ignore
+    assert output == [("/my/path", valid_volumes["/my/path"])]
+
+    output = validate_only_modal_volumes(None, "test_function")  # type: ignore
+    assert not output
+
+    invalid_volumes = {
+        "/my/path": _Volume.from_name("foo", create_if_missing=False),
+        "/dev/path": _CloudBucketMount(bucket_name="hello_world"),
+    }
+    with pytest.raises(InvalidError, match="Image.run_command only supports volumes that are modal.Volume"):
+        validate_only_modal_volumes(invalid_volumes, "Image.run_command")  # type: ignore
