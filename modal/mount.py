@@ -326,7 +326,12 @@ class _Mount(_Object, type_prefix="mo"):
                 return None
             return (_Mount._type_prefix, "local", frozenset(included_files))
 
-        obj = _Mount._from_loader(_Mount._load_mount, rep, deduplication_key=mount_content_deduplication_key)
+        obj = _Mount._from_loader(
+            _Mount._load_mount,
+            rep,
+            deduplication_key=mount_content_deduplication_key,
+            load_metadata=LoadMetadata.no_defaults(),  # should always get full context from parent
+        )
         obj._entries = entries
         obj._is_local = True
         return obj

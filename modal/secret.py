@@ -286,7 +286,8 @@ class _Secret(_Object, type_prefix="st"):
             self._hydrate(resp.secret_id, load_metadata.client, resp.metadata)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
-        return _Secret._from_loader(_load, rep, hydrate_lazily=True)
+        # TODO: scoping - these should probably not be lazily hydrated without having an app and/or sandbox association
+        return _Secret._from_loader(_load, rep, hydrate_lazily=True, load_metadata=LoadMetadata.empty())
 
     @staticmethod
     def from_local_environ(
@@ -382,6 +383,7 @@ class _Secret(_Object, type_prefix="st"):
         required_keys: list[
             str
         ] = [],  # Optionally, a list of required environment variables (will be asserted server-side)
+        client: Optional[_Client] = None,
     ) -> "_Secret":
         """Reference a Secret by its name.
 
@@ -404,7 +406,7 @@ class _Secret(_Object, type_prefix="st"):
         ):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
+                environment_name=load_metadata.environment_name,
                 required_keys=required_keys,
             )
             try:
@@ -417,7 +419,13 @@ class _Secret(_Object, type_prefix="st"):
             self._hydrate(response.secret_id, load_metadata.client, response.metadata)
 
         rep = _Secret._repr(name, environment_name)
-        return _Secret._from_loader(_load, rep, hydrate_lazily=True, name=name)
+        return _Secret._from_loader(
+            _load,
+            rep,
+            hydrate_lazily=True,
+            name=name,
+            load_metadata=LoadMetadata(environment_name=environment_name, client=client),
+        )
 
     @staticmethod
     async def create_deployed(

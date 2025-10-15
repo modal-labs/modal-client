@@ -441,7 +441,9 @@ class _Image(_Object, type_prefix="im"):
             self2._deferred_mounts = tuple(base_image._deferred_mounts) + (mount,)
             self2._serve_mounts = base_image._serve_mounts | ({mount} if mount.is_local() else set())
 
-        img = _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
+        img = _Image._from_loader(
+            _load, "Image(local files)", deps=lambda: [base_image, mount], load_metadata=LoadMetadata.empty()
+        )
         img._added_python_source_set = base_image._added_python_source_set
         return img
 
@@ -676,7 +678,7 @@ class _Image(_Object, type_prefix="im"):
             self._serve_mounts = frozenset(local_mounts)
 
         rep = f"Image({dockerfile_function})"
-        obj = _Image._from_loader(_load, rep, deps=_deps)
+        obj = _Image._from_loader(_load, rep, deps=_deps, load_metadata=LoadMetadata.empty())
         obj.force_build = force_build
         obj._added_python_source_set = frozenset.union(
             frozenset(), *(base._added_python_source_set for base in base_images.values())

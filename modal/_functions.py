@@ -2059,8 +2059,6 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         if you no longer have access to the original object returned from `Function.spawn`.
 
         """
-        if client is None:
-            client = await _Client.from_env()
 
         async def _load(
             self: _FunctionCall, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
@@ -2070,7 +2068,11 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             self._hydrate(function_call_id, load_metadata.client, resp)
 
         rep = f"FunctionCall.from_id({function_call_id!r})"
-        fc: _FunctionCall[Any] = _FunctionCall._from_loader(_load, rep, hydrate_lazily=True)
+        fc: _FunctionCall[Any] = _FunctionCall._from_loader(
+            _load, rep, hydrate_lazily=True, load_metadata=LoadMetadata(client=client)
+        )
+
+        # TODO(elias): Remove these
         # We already know the object ID, so we can set it directly
         fc._object_id = function_call_id
         fc._client = client

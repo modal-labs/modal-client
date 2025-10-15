@@ -411,6 +411,7 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
+        client: Optional[_Client] = None,
     ) -> "_Volume":
         """Reference a Volume by name, creating if necessary.
 
@@ -445,7 +446,13 @@ class _Volume(_Object, type_prefix="vo"):
             self._hydrate(response.volume_id, load_metadata.client, response.metadata)
 
         rep = _Volume._repr(name, environment_name)
-        return _Volume._from_loader(_load, rep, hydrate_lazily=True, name=name)
+        return _Volume._from_loader(
+            _load,
+            rep,
+            hydrate_lazily=True,
+            name=name,
+            load_metadata=LoadMetadata(client=client, environment_name=environment_name),
+        )
 
     @classmethod
     @asynccontextmanager

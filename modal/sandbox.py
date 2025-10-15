@@ -282,7 +282,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_metadata.client, None)
 
-        return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
+        return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_metadata=LoadMetadata.empty())
 
     @staticmethod
     async def create(
@@ -497,6 +497,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             app_id = app.app_id
             app_client = app._client
         elif (container_app := _App._get_container_app()) is not None:
+            # implicit app/client provided by running in a modal Function
             app_id = container_app.app_id
             app_client = container_app._client
         else:
@@ -509,15 +510,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "```",
             )
 
-        client = client or app_client or await _Client.from_env()
-
-        # Set the object's LoadMetadata before resolving
-        obj._load_metadata.client = client
-        obj._load_metadata.app_id = app_id
+        client = client or app_client
 
         resolver = Resolver()
-        from ._load_metadata import LoadMetadata
-
         parent_metadata = LoadMetadata(client=client, app_id=app_id)
         await resolver.load(obj, parent_metadata)
         return obj

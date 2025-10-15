@@ -4,9 +4,10 @@ from typing import Optional
 from modal_proto import api_pb2
 
 from ._load_metadata import LoadMetadata
-from ._object import _get_environment_name, _Object
+from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
+from .client import _Client
 
 
 class _Proxy(_Object, type_prefix="pr"):
@@ -21,6 +22,7 @@ class _Proxy(_Object, type_prefix="pr"):
         name: str,
         *,
         environment_name: Optional[str] = None,
+        client: Optional[_Client] = None,
     ) -> "_Proxy":
         """Reference a Proxy by its name.
 
@@ -34,13 +36,15 @@ class _Proxy(_Object, type_prefix="pr"):
         ):
             req = api_pb2.ProxyGetRequest(
                 name=name,
-                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
+                environment_name=load_metadata.environment_name,
             )
             response: api_pb2.ProxyGetResponse = await load_metadata.client.stub.ProxyGet(req)
             self._hydrate(response.proxy.proxy_id, load_metadata.client, None)
 
         rep = _Proxy._repr(name, environment_name)
-        return _Proxy._from_loader(_load, rep, is_another_app=True)
+        return _Proxy._from_loader(
+            _load, rep, is_another_app=True, load_metadata=LoadMetadata(environment_name=environment_name)
+        )
 
 
 Proxy = synchronize_api(_Proxy, target_module=__name__)

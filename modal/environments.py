@@ -54,6 +54,7 @@ class _Environment(_Object, type_prefix="en"):
         name: str,
         *,
         create_if_missing: bool = False,
+        client: Optional[_Client] = None,
     ):
         if name:
             # Allow null names for the case where we want to look up the "default" environment,
@@ -78,8 +79,13 @@ class _Environment(_Object, type_prefix="en"):
             logger.debug(f"Created environment with id {response.environment_id}")
             self._hydrate(response.environment_id, load_metadata.client, response.metadata)
 
-        # TODO environment name (and id?) in the repr? (We should make reprs consistently more useful)
-        return _Environment._from_loader(_load, "Environment()", is_another_app=True, hydrate_lazily=True)
+        return _Environment._from_loader(
+            _load,
+            f"Environment.from_name({name!r})",
+            is_another_app=True,
+            hydrate_lazily=True,
+            load_metadata=LoadMetadata(client=client),
+        )
 
 
 Environment = synchronize_api(_Environment)

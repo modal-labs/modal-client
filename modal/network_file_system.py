@@ -97,6 +97,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        client: Optional[_Client] = None,
     ) -> "_NetworkFileSystem":
         """Reference a NetworkFileSystem by its name, creating if necessary.
 
@@ -120,7 +121,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, load_metadata=load_metadata),
+                environment_name=load_metadata.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
             try:
@@ -133,7 +134,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                     )
                 raise
 
-        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()", hydrate_lazily=True)
+        return _NetworkFileSystem._from_loader(
+            _load,
+            "NetworkFileSystem()",
+            hydrate_lazily=True,
+            load_metadata=LoadMetadata(environment_name=environment_name, client=client),
+        )
 
     @classmethod
     @asynccontextmanager

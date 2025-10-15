@@ -183,7 +183,8 @@ class _Object:
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
         name: Optional[str] = None,
-        load_metadata: Optional[LoadMetadata] = None,
+        *,
+        load_metadata: LoadMetadata,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
