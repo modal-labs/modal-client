@@ -41,7 +41,10 @@ class _Proxy(_Object, type_prefix="pr"):
 
         rep = _Proxy._repr(name, environment_name)
         return _Proxy._from_loader(
-            _load, rep, is_another_app=True, load_context_overrides=LoadContext(environment_name=environment_name)
+            _load,
+            rep,
+            is_another_app=True,
+            load_context_overrides=LoadContext(client=client, environment_name=environment_name),
         )
 
 
