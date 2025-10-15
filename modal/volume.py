@@ -369,7 +369,9 @@ class _Volume(_Object, type_prefix="vo"):
             new_volume._initialize_from_other(self)
             new_volume._read_only = True
 
-        obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, deps=lambda: [self])
+        obj = _Volume._from_loader(
+            _load, "Volume()", hydrate_lazily=True, deps=lambda: [self], load_metadata=self._load_metadata
+        )
         return obj
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
