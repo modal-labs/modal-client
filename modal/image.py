@@ -851,8 +851,6 @@ class _Image(_Object, type_prefix="im"):
 
         The ID of an Image object can be accessed using `.object_id`.
         """
-        if client is None:
-            client = await _Client.from_env()
 
         async def _load(
             self: _Image, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
@@ -861,7 +859,7 @@ class _Image(_Object, type_prefix="im"):
             self._hydrate(resp.image_id, load_metadata.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
-        obj = _Image._from_loader(_load, rep)
+        obj = _Image._from_loader(_load, rep, load_metadata=LoadMetadata(client=client))
 
         return obj
 

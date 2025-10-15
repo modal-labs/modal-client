@@ -1151,7 +1151,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         rep = f"Function({tag})"
         # Pass a reference to the App's LoadMetadata
-        load_metadata = app._load_metadata if app else None
+        load_metadata = app._load_metadata if app else LoadMetadata.empty()
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps, load_metadata=load_metadata)
 
         obj._raw_f = info.raw_f

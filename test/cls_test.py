@@ -1500,9 +1500,9 @@ def test_cls_load_metadata_transfers_to_methods():
     t = synchronizer._translate_in
     # the *instance* of LoadMetadata from the Cls should be the same as the child
     expected_load_metadata = t(C)._load_metadata
-    assert t(c.some_method)._load_metadata is expected_load_metadata
-    assert t(c.some_method)._load_metadata is t(d.some_method)._load_metadata
-    assert t(C.with_options(gpu="A100")().some_method)._load_metadata is expected_load_metadata
+    assert t(c.some_method)._load_metadata is expected_load_metadata  # noqa
+    assert t(c.some_method)._load_metadata is t(d.some_method)._load_metadata  # noqa
+    assert t(C.with_options(gpu="A100")().some_method)._load_metadata is expected_load_metadata  # noqa
 
 
 def test_cls_load_metadata_transfers_to_methods_local():
@@ -1518,8 +1518,8 @@ def test_cls_load_metadata_transfers_to_methods_local():
 
     t = synchronizer._translate_in
     c = C(p=1)
-    assert t(c.some_method)._load_metadata is t(C)._load_metadata
+    assert t(c.some_method)._load_metadata is t(C)._load_metadata  # noqa
 
     # the *instance* of LoadMetadata from the Cls should be the same as the child
     d = C(p=2)
-    assert t(c.some_method)._load_metadata is t(d.some_method)._load_metadata
+    assert t(c.some_method)._load_metadata is t(d.some_method)._load_metadata  # noqa

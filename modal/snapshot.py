@@ -25,18 +25,17 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
         """
         Construct a `SandboxSnapshot` object from a sandbox snapshot ID.
         """
-        if client is None:
-            client = await _Client.from_env()
 
         async def _load(
             self: _SandboxSnapshot, resolver: Resolver, load_metadata: LoadMetadata, existing_object_id: Optional[str]
         ):
             await retry_transient_errors(
-                client.stub.SandboxSnapshotGet, api_pb2.SandboxSnapshotGetRequest(snapshot_id=sandbox_snapshot_id)
+                load_metadata.client.stub.SandboxSnapshotGet,
+                api_pb2.SandboxSnapshotGetRequest(snapshot_id=sandbox_snapshot_id),
             )
 
         rep = "SandboxSnapshot()"
-        obj = _SandboxSnapshot._from_loader(_load, rep)
+        obj = _SandboxSnapshot._from_loader(_load, rep, load_metadata=LoadMetadata(client=client))
         obj._hydrate(sandbox_snapshot_id, client, None)
 
         return obj

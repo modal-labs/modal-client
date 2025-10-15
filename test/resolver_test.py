@@ -27,7 +27,7 @@ async def test_multi_resolve_sequential_loads_once(client):
         self._hydrate("zz-123", load_metadata.client, None)
         await asyncio.sleep(0.1)
 
-    obj = _DumbObject._from_loader(_load, "DumbObject()")
+    obj = _DumbObject._from_loader(_load, "DumbObject()", load_metadata=LoadMetadata.empty())
 
     t0 = time.monotonic()
     parent_metadata = LoadMetadata(client=client)
@@ -55,7 +55,7 @@ async def test_multi_resolve_concurrent_loads_once(client):
         self._hydrate("zz-123", load_metadata.client, None)
         await asyncio.sleep(0.1)
 
-    obj = _DumbObject._from_loader(_load, "DumbObject()")
+    obj = _DumbObject._from_loader(_load, "DumbObject()", load_metadata=LoadMetadata.empty())
     t0 = time.monotonic()
     parent_metadata = LoadMetadata(client=client)
     await asyncio.gather(resolver.load(obj, parent_metadata), resolver.load(obj, parent_metadata))
