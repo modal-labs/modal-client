@@ -155,8 +155,16 @@ class _ContainerProcess(Generic[T]):
         on_connect = asyncio.Event()
 
         async def _write_to_fd_loop(stream: _StreamReader):
+            # This is required to make modal shell to an existing task work,
+            # since that uses ContainerExec RPCs directly, but this is hacky.
+            #
+            # TODO(saltzm): Once we use the new exec path for that use case, this code can all be removed.
+            from .io_streams import _StreamReaderThroughServer
+
+            assert isinstance(stream._impl, _StreamReaderThroughServer)
+            stream_impl = stream._impl
             # Don't skip empty messages so we can detect when the process has booted.
-            async for chunk in stream._get_logs(skip_empty_messages=False):
+            async for chunk in stream_impl._get_logs(skip_empty_messages=False):
                 if chunk is None:
                     break
 
