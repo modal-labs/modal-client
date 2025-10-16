@@ -273,6 +273,9 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
         )
         self._returncode = None
 
+    def __repr__(self) -> str:
+        return f"ContainerProcess(process_id={self._process_id!r})"
+
     @property
     def stdout(self) -> _StreamReader[T]:
         return self._stdout
@@ -314,7 +317,10 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
                 raise InvalidError("Unexpected exit status")
         except ExecTimeoutError:
             logger.debug(f"ContainerProcess poll for {self._process_id} did not complete within deadline")
-            return None
+            # TODO(saltzm): This is a weird API, but customers currently may rely on it. This
+            # should probably raise an ExecTimeoutError instead.
+            self._returncode = -1
+            return self._returncode
         except Exception as e:
             # Re-raise non-transient errors or errors resulting from exceeding retries on transient errors.
             logger.warning(f"ContainerProcess poll for {self._process_id} failed: {e}")

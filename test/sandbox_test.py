@@ -9,8 +9,9 @@ from unittest import mock
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal.exception import InvalidError
 from modal.stream_type import StreamType
-from modal_proto import api_pb2
+from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
 
+from .conftest import FakeTaskCommandRouterClient
 from .supports.skip import skip_windows
 
 skip_non_subprocess = skip_windows("Needs subprocess support")
@@ -250,7 +251,8 @@ async def test_sandbox_async_for(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_exec_stdout_bytes_mode(app, servicer):
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_stdout_bytes_mode(app, servicer, exec_backend):
     """Test that the stream reader works in bytes mode."""
 
     sb = Sandbox.create(app=app)
@@ -281,11 +283,14 @@ def test_app_sandbox(client, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_exec(app, servicer):
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec(app, servicer, exec_backend):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "while read line; do echo $line; done")
-    assert str(cp) == "ContainerProcess(process_id='container_exec_id')"
+    # Accept either wrapper repr or impl repr depending on backend
+    s = str(cp)
+    assert s.startswith("ContainerProcess(process_id=")
 
     cp.stdin.write(b"foo\n")
     cp.stdin.write(b"bar\n")
@@ -296,7 +301,8 @@ def test_sandbox_exec(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_exec_wait(app, servicer):
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_wait(app, servicer, exec_backend):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "sleep 0.5 && exit 42")
@@ -312,7 +318,8 @@ def test_sandbox_exec_wait(app, servicer):
 
 @mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
 @skip_non_subprocess
-def test_sandbox_exec_wait_timeout(app, servicer):
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_wait_timeout(app, servicer, exec_backend):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("sleep", "999", timeout=1)
@@ -323,7 +330,8 @@ def test_sandbox_exec_wait_timeout(app, servicer):
 
 @mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
 @skip_non_subprocess
-def test_sandbox_exec_poll_timeout(app, servicer):
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_poll_timeout(app, servicer, exec_backend):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("sleep", "999", timeout=1)
@@ -334,7 +342,8 @@ def test_sandbox_exec_poll_timeout(app, servicer):
 
 @mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
 @skip_non_subprocess
-def test_sandbox_exec_output_timeout(app, servicer):
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_output_timeout(app, servicer, exec_backend):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("sh", "-c", "echo hi; sleep 999", timeout=1)
@@ -345,7 +354,8 @@ def test_sandbox_exec_output_timeout(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_exec_output_double_read(app, servicer):
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_output_double_read(app, servicer, exec_backend):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("sh", "-c", "echo hi")
@@ -646,13 +656,34 @@ def test_sandbox_create_pty(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_exec_pty(app, servicer):
-    with servicer.intercept() as ctx:
-        sb = Sandbox.create("sleep", "infinity", app=app)
-        sb.exec("echo", "hello", pty=True)
-        req = ctx.pop_request("ContainerExec")
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
+    pty_info = None
+    if exec_backend == "server":
+        with servicer.intercept() as ctx:
+            sb = Sandbox.create("sleep", "infinity", app=app)
+            sb.exec("echo", "hello", pty=True)
+            req = ctx.pop_request("ContainerExec")
+            pty_info = req.pty_info
+    else:
+        captured_request = None
+        original = FakeTaskCommandRouterClient.exec_start
 
-        assert req.pty_info is not None
-        assert req.pty_info.enabled is True
-        assert req.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL
-        assert req.pty_info.no_terminate_on_idle_stdin is True
+        async def _exec_start(self, request: tcr_pb2.TaskExecStartRequest) -> tcr_pb2.TaskExecStartResponse:
+            nonlocal captured_request
+            captured_request = request
+            return await original(self, request)
+
+        monkeypatch.setattr(FakeTaskCommandRouterClient, "exec_start", _exec_start, raising=True)
+
+        # Router path: ensure exec succeeds with pty=True (pty details are handled on worker/router side).
+        sb = Sandbox.create("sleep", "infinity", app=app)
+        cp = sb.exec("echo", "hello", pty=True)
+        cp.wait()
+        assert captured_request is not None
+        pty_info = captured_request.pty_info
+
+    assert pty_info is not None
+    assert pty_info.enabled is True
+    assert pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL
+    assert pty_info.no_terminate_on_idle_stdin is True
