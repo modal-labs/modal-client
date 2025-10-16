@@ -229,9 +229,7 @@ async def test_asgi_app_missing_return(servicer, client, monkeypatch):
     from modal.app import _App
 
     def my_asgi_no_return():
-        from fastapi import FastAPI
-
-        app = FastAPI()
+        pass
 
     fun_def = api_pb2.Function(
         module_name="__main__",
@@ -266,9 +264,7 @@ async def test_wsgi_app_missing_return(servicer, client, monkeypatch):
     from modal.app import _App
 
     def my_wsgi_no_return():
-        from flask import Flask
-
-        app = Flask(__name__)
+        pass
 
     fun_def = api_pb2.Function(
         module_name="__main__",
