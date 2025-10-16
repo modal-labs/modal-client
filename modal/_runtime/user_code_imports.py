@@ -62,11 +62,23 @@ def construct_webhook_callable(
     # For webhooks, the user function is used to construct an asgi app:
     if webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # Function returns an asgi_app, which we can use as a callable.
-        return asgi.asgi_app_wrapper(user_defined_callable(), container_io_manager)
+        asgi_app = user_defined_callable()
+        if not callable(asgi_app):
+            raise InvalidError(
+                f"Function decorated with @asgi_app() must return a callable ASGI application, "
+                f"but returned {type(asgi_app).__name__}. Did you forget to add a return statement?"
+            )
+        return asgi.asgi_app_wrapper(asgi_app, container_io_manager)
 
     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
         # Function returns an wsgi_app, which we can use as a callable
-        return asgi.wsgi_app_wrapper(user_defined_callable(), container_io_manager)
+        wsgi_app = user_defined_callable()
+        if not callable(wsgi_app):
+            raise InvalidError(
+                f"Function decorated with @wsgi_app() must return a callable WSGI application, "
+                f"but returned {type(wsgi_app).__name__}. Did you forget to add a return statement?"
+            )
+        return asgi.wsgi_app_wrapper(wsgi_app, container_io_manager)
 
     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # Function is a webhook without an ASGI app. Create one for it.

@@ -221,6 +221,80 @@ def test_positional_method(servicer, client):
 
 
 @pytest.mark.asyncio
+async def test_asgi_app_missing_return(servicer, client, monkeypatch):
+    """Test that forgetting to return from @asgi_app() gives a clear error."""
+    from unittest.mock import MagicMock
+
+    from modal._runtime import user_code_imports
+    from modal.app import _App
+
+    def my_asgi_no_return():
+        from fastapi import FastAPI
+
+        app = FastAPI()
+
+    fun_def = api_pb2.Function(
+        module_name="__main__",
+        function_name="my_asgi_no_return",
+        webhook_config=api_pb2.WebhookConfig(type=api_pb2.WEBHOOK_TYPE_ASGI_APP),
+    )
+
+    service = user_code_imports.ImportedFunction(
+        app=_App(),
+        service_deps=None,
+        _user_defined_callable=my_asgi_no_return,
+    )
+
+    io_manager = MagicMock()
+
+    with pytest.raises(InvalidError, match="must return a callable ASGI application"):
+        service.get_finalized_functions(fun_def, container_io_manager=io_manager)
+
+    with pytest.raises(InvalidError, match="Did you forget to add a return statement?"):
+        service.get_finalized_functions(fun_def, container_io_manager=io_manager)
+
+    with pytest.raises(InvalidError, match="NoneType"):
+        service.get_finalized_functions(fun_def, container_io_manager=io_manager)
+
+
+@pytest.mark.asyncio
+async def test_wsgi_app_missing_return(servicer, client, monkeypatch):
+    """Test that forgetting to return from @wsgi_app() gives a clear error."""
+    from unittest.mock import MagicMock
+
+    from modal._runtime import user_code_imports
+    from modal.app import _App
+
+    def my_wsgi_no_return():
+        from flask import Flask
+
+        app = Flask(__name__)
+
+    fun_def = api_pb2.Function(
+        module_name="__main__",
+        function_name="my_wsgi_no_return",
+        webhook_config=api_pb2.WebhookConfig(type=api_pb2.WEBHOOK_TYPE_WSGI_APP),
+    )
+
+    service = user_code_imports.ImportedFunction(
+        app=_App(),
+        service_deps=None,
+        _user_defined_callable=my_wsgi_no_return,
+    )
+
+    io_manager = MagicMock()
+
+    with pytest.raises(InvalidError, match="must return a callable WSGI application"):
+        service.get_finalized_functions(fun_def, container_io_manager=io_manager)
+
+    with pytest.raises(InvalidError, match="Did you forget to add a return statement?"):
+        service.get_finalized_functions(fun_def, container_io_manager=io_manager)
+
+    with pytest.raises(InvalidError, match="NoneType"):
+        service.get_finalized_functions(fun_def, container_io_manager=io_manager)
+
+
+@pytest.mark.asyncio
 async def test_dev_suffix(servicer, client, modal_config):
     modal_toml = """
     [default]
