@@ -292,7 +292,9 @@ class TaskCommandRouterClient:
             lambda: self._call_with_auth_retry(self._stub.TaskExecStdinWrite, request)
         )
 
-    async def exec_poll(self, task_id: str, exec_id: str) -> sr_pb2.TaskExecPollResponse:
+    async def exec_poll(
+        self, task_id: str, exec_id: str, deadline: Optional[float] = None
+    ) -> sr_pb2.TaskExecPollResponse:
         """Poll for the exit status of an exec'd command, properly retrying on transient errors.
 
         Args:
@@ -302,13 +304,25 @@ class TaskCommandRouterClient:
             sr_pb2.TaskExecPollResponse: The exit status of the command if it has completed.
 
         Raises:
+            ExecTimeoutError: If the deadline is exceeded.
             Other errors: If retries are exhausted on transient errors or if there's an error
               from the RPC itself.
         """
         request = sr_pb2.TaskExecPollRequest(task_id=task_id, exec_id=exec_id)
-        return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(self._stub.TaskExecPoll, request)
-        )
+        # The timeout here is really a backstop in the event of a hang contacting
+        # the command router. Poll should usually be instantaneous.
+        timeout = deadline - time.monotonic() if deadline is not None else None
+        if timeout is not None and timeout <= 0:
+            raise ExecTimeoutError(f"Deadline exceeded while polling for exec {exec_id}")
+        try:
+            return await asyncio.wait_for(
+                call_with_retries_on_transient_errors(
+                    lambda: self._call_with_auth_retry(self._stub.TaskExecPoll, request)
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            raise ExecTimeoutError(f"Deadline exceeded while polling for exec {exec_id}")
 
     async def exec_wait(
         self,
