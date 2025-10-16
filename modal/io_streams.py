@@ -605,7 +605,7 @@ class _StreamReader(Generic[T]):
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
 
 
-class _StreamWriter:
+class _StreamWriterThroughServer:
     """Provides an interface to buffer and write logs to a sandbox or container process stream (`stdin`)."""
 
     def __init__(self, object_id: str, object_type: Literal["sandbox", "container_process"], client: _Client) -> None:
@@ -627,25 +627,6 @@ class _StreamWriter:
 
         This is non-blocking and queues the data to an internal buffer. Must be
         used along with the `drain()` method, which flushes the buffer.
-
-        **Usage**
-
-        ```python fixture:running_app
-        from modal import Sandbox
-
-        sandbox = Sandbox.create(
-            "bash",
-            "-c",
-            "while read line; do echo $line; done",
-            app=running_app,
-        )
-        sandbox.stdin.write(b"foo\\n")
-        sandbox.stdin.write(b"bar\\n")
-        sandbox.stdin.write_eof()
-
-        sandbox.stdin.drain()
-        sandbox.wait()
-        ```
         """
         if self._is_closed:
             raise ValueError("Stdin is closed. Cannot write to it.")
@@ -653,7 +634,7 @@ class _StreamWriter:
             if isinstance(data, str):
                 data = data.encode("utf-8")
             if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
-                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
+                raise BufferError("Buffer size exceed limit. Call drain to flush the buffer.")
             self._buffer.extend(data)
         else:
             raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
@@ -672,19 +653,6 @@ class _StreamWriter:
 
         This is a flow control method that blocks until data is sent. It returns
         when it is appropriate to continue writing data to the stream.
-
-        **Usage**
-
-        ```python notest
-        writer.write(data)
-        writer.drain()
-        ```
-
-        Async usage:
-        ```python notest
-        writer.write(data)  # not a blocking operation
-        await writer.drain.aio()
-        ```
         """
         data = bytes(self._buffer)
         self._buffer.clear()
@@ -711,6 +679,128 @@ class _StreamWriter:
                 raise ValueError(exc.message)
             else:
                 raise exc
+
+
+class _StreamWriterThroughCommandRouter:
+    def __init__(
+        self,
+        object_id: str,
+        command_router_client: TaskCommandRouterClient,
+        task_id: str,
+    ) -> None:
+        self._object_id = object_id
+        self._command_router_client = command_router_client
+        self._task_id = task_id
+        self._is_closed = False
+        self._buffer = bytearray()
+        self._offset = 0
+
+    def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
+        if self._is_closed:
+            raise ValueError("Stdin is closed. Cannot write to it.")
+        if isinstance(data, (bytes, bytearray, memoryview, str)):
+            if isinstance(data, str):
+                data = data.encode("utf-8")
+            if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
+                raise BufferError("Buffer size exceed limit. Call drain to flush the buffer.")
+            self._buffer.extend(data)
+        else:
+            raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
+
+    def write_eof(self) -> None:
+        self._is_closed = True
+
+    async def drain(self) -> None:
+        eof = self._is_closed
+        # NB: There's no need to prevent writing eof twice, because the command router will ignore the second EOF.
+        if self._buffer or eof:
+            data = bytes(self._buffer)
+            await self._command_router_client.exec_stdin_write(
+                task_id=self._task_id, exec_id=self._object_id, offset=self._offset, data=data, eof=eof
+            )
+            # Only clear the buffer after writing the data to the command router is successful.
+            # This allows the client to retry drain() in the event of an exception (though
+            # exec_stdin_write already retries on transient errors, so most users will probably
+            # not do this).
+            self._buffer.clear()
+            self._offset += len(data)
+
+
+class _StreamWriter:
+    """Provides an interface to buffer and write logs to a sandbox or container process stream (`stdin`)."""
+
+    def __init__(
+        self,
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        client: _Client,
+        command_router_client: Optional[TaskCommandRouterClient] = None,
+        task_id: Optional[str] = None,
+    ) -> None:
+        """mdmd:hidden"""
+        if command_router_client is None:
+            self._impl = _StreamWriterThroughServer(object_id, object_type, client)
+        else:
+            assert task_id is not None
+            assert object_type == "container_process"
+            self._impl = _StreamWriterThroughCommandRouter(object_id, command_router_client, task_id=task_id)
+
+    def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
+        """Write data to the stream but does not send it immediately.
+
+        This is non-blocking and queues the data to an internal buffer. Must be
+        used along with the `drain()` method, which flushes the buffer.
+
+        **Usage**
+
+        ```python fixture:running_app
+        from modal import Sandbox
+
+        sandbox = Sandbox.create(
+            "bash",
+            "-c",
+            "while read line; do echo $line; done",
+            app=running_app,
+        )
+        sandbox.stdin.write(b"foo\\n")
+        sandbox.stdin.write(b"bar\\n")
+        sandbox.stdin.write_eof()
+
+        sandbox.stdin.drain()
+        sandbox.wait()
+        ```
+        """
+        self._impl.write(data)
+
+    def write_eof(self) -> None:
+        """Close the write end of the stream after the buffered data is drained.
+
+        If the process was blocked on input, it will become unblocked after
+        `write_eof()`. This method needs to be used along with the `drain()`
+        method, which flushes the EOF to the process.
+        """
+        self._impl.write_eof()
+
+    async def drain(self) -> None:
+        """Flush the write buffer and send data to the running process.
+
+        This is a flow control method that blocks until data is sent. It returns
+        when it is appropriate to continue writing data to the stream.
+
+        **Usage**
+
+        ```python notest
+        writer.write(data)
+        writer.drain()
+        ```
+
+        Async usage:
+        ```python notest
+        writer.write(data)  # not a blocking operation
+        await writer.drain.aio()
+        ```
+        """
+        await self._impl.drain()
 
 
 StreamReader = synchronize_api(_StreamReader)
