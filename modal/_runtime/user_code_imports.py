@@ -65,7 +65,7 @@ def construct_webhook_callable(
         asgi_app = user_defined_callable()
         if not callable(asgi_app):
             raise InvalidError(
-                f"Function decorated with modal.asgi_app() must return a callable ASGI application, "
+                f"Function decorated with @modal.asgi_app() must return a callable ASGI application, "
                 f"but returned {type(asgi_app).__name__}. Did you forget to add a return statement?"
             )
         return asgi.asgi_app_wrapper(asgi_app, container_io_manager)
@@ -75,7 +75,7 @@ def construct_webhook_callable(
         wsgi_app = user_defined_callable()
         if not callable(wsgi_app):
             raise InvalidError(
-                f"Function decorated with modal.wsgi_app() must return a callable WSGI application, "
+                f"Function decorated with @modal.wsgi_app() must return a callable WSGI application, "
                 f"but returned {type(wsgi_app).__name__}. Did you forget to add a return statement?"
             )
         return asgi.wsgi_app_wrapper(wsgi_app, container_io_manager)

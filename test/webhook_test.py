@@ -237,7 +237,7 @@ async def test_asgi_app_missing_return(servicer, client):
     fun_def = api_pb2.Function(webhook_config=api_pb2.WebhookConfig(type=api_pb2.WEBHOOK_TYPE_ASGI_APP))
 
     with pytest.raises(
-        InvalidError, match=r"modal\.asgi_app\(\).+callable.+NoneType.+Did you forget to add a return statement"
+        InvalidError, match=r"@modal\.asgi_app\(\).+callable.+NoneType.+Did you forget to add a return statement"
     ):
         service.get_finalized_functions(fun_def, container_io_manager=MagicMock())
 
@@ -259,7 +259,7 @@ async def test_wsgi_app_missing_return(servicer, client):
     fun_def = api_pb2.Function(webhook_config=api_pb2.WebhookConfig(type=api_pb2.WEBHOOK_TYPE_WSGI_APP))
 
     with pytest.raises(
-        InvalidError, match=r"modal\.wsgi_app\(\).+callable.+NoneType.+Did you forget to add a return statement"
+        InvalidError, match=r"@modal\.wsgi_app\(\).+callable.+NoneType.+Did you forget to add a return statement"
     ):
         service.get_finalized_functions(fun_def, container_io_manager=MagicMock())
 
