@@ -634,7 +634,7 @@ class _StreamWriterThroughServer:
             if isinstance(data, str):
                 data = data.encode("utf-8")
             if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
-                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
+                raise BufferError("Buffer size exceed limit. Call drain to flush the buffer.")
             self._buffer.extend(data)
         else:
             raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
@@ -702,7 +702,7 @@ class _StreamWriterThroughCommandRouter:
             if isinstance(data, str):
                 data = data.encode("utf-8")
             if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
-                raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
+                raise BufferError("Buffer size exceed limit. Call drain to flush the buffer.")
             self._buffer.extend(data)
         else:
             raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
