@@ -1257,7 +1257,9 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, toke
         out, err = p.communicate(timeout=5)
         print(out)
         assert "Shutting down Modal client." in out
-        assert "The detached app keeps running. You can track its progress at:" in out
+        assert "track its progress" in out
+        assert "modal app stop" in out
+        assert "modal app logs" in out
         assert "Traceback" not in err
 
 

@@ -53,16 +53,17 @@ def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
 def protoc(ctx):
     """Compile protocol buffer files for gRPC and Modal-specific wrappers.
 
-    Generates Python stubs for api.proto and options.proto."""
+    Generates Python stubs for api.proto."""
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
-    client_proto_files = "modal_proto/api.proto modal_proto/options.proto"
+    client_proto_files = "modal_proto/api.proto"
     sandbox_router_proto_file = "modal_proto/sandbox_router.proto"
+    task_command_router_proto_file = "modal_proto/task_command_router.proto"
     py_protoc = (
         protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
     print(py_protoc)
     # generate grpcio and grpclib proto files:
-    ctx.run(f"{py_protoc} -I . {client_proto_files} {sandbox_router_proto_file}")
+    ctx.run(f"{py_protoc} -I . {client_proto_files} {sandbox_router_proto_file} {task_command_router_proto_file}")
 
     # generate modal-specific wrapper around grpclib api stub using custom plugin:
     grpc_plugin_pyfile = Path("protoc_plugin/plugin.py")
@@ -137,6 +138,7 @@ def lint_protos(ctx):
     """
     lint_protos_impl(ctx, "modal_proto/api.proto")
     lint_protos_impl(ctx, "modal_proto/sandbox_router.proto")
+    lint_protos_impl(ctx, "modal_proto/task_command_router.proto")
 
 
 @task
@@ -459,20 +461,21 @@ def update_changelog(ctx, sha: str = ""):
     # Parse the PR description to get a changelog update, which is all text between
     # the changelog header and any auto comments appended by Cursor
 
-    changelog_pattern = r"## Changelog\s*(.+?)(?:<!--\s*\w*CURSOR\w*\s*-->|$)"
+    changelog_pattern = r"## Changelog\s*(.*?)(?:<!--\s*\w*CURSOR\w*\s*-->|$)"
     m = re.search(changelog_pattern, pr_description, flags=re.DOTALL)
     if m:
-        update = m.group(1).strip()
+        update = m.group(1)
     else:
         print("Aborting: No changelog section in PR description")
-        return
-    if not update:
-        print("Aborting: Empty changelog in PR description")
         return
 
     # Remove any HTML comments
     comment_pattern = r"<!--.+?-->"
-    update = re.sub(comment_pattern, "", update, flags=re.DOTALL)
+    update = re.sub(comment_pattern, "", update, flags=re.DOTALL).strip()
+
+    if not update:
+        print("Aborting: Empty changelog in PR description")
+        return
 
     # Read the existing changelog and split after the header so we can prepend new content
     with open("CHANGELOG.md") as fid:
