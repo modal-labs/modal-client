@@ -474,15 +474,6 @@ class _FlashPrometheusAutoscaler:
 
         return metrics
 
-    async def _get_container_metrics(self, container_id: str) -> Optional[api_pb2.TaskGetAutoscalingMetricsResponse]:
-        req = api_pb2.TaskGetAutoscalingMetricsRequest(task_id=container_id)
-        try:
-            resp = await retry_transient_errors(self.client.stub.TaskGetAutoscalingMetrics, req)
-            return resp
-        except Exception as e:
-            logger.warning(f"[Modal Flash] Error getting metrics for container {container_id}: {e}")
-            return None
-
     async def _get_all_containers(self):
         req = api_pb2.FlashContainerListRequest(function_id=self.fn.object_id)
         resp = await retry_transient_errors(self.client.stub.FlashContainerList, req)
