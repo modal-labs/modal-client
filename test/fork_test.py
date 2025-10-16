@@ -2,7 +2,6 @@
 import pytest
 import subprocess
 import sys
-
 from test.supports.skip import skip_windows
 
 

@@ -865,23 +865,27 @@ Volume = synchronize_api(_Volume)
 
 # TODO(dflemstr): Find a way to add ABC or AbstractAsyncContextManager superclasses while keeping synchronicity happy.
 class _AbstractVolumeUploadContextManager:
-    async def __aenter__(self): ...
+    async def __aenter__(self):
+        ...
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb): ...
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        ...
 
     def put_file(
         self,
         local_file: Union[Path, str, BinaryIO, BytesIO],
         remote_path: Union[PurePosixPath, str],
         mode: Optional[int] = None,
-    ): ...
+    ):
+        ...
 
     def put_directory(
         self,
         local_path: Union[Path, str],
         remote_path: Union[PurePosixPath, str],
         recursive: bool = True,
-    ): ...
+    ):
+        ...
 
     @staticmethod
     def resolve(

@@ -594,11 +594,13 @@ async def sync_or_async_iter(iter: Union[Iterable[T], AsyncIterable[T]]) -> Asyn
 
 
 @typing.overload
-def async_zip(g1: AsyncGenerator[T, None], g2: AsyncGenerator[V, None], /) -> AsyncGenerator[tuple[T, V], None]: ...
+def async_zip(g1: AsyncGenerator[T, None], g2: AsyncGenerator[V, None], /) -> AsyncGenerator[tuple[T, V], None]:
+    ...
 
 
 @typing.overload
-def async_zip(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[tuple[T, ...], None]: ...
+def async_zip(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[tuple[T, ...], None]:
+    ...
 
 
 async def async_zip(*generators):
@@ -648,7 +650,8 @@ class ExceptionWrapper:
     value: Exception
 
 
-class StopSentinelType: ...
+class StopSentinelType:
+    ...
 
 
 STOP_SENTINEL = StopSentinelType()

@@ -231,7 +231,8 @@ async def test_dev_suffix(servicer, client, modal_config):
 
         @app.function(serialized=True)
         @fastapi_endpoint()
-        async def f(x): ...
+        async def f(x):
+            ...
 
         with servicer.intercept() as ctx:
             async with app.run(client=client):

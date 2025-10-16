@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2024
 import pytest
 import subprocess
-
 from test.supports.skip import skip_old_py, skip_windows
 
 

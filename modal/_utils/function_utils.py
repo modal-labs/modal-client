@@ -258,6 +258,7 @@ class FunctionInfo:
 
     def get_cls_var_attrs(self) -> dict[str, Any]:
         import dis
+
         import opcode
 
         LOAD_ATTR = opcode.opmap["LOAD_ATTR"]

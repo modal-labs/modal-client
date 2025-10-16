@@ -126,14 +126,17 @@ def test_non_implemented_proto_type():
 
 
 def test_schema_extraction_unknown():
-    def with_empty(a): ...
+    def with_empty(a):
+        ...
 
-    def with_any(a: typing.Any): ...
+    def with_any(a: typing.Any):
+        ...
 
     class Custom:
         pass
 
-    def with_custom(a: Custom): ...
+    def with_custom(a: Custom):
+        ...
 
     for func in [with_empty, with_any, with_custom]:
         print(func.__name__)
@@ -146,7 +149,8 @@ def test_schema_extraction_unknown():
             )
         ]
 
-    def with_default(a=5): ...
+    def with_default(a=5):
+        ...
 
     fields = list(get_callable_schema(with_default, is_web_endpoint=False).arguments)
     assert fields == [
@@ -157,7 +161,8 @@ def test_schema_extraction_unknown():
 
 
 def test_schema_extraction_int():
-    def f(int_value: int = 1337): ...
+    def f(int_value: int = 1337):
+        ...
 
     sig = inspect.signature(f)
     (int_spec,) = signature_to_parameter_specs(sig)
@@ -199,8 +204,11 @@ def test_schema_extraction_bytes():
 
 
 def test_schema_extraction_list():
-    def new_f(simple_list: list[int]): ...
-    def old_f(simple_list: typing.List[int]): ...
+    def new_f(simple_list: list[int]):
+        ...
+
+    def old_f(simple_list: typing.List[int]):
+        ...
 
     for f in [new_f, old_f]:
         (list_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
@@ -215,7 +223,8 @@ def test_schema_extraction_list():
 
 
 def test_schema_extraction_nested_list():
-    def f(nested_list: list[list[bytes]]): ...
+    def f(nested_list: list[list[bytes]]):
+        ...
 
     (list_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
     assert list_spec == api_pb2.ClassParameterSpec(
@@ -234,7 +243,8 @@ def test_schema_extraction_nested_list():
 
 
 def test_schema_extraction_nested_dict():
-    def f(nested_dict: dict[str, dict[str, bytes]] = {}): ...
+    def f(nested_dict: dict[str, dict[str, bytes]] = {}):
+        ...
 
     (dict_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
     assert dict_spec == api_pb2.ClassParameterSpec(
@@ -259,7 +269,8 @@ def test_schema_extraction_nested_dict():
 
 
 def test_schema_extraction_dict_with_non_str_key_is_unknown():
-    def f(dct: dict): ...
+    def f(dct: dict):
+        ...
 
     (dict_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
     print(dict_spec)
@@ -272,7 +283,8 @@ def test_schema_extraction_dict_with_non_str_key_is_unknown():
 
 
 def test_schema_extraction_bool():
-    def f(bool_val: bool = True): ...
+    def f(bool_val: bool = True):
+        ...
 
     (bool_spec,) = signature_to_parameter_specs(inspect.signature(f))
     print(bool_spec)

@@ -60,7 +60,8 @@ class _AbstractPatternMatcher:
         ...
 
     @abstractmethod
-    def __call__(self, path: Path) -> bool: ...
+    def __call__(self, path: Path) -> bool:
+        ...
 
 
 class _CustomPatternMatcher(_AbstractPatternMatcher):

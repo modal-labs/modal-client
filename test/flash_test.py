@@ -342,8 +342,8 @@ class TestFlashManagerStopping:
             except asyncio.CancelledError:
                 pass
 
-            assert flash_manager.num_failures > _MAX_FAILURES, (
-                f"Expected > {_MAX_FAILURES} failures, got {flash_manager.num_failures}"
-            )
+            assert (
+                flash_manager.num_failures > _MAX_FAILURES
+            ), f"Expected > {_MAX_FAILURES} failures, got {flash_manager.num_failures}"
 
             mock_stop.assert_called_once()

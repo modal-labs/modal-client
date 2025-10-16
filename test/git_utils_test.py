@@ -104,9 +104,9 @@ def assert_commit_info(result, expected_values):
     """Helper function to assert CommitInfo fields match expected values."""
     assert result is not None
     for field, expected in expected_values.items():
-        assert getattr(result, field) == expected, (
-            f"Field {field} mismatch: expected {expected}, got {getattr(result, field)}"
-        )
+        assert (
+            getattr(result, field) == expected
+        ), f"Field {field} mismatch: expected {expected}, got {getattr(result, field)}"
 
 
 valid_hash = "0123456789abcdef0123456789abcdef01234567"
