@@ -553,7 +553,7 @@ class _StreamReader(Generic[T]):
                 # unimplemented for now.
                 if stream_type == StreamType.STDOUT:
                     raise NotImplementedError(
-                        "Currently only the PIPE stream type is supported when using exec "
+                        "Currently the STDOUT stream type is not supported when using exec "
                         "through a task command router, which is currently in beta."
                     )
                 params = _StreamReaderThroughCommandRouterParams(
