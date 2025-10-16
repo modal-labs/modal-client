@@ -870,6 +870,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         logger.debug(f"Created ContainerProcess for exec_id {resp.exec_id} on Sandbox {self.object_id}")
         return _ContainerProcess(
             resp.exec_id,
+            task_id,
             self._client,
             stdout=stdout,
             stderr=stderr,
