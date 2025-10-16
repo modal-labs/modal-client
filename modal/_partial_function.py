@@ -97,17 +97,17 @@ def verify_concurrent_params(params: _PartialFunctionParams, is_flash: bool = Fa
     def _verify_concurrent_params_with_flash_settings(params: _PartialFunctionParams) -> None:
         if params.max_concurrent_inputs is not None:
             logger.warning(
-                "`max_concurrent_inputs` is not yet supported for flash functions. "
+                "@modal.concurrent(max_inputs=...) is not yet supported for flash functions. "
                 "Using `target_concurrent_inputs` in autoscaling decision."
             )
         if params.target_concurrent_inputs is None:
-            raise InvalidError(
-                "`target_concurrent_inputs` must be set if using `@modal.concurrent` with flash functions."
+            raise TypeError(
+                "@modal.concurrent(target_inputs=...) must be set if using `@modal.concurrent` with flash functions."
             )
 
     def _verify_concurrent_params(params: _PartialFunctionParams) -> None:
         if params.max_concurrent_inputs is None:
-            raise InvalidError("`max_concurrent_inputs` must be set if using `@modal.concurrent` with flash functions.")
+            raise TypeError("@modal.concurrent(max_inputs=...) must be set if using `@modal.concurrent`.")
 
     if is_flash:
         _verify_concurrent_params_with_flash_settings(params)
@@ -787,7 +787,7 @@ def _batched(
 def _concurrent(
     _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
-    max_inputs: int,  # Hard limit on each container's input concurrency
+    max_inputs: Optional[int] = None,  # Hard limit on each container's input concurrency
     target_inputs: Optional[int] = None,  # Input concurrency that Modal's autoscaler should target
 ) -> Callable[
     [Union[Callable[P, ReturnType], _PartialFunction[P, ReturnType, ReturnType]]],
@@ -839,7 +839,7 @@ def _concurrent(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.concurrent()`."
         )
 
-    if target_inputs and target_inputs > max_inputs:
+    if max_inputs and target_inputs and target_inputs > max_inputs:
         raise InvalidError("`target_inputs` parameter cannot be greater than `max_inputs`.")
 
     flags = _PartialFunctionFlags.CONCURRENT
