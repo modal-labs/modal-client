@@ -32,5 +32,6 @@ types-toml~=0.10.4
 twine~=6.1.0
 wheel~=0.38.1
 ipython~=8.12.0  # Required for modal/experimental/ipython.py
+python-json-logger~=2.0.7  # Required for modal/_utils/logger.py JSON logging
 pyright==1.1.351
 console-ctrl==0.1.0
