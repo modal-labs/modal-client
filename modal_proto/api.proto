@@ -3143,14 +3143,6 @@ message TaskCurrentInputsResponse {
   repeated string input_ids = 1;
 }
 
-message TaskGetAutoscalingMetricsRequest {
-  string task_id = 1;
-}
-
-message TaskGetAutoscalingMetricsResponse {
-  AutoscalingMetrics metrics = 1;
-}
-
 // Used to get a JWT and URL for direct access to a task command router
 // running on the modal-worker, so the client can issue exec commands (and other
 // operations as they become available) directly to the worker.
@@ -3778,7 +3770,6 @@ service ModalClient {
   // Tasks
   rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
-  rpc TaskGetAutoscalingMetrics(TaskGetAutoscalingMetricsRequest) returns (TaskGetAutoscalingMetricsResponse); // Used for flash autoscaling
   rpc TaskGetCommandRouterAccess(TaskGetCommandRouterAccessRequest) returns (TaskGetCommandRouterAccessResponse);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);

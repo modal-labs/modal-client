@@ -321,7 +321,7 @@ class _FlashPrometheusAutoscaler:
 
     async def _compute_target_containers(self, current_replicas: int) -> int:
         """
-        Gets internal metrics from container to autoscale up or down.
+        Gets metrics from container to autoscale up or down.
         """
         containers = await self._get_all_containers()
         if len(containers) > current_replicas:
@@ -334,7 +334,7 @@ class _FlashPrometheusAutoscaler:
         if current_replicas == 0:
             return 1
 
-        # Get metrics based on autoscaler type (prometheus or internal)
+        # Get metrics based on autoscaler type
         sum_metric, n_containers_with_metrics = await self._get_scaling_info(containers)
 
         desired_replicas = self._calculate_desired_replicas(
@@ -406,39 +406,26 @@ class _FlashPrometheusAutoscaler:
         return desired_replicas
 
     async def _get_scaling_info(self, containers) -> tuple[float, int]:
-        """Get metrics using either internal container metrics API or prometheus HTTP endpoints."""
-        if self.metrics_endpoint == "internal":
-            container_metrics_results = await asyncio.gather(
-                *[self._get_container_metrics(container.task_id) for container in containers]
-            )
-            container_metrics_list = []
-            for container_metric in container_metrics_results:
-                if container_metric is None:
-                    continue
-                container_metrics_list.append(getattr(container_metric.metrics, self.target_metric))
+        """Get metrics using container exposed metrics endpoints."""
+        sum_metric = 0
+        n_containers_with_metrics = 0
 
-            sum_metric = sum(container_metrics_list)
-            n_containers_with_metrics = len(container_metrics_list)
-        else:
-            sum_metric = 0
-            n_containers_with_metrics = 0
+        container_metrics_list = await asyncio.gather(
+            *[
+                self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
+                for container in containers
+            ]
+        )
 
-            container_metrics_list = await asyncio.gather(
-                *[
-                    self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
-                    for container in containers
-                ]
-            )
-
-            for container_metrics in container_metrics_list:
-                if (
-                    container_metrics is None
-                    or self.target_metric not in container_metrics
-                    or len(container_metrics[self.target_metric]) == 0
-                ):
-                    continue
-                sum_metric += container_metrics[self.target_metric][0].value
-                n_containers_with_metrics += 1
+        for container_metrics in container_metrics_list:
+            if (
+                container_metrics is None
+                or self.target_metric not in container_metrics
+                or len(container_metrics[self.target_metric]) == 0
+            ):
+                continue
+            sum_metric += container_metrics[self.target_metric][0].value
+            n_containers_with_metrics += 1
 
         return sum_metric, n_containers_with_metrics
 
@@ -473,15 +460,6 @@ class _FlashPrometheusAutoscaler:
                 metrics[sample.name] += [sample]
 
         return metrics
-
-    async def _get_container_metrics(self, container_id: str) -> Optional[api_pb2.TaskGetAutoscalingMetricsResponse]:
-        req = api_pb2.TaskGetAutoscalingMetricsRequest(task_id=container_id)
-        try:
-            resp = await retry_transient_errors(self.client.stub.TaskGetAutoscalingMetrics, req)
-            return resp
-        except Exception as e:
-            logger.warning(f"[Modal Flash] Error getting metrics for container {container_id}: {e}")
-            return None
 
     async def _get_all_containers(self):
         req = api_pb2.FlashContainerListRequest(function_id=self.fn.object_id)
@@ -572,14 +550,10 @@ async def flash_prometheus_autoscaler(
     app_name: str,
     cls_name: str,
     # Endpoint to fetch metrics from. Must be in Prometheus format. Example: "/metrics"
-    # If metrics_endpoint is "internal", we will use containers' internal metrics to autoscale instead.
     metrics_endpoint: str,
     # Target metric to autoscale on. Example: "vllm:num_requests_running"
-    # If metrics_endpoint is "internal", target_metrics options are: [cpu_usage_percent, memory_usage_percent]
     target_metric: str,
     # Target metric value. Example: 25
-    # If metrics_endpoint is "internal", target_metric_value is a percentage value between 0.1 and 1.0 (inclusive),
-    # indicating container's usage of that metric.
     target_metric_value: float,
     min_containers: Optional[int] = None,
     max_containers: Optional[int] = None,
