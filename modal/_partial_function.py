@@ -93,6 +93,28 @@ NullaryFuncOrMethod = Union[Callable[[], Any], Callable[[Any], Any]]
 NullaryMethod = Callable[[Any], Any]
 
 
+def verify_concurrent_params(params: _PartialFunctionParams, is_flash: bool = False) -> None:
+    def _verify_concurrent_params_with_flash_settings(params: _PartialFunctionParams) -> None:
+        if params.max_concurrent_inputs is not None:
+            logger.warning(
+                "`max_concurrent_inputs` is not yet supported for flash functions. "
+                "Using `target_concurrent_inputs` in autoscaling decision."
+            )
+        if params.target_concurrent_inputs is None:
+            raise InvalidError(
+                "`target_concurrent_inputs` must be set if using `@modal.concurrent` with flash functions."
+            )
+
+    def _verify_concurrent_params(params: _PartialFunctionParams) -> None:
+        if params.max_concurrent_inputs is None:
+            raise InvalidError("`max_concurrent_inputs` must be set if using `@modal.concurrent` with flash functions.")
+
+    if is_flash:
+        _verify_concurrent_params_with_flash_settings(params)
+    else:
+        _verify_concurrent_params(params)
+
+
 class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     """Object produced by a decorator in the `modal` namespace
 

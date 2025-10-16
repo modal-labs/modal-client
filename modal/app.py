@@ -27,13 +27,14 @@ from ._partial_function import (
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
+    verify_concurrent_params,
 )
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import (
     deprecation_warning,
     warn_on_renamed_autoscaler_settings,
 )
-from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
+from ._utils.function_utils import FunctionInfo, is_flash_object, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name, check_tag_dict
@@ -802,7 +803,7 @@ class _App:
                 batch_max_size = f.params.batch_max_size
                 batch_wait_ms = f.params.batch_wait_ms
                 if f.flags & _PartialFunctionFlags.CONCURRENT:
-                    # verify_concurrent_params_with_flash_settings(f.params)
+                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options))
                     max_concurrent_inputs = f.params.max_concurrent_inputs
                     target_concurrent_inputs = f.params.target_concurrent_inputs
                 else:
@@ -997,7 +998,7 @@ class _App:
                 wrapped_cls.registered = True
                 user_cls = wrapped_cls.user_cls
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
-                    # verify_concurrent_params_with_flash_settings(f.params)
+                    verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options))
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
