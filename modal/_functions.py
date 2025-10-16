@@ -661,9 +661,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _use_method_name: str = ""
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
-    _method_handle_metadata: Optional[
-        dict[str, "api_pb2.FunctionHandleMetadata"]
-    ] = None  # set for 0.67+ class service functions
+    _method_handle_metadata: Optional[dict[str, "api_pb2.FunctionHandleMetadata"]] = (
+        None  # set for 0.67+ class service functions
+    )
     _metadata: Optional[api_pb2.FunctionHandleMetadata] = None
 
     @staticmethod
@@ -1495,9 +1495,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
-        assert metadata and isinstance(
-            metadata, api_pb2.FunctionHandleMetadata
-        ), f"{type(metadata)} is not FunctionHandleMetadata"
+        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata), (
+            f"{type(metadata)} is not FunctionHandleMetadata"
+        )
         self._metadata = metadata
         # TODO: replace usage of all below with direct ._metadata access
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR

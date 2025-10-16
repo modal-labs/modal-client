@@ -1458,8 +1458,7 @@ def test_warn_on_local_volume_mount(client, servicer):
 
 
 class X:
-    def f(self):
-        ...
+    def f(self): ...
 
 
 def test_function_decorator_on_method():
@@ -1680,8 +1679,7 @@ def test_function_schema_recording(client, servicer):
     app = App("app")
 
     @app.function(name="f", serialized=True)
-    def f(a: int) -> list[str]:
-        ...
+    def f(a: int) -> list[str]: ...
 
     deploy_app(app, client=client)
     expected_schema = api_pb2.FunctionSchema(
@@ -1713,31 +1711,25 @@ def test_function_supported_input_formats(client, servicer):
     app = App("app")
 
     @app.function(serialized=True)
-    def f(a):
-        ...
+    def f(a): ...
 
     @app.function(serialized=True, is_generator=True)
-    def g(a):
-        ...
+    def g(a): ...
 
     @app.function(serialized=True)
     @modal.fastapi_endpoint()
-    def web_f():
-        ...
+    def web_f(): ...
 
     @app.function(serialized=True, _experimental_restrict_output=True)
-    def cbor_f(a):
-        ...
+    def cbor_f(a): ...
 
     @app.cls(serialized=True)
     class A:
         @modal.method()
-        def f(self):
-            ...
+        def f(self): ...
 
         @modal.web_server(8080)
-        def web_f(self):
-            ...
+        def web_f(self): ...
 
         @modal.method()
         def g(self):
@@ -1794,8 +1786,7 @@ def test_function_schema_excludes_web_endpoints(client, servicer):
 
     @app.function(name="f", serialized=True)
     @modal.fastapi_endpoint()
-    def webbie(query_param: int):
-        ...
+    def webbie(query_param: int): ...
 
     deploy_app(app, client=client)
     schema = webbie._get_schema()
@@ -1976,8 +1967,7 @@ def test_class_schema_recording(client, servicer):
         b: str = modal.parameter()
 
         @modal.method()
-        def f(self, a: int) -> list[str]:
-            ...
+        def f(self, a: int) -> list[str]: ...
 
     expected_method_schema = api_pb2.FunctionSchema(
         schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,

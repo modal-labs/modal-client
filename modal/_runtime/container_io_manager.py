@@ -1027,9 +1027,9 @@ class _ContainerIOManager:
         if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
             logger.debug("GPU memory snapshot enabled. Attempting to restore GPU memory.")
 
-            assert (
-                self._cuda_checkpoint_session
-            ), "CudaCheckpointSession not found when attempting to restore GPU memory"
+            assert self._cuda_checkpoint_session, (
+                "CudaCheckpointSession not found when attempting to restore GPU memory"
+            )
             self._cuda_checkpoint_session.restore()
 
         # Restore input to default state.

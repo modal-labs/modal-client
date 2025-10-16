@@ -724,8 +724,7 @@ app_unhydrated = App()
 @app_unhydrated.cls()
 class FooUnhydrated:
     @method()
-    def bar(self, x):
-        ...
+    def bar(self, x): ...
 
 
 def test_unhydrated():
@@ -740,12 +739,10 @@ app_method_args = App()
 @app_method_args.cls(min_containers=5)
 class XYZ:
     @method()
-    def foo(self):
-        ...
+    def foo(self): ...
 
     @method()
-    def bar(self):
-        ...
+    def bar(self): ...
 
 
 def test_method_args(servicer, client):
@@ -764,8 +761,7 @@ def test_cls_update_autoscaler(client, servicer):
         arg: str = modal.parameter(default="")
 
         @method()
-        def bar(self):
-            ...
+        def bar(self): ...
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1  # only class service function
@@ -801,8 +797,7 @@ def test_cls_lookup_update_autoscaler(client, servicer):
         arg: str = modal.parameter(default="")
 
         @method()
-        def bar(self):
-            ...
+        def bar(self): ...
 
     C_pre_deploy = ClsWithMethod()
     with pytest.raises(ExecutionError, match="has not been hydrated"):

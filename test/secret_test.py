@@ -13,8 +13,7 @@ from modal_proto import api_pb2
 from .supports.skip import skip_old_py
 
 
-def dummy():
-    ...
+def dummy(): ...
 
 
 def test_secret_from_dict(servicer, client):
