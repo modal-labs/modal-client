@@ -7,8 +7,6 @@ import pytest
 import time
 import typing
 from contextlib import contextmanager, nullcontext
-from test.conftest import GrpcErrorAndCount, MockClientServicer
-from test.helpers import deploy_app_externally
 
 from grpclib import Status
 from synchronicity.exceptions import UserCodeException
@@ -31,6 +29,8 @@ from modal.exception import (
 from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
 from modal_proto import api_pb2
+from test.conftest import GrpcErrorAndCount, MockClientServicer
+from test.helpers import deploy_app_externally
 
 app = App()
 

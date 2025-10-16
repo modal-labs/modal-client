@@ -1,11 +1,10 @@
 # Copyright Modal Labs 2025
-from test.conftest import MockClientServicer
-
 import modal
 from modal import App
 from modal.client import Client
 from modal.functions import Function
 from modal.runner import deploy_app
+from test.conftest import MockClientServicer
 
 app = App()
 

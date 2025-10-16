@@ -1,6 +1,11 @@
 # Copyright Modal Labs 2025
 import asyncio
 import pytest
+
+from modal._utils.async_utils import TimestampPriorityQueue
+from modal.parallel_map import _MapItemContext, _MapItemState, _OutputType
+from modal.retries import RetryManager
+from modal_proto import api_pb2
 from test.supports.map_item_test_utils import (
     InputJwtData,
     assert_context_is,
@@ -9,11 +14,6 @@ from test.supports.map_item_test_utils import (
     result_internal_failure,
     result_success,
 )
-
-from modal._utils.async_utils import TimestampPriorityQueue
-from modal.parallel_map import _MapItemContext, _MapItemState, _OutputType
-from modal.retries import RetryManager
-from modal_proto import api_pb2
 
 retry_policy = api_pb2.FunctionRetryPolicy(
     backoff_coefficient=1.0,
