@@ -262,9 +262,6 @@ def check_copyright(ctx, fix=False):
             for fn in files
             if (
                 fn.endswith(".py")
-                # jupytext notebook formatted .py files can't be detected as notebooks if we put a
-                # copyright comment at the top
-                and not fn.endswith(".notebook.py")
                 # ignore generated protobuf code
                 and "/modal_proto" not in root
                 # vendored code has a different copyright
