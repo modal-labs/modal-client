@@ -743,6 +743,7 @@ class _App:
                 batch_max_size = f.params.batch_max_size
                 batch_wait_ms = f.params.batch_wait_ms
                 if f.flags & _PartialFunctionFlags.CONCURRENT:
+                    # verify_concurrent_params_with_flash_settings(f.params)
                     max_concurrent_inputs = f.params.max_concurrent_inputs
                     target_concurrent_inputs = f.params.target_concurrent_inputs
                 else:
@@ -936,6 +937,7 @@ class _App:
                 wrapped_cls.registered = True
                 user_cls = wrapped_cls.user_cls
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
+                    # verify_concurrent_params_with_flash_settings(f.params)
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:

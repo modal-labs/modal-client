@@ -663,12 +663,6 @@ message AutoscalerSettings {
   reserved 6;
 }
 
-message FlashAutoscalerSettings {
-  optional uint32 scale_up_stabilization_window_seconds = 1;
-  optional uint32 scale_down_stabilization_window_seconds = 2;
-  optional float target_metric_value = 3;
-}
-
 // Used for flash autoscaling
 message AutoscalingMetrics {
   double cpu_usage_percent = 1;
