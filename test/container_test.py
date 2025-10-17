@@ -1765,8 +1765,7 @@ def test_call_function_that_calls_function(servicer, deployed_support_function_d
 
 
 @skip_github_non_linux
-def test_call_function_that_calls_method(servicer, credentials, set_env_client):
-    # TODO (elias): Remove set_env_client fixture dependency - shouldn't need an env client here?
+def test_call_function_that_calls_method(servicer, credentials):
     deploy_app_externally(servicer, credentials, "test.supports.sibling_hydration_app", "app")
     app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
@@ -2392,10 +2391,10 @@ def test_class_as_service_serialized(servicer, deployed_support_function_definit
 
 
 @skip_github_non_linux
-def test_function_lazy_hydration(servicer, credentials, set_env_client):
+def test_function_lazy_hydration(servicer, credentials, client):
     # Deploy some global objects
-    Volume.from_name("my-vol", create_if_missing=True).hydrate()
-    Queue.from_name("my-queue", create_if_missing=True).hydrate()
+    Volume.from_name("my-vol", create_if_missing=True, client=client).hydrate()
+    Queue.from_name("my-queue", create_if_missing=True, client=client).hydrate()
 
     # Run container
     deploy_app_externally(servicer, credentials, "test.supports.lazy_hydration", "app", capture_output=False)
@@ -2405,7 +2404,7 @@ def test_function_lazy_hydration(servicer, credentials, set_env_client):
 
 
 @skip_github_non_linux
-def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env_client):
+def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn):
     _run_container(
         servicer,
         "test.supports.volume_local",
