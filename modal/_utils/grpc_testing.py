@@ -45,8 +45,11 @@ def patch_mock_servicer(cls):
     Also patches all unimplemented abstract methods in a mock servicer with default error implementations.
     """
 
-    async def fallback(self, stream) -> None:
-        raise GRPCError(Status.UNIMPLEMENTED, "Not implemented in mock servicer " + repr(cls))
+    def fallback(name: str):
+        async def _fallback(self, stream) -> None:
+            raise GRPCError(Status.UNIMPLEMENTED, f"{name} not implemented in mock servicer " + repr(cls))
+
+        return _fallback
 
     @contextlib.contextmanager
     def intercept(servicer):
@@ -85,7 +88,7 @@ def patch_mock_servicer(cls):
     for name in dir(cls):
         method = getattr(cls, name)
         if getattr(method, "__isabstractmethod__", False):
-            setattr(cls, name, patch_grpc_method(name, fallback))
+            setattr(cls, name, patch_grpc_method(name, fallback(name)))
         elif name[0].isupper() and inspect.isfunction(method):
             setattr(cls, name, patch_grpc_method(name, method))
 

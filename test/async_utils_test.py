@@ -1525,3 +1525,95 @@ async def test_task_context_cancellation_timeout():
     # Should have timed out around 1 second (the _cancellation_grace period)
     # Allow some margin for timing variations
     assert 0.9 < elapsed < 1.5
+
+
+@pytest.mark.asyncio
+async def test_sync_in_async_warning(client):
+    """Test that using blocking interface from async context emits a warning."""
+    import warnings
+
+    import modal
+
+    # Call the blocking interface from within an async context
+    # This should trigger the sync_in_async_warning_callback
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        modal.Dict.objects.list(client=client)
+
+        # Verify the warning was emitted
+        assert len(w) == 1
+        assert issubclass(w[0].category, RuntimeWarning)
+
+        warning_message = str(w[0].message)
+        print(warning_message)
+        # Verify the warning contains key information
+        assert "Blocking" in warning_message and "interface used from within an event loop" in warning_message
+
+        # Verify it shows the call location
+        assert "Location:" in warning_message
+        assert "async_utils_test.py" in warning_message
+
+        # Verify it shows the suggestion in "change X to Y" format
+        assert "Suggestion, change:" in warning_message
+        assert "modal.Dict.objects.list(client=client)" in warning_message
+        assert "to:" in warning_message
+        assert "await modal.Dict.objects.list.aio(client=client)" in warning_message
+
+
+@pytest.mark.asyncio
+async def test_sync_in_async_warning_iteration(servicer, client, set_env_client):
+    """Test that using blocking function call from async context emits a warning."""
+    import warnings
+
+    import modal
+
+    async with modal.Queue.ephemeral(client=client) as q:
+        with warnings.catch_warnings(record=True) as w:
+            for _ in q.iterate():  # this blocks!
+                pass
+            # Verify the warning was emitted
+            assert len(w) == 1
+            warning_message = str(w[0].message)
+            print(warning_message)
+
+            # Verify the warning contains key information
+            assert "Blocking" in warning_message and "interface used from within an event loop" in warning_message
+            assert "Consider using" in warning_message and "asynchronous interface" in warning_message
+
+            # Verify it shows the call location
+            assert "Location:" in warning_message
+            assert "async_utils_test.py" in warning_message
+
+
+@pytest.mark.asyncio
+async def test_sync_in_async_warning_context_manager(servicer, client):
+    """Test that using blocking context manager from async context emits a warning."""
+    import warnings
+
+    import modal
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+
+        # Try to use blocking context manager from async context
+        # This should trigger the warning
+        with modal.Queue.ephemeral(client=client) as q:  # This triggers the warning
+            pass
+
+        # Verify the warning was emitted
+        assert len(w) == 1
+        warning_message = str(w[0].message)
+        print(warning_message)
+
+        # Verify the warning contains key information
+        assert "Blocking" in warning_message and "interface used from within an event loop" in warning_message
+        assert "Consider using" in warning_message and "asynchronous interface" in warning_message
+
+        # Verify it shows the call location
+        assert "Location:" in warning_message
+        assert "async_utils_test.py" in warning_message
+
+        # Verify it suggests the fix (no Function: line for __aenter__)
+        assert "Suggestion, change:" in warning_message
+        # Context managers should suggest "async with" instead of .aio()
+        assert "async with" in warning_message
