@@ -1520,3 +1520,25 @@ def test_cls_load_context_transfers_to_methods_local():
     # the *instance* of LoadContext from the Cls should be the same as the child
     d = C(p="2")
     assert t(c.some_method)._load_context is t(d.some_method)._load_context  # type: ignore
+
+
+def test_with_options_is_lazy(client):
+    deploy_app(app, "my-cls-app", client=client)
+
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
+    optioned_cls = cls.with_options(gpu="A100")
+    optioned_cls.hydrate()
+
+
+def test_with_concurrency_is_lazy(client):
+    deploy_app(app, "my-cls-app", client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
+    optioned_cls = cls.with_concurrency(max_inputs=100)
+    optioned_cls.hydrate()
+
+
+def test_with_batching_is_lazy(client):
+    deploy_app(app, "my-cls-app", client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
+    optioned_cls = cls.with_batching(max_batch_size=4, wait_ms=100)
+    optioned_cls.hydrate()

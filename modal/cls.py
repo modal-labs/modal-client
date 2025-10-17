@@ -777,6 +777,7 @@ More information on class parameterization can be found here: https://modal.com/
             is_another_app=True,
             deps=_deps,
             load_context_overrides=self._load_context,
+            hydrate_lazily=True,
         )
         cls._initialize_from_other(self)
 
@@ -836,6 +837,7 @@ More information on class parameterization can be found here: https://modal.com/
             is_another_app=True,
             deps=_deps,
             load_context_overrides=self._load_context,
+            hydrate_lazily=True,
         )
         cls._initialize_from_other(self)
 
@@ -869,6 +871,7 @@ More information on class parameterization can be found here: https://modal.com/
             is_another_app=True,
             deps=_deps,
             load_context_overrides=self._load_context,
+            hydrate_lazily=True,
         )
         cls._initialize_from_other(self)
 
