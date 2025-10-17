@@ -2771,7 +2771,8 @@ def blob_server_factory():
             block_id, start, length = rest
             start = int(start)
             length = int(length)
-            body = blocks[block_id][start : start + length]
+            block = blocks[block_id][start : start + length]
+            body = block.ljust(length, b"\0")
         else:
             return aiohttp.web.Response(status=404)
 
