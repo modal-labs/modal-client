@@ -2946,7 +2946,7 @@ async def servicer(blob_server, credentials) -> AsyncGenerator[MockClientService
 
 @pytest_asyncio.fixture(scope="function")
 async def client(servicer: MockClientServicer, credentials: tuple[str, str]) -> AsyncGenerator[Client, None]:
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
         yield client
 
 

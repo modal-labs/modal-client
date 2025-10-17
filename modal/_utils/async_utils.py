@@ -38,7 +38,112 @@ if sys.platform == "win32":
     # quick workaround for deadlocks on shutdown - need to investigate further
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-synchronizer = synchronicity.Synchronizer()
+
+def _sync_in_async_warning(original_func, call_frame):
+    import re
+    import warnings
+
+    # Skip warnings for __aexit__ and __anext__ - the __aenter__ and __aiter__ warnings are sufficient
+    if original_func:
+        func_name = getattr(original_func, "__name__", str(original_func))
+        if func_name in ("__aexit__", "__anext__"):
+            return
+
+    # Build detailed warning message with location and function first
+    message_parts = ["Blocking Modal interface used from within an event loop."]
+
+    # Add location information
+    if call_frame:
+        message_parts.append(f"\n  Location: {call_frame.filename}:{call_frame.lineno}")
+
+    # Generate intelligent suggestion based on the context
+    suggestion = None
+    code_line = None
+    show_function_name = True  # Default to showing function name
+
+    if original_func and call_frame and call_frame.line:
+        func_name = getattr(original_func, "__name__", str(original_func))
+        code_line = call_frame.line.strip()
+
+        wrapped_name = func_name
+
+        # Try to intelligently rewrite the code based on the pattern
+        if func_name == "__aiter__" and code_line.startswith("for "):
+            # Rewrite: for x in obj -> async for x in obj
+            suggestion = code_line.replace("for ", "async for ", 1)
+            show_function_name = False  # Don't show __aiter__ for iterators
+
+        elif func_name == "__aenter__" and code_line.startswith("with "):
+            # Rewrite: with obj as x -> async with obj as x
+            suggestion = code_line.replace("with ", "async with ", 1)
+            show_function_name = False  # Don't show __aenter__ for context managers
+
+        elif func_name in code_line:
+            # Try to find the function call and add .aio()
+            # Look for patterns like: obj.method(...) or obj.method.attribute(...)
+            # Match the function name followed by ( - ensure it's the actual method call
+            # Use negative lookbehind to avoid matching function names in other contexts
+            pattern = rf"\.{re.escape(func_name)}\s*\("
+            match = re.search(pattern, code_line)
+
+            if match:
+                # Find the start of the statement (skip leading assignment if present)
+                # Look for variable assignment at the beginning (before any function calls)
+                statement_start = 0
+                assignment_match = re.match(r"^(\s*\w+\s*=\s*)", code_line)
+                if assignment_match:
+                    # This is a variable assignment at the start
+                    statement_start = len(assignment_match.group(1))
+
+                # Insert .aio before the opening parenthesis and await at the start of expression
+                before_call = code_line[:statement_start]
+                after_assignment = code_line[statement_start:]
+
+                # Add .aio() after the method name
+                rewritten_expr = re.sub(rf"(\.{re.escape(func_name)})\s*\(", r"\1.aio(", after_assignment, count=1)
+                suggestion = before_call + "await " + rewritten_expr.lstrip()
+            else:
+                # Generic suggestion
+                suggestion = f"await ...{wrapped_name}.aio(...)"
+
+        else:
+            # Generic suggestion
+            suggestion = f"await ...{wrapped_name}.aio(...)"
+
+        # Add function name if appropriate (skip for __aiter__ and __aenter__)
+        if show_function_name:
+            message_parts.append(f"\n  Function: {func_name}")
+
+    # Add suggestion in "change X to Y" format
+    if suggestion and code_line:
+        message_parts.append(f"\n\nSuggestion, change:\n  {code_line}\nto:\n  {suggestion}")
+
+    message_parts.append(
+        "\n\nThis may cause performance issues or bugs. "
+        "Consider using Modal's asynchronous interfaces for async contexts."
+    )
+
+    # Use warn_explicit to provide precise location information from the call frame
+    if call_frame:
+        # Extract module name from filename, or use a default
+        import os
+
+        module_name = os.path.splitext(os.path.basename(call_frame.filename))[0]
+
+        warnings.warn_explicit(
+            "".join(message_parts),
+            RuntimeWarning,
+            filename=call_frame.filename,
+            lineno=call_frame.lineno,
+            module=module_name,
+            source=code_line,
+        )
+    else:
+        # Fallback to regular warn if no frame information available
+        warnings.warn("".join(message_parts), RuntimeWarning, stacklevel=3)
+
+
+synchronizer = synchronicity.Synchronizer(sync_in_async_warning_callback=_sync_in_async_warning)
 
 
 def synchronize_api(obj, target_module=None):
@@ -389,6 +494,7 @@ class _WarnIfGeneratorIsNotConsumed:
         self.function_name = function_name
         self.iterated = False
         self.warned = False
+        self.__wrapped__ = gen
 
     def __aiter__(self):
         self.iterated = True

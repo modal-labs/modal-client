@@ -78,7 +78,7 @@ class _Client:
     def __init__(
         self,
         server_url: str,
-        client_type: int,
+        client_type: "api_pb2.ClientType.ValueType",
         credentials: Optional[tuple[str, str]],
         version: str = __version__,
     ):
