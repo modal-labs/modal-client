@@ -1147,7 +1147,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self._hydrate(response.function_id, load_context.client, response.handle_metadata)
 
         rep = f"Function({tag})"
-        # Pass a reference to the App's LoadContext
+        # Pass a *reference* to the App's LoadContext - this is important since the App is
+        # the only way to infer a LoadContext for an `@app.function`, and the App doesn't
+        # get its client until *after* the Function is created.
         load_context = app._load_context if app else LoadContext.empty()
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps, load_context_overrides=load_context)
 

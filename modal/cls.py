@@ -610,7 +610,9 @@ More information on class parameterization can be found here: https://modal.com/
             self._hydrate(resp.class_id, load_context.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
-        # Pass a reference to the App's LoadContext
+        # Pass a *reference* to the App's LoadContext - this is important since the App is
+        # the only way to infer a LoadContext for an `@app.cls`, and the App doesn't
+        # get its client until *after* the Cls is created.
         cls: _Cls = _Cls._from_loader(_load, rep, deps=_deps, load_context_overrides=app._load_context)
         cls._app = app
         cls._user_cls = user_cls
