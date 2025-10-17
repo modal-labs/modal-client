@@ -39,26 +39,63 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
-def rewrite_sync_to_async(code_line: str, func_name: str) -> str:
+def rewrite_sync_to_async(code_line: str, func_name: str) -> tuple[bool, str]:
     """
-    Rewrite a blocking call to use .aio() with await.
+    Rewrite a blocking call to use async/await syntax.
+
+    Handles three patterns:
+    1. __aiter__: for x in obj -> async for x in obj
+    2. __aenter__: with obj as x -> async with obj as x
+    3. Regular methods: obj.method() -> await obj.method.aio()
 
     Args:
         code_line: The line of code containing the blocking call
-        func_name: The name of the function being called
+        func_name: The name of the function being called (e.g., "method", "__aiter__", "__aenter__")
 
     Returns:
-        The rewritten suggestion, or a generic suggestion if unable to rewrite confidently.
+        A tuple of (success, rewritten_code):
+        - success: True if the pattern was found and rewritten, False if falling back to generic
+        - rewritten_code: The rewritten code or a generic suggestion
     """
     import re
 
-    # Try to find the function call and add .aio()
-    pattern = rf"\.{re.escape(func_name)}\s*\("
-    match = re.search(pattern, code_line)
+    # Handle __aiter__ pattern: for x in obj -> async for x in obj
+    if func_name == "__aiter__" and code_line.startswith("for "):
+        suggestion = code_line.replace("for ", "async for ", 1)
+        return (True, suggestion)
 
-    if not match:
-        # Can't find the function call
-        return f"await ...{func_name}.aio(...)"
+    # Handle __aenter__ pattern: with obj as x -> async with obj as x
+    if func_name == "__aenter__" and code_line.startswith("with "):
+        suggestion = code_line.replace("with ", "async with ", 1)
+        return (True, suggestion)
+
+    # Handle regular method calls and property access
+    # First check if it's a property access (no parentheses after the name)
+    property_pattern = rf"\.{re.escape(func_name)}(?!\s*\()"
+    property_match = re.search(property_pattern, code_line)
+
+    if property_match:
+        # This is a property access, rewrite to use await without .aio()
+        # Find the start of the expression (skip statement keywords and assignments)
+        statement_start = 0
+        prefix_match = re.match(r"^(\s*(?:\w+\s*=|return|yield|raise)\s+)", code_line)
+        if prefix_match:
+            statement_start = len(prefix_match.group(1))
+
+        before_expr = code_line[:statement_start]
+        after_prefix = code_line[statement_start:]
+
+        # Just add await before the expression for properties
+        suggestion = before_expr + "await " + after_prefix.lstrip()
+        return (True, suggestion)
+
+    # Try to find a method call (with parentheses)
+    method_pattern = rf"\.{re.escape(func_name)}\s*\("
+    method_match = re.search(method_pattern, code_line)
+
+    if not method_match:
+        # Can't find the function call or property
+        return (False, f"await ...{func_name}.aio(...)")
 
     # Safety check: don't attempt rewrite for complex expressions
     unsafe_keywords = ["if", "elif", "while", "and", "or", "not", "in", "is", "for"]
@@ -67,7 +104,7 @@ def rewrite_sync_to_async(code_line: str, func_name: str) -> str:
     for keyword in unsafe_keywords:
         if re.search(rf"\b{keyword}\b", code_line):
             # Fall back to generic suggestion for complex expressions
-            return f"await ...{func_name}.aio(...)"
+            return (False, f"await ...{func_name}.aio(...)")
 
     # Find the start of the expression (skip statement keywords and assignments)
     # Look for patterns like: "return ...", "x = ...", "yield ...", etc.
@@ -85,7 +122,7 @@ def rewrite_sync_to_async(code_line: str, func_name: str) -> str:
     rewritten_expr = re.sub(rf"(\.{re.escape(func_name)})\s*\(", r"\1.aio(", after_prefix, count=1)
     suggestion = before_expr + "await " + rewritten_expr.lstrip()
 
-    return suggestion
+    return (True, suggestion)
 
 
 def _sync_in_async_warning(original_func, call_frame):
@@ -113,36 +150,23 @@ def _sync_in_async_warning(original_func, call_frame):
         func_name = getattr(original_func, "__name__", str(original_func))
         code_line = call_frame.line.strip()
 
-        # Try to intelligently rewrite the code based on the pattern
-        if func_name == "__aiter__" and code_line.startswith("for "):
-            # Rewrite: for x in obj -> async for x in obj
-            suggestion = code_line.replace("for ", "async for ", 1)
-            show_function_name = False  # Don't show __aiter__ for iterators
+        # Use the unified rewrite function for all patterns
+        success, suggestion = rewrite_sync_to_async(code_line, func_name)
 
-        elif func_name == "__aenter__" and code_line.startswith("with "):
-            # Rewrite: with obj as x -> async with obj as x
-            suggestion = code_line.replace("with ", "async with ", 1)
-            show_function_name = False  # Don't show __aenter__ for context managers
+        # Hide function name for __aiter__ and __aenter__ when successfully rewritten
+        if success and func_name in ("__aiter__", "__aenter__"):
+            show_function_name = False
 
-        elif func_name in code_line:
-            # Use the rewrite function for regular method calls
-            suggestion = rewrite_sync_to_async(code_line, func_name)
-
-        else:
-            # Generic suggestion
-            suggestion = f"await ...{func_name}.aio(...)"
-
-        # Add function name if appropriate (skip for __aiter__ and __aenter__)
+        # Add function name if appropriate
         if show_function_name:
             message_parts.append(f"\n  Function: {func_name}")
 
     # Add suggestion in "change X to Y" format
     if suggestion and code_line:
-        message_parts.append(f"\n\nSuggestion, change:\n  {code_line}\nto:\n  {suggestion}")
+        message_parts.append(f"\n\nSuggestion, change the line:\n  {code_line}\nto:\n  {suggestion}")
 
     message_parts.append(
-        "\n\nThis may cause performance issues or bugs. "
-        "Consider using Modal's asynchronous interfaces for async contexts."
+        "\n\nThis may cause performance issues or bugs. Consider using Modal's async interfaces for async contexts."
     )
 
     # Use warn_explicit to provide precise location information from the call frame
