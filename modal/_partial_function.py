@@ -96,18 +96,16 @@ NullaryMethod = Callable[[Any], Any]
 def verify_concurrent_params(params: _PartialFunctionParams, is_flash: bool = False) -> None:
     def _verify_concurrent_params_with_flash_settings(params: _PartialFunctionParams) -> None:
         if params.max_concurrent_inputs is not None:
-            logger.warning(
-                "@modal.concurrent(max_inputs=...) is not yet supported for flash functions. "
-                "Using `target_concurrent_inputs` in autoscaling decision."
+            raise TypeError(
+                "@modal.concurrent(max_inputs=...) is not yet supported for Flash functions. "
+                "Use `@modal.concurrent(target_inputs=...)` instead."
             )
         if params.target_concurrent_inputs is None:
-            raise TypeError(
-                "@modal.concurrent(target_inputs=...) must be set if using `@modal.concurrent` with flash functions."
-            )
+            raise TypeError("`@modal.concurrent()` missing required argument: `target_inputs`.")
 
     def _verify_concurrent_params(params: _PartialFunctionParams) -> None:
         if params.max_concurrent_inputs is None:
-            raise TypeError("@modal.concurrent(max_inputs=...) must be set if using `@modal.concurrent`.")
+            raise TypeError("`@modal.concurrent()` missing required argument: `max_inputs`.")
 
     if is_flash:
         _verify_concurrent_params_with_flash_settings(params)
