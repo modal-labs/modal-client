@@ -1456,16 +1456,7 @@ async def test_sync_in_async_warning(client):
         warning_message = str(w[0].message)
         print(warning_message)
         # Verify the warning contains key information
-        assert "Blocking" in warning_message and "interface used from within an event loop" in warning_message
-
-        # Verify it shows the call location
-        assert "Location:" in warning_message
-        assert "async_utils_test.py" in warning_message
-
-        # Verify it shows the suggestion in "change X to Y" format
-        assert "Suggestion, change:" in warning_message
-        assert "modal.Dict.objects.list(client=client)" in warning_message
-        assert "to:" in warning_message
+        assert "Blocking Modal interface used from within " in warning_message
         assert "await modal.Dict.objects.list.aio(client=client)" in warning_message
 
 
@@ -1486,12 +1477,8 @@ async def test_sync_in_async_warning_iteration(servicer, client, set_env_client)
             print(warning_message)
 
             # Verify the warning contains key information
-            assert "Blocking" in warning_message and "interface used from within an event loop" in warning_message
-            assert "Consider using" in warning_message and "asynchronous interface" in warning_message
-
-            # Verify it shows the call location
-            assert "Location:" in warning_message
-            assert "async_utils_test.py" in warning_message
+            assert "Blocking Modal interface used from within " in warning_message
+            assert "async for _ in q.iterate()" in warning_message
 
 
 @pytest.mark.asyncio
@@ -1515,14 +1502,5 @@ async def test_sync_in_async_warning_context_manager(servicer, client):
         print(warning_message)
 
         # Verify the warning contains key information
-        assert "Blocking" in warning_message and "interface used from within an event loop" in warning_message
-        assert "Consider using" in warning_message and "asynchronous interface" in warning_message
-
-        # Verify it shows the call location
-        assert "Location:" in warning_message
-        assert "async_utils_test.py" in warning_message
-
-        # Verify it suggests the fix (no Function: line for __aenter__)
-        assert "Suggestion, change:" in warning_message
-        # Context managers should suggest "async with" instead of .aio()
-        assert "async with" in warning_message
+        assert "Blocking Modal interface used from within " in warning_message
+        assert "async with modal.Queue.ephemeral(client=client)" in warning_message

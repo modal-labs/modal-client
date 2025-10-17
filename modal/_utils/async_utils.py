@@ -37,8 +37,56 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
-def _sync_in_async_warning(original_func, call_frame):
+def rewrite_sync_to_async(code_line: str, func_name: str) -> str:
+    """
+    Rewrite a blocking call to use .aio() with await.
+
+    Args:
+        code_line: The line of code containing the blocking call
+        func_name: The name of the function being called
+
+    Returns:
+        The rewritten suggestion, or a generic suggestion if unable to rewrite confidently.
+    """
     import re
+
+    # Try to find the function call and add .aio()
+    pattern = rf"\.{re.escape(func_name)}\s*\("
+    match = re.search(pattern, code_line)
+
+    if not match:
+        # Can't find the function call
+        return f"await ...{func_name}.aio(...)"
+
+    # Safety check: don't attempt rewrite for complex expressions
+    unsafe_keywords = ["if", "elif", "while", "and", "or", "not", "in", "is", "for"]
+
+    # Check if line contains control flow keywords (might be too complex)
+    for keyword in unsafe_keywords:
+        if re.search(rf"\b{keyword}\b", code_line):
+            # Fall back to generic suggestion for complex expressions
+            return f"await ...{func_name}.aio(...)"
+
+    # Find the start of the expression (skip statement keywords and assignments)
+    # Look for patterns like: "return ...", "x = ...", "yield ...", etc.
+    statement_start = 0
+    prefix_match = re.match(r"^(\s*(?:\w+\s*=|return|yield|raise)\s+)", code_line)
+    if prefix_match:
+        # Found a statement prefix, keep it
+        statement_start = len(prefix_match.group(1))
+
+    # Insert .aio before the opening parenthesis and await at the start of expression
+    before_expr = code_line[:statement_start]
+    after_prefix = code_line[statement_start:]
+
+    # Add .aio() after the method name
+    rewritten_expr = re.sub(rf"(\.{re.escape(func_name)})\s*\(", r"\1.aio(", after_prefix, count=1)
+    suggestion = before_expr + "await " + rewritten_expr.lstrip()
+
+    return suggestion
+
+
+def _sync_in_async_warning(original_func, call_frame):
     import warnings
 
     # Skip warnings for __aexit__ and __anext__ - the __aenter__ and __aiter__ warnings are sufficient
@@ -48,7 +96,7 @@ def _sync_in_async_warning(original_func, call_frame):
             return
 
     # Build detailed warning message with location and function first
-    message_parts = ["Blocking Modal interface used from within an event loop."]
+    message_parts = ["Blocking Modal interface used from within an async code block"]
 
     # Add location information
     if call_frame:
@@ -63,8 +111,6 @@ def _sync_in_async_warning(original_func, call_frame):
         func_name = getattr(original_func, "__name__", str(original_func))
         code_line = call_frame.line.strip()
 
-        wrapped_name = func_name
-
         # Try to intelligently rewrite the code based on the pattern
         if func_name == "__aiter__" and code_line.startswith("for "):
             # Rewrite: for x in obj -> async for x in obj
@@ -77,36 +123,12 @@ def _sync_in_async_warning(original_func, call_frame):
             show_function_name = False  # Don't show __aenter__ for context managers
 
         elif func_name in code_line:
-            # Try to find the function call and add .aio()
-            # Look for patterns like: obj.method(...) or obj.method.attribute(...)
-            # Match the function name followed by ( - ensure it's the actual method call
-            # Use negative lookbehind to avoid matching function names in other contexts
-            pattern = rf"\.{re.escape(func_name)}\s*\("
-            match = re.search(pattern, code_line)
-
-            if match:
-                # Find the start of the statement (skip leading assignment if present)
-                # Look for variable assignment at the beginning (before any function calls)
-                statement_start = 0
-                assignment_match = re.match(r"^(\s*\w+\s*=\s*)", code_line)
-                if assignment_match:
-                    # This is a variable assignment at the start
-                    statement_start = len(assignment_match.group(1))
-
-                # Insert .aio before the opening parenthesis and await at the start of expression
-                before_call = code_line[:statement_start]
-                after_assignment = code_line[statement_start:]
-
-                # Add .aio() after the method name
-                rewritten_expr = re.sub(rf"(\.{re.escape(func_name)})\s*\(", r"\1.aio(", after_assignment, count=1)
-                suggestion = before_call + "await " + rewritten_expr.lstrip()
-            else:
-                # Generic suggestion
-                suggestion = f"await ...{wrapped_name}.aio(...)"
+            # Use the rewrite function for regular method calls
+            suggestion = rewrite_sync_to_async(code_line, func_name)
 
         else:
             # Generic suggestion
-            suggestion = f"await ...{wrapped_name}.aio(...)"
+            suggestion = f"await ...{func_name}.aio(...)"
 
         # Add function name if appropriate (skip for __aiter__ and __aenter__)
         if show_function_name:
