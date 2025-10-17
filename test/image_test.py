@@ -1924,7 +1924,7 @@ def hydrate_image(img, client):
         pass
 
 
-def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_path):
+def test_add_local_lazy_vs_copy(client, servicer, supports_on_path):
     deb = Image.debian_slim()
     image_with_mount = deb.add_local_python_source("pkg_a")
 
@@ -1981,7 +1981,7 @@ def test_add_locals_are_attached_to_functions(servicer, client, supports_on_path
     assert added_mounts == {img._mount_layers[0].object_id}
 
 
-def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path, set_env_client):
+def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_source("pkg_a")
     app = App("my-app")

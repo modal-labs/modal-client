@@ -201,7 +201,7 @@ def assert_expected_traceback(traceback, expected_module_frames: list[tuple[Modu
                 print("Traceback assertion failed on non 3.11 Python - this is expected")
 
 
-def test_internal_frame_suppression_graceful_error(set_env_client, servicer):
+def test_internal_frame_suppression_graceful_error(servicer, client):
     # when converting a grpc error into a modal error, like modal.exceptions.NotFoundError
     with servicer.intercept() as ctx:
 
@@ -211,7 +211,7 @@ def test_internal_frame_suppression_graceful_error(set_env_client, servicer):
         ctx.set_responder("QueueGetOrCreate", QueueGetOrCreate)
 
         with pytest.raises(NotFoundError) as exc_info:
-            modal.Queue.from_name("asdlfjkjalsdkf").get()
+            modal.Queue.from_name("asdlfjkjalsdkf", client=client).get()
 
         assert_expected_traceback(
             exc_info.traceback,
@@ -223,7 +223,7 @@ def test_internal_frame_suppression_graceful_error(set_env_client, servicer):
         )
 
 
-def test_internal_frame_suppression_internal_error(set_env_client, servicer):
+def test_internal_frame_suppression_internal_error(client, servicer):
     # internal grpc errors that aren't wrapped
     with servicer.intercept() as ctx:
 
@@ -232,7 +232,7 @@ def test_internal_frame_suppression_internal_error(set_env_client, servicer):
 
         ctx.set_responder("QueueGetOrCreate", QueueGetOrCreate)
         with pytest.raises(GRPCError, match="kaboom") as exc_info:
-            modal.Queue.from_name("asdlfjkjalsdkf").get()
+            modal.Queue.from_name("asdlfjkjalsdkf", client=client).get()
 
         assert_expected_traceback(
             exc_info.traceback,

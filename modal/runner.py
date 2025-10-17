@@ -126,14 +126,21 @@ async def _create_all_objects(
     running_app: RunningApp,
     local_app_state: "modal.app._LocalAppState",
     environment_name: str,
+    app: "modal.app._App",
 ) -> None:
+    assert app is not None
     """Create objects that have been defined but not created on the server."""
+    # TODO(elias): Haxx - clean this up:
+    app._load_context._client = client
+    app._load_context._environment_name = environment_name
+    app._load_context._app_id = running_app.app_id
+
     indexed_objects: dict[str, _Object] = {**local_app_state.functions, **local_app_state.classes}
-    resolver = Resolver(
-        client,
-        environment_name=environment_name,
-        app_id=running_app.app_id,
-    )
+
+    resolver = Resolver()
+    # Get the app's LoadContext to pass to resolver.load() for all top-level objects
+    parent_load_context = app._load_context if app else None
+
     with resolver.display():
         # Get current objects, and reset all objects
         tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
@@ -156,7 +163,7 @@ async def _create_all_objects(
             # Note: preload only currently implemented for Functions, returns None otherwise
             # this is to ensure that directly referenced functions from the global scope has
             # ids associated with them when they are serialized into other functions
-            await resolver.preload(obj, existing_object_id)
+            await resolver.preload(obj, parent_load_context, existing_object_id)
             if obj.is_hydrated:
                 tag_to_object_id[tag] = obj.object_id
 
@@ -164,7 +171,8 @@ async def _create_all_objects(
 
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
-            await resolver.load(obj, existing_object_id)
+            # Pass parent_load_context so dependencies can inherit app_id, client, etc.
+            await resolver.load(obj, parent_load_context, existing_object_id=existing_object_id)
             if _Function._is_id_type(obj.object_id):
                 running_app.function_ids[tag] = obj.object_id
             elif _Cls._is_id_type(obj.object_id):
@@ -336,7 +344,7 @@ async def _run_app(
         local_app_state = app._local_state
         try:
             # Create all members
-            await _create_all_objects(client, running_app, local_app_state, environment_name)
+            await _create_all_objects(client, running_app, local_app_state, environment_name, app=app)
 
             # Publish the app
             await _publish_app(client, running_app, app_state, local_app_state)
@@ -454,6 +462,7 @@ async def _serve_update(
             running_app,
             local_app_state,
             environment_name,
+            app=app,
         )
 
         # Publish the updated app
@@ -542,6 +551,7 @@ async def _deploy_app(
                 running_app,
                 app._local_state,
                 environment_name=environment_name,
+                app=app,
             )
 
             commit_info = None
