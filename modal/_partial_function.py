@@ -837,7 +837,7 @@ def _concurrent(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.concurrent()`."
         )
 
-    if max_inputs and target_inputs and target_inputs > max_inputs:
+    if max_inputs is not None and target_inputs is not None and target_inputs > max_inputs:
         raise InvalidError("`target_inputs` parameter cannot be greater than `max_inputs`.")
 
     flags = _PartialFunctionFlags.CONCURRENT
