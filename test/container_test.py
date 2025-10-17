@@ -2738,7 +2738,7 @@ def test_cbor_incompatible_output(servicer, deployed_support_function_definition
 
 
 @skip_github_non_linux
-def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
+def test_cls_self_doesnt_call_bind(servicer, credentials):
     # first populate app objects, so they can be fetched by AppGetObjects
     deploy_app_externally(servicer, credentials, "test.supports.user_code_import_samples.cls")
     app_layout = servicer.app_get_layout("ap-1")
