@@ -263,26 +263,7 @@ class _Secret(_Object, type_prefix="st"):
         async def _load(
             self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            if load_context.app_id is not None:
-                object_creation_type = api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
-            else:
-                object_creation_type = api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL
-
-            req = api_pb2.SecretGetOrCreateRequest(
-                object_creation_type=object_creation_type,
-                env_dict=env_dict_filtered,
-                app_id=load_context.app_id,
-                environment_name=load_context.environment_name,
-            )
-            try:
-                resp = await load_context.client.stub.SecretGetOrCreate(req)
-            except GRPCError as exc:
-                if exc.status == Status.INVALID_ARGUMENT:
-                    raise InvalidError(exc.message)
-                if exc.status == Status.FAILED_PRECONDITION:
-                    raise InvalidError(exc.message)
-                raise
-            self._hydrate(resp.secret_id, load_context.client, resp.metadata)
+            self._load_from_env_dict(load_context, env_dict_filtered)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         # TODO: scoping - these should probably not be lazily hydrated without having an app and/or sandbox association
@@ -362,18 +343,34 @@ class _Secret(_Object, type_prefix="st"):
 
             env_dict = dotenv_values(dotenv_path)
 
-            req = api_pb2.SecretGetOrCreateRequest(
-                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
-                env_dict=env_dict,
-                app_id=load_context.app_id,  # TODO: what if app_id isn't set here (e.g. .hydrate())
-            )
-            resp = await load_context.client.stub.SecretGetOrCreate(req)
-
-            self._hydrate(resp.secret_id, load_context.client, resp.metadata)
+            await self._load_from_env_dict(self, load_context, env_dict)
 
         return _Secret._from_loader(
             _load, "Secret.from_dotenv()", hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
         )
+
+    @staticmethod
+    async def _load_from_env_dict(instance: "_Secret", load_context: LoadContext, env_dict: dict[str, str]):
+        if load_context.app_id is not None:
+            object_creation_type = api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+        else:
+            object_creation_type = api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL
+
+        req = api_pb2.SecretGetOrCreateRequest(
+            object_creation_type=object_creation_type,
+            env_dict=env_dict,
+            app_id=load_context.app_id,
+            environment_name=load_context.environment_name,
+        )
+        try:
+            resp = await load_context.client.stub.SecretGetOrCreate(req)
+        except GRPCError as exc:
+            if exc.status == Status.INVALID_ARGUMENT:
+                raise InvalidError(exc.message)
+            if exc.status == Status.FAILED_PRECONDITION:
+                raise InvalidError(exc.message)
+            raise
+        instance._hydrate(resp.secret_id, load_context.client, resp.metadata)
 
     @staticmethod
     def from_name(
