@@ -1464,19 +1464,22 @@ def test_experimental_spawn_map_sync(client, servicer):
         with app.run(client=client):
             fc1 = dummy_function.experimental_spawn_map([1, 2, 3])
 
+        # for now, we can avoid FunctionCallFromId since we all it adds is num_inputs, which we have:
+        assert ctx.get_requests("FunctionCallFromId") is not None
         # Verify the correct invocation type was used
         function_put_inputs = ctx.pop_request("FunctionPutInputs")
         assert function_put_inputs is not None
         assert type(fc1) is modal.FunctionCall
-
         ctx.calls.clear()
         assert fc1.num_inputs() == 3
-        assert len(ctx.calls) == 1 and ctx.get_requests("FunctionCallFromId") is not None
-        assert fc1.num_inputs() == 3  # cached result
-        assert len(ctx.calls) == 1  # no more rpcs
+        assert len(ctx.calls) == 0  # no more rpcs
 
+        ctx.calls.clear()
         fc2 = FunctionCall.from_id(fc1.object_id, client=client)
+        assert len(ctx.calls) == 0
         assert fc2.num_inputs() == 3
+        # a looked up function call should still do FunctionCallFromId to get num_inputs
+        assert len(ctx.calls) == 1 and ctx.get_requests("FunctionCallFromId") is not None
 
         # The server squares the inputs.
         assert fc1.get(index=0) == 1
