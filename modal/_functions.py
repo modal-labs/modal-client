@@ -1671,8 +1671,8 @@ Use the `Function.get_web_url()` method instead.
             input_queue,
             self.client,
         )
-        metadata = api_pb2.FunctionCallFromIdResponse(function_call_id=function_call_id, num_inputs=num_inputs)
-        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(function_call_id, self.client, metadata)
+        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(function_call_id, self.client, None)
+        fc._num_inputs = num_inputs  # set the cached value of num_inputs
         return fc
 
     async def _call_function(self, args, kwargs) -> ReturnType:
