@@ -306,7 +306,7 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret.from_dict({})
 
     @staticmethod
-    def from_dotenv(path=None, *, filename=".env") -> "_Secret":
+    def from_dotenv(path=None, *, filename=".env", client: Optional[_Client] = None) -> "_Secret":
         """Create secrets from a .env file automatically.
 
         If no argument is provided, it will use the current working directory as the starting
@@ -372,7 +372,7 @@ class _Secret(_Object, type_prefix="st"):
             self._hydrate(resp.secret_id, load_context.client, resp.metadata)
 
         return _Secret._from_loader(
-            _load, "Secret.from_dotenv()", hydrate_lazily=True, load_context_overrides=LoadContext.empty()
+            _load, "Secret.from_dotenv()", hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
         )
 
     @staticmethod

@@ -6,7 +6,7 @@ import tempfile
 import time
 from unittest import mock
 
-from modal import App, Secret
+from modal import App, Sandbox, Secret
 from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
@@ -47,6 +47,24 @@ def test_secret_from_dotenv(servicer, client):
         with app.run(client=client):
             assert secret.object_id == "st-1"
             assert servicer.secrets["st-1"] == {"USER": "user2", "PASSWORD": "abc456"}
+
+
+def test_secret_from_dotenv_lazy(client, servicer):
+    with servicer.intercept() as ctx:
+        dummy_app = App.lookup("blah", client=client, create_if_missing=True)
+        Sandbox.create(client=client, secrets=[Secret.from_dotenv()], app=dummy_app)
+        req = ctx.pop_request("SecretGetOrCreate")
+        assert (
+            req.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+        )  # use the sandbox's app id
+        assert req.app_id == dummy_app.app_id
+
+        ctx.calls.clear()
+
+        Secret.from_dotenv(client=client).hydrate()
+        req = ctx.pop_request("SecretGetOrCreate")
+        # there is no app in this case - not sure if this should be allowed long term...
+        assert req.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL
 
 
 @mock.patch.dict(os.environ, {"FOO": "easy", "BAR": "1234"})
