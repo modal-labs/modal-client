@@ -1941,19 +1941,16 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     def _invocation(self):
         return _Invocation(self.client.stub, self.object_id, self.client)
 
-    def _hydrate_metadata(self, metadata: Optional[Message]):
-        if not metadata:
-            return
-        assert isinstance(metadata, api_pb2.FunctionCallFromIdResponse)
-        self._num_inputs = metadata.num_inputs
-
     @live_method
     async def num_inputs(self) -> int:
         """Get the number of inputs in the function call."""
-        # Should have been hydrated.
-        assert self._num_inputs is not None
+        if self._num_inputs is None:
+            request = api_pb2.FunctionCallFromIdRequest(function_call_id=self.object_id)
+            resp = await retry_transient_errors(self.client.stub.FunctionCallFromId, request)
+            self._num_inputs = resp.num_inputs  # cached
         return self._num_inputs
 
+    @live_method
     async def get(self, timeout: Optional[float] = None, *, index: int = 0) -> ReturnType:
         """Get the result of the index-th input of the function call.
         `.spawn()` calls have a single output, so only specifying `index=0` is valid.
@@ -1997,6 +1994,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         async for _, item in self._invocation().enumerate(start_index=start, end_index=end):
             yield item
 
+    @live_method
     async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
         call ID, along with the status of execution for each node.
@@ -2009,6 +2007,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         response = await self._client.stub.FunctionGetCallGraph(request)
         return _reconstruct_call_graph(response)
 
+    @live_method
     async def cancel(
         self,
         # if true, containers running the inputs are forcibly terminated
@@ -2050,20 +2049,14 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         async def _load(
             self: _FunctionCall, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            request = api_pb2.FunctionCallFromIdRequest(function_call_id=function_call_id)
-            resp = await load_context.client.stub.FunctionCallFromId(request)
-            self._hydrate(function_call_id, load_context.client, resp)
+            # this loader doesn't do anything in practice, but it will get the client from the load_context
+            self._hydrate(function_call_id, load_context.client, None)
 
         rep = f"FunctionCall.from_id({function_call_id!r})"
-        fc: _FunctionCall[Any] = _FunctionCall._from_loader(
+
+        return _FunctionCall._from_loader(
             _load, rep, hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
         )
-
-        # TODO(elias): Remove these
-        # We already know the object ID, so we can set it directly
-        fc._object_id = function_call_id
-        fc._client = client
-        return fc
 
     @staticmethod
     async def gather(*function_calls: "_FunctionCall[T]") -> typing.Sequence[T]:
