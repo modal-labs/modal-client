@@ -2757,6 +2757,12 @@ def blob_server_factory():
         if magic != "test-get-request":
             return aiohttp.web.Response(status=400, text="bad token")
 
+        # Special versions for testing HTTP error handling
+        if version == "error-404":
+            return aiohttp.web.Response(status=404, text="block not found")
+        if version == "error-500":
+            return aiohttp.web.Response(status=500, text="internal server error")
+
         if version == "v1":
             file_sha256_hex, block_idx, start, length = rest
             start = BLOCK_SIZE * int(block_idx) + int(start)
