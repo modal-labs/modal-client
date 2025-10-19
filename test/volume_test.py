@@ -640,3 +640,46 @@ def test_volume_create_version(servicer, client):
 
     with pytest.raises(InvalidError, match="VolumeFS version must be either 1 or 2"):
         modal.Volume.objects.create(name="should-be-v3", version=3, client=client)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_http_500_error(monkeypatch, servicer, client, version):
+    import aiohttp
+
+    # Disable retries during test run
+    monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
+
+    # Setup URL with special block_id that triggers 500 error
+    with servicer.intercept() as ctx:
+        url = f"{servicer.blob_host}/block/test-get-request:error-500:"
+        response = api_pb2.VolumeGetFile2Response(get_urls=[url], size=100, start=0, len=100)
+        ctx.add_response("VolumeGetFile2", response)
+
+        async with modal.Volume.ephemeral(client=client, version=version) as vol:
+            with pytest.raises(aiohttp.ClientResponseError) as exc_info:
+                for _ in vol.read_file("foo.bin"):
+                    ...
+            assert exc_info.value.status == 500
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_into_fileobj_http_404_error(monkeypatch, servicer, client, version):
+    import aiohttp
+
+    # Disable retries during test run
+    monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
+
+    # Setup URL with special block_id that triggers 404 error
+    with servicer.intercept() as ctx:
+        url = f"{servicer.blob_host}/block/test-get-request:error-404:"
+        response = api_pb2.VolumeGetFile2Response(get_urls=[url], size=100, start=0, len=100)
+        ctx.add_response("VolumeGetFile2", response)
+
+        async with modal.Volume.ephemeral(client=client, version=version) as vol:
+            output = io.BytesIO()
+            with pytest.raises(aiohttp.ClientResponseError) as exc_info:
+                vol.read_file_into_fileobj("foo.bin", output)
+
+            assert exc_info.value.status == 404
