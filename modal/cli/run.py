@@ -332,11 +332,11 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
     with_click_options = _add_click_options(f, signature.parameters)
 
     if signature.has_variadic_args:
-        return click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})(
-            with_click_options
-        )
+        return click.command(
+            context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "show_default": True}
+        )(with_click_options)
     else:
-        return click.command(with_click_options)
+        return click.command(context_settings={"show_default": True})(with_click_options)
 
 
 def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
