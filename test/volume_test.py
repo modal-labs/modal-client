@@ -511,8 +511,8 @@ def test_ephemeral(servicer, client):
     assert servicer.n_vol_heartbeats == 2
 
 
-def test_lazy_hydration_from_named(set_env_client):
-    vol = modal.Volume.from_name("my-vol", create_if_missing=True)
+def test_lazy_hydration_from_named(client):
+    vol = modal.Volume.from_name("my-vol", create_if_missing=True, client=client)
     assert vol.listdir("/") == []
 
 
@@ -577,8 +577,8 @@ def unset_main_thread_event_loop():
 
 
 @pytest.mark.usefixtures("unset_main_thread_event_loop")
-def test_lock_is_py39_safe(set_env_client):
-    vol = modal.Volume.from_name("my_vol", create_if_missing=True)
+def test_lock_is_py39_safe(client):
+    vol = modal.Volume.from_name("my_vol", create_if_missing=True, client=client)
     vol.reload()
 
 
@@ -601,8 +601,8 @@ def test_volume_namespace_deprecated(servicer, client):
     assert len(namespace_warnings) == 0
 
 
-def test_remove_file_not_found(set_env_client):
-    vol = modal.Volume.from_name("my_vol", create_if_missing=True)
+def test_remove_file_not_found(client):
+    vol = modal.Volume.from_name("my_vol", create_if_missing=True, client=client)
     with pytest.raises(FileNotFoundError):
         vol.remove_file("a")
 
