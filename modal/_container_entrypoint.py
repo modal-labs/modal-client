@@ -465,6 +465,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_def._experimental_group_size,
             )
 
+        from subprocess import Popen
+
         from modal.experimental.flash import FlashManager
 
         # Identify all "enter" methods that need to run before we snapshot.
@@ -486,8 +488,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
 
+            # TODO: Check more than one
+            processes = [p for p in vars(service.user_cls_instance).values() if isinstance(p, Popen)]
+            assert len(processes) <= 1
+            process = processes[0] if processes else None
+
             for flash_config in flash_configs:
-                flash_managers[flash_config.port] = flash_forward(flash_config.port)
+                flash_managers[flash_config.port] = flash_forward(flash_config.port, process=process)
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and initialization. Checkpointed containers run from this point onwards.
