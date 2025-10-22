@@ -509,6 +509,13 @@ class _StreamReader(Generic[T]):
     ```
     """
 
+    _impl: Union[
+        _StreamReaderThroughServer,
+        _DevnullStreamReader,
+        _TextStreamReaderThroughCommandRouter,
+        _BytesStreamReaderThroughCommandRouter,
+    ]
+
     def __init__(
         self,
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
