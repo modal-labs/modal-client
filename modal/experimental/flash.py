@@ -633,7 +633,7 @@ def _flash_web_server(port: int, *, region: Optional[Union[str, Literal[True]]] 
 
     # TODO: Disallow methods to have the same port
     def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
-        flags = _PartialFunctionFlags.FLASH_WEB_INTERFACE | _PartialFunctionFlags.CALLABLE_INTERFACE
+        flags = _PartialFunctionFlags.FLASH_WEB_INTERFACE
 
         if isinstance(obj, _PartialFunction):
             pf = obj.stack(flags, params)
