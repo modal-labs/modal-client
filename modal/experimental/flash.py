@@ -7,7 +7,7 @@ import sys
 import time
 import traceback
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any, Literal, Optional, Union
 from urllib.parse import urlparse
 
 from modal.cls import _Cls
@@ -623,12 +623,12 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
     return resp.containers
 
 
-def _flash_web_server(port: int):
+def _flash_web_server(port: int, *, region: Optional[Union[str, Literal[True]]] = None):
     from typing import Callable, Union
 
     from .._partial_function import _FlashConfig, _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
 
-    params = _PartialFunctionParams(flash_config=_FlashConfig(port=port))
+    params = _PartialFunctionParams(flash_config=_FlashConfig(port=port, region=region))
 
     # TODO: Disallow methods to have the same port
     def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:

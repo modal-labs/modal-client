@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import (
     Any,
     Callable,
+    Literal,
     Optional,
     Union,
 )
@@ -70,6 +71,7 @@ class _PartialFunctionFlags(enum.IntFlag):
 @dataclass
 class _FlashConfig:
     port: int
+    region: Optional[Union[str, Literal[True]]]
 
 
 @dataclass
