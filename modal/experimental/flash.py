@@ -644,8 +644,4 @@ def _flash_web_server(port: int, *, region: Optional[Union[str, Literal[True]]] 
     return wrapper
 
 
-def _flash_enter():
-    pass
-
-
 flash_web_server = synchronize_api(_flash_web_server, target_module=__name__)
