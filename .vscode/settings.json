@@ -2,6 +2,7 @@
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
     "python.testing.pytestArgs": [
-        "test"
+        "test",
+        "-s"
     ],
 }
