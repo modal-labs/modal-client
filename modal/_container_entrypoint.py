@@ -29,6 +29,7 @@ from google.protobuf.message import Message
 from modal._clustered_functions import initialize_clustered_function
 from modal._partial_function import (
     _find_callables_for_obj,
+    _find_partial_methods_for_user_cls,
     _PartialFunctionFlags,
 )
 from modal._serialization import deserialize, deserialize_params
@@ -465,7 +466,20 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             )
 
         # Identify all "enter" methods that need to run before we snapshot.
+        flash_managers = {}
         if service.user_cls_instance is not None and not is_auto_snapshot:
+            # TODO: Check for flash web_server and then add add customer flash enter method
+
+            flash_configs = [
+                partial_method.params.flash_config
+                for partial_method in _find_partial_methods_for_user_cls(
+                    type(service.user_cls_instance), _PartialFunctionFlags.FLASH_WEB_INTERFACE
+                ).values()
+                if partial_method.params.flash_config
+            ]
+            for flash_config in flash_configs:
+                pass
+
             pre_snapshot_methods = _find_callables_for_obj(
                 service.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
             )

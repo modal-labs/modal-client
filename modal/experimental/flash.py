@@ -621,3 +621,31 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
     req = api_pb2.FlashContainerListRequest(function_id=fn.object_id)
     resp = await retry_transient_errors(client.stub.FlashContainerList, req)
     return resp.containers
+
+
+def _flash_web_server(port: int):
+    from typing import Callable, Union
+
+    from .._partial_function import _FlashConfig, _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
+
+    params = _PartialFunctionParams(flash_config=_FlashConfig(port=port))
+
+    # TODO: Disallow methods to have the same port
+    def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
+        flags = _PartialFunctionFlags.FLASH_WEB_INTERFACE | _PartialFunctionFlags.CALLABLE_INTERFACE
+
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        pf.validate_obj_compatibility("flash_web_server")
+        return pf
+
+    return wrapper
+
+
+def _flash_enter():
+    pass
+
+
+flash_web_server = synchronize_api(_flash_web_server, target_module=__name__)
