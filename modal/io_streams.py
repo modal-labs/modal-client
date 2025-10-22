@@ -17,7 +17,7 @@ from typing import (
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
-from modal.exception import ClientClosed, ExecTimeoutError, InvalidError
+from modal.exception import ClientClosed, ExecTimeoutError
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 async def _sandbox_logs_iterator(
     sandbox_id: str, file_descriptor: "api_pb2.FileDescriptor.ValueType", last_entry_id: str, client: _Client
-) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
+) -> AsyncGenerator[tuple[Optional[str], str], None]:
     req = api_pb2.SandboxGetLogsRequest(
         sandbox_id=sandbox_id,
         file_descriptor=file_descriptor,
@@ -44,7 +44,7 @@ async def _sandbox_logs_iterator(
         last_entry_id = log_batch.entry_id
 
         for message in log_batch.items:
-            yield (message.data.encode("utf-8"), last_entry_id)
+            yield (message.data, last_entry_id)
         if log_batch.eof:
             yield (None, last_entry_id)
             break
@@ -86,111 +86,89 @@ async def _container_process_logs_iterator(
 T = TypeVar("T", str, bytes)
 
 
-class _StreamReaderThroughServer(Generic[T]):
-    """A StreamReader implementation that reads from the server."""
+@dataclass
+class _StreamReaderThroughServerParams:
+    file_descriptor: "api_pb2.FileDescriptor.ValueType"
+    object_id: str
+    client: _Client
+    deadline: Optional[float]
 
-    _stream: Optional[AsyncGenerator[Optional[bytes], None]]
 
-    def __init__(
-        self,
-        file_descriptor: "api_pb2.FileDescriptor.ValueType",
-        object_id: str,
-        object_type: Literal["sandbox", "container_process"],
-        client: _Client,
-        stream_type: StreamType = StreamType.PIPE,
-        text: bool = True,
-        by_line: bool = False,
-        deadline: Optional[float] = None,
-    ) -> None:
-        """mdmd:hidden"""
-        self._file_descriptor = file_descriptor
-        self._object_type = object_type
-        self._object_id = object_id
-        self._client = client
-        self._stream = None
-        self._last_entry_id: str = ""
-        self._line_buffer = b""
-        self._deadline = deadline
+async def _sandbox_text_stream_from_server(
+    params: _StreamReaderThroughServerParams,
+) -> AsyncGenerator[str, None]:
+    """Stream text for sandbox logs from the server with retry semantics."""
 
-        # Sandbox logs are streamed to the client as strings, so StreamReaders reading
-        # them must have text mode enabled.
-        if object_type == "sandbox" and not text:
-            raise ValueError("Sandbox streams must have text mode enabled.")
+    last_entry_id: str = ""
+    retries_remaining = 10
+    completed = False
+    while not completed:
+        try:
+            iterator = _sandbox_logs_iterator(params.object_id, params.file_descriptor, last_entry_id, params.client)
+            async for message, entry_id in iterator:
+                last_entry_id = entry_id
+                if message == "":
+                    continue
+                if message is None:
+                    completed = True
+                    break
+                yield message
+        except (GRPCError, StreamTerminatedError) as exc:
+            if retries_remaining > 0:
+                retries_remaining -= 1
+                if isinstance(exc, GRPCError):
+                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                        await asyncio.sleep(1.0)
+                        continue
+                elif isinstance(exc, StreamTerminatedError):
+                    continue
+            raise
 
-        self._text = text
-        self._by_line = by_line
 
-        # Whether the reader received an EOF. Once EOF is True, it returns
-        # an empty string for any subsequent reads (including async for)
-        self.eof = False
+class _ContainerPipeBytesStreamReaderThroughServer(Generic[T]):
+    """
+    StreamReader implementation for container process stdout/stderr via server
+    when stream type is PIPE.
+    """
 
-        if not isinstance(stream_type, StreamType):
-            raise TypeError(f"stream_type must be of type StreamType, got {type(stream_type)}")
-
-        # We only support piping sandbox logs because they're meant to be durable logs stored
-        # on the user's application.
-        if object_type == "sandbox" and stream_type != StreamType.PIPE:
-            raise ValueError("Sandbox streams must be piped.")
-        self._stream_type = stream_type
-
-        if self._object_type == "container_process":
-            # Container process streams need to be consumed as they are produced,
-            # otherwise the process will block. Use a buffer to store the stream
-            # until the client consumes it.
-            self._container_process_buffer: list[Optional[bytes]] = []
-            self._consume_container_process_task = asyncio.create_task(self._consume_container_process_stream())
+    def __init__(self, params: _StreamReaderThroughServerParams) -> None:
+        self._params = params
+        self._stream: Optional[AsyncGenerator[bytes, None]] = None
+        self._buffer: list[Optional[bytes]] = []
+        self._last_index: int = 0
+        self._consume_task = asyncio.create_task(self._consume())
 
     @property
     def file_descriptor(self) -> int:
-        """Possible values are `1` for stdout and `2` for stderr."""
-        return self._file_descriptor
+        return self._params.file_descriptor
 
-    async def read(self) -> T:
-        """Fetch the entire contents of the stream until EOF."""
-        data_str = ""
-        data_bytes = b""
-        logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read starting")
-        async for message in self._get_logs():
-            if message is None:
-                break
-            if self._text:
-                data_str += message.decode("utf-8")
-            else:
-                data_bytes += message
-
-        logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
-        if self._text:
-            return cast(T, data_str)
-        else:
-            return cast(T, data_bytes)
-
-    async def _consume_container_process_stream(self):
-        """Consume the container process stream and store messages in the buffer."""
-        if self._stream_type == StreamType.DEVNULL:
-            return
-
+    async def _consume(self) -> None:
+        # DEVNULL is handled by separate reader; this should not be used in that case
         completed = False
         retries_remaining = 10
-        last_index = 0
         while not completed:
-            if self._deadline and time.monotonic() >= self._deadline:
+            if self._params.deadline and time.monotonic() >= self._params.deadline:
                 break
             try:
                 iterator = _container_process_logs_iterator(
-                    self._object_id, self._file_descriptor, self._client, last_index, self._deadline
+                    self._params.object_id,
+                    self._params.file_descriptor,
+                    self._params.client,
+                    self._last_index,
+                    self._params.deadline,
                 )
                 async for message, batch_index in iterator:
-                    if self._stream_type == StreamType.STDOUT and message:
-                        print(message.decode("utf-8"), end="")
-                    elif self._stream_type == StreamType.PIPE:
-                        self._container_process_buffer.append(message)
-
+                    # Skip empty messages used for liveness
+                    if message == b"":
+                        continue
+                    self._buffer.append(message)
                     if message is None:
                         completed = True
+                        # Always append EOF sentinel so consumer ends
+                        self._buffer.append(None)
                         break
                     else:
-                        last_index = batch_index
-
+                        self._last_index = batch_index
             except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
@@ -201,70 +179,85 @@ class _StreamReaderThroughServer(Generic[T]):
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                     elif isinstance(exc, ClientClosed):
-                        # If the client was closed, the user has triggered a cleanup.
                         break
-                logger.error(f"{self._object_id} stream read failure while consuming process output: {exc}")
+                logger.error(f"{self._params.object_id} stream read failure while consuming process output: {exc}")
                 raise exc
 
-    async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
-        """Streams the container process buffer to the reader."""
+    async def _buffer_stream(self) -> AsyncGenerator[bytes, None]:
         entry_id = 0
-        if self._last_entry_id:
-            entry_id = int(self._last_entry_id) + 1
-
         while True:
-            if entry_id >= len(self._container_process_buffer):
+            if entry_id >= len(self._buffer):
                 await asyncio.sleep(0.1)
                 continue
-
-            item = self._container_process_buffer[entry_id]
-
-            yield (item, str(entry_id))
+            item = self._buffer[entry_id]
             if item is None:
                 break
-
+            yield cast(bytes, item)
             entry_id += 1
 
-    async def _get_logs(self, skip_empty_messages: bool = True) -> AsyncGenerator[Optional[bytes], None]:
-        """Streams sandbox or process logs from the server to the reader.
+    async def read(self) -> T:
+        data_bytes = b""
+        async for part in self:
+            data_bytes += cast(bytes, part)
+        return cast(T, data_bytes)
 
-        Logs returned by this method may contain partial or multiple lines at a time.
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self
 
-        When the stream receives an EOF, it yields None. Once an EOF is received,
-        subsequent invocations will not yield logs.
-        """
-        if self._stream_type != StreamType.PIPE:
-            raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+    async def __anext__(self) -> T:
+        if self._stream is None:
+            self._stream = self._buffer_stream()
+        return cast(T, await self._stream.__anext__())
 
-        if self.eof:
-            yield None
-            return
+    async def aclose(self):
+        if self._stream:
+            await self._stream.aclose()
 
+
+class _ContainerStdoutTextStreamReaderThroughServer(Generic[T]):
+    """
+    StreamReader implementation for container process stdout/stderr via server
+    when stream type is STDOUT. Prints incrementally decoded UTF-8 to local stdout
+    and does not yield data.
+    """
+
+    def __init__(self, params: _StreamReaderThroughServerParams) -> None:
+        self._params = params
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
+        self._consume_task = asyncio.create_task(self._consume())
+
+    @property
+    def file_descriptor(self) -> int:
+        return self._params.file_descriptor
+
+    async def _consume(self) -> None:
         completed = False
-
         retries_remaining = 10
+        last_index = 0
         while not completed:
+            if self._params.deadline and time.monotonic() >= self._params.deadline:
+                break
             try:
-                if self._object_type == "sandbox":
-                    iterator = _sandbox_logs_iterator(
-                        self._object_id, self._file_descriptor, self._last_entry_id, self._client
-                    )
-                else:
-                    iterator = self._stream_container_process()
-
-                async for message, entry_id in iterator:
-                    self._last_entry_id = entry_id
-                    # Empty messages are sent when the process boots up. Don't yield them unless
-                    # we're using the empty message to signal process liveness.
-                    if skip_empty_messages and message == b"":
-                        continue
-
+                iterator = _container_process_logs_iterator(
+                    self._params.object_id,
+                    self._params.file_descriptor,
+                    self._params.client,
+                    last_index,
+                    self._params.deadline,
+                )
+                async for message, batch_index in iterator:
                     if message is None:
+                        tail = self._decoder.decode(b"", final=True)
+                        if tail:
+                            print(tail, end="")
                         completed = True
-                        self.eof = True
-                    yield message
-
-            except (GRPCError, StreamTerminatedError) as exc:
+                        break
+                    if message:
+                        text = self._decoder.decode(message, final=False)
+                        if text:
+                            print(text, end="")
+                    last_index = batch_index
+            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
                     if isinstance(exc, GRPCError):
@@ -273,50 +266,107 @@ class _StreamReaderThroughServer(Generic[T]):
                             continue
                     elif isinstance(exc, StreamTerminatedError):
                         continue
-                raise
+                    elif isinstance(exc, ClientClosed):
+                        break
+                logger.error(f"{self._params.object_id} stream read failure while consuming process output: {exc}")
+                raise exc
 
-    async def _get_logs_by_line(self) -> AsyncGenerator[Optional[bytes], None]:
-        """Process logs from the server and yield complete lines only."""
-        async for message in self._get_logs():
-            if message is None:
-                if self._line_buffer:
-                    yield self._line_buffer
-                    self._line_buffer = b""
-                yield None
-            else:
-                assert isinstance(message, bytes)
-                self._line_buffer += message
-                while b"\n" in self._line_buffer:
-                    line, self._line_buffer = self._line_buffer.split(b"\n", 1)
-                    yield line + b"\n"
+    async def read(self) -> T:
+        # Nothing to return; output printed to stdout
+        return cast(T, "")
 
-    def _ensure_stream(self) -> AsyncGenerator[Optional[bytes], None]:
-        if not self._stream:
-            if self._by_line:
-                self._stream = self._get_logs_by_line()
-            else:
-                self._stream = self._get_logs()
-        return self._stream
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self
 
     async def __anext__(self) -> T:
-        """mdmd:hidden"""
-        stream = self._ensure_stream()
-
-        value = await stream.__anext__()
-
-        # The stream yields None if it receives an EOF batch.
-        if value is None:
-            raise StopAsyncIteration
-
-        if self._text:
-            return cast(T, value.decode("utf-8"))
-        else:
-            return cast(T, value)
+        raise StopAsyncIteration
 
     async def aclose(self):
-        """mdmd:hidden"""
+        return
+
+
+class _SandboxTextStreamReaderThroughServer(Generic[T]):
+    """Text stream reader for sandbox logs via server with incremental UTF-8 decoding."""
+
+    def __init__(self, params: _StreamReaderThroughServerParams, by_line: bool) -> None:
+        self._params = params
+        self._by_line = by_line
+        self._stream: Optional[AsyncGenerator[str, None]] = None
+
+    @property
+    def file_descriptor(self) -> int:
+        return self._params.file_descriptor
+
+    async def read(self) -> T:
+        data_str = ""
+        async for part in self:
+            data_str += cast(str, part)
+        return cast(T, data_str)
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self
+
+    async def __anext__(self) -> T:
+        if self._stream is None:
+            text_stream = _sandbox_text_stream_from_server(self._params)
+            if self._by_line:
+                # Convert text lines to text with line buffering
+                async def _by_line_text() -> AsyncGenerator[str, None]:
+                    buffer = ""
+                    async for chunk in text_stream:
+                        buffer += chunk
+                        while "\n" in buffer:
+                            line, buffer = buffer.split("\n", 1)
+                            yield line + "\n"
+                    if buffer:
+                        yield buffer
+
+                self._stream = _by_line_text()
+            else:
+                self._stream = text_stream
+        return cast(T, await self._stream.__anext__())
+
+    async def aclose(self):
         if self._stream:
             await self._stream.aclose()
+
+
+class _ContainerTextStreamReaderThroughServer(Generic[T]):
+    """Text stream reader for container process via server with incremental UTF-8 decoding."""
+
+    def __init__(self, params: _StreamReaderThroughServerParams, by_line: bool) -> None:
+        self._bytes_reader = _ContainerPipeBytesStreamReaderThroughServer[bytes](params)
+        self._by_line = by_line
+        self._stream: Optional[AsyncGenerator[str, None]] = None
+
+    @property
+    def file_descriptor(self) -> int:
+        return self._bytes_reader.file_descriptor
+
+    async def read(self) -> T:
+        data_str = ""
+        async for part in self:
+            data_str += cast(str, part)
+        return cast(T, data_str)
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self
+
+    async def __anext__(self) -> T:
+        if self._stream is None:
+
+            async def _bytes_stream() -> AsyncGenerator[bytes, None]:
+                async for chunk in self._bytes_reader:
+                    yield cast(bytes, chunk)
+
+            if self._by_line:
+                self._stream = _decode_bytes_stream_to_str(_stream_by_line(_bytes_stream()))
+            else:
+                self._stream = _decode_bytes_stream_to_str(_bytes_stream())
+        return cast(T, await self._stream.__anext__())
+
+    async def aclose(self):
+        await self._bytes_reader.aclose()
 
 
 async def _decode_bytes_stream_to_str(stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[str, None]:
@@ -530,9 +580,33 @@ class _StreamReader(Generic[T]):
             raise ValueError("line-buffering is only supported when text=True")
 
         if command_router_client is None:
-            self._impl = _StreamReaderThroughServer(
-                file_descriptor, object_id, object_type, client, stream_type, text, by_line, deadline
+            params = _StreamReaderThroughServerParams(
+                file_descriptor=file_descriptor,
+                object_id=object_id,
+                client=client,
+                deadline=deadline,
             )
+            if stream_type == StreamType.DEVNULL:
+                self._impl = _DevnullStreamReader(file_descriptor)
+            else:
+                if object_type == "sandbox":
+                    if not text:
+                        raise ValueError("Sandbox streams must have text mode enabled.")
+                    self._impl = _SandboxTextStreamReaderThroughServer(params, by_line)
+                else:
+                    # container_process
+                    if stream_type == StreamType.STDOUT:
+                        if not text:
+                            raise NotImplementedError(
+                                "STDOUT stream type is only supported for text mode when using server path."
+                            )
+                        self._impl = _ContainerStdoutTextStreamReaderThroughServer(params)
+                    else:
+                        # PIPE
+                        if text:
+                            self._impl = _ContainerTextStreamReaderThroughServer(params, by_line)
+                        else:
+                            self._impl = _ContainerPipeBytesStreamReaderThroughServer(params)
         else:
             # The only reason task_id is optional is because StreamReader is
             # also used for sandbox logs, which don't have a task ID available
