@@ -687,3 +687,26 @@ def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
     assert pty_info.enabled is True
     assert pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL
     assert pty_info.no_terminate_on_idle_stdin is True
+
+
+@pytest.mark.parametrize("text", [True, False])
+@pytest.mark.parametrize("by_line", [True, False])
+def test_sandbox_stdout_incremental_decode(servicer, client, by_line, text):
+    # Reproduces what happens if output chunks are send without being individually
+    # string decodable
+    if text and by_line:
+        pytest.skip(reason="Text mode and by_line mode are not supported together")
+
+    from modal.container_process import ContainerProcess
+
+    with servicer.intercept() as ctx:
+        for chunk, exit_code in [(b"caf\xc3", None), (b"\xa9", 0)]:
+            ctx.add_response(
+                "ContainerExecGetOutput",
+                api_pb2.RuntimeOutputBatch(
+                    items=[api_pb2.RuntimeOutputMessage(message_bytes=chunk)],
+                    exit_code=exit_code
+                ),
+            )
+        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+        p.stdout.read()
