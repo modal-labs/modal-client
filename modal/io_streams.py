@@ -89,7 +89,7 @@ T = TypeVar("T", str, bytes)
 class _StreamReaderThroughServer(Generic[T]):
     """A StreamReader implementation that reads from the server."""
 
-    _stream: Optional[AsyncGenerator[Optional[bytes], None]]
+    _stream: Optional[Union[AsyncGenerator[bytes, None], AsyncGenerator[str, None]]]
 
     def __init__(
         self,
@@ -147,21 +147,18 @@ class _StreamReaderThroughServer(Generic[T]):
 
     async def read(self) -> T:
         """Fetch the entire contents of the stream until EOF."""
-        data_str = ""
-        data_bytes = b""
         logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read starting")
-        async for message in self._get_logs():
-            if message is None:
-                break
-            if self._text:
-                data_str += message.decode("utf-8")
-            else:
-                data_bytes += message
-
-        logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
         if self._text:
+            data_str = ""
+            async for message in _decode_bytes_stream_to_str(self._get_logs()):
+                data_str += message
+            logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
             return cast(T, data_str)
         else:
+            data_bytes = b""
+            async for message in self._get_logs():
+                data_bytes += message
+            logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
             return cast(T, data_bytes)
 
     async def _consume_container_process_stream(self):
@@ -225,7 +222,7 @@ class _StreamReaderThroughServer(Generic[T]):
 
             entry_id += 1
 
-    async def _get_logs(self, skip_empty_messages: bool = True) -> AsyncGenerator[Optional[bytes], None]:
+    async def _get_logs(self, skip_empty_messages: bool = True) -> AsyncGenerator[bytes, None]:
         """Streams sandbox or process logs from the server to the reader.
 
         Logs returned by this method may contain partial or multiple lines at a time.
@@ -237,7 +234,6 @@ class _StreamReaderThroughServer(Generic[T]):
             raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
 
         if self.eof:
-            yield None
             return
 
         completed = False
@@ -262,6 +258,8 @@ class _StreamReaderThroughServer(Generic[T]):
                     if message is None:
                         completed = True
                         self.eof = True
+                        return
+
                     yield message
 
             except (GRPCError, StreamTerminatedError) as exc:
@@ -275,43 +273,34 @@ class _StreamReaderThroughServer(Generic[T]):
                         continue
                 raise
 
-    async def _get_logs_by_line(self) -> AsyncGenerator[Optional[bytes], None]:
+    async def _get_logs_by_line(self) -> AsyncGenerator[bytes, None]:
         """Process logs from the server and yield complete lines only."""
         async for message in self._get_logs():
-            if message is None:
-                if self._line_buffer:
-                    yield self._line_buffer
-                    self._line_buffer = b""
-                yield None
-            else:
-                assert isinstance(message, bytes)
-                self._line_buffer += message
-                while b"\n" in self._line_buffer:
-                    line, self._line_buffer = self._line_buffer.split(b"\n", 1)
-                    yield line + b"\n"
+            assert isinstance(message, bytes)
+            self._line_buffer += message
+            while b"\n" in self._line_buffer:
+                line, self._line_buffer = self._line_buffer.split(b"\n", 1)
+                yield line + b"\n"
 
-    def _ensure_stream(self) -> AsyncGenerator[Optional[bytes], None]:
+        if self._line_buffer:
+            yield self._line_buffer
+            self._line_buffer = b""
+
+    def _ensure_stream(self) -> Union[AsyncGenerator[bytes, None], AsyncGenerator[str, None]]:
         if not self._stream:
             if self._by_line:
-                self._stream = self._get_logs_by_line()
+                stream = self._get_logs_by_line()
             else:
-                self._stream = self._get_logs()
+                stream = self._get_logs()
+            if self._text:
+                stream = _decode_bytes_stream_to_str(stream)
+            self._stream = stream
         return self._stream
 
     async def __anext__(self) -> T:
         """mdmd:hidden"""
         stream = self._ensure_stream()
-
-        value = await stream.__anext__()
-
-        # The stream yields None if it receives an EOF batch.
-        if value is None:
-            raise StopAsyncIteration
-
-        if self._text:
-            return cast(T, value.decode("utf-8"))
-        else:
-            return cast(T, value)
+        return cast(T, await stream.__anext__())
 
     async def aclose(self):
         """mdmd:hidden"""
