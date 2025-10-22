@@ -1052,6 +1052,22 @@ class _App:
                     "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
                 )
 
+            flash_configs = [
+                partial_method.params.flash_config
+                for partial_method in _find_partial_methods_for_user_cls(
+                    user_cls, _PartialFunctionFlags.FLASH_WEB_INTERFACE
+                ).values()
+                if partial_method.params.flash_config
+            ]
+            # TODO: Get the super set of regions
+            assert len(flash_configs) == 1
+            flash_config = flash_configs[0]
+
+            # TODO: Check that there are not additional flash_options in experimental_options
+            # TODO: Actual use `experimental_options` from the callable
+            experimental_options = {}
+            experimental_options["flash"] = flash_config.region
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
@@ -1089,7 +1105,7 @@ class _App:
                 cluster_size=cluster_size,
                 rdma=rdma,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
-                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                experimental_options={k: str(v) for k, v in experimental_options.items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 restrict_output=_experimental_restrict_output,
