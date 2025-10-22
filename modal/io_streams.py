@@ -90,7 +90,7 @@ T = TypeVar("T", str, bytes)
 class _StreamReaderThroughServer(Generic[T]):
     """A StreamReader implementation that reads from the server."""
 
-    _stream: Optional[Union[AsyncGenerator[bytes, None], AsyncGenerator[str, None]]]
+    _stream: Optional[AsyncGenerator[T, None]]
 
     def __init__(
         self,
