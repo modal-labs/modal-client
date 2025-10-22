@@ -1,12 +1,15 @@
 # Copyright Modal Labs 2022
-
 import hashlib
 import pytest
 import time
+import typing
+from collections import deque
 from pathlib import Path
 from unittest import mock
 
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
+from modal._utils.async_utils import synchronizer
+from modal.container_process import ContainerProcess, _ContainerProcess
 from modal.exception import InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
@@ -687,3 +690,80 @@ def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
     assert pty_info.enabled is True
     assert pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL
     assert pty_info.no_terminate_on_idle_stdin is True
+
+
+@synchronizer.wrap
+async def makeprocess(client, text, by_line):
+    return _ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+
+
+@pytest.mark.parametrize("text", [True, False])
+@pytest.mark.parametrize("by_line", [True, False])
+@pytest.mark.timeout(2)
+def test_sandbox_stdout_server_read_incremental_decode(servicer, client, by_line, text):
+    if not text and by_line:
+        pytest.skip(reason="Text mode and by_line mode are not supported together")
+
+    with servicer.intercept() as ctx:
+        queued_responses = deque(
+            [
+                api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"caf\xc3")]),
+                api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0),
+            ]
+        )
+
+        async def streamer(servicer, stream):
+            req: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
+            if req.file_descriptor != api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT or len(queued_responses) == 0:
+                await stream.send_message(
+                    api_pb2.RuntimeOutputBatch(exit_code=0),
+                )
+                return
+
+            await stream.send_message(queued_responses.popleft())
+
+        ctx.set_responder("ContainerExecGetOutput", streamer)
+        p: ContainerProcess[typing.Any] = makeprocess(client, text, by_line)  # type: ignore
+        res = p.stdout.read()
+        if text:
+            assert res == "café"
+        else:
+            assert res == "café".encode("utf8")
+
+
+@pytest.mark.parametrize("text", [True, False])
+@pytest.mark.parametrize("by_line", [True, False])
+def test_sandbox_stdout_read_incremental_iter(servicer, client, by_line, text):
+    # Reproduces what happens if output chunks are send without being individually
+    # string decodable
+    if not text and by_line:
+        pytest.skip(reason="Text mode and by_line mode are not supported together")
+
+    with servicer.intercept() as ctx:
+        queued_responses = deque(
+            [
+                api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"caf\xc3")]),
+                api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0),
+            ]
+        )
+
+        async def streamer(servicer, stream):
+            req: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
+            if req.file_descriptor != api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT or len(queued_responses) == 0:
+                await stream.send_message(
+                    api_pb2.RuntimeOutputBatch(exit_code=0),
+                )
+                return
+
+            await stream.send_message(queued_responses.popleft())
+
+        ctx.set_responder("ContainerExecGetOutput", streamer)
+        p: ContainerProcess[typing.Any] = makeprocess(client, text, by_line)  # type: ignore
+        chunks = list(p.stdout)
+        if text:
+            if by_line:
+                assert chunks == ["café"]  # buffer until newline or eof
+            else:
+                assert chunks == ["caf", "é"]  # buffer until decodable
+        else:
+            assert chunks == [b"caf\xc3", b"\xa9"]  # no buffering
