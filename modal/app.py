@@ -1070,8 +1070,9 @@ class _App:
             i6pn_enabled = i6pn or cluster_size is not None
 
             # TODO(claudia): Refactor this. This check is performed here due to experimental_options modification
-            if (isinstance(wrapped_cls, _PartialFunction) and
-            (wrapped_cls.flags & _PartialFunctionFlags.FLASH_WEB_INTERFACE)):
+            if isinstance(wrapped_cls, _PartialFunction) and (
+                wrapped_cls.flags & _PartialFunctionFlags.FLASH_WEB_INTERFACE
+            ):
                 verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options_))
 
             cls_func = _Function.from_local(
