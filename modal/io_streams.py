@@ -128,25 +128,20 @@ async def _sandbox_bytes_stream_from_server(
             raise
 
 
-class _ContainerBytesStreamReaderThroughServer(Generic[T]):
+class _ContainerPipeBytesStreamReaderThroughServer(Generic[T]):
     """
-    StreamReader implementation for container process stdout/stderr via server.
-
-    Uses a background consumer to prevent blocking the process and a buffer to
-    decouple production from consumption for PIPE streams. For STDOUT streams,
-    data is printed immediately and nothing is yielded.
+    StreamReader implementation for container process stdout/stderr via server
+    when stream type is PIPE.
     """
 
     def __init__(self, params: _StreamReaderThroughServerParams) -> None:
+        if params.stream_type != StreamType.PIPE:
+            raise ValueError("_ContainerPipeBytesStreamReaderThroughServer requires StreamType.PIPE")
         self._params = params
         self._stream: Optional[AsyncGenerator[bytes, None]] = None
         self._buffer: list[Optional[bytes]] = []
         self._last_index: int = 0
         self._consume_task = asyncio.create_task(self._consume())
-        # For StreamType.STDOUT, decode incrementally to handle split UTF-8 chars
-        self._stdout_decoder = None
-        if self._params.stream_type == StreamType.STDOUT:
-            self._stdout_decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
 
     @property
     def file_descriptor(self) -> int:
@@ -169,24 +164,14 @@ class _ContainerBytesStreamReaderThroughServer(Generic[T]):
                     self._params.deadline,
                 )
                 async for message, batch_index in iterator:
-                    if self._params.stream_type == StreamType.STDOUT and message is not None:
-                        text = self._stdout_decoder.decode(message, final=False)  # type: ignore[union-attr]
-                        if text:
-                            print(text, end="")
-                    elif self._params.stream_type == StreamType.PIPE:
-                        # Skip empty messages used for liveness
-                        if message == b"":
-                            continue
-                        self._buffer.append(message)
+                    # Skip empty messages used for liveness
+                    if message == b"":
+                        continue
+                    self._buffer.append(message)
                     if message is None:
-                        if self._params.stream_type == StreamType.STDOUT and self._stdout_decoder is not None:
-                            tail = self._stdout_decoder.decode(b"", final=True)
-                            if tail:
-                                print(tail, end="")
                         completed = True
-                        # Always append EOF sentinel for PIPE so consumer ends
-                        if self._params.stream_type == StreamType.PIPE:
-                            self._buffer.append(None)
+                        # Always append EOF sentinel so consumer ends
+                        self._buffer.append(None)
                         break
                     else:
                         self._last_index = batch_index
@@ -226,11 +211,6 @@ class _ContainerBytesStreamReaderThroughServer(Generic[T]):
         return self
 
     async def __anext__(self) -> T:
-        if self._params.stream_type == StreamType.STDOUT:
-            # Nothing to yield; background consumer prints directly.
-            raise StopAsyncIteration
-        if self._params.stream_type == StreamType.DEVNULL:
-            raise ValueError("__anext__ is not supported for a stream configured with StreamType.DEVNULL")
         if self._stream is None:
             self._stream = self._buffer_stream()
         return cast(T, await self._stream.__anext__())
@@ -238,6 +218,79 @@ class _ContainerBytesStreamReaderThroughServer(Generic[T]):
     async def aclose(self):
         if self._stream:
             await self._stream.aclose()
+
+
+class _ContainerStdoutTextStreamReaderThroughServer(Generic[T]):
+    """
+    StreamReader implementation for container process stdout/stderr via server
+    when stream type is STDOUT. Prints incrementally decoded UTF-8 to local stdout
+    and does not yield data.
+    """
+
+    def __init__(self, params: _StreamReaderThroughServerParams) -> None:
+        if params.stream_type != StreamType.STDOUT:
+            raise ValueError("_ContainerStdoutTextStreamReaderThroughServer requires StreamType.STDOUT")
+        self._params = params
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
+        self._consume_task = asyncio.create_task(self._consume())
+
+    @property
+    def file_descriptor(self) -> int:
+        return self._params.file_descriptor
+
+    async def _consume(self) -> None:
+        completed = False
+        retries_remaining = 10
+        last_index = 0
+        while not completed:
+            if self._params.deadline and time.monotonic() >= self._params.deadline:
+                break
+            try:
+                iterator = _container_process_logs_iterator(
+                    self._params.object_id,
+                    self._params.file_descriptor,
+                    self._params.client,
+                    last_index,
+                    self._params.deadline,
+                )
+                async for message, batch_index in iterator:
+                    if message is None:
+                        tail = self._decoder.decode(b"", final=True)
+                        if tail:
+                            print(tail, end="")
+                        completed = True
+                        break
+                    if message:
+                        text = self._decoder.decode(message, final=False)
+                        if text:
+                            print(text, end="")
+                    last_index = batch_index
+            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
+                        continue
+                    elif isinstance(exc, ClientClosed):
+                        break
+                logger.error(f"{self._params.object_id} stream read failure while consuming process output: {exc}")
+                raise exc
+
+    async def read(self) -> T:
+        # Nothing to return; output printed to stdout
+        return cast(T, "")
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self
+
+    async def __anext__(self) -> T:
+        raise StopAsyncIteration
+
+    async def aclose(self):
+        return
 
 
 class _SandboxTextStreamReaderThroughServer(Generic[T]):
@@ -281,7 +334,7 @@ class _ContainerTextStreamReaderThroughServer(Generic[T]):
     """Text stream reader for container process via server with incremental UTF-8 decoding."""
 
     def __init__(self, params: _StreamReaderThroughServerParams, by_line: bool) -> None:
-        self._bytes_reader = _ContainerBytesStreamReaderThroughServer[bytes](params)
+        self._bytes_reader = _ContainerPipeBytesStreamReaderThroughServer[bytes](params)
         self._by_line = by_line
         self._stream: Optional[AsyncGenerator[str, None]] = None
 
@@ -542,10 +595,18 @@ class _StreamReader(Generic[T]):
                     self._impl = _SandboxTextStreamReaderThroughServer(params, by_line)
                 else:
                     # container_process
-                    if text:
-                        self._impl = _ContainerTextStreamReaderThroughServer(params, by_line)
+                    if stream_type == StreamType.STDOUT:
+                        if not text:
+                            raise NotImplementedError(
+                                "STDOUT stream type is only supported for text mode when using server path."
+                            )
+                        self._impl = _ContainerStdoutTextStreamReaderThroughServer(params)
                     else:
-                        self._impl = _ContainerBytesStreamReaderThroughServer(params)
+                        # PIPE
+                        if text:
+                            self._impl = _ContainerTextStreamReaderThroughServer(params, by_line)
+                        else:
+                            self._impl = _ContainerPipeBytesStreamReaderThroughServer(params)
         else:
             # The only reason task_id is optional is because StreamReader is
             # also used for sandbox logs, which don't have a task ID available
