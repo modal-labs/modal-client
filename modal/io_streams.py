@@ -147,6 +147,10 @@ class _ContainerBytesStreamReaderThroughServer(Generic[T]):
         self._buffer: list[Optional[bytes]] = []
         self._last_index: int = 0
         self._consume_task = asyncio.create_task(self._consume())
+        # For StreamType.STDOUT, decode incrementally to handle split UTF-8 chars
+        self._stdout_decoder = None
+        if self._params.stream_type == StreamType.STDOUT:
+            self._stdout_decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
 
     @property
     def file_descriptor(self) -> int:
@@ -169,14 +173,20 @@ class _ContainerBytesStreamReaderThroughServer(Generic[T]):
                     self._params.deadline,
                 )
                 async for message, batch_index in iterator:
-                    if self._params.stream_type == StreamType.STDOUT and message:
-                        print(message.decode("utf-8"), end="")
+                    if self._params.stream_type == StreamType.STDOUT and message is not None:
+                        text = self._stdout_decoder.decode(message, final=False)  # type: ignore[union-attr]
+                        if text:
+                            print(text, end="")
                     elif self._params.stream_type == StreamType.PIPE:
                         # Skip empty messages used for liveness
                         if message == b"":
                             continue
                         self._buffer.append(message)
                     if message is None:
+                        if self._params.stream_type == StreamType.STDOUT and self._stdout_decoder is not None:
+                            tail = self._stdout_decoder.decode(b"", final=True)
+                            if tail:
+                                print(tail, end="")
                         completed = True
                         # Always append EOF sentinel for PIPE so consumer ends
                         if self._params.stream_type == StreamType.PIPE:
