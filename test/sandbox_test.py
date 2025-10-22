@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-
+import asyncio
 from collections import deque
 import hashlib
 import typing
@@ -15,7 +15,8 @@ from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
 
 from .conftest import FakeTaskCommandRouterClient
 from .supports.skip import skip_windows
-
+from modal._utils.async_utils import synchronizer
+from modal.container_process import _ContainerProcess, ContainerProcess
 skip_non_subprocess = skip_windows("Needs subprocess support")
 
 
@@ -691,13 +692,17 @@ def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
     assert pty_info.no_terminate_on_idle_stdin is True
 
 
+@synchronizer.wrap
+async def makeprocess(client, text, by_line):
+    return _ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+
+
 @pytest.mark.parametrize("text", [True, False])
 @pytest.mark.parametrize("by_line", [True, False])
+@pytest.mark.timeout(2)
 def test_sandbox_stdout_server_read_incremental_decode(servicer, client, by_line, text):
     if not text and by_line:
         pytest.skip(reason="Text mode and by_line mode are not supported together")
-
-    from modal.container_process import ContainerProcess
 
     with servicer.intercept() as ctx:
         queued_responses = deque([
@@ -705,12 +710,15 @@ def test_sandbox_stdout_server_read_incremental_decode(servicer, client, by_line
             api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0)
         ])
         async def streamer(servicer, stream):
-            if len(queued_responses):
-                await stream.send_message(
-                    queued_responses.popleft()
-                )
+            req: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
+            if req.file_descriptor != api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT or len(queued_responses) == 0:
+                await asyncio.sleep(0.1)
+
+            await stream.send_message(
+                queued_responses.popleft()
+            )
         ctx.set_responder("ContainerExecGetOutput", streamer)
-        p: ContainerProcess[typing.Any] = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+        p: ContainerProcess[typing.Any] = makeprocess(client, text, by_line)  # type: ignore
         res = p.stdout.read()
         if text:
             assert res == "café"
@@ -726,21 +734,21 @@ def test_sandbox_stdout_read_incremental_iter(servicer, client, by_line, text):
     if not text and by_line:
         pytest.skip(reason="Text mode and by_line mode are not supported together")
 
-    from modal.container_process import ContainerProcess
-
     with servicer.intercept() as ctx:
         queued_responses = deque([
             api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"caf\xc3")]),
             api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0)
         ])
         async def streamer(servicer, stream):
-            if len(queued_responses):
-                await stream.send_message(
-                    queued_responses.popleft()
-                )
-        ctx.set_responder("ContainerExecGetOutput", streamer)
-        p: ContainerProcess[typing.Any] = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+            req: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
+            if req.file_descriptor != api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT or len(queued_responses) == 0:
+                await asyncio.sleep(0.1)
 
+            await stream.send_message(
+                queued_responses.popleft()
+            )
+        ctx.set_responder("ContainerExecGetOutput", streamer)
+        p: ContainerProcess[typing.Any] = makeprocess(client, text, by_line)  # type: ignore
         chunks = list(p.stdout)
         if text:
             if by_line:
