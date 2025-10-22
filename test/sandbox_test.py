@@ -2,6 +2,7 @@
 
 from collections import deque
 import hashlib
+import typing
 import pytest
 import time
 from pathlib import Path
@@ -709,7 +710,7 @@ def test_sandbox_stdout_server_read_incremental_decode(servicer, client, by_line
                     queued_responses.popleft()
                 )
         ctx.set_responder("ContainerExecGetOutput", streamer)
-        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+        p: ContainerProcess[typing.Any] = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
         res = p.stdout.read()
         if text:
             assert res == "café"
@@ -738,7 +739,7 @@ def test_sandbox_stdout_read_incremental_iter(servicer, client, by_line, text):
                     queued_responses.popleft()
                 )
         ctx.set_responder("ContainerExecGetOutput", streamer)
-        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+        p: ContainerProcess[typing.Any] = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
 
         chunks = list(p.stdout)
         if text:

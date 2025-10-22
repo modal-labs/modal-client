@@ -287,15 +287,18 @@ class _StreamReaderThroughServer(Generic[T]):
             yield self._line_buffer
             self._line_buffer = b""
 
-    def _ensure_stream(self) -> Union[AsyncGenerator[bytes, None], AsyncGenerator[str, None]]:
+    def _ensure_stream(self) -> AsyncGenerator[T, None]:
         if not self._stream:
             if self._by_line:
+                # TODO: This is quite odd - it does line buffering in binary mode
+                # but we then always add the buffered text decoding on top of that.
+                # feels a bit upside down...
                 stream = self._get_logs_by_line()
             else:
                 stream = self._get_logs()
             if self._text:
                 stream = _decode_bytes_stream_to_str(stream)
-            self._stream = stream
+            self._stream = cast(AsyncGenerator[T, None], stream)
         return self._stream
 
     async def __anext__(self) -> T:
