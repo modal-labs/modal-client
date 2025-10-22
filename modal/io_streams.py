@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 async def _sandbox_logs_iterator(
     sandbox_id: str, file_descriptor: "api_pb2.FileDescriptor.ValueType", last_entry_id: str, client: _Client
-) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
+) -> AsyncGenerator[tuple[Optional[str], str], None]:
     req = api_pb2.SandboxGetLogsRequest(
         sandbox_id=sandbox_id,
         file_descriptor=file_descriptor,
@@ -44,7 +44,7 @@ async def _sandbox_logs_iterator(
         last_entry_id = log_batch.entry_id
 
         for message in log_batch.items:
-            yield (message.data.encode("utf-8"), last_entry_id)
+            yield (message.data, last_entry_id)
         if log_batch.eof:
             yield (None, last_entry_id)
             break
@@ -94,11 +94,10 @@ class _StreamReaderThroughServerParams:
     deadline: Optional[float]
 
 
-async def _sandbox_bytes_stream_from_server(
+async def _sandbox_text_stream_from_server(
     params: _StreamReaderThroughServerParams,
-) -> AsyncGenerator[bytes, None]:
-    """Stream raw bytes for sandbox logs from the server with retry semantics."""
-    # Always piped for sandbox
+) -> AsyncGenerator[str, None]:
+    """Stream text for sandbox logs from the server with retry semantics."""
 
     last_entry_id: str = ""
     retries_remaining = 10
@@ -108,7 +107,7 @@ async def _sandbox_bytes_stream_from_server(
             iterator = _sandbox_logs_iterator(params.object_id, params.file_descriptor, last_entry_id, params.client)
             async for message, entry_id in iterator:
                 last_entry_id = entry_id
-                if message == b"":
+                if message == "":
                     continue
                 if message is None:
                     completed = True
@@ -309,11 +308,22 @@ class _SandboxTextStreamReaderThroughServer(Generic[T]):
 
     async def __anext__(self) -> T:
         if self._stream is None:
-            bytes_stream = _sandbox_bytes_stream_from_server(self._params)
+            text_stream = _sandbox_text_stream_from_server(self._params)
             if self._by_line:
-                self._stream = _decode_bytes_stream_to_str(_stream_by_line(bytes_stream))
+                # Convert text lines to text with line buffering
+                async def _by_line_text() -> AsyncGenerator[str, None]:
+                    buffer = ""
+                    async for chunk in text_stream:
+                        buffer += chunk
+                        while "\n" in buffer:
+                            line, buffer = buffer.split("\n", 1)
+                            yield line + "\n"
+                    if buffer:
+                        yield buffer
+
+                self._stream = _by_line_text()
             else:
-                self._stream = _decode_bytes_stream_to_str(bytes_stream)
+                self._stream = text_stream
         return cast(T, await self._stream.__anext__())
 
     async def aclose(self):
