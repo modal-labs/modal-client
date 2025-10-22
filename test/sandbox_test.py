@@ -690,13 +690,11 @@ def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
     assert pty_info.no_terminate_on_idle_stdin is True
 
 
-#@pytest.mark.parametrize("text", [True, False])
-# @pytest.mark.parametrize("by_line", [True, False])
-def test_sandbox_stdout_incremental_decode(servicer, client):
-    # Reproduces what happens if output chunks are send without being individually
-    # string decodable
-    # if text and by_line:
-    #     pytest.skip(reason="Text mode and by_line mode are not supported together")
+@pytest.mark.parametrize("text", [True, False])
+@pytest.mark.parametrize("by_line", [True, False])
+def test_sandbox_stdout_server_read_incremental_decode(servicer, client, by_line, text):
+    if not text and by_line:
+        pytest.skip(reason="Text mode and by_line mode are not supported together")
 
     from modal.container_process import ContainerProcess
 
@@ -705,15 +703,96 @@ def test_sandbox_stdout_incremental_decode(servicer, client):
             api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"caf\xc3")]),
             api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0)
         ])
-
         async def streamer(servicer, stream):
-            await stream.send_message(
-                queued_responses.popleft()
-            )
-            await stream.send_message(
-                queued_responses.popleft()
-            )
-
+            if len(queued_responses):
+                await stream.send_message(
+                    queued_responses.popleft()
+                )
         ctx.set_responder("ContainerExecGetOutput", streamer)
-        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=True)
+        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
         p.stdout.read()
+
+
+@pytest.mark.parametrize("text", [True, False])
+@pytest.mark.parametrize("by_line", [True, False])
+def test_sandbox_stdout_read_incremental_decode(servicer, client, by_line, text):
+    # Reproduces what happens if output chunks are send without being individually
+    # string decodable
+    if not text and by_line:
+        pytest.skip(reason="Text mode and by_line mode are not supported together")
+
+    from modal.container_process import ContainerProcess
+
+    with servicer.intercept() as ctx:
+        queued_responses = deque([
+            api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"caf\xc3")]),
+            api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0)
+        ])
+        async def streamer(servicer, stream):
+            if len(queued_responses):
+                await stream.send_message(
+                    queued_responses.popleft()
+                )
+        ctx.set_responder("ContainerExecGetOutput", streamer)
+        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+        p.stdout.read()
+
+
+@pytest.mark.parametrize("text", [True, False])
+@pytest.mark.parametrize("by_line", [True, False])
+def test_sandbox_stdout_server_read_incremental_decode(servicer, client, by_line, text):
+    if not text and by_line:
+        pytest.skip(reason="Text mode and by_line mode are not supported together")
+
+    from modal.container_process import ContainerProcess
+
+    with servicer.intercept() as ctx:
+        queued_responses = deque([
+            api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"caf\xc3")]),
+            api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0)
+        ])
+        async def streamer(servicer, stream):
+            if len(queued_responses):
+                await stream.send_message(
+                    queued_responses.popleft()
+                )
+        ctx.set_responder("ContainerExecGetOutput", streamer)
+        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+        res = p.stdout.read()
+        if text:
+            assert res == "café"
+        else:
+            assert res == "café".encode("utf8")
+
+
+@pytest.mark.parametrize("text", [True, False])
+@pytest.mark.parametrize("by_line", [True, False])
+def test_sandbox_stdout_read_incremental_iter(servicer, client, by_line, text):
+    # Reproduces what happens if output chunks are send without being individually
+    # string decodable
+    if not text and by_line:
+        pytest.skip(reason="Text mode and by_line mode are not supported together")
+
+    from modal.container_process import ContainerProcess
+
+    with servicer.intercept() as ctx:
+        queued_responses = deque([
+            api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"caf\xc3")]),
+            api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0)
+        ])
+        async def streamer(servicer, stream):
+            if len(queued_responses):
+                await stream.send_message(
+                    queued_responses.popleft()
+                )
+        ctx.set_responder("ContainerExecGetOutput", streamer)
+        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+
+        chunks = list(p.stdout)
+        if text:
+            if by_line:
+                assert chunks == ["café"]  # buffer until newline or eof
+            else:
+                assert chunks == ["caf", "é"]  # buffer until decodable
+        else:
+            assert chunks == [b"caf\xc3", b"\xa9"] # no buffering

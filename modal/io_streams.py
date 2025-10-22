@@ -64,7 +64,6 @@ async def _container_process_logs_iterator(
         get_raw_bytes=True,
         last_batch_index=last_index,
     )
-
     stream = client.stub.ContainerExecGetOutput.unary_stream(req)
     while True:
         # Check deadline before attempting to receive the next batch
@@ -76,12 +75,13 @@ async def _container_process_logs_iterator(
             break
         except StopAsyncIteration:
             break
-        if batch.HasField("exit_code"):
-            print("Got exit code", batch.exit_code)
-            yield None, batch.batch_index
-            break
+
         for item in batch.items:
             yield item.message_bytes, batch.batch_index
+
+        if batch.HasField("exit_code"):
+            yield None, batch.batch_index
+            break
 
 
 T = TypeVar("T", str, bytes)
@@ -219,7 +219,7 @@ class _StreamReaderThroughServer(Generic[T]):
 
             yield (item, str(entry_id))
             if item is None:
-                break 
+                break
 
             entry_id += 1
 
@@ -317,10 +317,10 @@ async def _decode_bytes_stream_to_str(stream: AsyncGenerator[bytes, None]) -> As
     """
     decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
     async for item in stream:
-        print("repr", repr(item))
         text = decoder.decode(item, final=False)
         if text:
             yield text
+
     # Flush any buffered partial character at end-of-stream
     tail = decoder.decode(b"", final=True)
     if tail:
