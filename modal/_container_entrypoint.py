@@ -465,34 +465,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_def._experimental_group_size,
             )
 
-        from modal.experimental.flash import FlashManager, flash_process
-
-        # Identify all "enter" methods that need to run before we snapshot.
-        flash_managers: dict[int, FlashManager] = {}
         if service.user_cls_instance is not None and not is_auto_snapshot:
-            # TODO: Check for flash web_server and then add add customer flash enter method
-
-            flash_configs = [
-                partial_method.params.flash_config
-                for partial_method in _find_partial_methods_for_user_cls(
-                    type(service.user_cls_instance), _PartialFunctionFlags.FLASH_WEB_INTERFACE
-                ).values()
-                if partial_method.params.flash_config
-            ]
-            from modal.experimental import flash_forward
-
             pre_snapshot_methods = _find_callables_for_obj(
                 service.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
-
-            # TODO: Check more than one
-            processes = [p for p in vars(service.user_cls_instance).values() if isinstance(p, flash_process)]
-            assert len(processes) <= 1
-            process = processes[0] if processes else None
-
-            for flash_config in flash_configs:
-                flash_managers[flash_config.port] = flash_forward(flash_config.port, process=process)
 
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and initialization. Checkpointed containers run from this point onwards.
@@ -511,12 +488,35 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         sys.breakpointhook = breakpoint_wrapper
 
+        from modal.experimental.flash import FlashManager, flash_process
+
+        # Identify all "enter" methods that need to run before we snapshot.
+        flash_managers: dict[int, FlashManager] = {}
         # Identify the "enter" methods to run after resuming from a snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:
+            # TODO: Check for flash web_server and then add add customer flash enter method
+            flash_configs = [
+                partial_method.params.flash_config
+                for partial_method in _find_partial_methods_for_user_cls(
+                    type(service.user_cls_instance), _PartialFunctionFlags.FLASH_WEB_INTERFACE
+                ).values()
+                if partial_method.params.flash_config
+            ]
+            from modal.experimental import flash_forward
+
             post_snapshot_methods = _find_callables_for_obj(
                 service.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
+
+            # TODO: Check more than one
+            processes = [p for p in vars(service.user_cls_instance).values() if isinstance(p, flash_process)]
+            assert len(processes) <= 1
+            process = processes[0] if processes else None
+            print(f"{process=}")
+
+            for flash_config in flash_configs:
+                flash_managers[flash_config.port] = flash_forward(flash_config.port, process=process)
 
         with container_io_manager.handle_user_exception():
             finalized_functions = service.get_finalized_functions(function_def, container_io_manager)
