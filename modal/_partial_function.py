@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import (
     Any,
     Callable,
+    Literal,
     Optional,
     Union,
 )
@@ -47,6 +48,9 @@ class _PartialFunctionFlags(enum.IntFlag):
     CONCURRENT = 128
     CLUSTERED = 256  # Experimental: Clustered functions
 
+    # # Lifecycle method flags
+    FLASH_WEB_INTERFACE = 512
+
     @staticmethod
     def all() -> int:
         return ~_PartialFunctionFlags(0)
@@ -65,6 +69,12 @@ class _PartialFunctionFlags(enum.IntFlag):
 
 
 @dataclass
+class _FlashConfig:
+    port: int
+    region: Optional[Union[str, Literal[True]]]
+
+
+@dataclass
 class _PartialFunctionParams:
     webhook_config: Optional[api_pb2.WebhookConfig] = None
     is_generator: Optional[bool] = None
@@ -76,6 +86,7 @@ class _PartialFunctionParams:
     target_concurrent_inputs: Optional[int] = None
     build_timeout: Optional[int] = None
     rdma: Optional[bool] = None
+    flash_config: Optional[_FlashConfig] = None
 
     def update(self, other: "_PartialFunctionParams") -> None:
         """Update self with params set in other."""

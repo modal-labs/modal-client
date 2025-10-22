@@ -998,7 +998,6 @@ class _App:
                 wrapped_cls.registered = True
                 user_cls = wrapped_cls.user_cls
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options))
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
@@ -1052,9 +1051,29 @@ class _App:
                     "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
                 )
 
+            flash_configs = [
+                partial_method.params.flash_config
+                for partial_method in _find_partial_methods_for_user_cls(
+                    user_cls, _PartialFunctionFlags.FLASH_WEB_INTERFACE
+                ).values()
+                if partial_method.params.flash_config
+            ]
+            # TODO: Get the super set of regions
+            assert len(flash_configs) == 1
+            flash_config = flash_configs[0]
+
+            experimental_options_ = experimental_options or {}
+            experimental_options_["flash"] = flash_config.region
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
+
+            # TODO(claudia): Refactor this. This check is performed here due to experimental_options modification
+            if isinstance(wrapped_cls, _PartialFunction) and (
+                wrapped_cls.flags & _PartialFunctionFlags.FLASH_WEB_INTERFACE
+            ):
+                verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options_))
 
             cls_func = _Function.from_local(
                 info,
@@ -1089,7 +1108,7 @@ class _App:
                 cluster_size=cluster_size,
                 rdma=rdma,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
-                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                experimental_options={k: str(v) for k, v in experimental_options_.items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 restrict_output=_experimental_restrict_output,
