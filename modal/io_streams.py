@@ -91,7 +91,6 @@ class _StreamReaderThroughServerParams:
     file_descriptor: "api_pb2.FileDescriptor.ValueType"
     object_id: str
     client: _Client
-    stream_type: StreamType
     deadline: Optional[float]
 
 
@@ -99,8 +98,7 @@ async def _sandbox_bytes_stream_from_server(
     params: _StreamReaderThroughServerParams,
 ) -> AsyncGenerator[bytes, None]:
     """Stream raw bytes for sandbox logs from the server with retry semantics."""
-    if params.stream_type != StreamType.PIPE:
-        raise ValueError("Sandbox streams must be piped.")
+    # Always piped for sandbox
 
     last_entry_id: str = ""
     retries_remaining = 10
@@ -135,8 +133,6 @@ class _ContainerPipeBytesStreamReaderThroughServer(Generic[T]):
     """
 
     def __init__(self, params: _StreamReaderThroughServerParams) -> None:
-        if params.stream_type != StreamType.PIPE:
-            raise ValueError("_ContainerPipeBytesStreamReaderThroughServer requires StreamType.PIPE")
         self._params = params
         self._stream: Optional[AsyncGenerator[bytes, None]] = None
         self._buffer: list[Optional[bytes]] = []
@@ -148,8 +144,7 @@ class _ContainerPipeBytesStreamReaderThroughServer(Generic[T]):
         return self._params.file_descriptor
 
     async def _consume(self) -> None:
-        if self._params.stream_type == StreamType.DEVNULL:
-            return
+        # DEVNULL is handled by separate reader; this should not be used in that case
         completed = False
         retries_remaining = 10
         while not completed:
@@ -228,8 +223,6 @@ class _ContainerStdoutTextStreamReaderThroughServer(Generic[T]):
     """
 
     def __init__(self, params: _StreamReaderThroughServerParams) -> None:
-        if params.stream_type != StreamType.STDOUT:
-            raise ValueError("_ContainerStdoutTextStreamReaderThroughServer requires StreamType.STDOUT")
         self._params = params
         self._decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
         self._consume_task = asyncio.create_task(self._consume())
@@ -297,8 +290,6 @@ class _SandboxTextStreamReaderThroughServer(Generic[T]):
     """Text stream reader for sandbox logs via server with incremental UTF-8 decoding."""
 
     def __init__(self, params: _StreamReaderThroughServerParams, by_line: bool) -> None:
-        if params.stream_type != StreamType.PIPE:
-            raise ValueError("Sandbox streams must be piped.")
         self._params = params
         self._by_line = by_line
         self._stream: Optional[AsyncGenerator[str, None]] = None
@@ -583,7 +574,6 @@ class _StreamReader(Generic[T]):
                 file_descriptor=file_descriptor,
                 object_id=object_id,
                 client=client,
-                stream_type=stream_type,
                 deadline=deadline,
             )
             if stream_type == StreamType.DEVNULL:
