@@ -90,7 +90,6 @@ T = TypeVar("T", str, bytes)
 class _StreamReaderThroughServerParams:
     file_descriptor: "api_pb2.FileDescriptor.ValueType"
     object_id: str
-    object_type: Literal["sandbox", "container_process"]
     client: _Client
     stream_type: StreamType
     deadline: Optional[float]
@@ -100,7 +99,6 @@ async def _sandbox_bytes_stream_from_server(
     params: _StreamReaderThroughServerParams,
 ) -> AsyncGenerator[bytes, None]:
     """Stream raw bytes for sandbox logs from the server with retry semantics."""
-    assert params.object_type == "sandbox"
     if params.stream_type != StreamType.PIPE:
         raise ValueError("Sandbox streams must be piped.")
 
@@ -141,8 +139,6 @@ class _ContainerBytesStreamReaderThroughServer(Generic[T]):
 
     def __init__(self, params: _StreamReaderThroughServerParams) -> None:
         self._params = params
-        if self._params.object_type != "container_process":
-            raise ValueError("_ContainerBytesStreamReaderThroughServer requires object_type=container_process")
         self._stream: Optional[AsyncGenerator[bytes, None]] = None
         self._buffer: list[Optional[bytes]] = []
         self._last_index: int = 0
@@ -248,8 +244,6 @@ class _SandboxTextStreamReaderThroughServer(Generic[T]):
     """Text stream reader for sandbox logs via server with incremental UTF-8 decoding."""
 
     def __init__(self, params: _StreamReaderThroughServerParams, by_line: bool) -> None:
-        if params.object_type != "sandbox":
-            raise ValueError("_SandboxTextStreamReaderThroughServer requires object_type=sandbox")
         if params.stream_type != StreamType.PIPE:
             raise ValueError("Sandbox streams must be piped.")
         self._params = params
@@ -287,8 +281,6 @@ class _ContainerTextStreamReaderThroughServer(Generic[T]):
     """Text stream reader for container process via server with incremental UTF-8 decoding."""
 
     def __init__(self, params: _StreamReaderThroughServerParams, by_line: bool) -> None:
-        if params.object_type != "container_process":
-            raise ValueError("_ContainerTextStreamReaderThroughServer requires object_type=container_process")
         self._bytes_reader = _ContainerBytesStreamReaderThroughServer[bytes](params)
         self._by_line = by_line
         self._stream: Optional[AsyncGenerator[str, None]] = None
@@ -537,7 +529,6 @@ class _StreamReader(Generic[T]):
             params = _StreamReaderThroughServerParams(
                 file_descriptor=file_descriptor,
                 object_id=object_id,
-                object_type=object_type,
                 client=client,
                 stream_type=stream_type,
                 deadline=deadline,
