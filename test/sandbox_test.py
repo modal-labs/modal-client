@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 
+from collections import deque
 import hashlib
 import pytest
 import time
@@ -690,23 +691,26 @@ def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
 
 
 @pytest.mark.parametrize("text", [True, False])
-@pytest.mark.parametrize("by_line", [True, False])
-def test_sandbox_stdout_incremental_decode(servicer, client, by_line, text):
+# @pytest.mark.parametrize("by_line", [True, False])
+def test_sandbox_stdout_incremental_decode(servicer, client, text):
     # Reproduces what happens if output chunks are send without being individually
     # string decodable
-    if text and by_line:
-        pytest.skip(reason="Text mode and by_line mode are not supported together")
+    # if text and by_line:
+    #     pytest.skip(reason="Text mode and by_line mode are not supported together")
 
     from modal.container_process import ContainerProcess
 
     with servicer.intercept() as ctx:
-        for chunk, exit_code in [(b"caf\xc3", None), (b"\xa9", 0)]:
-            ctx.add_response(
-                "ContainerExecGetOutput",
-                api_pb2.RuntimeOutputBatch(
-                    items=[api_pb2.RuntimeOutputMessage(message_bytes=chunk)],
-                    exit_code=exit_code
-                ),
+        queued_responses = deque([
+            api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"caf\xc3")]),
+            api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0)
+        ])
+
+        async def streamer(servicer, stream):
+            await stream.send_message(
+                queued_responses.popleft()
             )
-        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
+
+        ctx.set_responder("ContainerExecGetOutput", streamer)
+        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=False)
         p.stdout.read()

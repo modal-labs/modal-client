@@ -77,6 +77,7 @@ async def _container_process_logs_iterator(
         except StopAsyncIteration:
             break
         if batch.HasField("exit_code"):
+            print("Got exit code", batch.exit_code)
             yield None, batch.batch_index
             break
         for item in batch.items:
@@ -171,6 +172,7 @@ class _StreamReaderThroughServer(Generic[T]):
                 )
                 async for message, batch_index in iterator:
                     if self._stream_type == StreamType.STDOUT and message:
+                        # TODO: rearchitect this, since these bytes aren't necessarily decodable
                         print(message.decode("utf-8"), end="")
                     elif self._stream_type == StreamType.PIPE:
                         container_process_buffer.append(message)
@@ -315,6 +317,7 @@ async def _decode_bytes_stream_to_str(stream: AsyncGenerator[bytes, None]) -> As
     """
     decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
     async for item in stream:
+        print("repr", repr(item))
         text = decoder.decode(item, final=False)
         if text:
             yield text
