@@ -508,16 +508,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Identify the "enter" methods to run after resuming from a snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:
-            for flash_manager in flash_managers.values():
-                flash_manager.stop()
-
             post_snapshot_methods = _find_callables_for_obj(
                 service.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
-
-            for flash_manager in flash_managers.values():
-                flash_manager.close()
 
         with container_io_manager.handle_user_exception():
             finalized_functions = service.get_finalized_functions(function_def, container_io_manager)
@@ -560,8 +554,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     # Identify "exit" methods and run them.
                     # want to make sure this is called even if the lifespan manager fails
                     if service.user_cls_instance is not None and not is_auto_snapshot:
+                        for flash_manager in flash_managers.values():
+                            flash_manager.stop()
                         exit_methods = _find_callables_for_obj(service.user_cls_instance, _PartialFunctionFlags.EXIT)
                         call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
+
+                        for flash_manager in flash_managers.values():
+                            flash_manager.close()
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
                 # commit errors.
