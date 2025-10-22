@@ -119,7 +119,6 @@ def test_volume_commit(client, servicer, skip_reload):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO(dflemstr) this test has started flaking at a high rate recently")
 @pytest.mark.parametrize("version", VERSIONS)
 @pytest.mark.parametrize("file_contents_size", [100, 8 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024 + 4711])
 async def test_volume_get(servicer, client, tmp_path, version, file_contents_size):
