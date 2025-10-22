@@ -716,7 +716,8 @@ def test_sandbox_stdout_server_read_incremental_decode(servicer, client, by_line
         async def streamer(servicer, stream):
             req: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
             if req.file_descriptor != api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT or len(queued_responses) == 0:
-                await asyncio.sleep(0.1)
+                await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0),)
+                return
 
             await stream.send_message(queued_responses.popleft())
 
@@ -748,7 +749,8 @@ def test_sandbox_stdout_read_incremental_iter(servicer, client, by_line, text):
         async def streamer(servicer, stream):
             req: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
             if req.file_descriptor != api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT or len(queued_responses) == 0:
-                await asyncio.sleep(0.1)
+                await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0),)
+                return
 
             await stream.send_message(queued_responses.popleft())
 
