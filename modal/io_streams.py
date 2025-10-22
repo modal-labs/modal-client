@@ -133,13 +133,6 @@ class _StreamReaderThroughServer(Generic[T]):
             raise ValueError("Sandbox streams must be piped.")
         self._stream_type = stream_type
 
-        if self._object_type == "container_process":
-            # Container process streams need to be consumed as they are produced,
-            # otherwise the process will block. Use a buffer to store the stream
-            # until the client consumes it.
-            self._container_process_buffer: list[Optional[bytes]] = []
-            self._consume_container_process_task = asyncio.create_task(self._consume_container_process_stream())
-
     @property
     def file_descriptor(self) -> int:
         """Possible values are `1` for stdout and `2` for stderr."""
@@ -164,7 +157,7 @@ class _StreamReaderThroughServer(Generic[T]):
         else:
             return cast(T, data_bytes)
 
-    async def _consume_container_process_stream(self):
+    async def _consume_container_process_stream(self, container_process_buffer):
         """Consume the container process stream and store messages in the buffer."""
         if self._stream_type == StreamType.DEVNULL:
             return
@@ -183,7 +176,7 @@ class _StreamReaderThroughServer(Generic[T]):
                     if self._stream_type == StreamType.STDOUT and message:
                         print(message.decode("utf-8"), end="")
                     elif self._stream_type == StreamType.PIPE:
-                        self._container_process_buffer.append(message)
+                        container_process_buffer.append(message)
 
                     if message is None:
                         completed = True
@@ -208,20 +201,26 @@ class _StreamReaderThroughServer(Generic[T]):
 
     async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
         """Streams the container process buffer to the reader."""
+        # Container process streams need to be consumed as they are produced,
+        # otherwise the process will block. Use a buffer to store the stream
+        # until the client consumes it.
+        container_process_buffer: list[Optional[bytes]] = []  # TODO: change this to an asyncio.Queue
+        consume_container_process_task = asyncio.create_task(self._consume_container_process_stream(container_process_buffer))
+
         entry_id = 0
         if self._last_entry_id:
             entry_id = int(self._last_entry_id) + 1
 
         while True:
-            if entry_id >= len(self._container_process_buffer):
+            if entry_id >= len(container_process_buffer):
                 await asyncio.sleep(0.1)
                 continue
 
-            item = self._container_process_buffer[entry_id]
+            item = container_process_buffer[entry_id]
 
             yield (item, str(entry_id))
             if item is None:
-                break
+                break 
 
             entry_id += 1
 
