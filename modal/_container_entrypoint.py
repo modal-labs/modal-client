@@ -494,7 +494,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         flash_managers: dict[int, FlashManager] = {}
         # Identify the "enter" methods to run after resuming from a snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:
-            # TODO: Check for flash web_server and then add add customer flash enter method
             flash_configs = [
                 partial_method.params.flash_config
                 for partial_method in _find_partial_methods_for_user_cls(
