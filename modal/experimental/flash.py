@@ -7,6 +7,7 @@ import sys
 import time
 import traceback
 from collections import defaultdict
+from subprocess import Popen
 from typing import Any, Literal, Optional, Union
 from urllib.parse import urlparse
 
@@ -645,3 +646,7 @@ def _flash_web_server(port: int, *, region: Optional[Union[str, Literal[True]]] 
 
 
 flash_web_server = synchronize_api(_flash_web_server, target_module=__name__)
+
+
+class flash_process(Popen):
+    pass
