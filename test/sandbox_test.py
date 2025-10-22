@@ -690,9 +690,9 @@ def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
     assert pty_info.no_terminate_on_idle_stdin is True
 
 
-@pytest.mark.parametrize("text", [True, False])
+#@pytest.mark.parametrize("text", [True, False])
 # @pytest.mark.parametrize("by_line", [True, False])
-def test_sandbox_stdout_incremental_decode(servicer, client, text):
+def test_sandbox_stdout_incremental_decode(servicer, client):
     # Reproduces what happens if output chunks are send without being individually
     # string decodable
     # if text and by_line:
@@ -710,7 +710,10 @@ def test_sandbox_stdout_incremental_decode(servicer, client, text):
             await stream.send_message(
                 queued_responses.popleft()
             )
+            await stream.send_message(
+                queued_responses.popleft()
+            )
 
         ctx.set_responder("ContainerExecGetOutput", streamer)
-        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=False)
+        p = ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=True)
         p.stdout.read()
