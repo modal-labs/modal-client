@@ -2461,6 +2461,7 @@ message ProxyAddIpResponse {
 message ProxyCreateRequest {
   string name = 1;
   string environment_name = 2;
+  string region = 3;
 }
 
 message ProxyCreateResponse {
