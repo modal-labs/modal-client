@@ -719,6 +719,7 @@ class _App:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
+        nonpreemptible: bool = False,  # Whether to run the function on an on-demand instance (spot is the default).
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this function access to other Modal resources
@@ -860,11 +861,14 @@ class _App:
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
+            if gpu and nonpreemptible:
+                raise InvalidError("Non-preemptible option is not currently available for GPU workloads")
+
             scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
-            if region:
+            if region or nonpreemptible:
                 if scheduler_placement:
-                    raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
-                scheduler_placement = SchedulerPlacement(region=region)
+                    raise InvalidError("Cannot use `_experimental_scheduler_placement` with other scheduling options")
+                scheduler_placement = SchedulerPlacement(nonpreemptible=nonpreemptible, region=region)
 
             function = _Function.from_local(
                 info,
@@ -950,6 +954,7 @@ class _App:
         startup_timeout: Optional[int] = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
+        nonpreemptible: bool = False,  # Whether to run the function on an on-demand instance (spot is the default).
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this class access to other Modal resources
@@ -979,11 +984,15 @@ class _App:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
+        if gpu and nonpreemptible:
+            raise InvalidError("Non-preemptible option is not currently available for GPU workloads")
+
         scheduler_placement = _experimental_scheduler_placement
-        if region:
+        if region or nonpreemptible:
             if scheduler_placement:
-                raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
-            scheduler_placement = SchedulerPlacement(region=region)
+                raise InvalidError("Cannot use `_experimental_scheduler_placement` with other scheduling options")
+
+            scheduler_placement = SchedulerPlacement(nonpreemptible=nonpreemptible, region=region)
 
         if allow_concurrent_inputs is not None:
             deprecation_warning(
