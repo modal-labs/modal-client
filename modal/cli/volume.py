@@ -118,9 +118,9 @@ async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     rows = []
     for obj in volumes:
         info = await obj.info()
-        rows.append((info.name, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by))
+        rows.append((info.name, obj.object_id, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by))
 
-    display_table(["Name", "Created at", "Created by"], rows, json)
+    display_table(["Name", "ID", "Created at", "Created by"], rows, json)
 
 
 @volume_cli.command(
