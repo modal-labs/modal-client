@@ -552,7 +552,7 @@ class _Mount(_Object, type_prefix="mo"):
             raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.source_description} timed out")
 
         # Upload files, or check if they already exist.
-        n_concurrent_uploads = 512
+        n_concurrent_uploads = 64
         files: list[api_pb2.MountFile] = []
         async with aclosing(
             async_map(_Mount._get_files(self._entries), _put_file, concurrency=n_concurrent_uploads)
