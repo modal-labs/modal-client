@@ -2988,6 +2988,7 @@ message SchedulerPlacement {
   // - Allow specifying list of zones, cloud, fallback and alternative
   //   GPU types.
 
+  bool nonpreemptible = 6; 
   repeated string regions = 4;
   // TODO(irfansharif): Make these two repeated.
   optional string _zone = 2; // admin-only
