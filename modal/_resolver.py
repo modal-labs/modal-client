@@ -8,6 +8,7 @@ from asyncio import Future
 from collections.abc import Hashable
 from typing import TYPE_CHECKING, Optional
 
+import modal._object
 from modal._traceback import suppress_tb_frames
 from modal_proto import api_pb2
 
@@ -16,10 +17,6 @@ from ._utils.async_utils import TaskContext
 
 if TYPE_CHECKING:
     from rich.tree import Tree
-
-    import modal._object
-
-    from ._load_context import LoadContext
 
 
 class StatusRow:
