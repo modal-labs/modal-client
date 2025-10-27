@@ -1265,7 +1265,7 @@ async def _put_missing_blocks(
         file_progress.pending_blocks.add(missing_block.block_index)
         task_progress_cb = functools.partial(progress_cb, task_id=file_progress.task_id)
 
-        @retry(n_attempts=5, base_delay=0.5, timeout=None)
+        @retry(n_attempts=11, base_delay=0.5, timeout=None)
         async def put_missing_block_attempt(payload: BytesIOSegmentPayload) -> bytes:
             with payload.reset_on_error(subtract_progress=True):
                 async with ClientSessionRegistry.get_session().put(
