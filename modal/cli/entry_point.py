@@ -36,6 +36,7 @@ entrypoint_cli_typer = typer.Typer(
     no_args_is_help=False,
     add_completion=False,
     rich_markup_mode="markdown",
+    context_settings={"help_option_names": ["-h", "--help"]},
     help="""
     Modal is the fastest way to run code in the cloud.
 
