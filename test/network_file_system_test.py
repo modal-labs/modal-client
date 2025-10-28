@@ -142,8 +142,8 @@ def test_nfs_ephemeral(servicer, client, tmp_path):
     assert servicer.n_nfs_heartbeats == 2
 
 
-def test_nfs_lazy_hydration_from_name(set_env_client):
-    nfs = modal.NetworkFileSystem.from_name("nfs", create_if_missing=True)
+def test_nfs_lazy_hydration_from_name(client):
+    nfs = modal.NetworkFileSystem.from_name("nfs", create_if_missing=True, client=client)
     bio = BytesIO(b"content")
     nfs.write_file("blah", bio)
 
