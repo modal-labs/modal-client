@@ -1434,3 +1434,32 @@ async def test_prevent_cancellation_abortion():
     assert await t2 == 1
     with pytest.raises(asyncio.CancelledError):
         await t
+
+
+@pytest.mark.asyncio
+async def test__create_connection_success():
+    done = asyncio.Event()
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        try:
+            writer.close()
+            await writer.wait_closed()
+        finally:
+            done.set()
+
+    server = await asyncio.start_server(handle, "127.0.0.1")
+    port = server.sockets[0].getsockname()[1]
+    try:
+        async with async_utils._create_connection("127.0.0.1", port, timeout=0.1):
+            pass
+        await asyncio.wait_for(done.wait(), timeout=0.1)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test__create_connection_failure():
+    with pytest.raises(ConnectionRefusedError):
+        async with async_utils._create_connection("127.0.0.1", 58132, timeout=0.01):
+            pass

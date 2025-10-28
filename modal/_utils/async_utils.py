@@ -878,3 +878,16 @@ async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
                 logger.exception(f"Error closing async generator: {e}")
         if first_exception is not None:
             raise first_exception
+
+
+@asynccontextmanager
+async def _create_connection(host: str, port: int, timeout: float):
+    """An async version of socket.create_connection"""
+    writer = None
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+        yield
+    finally:
+        if writer is not None:
+            writer.close()
+            await writer.wait_closed()
