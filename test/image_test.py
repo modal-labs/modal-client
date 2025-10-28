@@ -557,6 +557,31 @@ def test_run_commands(builder_version, servicer, client):
                 assert layers[0].dockerfile_commands[i] == f"RUN {cmd}"
 
 
+def test_run_commands_with_volume(servicer, client):
+    vol = modal.Volume.from_name("xyz", create_if_missing=True)
+
+    app = modal.App()
+    image = modal.Image.debian_slim().run_commands("echo 'Hello Modal'", volumes={"/root/foo": vol})
+
+    with servicer.intercept():
+        with app.run(client=client):
+            image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
+
+    volume_mount = layers[0].volume_mounts[0]
+    assert volume_mount.mount_path == "/root/foo"
+    assert volume_mount.volume_id == vol.object_id
+
+
+def test_run_commands_with_cloud_bucket_mnt_error(servicer, client):
+    secret = modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "1", "AWS_SECRET_ACCESS_KEY": "2"})
+    cld_bckt_mnt = modal.CloudBucketMount(bucket_name="foo", secret=secret)
+
+    msg = "Image.run_commands only supports volumes that are modal.Volume"
+    with pytest.raises(InvalidError, match=msg):
+        modal.Image.debian_slim().run_commands("echo 'hello'", volumes={"/root/foo": cld_bckt_mnt})  # type: ignore
+
+
 def test_dockerhub_install(builder_version, servicer, client):
     app = App(image=Image.from_registry("gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"]))
     app.function()(dummy)
