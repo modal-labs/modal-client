@@ -888,6 +888,7 @@ async def _create_connection(host: str, port: int, timeout: float):
         _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
         yield
     finally:
-        if writer is not None:
-            writer.close()
-            await writer.wait_closed()
+        if writer is None:
+            return
+        writer.close()
+        await writer.wait_closed()
