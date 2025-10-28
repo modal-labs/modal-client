@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2022
+import json
+
 import typer
 
 from modal._output import make_console
@@ -25,7 +27,7 @@ def show(redact: bool = typer.Option(True, help="Redact the `token_secret` value
         config_dict["token_secret"] = "***"
 
     console = make_console()
-    console.print(config_dict)
+    console.print_json(json.dumps(config_dict))
 
 
 SET_DEFAULT_ENV_HELP = """Set the default Modal environment for the active profile
