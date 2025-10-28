@@ -72,5 +72,5 @@ def test_validate_only_modal_volumes():
         "/my/path": _Volume.from_name("foo", create_if_missing=False),
         "/dev/path": _CloudBucketMount(bucket_name="hello_world"),
     }
-    with pytest.raises(InvalidError, match="Image.run_command only supports volumes that are modal.Volume"):
-        validate_only_modal_volumes(invalid_volumes, "Image.run_command")  # type: ignore
+    with pytest.raises(InvalidError, match="Image.run_commands only supports volumes that are modal.Volume"):
+        validate_only_modal_volumes(invalid_volumes, "Image.run_commands")  # type: ignore
