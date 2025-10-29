@@ -75,8 +75,15 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
     def decorator(fn):
         @functools.wraps(fn)
         async def f_wrapped(*args, **kwargs):
+            from ..config import config
+
+            if config_attempts := config.get("retry_attempts"):
+                n_attempts_ = config_attempts
+            else:
+                n_attempts_ = n_attempts
+
             delay = base_delay
-            for i in range(n_attempts):
+            for i in range(n_attempts_):
                 t0 = time.time()
                 try:
                     return await asyncio.wait_for(fn(*args, **kwargs), timeout=timeout)
@@ -84,12 +91,12 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
                     logger.debug(f"Function {fn} was cancelled")
                     raise
                 except Exception as e:
-                    if i >= n_attempts - 1:
+                    if i >= n_attempts_ - 1:
                         raise
                     logger.debug(
                         f"Failed invoking function {fn}: {e}"
                         f" (took {time.time() - t0}s, sleeping {delay}s"
-                        f" and trying {n_attempts - i - 1} more times)"
+                        f" and trying {n_attempts_ - i - 1} more times)"
                     )
                 await asyncio.sleep(delay)
                 delay *= delay_factor

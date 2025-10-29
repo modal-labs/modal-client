@@ -258,6 +258,8 @@ _SETTINGS = {
         transform=lambda s: _check_value(["pickle", "cbor"])(s.lower()),
     ),
     "dev_suffix": _Setting("", transform=_enforce_suffix_rules),
+    # Configures retry attempts to speed up tests.
+    "retry_attempts": _Setting(None, transform=lambda x: int(x) if x else None),
 }
 
 
