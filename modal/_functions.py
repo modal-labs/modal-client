@@ -1150,7 +1150,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Pass a *reference* to the App's LoadContext - this is important since the App is
         # the only way to infer a LoadContext for an `@app.function`, and the App doesn't
         # get its client until *after* the Function is created.
-        load_context = app._load_context if app else LoadContext.empty()
+        load_context = app._root_load_context if app else LoadContext.empty()
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps, load_context_overrides=load_context)
 
         obj._raw_f = info.raw_f
@@ -1288,7 +1288,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             return []
 
         fun: _Function = _Function._from_loader(
-            _load, "Function(parametrized)", hydrate_lazily=True, deps=_deps, load_context_overrides=self._load_context
+            _load,
+            "Function(parametrized)",
+            hydrate_lazily=True,
+            deps=_deps,
+            load_context_overrides=self._load_context_overrides,
         )
 
         fun._info = self._info

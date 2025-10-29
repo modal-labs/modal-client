@@ -370,7 +370,11 @@ class _Volume(_Object, type_prefix="vo"):
             new_volume._read_only = True
 
         obj = _Volume._from_loader(
-            _load, "Volume()", hydrate_lazily=True, deps=lambda: [self], load_context_overrides=self._load_context
+            _load,
+            "Volume()",
+            hydrate_lazily=True,
+            deps=lambda: [self],
+            load_context_overrides=self._load_context_overrides,
         )
         return obj
 

@@ -917,7 +917,7 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError("App has not been initialized yet. Use the content manager `app.run()` or `App.lookup`")
 
         resolver = Resolver()
-        await resolver.load(self, app._load_context)
+        await resolver.load(self, app._root_load_context)
         return self
 
     def pip_install(

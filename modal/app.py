@@ -177,7 +177,10 @@ class _App:
     _app_id: Optional[str]  # Kept after app finishes
     _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
-    _load_context: LoadContext  # Metadata for loading objects within this app
+
+    # Metadata for loading objects within this app
+    # passed by reference to functions and classes so it can be updated by run()/deploy()
+    _root_load_context: LoadContext
 
     @property
     def _local_state(self) -> _LocalAppState:
@@ -240,7 +243,7 @@ class _App:
         # Client is special - needed to be set just before the app is "hydrated" or running at the latest
         # Guaranteed to be set for running apps, but also needed to actually *hydrate* the app and make it running
         self._client = None
-        self._load_context = LoadContext()  # Initialize empty LoadContext
+        self._root_load_context = LoadContext.empty()
 
         # Register this app. This is used to look up the app in the container, when we can't get it from the function
         _App._all_apps.setdefault(self._name, []).append(self)

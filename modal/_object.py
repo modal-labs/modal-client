@@ -50,7 +50,7 @@ class _Object:
     _hydrate_lazily: bool
     _deps: Optional[Callable[..., Sequence["_Object"]]]
     _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
-    _load_context: LoadContext
+    _load_context_overrides: LoadContext
 
     # For hydrated objects
     _object_id: Optional[str]
@@ -83,7 +83,8 @@ class _Object:
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
         name: Optional[str] = None,
-        load_context: Optional[LoadContext] = None,
+        *,
+        load_context_overrides: Optional[LoadContext] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -93,7 +94,9 @@ class _Object:
         self._hydrate_lazily = hydrate_lazily
         self._deps = deps
         self._deduplication_key = deduplication_key
-        self._load_context = load_context if load_context is not None else LoadContext.empty()
+        self._load_context_overrides = (
+            load_context_overrides if load_context_overrides is not None else LoadContext.empty()
+        )
 
         self._object_id = None
         self._client = None
@@ -189,7 +192,15 @@ class _Object:
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
         obj._init(
-            rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key, name, load_context_overrides
+            rep,
+            load,
+            is_another_app,
+            preload,
+            hydrate_lazily,
+            deps,
+            deduplication_key,
+            name,
+            load_context_overrides=load_context_overrides,
         )
         return obj
 

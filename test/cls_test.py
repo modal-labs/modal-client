@@ -1495,11 +1495,11 @@ def test_cls_load_context_transfers_to_methods():
     c = C(p=1)
     d = C(p=2)
     t = synchronizer._translate_in
-    # the *instance* of LoadContext from the Cls should be the same as the child
-    expected_load_context = t(C)._load_context  # type: ignore
-    assert t(c.some_method)._load_context is expected_load_context  # type: ignore
-    assert t(c.some_method)._load_context is t(d.some_method)._load_context  # type: ignore
-    assert t(C.with_options(gpu="A100")().some_method)._load_context is expected_load_context  # type: ignore
+    # the *instance* of load_context_overrides from the Cls should be the same as the child
+    expected_load_context = t(C)._load_context_overrides  # type: ignore
+    assert t(c.some_method)._load_context_overrides is expected_load_context  # type: ignore
+    assert t(c.some_method)._load_context_overrides is t(d.some_method)._load_context_overrides  # type: ignore
+    assert t(C.with_options(gpu="A100")().some_method)._load_context_overrides is expected_load_context  # type: ignore
 
 
 def test_cls_load_context_transfers_to_methods_local():
@@ -1515,11 +1515,11 @@ def test_cls_load_context_transfers_to_methods_local():
 
     t = synchronizer._translate_in
     c = C(p="1")
-    assert t(c.some_method)._load_context is t(C)._load_context  # type: ignore
+    assert t(c.some_method)._load_context_overrides is t(C)._load_context_overrides  # type: ignore
 
     # the *instance* of LoadContext from the Cls should be the same as the child
     d = C(p="2")
-    assert t(c.some_method)._load_context is t(d.some_method)._load_context  # type: ignore
+    assert t(c.some_method)._load_context_overrides is t(d.some_method)._load_context_overrides  # type: ignore
 
 
 def test_with_options_is_lazy(client):

@@ -157,13 +157,12 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
 
     # Bound methods should *reference* their parent Cls's LoadContext
     # so that it can be modified in place on the parent and be reflected in the method
-    print("METHOD METADATA", method_name, cls._load_context)
     fun = _Function._from_loader(
         _load,
         rep,
         deps=_deps,
         hydrate_lazily=True,
-        load_context_overrides=cls._load_context,
+        load_context_overrides=cls._load_context_overrides,
     )
     if service_function.is_hydrated:
         # Eager hydration (skip load) if the instance service function is already loaded
@@ -443,7 +442,7 @@ class _Obj:
             rep=f"Method({self._cls._name}.{k})",
             deps=lambda: [self._cls],
             hydrate_lazily=True,
-            load_context_overrides=self._cls._load_context,
+            load_context_overrides=self._cls._load_context_overrides,
         )
 
 
@@ -490,7 +489,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._callables = other._callables
         self._name = other._name
         self._method_metadata = other._method_metadata
-        self._load_context = other._load_context
+        self._load_context_overrides = other._load_context_overrides
 
     def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
@@ -613,7 +612,7 @@ More information on class parameterization can be found here: https://modal.com/
         # Pass a *reference* to the App's LoadContext - this is important since the App is
         # the only way to infer a LoadContext for an `@app.cls`, and the App doesn't
         # get its client until *after* the Cls is created.
-        cls: _Cls = _Cls._from_loader(_load, rep, deps=_deps, load_context_overrides=app._load_context)
+        cls: _Cls = _Cls._from_loader(_load, rep, deps=_deps, load_context_overrides=app._root_load_context)
         cls._app = app
         cls._user_cls = user_cls
         cls._class_service_function = class_service_function
@@ -778,7 +777,7 @@ More information on class parameterization can be found here: https://modal.com/
             rep=f"{self._name}.with_options(...)",
             is_another_app=True,
             deps=_deps,
-            load_context_overrides=self._load_context,
+            load_context_overrides=self._load_context_overrides,
             hydrate_lazily=True,
         )
         cls._initialize_from_other(self)
@@ -838,7 +837,7 @@ More information on class parameterization can be found here: https://modal.com/
             rep=f"{self._name}.with_concurrency(...)",
             is_another_app=True,
             deps=_deps,
-            load_context_overrides=self._load_context,
+            load_context_overrides=self._load_context_overrides,
             hydrate_lazily=True,
         )
         cls._initialize_from_other(self)
@@ -872,7 +871,7 @@ More information on class parameterization can be found here: https://modal.com/
             rep=f"{self._name}.with_concurrency(...)",
             is_another_app=True,
             deps=_deps,
-            load_context_overrides=self._load_context,
+            load_context_overrides=self._load_context_overrides,
             hydrate_lazily=True,
         )
         cls._initialize_from_other(self)

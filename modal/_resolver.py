@@ -80,7 +80,7 @@ class Resolver:
         self, obj: "modal._object._Object", parent_load_context: "LoadContext", existing_object_id: Optional[str]
     ):
         if obj._preload is not None:
-            load_context = obj._load_context.merged_with(parent_load_context)
+            load_context = obj._load_context_overrides.merged_with(parent_load_context)
             await obj._preload(obj, self, load_context, existing_object_id)
 
     async def load(
@@ -120,7 +120,7 @@ class Resolver:
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
-                load_context = await obj._load_context.merged_with(parent_load_context).apply_defaults()
+                load_context = await obj._load_context_overrides.merged_with(parent_load_context).apply_defaults()
 
                 # TODO(erikbern): do we need existing_object_id for those?
                 await TaskContext.gather(*[self.load(dep, load_context) for dep in obj.deps()])
