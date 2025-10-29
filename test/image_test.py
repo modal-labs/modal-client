@@ -1603,7 +1603,7 @@ def force_2023_12(modal_config):
 @skip_windows("Different hash values for context file paths")
 def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     def get_hash(img: Image) -> str:
-        app = App(image=img)
+        app = App(image=img, include_source=False)
         app.function()(dummy)
         with app.run(client=client):
             layers = get_image_layers(img.object_id, servicer)
@@ -1671,7 +1671,7 @@ def force_2024_04(modal_config):
 @skip_windows("Different hash values for context file paths")
 def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     def get_hash(img: Image) -> str:
-        app = App(image=img)
+        app = App(image=img, include_source=False)
         app.function()(dummy)
         with app.run(client=client):
             layers = get_image_layers(app.image.object_id, servicer)
@@ -1748,7 +1748,7 @@ def force_2024_10(modal_config):
 @skip_windows("Different hash values for context file paths")
 def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
     def get_hash(img: Image) -> str:
-        app = App(image=img)
+        app = App(image=img, include_source=False)
         app.function()(dummy)
         with app.run(client=client):
             layers = get_image_layers(app.image.object_id, servicer)
@@ -1825,7 +1825,7 @@ def force_2025_06(modal_config):
 @skip_windows("Different hash values for context file paths")
 def test_image_stability_on_2025_06(force_2025_06, servicer, client, test_dir):
     def get_hash(img: Image) -> str:
-        app = App(image=img)
+        app = App(image=img, include_source=False)
         app.function()(dummy)
         with app.run(client=client):
             layers = get_image_layers(app.image.object_id, servicer)
