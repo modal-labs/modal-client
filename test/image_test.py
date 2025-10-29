@@ -42,10 +42,6 @@ SUPPORTED_IMAGE_BUILDER_VERSIONS = [
 ]
 
 
-def dummy() -> None:
-    return None
-
-
 def test_supported_python_series():
     for builder_version in get_args(ImageBuilderVersion):
         assert SUPPORTED_PYTHON_SERIES[builder_version] <= list(PYTHON_STANDALONE_VERSIONS)
@@ -146,8 +142,8 @@ def test_image_base(builder_version, servicer, client, test_dir):
     ]
     for meth, args in constructors:
         image = meth(*args)  # type: ignore
-        app.function(image=image)(dummy)
         with app.run(client=client):
+            image.build(app)
             commands = get_all_dockerfile_commands(image.object_id, servicer)
             if builder_version <= "2024.10":
                 assert "COPY /modal_requirements.txt /modal_requirements.txt" in commands
@@ -172,19 +168,19 @@ def test_python_version(builder_version, servicer, client, python_version):
 
     app = App()
     image = Image.debian_slim() if python_version is None else Image.debian_slim(python_version)
-    app.function(image=image)(dummy)
     expected_dockerhub_python = _dockerhub_python_version(builder_version, expected_python)
     expected_dockerhub_debian = _base_image_config("debian", builder_version)
     assert expected_dockerhub_python.startswith(expected_python)
     with app.run(client=client):
+        image.build(app)
         commands = get_all_dockerfile_commands(image.object_id, servicer)
         assert re.match(rf"FROM python:{expected_dockerhub_python}-slim-{expected_dockerhub_debian}", commands)
 
     image = Image.micromamba() if python_version is None else Image.micromamba(python_version)
-    app.function(image=image)(dummy)
     if python_version is None and builder_version == "2023.12":
         expected_python = "3.9"
     with app.run(client=client):
+        image.build(app)
         commands = get_all_dockerfile_commands(image.object_id, servicer)
         assert re.search(rf"install.* python={expected_python}", commands)
 
@@ -198,8 +194,8 @@ def test_image_python_packages(builder_version, servicer, client):
         .pip_install("flash-attn", extra_options="--no-build-isolation --no-cache-dir")
         .pip_install("pandas", pre=True)
     )
-    app.function(image=image)(dummy)
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert any("pip install 'sklearn[xyz]'" in cmd for cmd in layers[3].dockerfile_commands)
         assert any(
@@ -212,10 +208,7 @@ def test_image_python_packages(builder_version, servicer, client):
         assert any("pip install pandas" + 2 * " " + "--pre" in cmd for cmd in layers[0].dockerfile_commands)
 
     with pytest.raises(InvalidError, match="try the `extra_options` parameter instead"):
-        app = App(image=Image.debian_slim().pip_install("--no-build-isolation", "flash-attn"))
-        app.function()(dummy)
-        with app.run(client=client):
-            pass
+        Image.debian_slim().pip_install("--no-build-isolation", "flash-attn")
 
 
 def test_image_uv_python_packages(builder_version, servicer, client, test_dir):
@@ -229,8 +222,8 @@ def test_image_uv_python_packages(builder_version, servicer, client, test_dir):
         .uv_pip_install("pandas", pre=True)
         .uv_pip_install(requirements=[requirements, requirements])
     )
-    app.function(image=image)(dummy)
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert any(
             "/.uv/uv pip install --python $(command -v python) --compile-bytecode 'sklearn[xyz]'" in cmd
@@ -271,11 +264,9 @@ def test_image_uv_python_requirements_error():
 
 
 def test_run_commands_secrets_type_validation(builder_version, servicer, client):
-    app = App()
-    image = Image.debian_slim().run_commands(
-        "echo hi", secrets=[Secret.from_dict({"xyz": "123"}), Secret.from_name("foo")]
-    )
-    app.function(image=image)(dummy)
+    # Happy case
+    Image.debian_slim().run_commands("echo hi", secrets=[Secret.from_dict({"xyz": "123"}), Secret.from_name("foo")])
+
     with pytest.raises(InvalidError):
         Image.debian_slim().run_commands(
             "echo hi",
@@ -302,9 +293,8 @@ def test_env_parameter_conversion(builder_version, servicer, client, env, secret
     app = App()
 
     image = Image.debian_slim().run_commands("echo $FOO", env=env, secrets=secrets)
-    app.function(image=image)(dummy)
-
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert len(layers[0].secret_ids) == expected
 
@@ -332,7 +322,6 @@ def assert_metadata(image, expected_metadata):
 def test_image_from_id(builder_version, servicer, client):
     app = App()
     image = Image.debian_slim().pip_install("numpy")
-    app.function(image=image)(dummy)
     dummy_metadata = api_pb2.ImageMetadata(
         workdir="/proj",
         python_packages={"fastapi": "0.100.0"},
@@ -340,7 +329,7 @@ def test_image_from_id(builder_version, servicer, client):
     )
     with servicer.intercept() as ctx:
         with app.run(client=client):
-            pass
+            image.build(app)
 
         ctx.add_response(
             "ImageFromId",
@@ -350,11 +339,10 @@ def test_image_from_id(builder_version, servicer, client):
             ),
         )
 
-        with app.run(client=client):
-            image_from_id = Image.from_id(image.object_id, client)
-            hydrate_image(image_from_id, client)
-            assert image_from_id.object_id == image.object_id
-            assert_metadata(image_from_id, dummy_metadata)
+        image_from_id = Image.from_id(image.object_id, client)
+        hydrate_image(image_from_id, client)
+        assert image_from_id.object_id == image.object_id
+        assert_metadata(image_from_id, dummy_metadata)
 
 
 def test_image_requirements_txt(builder_version, servicer, client):
@@ -362,8 +350,8 @@ def test_image_requirements_txt(builder_version, servicer, client):
 
     app = App()
     image = Image.debian_slim().pip_install_from_requirements(requirements_txt)
-    app.function(image=image)(dummy)
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
 
         assert any("COPY /.requirements.txt /.requirements.txt" in cmd for cmd in layers[0].dockerfile_commands)
@@ -373,27 +361,29 @@ def test_image_requirements_txt(builder_version, servicer, client):
 
 def test_empty_install(builder_version, servicer, client):
     # Install functions with no packages should be ignored.
-    app = App(
-        image=Image.debian_slim()
+    image = (
+        Image.debian_slim()
         .pip_install()
         .pip_install([], [], [], [])
         .apt_install([])
         .run_commands()
         .micromamba_install()
     )
-    app.function()(dummy)
+    app = App()
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert len(layers) == 1
 
 
 def test_debian_slim_apt_install(builder_version, servicer, client):
-    app = App(image=Image.debian_slim().pip_install("numpy").apt_install("git", "ssh").pip_install("scikit-learn"))
-    app.function()(dummy)
+    image = Image.debian_slim().pip_install("numpy").apt_install("git", "ssh").pip_install("scikit-learn")
+    app = App()
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
 
         assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("apt-get install -y git ssh" in cmd for cmd in layers[1].dockerfile_commands)
@@ -401,22 +391,23 @@ def test_debian_slim_apt_install(builder_version, servicer, client):
 
 
 def test_from_registry_add_python(builder_version, servicer, client):
-    app = App(image=Image.from_registry("ubuntu", add_python="3.9"))
-    app.function()(dummy)
+    image = Image.from_registry("ubuntu", add_python="3.9")
+    app = App()
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         commands = layers[0].dockerfile_commands
         assert layers[0].context_mount_id == "mo-py39"
         assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
         assert any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
 
     if builder_version >= "2024.10":
-        app = App(image=Image.from_registry("ubuntu", add_python="3.13"))
-        app.function()(dummy)
-
+        image = Image.from_registry("ubuntu", add_python="3.13")
+        app = App()
         with app.run(client=client):
-            layers = get_image_layers(app.image.object_id, servicer)
+            image.build(app)
+            layers = get_image_layers(image.object_id, servicer)
             commands = layers[0].dockerfile_commands
             assert layers[0].context_mount_id == "mo-py313"
             assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
@@ -428,8 +419,8 @@ def test_image_pip_install_pyproject(builder_version, servicer, client):
 
     app = App()
     image = Image.debian_slim().pip_install_from_pyproject(pyproject_toml)
-    app.function(image=image)(dummy)
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert any("pip install 'banana >=1.2.0' 'potato >=0.1.0'" in cmd for cmd in layers[0].dockerfile_commands)
 
@@ -439,8 +430,8 @@ def test_image_pip_install_pyproject_with_optionals(builder_version, servicer, c
 
     app = App()
     image = Image.debian_slim().pip_install_from_pyproject(pyproject_toml, optional_dependencies=["dev", "test"])
-    app.function(image=image)(dummy)
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
 
         assert any(
@@ -480,9 +471,9 @@ def test_image_pip_install_private_repos(builder_version, servicer, client):
         ],
     )
     app = App()
-    app.function(image=image)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert len(layers[0].secret_ids) == 2
         assert any(
@@ -500,9 +491,9 @@ def test_dockerfile_image(builder_version, servicer, client):
 
     app = App()
     image = Image.from_dockerfile(path)
-    app.function(image=image)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
 
         assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
@@ -517,11 +508,11 @@ def test_micromamba_install(builder_version, servicer, client):
         .pip_install("scikit-learn")
         .micromamba_install(spec_file=spec_file)
     )
-    app = App(image=image)
-    app.function()(dummy)
+    app = App()
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
 
         assert any(
             "COPY /test-conda-environment.yml /test-conda-environment.yml" in cmd
@@ -541,18 +532,19 @@ def test_run_commands(builder_version, servicer, client):
     base = Image.debian_slim()
 
     command = "echo 'Hello Modal'"
-    app = App(image=base.run_commands(command))
-    app.function()(dummy)
+    image = base.run_commands(command)
+    app = App()
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert layers[0].dockerfile_commands[1] == f"RUN {command}"
 
     commands = ["echo 'Hello world'", "touch agi.yaml"]
     for image in [base.run_commands(commands), base.run_commands(*commands)]:
-        app = App(image=image)
-        app.function()(dummy)
+        app = App()
         with app.run(client=client):
-            layers = get_image_layers(app.image.object_id, servicer)
+            image.build(app)
+            layers = get_image_layers(image.object_id, servicer)
             for i, cmd in enumerate(commands, 1):
                 assert layers[0].dockerfile_commands[i] == f"RUN {cmd}"
 
@@ -583,11 +575,12 @@ def test_run_commands_with_cloud_bucket_mnt_error(servicer, client):
 
 
 def test_dockerhub_install(builder_version, servicer, client):
-    app = App(image=Image.from_registry("gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"]))
-    app.function()(dummy)
+    image = Image.from_registry("gisops/valhalla:latest", setup_dockerfile_commands=["RUN apt-get update"])
+    app = App()
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
 
         assert any("FROM gisops/valhalla:latest" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
@@ -595,17 +588,16 @@ def test_dockerhub_install(builder_version, servicer, client):
 
 def test_ecr_install(builder_version, servicer, client):
     image_tag = "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:latest"
-    app = App(
-        image=Image.from_aws_ecr(
-            image_tag,
-            setup_dockerfile_commands=["RUN apt-get update"],
-            secret=Secret.from_dict({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}),
-        )
+    image = Image.from_aws_ecr(
+        image_tag,
+        setup_dockerfile_commands=["RUN apt-get update"],
+        secret=Secret.from_dict({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": ""}),
     )
+    app = App()
 
-    app.function()(dummy)
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
 
         assert any(f"FROM {image_tag}" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
@@ -616,14 +608,12 @@ def run_f():
 
 
 def test_image_run_function(builder_version, servicer, client):
+    image = Image.debian_slim().pip_install("pandas").run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})])
     app = App()
-    app.image = (
-        Image.debian_slim().pip_install("pandas").run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})])
-    )
 
-    app.function()(dummy)
     with app.run(client=client):
-        image_id = app.image.object_id
+        image.build(app)
+        image_id = image.object_id
         layers = get_image_layers(image_id, servicer)
         assert "foo!" in layers[0].build_function.definition
         assert "Secret.from_dict([xyz])" in layers[0].build_function.definition
@@ -644,13 +634,13 @@ def test_image_run_function(builder_version, servicer, client):
 
 def test_image_run_function_interactivity(builder_version, servicer, client):
     app = App()
-    app.image = Image.debian_slim().pip_install("pandas").run_function(run_f)
-    app.function()(dummy)
+    image = Image.debian_slim().pip_install("pandas").run_function(run_f)
 
     from modal.runner import run_app
 
     with run_app(app, client=client):
-        image_id = app.image.object_id
+        image.build(app)
+        image_id = image.object_id
         layers = get_image_layers(image_id, servicer)
         assert "foo!" in layers[0].build_function.definition
 
@@ -671,24 +661,26 @@ def run_f_globals():
 def test_image_run_function_globals(builder_version, servicer, client):
     global VARIABLE_1, VARIABLE_2
 
+    image = Image.debian_slim().run_function(run_f_globals)
     app = App()
-    app.image = Image.debian_slim().run_function(run_f_globals)
-    app.function()(dummy)
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         old_globals = layers[0].build_function.globals
         assert b"VARIABLE_1" in old_globals
         assert b"VARIABLE_2" not in old_globals
 
     VARIABLE_1 = 3
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert layers[0].build_function.globals != old_globals
 
     VARIABLE_1 = 1
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert layers[0].build_function.globals == old_globals
 
 
@@ -701,12 +693,12 @@ def run_f_unserializable_globals():
 
 
 def test_image_run_unserializable_function(builder_version, servicer, client):
+    image = Image.debian_slim().run_function(run_f_unserializable_globals)
     app = App()
-    app.image = Image.debian_slim().run_function(run_f_unserializable_globals)
-    app.function()(dummy)
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         old_globals = layers[0].build_function.globals
         assert b"VARIABLE_4" in old_globals
 
@@ -716,25 +708,24 @@ def run_f_with_args(arg, *, kwarg):
 
 
 def test_image_run_function_with_args(builder_version, servicer, client):
+    image = Image.debian_slim().run_function(run_f_with_args, args=("foo",), kwargs={"kwarg": "bar"})
     app = App()
-    app.image = Image.debian_slim().run_function(run_f_with_args, args=("foo",), kwargs={"kwarg": "bar"})
-    app.function()(dummy)
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         input = layers[0].build_function.input
         assert input.args == serialize((("foo",), {"kwarg": "bar"}))
 
 
 def test_image_run_function_with_region_selection(servicer, client):
+    image = Image.debian_slim().run_function(run_f, region="us-east")
     app = App()
-    app.image = Image.debian_slim().run_function(run_f, region="us-east")
-    app.function()(dummy)
 
     with app.run(client=client):
-        pass
+        image.build(app)
 
-    assert len(servicer.app_functions) == 2
+    assert len(servicer.app_functions)
     func_def = next(iter(servicer.app_functions.values()))
 
     assert func_def.scheduler_placement == api_pb2.SchedulerPlacement(
@@ -743,14 +734,13 @@ def test_image_run_function_with_region_selection(servicer, client):
 
 
 def test_image_run_function_with_cloud_selection(servicer, client):
+    image = Image.debian_slim().run_function(run_f, cloud="oci")
     app = App()
-    app.image = Image.debian_slim().run_function(run_f, cloud="oci")
-    app.function()(dummy)
 
     with app.run(client=client):
-        pass
+        image.build(app)
 
-    assert len(servicer.app_functions) == 2
+    assert len(servicer.app_functions)
     func_def = next(iter(servicer.app_functions.values()))
     assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer set
     assert func_def.cloud_provider_str == "oci"
@@ -762,16 +752,15 @@ def test_poetry_files(builder_version, servicer, client):
     # No lockfile provided and there's no lockfile found
     image = Image.debian_slim().poetry_install_from_file(path)
     app = App()
-    app.function(image=image)(dummy)
     with pytest.raises(NotFoundError):
         with app.run(client=client):
-            pass
+            image.build(app)
 
     # Explicitly ignore lockfile - this should work
     image = Image.debian_slim().poetry_install_from_file(path, ignore_lockfile=True)
     app = App()
-    app.function(image=image)(dummy)
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
         assert "/.pyproject.toml" in context_files
@@ -781,8 +770,8 @@ def test_poetry_files(builder_version, servicer, client):
     lockfile_path = os.path.join(os.path.dirname(__file__), "supports/special_poetry.lock")
     image = Image.debian_slim().poetry_install_from_file(path, lockfile_path)
     app = App()
-    app.function(image=image)(dummy)
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
         if builder_version <= "2024.10":
@@ -806,9 +795,9 @@ def test_uv_sync(builder_version, servicer, client, groups, extras, frozen):
     image = Image.debian_slim().uv_sync(uv_project_path, groups=groups, extras=extras, frozen=frozen)
 
     app = App()
-    app.function(image=image)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
         assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
@@ -844,9 +833,9 @@ def test_uv_sync_just_pyproject(builder_version, servicer, client):
     image = Image.debian_slim().uv_sync(uv_project_path)
 
     app = App()
-    app.function(image=image)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
         assert "COPY /.uv.lock /.uv/uv.lock" not in layers[0].dockerfile_commands
@@ -865,12 +854,11 @@ def test_uv_sync_no_modal(builder_version, client):
     image = Image.debian_slim().uv_sync(uv_project_path)
 
     app = App()
-    app.function(image=image)(dummy)
 
     if builder_version <= "2024.10":
-        with pytest.raises(InvalidError, match="requires modal to be specified"):
-            with app.run(client=client):
-                pass
+        with app.run(client=client):
+            with pytest.raises(InvalidError, match="requires modal to be specified"):
+                image.build(app)
 
 
 @pytest.mark.parametrize("kwargs", [{"groups": ["group1", "group2"]}, {"extras": ["extra1"]}])
@@ -880,9 +868,9 @@ def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwar
     image = Image.debian_slim().uv_sync(uv_project_path, **kwargs)
 
     app = App()
-    app.function(image=image)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         if "groups" in kwargs:
             groups = kwargs["groups"]
@@ -900,24 +888,22 @@ def test_uv_lock_workspaces_error(builder_version, client):
     image = Image.debian_slim().uv_sync(uv_project_path)
 
     app = App()
-    app.function(image=image)(dummy)
 
     with pytest.raises(InvalidError, match="uv workspaces are not supported"):
         with app.run(client=client):
-            pass
+            image.build(app)
 
 
 def test_uv_sync_error(client, tmp_path):
     image = Image.debian_slim().uv_sync(tmp_path)
 
     app = App()
-    app.function(image=image)(dummy)
 
     expected_pyproject_file = os.path.join(tmp_path, "pyproject.toml")
     msg = re.escape(f"Expected {expected_pyproject_file} to exist")
-    with pytest.raises(InvalidError, match=msg):
-        with app.run(client=client):
-            pass
+    with app.run(client=client):
+        with pytest.raises(InvalidError, match=msg):
+            image.build(app)
 
 
 @pytest.mark.parametrize("poetry_version", [None, "latest", "2.1.2"])
@@ -931,8 +917,8 @@ def test_poetry_commands(builder_version, servicer, client, poetry_version):
         without=["buz"],
         poetry_version=poetry_version,
     )
-    app.function(image=image)(dummy)
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         dockerfile_commands = " ".join(layers[0].dockerfile_commands)
         if poetry_version is None:
@@ -951,26 +937,24 @@ def test_image_add_local_file_error(tmp_path, client):
     app = App()
 
     unknown_file = tmp_path / "does-not-exist.txt"
-    img = Image.debian_slim().add_local_file(unknown_file, "/file.txt")
-    app.function(image=img)(dummy)
+    image = Image.debian_slim().add_local_file(unknown_file, "/file.txt")
 
     msg = re.escape(f"local file {unknown_file} does not exist")
-    with pytest.raises(FileNotFoundError, match=msg):
-        with app.run(client=client):
-            pass
+    with app.run(client=client):
+        with pytest.raises(FileNotFoundError, match=msg):
+            image.build(app)
 
 
 def test_image_add_local_dir_err(tmp_path, client):
     app = App()
 
     unknown_dir = tmp_path / "does-not-exist"
-    img = Image.debian_slim().add_local_dir(unknown_dir, "/file.txt")
-    app.function(image=img)(dummy)
+    image = Image.debian_slim().add_local_dir(unknown_dir, "/file.txt")
 
     msg = re.escape(f"local dir {unknown_dir} does not exist")
-    with pytest.raises(FileNotFoundError, match=msg):
-        with app.run(client=client):
-            pass
+    with app.run(client=client):
+        with pytest.raises(FileNotFoundError, match=msg):
+            image.build(app)
 
 
 @pytest.mark.parametrize(["copy"], [(True,), (False,)])
@@ -992,23 +976,23 @@ def test_image_add_local_file(servicer, client, tmp_path_with_content, copy, rem
     else:
         remote_path_kwargs = {"remote_path": remote_path}
 
-    img = (
+    image = (
         Image.from_registry("unknown_image")
         .workdir("/proj")
         .add_local_file(tmp_path_with_content / "data.txt", **remote_path_kwargs, copy=copy)
     )
-    app.function(image=img)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         if copy:
             # check that dockerfile commands include COPY . .
-            layers = get_image_layers(img.object_id, servicer)
+            layers = get_image_layers(image.object_id, servicer)
             assert layers[0].dockerfile_commands == ["FROM base", "COPY . /"]
             mount_id = layers[0].context_mount_id
             # and then get the relevant context mount to check
         if not copy:
-            assert len(img._mount_layers) == 1
-            mount_id = img._mount_layers[0].object_id
+            assert len(image._mount_layers) == 1
+            mount_id = image._mount_layers[0].object_id
 
         assert set(servicer.mount_contents[mount_id].keys()) == {expected_dest}
 
@@ -1033,23 +1017,23 @@ def test_image_add_local_dir(servicer, client, tmp_path_with_content, copy, remo
     else:
         remote_path_kwargs = {"remote_path": remote_path}
 
-    img = (
+    image = (
         Image.from_registry("unknown_image")
         .workdir("/proj")
         .add_local_dir(tmp_path_with_content / "data", **remote_path_kwargs, copy=copy)
     )
-    app.function(image=img)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         if copy:
             # check that dockerfile commands include COPY . .
-            layers = get_image_layers(img.object_id, servicer)
+            layers = get_image_layers(image.object_id, servicer)
             assert layers[0].dockerfile_commands == ["FROM base", "COPY . /"]
             mount_id = layers[0].context_mount_id
             # and then get the relevant context mount to check
         if not copy:
-            assert len(img._mount_layers) == 1
-            mount_id = img._mount_layers[0].object_id
+            assert len(image._mount_layers) == 1
+            mount_id = image._mount_layers[0].object_id
 
         assert set(servicer.mount_contents[mount_id].keys()) == {expected_dest}
 
@@ -1060,9 +1044,9 @@ def test_image_docker_command_no_copy_commands(builder_version, servicer, client
     Path("data.txt").write_text("hello")
     app = App()
     image = Image.debian_slim().dockerfile_commands(["RUN something"])
-    app.function(image=image, serialized=True)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert "RUN something" in layers[0].dockerfile_commands
         context_mount_id = layers[0].context_mount_id
@@ -1124,9 +1108,8 @@ def test_image_docker_command_copy(
         image = Image.debian_slim().dockerfile_commands(*docker_commands)
         copy_layer_index = 0
 
-    app.function(image=image)(dummy)
-
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         mount_id = layers[copy_layer_index].context_mount_id
         files = set(servicer.mount_contents[mount_id].keys())
@@ -1157,9 +1140,9 @@ def test_image_dockerfile_copy_auto_dockerignore(builder_version, servicer, clie
     else:
         image = Image.debian_slim().dockerfile_commands([f"COPY {rel_top_dir} /dummy"])
         layer = 0
-    app.function(image=image)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert f"COPY {rel_top_dir} /dummy" in layers[layer].dockerfile_commands
         mount_id = layers[layer].context_mount_id
@@ -1190,9 +1173,9 @@ def test_image_dockerfile_copy_ignore_from_file(builder_version, servicer, clien
             [f"COPY {rel_top_dir} /dummy"], ignore=FilePatternMatcher.from_file(dockerignore)
         )
         layer = 0
-    app.function(image=image)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert f"COPY {rel_top_dir} /dummy" in layers[layer].dockerfile_commands
         mount_id = layers[layer].context_mount_id
@@ -1230,9 +1213,9 @@ def test_image_dockerfile_ignore_context_dir(builder_version, servicer, client, 
     else:
         image = Image.debian_slim().dockerfile_commands([docker_cmd], context_dir=rel_top_dir)
         layer = 0
-    app.function(image=image)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert docker_cmd in layers[layer].dockerfile_commands
         mount_id = layers[layer].context_mount_id
@@ -1269,9 +1252,9 @@ def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_cal
     else:
         image = Image.debian_slim().dockerfile_commands([f"COPY {rel_top_dir} /dummy"], ignore=ignore)
         layer = 0
-    app.function(image=image)(dummy)
 
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert f"COPY {rel_top_dir} /dummy" in layers[layer].dockerfile_commands
         mount_id = layers[layer].context_mount_id
@@ -1287,9 +1270,9 @@ def test_dockerfile_context_dir(builder_version, servicer, client):
         (Path(context_dir) / "file.py").write_text("world")
 
         image = Image.debian_slim().dockerfile_commands(["COPY . /"], context_dir=context_dir)
-        app = App(include_source=False)
-        app.function(image=image)(dummy)
+        app = App()
         with app.run(client=client):
+            image.build(app)
             layers = get_image_layers(image.object_id, servicer)
             mount_id = layers[0].context_mount_id
             files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
@@ -1298,17 +1281,17 @@ def test_dockerfile_context_dir(builder_version, servicer, client):
 
 def test_image_docker_command_entrypoint(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    app.image = Image.debian_slim().entrypoint([])
-    app.function()(dummy)
+    image = Image.debian_slim().entrypoint([])
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert "ENTRYPOINT []" in layers[0].dockerfile_commands
 
 
 def test_image_docker_command_entrypoint_nonempty(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    app.image = (
+    image = (
         Image.debian_slim()
         .dockerfile_commands(
             [
@@ -1320,10 +1303,9 @@ def test_image_docker_command_entrypoint_nonempty(builder_version, servicer, cli
         .entrypoint(["/temp.sh"])
     )
 
-    app.function()(dummy)
-
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert 'ENTRYPOINT ["/temp.sh"]' in layers[0].dockerfile_commands
 
 
@@ -1336,11 +1318,11 @@ def test_image_docker_command_entrypoint_malformed():
 
 def test_image_docker_command_shell(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    app.image = Image.debian_slim().shell(["/bin/sh", "-c"])
-    app.function()(dummy)
+    image = Image.debian_slim().shell(["/bin/sh", "-c"])
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert 'SHELL ["/bin/sh", "-c"]' in layers[0].dockerfile_commands
 
 
@@ -1352,38 +1334,36 @@ def test_image_docker_command_shell_malformed():
 
 
 def test_image_env(builder_version, servicer, client):
-    app = App(image=Image.debian_slim().env({"HELLO": "world!"}))
-    app.function()(dummy)
+    image = Image.debian_slim().env({"HELLO": "world!"})
+    app = App()
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
 
     # unhappy path, reject invalid input
     with pytest.raises(InvalidError, match="Image ENV variables must be strings."):
-        app = App(image=Image.debian_slim().env({"HELLO": 123}))  # type: ignore
-        app.function()(dummy)
-        with app.run(client=client):
-            pass
+        Image.debian_slim().env({"HELLO": 123})  # type: ignore
 
 
 def test_image_cmd_empty(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    app.image = Image.debian_slim().cmd([])
-    app.function()(dummy)
+    image = Image.debian_slim().cmd([])
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert "CMD []" in layers[0].dockerfile_commands
 
 
 def test_image_cmd_nonempty(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    app.image = Image.debian_slim().cmd(["echo", "hello"])
-    app.function()(dummy)
+    image = Image.debian_slim().cmd(["echo", "hello"])
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert 'CMD ["echo", "hello"]' in layers[0].dockerfile_commands
 
 
@@ -1395,11 +1375,12 @@ def test_image_cmd_malformed():
 
 
 def test_image_debian_slim_default_cmd(builder_version, servicer, client, test_dir):
-    app = App(image=Image.debian_slim())
-    app.function()(dummy)
+    image = Image.debian_slim()
+    app = App()
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         if builder_version > "2024.10":
             assert 'CMD ["sleep", "172800"]' in layers[0].dockerfile_commands
         else:
@@ -1407,11 +1388,12 @@ def test_image_debian_slim_default_cmd(builder_version, servicer, client, test_d
 
 
 def test_image_micromamba_default_cmd(builder_version, servicer, client, test_dir):
-    app = App(image=Image.micromamba())
-    app.function()(dummy)
+    image = Image.micromamba()
+    app = App()
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         if builder_version > "2024.10":
             assert 'CMD ["sleep", "172800"]' in layers[0].dockerfile_commands
         else:
@@ -1419,60 +1401,62 @@ def test_image_micromamba_default_cmd(builder_version, servicer, client, test_di
 
 
 def test_image_gpu(builder_version, servicer, client):
-    app = App(image=Image.debian_slim().run_commands("echo 0"))
-    app.function()(dummy)
+    app = App()
+
+    image = Image.debian_slim().run_commands("echo 0")
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert not layers[0].gpu_config.gpu_type
         assert not layers[0].gpu_config.count
 
-    app = App(image=Image.debian_slim().run_commands("echo 1", gpu="any"))
-    app.function()(dummy)
+    image = Image.debian_slim().run_commands("echo 1", gpu="any")
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert layers[0].gpu_config.gpu_type == "ANY"
         assert layers[0].gpu_config.count == 1
 
-    app = App(image=Image.debian_slim().run_commands("echo 2", gpu="a10g"))
-    app.function()(dummy)
+    image = Image.debian_slim().run_commands("echo 2", gpu="a10g")
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
         assert layers[0].gpu_config.gpu_type == "A10G"
         assert layers[0].gpu_config.count == 1
 
 
 def test_image_force_build(builder_version, servicer, client):
     app = App()
-    app.image = Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")
-    app.function()(dummy)
+    image = Image.debian_slim().run_commands("echo 1").pip_install("foo", force_build=True).run_commands("echo 2")
     with app.run(client=client):
+        image.build(app)
         assert servicer.force_built_images == ["im-3", "im-4"]
 
-    app.image = (
+    image = (
         Image.from_gcp_artifact_registry("foo", force_build=True)
         .run_commands("python_packagesecho 1")
         .pip_install("foo", force_build=True)
         .run_commands("echo 2")
     )
-    app.function()(dummy)
     with app.run(client=client):
+        image.build(app)
         assert servicer.force_built_images == ["im-3", "im-4", "im-5", "im-6", "im-7", "im-8"]
 
 
 def test_workdir(builder_version, servicer, client):
-    app = App(image=Image.debian_slim().workdir("/foo/bar"))
-    app.function()(dummy)
+    image = Image.debian_slim().workdir("/foo/bar")
+    app = App()
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        image.build(app)
+        layers = get_image_layers(image.object_id, servicer)
 
         assert any("WORKDIR /foo/bar" in cmd for cmd in layers[0].dockerfile_commands)
 
 
 def test_hydration_metadata(servicer, client):
-    img = Image.debian_slim()
-    app = App(image=img)
-    app.function()(dummy)
+    image = Image.debian_slim()
+    app = App()
     dummy_metadata = api_pb2.ImageMetadata(
         workdir="/proj",
         python_packages={"fastapi": "0.100.0"},
@@ -1488,13 +1472,8 @@ def test_hydration_metadata(servicer, client):
         )
 
         with app.run(client=client):
-            assert_metadata(img, dummy_metadata)
-
-
-cls_app = App()
-
-VARIABLE_5 = 1
-VARIABLE_6 = 1
+            image.build(app)
+            assert_metadata(image, dummy_metadata)
 
 
 def test_inside_ctx_unhydrated(client):
@@ -1552,8 +1531,8 @@ def test_get_modal_requirements_path(builder_version, python_version):
 
 
 def test_image_builder_version(servicer, credentials, test_dir, modal_config):
-    app = App(image=Image.debian_slim())
-    app.function()(dummy)
+    app = App()
+    image = Image.debian_slim()
 
     def mock_base_image_config(group, version):
         config = {
@@ -1574,14 +1553,15 @@ def test_image_builder_version(servicer, credentials, test_dir, modal_config):
         modal_config(),
         app.run(client=client),
     ):
+        image.build(app)
         assert servicer.image_builder_versions
         for version in servicer.image_builder_versions.values():
             assert version == "2000.01"
 
 
 def test_image_builder_supported_versions(servicer, credentials):
-    app = App(image=Image.debian_slim())
-    app.function()(dummy)
+    app = App()
+    image = Image.debian_slim()
 
     with (
         pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"),
@@ -1590,7 +1570,7 @@ def test_image_builder_supported_versions(servicer, credentials):
         Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client,
         app.run(client=client),
     ):
-        pass
+        image.build(app)
 
 
 @pytest.fixture
@@ -1602,11 +1582,11 @@ def force_2023_12(modal_config):
 
 @skip_windows("Different hash values for context file paths")
 def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
-    def get_hash(img: Image) -> str:
-        app = App(image=img)
-        app.function()(dummy)
+    def get_hash(image: Image) -> str:
+        app = App()
         with app.run(client=client):
-            layers = get_image_layers(img.object_id, servicer)
+            image.build(app)
+            layers = get_image_layers(image.object_id, servicer)
             commands = [layer.dockerfile_commands for layer in layers]
             context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
 
@@ -1670,11 +1650,11 @@ def force_2024_04(modal_config):
 
 @skip_windows("Different hash values for context file paths")
 def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
-    def get_hash(img: Image) -> str:
-        app = App(image=img)
-        app.function()(dummy)
+    def get_hash(image: Image) -> str:
+        app = App()
         with app.run(client=client):
-            layers = get_image_layers(app.image.object_id, servicer)
+            image.build(app)
+            layers = get_image_layers(image.object_id, servicer)
             commands = [layer.dockerfile_commands for layer in layers]
             context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
         return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
@@ -1747,11 +1727,11 @@ def force_2024_10(modal_config):
 
 @skip_windows("Different hash values for context file paths")
 def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
-    def get_hash(img: Image) -> str:
-        app = App(image=img)
-        app.function()(dummy)
+    def get_hash(image: Image) -> str:
+        app = App()
         with app.run(client=client):
-            layers = get_image_layers(app.image.object_id, servicer)
+            image.build(app)
+            layers = get_image_layers(image.object_id, servicer)
             commands = [layer.dockerfile_commands for layer in layers]
             context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
         return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
@@ -1824,11 +1804,11 @@ def force_2025_06(modal_config):
 
 @skip_windows("Different hash values for context file paths")
 def test_image_stability_on_2025_06(force_2025_06, servicer, client, test_dir):
-    def get_hash(img: Image) -> str:
-        app = App(image=img)
-        app.function()(dummy)
+    def get_hash(image: Image) -> str:
+        app = App()
         with app.run(client=client):
-            layers = get_image_layers(app.image.object_id, servicer)
+            image.build(app)
+            layers = get_image_layers(image.object_id, servicer)
             commands = [layer.dockerfile_commands for layer in layers]
             context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
         return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
@@ -1933,9 +1913,8 @@ def test_image_parallel_build(builder_version, servicer, client):
 async def test_logs(servicer, client):
     app = App()
     image = Image.debian_slim().pip_install("foobarbaz")
-    app.function(image=image)(dummy)
     async with app.run.aio(client=client):
-        pass
+        image.build(app)
 
     logs = [data async for data in image._logs.aio()]
     assert logs == ["build starting\n", "build finished\n"]
@@ -1989,14 +1968,16 @@ def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_pa
     assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
 
 
+def f():
+    pass
+
+
 def test_add_locals_are_attached_to_functions(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_source("pkg_a")
-    app = App("my-app")
-    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
-        dummy
-    )  # no mounts on image
-    fun: modal.Function = app.function(serialized=True, image=img, name="fun")(dummy)  # mounts on image
+    app = App("my-app", include_source=False)
+    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(f)
+    fun: modal.Function = app.function(serialized=True, image=img, name="fun")(f)
     deploy_app(app, client=client)
 
     control_func_mounts = set(servicer.app_functions[control_fun.object_id].mount_ids)
@@ -2009,10 +1990,8 @@ def test_add_locals_are_attached_to_functions(servicer, client, supports_on_path
 def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path, set_env_client):
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_source("pkg_a")
-    app = App("my-app")
-    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
-        dummy
-    )  # no mounts on image
+    app = App("my-app", include_source=False)
+    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(f)
 
     class A:
         some_arg: str = modal.parameter()
@@ -2037,12 +2016,12 @@ def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path, 
 
 
 def test_from_local_python_packages_missing_module(servicer, client, test_dir, server_url_env):
+    image = Image.debian_slim().add_local_python_source("nonexistent_package")
     app = App()
-    app.function(image=Image.debian_slim().add_local_python_source("nonexistent_package"))(dummy)
 
-    with pytest.raises(ModuleNotMountable):
-        with app.run(client=client):
-            pass
+    with app.run(client=client):
+        with pytest.raises(ModuleNotMountable):
+            image.build(app)
 
 
 def test_from_local_python_packages_wrong_type():
@@ -2093,11 +2072,10 @@ def test_image_only_joins_unfinished_steps(servicer, client):
     app = App()
     deb_slim = Image.debian_slim()
     image = deb_slim.pip_install("foobarbaz")
-    app.function(image=image)(dummy)
     with servicer.intercept() as ctx:
         # default - image not built, should stream
         with app.run(client=client):
-            pass
+            image.build(app)
         image_gets = ctx.get_requests("ImageGetOrCreate")
         assert len(image_gets) == 2
         image_joins = ctx.get_requests("ImageJoinStreaming")
@@ -2128,7 +2106,7 @@ def test_image_only_joins_unfinished_steps(servicer, client):
 
         ctx.set_responder("ImageGetOrCreate", custom_responder)
         with app.run(client=client):
-            pass
+            image.build(app)
         image_gets = ctx.get_requests("ImageGetOrCreate")
         assert len(image_gets) == 2
         image_joins = ctx.get_requests("ImageJoinStreaming")
@@ -2149,20 +2127,20 @@ def test_image_local_dir_ignore_patterns(servicer, client, tmp_path_with_content
     }
     app = App()
 
-    img = (
+    image = (
         Image.from_registry("unknown_image")
         .workdir("/proj")
         .add_local_dir(tmp_path_with_content, "/place/", ignore=ignore, copy=copy)
     )
-    app.function(image=img)(dummy)
     with app.run(client=client):
+        image.build(app)
         if copy:
-            assert len(img._mount_layers) == 0
-            layers = get_image_layers(img.object_id, servicer)
+            assert len(image._mount_layers) == 0
+            layers = get_image_layers(image.object_id, servicer)
             mount_id = layers[0].context_mount_id
         else:
-            assert len(img._mount_layers) == 1
-            mount_id = img._mount_layers[0].object_id
+            assert len(image._mount_layers) == 1
+            mount_id = image._mount_layers[0].object_id
         assert servicer.mount_contents[mount_id].keys() == {f"/place{f}" for f in expected}
 
 
@@ -2171,19 +2149,19 @@ def test_image_local_dir_ignore_relative(servicer, client, tmp_path_with_content
     assert (tmp_path_with_content / "data.txt").exists()
     app = App()
 
-    img = Image.from_registry("unknown_image").add_local_dir(
+    image = Image.from_registry("unknown_image").add_local_dir(
         tmp_path_with_content, "/place", ignore=["*.txt"], copy=copy
     )
 
-    app.function(image=img)(dummy)
     with app.run(client=client):
+        image.build(app)
         if copy:
-            assert len(img._mount_layers) == 0
-            layers = get_image_layers(img.object_id, servicer)
+            assert len(image._mount_layers) == 0
+            layers = get_image_layers(image.object_id, servicer)
             mount_id = layers[0].context_mount_id
         else:
-            assert len(img._mount_layers) == 1
-            mount_id = img._mount_layers[0].object_id
+            assert len(image._mount_layers) == 1
+            mount_id = image._mount_layers[0].object_id
         assert "/place/data.txt" not in servicer.mount_contents[mount_id].keys()
 
 
@@ -2195,18 +2173,21 @@ def test_image_add_local_dir_ignore_callable(servicer, client, tmp_path_with_con
     expected = {"/place/data.txt"}
     app = App()
 
-    img = Image.from_registry("unknown_image").workdir("/proj")
-    img = img.add_local_dir(tmp_path_with_content, "/place/", ignore=ignore, copy=copy)
-    app.function(image=img)(dummy)
+    image = (
+        Image.from_registry("unknown_image")
+        .workdir("/proj")
+        .add_local_dir(tmp_path_with_content, "/place/", ignore=ignore, copy=copy)
+    )
     with app.run(client=client):
+        image.build(app)
         if copy:
-            assert len(img._mount_layers) == 0
-            layers = get_image_layers(img.object_id, servicer)
+            assert len(image._mount_layers) == 0
+            layers = get_image_layers(image.object_id, servicer)
             mount_id = layers[0].context_mount_id
             assert set(servicer.mount_contents[mount_id].keys()) == expected
         else:
-            assert len(img._mount_layers) == 1
-            mount_id = img._mount_layers[0].object_id
+            assert len(image._mount_layers) == 1
+            mount_id = image._mount_layers[0].object_id
             assert set(servicer.mount_contents[mount_id].keys()) == expected
 
 
@@ -2220,18 +2201,19 @@ def test_image_add_local_dir_ignore_nothing(servicer, client, tmp_path_with_cont
     expected = {f"/place/{Path(fn).relative_to(tmp_path_with_content).as_posix()}" for fn in file_paths}
     app = App()
 
-    img = Image.from_registry("unknown_image").workdir("/proj")
-    img = img.add_local_dir(tmp_path_with_content, "/place/", copy=copy)
-    app.function(image=img)(dummy)
+    image = (
+        Image.from_registry("unknown_image").workdir("/proj").add_local_dir(tmp_path_with_content, "/place/", copy=copy)
+    )
     with app.run(client=client):
+        image.build(app)
         if copy:
-            assert len(img._mount_layers) == 0
-            layers = get_image_layers(img.object_id, servicer)
+            assert len(image._mount_layers) == 0
+            layers = get_image_layers(image.object_id, servicer)
             mount_id = layers[0].context_mount_id
             assert servicer.mount_contents[mount_id].keys() == expected
         else:
-            assert len(img._mount_layers) == 1
-            mount_id = img._mount_layers[0].object_id
+            assert len(image._mount_layers) == 1
+            mount_id = image._mount_layers[0].object_id
             assert servicer.mount_contents[mount_id].keys() == expected
 
 
@@ -2246,21 +2228,21 @@ def test_image_add_local_dir_ignore_from_file(servicer, client, tmp_path_with_co
     expected = {"/place/data.txt"}
     app = App()
 
-    img = Image.from_registry("unknown_image").workdir("/proj")
-
-    img = img.add_local_dir(
-        tmp_path_with_content, "/place/", ignore=~FilePatternMatcher.from_file(ignore_file), copy=copy
+    image = (
+        Image.from_registry("unknown_image")
+        .workdir("/proj")
+        .add_local_dir(tmp_path_with_content, "/place/", ignore=~FilePatternMatcher.from_file(ignore_file), copy=copy)
     )
-    app.function(image=img)(dummy)
     with app.run(client=client):
+        image.build(app)
         if copy:
-            assert len(img._mount_layers) == 0
-            layers = get_image_layers(img.object_id, servicer)
+            assert len(image._mount_layers) == 0
+            layers = get_image_layers(image.object_id, servicer)
             mount_id = layers[0].context_mount_id
             assert servicer.mount_contents[mount_id].keys() == expected
         else:
-            assert len(img._mount_layers) == 1
-            mount_id = img._mount_layers[0].object_id
+            assert len(image._mount_layers) == 1
+            mount_id = image._mount_layers[0].object_id
             assert servicer.mount_contents[mount_id].keys() == expected
 
 
@@ -2279,8 +2261,8 @@ def test_raw_dockerfile_image(servicer, client):
     image = raw_dockerfile_image("Dockerfile").run_commands(extra_commands)
 
     app = App()
-    app.function(image=image)(dummy)
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert len(layers) == 2
 
@@ -2299,8 +2281,8 @@ def test_raw_registry_image(servicer, client):
     image = raw_registry_image(tag).run_commands(extra_commands)
 
     app = App()
-    app.function(image=image)(dummy)
     with app.run(client=client):
+        image.build(app)
         layers = get_image_layers(image.object_id, servicer)
         assert len(layers) == 2
 
