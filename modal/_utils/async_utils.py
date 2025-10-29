@@ -38,8 +38,6 @@ if sys.platform == "win32":
 
 synchronizer = synchronicity.Synchronizer()
 
-RETRY_ATTEMPTS: int | None = None
-
 
 def synchronize_api(obj, target_module=None):
     if inspect.isclass(obj) or inspect.isfunction(obj):
@@ -51,6 +49,10 @@ def synchronize_api(obj, target_module=None):
     if target_module is None:
         target_module = obj.__module__
     return synchronizer.create_blocking(obj, blocking_name, target_module=target_module)
+
+
+# Used for testing to configure the `n_attempts` that `retry` will use.
+RETRY_N_ATTEMPTS: int | None = None
 
 
 def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
@@ -77,8 +79,8 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
     def decorator(fn):
         @functools.wraps(fn)
         async def f_wrapped(*args, **kwargs):
-            if RETRY_ATTEMPTS is not None:
-                n_attempts_ = RETRY_ATTEMPTS
+            if RETRY_N_ATTEMPTS is not None:
+                n_attempts_ = RETRY_N_ATTEMPTS
             else:
                 n_attempts_ = n_attempts
 
