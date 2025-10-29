@@ -52,7 +52,7 @@ def synchronize_api(obj, target_module=None):
 
 
 # Used for testing to configure the `n_attempts` that `retry` will use.
-RETRY_N_ATTEMPTS: int | None = None
+RETRY_N_ATTEMPTS: Optional[int] = None
 
 
 def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
