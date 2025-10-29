@@ -661,7 +661,7 @@ def run_f_globals():
 def test_image_run_function_globals(builder_version, servicer, client):
     global VARIABLE_1, VARIABLE_2
 
-    image = Image.debian_slim().run_function(run_f_globals)
+    image = Image.debian_slim().run_function(run_f_globals, include_source=False)
     app = App()
 
     with app.run(client=client):
@@ -725,7 +725,7 @@ def test_image_run_function_with_region_selection(servicer, client):
     with app.run(client=client):
         image.build(app)
 
-    assert len(servicer.app_functions)
+    assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
 
     assert func_def.scheduler_placement == api_pb2.SchedulerPlacement(
@@ -740,7 +740,7 @@ def test_image_run_function_with_cloud_selection(servicer, client):
     with app.run(client=client):
         image.build(app)
 
-    assert len(servicer.app_functions)
+    assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
     assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer set
     assert func_def.cloud_provider_str == "oci"
@@ -1872,7 +1872,7 @@ def test_image_stability_on_2025_06(force_2025_06, servicer, client, test_dir):
     assert get_hash(img) == "60304d4a13826e0a450248cb37bc0192020b83dd20bcb2dbea058e0149d54532"
 
 
-parallel_app = App()
+parallel_app = App(include_source=False)
 
 
 @parallel_app.function(image=Image.debian_slim().run_commands("sleep 1", "echo hi"))
@@ -1921,11 +1921,9 @@ async def test_logs(servicer, client):
 
 
 def hydrate_image(img, client):
-    # there should be a more straight forward way to do this?
     app = App()
-    app.function(serialized=True, image=img)(lambda: None)
     with app.run(client=client):
-        pass
+        img.build(app)
 
 
 def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_path):
