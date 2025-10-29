@@ -880,15 +880,12 @@ async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
             raise first_exception
 
 
-@asynccontextmanager
-async def _create_connection(host: str, port: int, timeout: float):
-    """An async version of socket.create_connection"""
-    writer = None
+async def is_port_connection_open(host: str, port: int, timeout: float) -> bool:
+    """Return True if the host + port is open."""
     try:
         _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
-        yield
-    finally:
-        if writer is None:
-            return
         writer.close()
         await writer.wait_closed()
+        return True
+    except Exception:
+        return False

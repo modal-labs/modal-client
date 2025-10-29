@@ -15,7 +15,7 @@ from modal.dict import _Dict
 from modal_proto import api_pb2
 
 from .._tunnel import _forward as _forward_tunnel
-from .._utils.async_utils import _create_connection, synchronize_api, synchronizer
+from .._utils.async_utils import is_port_connection_open, synchronize_api, synchronizer
 from .._utils.grpc_utils import retry_transient_errors
 from ..client import _Client
 from ..config import logger
@@ -51,8 +51,9 @@ class _FlashManager:
             try:
                 if process is not None and process.poll() is not None:
                     return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
-                async with _create_connection("localhost", self.port, timeout=0.5):
+                if await is_port_connection_open("localhost", self.port, timeout=0.5):
                     return True, None
+                await asyncio.sleep(0.1)
             except (ConnectionRefusedError, OSError, asyncio.TimeoutError):
                 await asyncio.sleep(0.1)
 
