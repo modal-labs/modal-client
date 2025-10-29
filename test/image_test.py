@@ -137,7 +137,7 @@ def test_dockerhub_python_version(builder_version):
 
 
 def test_image_base(builder_version, servicer, client, test_dir):
-    app = App()
+    app = App(include_source=False)
     constructors = [
         (Image.debian_slim, ()),
         (Image.from_registry, ("ubuntu",)),
@@ -671,7 +671,7 @@ def run_f_globals():
 def test_image_run_function_globals(builder_version, servicer, client):
     global VARIABLE_1, VARIABLE_2
 
-    app = App()
+    app = App(include_source=False)
     app.image = Image.debian_slim().run_function(run_f_globals)
     app.function()(dummy)
 
