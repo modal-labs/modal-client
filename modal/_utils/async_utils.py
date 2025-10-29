@@ -38,6 +38,8 @@ if sys.platform == "win32":
 
 synchronizer = synchronicity.Synchronizer()
 
+RETRY_ATTEMPTS: int | None = None
+
 
 def synchronize_api(obj, target_module=None):
     if inspect.isclass(obj) or inspect.isfunction(obj):
@@ -75,10 +77,8 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
     def decorator(fn):
         @functools.wraps(fn)
         async def f_wrapped(*args, **kwargs):
-            from ..config import config
-
-            if config_attempts := config.get("retry_attempts"):
-                n_attempts_ = config_attempts
+            if RETRY_ATTEMPTS is not None:
+                n_attempts_ = RETRY_ATTEMPTS
             else:
                 n_attempts_ = n_attempts
 
