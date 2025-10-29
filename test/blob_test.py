@@ -3,8 +3,11 @@
 import pytest
 import random
 
+import modal._utils.blob_utils
 from modal._utils.async_utils import synchronize_api
 from modal._utils.blob_utils import (
+    _download_from_url,
+    _upload_to_s3_url,
     blob_download as _blob_download,
     blob_upload as _blob_upload,
     blob_upload_file as _blob_upload_file,
@@ -29,13 +32,25 @@ async def test_blob_put_get(servicer, blob_server, client):
 
 
 @pytest.mark.asyncio
-async def test_blob_put_failure(servicer, blob_server, client):
+async def test_blob_put_failure(servicer, blob_server, client, monkeypatch):
+    # Remove retries in `_upload_to_s3_url` to fail faster
+    monkeypatch.setattr(
+        modal._utils.blob_utils,
+        "_upload_to_s3_url",
+        _upload_to_s3_url.__wrapped__,  # type: ignore
+    )
     with pytest.raises(ExecutionError):
         await blob_upload.aio(b"FAILURE", client.stub)
 
 
 @pytest.mark.asyncio
-async def test_blob_get_failure(servicer, blob_server, client):
+async def test_blob_get_failure(servicer, blob_server, client, monkeypatch):
+    # Remove retries in `_download_from_url` to fail faster
+    monkeypatch.setattr(
+        modal._utils.blob_utils,
+        "_download_from_url",
+        _download_from_url.__wrapped__,  # type: ignore
+    )
     with pytest.raises(ExecutionError):
         await blob_download.aio("bl-failure", client.stub)
 
