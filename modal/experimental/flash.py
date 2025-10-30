@@ -28,6 +28,7 @@ _MAX_FAILURES = 10
 class flash_process(Popen):
     pass
 
+
 class _FlashManager:
     def __init__(
         self,
@@ -49,7 +50,9 @@ class _FlashManager:
     async def is_port_connection_healthy(
         self, process: list[subprocess.Popen] | list[flash_process], timeout: float = 0.5
     ) -> tuple[bool, Optional[Exception]]:
-        def _check_processes_healthy(processes: list[subprocess.Popen] | list[flash_process]) -> tuple[bool, Optional[Exception]]:
+        def _check_processes_healthy(
+            processes: list[subprocess.Popen] | list[flash_process],
+        ) -> tuple[bool, Optional[Exception]]:
             healthy = True
             exceptions = []
             for p in processes:
