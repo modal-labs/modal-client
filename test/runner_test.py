@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import asyncio
 import contextlib
 import pytest
 import time
@@ -7,6 +6,7 @@ import typing
 from unittest import mock
 
 import modal
+from modal._resolver import Resolver
 from modal.client import Client
 from modal.exception import AuthError, DeprecationError
 from modal.runner import deploy_app, run_app
@@ -117,19 +117,21 @@ def test_deploy_without_rich(servicer, client, no_rich):
 async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, build_validation):
     monkeypatch.setenv("MODAL_BUILD_VALIDATION", build_validation)
 
+    # Patch resolver to give it a build start time that is old, which triggers validation.
+    class PatchedResolver(Resolver):
+        @property
+        def build_start(self) -> float:
+            return 0.0
+
+    monkeypatch.setattr("modal.runner.Resolver", PatchedResolver)
+
     (large_dir := tmp_path / "large_files").mkdir()
-    for i in range(512 + 1):  # Equivalent to file upload concurrency
-        (large_dir / f"{i:02d}.txt").write_bytes(f"large {i:02d}".encode())
+    (large_dir / "1.txt").write_bytes("large 1".encode())
 
     image = modal.Image.debian_slim().add_local_dir(large_dir, "/root/large_files")
 
     app = modal.App(image=image, include_source=False)
     app.function()(dummy)
-
-    async def change_file_after_delay():
-        await asyncio.sleep(0.2)  # "Uploading" large should take 2 seconds; see mock MountPutFile
-        for f in large_dir.iterdir():
-            f.touch()
 
     handler_assertion: contextlib.AbstractContextManager
     if build_validation == "error":
@@ -139,13 +141,9 @@ async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, 
     else:
         handler_assertion = contextlib.nullcontext()
 
-    at = asyncio.create_task(change_file_after_delay())
-    try:
-        with handler_assertion:
-            async with app.run.aio(client=client):
-                ...
-    finally:
-        await at
+    with handler_assertion:
+        async with app.run.aio(client=client):
+            pass
 
 
 def test_deploy_app_namespace_deprecated(servicer, client):
