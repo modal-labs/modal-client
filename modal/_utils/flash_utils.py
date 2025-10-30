@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2025
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from .._partial_function import _find_partial_methods_for_user_cls, _FlashConfig, _PartialFunctionFlags
 from ..exception import (
@@ -29,7 +29,7 @@ def get_flash_configs(user_cls: type[Any]) -> list[_FlashConfig]:
     return flash_configs
 
 
-def get_region_from_flash_configs(flash_configs: list[_FlashConfig]) -> Optional[str]:
+def get_region_from_flash_configs(flash_configs: list[_FlashConfig]) -> Optional[str | Literal[True]]:
     regions = set()
     for flash_config in flash_configs:
         if flash_config.region:

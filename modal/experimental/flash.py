@@ -25,12 +25,15 @@ from ..exception import InvalidError
 _MAX_FAILURES = 10
 
 
+class flash_process(Popen):
+    pass
+
 class _FlashManager:
     def __init__(
         self,
         client: _Client,
         port: int,
-        process: list[subprocess.Popen] = [],
+        process: list[subprocess.Popen] | list[flash_process] = [],
         health_check_url: Optional[str] = None,
     ):
         self.client = client
@@ -44,9 +47,9 @@ class _FlashManager:
         self.task_id = os.environ["MODAL_TASK_ID"]
 
     async def is_port_connection_healthy(
-        self, process: list[subprocess.Popen], timeout: float = 0.5
+        self, process: list[subprocess.Popen] | list[flash_process], timeout: float = 0.5
     ) -> tuple[bool, Optional[Exception]]:
-        def _check_processes_healthy(processes: list[subprocess.Popen]) -> tuple[bool, Optional[Exception]]:
+        def _check_processes_healthy(processes: list[subprocess.Popen] | list[flash_process]) -> tuple[bool, Optional[Exception]]:
             healthy = True
             exceptions = []
             for p in processes:
@@ -184,7 +187,7 @@ FlashManager = synchronize_api(_FlashManager)
 @synchronizer.create_blocking
 async def flash_forward(
     port: int,
-    process: Optional[subprocess.Popen | list[subprocess.Popen]] = None,
+    process: Optional[subprocess.Popen | list[subprocess.Popen] | list[flash_process]] = None,
     health_check_url: Optional[str] = None,
 ) -> _FlashManager:
     """
@@ -658,7 +661,3 @@ def _flash_web_server(port: int, *, region: Optional[Union[str, Literal[True]]] 
 
 
 flash_web_server = synchronize_api(_flash_web_server, target_module=__name__)
-
-
-class flash_process(Popen):
-    pass
