@@ -201,6 +201,15 @@ class _Invocation:
         inputs_response: api_pb2.FunctionPutInputsResponse = await retry_transient_errors(
             client.stub.FunctionPutInputs,
             request_put,
+            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            retry_warning_message=RetryWarningMessage(
+                message=(
+                    "Function call rate limit exceeded. Retrying with backoff, which will increase latency. "
+                    "Please contact Modal support to discuss a limit increase.",
+                ),
+                warning_interval=10,
+                errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
+            ),
         )
         processed_inputs = inputs_response.inputs
         if not processed_inputs:

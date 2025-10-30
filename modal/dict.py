@@ -22,7 +22,7 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
-from ._utils.grpc_utils import retry_transient_errors
+from ._utils.grpc_utils import RetryWarningMessage, retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -52,6 +52,15 @@ class DictInfo:
     name: Optional[str]
     created_at: datetime
     created_by: Optional[str]
+
+
+def get_retry_warning_message(op: str) -> RetryWarningMessage:
+    msg = f"The modal.Dict backend is currently overloaded. Retrying the {op} operation, which will increase latency."
+    return RetryWarningMessage(
+        message=msg,
+        warning_interval=10,
+        errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
+    )
 
 
 class _DictManager:
@@ -418,7 +427,12 @@ class _Dict(_Object, type_prefix="di"):
     async def clear(self) -> None:
         """Remove all items from the Dict."""
         req = api_pb2.DictClearRequest(dict_id=self.object_id)
-        await retry_transient_errors(self._client.stub.DictClear, req)
+        await retry_transient_errors(
+            self._client.stub.DictClear,
+            req,
+            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            retry_warning_message=get_retry_warning_message("clear"),
+        )
 
     @live_method
     async def get(self, key: Any, default: Optional[Any] = None) -> Any:
@@ -427,7 +441,12 @@ class _Dict(_Object, type_prefix="di"):
         Returns `default` if key does not exist.
         """
         req = api_pb2.DictGetRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await retry_transient_errors(self._client.stub.DictGet, req)
+        resp = await retry_transient_errors(
+            self._client.stub.DictGet,
+            req,
+            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            retry_warning_message=get_retry_warning_message("get"),
+        )
         if not resp.found:
             return default
         return deserialize(resp.value, self._client)
@@ -436,7 +455,12 @@ class _Dict(_Object, type_prefix="di"):
     async def contains(self, key: Any) -> bool:
         """Return if a key is present."""
         req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await retry_transient_errors(self._client.stub.DictContains, req)
+        resp = await retry_transient_errors(
+            self._client.stub.DictContains,
+            req,
+            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            retry_warning_message=get_retry_warning_message("contains"),
+        )
         return resp.found
 
     @live_method
@@ -446,7 +470,12 @@ class _Dict(_Object, type_prefix="di"):
         Note: This is an expensive operation and will return at most 100,000.
         """
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
-        resp = await retry_transient_errors(self._client.stub.DictLen, req)
+        resp = await retry_transient_errors(
+            self._client.stub.DictLen,
+            req,
+            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            retry_warning_message=get_retry_warning_message("len"),
+        )
         return resp.len
 
     @live_method
@@ -475,7 +504,12 @@ class _Dict(_Object, type_prefix="di"):
         serialized = _serialize_dict(contents)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         try:
-            await retry_transient_errors(self._client.stub.DictUpdate, req)
+            await retry_transient_errors(
+                self._client.stub.DictUpdate,
+                req,
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                retry_warning_message=get_retry_warning_message("update"),
+            )
         except GRPCError as exc:
             if "status = '413'" in exc.message:
                 raise RequestSizeError("Dict.update request is too large") from exc
@@ -493,7 +527,12 @@ class _Dict(_Object, type_prefix="di"):
         serialized = _serialize_dict(updates)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized, if_not_exists=skip_if_exists)
         try:
-            resp = await retry_transient_errors(self._client.stub.DictUpdate, req)
+            resp = await retry_transient_errors(
+                self._client.stub.DictUpdate,
+                req,
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                retry_warning_message=get_retry_warning_message("put"),
+            )
             return resp.created
         except GRPCError as exc:
             if "status = '413'" in exc.message:
@@ -516,7 +555,12 @@ class _Dict(_Object, type_prefix="di"):
         If key is not found, return default if provided, otherwise raise KeyError.
         """
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await retry_transient_errors(self._client.stub.DictPop, req)
+        resp = await retry_transient_errors(
+            self._client.stub.DictPop,
+            req,
+            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            retry_warning_message=get_retry_warning_message("pop"),
+        )
         if not resp.found:
             if default is not _NO_DEFAULT:
                 return default
