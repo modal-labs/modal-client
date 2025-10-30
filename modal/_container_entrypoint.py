@@ -33,6 +33,7 @@ from modal._partial_function import (
 )
 from modal._serialization import deserialize, deserialize_params
 from modal._utils.async_utils import TaskContext, aclosing, synchronizer
+from modal._utils.flash_utils import get_flash_configs
 from modal._utils.function_utils import (
     callable_has_non_self_params,
 )

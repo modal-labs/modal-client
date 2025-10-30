@@ -1,14 +1,17 @@
 # Copyright Modal Labs 2025
 from typing import Any, Optional
 
-from modal_proto import api_pb2
-from .._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
+from .._partial_function import _find_partial_methods_for_user_cls, _FlashConfig, _PartialFunctionFlags
+from ..exception import (
+    InvalidError,
+)
+
 
 def is_flash_object(experimental_options: Optional[dict[str, Any]]) -> bool:
     return experimental_options.get("flash", False) if experimental_options else False
 
 
-def get_flash_configs(user_cls: type[Any]) -> Optional[api_pb2.FlashConfig]:
+def get_flash_configs(user_cls: type[Any]) -> list[_FlashConfig]:
     flash_configs = [
         partial_method.params.flash_config
         for partial_method in _find_partial_methods_for_user_cls(
@@ -17,26 +20,16 @@ def get_flash_configs(user_cls: type[Any]) -> Optional[api_pb2.FlashConfig]:
         if partial_method.params.flash_config
     ]
 
-    flash_configs = [
-                partial_method.params.flash_config
-                for partial_method in _find_partial_methods_for_user_cls(
-                    type(service.user_cls_instance), _PartialFunctionFlags.FLASH_WEB_INTERFACE
-                ).values()
-                if partial_method.params.flash_config
-            ]
+    return flash_configs
 
-    flash_configs = [
-                partial_method.params.flash_config
-                for partial_method in _find_partial_methods_for_user_cls(
-                    user_cls, _PartialFunctionFlags.FLASH_WEB_INTERFACE
-                ).values()
-                if partial_method.params.flash_config
-            ]
-            # TODO: Get the super set of regions
-            assert len(flash_configs) == 1
-            flash_config = flash_configs[0]
+def get_region_from_flash_configs(flash_configs: list[_FlashConfig]) -> Optional[str]:
+    regions = set()
+    for flash_config in flash_configs:
+        if flash_config.region:
+            regions.add(flash_config.region)
 
-    return flash_config
+    if len(regions) > 1:
+        raise InvalidError("Multiple regions specified for flash objects, "
+        "please specify a single region or use `True` to create endpoints in all available regions.")
 
-def get_region_from_flash_configs(flash_configs: Optional[api_pb2.FlashConfig]) -> Optional[str]:
-    return list(set([flash_config.region for flash_config in flash_configs]))[0]
+    return regions.pop() if regions else None
