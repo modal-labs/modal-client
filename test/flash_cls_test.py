@@ -248,8 +248,79 @@ def test_flash_experimental_options_integration(client, servicer):
 
 def test_flash_no_port_parameter_error():
     """Test that flash_web_server requires a port parameter."""
-    # This should raise a TypeError since port is required
     with pytest.raises(TypeError, match="missing 1 required positional argument: 'port'"):
         # Calling flash_web_server without port should fail
         flash_web_server()  # type: ignore  # Missing required port parameter
+
+
+def test_flash_partial_function_flags():
+    """Test that flash_web_server sets the correct partial function flags."""
+    from modal._partial_function import _PartialFunctionFlags
+
+    app = App("flash-flags")
+
+    @app.cls()
+    class FlashFlagsClass:
+        @flash_web_server(8080)
+        def serve(self):
+            return "Test flags"
+
+    # Check that the method has the right flags
+    serve_method = FlashFlagsClass.serve
+    from modal._partial_function import _PartialFunction
+    assert isinstance(serve_method, _PartialFunction)
+    assert serve_method.flags & _PartialFunctionFlags.FLASH_WEB_INTERFACE
+
+
+def test_flash_params_object():
+    """Test that flash_web_server creates proper _FlashConfig parameters."""
+    from modal._partial_function import _FlashConfig
+
+    app = App("flash-params")
+
+    @app.cls()
+    class FlashParamsClass:
+        @flash_web_server(9000, region="eu-west-1")
+        def serve(self):
+            return "Test params"
+
+    flash_configs = get_flash_configs(FlashParamsClass)
+    config = flash_configs[0]
+    assert isinstance(config, _FlashConfig)
+    assert config.port == 9000
+    assert config.region == "eu-west-1"
+
+
+def test_flash_with_parameters(client, servicer):
+    """Test flash classes with modal.parameter()."""
+    app = App("flash-parameters")
+
+    @app.cls()
+    class FlashParameterClass:
+        name: str = modal.parameter()
+
+        @flash_web_server(8080)
+        def serve(self):
+            return f"Hello {self.name}"
+
+    with app.run(client=client):
+        obj = FlashParameterClass(name="Flash")
+        flash_configs = get_flash_configs(FlashParameterClass)
+        assert len(flash_configs) == 1
+        assert flash_configs[0].port == 8080
+
+
+def test_flash_validate_obj_compatibility():
+    """Test that flash_web_server validates object compatibility."""
+    app = App("flash-compatibility")
+
+    @app.cls()
+    class FlashCompatClass:
+        @flash_web_server(8080)
+        def serve(self):
+            return "Compatible"
+
+    # The decorator should have called validate_obj_compatibility
+    serve_method = FlashCompatClass.serve
+    assert hasattr(serve_method, 'validate_obj_compatibility')
 
