@@ -32,7 +32,7 @@ from modal_proto import api_pb2
 from test.conftest import GrpcErrorAndCount, MockClientServicer
 from test.helpers import deploy_app_externally
 
-app = App()
+app = App(include_source=False)
 
 
 if os.environ.get("GITHUB_ACTIONS") == "true":

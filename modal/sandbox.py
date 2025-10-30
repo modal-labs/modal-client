@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import time
+import uuid
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
@@ -20,7 +21,7 @@ from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.mount import _Mount
 from modal.volume import _Volume
-from modal_proto import api_pb2
+from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
@@ -30,6 +31,7 @@ from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from ._utils.name_utils import is_valid_object_name
+from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .container_process import _ContainerProcess
 from .exception import AlreadyExistsError, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
@@ -121,9 +123,10 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stdout: _StreamReader[str]
     _stderr: _StreamReader[str]
     _stdin: _StreamWriter
-    _task_id: Optional[str] = None
-    _tunnels: Optional[dict[int, Tunnel]] = None
-    _enable_snapshot: bool = False
+    _task_id: Optional[str]
+    _tunnels: Optional[dict[int, Tunnel]]
+    _enable_snapshot: bool
+    _command_router_client: Optional[TaskCommandRouterClient]
 
     @staticmethod
     def _default_pty_info() -> api_pb2.PTYInfo:
@@ -513,14 +516,18 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
-        self._stdout: _StreamReader[str] = StreamReader[str](
+        self._stdout = StreamReader(
             api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client, by_line=True
         )
-        self._stderr: _StreamReader[str] = StreamReader[str](
+        self._stderr = StreamReader(
             api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client, by_line=True
         )
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
         self._result = None
+        self._task_id = None
+        self._tunnels = None
+        self._enable_snapshot = False
+        self._command_router_client = None
 
     @staticmethod
     async def from_name(
@@ -730,6 +737,13 @@ class _Sandbox(_Object, type_prefix="sb"):
                 await asyncio.sleep(0.5)
         return self._task_id
 
+    async def _get_command_router_client(self, task_id: str) -> Optional[TaskCommandRouterClient]:
+        if self._command_router_client is None:
+            # Attempt to initialize a router client. Returns None if the new exec path not enabled
+            # for this sandbox.
+            self._command_router_client = await TaskCommandRouterClient.try_init(self._client, task_id)
+        return self._command_router_client
+
     @overload
     async def exec(
         self,
@@ -855,14 +869,49 @@ class _Sandbox(_Object, type_prefix="sb"):
         await TaskContext.gather(*secret_coros)
 
         task_id = await self._get_task_id()
+        kwargs = {
+            "task_id": task_id,
+            "pty_info": pty_info,
+            "stdout": stdout,
+            "stderr": stderr,
+            "timeout": timeout,
+            "workdir": workdir,
+            "secret_ids": [secret.object_id for secret in secrets],
+            "text": text,
+            "bufsize": bufsize,
+            "runtime_debug": config.get("function_runtime_debug"),
+        }
+        # NB: This must come after the task ID is set, since the sandbox must be
+        # scheduled before we can create a router client.
+        if (command_router_client := await self._get_command_router_client(task_id)) is not None:
+            kwargs["command_router_client"] = command_router_client
+            return await self._exec_through_command_router(*args, **kwargs)
+        else:
+            return await self._exec_through_server(*args, **kwargs)
+
+    async def _exec_through_server(
+        self,
+        *args: str,
+        task_id: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secret_ids: Optional[Collection[str]] = None,
+        text: bool = True,
+        bufsize: Literal[-1, 1] = -1,
+        runtime_debug: bool = False,
+    ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
+        """Execute a command through the Modal server."""
         req = api_pb2.ContainerExecRequest(
             task_id=task_id,
             command=args,
             pty_info=pty_info,
-            runtime_debug=config.get("function_runtime_debug"),
+            runtime_debug=runtime_debug,
             timeout_secs=timeout or 0,
             workdir=workdir,
-            secret_ids=[secret.object_id for secret in secrets],
+            secret_ids=secret_ids,
         )
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
@@ -870,12 +919,82 @@ class _Sandbox(_Object, type_prefix="sb"):
         logger.debug(f"Created ContainerProcess for exec_id {resp.exec_id} on Sandbox {self.object_id}")
         return _ContainerProcess(
             resp.exec_id,
+            task_id,
             self._client,
             stdout=stdout,
             stderr=stderr,
             text=text,
             exec_deadline=exec_deadline,
             by_line=by_line,
+        )
+
+    async def _exec_through_command_router(
+        self,
+        *args: str,
+        task_id: str,
+        command_router_client: TaskCommandRouterClient,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secret_ids: Optional[Collection[str]] = None,
+        text: bool = True,
+        bufsize: Literal[-1, 1] = -1,
+        runtime_debug: bool = False,
+    ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
+        """Execute a command through a task command router running on the Modal worker."""
+
+        # Generate a random process ID to use as a combination of idempotency key/process identifier.
+        process_id = str(uuid.uuid4())
+        if stdout == StreamType.PIPE:
+            stdout_config = sr_pb2.TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_PIPE
+        elif stdout == StreamType.DEVNULL:
+            stdout_config = sr_pb2.TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_DEVNULL
+        elif stdout == StreamType.STDOUT:
+            # TODO(saltzm): This is a behavior change from the old implementation. We should
+            # probably implement the old behavior of printing to stdout before moving out of beta.
+            raise NotImplementedError(
+                "Currently the STDOUT stream type is not supported when using exec "
+                "through a task command router, which is currently in beta."
+            )
+        else:
+            raise ValueError("Unsupported StreamType for stdout")
+
+        if stderr == StreamType.PIPE:
+            stderr_config = sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_PIPE
+        elif stderr == StreamType.DEVNULL:
+            stderr_config = sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_DEVNULL
+        elif stderr == StreamType.STDOUT:
+            stderr_config = sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_STDOUT
+        else:
+            raise ValueError("Unsupported StreamType for stderr")
+
+        # Start the process.
+        start_req = sr_pb2.TaskExecStartRequest(
+            task_id=task_id,
+            exec_id=process_id,
+            command_args=args,
+            stdout_config=stdout_config,
+            stderr_config=stderr_config,
+            timeout_secs=timeout,
+            workdir=workdir,
+            secret_ids=secret_ids,
+            pty_info=pty_info,
+            runtime_debug=runtime_debug,
+        )
+        _ = await command_router_client.exec_start(start_req)
+
+        return _ContainerProcess(
+            process_id,
+            task_id,
+            self._client,
+            command_router_client=command_router_client,
+            stdout=stdout,
+            stderr=stderr,
+            text=text,
+            by_line=bufsize == 1,
+            exec_deadline=time.monotonic() + int(timeout) if timeout else None,
         )
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:

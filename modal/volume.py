@@ -655,6 +655,7 @@ class _Volume(_Object, type_prefix="vo"):
         @retry(n_attempts=5, base_delay=0.1, timeout=None)
         async def read_block(block_url: str) -> bytes:
             async with ClientSessionRegistry.get_session().get(block_url) as get_response:
+                get_response.raise_for_status()
                 return await get_response.content.read()
 
         async def iter_urls() -> AsyncGenerator[str]:
@@ -716,6 +717,7 @@ class _Volume(_Object, type_prefix="vo"):
             num_bytes_written = 0
 
             async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
+                get_response.raise_for_status()
                 async for chunk in get_response.content.iter_any():
                     num_chunk_bytes_written = 0
 
@@ -1263,7 +1265,7 @@ async def _put_missing_blocks(
         file_progress.pending_blocks.add(missing_block.block_index)
         task_progress_cb = functools.partial(progress_cb, task_id=file_progress.task_id)
 
-        @retry(n_attempts=5, base_delay=0.5, timeout=None)
+        @retry(n_attempts=11, base_delay=0.5, timeout=None)
         async def put_missing_block_attempt(payload: BytesIOSegmentPayload) -> bytes:
             with payload.reset_on_error(subtract_progress=True):
                 async with ClientSessionRegistry.get_session().put(

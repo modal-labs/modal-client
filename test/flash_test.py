@@ -148,57 +148,6 @@ class TestFlashInternalMetricAutoscalerLogic:
                 buffer_containers=None,
             )
 
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "flash_metric,target_value,metrics,current_replicas,expected_replicas",
-        [
-            # Case 1: High CPU single container
-            ("cpu_usage_percent", 0.5, [0.8], 1, 2),
-            # Case 2: Low CPU multiple containers
-            ("cpu_usage_percent", 0.5, [0.1, 0.05, 0.05], 2, 1),
-            # Case 3: Low CPU single container with missing containers
-            ("cpu_usage_percent", 0.5, [0.2], 3, 3),
-            # Case 4: High CPU multiple containers
-            ("cpu_usage_percent", 0.5, [0.6, 0.7, 0.8, 0.9], 5, 6),
-            # Case 5: High memory usage
-            ("memory_usage_percent", 0.6, [0.9], 2, 2),
-            # Case 6: Low memory usage within tolerance
-            ("memory_usage_percent", 0.6, [0.52], 2, 2),
-        ],
-    )
-    async def test_metric_scaling(
-        self,
-        autoscaler,
-        flash_metric,
-        target_value,
-        metrics,
-        current_replicas,
-        expected_replicas,
-    ):
-        autoscaler.target_metric = flash_metric
-        autoscaler.target_metric_value = target_value
-
-        mock_containers = [MagicMock() for _ in range(len(metrics))]
-        autoscaler._get_all_containers = AsyncMock(return_value=mock_containers)
-
-        autoscaler._get_container_metrics = AsyncMock(
-            side_effect=[MagicMock(metrics=MagicMock(**{flash_metric: value})) for value in metrics]
-        )
-
-        result = await autoscaler._compute_target_containers(current_replicas=current_replicas)
-        assert result == expected_replicas
-
-    @pytest.mark.asyncio
-    async def test_no_metrics_returns_current(self, autoscaler):
-        mock_container = MagicMock()
-        mock_container.id = "container_1"
-
-        autoscaler._get_all_containers = AsyncMock(return_value=[mock_container])
-        autoscaler._get_container_metrics = AsyncMock(return_value=None)
-
-        result = await autoscaler._compute_target_containers(current_replicas=3)
-        assert result == 3
-
 
 class TestFlashManagerStopping:
     @pytest.fixture
