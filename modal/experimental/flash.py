@@ -34,7 +34,7 @@ class _FlashManager:
         self,
         client: _Client,
         port: int,
-        process: list[subprocess.Popen] | list[flash_process] = [],
+        process: Union[list[subprocess.Popen], list[flash_process]] = [],
         health_check_url: Optional[str] = None,
     ):
         self.client = client
@@ -48,10 +48,10 @@ class _FlashManager:
         self.task_id = os.environ["MODAL_TASK_ID"]
 
     async def is_port_connection_healthy(
-        self, process: list[subprocess.Popen] | list[flash_process], timeout: float = 0.5
+        self, process: Union[list[subprocess.Popen], list[flash_process]], timeout: float = 0.5
     ) -> tuple[bool, Optional[Exception]]:
         def _check_processes_healthy(
-            processes: list[subprocess.Popen] | list[flash_process],
+            processes: Union[list[subprocess.Popen], list[flash_process]],
         ) -> tuple[bool, Optional[Exception]]:
             healthy = True
             exceptions = []
@@ -190,7 +190,7 @@ FlashManager = synchronize_api(_FlashManager)
 @synchronizer.create_blocking
 async def flash_forward(
     port: int,
-    process: Optional[subprocess.Popen | list[subprocess.Popen] | list[flash_process]] = None,
+    process: Optional[subprocess.Popen | Union[list[subprocess.Popen], list[flash_process]]] = None,
     health_check_url: Optional[str] = None,
 ) -> _FlashManager:
     """
