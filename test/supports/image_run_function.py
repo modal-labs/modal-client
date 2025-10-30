@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
 import modal
 
-app = modal.App("a")
-other = modal.App("b")
+app = modal.App("a", include_source=False)
+other = modal.App("b", include_source=False)
 
 
 def builder_function():

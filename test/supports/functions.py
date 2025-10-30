@@ -28,7 +28,7 @@ from modal.queue import Queue
 
 SLEEP_DELAY = 0.1
 
-app = App()
+app = App(include_source=False)
 
 
 @app.function()
@@ -508,15 +508,15 @@ class LifecycleCls:
 
 @app.function()
 @concurrent(max_inputs=6)
-def sleep_700_sync(x):
-    time.sleep(0.7)
+def sleep_100_sync(x):
+    time.sleep(0.1)
     return x * x, current_input_id(), current_function_call_id()
 
 
 @app.function()
 @concurrent(max_inputs=6)
-async def sleep_700_async(x):
-    await asyncio.sleep(0.7)
+async def sleep_100_async(x):
+    await asyncio.sleep(0.1)
     return x * x, current_input_id(), current_function_call_id()
 
 
@@ -652,7 +652,7 @@ def is_local_f(x):
 
 @app.function()
 def raise_large_unicode_exception():
-    byte_str = (b"k" * 120_000_000) + b"\x99"
+    byte_str = (b"k" * 3_000_000) + b"\x99"
     byte_str.decode("utf-8")
 
 
