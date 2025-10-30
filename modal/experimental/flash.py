@@ -190,7 +190,7 @@ FlashManager = synchronize_api(_FlashManager)
 @synchronizer.create_blocking
 async def flash_forward(
     port: int,
-    process: Optional[subprocess.Popen | Union[list[subprocess.Popen], list[flash_process]]] = None,
+    process: Optional[Union[subprocess.Popen, list[subprocess.Popen], list[flash_process]]] = None,
     health_check_url: Optional[str] = None,
 ) -> _FlashManager:
     """
