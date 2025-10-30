@@ -21,7 +21,7 @@ def import_ref(test_dir):
 @pytest.mark.asyncio
 async def test_live_reload(import_ref, server_url_env, token_env, servicer):
     async with serve_app.aio(app, import_ref):
-        await asyncio.sleep(3.0)
+        await asyncio.sleep(0.1)
     assert servicer.app_publish_count == 1
     assert servicer.app_client_disconnect_count == 1
     assert servicer.app_get_logs_initial_count == 0
@@ -31,7 +31,7 @@ async def test_live_reload(import_ref, server_url_env, token_env, servicer):
 async def test_live_reload_with_logs(import_ref, server_url_env, token_env, servicer):
     with enable_output():
         async with serve_app.aio(app, import_ref):
-            await asyncio.sleep(3.0)
+            await asyncio.sleep(0.1)
     assert servicer.app_publish_count == 1
     assert servicer.app_client_disconnect_count == 1
     assert servicer.app_get_logs_initial_count == 1
@@ -78,14 +78,15 @@ async def test_no_change(import_ref, server_url_env, token_env, servicer):
 
 @pytest.mark.asyncio
 async def test_heartbeats(import_ref, server_url_env, token_env, servicer):
-    with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
+    interval = 0.2
+    with mock.patch("modal.runner.HEARTBEAT_INTERVAL", interval):
         t0 = time.time()
         async with serve_app.aio(app, import_ref):
-            await asyncio.sleep(3.1)
+            await asyncio.sleep(0.7)
         total_secs = int(time.time() - t0)
 
     apps = list(servicer.app_heartbeats.keys())
     assert len(apps) == 1
-    # Typically [0s, 1s, 2s, 3s], but asyncio.sleep may lag.
+    # Typically [0s, 0.2s, 0.4s], but asyncio.sleep may lag.
     actual_heartbeats = servicer.app_heartbeats[apps[0]]
-    assert abs(actual_heartbeats - (total_secs + 1)) <= 1
+    assert abs(actual_heartbeats - (total_secs + 1) / interval) <= 1
