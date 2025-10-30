@@ -305,7 +305,6 @@ def test_flash_with_parameters(client, servicer):
             return f"Hello {self.name}"
 
     with app.run(client=client):
-        obj = FlashParameterClass(name="Flash")
         flash_configs = get_flash_configs(FlashParameterClass)
         assert len(flash_configs) == 1
         assert flash_configs[0].port == 8080
