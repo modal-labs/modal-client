@@ -30,7 +30,7 @@ class _FlashManager:
         self,
         client: _Client,
         port: int,
-        process: Optional[subprocess.Popen] = None,
+        process: list[subprocess.Popen] = [],
         health_check_url: Optional[str] = None,
     ):
         self.client = client
@@ -44,16 +44,27 @@ class _FlashManager:
         self.task_id = os.environ["MODAL_TASK_ID"]
 
     async def is_port_connection_healthy(
-        self, process: Optional[subprocess.Popen], timeout: float = 0.5
+        self, process: list[subprocess.Popen], timeout: float = 0.5
     ) -> tuple[bool, Optional[Exception]]:
+
+        def _check_processes_healthy(processes: list[subprocess.Popen]) -> tuple[bool, Optional[Exception]]:
+            healthy = True
+            exceptions = []
+            for p in processes:
+                if p.poll() is not None:
+                    exceptions.append(f"Process {p.pid} exited with code {p.returncode}.")
+                    healthy = False
+            return healthy, Exception("\n".join(exceptions)) if exceptions else None
+
         import socket
 
         start_time = time.monotonic()
 
         while time.monotonic() - start_time < timeout:
             try:
-                if process is not None and process.poll() is not None:
-                    return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
+                healthy, exceptions = _check_processes_healthy(process)
+                if not healthy:
+                    return False, exceptions
                 with socket.create_connection(("localhost", self.port), timeout=0.5):
                     return True, None
             except (ConnectionRefusedError, OSError):
@@ -174,7 +185,7 @@ FlashManager = synchronize_api(_FlashManager)
 @synchronizer.create_blocking
 async def flash_forward(
     port: int,
-    process: Optional[subprocess.Popen] = None,
+    process: Optional[subprocess.Popen | list[subprocess.Popen]] = None,
     health_check_url: Optional[str] = None,
 ) -> _FlashManager:
     """
@@ -183,7 +194,10 @@ async def flash_forward(
     Do not use this method unless explicitly instructed to do so by Modal support.
     """
     client = await _Client.from_env()
-
+    if process is None:
+        process = []
+    if not isinstance(process, list):
+        process = [process]
     manager = _FlashManager(client, port, process=process, health_check_url=health_check_url)
     await manager._start()
     return manager
