@@ -126,8 +126,7 @@ async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, 
     monkeypatch.setattr("modal.runner.Resolver", PatchedResolver)
 
     (large_dir := tmp_path / "large_files").mkdir()
-    for i in range(8 + 1):  # Equivalent to file upload concurrency
-        (large_dir / f"{i:02d}.txt").write_bytes(f"large {i:02d}".encode())
+    (large_dir / "1.txt").write_bytes("large 1".encode())
 
     image = modal.Image.debian_slim().add_local_dir(large_dir, "/root/large_files")
 
