@@ -450,7 +450,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     f"Function has {len(service.service_deps)} dependencies"
                     f" but container got {len(dep_object_ids)} object ids.\n"
                     f"Code deps: {service.service_deps}\n"
-                    f"Object ids: {dep_object_ids}"
+                    f"Object ids: {dep_object_ids}\n"
+                    "\n"
+                    "This can happen if you are defining Modal objects under a conditional statement "
+                    "that evaluates differently in the local and remote environments."
                 )
             for object_id, obj in zip(dep_object_ids, service.service_deps):
                 metadata: Message = container_app.object_handle_metadata[object_id]

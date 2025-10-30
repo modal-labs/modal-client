@@ -64,7 +64,6 @@ async def _container_process_logs_iterator(
         get_raw_bytes=True,
         last_batch_index=last_index,
     )
-
     stream = client.stub.ContainerExecGetOutput.unary_stream(req)
     while True:
         # Check deadline before attempting to receive the next batch
@@ -76,11 +75,13 @@ async def _container_process_logs_iterator(
             break
         except StopAsyncIteration:
             break
+
+        for item in batch.items:
+            yield item.message_bytes, batch.batch_index
+
         if batch.HasField("exit_code"):
             yield None, batch.batch_index
             break
-        for item in batch.items:
-            yield item.message_bytes, batch.batch_index
 
 
 T = TypeVar("T", str, bytes)
@@ -89,7 +90,7 @@ T = TypeVar("T", str, bytes)
 class _StreamReaderThroughServer(Generic[T]):
     """A StreamReader implementation that reads from the server."""
 
-    _stream: Optional[AsyncGenerator[Optional[bytes], None]]
+    _stream: Optional[AsyncGenerator[T, None]]
 
     def __init__(
         self,
@@ -134,10 +135,9 @@ class _StreamReaderThroughServer(Generic[T]):
         self._stream_type = stream_type
 
         if self._object_type == "container_process":
-            # Container process streams need to be consumed as they are produced,
-            # otherwise the process will block. Use a buffer to store the stream
-            # until the client consumes it.
-            self._container_process_buffer: list[Optional[bytes]] = []
+            # TODO: we should not have this async code in constructors!
+            #  it only works as long as all the construction happens inside of synchronicity code
+            self._container_process_buffer: list[Optional[bytes]] = []  # TODO: change this to an asyncio.Queue
             self._consume_container_process_task = asyncio.create_task(self._consume_container_process_stream())
 
     @property
@@ -147,21 +147,18 @@ class _StreamReaderThroughServer(Generic[T]):
 
     async def read(self) -> T:
         """Fetch the entire contents of the stream until EOF."""
-        data_str = ""
-        data_bytes = b""
         logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read starting")
-        async for message in self._get_logs():
-            if message is None:
-                break
-            if self._text:
-                data_str += message.decode("utf-8")
-            else:
-                data_bytes += message
-
-        logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
         if self._text:
+            data_str = ""
+            async for message in _decode_bytes_stream_to_str(self._get_logs()):
+                data_str += message
+            logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
             return cast(T, data_str)
         else:
+            data_bytes = b""
+            async for message in self._get_logs():
+                data_bytes += message
+            logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
             return cast(T, data_bytes)
 
     async def _consume_container_process_stream(self):
@@ -181,6 +178,7 @@ class _StreamReaderThroughServer(Generic[T]):
                 )
                 async for message, batch_index in iterator:
                     if self._stream_type == StreamType.STDOUT and message:
+                        # TODO: rearchitect this, since these bytes aren't necessarily decodable
                         print(message.decode("utf-8"), end="")
                     elif self._stream_type == StreamType.PIPE:
                         self._container_process_buffer.append(message)
@@ -208,6 +206,9 @@ class _StreamReaderThroughServer(Generic[T]):
 
     async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
         """Streams the container process buffer to the reader."""
+        # Container process streams need to be consumed as they are produced,
+        # otherwise the process will block. Use a buffer to store the stream
+        # until the client consumes it.
         entry_id = 0
         if self._last_entry_id:
             entry_id = int(self._last_entry_id) + 1
@@ -225,7 +226,7 @@ class _StreamReaderThroughServer(Generic[T]):
 
             entry_id += 1
 
-    async def _get_logs(self, skip_empty_messages: bool = True) -> AsyncGenerator[Optional[bytes], None]:
+    async def _get_logs(self, skip_empty_messages: bool = True) -> AsyncGenerator[bytes, None]:
         """Streams sandbox or process logs from the server to the reader.
 
         Logs returned by this method may contain partial or multiple lines at a time.
@@ -237,7 +238,6 @@ class _StreamReaderThroughServer(Generic[T]):
             raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
 
         if self.eof:
-            yield None
             return
 
         completed = False
@@ -262,6 +262,8 @@ class _StreamReaderThroughServer(Generic[T]):
                     if message is None:
                         completed = True
                         self.eof = True
+                        return
+
                     yield message
 
             except (GRPCError, StreamTerminatedError) as exc:
@@ -275,43 +277,37 @@ class _StreamReaderThroughServer(Generic[T]):
                         continue
                 raise
 
-    async def _get_logs_by_line(self) -> AsyncGenerator[Optional[bytes], None]:
+    async def _get_logs_by_line(self) -> AsyncGenerator[bytes, None]:
         """Process logs from the server and yield complete lines only."""
         async for message in self._get_logs():
-            if message is None:
-                if self._line_buffer:
-                    yield self._line_buffer
-                    self._line_buffer = b""
-                yield None
-            else:
-                assert isinstance(message, bytes)
-                self._line_buffer += message
-                while b"\n" in self._line_buffer:
-                    line, self._line_buffer = self._line_buffer.split(b"\n", 1)
-                    yield line + b"\n"
+            assert isinstance(message, bytes)
+            self._line_buffer += message
+            while b"\n" in self._line_buffer:
+                line, self._line_buffer = self._line_buffer.split(b"\n", 1)
+                yield line + b"\n"
 
-    def _ensure_stream(self) -> AsyncGenerator[Optional[bytes], None]:
+        if self._line_buffer:
+            yield self._line_buffer
+            self._line_buffer = b""
+
+    def _ensure_stream(self) -> AsyncGenerator[T, None]:
         if not self._stream:
             if self._by_line:
-                self._stream = self._get_logs_by_line()
+                # TODO: This is quite odd - it does line buffering in binary mode
+                # but we then always add the buffered text decoding on top of that.
+                # feels a bit upside down...
+                stream = self._get_logs_by_line()
             else:
-                self._stream = self._get_logs()
+                stream = self._get_logs()
+            if self._text:
+                stream = _decode_bytes_stream_to_str(stream)
+            self._stream = cast(AsyncGenerator[T, None], stream)
         return self._stream
 
     async def __anext__(self) -> T:
         """mdmd:hidden"""
         stream = self._ensure_stream()
-
-        value = await stream.__anext__()
-
-        # The stream yields None if it receives an EOF batch.
-        if value is None:
-            raise StopAsyncIteration
-
-        if self._text:
-            return cast(T, value.decode("utf-8"))
-        else:
-            return cast(T, value)
+        return cast(T, await stream.__anext__())
 
     async def aclose(self):
         """mdmd:hidden"""
@@ -330,6 +326,7 @@ async def _decode_bytes_stream_to_str(stream: AsyncGenerator[bytes, None]) -> As
         text = decoder.decode(item, final=False)
         if text:
             yield text
+
     # Flush any buffered partial character at end-of-stream
     tail = decoder.decode(b"", final=True)
     if tail:
@@ -511,6 +508,13 @@ class _StreamReader(Generic[T]):
         print(f"Message: {message}")
     ```
     """
+
+    _impl: Union[
+        _StreamReaderThroughServer,
+        _DevnullStreamReader,
+        _TextStreamReaderThroughCommandRouter,
+        _BytesStreamReaderThroughCommandRouter,
+    ]
 
     def __init__(
         self,

@@ -516,10 +516,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
-        self._stdout: _StreamReader[str] = StreamReader[str](
+        self._stdout = StreamReader(
             api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client, by_line=True
         )
-        self._stderr: _StreamReader[str] = StreamReader[str](
+        self._stderr = StreamReader(
             api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client, by_line=True
         )
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
