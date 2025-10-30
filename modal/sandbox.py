@@ -805,13 +805,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         **Usage**
 
-        ```python
-        app = modal.App.lookup("my-app", create_if_missing=True)
-
-        sandbox = modal.Sandbox.create("sleep", "infinity", app=app)
-
-        process = sandbox.exec("bash", "-c", "for i in $(seq 1 10); do echo foo $i; sleep 0.5; done")
-
+        ```python fixture:sandbox
+        process = sandbox.exec("bash", "-c", "for i in $(seq 1 3); do echo foo $i; sleep 0.1; done")
         for line in process.stdout:
             print(line)
         ```

@@ -19,19 +19,21 @@ def pytest_markdown_docs_globals():
 
     return {
         "modal": modal,
-        "app": modal.App("pytest-markdown-docs-app"),
+        "app": modal.App("pytest-markdown-docs-app", include_source=False),
         "math": math,
         "__name__": "runtest",
-        "fastapi_endpoint": modal.fastapi_endpoint,
-        "asgi_app": modal.asgi_app,
-        "wsgi_app": modal.wsgi_app,
         "__file__": "xyz.py",
     }
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session")
 def running_app():
     return modal.App.lookup("pytest-markdown-docs-running-app", create_if_missing=True)
+
+
+@pytest.fixture(scope="session")
+def sandbox(running_app):
+    return modal.Sandbox.create("sleep", "infinity", app=running_app)
 
 
 @register_runner()
