@@ -1474,7 +1474,7 @@ def test_image_run_function_no_warn(servicer, caplog):
     assert len(caplog.messages) == 0
 
 
-SLEEP_TIME = 0.7
+SLEEP_TIME = 0.1
 
 
 def _unwrap_concurrent_input_outputs(n_inputs: int, n_parallel: int, ret: ContainerResult):
@@ -1505,7 +1505,7 @@ def test_concurrent_inputs_sync_function(servicer, deployed_support_function_def
     t0 = time.time()
     ret = _run_container_auto(
         servicer,
-        "sleep_700_sync",
+        "sleep_100_sync",
         deployed_support_function_definitions,
         inputs=_get_inputs(n=n_inputs),
     )
@@ -1527,7 +1527,7 @@ def test_concurrent_inputs_async_function(servicer, deployed_support_function_de
     t0 = time.time()
     ret = _run_container_auto(
         servicer,
-        "sleep_700_async",
+        "sleep_100_async",
         deployed_support_function_definitions,
         inputs=_get_inputs(n=n_inputs),
     )
@@ -2343,11 +2343,11 @@ def test_sigint_termination_exit_handler(servicer, tmp_path, exit_type):
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[("delay", (0,), {})],
-            cls_params=((), {"print_at_exit": 1, f"{exit_type}_duration": 2}),
+            cls_params=((), {"print_at_exit": 1, f"{exit_type}_duration": 0.5}),
             is_class=True,
         )
         outputs.wait()  # wait for first output to be emitted
-    time.sleep(1)  # give some time for container to end up in the exit handler
+    time.sleep(0.25)  # give some time for container to end up in the exit handler
     os.kill(container_process.pid, signal.SIGINT)
 
     stdout, stderr = container_process.communicate(timeout=5)
