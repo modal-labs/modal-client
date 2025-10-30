@@ -268,6 +268,7 @@ def test_flash_partial_function_flags():
     # Check that the method has the right flags
     serve_method = FlashFlagsClass.serve
     from modal._partial_function import _PartialFunction
+
     assert isinstance(serve_method, _PartialFunction)
     assert serve_method.flags & _PartialFunctionFlags.FLASH_WEB_INTERFACE
 
@@ -322,5 +323,4 @@ def test_flash_validate_obj_compatibility():
 
     # The decorator should have called validate_obj_compatibility
     serve_method = FlashCompatClass.serve
-    assert hasattr(serve_method, 'validate_obj_compatibility')
-
+    assert hasattr(serve_method, "validate_obj_compatibility")
