@@ -643,7 +643,7 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
     return resp.containers
 
 
-def _flash_web_server(port: int, *, region: Optional[Union[str, Literal[True]]] = None):
+def _flash_web_server(port: int, *, region: Union[str, Literal[True]] = True):
     from typing import Callable, Union
 
     from .._partial_function import _FlashConfig, _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams

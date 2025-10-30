@@ -71,7 +71,7 @@ class _PartialFunctionFlags(enum.IntFlag):
 @dataclass
 class _FlashConfig:
     port: int
-    region: Optional[Union[str, Literal[True]]]
+    region: Union[str, Literal[True]]
 
 
 @dataclass
