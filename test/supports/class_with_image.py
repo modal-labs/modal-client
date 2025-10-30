@@ -2,7 +2,7 @@
 import modal
 
 image = modal.Image.debian_slim()
-app = modal.App(image=image)
+app = modal.App(image=image, include_source=False)
 
 
 @app.cls()

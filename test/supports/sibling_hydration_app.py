@@ -2,7 +2,7 @@
 import modal
 from modal import asgi_app, enter, fastapi_endpoint, method
 
-app = modal.App()
+app = modal.App(include_source=False)
 
 
 @app.function()
