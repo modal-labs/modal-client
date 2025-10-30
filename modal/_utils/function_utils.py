@@ -74,6 +74,7 @@ def entrypoint_only_package_mount_condition(entrypoint_file):
 def is_global_object(object_qual_name: str):
     return "<locals>" not in object_qual_name.split(".")
 
+
 def is_method_fn(object_qual_name: str):
     # methods have names like Cls.foo.
     if "<locals>" in object_qual_name:

@@ -46,7 +46,6 @@ class _FlashManager:
     async def is_port_connection_healthy(
         self, process: list[subprocess.Popen], timeout: float = 0.5
     ) -> tuple[bool, Optional[Exception]]:
-
         def _check_processes_healthy(processes: list[subprocess.Popen]) -> tuple[bool, Optional[Exception]]:
             healthy = True
             exceptions = []
