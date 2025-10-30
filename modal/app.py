@@ -34,7 +34,8 @@ from ._utils.deprecation import (
     deprecation_warning,
     warn_on_renamed_autoscaler_settings,
 )
-from ._utils.function_utils import FunctionInfo, is_flash_object, is_global_object, is_method_fn
+from ._utils.flash_utils import get_flash_configs, get_region_from_flash_configs, is_flash_object
+from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name, check_tag_dict
@@ -1051,25 +1052,20 @@ class _App:
                     "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
                 )
 
-            flash_configs = [
-                partial_method.params.flash_config
-                for partial_method in _find_partial_methods_for_user_cls(
-                    user_cls, _PartialFunctionFlags.FLASH_WEB_INTERFACE
-                ).values()
-                if partial_method.params.flash_config
-            ]
-            # TODO: Get the super set of regions
-            assert len(flash_configs) == 1
-            flash_config = flash_configs[0]
+            flash_configs = get_flash_configs(user_cls)
+            flash_region = get_region_from_flash_configs(flash_configs)
 
+            # TODO(claudia): Refactor this once flash is promoted from experimental options.
             experimental_options_ = experimental_options or {}
-            experimental_options_["flash"] = flash_config.region
+            if flash_region:
+                experimental_options_["flash"] = flash_region
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
 
-            # TODO(claudia): Refactor this. This check is performed here due to experimental_options modification
+            # TODO(claudia): Refactor this once flash is promoted from experimental options.
+            # This check is performed here due to experimental_options modification
             if isinstance(wrapped_cls, _PartialFunction) and (
                 wrapped_cls.flags & _PartialFunctionFlags.FLASH_WEB_INTERFACE
             ):
