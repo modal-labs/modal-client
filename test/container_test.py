@@ -1964,7 +1964,7 @@ def test_cancellation_aborts_current_input_on_match(
             function_name,
             inputs=[("", (arg,), {}) for arg in input_args],
         )
-        time.sleep(1)
+        time.sleep(0.2)
         input_lock.wait()
         input_lock.wait()
         # second input has been sent to container here
@@ -2516,7 +2516,7 @@ def test_max_concurrency(servicer, deployed_support_function_definitions):
         servicer,
         "get_input_concurrency",
         deployed_support_function_definitions,
-        inputs=_get_inputs(((1,), {}), n=n_inputs),
+        inputs=_get_inputs(((0.1,), {}), n=n_inputs),
     )
 
     outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
@@ -2535,8 +2535,8 @@ def test_set_local_input_concurrency(servicer, deployed_support_function_definit
         inputs=_get_inputs(((now,), {}), n=n_inputs),
     )
 
-    outputs = [int(deserialize(item.result.data, ret.client)) for item in ret.items]
-    assert outputs == [1] * 3 + [2] * 3
+    outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
+    assert outputs == pytest.approx([0.1] * 3 + [0.2] * 3, abs=0.05)
 
 
 @skip_github_non_linux

@@ -41,7 +41,7 @@ def counting_function(return_success_on_retry_count: int):
 
 @pytest.fixture
 def setup_app_and_function(servicer):
-    app = App()
+    app = App(include_source=False)
     servicer.function_body(counting_function)
     retries = modal.Retries(
         max_retries=3,
@@ -66,11 +66,11 @@ def fetch_input_plane_request_counts(ctx):
 
 @pytest.fixture
 def setup_app_and_function_inputplane(servicer):
-    app = App()
+    app = App(include_source=False)
     servicer.function_body(counting_function)
-    f = app.function(experimental_options={"input_plane_region": "us-east"}, retries=modal.Retries(max_retries=3))(
-        counting_function
-    )
+    f = app.function(
+        experimental_options={"input_plane_region": "us-east"}, retries=modal.Retries(max_retries=3, initial_delay=0.01)
+    )(counting_function)
     return app, f
 
 

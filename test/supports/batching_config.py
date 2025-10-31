@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2025
 import modal
 
-app = modal.App("batching-config")
+app = modal.App("batching-config", include_source=False)
 
 CONFIG_VALS = {"MAX_SIZE": 100, "WAIT_MS": 1000}
 
