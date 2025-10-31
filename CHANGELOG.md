@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.2.dev11 (2025-10-31)
+
+- The JSON from `modal config show` can now be parsed by cli tools such as `jq`.
+
+
 #### 1.2.2.dev2 (2025-10-28)
 
 - `Image.run_commands` supports `volumes` for mounting a volume for build caching
