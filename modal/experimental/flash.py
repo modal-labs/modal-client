@@ -684,4 +684,4 @@ class _FlashContainerEntry:
 
     def close(self):
         for flash_manager in self.flash_managers.values():
-            flash_manager.stop()
+            flash_manager.close()
