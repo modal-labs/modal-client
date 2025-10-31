@@ -1334,13 +1334,13 @@ def test_no_state_reuse(client, servicer, supports_dir):
         deploy_app(app, client=client)
         func_create = ctx.pop_request("FunctionCreate")
         first_deploy_mounts = set(func_create.function.mount_ids)
-        assert len(first_deploy_mounts) == 2  # one of the explicit mounts, entrypoint mount
+        assert len(first_deploy_mounts) == 2  # client mount & explicit mount
 
     with servicer.intercept() as ctx:
         deploy_app(app, client=client)
         func_create = ctx.pop_request("FunctionCreate")
         second_deploy_mounts = set(func_create.function.mount_ids)
-        assert len(second_deploy_mounts) == 2  # one of the explicit mounts, entrypoint mount
+        assert len(second_deploy_mounts) == 2  # client mount & explicit mount
 
     # mount ids should not overlap between first and second deploy, except for client mount
     assert first_deploy_mounts & second_deploy_mounts == {servicer.default_published_client_mount}
