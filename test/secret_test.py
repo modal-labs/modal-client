@@ -17,7 +17,7 @@ def dummy(): ...
 
 
 def test_secret_from_dict(servicer, client):
-    app = App()
+    app = App(include_source=False)
     secret = Secret.from_dict({"FOO": "hello, world"})
     app.function(secrets=[secret])(dummy)
     with app.run(client=client):
@@ -34,14 +34,14 @@ def test_secret_from_dotenv(servicer, client):
         with open(os.path.join(tmpdirname, ".env-dev"), "w") as f:
             f.write("# My settings\nUSER=user2\nPASSWORD=abc456\n")
 
-        app = App()
+        app = App(include_source=False)
         secret = Secret.from_dotenv(tmpdirname)
         app.function(secrets=[secret])(dummy)
         with app.run(client=client):
             assert secret.object_id == "st-0"
             assert servicer.secrets["st-0"] == {"USER": "user", "PASSWORD": "abc123"}
 
-        app = App()
+        app = App(include_source=False)
         secret = Secret.from_dotenv(tmpdirname, filename=".env-dev")
         app.function(secrets=[secret])(dummy)
         with app.run(client=client):
@@ -51,7 +51,7 @@ def test_secret_from_dotenv(servicer, client):
 
 @mock.patch.dict(os.environ, {"FOO": "easy", "BAR": "1234"})
 def test_secret_from_local_environ(servicer, client):
-    app = App()
+    app = App(include_source=False)
     secret = Secret.from_local_environ(["FOO", "BAR"])
     app.function(secrets=[secret])(dummy)
     with app.run(client=client):
@@ -68,7 +68,7 @@ def test_init_types():
 
 
 def test_secret_from_dict_none(servicer, client):
-    app = App()
+    app = App(include_source=False)
     secret = Secret.from_dict({"FOO": os.getenv("xyz"), "BAR": os.environ.get("abc"), "BAZ": "baz"})
     app.function(secrets=[secret])(dummy)
     with app.run(client=client):

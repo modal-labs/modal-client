@@ -1327,20 +1327,20 @@ def test_no_state_reuse(client, servicer, supports_dir):
         .add_local_file(supports_dir / "pyproject.toml", "/root/")
         .add_local_file(supports_dir / "pyproject.toml", "/root/")
     )
-    app = App("reuse-mount-app")
+    app = App("reuse-mount-app", include_source=False)
     app.function(image=img)(dummy)
 
     with servicer.intercept() as ctx:
         deploy_app(app, client=client)
         func_create = ctx.pop_request("FunctionCreate")
         first_deploy_mounts = set(func_create.function.mount_ids)
-        assert len(first_deploy_mounts) == 3  # client mount, one of the explicit mounts, entrypoint mount
+        assert len(first_deploy_mounts) == 2  # one of the explicit mounts, entrypoint mount
 
     with servicer.intercept() as ctx:
         deploy_app(app, client=client)
         func_create = ctx.pop_request("FunctionCreate")
         second_deploy_mounts = set(func_create.function.mount_ids)
-        assert len(second_deploy_mounts) == 3  # client mount, one of the explicit mounts, entrypoint mount
+        assert len(second_deploy_mounts) == 2  # one of the explicit mounts, entrypoint mount
 
     # mount ids should not overlap between first and second deploy, except for client mount
     assert first_deploy_mounts & second_deploy_mounts == {servicer.default_published_client_mount}
@@ -2177,7 +2177,7 @@ def test_startup_timeout(client, servicer):
     assert function_request.function.startup_timeout_secs == 14
 
 
-timeout_app_default = App("timeout-app-default")
+timeout_app_default = App("timeout-app-default", include_source=False)
 
 
 @timeout_app_default.function(timeout=23)

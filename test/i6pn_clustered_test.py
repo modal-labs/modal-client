@@ -3,7 +3,7 @@ import modal
 import modal.experimental
 from modal import App
 
-app = App()
+app = App(include_source=False)
 
 
 @app.function()

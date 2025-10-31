@@ -299,7 +299,7 @@ async def test_stream_reader_timeout(servicer, client):
         # Send three messages, third one heavily delayed
         for i in range(3):
             if i == 2:
-                await asyncio.sleep(3)
+                await asyncio.sleep(1)
             await stream.send_message(
                 api_pb2.RuntimeOutputBatch(
                     batch_index=i,
@@ -319,7 +319,7 @@ async def test_stream_reader_timeout(servicer, client):
                 object_type="container_process",
                 client=client,
                 by_line=True,
-                deadline=time.monotonic() + 2,  # use a 2-second timeout
+                deadline=time.monotonic() + 0.5,  # use a 2-second timeout
             )
             output: list[str] = []
             async for line in stdout:

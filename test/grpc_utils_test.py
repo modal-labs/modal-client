@@ -4,6 +4,7 @@ import time
 
 from grpclib import GRPCError, Status
 
+import modal
 from modal import __version__
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
@@ -57,7 +58,8 @@ async def test_unix_channel(servicer):
 
 
 @pytest.mark.asyncio
-async def test_http_broken_channel():
+async def test_http_broken_channel(monkeypatch):
+    monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
     ch = create_channel("https://xyz.invalid")
     with pytest.raises(OSError):
         await connect_channel(ch)

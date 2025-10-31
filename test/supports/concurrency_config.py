@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2025
 import modal
 
-app = modal.App("concurrency-config")
+app = modal.App("concurrency-config", include_source=False)
 
 CONFIG_VALS = {"OLD_MAX": 100, "NEW_MAX": 1000, "TARGET": 500}
 
