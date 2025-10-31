@@ -517,7 +517,7 @@ def test_no_user_code_in_synchronicity_deploy(servicer, set_env_client, test_dir
 
 def test_serve(servicer, set_env_client, server_url_env, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
-    _run(["serve", app_file.as_posix(), "--timeout", "3"], expected_exit_code=0)
+    _run(["serve", app_file.as_posix(), "--timeout", "1"], expected_exit_code=0)
 
 
 @pytest.fixture

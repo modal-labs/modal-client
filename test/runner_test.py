@@ -58,7 +58,7 @@ def dummy(): ...
 def test_run_app_profile_env_with_refs(servicer, client, monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "profile_env")
     with servicer.intercept() as ctx:
-        dummy_app = modal.App()
+        dummy_app = modal.App(include_source=False)
         ref = modal.Secret.from_name("some_secret")
         dummy_app.function(secrets=[ref])(dummy)
 
@@ -81,7 +81,7 @@ def test_run_app_profile_env_with_refs(servicer, client, monkeypatch):
 
 def test_run_app_custom_env_with_refs(servicer, client, monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "profile_env")
-    dummy_app = modal.App()
+    dummy_app = modal.App(include_source=False)
     own_env_secret = modal.Secret.from_name("own_env_secret")
     other_env_secret = modal.Secret.from_name("other_env_secret", environment_name="third")  # explicit lookup
 
@@ -107,7 +107,7 @@ def test_run_app_custom_env_with_refs(servicer, client, monkeypatch):
 
 
 def test_deploy_without_rich(servicer, client, no_rich):
-    app = modal.App("dummy-app")
+    app = modal.App("dummy-app", include_source=False)
     app.function()(dummy)
     deploy_app(app, client=client)
 

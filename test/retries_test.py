@@ -30,7 +30,7 @@ def zero_retries():
 
 
 def test_retries(client):
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     default_retries_from_int_modal = app.function(retries=5)(default_retries_from_int)
     fixed_delay_retries_modal = app.function(retries=modal.Retries(max_retries=5, backoff_coefficient=1.0))(
