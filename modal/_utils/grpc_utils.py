@@ -182,6 +182,7 @@ async def retry_transient_errors(
     delay_factor: float = 2,
     max_retries: Optional[int] = 3,
     additional_status_codes: list = [],
+    indefinite_status_codes: list = [],
     attempt_timeout: Optional[float] = None,  # timeout for each attempt
     total_timeout: Optional[float] = None,  # timeout for the entire function call
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
@@ -192,9 +193,9 @@ async def retry_transient_errors(
     If max_retries is None, retry forever."""
 
     delay = base_delay
-    n_retries = 0
+    n_total_retries = n_limited_retries = 0
 
-    status_codes = [*RETRYABLE_GRPC_STATUS_CODES, *additional_status_codes]
+    status_codes = {*RETRYABLE_GRPC_STATUS_CODES, *additional_status_codes, *indefinite_status_codes}
 
     idempotency_key = str(uuid.uuid4())
 
@@ -208,10 +209,10 @@ async def retry_transient_errors(
     while True:
         attempt_metadata = [
             ("x-idempotency-key", idempotency_key),
-            ("x-retry-attempt", str(n_retries)),
+            ("x-retry-attempt", str(n_total_retries)),
             *metadata,
         ]
-        if n_retries > 0:
+        if n_total_retries > 0:
             attempt_metadata.append(("x-retry-delay", str(time.time() - t0)))
         timeouts = []
         if attempt_timeout is not None:
@@ -231,7 +232,7 @@ async def retry_transient_errors(
                 else:
                     raise exc
 
-            if max_retries is not None and n_retries >= max_retries:
+            if max_retries is not None and n_limited_retries >= max_retries:
                 final_attempt = True
             elif total_deadline is not None and time.time() + delay + attempt_timeout_floor >= total_deadline:
                 final_attempt = True
@@ -240,7 +241,7 @@ async def retry_transient_errors(
 
             if final_attempt:
                 logger.debug(
-                    f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                    f"Final attempt failed with {repr(exc)} {n_limited_retries=} {delay=} "
                     f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
                 )
                 if isinstance(exc, OSError):
@@ -256,19 +257,24 @@ async def retry_transient_errors(
                 # TODO: update to newer version (>=0.4.8) once stable
                 raise exc
 
-            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
-
-            n_retries += 1
+            logger.debug(
+                f"Retryable failure {repr(exc)} {n_total_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})"
+            )
 
             if (
                 retry_warning_message
-                and n_retries % retry_warning_message.warning_interval == 0
+                and n_total_retries % retry_warning_message.warning_interval == 0
                 and isinstance(exc, GRPCError)
                 and exc.status in retry_warning_message.errors_to_warn_for
             ):
                 logger.warning(retry_warning_message.message)
 
             await asyncio.sleep(delay)
+
+            n_total_retries += 1
+            if not isinstance(exc, GRPCError) or exc.status not in indefinite_status_codes:
+                n_limited_retries += 1
+
             delay = min(delay * delay_factor, max_delay)
 
 
