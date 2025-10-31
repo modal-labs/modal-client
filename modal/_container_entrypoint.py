@@ -468,6 +468,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_def._experimental_group_size,
             )
 
+        # Identify all "enter" methods that need to run before we snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:
             pre_snapshot_methods = _find_callables_for_obj(
                 service.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
@@ -493,7 +494,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         from modal.experimental.flash import FlashManager, flash_process
 
-        # Identify all "enter" methods that need to run before we snapshot.
         flash_managers: dict[int, FlashManager] = {}
         # Identify the "enter" methods to run after resuming from a snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:

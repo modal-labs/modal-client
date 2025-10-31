@@ -48,7 +48,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     CONCURRENT = 128
     CLUSTERED = 256  # Experimental: Clustered functions
 
-    # # Lifecycle method flags
+    # Lifecycle method flags
     FLASH_WEB_INTERFACE = 512
 
     @staticmethod

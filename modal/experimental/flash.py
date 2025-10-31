@@ -8,7 +8,7 @@ import time
 import traceback
 from collections import defaultdict
 from subprocess import Popen
-from typing import Any, Literal, Optional, Union
+from typing import Any, Callable, Literal, Optional, Union
 from urllib.parse import urlparse
 
 from modal.cls import _Cls
@@ -644,7 +644,7 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
 
 
 def _flash_web_server(port: int, *, region: Union[str, Literal[True]] = True):
-    from typing import Callable, Union
+    from typing import Union
 
     from .._partial_function import _FlashConfig, _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
 
