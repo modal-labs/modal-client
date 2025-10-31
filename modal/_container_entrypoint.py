@@ -33,7 +33,6 @@ from modal._partial_function import (
 )
 from modal._serialization import deserialize, deserialize_params
 from modal._utils.async_utils import TaskContext, aclosing, synchronizer
-from modal._utils.flash_utils import get_flash_configs
 from modal._utils.function_utils import (
     callable_has_non_self_params,
 )
@@ -492,23 +491,16 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         sys.breakpointhook = breakpoint_wrapper
 
-        from modal.experimental.flash import FlashManager, flash_process
+        from modal.experimental.flash import _FlashContainerEntry
 
-        flash_managers: dict[int, FlashManager] = {}
+        flash_entry = _FlashContainerEntry()
         # Identify the "enter" methods to run after resuming from a snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:
-            flash_configs = get_flash_configs(type(service.user_cls_instance))
-            from modal.experimental import flash_forward
-
             post_snapshot_methods = _find_callables_for_obj(
                 service.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
-
-            processes = [p for p in vars(service.user_cls_instance).values() if isinstance(p, flash_process)]
-
-            for flash_config in flash_configs:
-                flash_managers[flash_config.port] = flash_forward(flash_config.port, process=processes)
+            flash_entry.enter(service)
 
         with container_io_manager.handle_user_exception():
             finalized_functions = service.get_finalized_functions(function_def, container_io_manager)
@@ -551,13 +543,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     # Identify "exit" methods and run them.
                     # want to make sure this is called even if the lifespan manager fails
                     if service.user_cls_instance is not None and not is_auto_snapshot:
-                        for flash_manager in flash_managers.values():
-                            flash_manager.stop()
+                        flash_entry.stop()
                         exit_methods = _find_callables_for_obj(service.user_cls_instance, _PartialFunctionFlags.EXIT)
                         call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
-
-                        for flash_manager in flash_managers.values():
-                            flash_manager.close()
+                        flash_entry.close()
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
                 # commit errors.
