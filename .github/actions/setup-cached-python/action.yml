@@ -19,6 +19,9 @@ runs:
       with:
         enable-cache: true
         version: "0.9.7"
+        cache-dependency-glob: |
+          requirements.dev.txt
+          pyproject.toml
 
     - name: Install Python packages
       shell: bash
