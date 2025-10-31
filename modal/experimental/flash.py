@@ -17,6 +17,7 @@ from modal_proto import api_pb2
 
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
+from .._utils.flash_utils import get_flash_configs
 from .._utils.grpc_utils import retry_transient_errors
 from ..client import _Client
 from ..config import logger
@@ -664,3 +665,23 @@ def _flash_web_server(port: int, *, region: Union[str, Literal[True]] = True):
 
 
 flash_web_server = synchronize_api(_flash_web_server, target_module=__name__)
+
+
+class _FlashContainerEntry:
+    def __init__(self):
+        self.flash_managers: dict[int, FlashManager] = {}  # type: ignore
+
+    def enter(self, service):
+        flash_configs = get_flash_configs(type(service.user_cls_instance))
+        processes = [p for p in vars(service.user_cls_instance).values() if isinstance(p, flash_process)]
+
+        for flash_config in flash_configs:
+            self.flash_managers[flash_config.port] = flash_forward(flash_config.port, process=processes)
+
+    def stop(self):
+        for flash_manager in self.flash_managers.values():
+            flash_manager.stop()
+
+    def close(self):
+        for flash_manager in self.flash_managers.values():
+            flash_manager.close()
