@@ -1066,7 +1066,6 @@ class _App:
                 experimental_options_["flash"] = flash_region
                 target_concurrent_inputs = get_target_concurrent_requests_from_flash_configs(flash_configs)
 
-
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None

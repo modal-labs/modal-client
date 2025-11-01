@@ -10,12 +10,14 @@ from modal.cls import Cls
 from modal.exception import InvalidError
 
 flash_app_default = App("flash-app-default")
+
+
 @flash_app_default.cls()
 class FlashClassDefault:
     @modal.enter()
     @modal.experimental.flash_web_server(8080, region=True, target_concurrent_requests=10, exit_grace_period=10)
     def serve(self):
-        self.process = modal.experimental.flash_process(['python3', '-m', 'http.server', '8080'])
+        self.process = modal.experimental.flash_process(["python3", "-m", "http.server", "8080"])
 
 
 def test_flash_web_server_basic_functionality(client):
@@ -33,6 +35,7 @@ def test_flash_web_server_basic_functionality(client):
 
         # assert isinstance(serve_method, _PartialFunction)
         # assert serve_method.flags & _PartialFunctionFlags.FLASH_WEB_INTERFACE
+
 
 def test_run_class(client, servicer):
     """Test running flash class params are set correctly."""
@@ -64,8 +67,13 @@ def test_run_class(client, servicer):
     assert servicer.app_functions[class_function_id].app_name == "flash-app-default"
     assert servicer.app_functions[class_function_id]._experimental_concurrent_cancellations == True
 
+
 flash_cls_with_enter_app = App("flash-cls-with-enter-app")
-@flash_cls_with_enter_app.cls(enable_memory_snapshot=True, )
+
+
+@flash_cls_with_enter_app.cls(
+    enable_memory_snapshot=True,
+)
 class FlashClsWithEnter:
     local_thread_id: str = modal.parameter()
     post_snapshot_thread_id: str = modal.parameter()
@@ -77,7 +85,7 @@ class FlashClsWithEnter:
     def enter(self):
         self.entered = True
         assert threading.current_thread().name == self.local_thread_id
-        self.process = modal.experimental.flash_process(['python3', '-m', 'http.server', '8001'])
+        self.process = modal.experimental.flash_process(["python3", "-m", "http.server", "8001"])
 
     @modal.enter(snap=False)
     def enter_post_snapshot(self):
@@ -88,12 +96,16 @@ class FlashClsWithEnter:
     def modal_method(self, y: int) -> int:
         return y**2
 
+
 def test_enter_on_modal_flash_is_executed():
     """Test enter on modal flash is executed."""
-    obj = FlashClsWithEnter(local_thread_id=threading.current_thread().name, post_snapshot_thread_id=threading.current_thread().name)
+    obj = FlashClsWithEnter(
+        local_thread_id=threading.current_thread().name, post_snapshot_thread_id=threading.current_thread().name
+    )
     assert obj.modal_method.local(7) == 49
     assert obj.local_thread_id == threading.current_thread().name
     assert obj.entered
+
 
 # @app_method_args.cls(min_containers=5)
 # class XYZ:
@@ -186,7 +198,6 @@ def test_enter_on_modal_flash_is_executed():
 #         assert len(ctx.get_requests("FunctionBindParams")) == 0  # We did not re-bind
 
 
-
 # def test_partial_function_descriptors(client):
 #     class Foo:
 #         @modal.enter()
@@ -203,7 +214,8 @@ def test_enter_on_modal_flash_is_executed():
 
 #     assert isinstance(Foo.bar, PartialFunction)
 
-#     assert Foo().bar() == "a"  # type: ignore   # edge case - using a non-decorated class should just return the bound original method
+#     assert Foo().bar() == "a"  # type: ignore
+# # edge case - using a non-decorated class should just return the bound original method
 #     assert inspect.ismethod(Foo().bar)
 #     app = modal.App()
 
@@ -226,7 +238,6 @@ def test_enter_on_modal_flash_is_executed():
 #     web_partial_function: _PartialFunction = synchronizer._translate_in(revived_class.web)  # type: ignore
 #     assert web_partial_function.params.webhook_config
 #     assert web_partial_function.params.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
-
 
 
 # def test_concurrent_decorator_stacked_with_method_decorator():
@@ -369,6 +380,7 @@ def test_flash_empty_class_no_configs():
     flash_configs = get_flash_configs(EmptyClass)
     assert len(flash_configs) == 0
 
+
 def test_flash_class_inheritance():
     """Test flash decorators work with class inheritance."""
     app = App("flash-inheritance")
@@ -391,12 +403,12 @@ def test_flash_no_port_parameter_error():
     """Test that flash_web_server requires a port parameter."""
     with pytest.raises(TypeError, match="missing 1 required positional argument: 'port'"):
         flash_compatibility_app = App("flash-compatibility")
+
         @flash_compatibility_app.cls()
         class FlashCompatClass:
-            @modal.experimental.flash_web_server() # type: ignore  # Missing required port parameter
+            @modal.experimental.flash_web_server()  # type: ignore  # Missing required port parameter
             def serve(self):
                 return "Compatible"
-
 
 
 def test_flash_validate_obj_compatibility(caplog):
@@ -406,6 +418,7 @@ def test_flash_validate_obj_compatibility(caplog):
         match="Multiple flash objects are not yet supported, please only specify a single flash object.",
     ):
         flash_compatibility_app = App("flash-compatibility")
+
         @flash_compatibility_app.cls()
         class FlashCompatClass:
             @modal.experimental.flash_web_server(8084, region=True)
@@ -415,4 +428,3 @@ def test_flash_validate_obj_compatibility(caplog):
             @modal.experimental.flash_web_server(8085, region=True)
             def serve2(self):
                 return "Not Compatible"
-

@@ -1400,6 +1400,7 @@ def test_clustered_cls_with_multiple_methods(client, servicer):
             def second_clustered_method(self, x):
                 return x * 3
 
+
 timeout_app = App("timeout-app")
 
 
