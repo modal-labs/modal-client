@@ -2,7 +2,7 @@
 import modal
 from modal import App
 
-app = App()
+app = App(include_source=False)
 
 
 class C:

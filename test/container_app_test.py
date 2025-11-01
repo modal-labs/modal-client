@@ -83,7 +83,7 @@ def set_env_vars(restore_path, container_addr):
 
 @pytest.mark.asyncio
 async def test_container_snapshot_reference_capture(container_client, tmpdir, servicer, client):
-    app = App()
+    app = App(include_source=False)
     from modal import Function
     from modal.runner import deploy_app
 

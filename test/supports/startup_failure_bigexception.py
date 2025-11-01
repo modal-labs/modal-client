@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import modal
 
-app = modal.App("hello-world")
+app = modal.App("hello-world", include_source=False)
 
 
 class BigException(Exception):
