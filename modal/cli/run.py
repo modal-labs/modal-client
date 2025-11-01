@@ -624,7 +624,29 @@ def shell(
 
     app = App("modal shell")
 
-    if ref is not None:
+    if ref is None or ref.startswith("im-"):
+        if ref is None:
+            modal_image = Image.from_registry(image, add_python=add_python) if image else None
+        else:
+            if image is not None:
+                raise ClickException("image is not supported when running `modal shell im-*`")
+            modal_image = Image.from_id(ref)
+
+        volumes = {} if volume is None else {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
+        secrets = [] if secret is None else [Secret.from_name(s) for s in secret]
+        start_shell = partial(
+            interactive_shell,
+            image=modal_image,
+            cpu=cpu,
+            memory=memory,
+            gpu=gpu,
+            cloud=cloud,
+            volumes=volumes,
+            secrets=secrets,
+            region=region.split(",") if region else [],
+            pty=pty,
+        )
+    else:
         # `modal shell` with a sandbox ID gets the task_id, that's then handled by the `ta-*` flow below.
         if ref.startswith("sb-") and len(ref[3:]) > 0 and ref[3:].isalnum():
             from ..sandbox import Sandbox
@@ -687,22 +709,6 @@ def shell(
             region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
             pty=pty,
             proxy=function_spec.proxy,
-        )
-    else:
-        modal_image = Image.from_registry(image, add_python=add_python) if image else None
-        volumes = {} if volume is None else {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
-        secrets = [] if secret is None else [Secret.from_name(s) for s in secret]
-        start_shell = partial(
-            interactive_shell,
-            image=modal_image,
-            cpu=cpu,
-            memory=memory,
-            gpu=gpu,
-            cloud=cloud,
-            volumes=volumes,
-            secrets=secrets,
-            region=region.split(",") if region else [],
-            pty=pty,
         )
 
     # NB: invoking under bash makes --cmd a lot more flexible.
