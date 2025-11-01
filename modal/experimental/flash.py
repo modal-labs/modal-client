@@ -37,6 +37,7 @@ class _FlashManager:
         port: int,
         process: Union[list[subprocess.Popen], list[flash_process]] = [],
         health_check_url: Optional[str] = None,
+        exit_grace_period: Optional[int] = None,
     ):
         self.client = client
         self.port = port
@@ -47,6 +48,7 @@ class _FlashManager:
         self.stopped = False
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
+        self.exit_grace_period = exit_grace_period
 
     async def is_port_connection_healthy(
         self, process: Union[list[subprocess.Popen], list[flash_process]], timeout: float = 0.5
@@ -644,12 +646,25 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
     return resp.containers
 
 
-def _flash_web_server(port: int, *, region: Union[str, Literal[True]] = True):
+def _flash_web_server(
+    port: int,
+    *,
+    region: Union[str, Literal[True]] = True,
+    target_concurrent_requests: Optional[int] = None,
+    exit_grace_period: Optional[int] = None,
+):
     from typing import Union
 
     from .._partial_function import _FlashConfig, _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
 
-    params = _PartialFunctionParams(flash_config=_FlashConfig(port=port, region=region))
+    params = _PartialFunctionParams(
+        flash_config=_FlashConfig(
+            port=port,
+            region=region,
+            target_concurrent_requests=target_concurrent_requests,
+            exit_grace_period=exit_grace_period,
+        )
+    )
 
     def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
         flags = _PartialFunctionFlags.FLASH_WEB_INTERFACE
@@ -670,12 +685,15 @@ flash_web_server = synchronize_api(_flash_web_server, target_module=__name__)
 class _FlashContainerEntry:
     def __init__(self):
         self.flash_managers: dict[int, FlashManager] = {}  # type: ignore
+        self.exit_grace_period = 0
 
     def enter(self, service):
         flash_configs = get_flash_configs(type(service.user_cls_instance))
         processes = [p for p in vars(service.user_cls_instance).values() if isinstance(p, flash_process)]
 
         for flash_config in flash_configs:
+            # TODO(claudia): We only support single flash processes for now. Refactor once we support multiple.
+            self.exit_grace_period = max(self.exit_grace_period, flash_config.exit_grace_period or 0)
             self.flash_managers[flash_config.port] = flash_forward(flash_config.port, process=processes)
 
     def stop(self):
@@ -683,5 +701,6 @@ class _FlashContainerEntry:
             flash_manager.stop()
 
     def close(self):
+        time.sleep(self.exit_grace_period)
         for flash_manager in self.flash_managers.values():
             flash_manager.close()

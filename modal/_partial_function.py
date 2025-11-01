@@ -72,6 +72,8 @@ class _PartialFunctionFlags(enum.IntFlag):
 class _FlashConfig:
     port: int
     region: Union[str, Literal[True]]
+    target_concurrent_requests: Optional[int] = None
+    exit_grace_period: Optional[int] = None
 
 
 @dataclass
