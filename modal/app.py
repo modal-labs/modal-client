@@ -34,7 +34,12 @@ from ._utils.deprecation import (
     deprecation_warning,
     warn_on_renamed_autoscaler_settings,
 )
-from ._utils.flash_utils import get_flash_configs, get_region_from_flash_configs, is_flash_object
+from ._utils.flash_utils import (
+    get_flash_configs,
+    get_region_from_flash_configs,
+    get_target_concurrent_requests_from_flash_configs,
+    is_flash_object,
+)
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
@@ -1053,12 +1058,14 @@ class _App:
                 )
 
             flash_configs = get_flash_configs(user_cls)
-            flash_region = get_region_from_flash_configs(flash_configs)
 
             # TODO(claudia): Refactor this once flash is promoted from experimental options.
             experimental_options_ = experimental_options or {}
-            if flash_region:
+            if flash_configs:
+                flash_region = get_region_from_flash_configs(flash_configs)
                 experimental_options_["flash"] = flash_region
+                target_concurrent_inputs = get_target_concurrent_requests_from_flash_configs(flash_configs)
+
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
