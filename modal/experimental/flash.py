@@ -7,7 +7,8 @@ import sys
 import time
 import traceback
 from collections import defaultdict
-from typing import Any, Optional
+from subprocess import Popen
+from typing import Any, Callable, Literal, Optional, Union
 from urllib.parse import urlparse
 
 from modal.cls import _Cls
@@ -16,6 +17,7 @@ from modal_proto import api_pb2
 
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
+from .._utils.flash_utils import get_flash_configs
 from .._utils.grpc_utils import retry_transient_errors
 from ..client import _Client
 from ..config import logger
@@ -24,13 +26,18 @@ from ..exception import InvalidError
 _MAX_FAILURES = 10
 
 
+class flash_process(Popen):
+    pass
+
+
 class _FlashManager:
     def __init__(
         self,
         client: _Client,
         port: int,
-        process: Optional[subprocess.Popen] = None,
+        process: Union[list[subprocess.Popen], list[flash_process]] = [],
         health_check_url: Optional[str] = None,
+        exit_grace_period: Optional[int] = None,
     ):
         self.client = client
         self.port = port
@@ -41,18 +48,31 @@ class _FlashManager:
         self.stopped = False
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
+        self.exit_grace_period = exit_grace_period
 
     async def is_port_connection_healthy(
-        self, process: Optional[subprocess.Popen], timeout: float = 0.5
+        self, process: Union[list[subprocess.Popen], list[flash_process]], timeout: float = 0.5
     ) -> tuple[bool, Optional[Exception]]:
+        def _check_processes_healthy(
+            processes: Union[list[subprocess.Popen], list[flash_process]],
+        ) -> tuple[bool, Optional[Exception]]:
+            healthy = True
+            exceptions = []
+            for p in processes:
+                if p.poll() is not None:
+                    exceptions.append(f"Process {p.pid} exited with code {p.returncode}.")
+                    healthy = False
+            return healthy, Exception("\n".join(exceptions)) if exceptions else None
+
         import socket
 
         start_time = time.monotonic()
 
         while time.monotonic() - start_time < timeout:
             try:
-                if process is not None and process.poll() is not None:
-                    return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
+                healthy, exceptions = _check_processes_healthy(process)
+                if not healthy:
+                    return False, exceptions
                 with socket.create_connection(("localhost", self.port), timeout=0.5):
                     return True, None
             except (ConnectionRefusedError, OSError):
@@ -173,7 +193,7 @@ FlashManager = synchronize_api(_FlashManager)
 @synchronizer.create_blocking
 async def flash_forward(
     port: int,
-    process: Optional[subprocess.Popen] = None,
+    process: Optional[Union[subprocess.Popen, list[subprocess.Popen], list[flash_process]]] = None,
     health_check_url: Optional[str] = None,
 ) -> _FlashManager:
     """
@@ -182,7 +202,10 @@ async def flash_forward(
     Do not use this method unless explicitly instructed to do so by Modal support.
     """
     client = await _Client.from_env()
-
+    if process is None:
+        process = []
+    if not isinstance(process, list):
+        process = [process]
     manager = _FlashManager(client, port, process=process, health_check_url=health_check_url)
     await manager._start()
     return manager
@@ -621,3 +644,63 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
     req = api_pb2.FlashContainerListRequest(function_id=fn.object_id)
     resp = await retry_transient_errors(client.stub.FlashContainerList, req)
     return resp.containers
+
+
+def _flash_web_server(
+    port: int,
+    *,
+    region: Union[str, Literal[True]] = True,
+    target_concurrent_requests: Optional[int] = None,
+    exit_grace_period: Optional[int] = None,
+):
+    from typing import Union
+
+    from .._partial_function import _FlashConfig, _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
+
+    params = _PartialFunctionParams(
+        flash_config=_FlashConfig(
+            port=port,
+            region=region,
+            target_concurrent_requests=target_concurrent_requests,
+            exit_grace_period=exit_grace_period,
+        )
+    )
+
+    def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
+        flags = _PartialFunctionFlags.FLASH_WEB_INTERFACE
+
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        pf.validate_obj_compatibility("flash_web_server")
+        return pf
+
+    return wrapper
+
+
+flash_web_server = synchronize_api(_flash_web_server, target_module=__name__)
+
+
+class _FlashContainerEntry:
+    def __init__(self):
+        self.flash_managers: dict[int, FlashManager] = {}  # type: ignore
+        self.exit_grace_period = 0
+
+    def enter(self, service):
+        flash_configs = get_flash_configs(type(service.user_cls_instance))
+        processes = [p for p in vars(service.user_cls_instance).values() if isinstance(p, flash_process)]
+
+        for flash_config in flash_configs:
+            # TODO(claudia): We only support single flash processes for now. Refactor once we support multiple.
+            self.exit_grace_period = max(self.exit_grace_period, flash_config.exit_grace_period or 0)
+            self.flash_managers[flash_config.port] = flash_forward(flash_config.port, process=processes)
+
+    def stop(self):
+        for flash_manager in self.flash_managers.values():
+            flash_manager.stop()
+
+    def close(self):
+        time.sleep(self.exit_grace_period)
+        for flash_manager in self.flash_managers.values():
+            flash_manager.close()
