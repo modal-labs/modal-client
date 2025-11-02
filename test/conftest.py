@@ -1614,6 +1614,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def ImageFromId(self, stream):
+        request: api_pb2.ImageFromIdRequest = await stream.recv_message()
+        image_id = request.image_id
+        await stream.send_message(api_pb2.ImageFromIdResponse(image_id=image_id))
+
     async def ImageJoinStreaming(self, stream):
         req = await stream.recv_message()
 

@@ -631,6 +631,23 @@ def test_shell_preserve_token(servicer, set_env_client, mock_shell_pty, monkeypa
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_modal_image(servicer, set_env_client, mock_shell_pty):
+    image_id = "im-123abcxyz"
+    _run(["shell", image_id])
+    sandbox_def = servicer.sandbox_defs[0]
+    assert sandbox_def.image_id == image_id
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_modal_image_error(servicer):
+    _run(
+        ["shell", "im-hello", "--image", "some-image"],
+        expected_exit_code=1,
+        expected_stderr="image is not supported",
+    )
+
+
 def test_shell_unsuported_cmds_fails_on_windows(servicer, set_env_client, mock_shell_pty):
     expected_exit_code = 1 if platform.system() == "Windows" else 0
     res = _run(["shell"], expected_exit_code=expected_exit_code)
