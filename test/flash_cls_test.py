@@ -101,18 +101,22 @@ def test_enter_on_modal_flash_is_executed():
     """Test enter on modal flash is executed."""
     obj = FlashClsWithEnter(
         local_thread_id=threading.current_thread().name, post_snapshot_thread_id=threading.current_thread().name
-    )
+    )  # type: ignore
     assert obj.modal_method.local(7) == 49
     assert obj.local_thread_id == threading.current_thread().name
     assert obj.entered
 
+
 flash_params_override_app = App("flash-params-override")
+
+
 @flash_params_override_app.cls(experimental_options={"flash": "us-east"})
 @modal.concurrent(target_inputs=10)
 class FlashParamsOverrideClass:
     @modal.experimental.flash_web_server(8080, region="us-west", target_concurrent_requests=11)
     def serve(self):
         return "Flash with params override"
+
 
 def test_flash_params_override_experimental_options(client, servicer):
     """Test decorator flash params override experimental options in app.cls()."""
@@ -125,6 +129,7 @@ def test_flash_params_override_experimental_options(client, servicer):
 
         assert servicer.app_functions[class_function_id].target_concurrent_inputs == 11
         assert servicer.app_functions[class_function_id].experimental_options["flash"] == "us-west"
+
 
 # def test_partial_function_descriptors(client):
 #     test whether metadata is kept correctly
