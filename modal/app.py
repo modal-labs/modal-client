@@ -641,9 +641,9 @@ class _App:
 
         **Parsing Arguments**
 
-        If your entrypoint function take arguments with primitive types, `modal run` automatically parses them as
-        CLI options.
-        For example, the following function can be called with `modal run app_module.py --foo 1 --bar "hello"`:
+        If your entrypoint function takes arguments with primitive type hints, `modal run` automatically parses them as
+        CLI options. For example, the following function can be called with `modal run app_module.py --foo 1 --bar
+        "hello"`:
 
         ```python
         @app.local_entrypoint()
@@ -651,8 +651,8 @@ class _App:
             some_modal_function.call(foo, bar)
         ```
 
-        Currently, `str`, `int`, `float`, `bool`, and `datetime.datetime` are supported.
-        Use `modal run app_module.py --help` for more information on usage.
+        `modal run` currently only supports the following type hints: `str`, `int`, `float`, `bool`, and
+        `datetime.datetime`. Use `modal run app_module.py --help` to show the entrypoint's usage information.
 
         """
         if _warn_parentheses_missing:
