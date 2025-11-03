@@ -1202,7 +1202,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
             )
 
             try:
-                response = await self._client.stub.VolumePutFiles2(request, base_delay=1)
+                response = await self._client.stub.VolumePutFiles2(request, retry=RetryRPC(base_delay=1))
             except GRPCError as exc:
                 raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
 
