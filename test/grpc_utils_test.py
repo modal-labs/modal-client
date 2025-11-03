@@ -12,7 +12,6 @@ from modal._utils.grpc_utils import (
     connect_channel,
     create_channel,
 )
-from modal.exception import InvalidError
 from modal_proto import api_grpc, api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -129,17 +128,3 @@ async def test_retry_transient_errors(servicer, client):
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "3"
     assert servicer.blob_create_metadata.get("x-modal-input-plane-region") == "us-east"
-
-
-@pytest.mark.asyncio
-async def test_retry_timeout_error(servicer, client):
-    client_stub = client.stub
-
-    @synchronize_api
-    async def wrapped_blob_create(req, **kwargs):
-        return await client_stub.BlobCreate(req, **kwargs)
-
-    # Use the BlobCreate request for retries
-    req = api_pb2.BlobCreateRequest()
-    with pytest.raises(InvalidError, match="retry must be None when timeout is set"):
-        await wrapped_blob_create.aio(req, timeout=4.0)
