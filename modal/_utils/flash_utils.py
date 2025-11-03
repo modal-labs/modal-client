@@ -42,7 +42,3 @@ def get_region_from_flash_configs(flash_configs: list[_FlashConfig]) -> Optional
         )
 
     return regions.pop() if regions else None
-
-
-def get_target_concurrent_requests_from_flash_configs(flash_configs: list[_FlashConfig]) -> Optional[int]:
-    return max(flash_config.target_concurrent_requests or 0 for flash_config in flash_configs)

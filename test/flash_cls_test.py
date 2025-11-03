@@ -13,9 +13,10 @@ flash_app_default = App("flash-app-default")
 
 
 @flash_app_default.cls()
+@modal.concurrent(target_inputs=10)
 class FlashClassDefault:
     @modal.enter()
-    @modal.experimental.flash_web_server(8080, region=True, target_concurrent_requests=10, exit_grace_period=10)
+    @modal.experimental.flash_web_server(8080, region=True, exit_grace_period=10)
     def serve(self):
         self.process = modal.experimental.flash_process(["python3", "-m", "http.server", "8080"])
 
@@ -27,7 +28,6 @@ def test_flash_web_server_basic_functionality(client):
         assert len(flash_configs) == 1
         assert flash_configs[0].port == 8080
         assert flash_configs[0].region is True
-        assert flash_configs[0].target_concurrent_requests == 10
         assert flash_configs[0].exit_grace_period == 10
 
         # serve_method = FlashClassDefault.serve
@@ -111,9 +111,9 @@ flash_params_override_app = App("flash-params-override")
 
 
 @flash_params_override_app.cls(experimental_options={"flash": "us-east"})
-@modal.concurrent(target_inputs=10)
+@modal.concurrent(target_inputs=11)
 class FlashParamsOverrideClass:
-    @modal.experimental.flash_web_server(8080, region="us-west", target_concurrent_requests=11)
+    @modal.experimental.flash_web_server(8080, region="us-west")
     def serve(self):
         return "Flash with params override"
 

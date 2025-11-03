@@ -37,7 +37,6 @@ from ._utils.deprecation import (
 from ._utils.flash_utils import (
     get_flash_configs,
     get_region_from_flash_configs,
-    get_target_concurrent_requests_from_flash_configs,
     is_flash_object,
 )
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
@@ -1064,7 +1063,6 @@ class _App:
             if flash_configs:
                 flash_region = get_region_from_flash_configs(flash_configs)
                 experimental_options_["flash"] = flash_region
-                target_concurrent_inputs = get_target_concurrent_requests_from_flash_configs(flash_configs)
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 

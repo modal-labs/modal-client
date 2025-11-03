@@ -650,7 +650,6 @@ def _flash_web_server(
     port: int,
     *,
     region: Union[str, Literal[True]] = True,
-    target_concurrent_requests: Optional[int] = None,
     exit_grace_period: Optional[int] = None,
 ):
     from typing import Union
@@ -661,7 +660,6 @@ def _flash_web_server(
         flash_config=_FlashConfig(
             port=port,
             region=region,
-            target_concurrent_requests=target_concurrent_requests,
             exit_grace_period=exit_grace_period,
         )
     )
