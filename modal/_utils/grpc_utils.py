@@ -9,7 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Optional, TypeVar
+from typing import Any, Optional, TypeVar, Union
 
 import grpclib.client
 import grpclib.config
@@ -184,14 +184,22 @@ class Retry:
     warning_message: Optional[RetryWarningMessage] = None
 
 
+@dataclass(frozen=True)
+class NoRetry:
+    timeout: Optional[float] = None
+
+
 async def retry_transient_errors(
     fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]",
     req: RequestType,
-    retry: Retry,
+    retry: Union[Retry, NoRetry],
     metadata: Optional[list[tuple[str, str]]] = None,
 ) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
+
+    if isinstance(retry, NoRetry):
+        return await fn.direct(req, timeout=retry.timeout, metadata=metadata)
 
     delay = retry.base_delay
     n_retries = 0

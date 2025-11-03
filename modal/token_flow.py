@@ -12,6 +12,7 @@ from modal_proto import api_pb2
 
 from ._output import make_console
 from ._utils.async_utils import synchronize_api
+from ._utils.grpc_utils import NoRetry
 from ._utils.http_utils import run_temporary_http_server
 from .client import _Client
 from .config import DEFAULT_SERVER_URL, _lookup_workspace, _store_user_config, config, config_profiles, user_config_path
@@ -56,7 +57,7 @@ class _TokenFlow:
         req = api_pb2.TokenFlowWaitRequest(
             token_flow_id=self.token_flow_id, timeout=timeout, wait_secret=self.wait_secret
         )
-        resp = await self.stub.TokenFlowWait(req, timeout=(timeout + grpc_extra_timeout), retry=None)
+        resp = await self.stub.TokenFlowWait(req, retry=NoRetry(timeout=timeout + grpc_extra_timeout))
         if not resp.timeout:
             return resp
         else:

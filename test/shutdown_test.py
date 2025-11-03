@@ -8,6 +8,7 @@ import grpclib
 
 import modal
 from modal._utils.async_utils import synchronize_api
+from modal._utils.grpc_utils import NoRetry
 from modal.client import Client
 from modal.exception import ClientClosed
 from modal_proto import api_pb2
@@ -88,7 +89,7 @@ async def test_client_close_cancellation_context_only_used_in_correct_event_loop
             # this request should not use task context since it's not issued from the same loop
             # that the task context is triggered from, otherwise we'll get cross-event loop
             # waits/cancellations etc.
-            t = asyncio.create_task(client.stub.QueueGet(request, retry=None))
+            t = asyncio.create_task(client.stub.QueueGet(request, retry=NoRetry()))
             await asyncio.sleep(0.1)
     with pytest.raises(grpclib.exceptions.StreamTerminatedError):
         await t
