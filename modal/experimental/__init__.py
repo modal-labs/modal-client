@@ -43,6 +43,27 @@ def set_local_input_concurrency(concurrency: int):
     _ContainerIOManager.set_input_concurrency(concurrency)
 
 
+def get_container_draining_state() -> bool:
+    """Returns True when the container is in a draining state (not getting new inputs).
+
+    When Modal containers are placed in a draining state, they will not get any new inputs,
+    but they will be allowed to finish any inputs that are in progress. This does not
+    normally have any observable effect, since we will try to bring up a replacement first.
+
+    However, if your Function has `max_containers=1` set, it may be impossible to start the
+    replacement until the current container terminates. If your Function has long-running
+    re-entrant inputs, we recommend periodically checking this state and terminating the
+    inputs.
+
+    This function is experimental; we may change how the container state can be queried
+    in the future.
+
+    """
+    if not _ContainerIOManager._singleton:
+        raise RuntimeError("Must be called from within a Modal container.")
+    return _ContainerIOManager._singleton._input_slots.closed
+
+
 def get_cluster_info() -> ClusterInfo:
     return _get_cluster_info()
 
