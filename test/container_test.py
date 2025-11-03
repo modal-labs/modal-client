@@ -2536,7 +2536,7 @@ def test_set_local_input_concurrency(servicer, deployed_support_function_definit
     )
 
     outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
-    assert outputs == pytest.approx([0.1] * 3 + [0.2] * 3, abs=0.05)
+    assert outputs == pytest.approx([0.2] * 3 + [0.4] * 3, abs=0.1)
 
 
 @skip_github_non_linux
