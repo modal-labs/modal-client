@@ -79,10 +79,12 @@ async def exec(
     res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
 
     if pty:
-        await _ContainerProcess(res.exec_id, client).attach()
+        await _ContainerProcess(res.exec_id, container_id, client).attach()
     else:
         # TODO: redirect stderr to its own stream?
-        await _ContainerProcess(res.exec_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT).wait()
+        await _ContainerProcess(
+            res.exec_id, container_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT
+        ).wait()
 
 
 @container_cli.command("stop")

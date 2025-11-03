@@ -7,7 +7,7 @@ def dummy():
 
 
 def test_volume_mount(client, servicer):
-    app = modal.App()
+    app = modal.App(include_source=False)
     secret = modal.Secret.from_dict({"AWS_ACCESS_KEY_ID": "1", "AWS_SECRET_ACCESS_KEY": "2"})
     cld_bckt_mnt = modal.CloudBucketMount(
         bucket_name="foo",

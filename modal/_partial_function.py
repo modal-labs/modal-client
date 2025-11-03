@@ -19,7 +19,7 @@ from ._functions import _Function
 from ._utils.async_utils import synchronizer
 from ._utils.deprecation import deprecation_warning
 from ._utils.function_utils import callable_has_non_self_params
-from .config import logger
+from .config import config, logger
 from .exception import InvalidError
 
 MAX_MAX_BATCH_SIZE = 1000
@@ -91,6 +91,26 @@ ReturnType = typing_extensions.TypeVar("ReturnType", covariant=True)
 OriginalReturnType = typing_extensions.TypeVar("OriginalReturnType", covariant=True)
 NullaryFuncOrMethod = Union[Callable[[], Any], Callable[[Any], Any]]
 NullaryMethod = Callable[[Any], Any]
+
+
+def verify_concurrent_params(params: _PartialFunctionParams, is_flash: bool = False) -> None:
+    def _verify_concurrent_params_with_flash_settings(params: _PartialFunctionParams) -> None:
+        if params.max_concurrent_inputs is not None:
+            raise TypeError(
+                "@modal.concurrent(max_inputs=...) is not yet supported for Flash functions. "
+                "Use `@modal.concurrent(target_inputs=...)` instead."
+            )
+        if params.target_concurrent_inputs is None:
+            raise TypeError("`@modal.concurrent()` missing required argument: `target_inputs`.")
+
+    def _verify_concurrent_params(params: _PartialFunctionParams) -> None:
+        if params.max_concurrent_inputs is None:
+            raise TypeError("`@modal.concurrent()` missing required argument: `max_inputs`.")
+
+    if is_flash:
+        _verify_concurrent_params_with_flash_settings(params)
+    else:
+        _verify_concurrent_params(params)
 
 
 class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
@@ -378,6 +398,7 @@ def _fastapi_endpoint(
         method=method,
         web_endpoint_docs=docs,
         requested_suffix=label or "",
+        ephemeral_suffix=config.get("dev_suffix"),
         async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
         custom_domains=_parse_custom_domains(custom_domains),
         requires_proxy_auth=requires_proxy_auth,
@@ -446,6 +467,7 @@ def _web_endpoint(
         method=method,
         web_endpoint_docs=docs,
         requested_suffix=label or "",
+        ephemeral_suffix=config.get("dev_suffix"),
         async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
         custom_domains=_parse_custom_domains(custom_domains),
         requires_proxy_auth=requires_proxy_auth,
@@ -505,6 +527,7 @@ def _asgi_app(
     webhook_config = api_pb2.WebhookConfig(
         type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
         requested_suffix=label or "",
+        ephemeral_suffix=config.get("dev_suffix"),
         async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
         custom_domains=_parse_custom_domains(custom_domains),
         requires_proxy_auth=requires_proxy_auth,
@@ -562,6 +585,7 @@ def _wsgi_app(
     webhook_config = api_pb2.WebhookConfig(
         type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
         requested_suffix=label or "",
+        ephemeral_suffix=config.get("dev_suffix"),
         async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
         custom_domains=_parse_custom_domains(custom_domains),
         requires_proxy_auth=requires_proxy_auth,
@@ -623,6 +647,7 @@ def _web_server(
     webhook_config = api_pb2.WebhookConfig(
         type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
         requested_suffix=label or "",
+        ephemeral_suffix=config.get("dev_suffix"),
         async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
         custom_domains=_parse_custom_domains(custom_domains),
         web_server_port=port,
@@ -760,7 +785,7 @@ def _batched(
 def _concurrent(
     _warn_parentheses_missing=None,  # mdmd:line-hidden
     *,
-    max_inputs: int,  # Hard limit on each container's input concurrency
+    max_inputs: Optional[int] = None,  # Hard limit on each container's input concurrency
     target_inputs: Optional[int] = None,  # Input concurrency that Modal's autoscaler should target
 ) -> Callable[
     [Union[Callable[P, ReturnType], _PartialFunction[P, ReturnType, ReturnType]]],
@@ -812,7 +837,7 @@ def _concurrent(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.concurrent()`."
         )
 
-    if target_inputs and target_inputs > max_inputs:
+    if max_inputs is not None and target_inputs is not None and target_inputs > max_inputs:
         raise InvalidError("`target_inputs` parameter cannot be greater than `max_inputs`.")
 
     flags = _PartialFunctionFlags.CONCURRENT

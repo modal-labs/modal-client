@@ -58,7 +58,7 @@ def test_create_mount(servicer, client):
     local_dir, cur_filename = os.path.split(__file__)
 
     def condition(fn):
-        return fn.endswith(".py")
+        return fn.endswith(".py") and fn.startswith("m")
 
     m = Mount._from_local_dir(local_dir, remote_path="/foo", condition=condition)
 

@@ -2757,18 +2757,6 @@ message SandboxCreateResponse {
   string sandbox_id = 1;
 }
 
-// Used to get a JWT and URL for direct access to a sandbox router server
-// running on the modal-worker, so the client can issue exec commands (and other
-// operations as they become available) directly to the worker.
-message SandboxGetCommandRouterAccessRequest {
-  string sandbox_id = 1;
-}
-
-message SandboxGetCommandRouterAccessResponse {
-  string jwt = 1;
-  string url = 2;
-}
-
 message SandboxGetFromNameRequest {
   string sandbox_name = 1;
   string environment_name = 2;
@@ -3155,12 +3143,16 @@ message TaskCurrentInputsResponse {
   repeated string input_ids = 1;
 }
 
-message TaskGetAutoscalingMetricsRequest {
+// Used to get a JWT and URL for direct access to a task command router
+// running on the modal-worker, so the client can issue exec commands (and other
+// operations as they become available) directly to the worker.
+message TaskGetCommandRouterAccessRequest {
   string task_id = 1;
 }
 
-message TaskGetAutoscalingMetricsResponse {
-  AutoscalingMetrics metrics = 1;
+message TaskGetCommandRouterAccessResponse {
+  string jwt = 1;
+  string url = 2;
 }
 
 message TaskInfo {
@@ -3551,15 +3543,15 @@ message WebUrlInfo {
 message WebhookConfig {
   WebhookType type = 1;
   string method = 2;
-  string requested_suffix = 4;
+  string requested_suffix = 4;  // User-supplied "label" component of URL
   WebhookAsyncMode async_mode = 5;
   repeated CustomDomainConfig custom_domains = 6;
   uint32 web_server_port = 7;
   float web_server_startup_timeout = 8;
   bool web_endpoint_docs = 9;
   bool requires_proxy_auth = 10;
+  string ephemeral_suffix = 11;  // Additional URL suffix added for ephemeral Apps
 }
-
 
 message WorkspaceBillingReportItem {
   string object_id = 1;
@@ -3740,7 +3732,6 @@ service ModalClient {
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
-  rpc SandboxGetCommandRouterAccess(SandboxGetCommandRouterAccessRequest) returns (SandboxGetCommandRouterAccessResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
@@ -3779,7 +3770,7 @@ service ModalClient {
   // Tasks
   rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
-  rpc TaskGetAutoscalingMetrics(TaskGetAutoscalingMetricsRequest) returns (TaskGetAutoscalingMetricsResponse); // Used for flash autoscaling
+  rpc TaskGetCommandRouterAccess(TaskGetCommandRouterAccessRequest) returns (TaskGetCommandRouterAccessResponse);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
 

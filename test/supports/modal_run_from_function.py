@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2025
 import modal
 
-app = modal.App("app1")
+app = modal.App("app1", include_source=False)
 
-app2 = modal.App("app2")
+app2 = modal.App("app2", include_source=False)
 
 
 @app2.function()
