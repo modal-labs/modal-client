@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2022
+import contextlib
 import hashlib
+import io
 import pytest
 import time
 import typing
@@ -266,6 +268,28 @@ def test_sandbox_exec_stdout_bytes_mode(app, servicer, exec_backend):
     p = sb.exec("echo", "foo", text=False)
     for line in p.stdout:
         assert line == b"foo\n"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+async def test_sandbox_exec_stdout_prints_router_backend(app, exec_backend):
+    sb = await Sandbox.create.aio(app=app)
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        p = await sb.exec.aio("bash", "-c", "echo hello", stdout=StreamType.STDOUT, text=True)
+        await p.wait.aio()
+
+    assert buf.getvalue() == "hello\n"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+async def test_sandbox_exec_stdout_requires_text_true_router_backend(app, exec_backend):
+    sb = await Sandbox.create.aio(app=app)
+
+    with pytest.raises(ValueError, match="only supported when text=True"):
+        await sb.exec.aio("bash", "-c", "echo hello", stdout=StreamType.STDOUT, text=False)
 
 
 @skip_non_subprocess

@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import codecs
+import contextlib
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
@@ -461,6 +462,62 @@ class _TextStreamReaderThroughCommandRouter(Generic[T]):
             await self._stream.aclose()
 
 
+class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
+    """
+    StreamReader implementation for StreamType.STDOUT when using the task command router.
+
+    This mirrors the behavior from the server-backed implementation: the stream is printed to
+    the local stdout immediately and is not readable via StreamReader methods.
+    """
+
+    def __init__(
+        self,
+        params: _StreamReaderThroughCommandRouterParams,
+        by_line: bool,
+    ) -> None:
+        self._reader: Optional[_TextStreamReaderThroughCommandRouter[str]] = None
+        self._task: Optional[asyncio.Task[None]] = None
+        self._file_descriptor = params.file_descriptor
+        # Kick off a background task that reads from the underlying text stream and prints to stdout.
+        self._start_printing_task(params, by_line)
+
+    @property
+    def file_descriptor(self) -> int:
+        return self._file_descriptor
+
+    def _start_printing_task(self, params: _StreamReaderThroughCommandRouterParams, by_line: bool) -> None:
+        async def _run():
+            self._reader = _TextStreamReaderThroughCommandRouter[str](params, by_line)
+            try:
+                async for part in self._reader:
+                    # Print exactly as received without adding extra newlines.
+                    print(part, end="")
+            finally:
+                if self._reader:
+                    await self._reader.aclose()
+
+        self._task = asyncio.create_task(_run())
+
+    async def read(self) -> T:
+        raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+
+    async def __anext__(self) -> T:
+        raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+
+    async def aclose(self):
+        if self._task is not None:
+            self._task.cancel()
+            with contextlib.suppress(Exception):
+                await self._task
+            self._task = None
+        if self._reader:
+            await self._reader.aclose()
+            self._reader = None
+
+
 class _DevnullStreamReader(Generic[T]):
     """StreamReader implementation for a stream configured with
     StreamType.DEVNULL. Throws an error if read or any other method is
@@ -499,6 +556,7 @@ class _StreamReader(Generic[T]):
         _DevnullStreamReader,
         _TextStreamReaderThroughCommandRouter,
         _BytesStreamReaderThroughCommandRouter,
+        _StdoutPrintingStreamReaderThroughCommandRouter,
     ]
 
     def __init__(
@@ -523,35 +581,26 @@ class _StreamReader(Generic[T]):
                 file_descriptor, object_id, object_type, client, stream_type, text, by_line, deadline
             )
         else:
-            # The only reason task_id is optional is because StreamReader is
-            # also used for sandbox logs, which don't have a task ID available
-            # when the StreamReader is created.
+            # The only reason task_id is optional is because StreamReader is also used for sandbox
+            # logs, which don't have a task ID available when the StreamReader is created.
             assert task_id is not None
             assert object_type == "container_process"
             if stream_type == StreamType.DEVNULL:
                 self._impl = _DevnullStreamReader(file_descriptor)
             else:
                 assert stream_type == StreamType.PIPE or stream_type == StreamType.STDOUT
-                # TODO(saltzm): The original implementation of STDOUT StreamType in
-                # _StreamReaderThroughServer prints to stdout immediately. This doesn't match
-                # python subprocess.run, which uses None to print to stdout immediately, and uses
-                # STDOUT as an argument to stderr to redirect stderr to the stdout stream. We should
-                # implement the old behavior here before moving out of beta, but after that
-                # we should consider changing the API to match python subprocess.run. I don't expect
-                # many customers are using this in any case, so I think it's fine to leave this
-                # unimplemented for now.
-                if stream_type == StreamType.STDOUT:
-                    raise NotImplementedError(
-                        "Currently the STDOUT stream type is not supported when using exec "
-                        "through a task command router, which is currently in beta."
-                    )
                 params = _StreamReaderThroughCommandRouterParams(
                     file_descriptor, task_id, object_id, command_router_client, deadline
                 )
-                if text:
-                    self._impl = _TextStreamReaderThroughCommandRouter(params, by_line)
+                if stream_type == StreamType.STDOUT:
+                    if not text:
+                        raise ValueError("StreamType.STDOUT is only supported when text=True")
+                    self._impl = _StdoutPrintingStreamReaderThroughCommandRouter(params, by_line)
                 else:
-                    self._impl = _BytesStreamReaderThroughCommandRouter(params)
+                    if text:
+                        self._impl = _TextStreamReaderThroughCommandRouter(params, by_line)
+                    else:
+                        self._impl = _BytesStreamReaderThroughCommandRouter(params)
 
     @property
     def file_descriptor(self) -> int:
