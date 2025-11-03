@@ -19,6 +19,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 import modal._runtime.execution_context
 import modal_proto.api_pb2
+from modal._utils.grpc_utils import RetryRPC
 from modal_proto import api_pb2
 
 from ._functions import _Function
@@ -53,7 +54,7 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
     # TODO(erikbern): we should capture exceptions here
     # * if request fails: destroy the client
     # * if server says the app is gone: print a helpful warning about detaching
-    await client.stub.AppHeartbeat(request, attempt_timeout=HEARTBEAT_TIMEOUT)
+    await client.stub.AppHeartbeat(request, retry=RetryRPC(attempt_timeout=HEARTBEAT_TIMEOUT))
 
 
 async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> RunningApp:

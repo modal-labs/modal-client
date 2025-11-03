@@ -8,8 +8,8 @@ import typing
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Optional, TypeVar
+from dataclasses import dataclass, field
+from typing import Any, Optional, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -171,41 +171,46 @@ async def unary_stream(
         yield item
 
 
+@dataclass
+class RetryRPC:
+    base_delay: float = 0.1
+    max_delay: float = 1
+    delay_factor: float = 2
+    max_retries: Optional[int] = 3
+    additional_status_codes: list = field(default_factory=list)
+    attempt_timeout: Optional[float] = None  # timeout for each attempt
+    total_timeout: Optional[float] = None  # timeout for the entire function call
+    attempt_timeout_floor: float = 2.0  # always have at least this much timeout (only for total_timeout)
+    warning_message: Optional[RetryWarningMessage] = None
+
+
 R = TypeVar("R")
 
 
 async def retry_transient_errors(
-    fn: Callable[..., Awaitable[R]],
-    *args,
-    base_delay: float = 0.1,
-    max_delay: float = 1,
-    delay_factor: float = 2,
-    max_retries: Optional[int] = 3,
-    additional_status_codes: list = [],
-    attempt_timeout: Optional[float] = None,  # timeout for each attempt
-    total_timeout: Optional[float] = None,  # timeout for the entire function call
-    attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
-    retry_warning_message: Optional[RetryWarningMessage] = None,
-    metadata: list[tuple[str, str]] = [],
-    fn_name: Optional[str] = None,
-) -> R:
+    fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]",
+    req: RequestType,
+    retry: RetryRPC,
+    metadata: Optional[list[tuple[str, str]]] = None,
+) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
 
-    delay = base_delay
+    delay = retry.base_delay
     n_retries = 0
 
-    status_codes = [*RETRYABLE_GRPC_STATUS_CODES, *additional_status_codes]
+    status_codes = [*RETRYABLE_GRPC_STATUS_CODES, *retry.additional_status_codes]
 
     idempotency_key = str(uuid.uuid4())
 
     t0 = time.time()
-    if total_timeout is not None:
-        total_deadline = t0 + total_timeout
+    if retry.total_timeout is not None:
+        total_deadline = t0 + retry.total_timeout
     else:
         total_deadline = None
 
-    metadata = metadata + [("x-modal-timestamp", str(time.time()))]
+    metadata = (metadata or []) + [("x-modal-timestamp", str(time.time()))]
+
     while True:
         attempt_metadata = [
             ("x-idempotency-key", idempotency_key),
@@ -215,17 +220,17 @@ async def retry_transient_errors(
         if n_retries > 0:
             attempt_metadata.append(("x-retry-delay", str(time.time() - t0)))
         timeouts = []
-        if attempt_timeout is not None:
-            timeouts.append(attempt_timeout)
-        if total_timeout is not None:
-            timeouts.append(max(total_deadline - time.time(), attempt_timeout_floor))
+        if retry.attempt_timeout is not None:
+            timeouts.append(retry.attempt_timeout)
+        if retry.total_timeout is not None and total_deadline is not None:
+            timeouts.append(max(total_deadline - time.time(), retry.attempt_timeout_floor))
         if timeouts:
             timeout = min(timeouts)  # In case the function provided both types of timeouts
         else:
             timeout = None
         try:
             with suppress_tb_frames(1):
-                return await fn(*args, metadata=attempt_metadata, timeout=timeout)
+                return await fn.direct(req, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 if exc.status == Status.UNAUTHENTICATED:
@@ -233,19 +238,18 @@ async def retry_transient_errors(
                 else:
                     raise exc
 
-            if max_retries is not None and n_retries >= max_retries:
+            if retry.max_retries is not None and n_retries >= retry.max_retries:
                 final_attempt = True
-            elif total_deadline is not None and time.time() + delay + attempt_timeout_floor >= total_deadline:
+            elif total_deadline is not None and time.time() + delay + retry.attempt_timeout_floor >= total_deadline:
                 final_attempt = True
             else:
                 final_attempt = False
 
-            fn_name = fn_name or fn.__name__
             with suppress_tb_frames(1):
                 if final_attempt:
                     logger.debug(
                         f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
-                        f"{total_deadline=} for {fn_name} ({idempotency_key[:8]})"
+                        f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
                     )
                     if isinstance(exc, OSError):
                         raise ConnectionError(str(exc))
@@ -260,20 +264,20 @@ async def retry_transient_errors(
                     # TODO: update to newer version (>=0.4.8) once stable
                     raise exc
 
-            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})")
+            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
 
             n_retries += 1
 
             if (
-                retry_warning_message
-                and n_retries % retry_warning_message.warning_interval == 0
+                retry.warning_message
+                and n_retries % retry.warning_message.warning_interval == 0
                 and isinstance(exc, GRPCError)
-                and exc.status in retry_warning_message.errors_to_warn_for
+                and exc.status in retry.warning_message.errors_to_warn_for
             ):
-                logger.warning(retry_warning_message.message)
+                logger.warning(retry.warning_message.message)
 
             await asyncio.sleep(delay)
-            delay = min(delay * delay_factor, max_delay)
+            delay = min(delay * retry.delay_factor, retry.max_delay)
 
 
 def find_free_port() -> int:

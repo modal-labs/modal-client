@@ -8,6 +8,7 @@ import modal
 from modal import __version__
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
+    RetryRPC,
     connect_channel,
     create_channel,
 )
@@ -90,14 +91,14 @@ async def test_retry_transient_errors(servicer, client):
 
     # Fail 5 times, but set max_retries to infinity
     servicer.fail_blob_create = [Status.UNAVAILABLE] * 5
-    assert await wrapped_blob_create.aio(req, max_retries=None, base_delay=0)
+    assert await wrapped_blob_create.aio(req, retry=RetryRPC(max_retries=None, base_delay=0))
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "5"
 
     # Not a transient error.
     servicer.fail_blob_create = [Status.PERMISSION_DENIED]
     with pytest.raises(GRPCError):
-        assert await wrapped_blob_create.aio(req, max_retries=None, base_delay=0)
+        assert await wrapped_blob_create.aio(req, retry=RetryRPC(max_retries=None, base_delay=0))
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "0"
 
@@ -105,7 +106,7 @@ async def test_retry_transient_errors(servicer, client):
     t0 = time.time()
     servicer.fail_blob_create = [Status.UNAVAILABLE] * 99
     with pytest.raises(GRPCError):
-        assert await wrapped_blob_create.aio(req, max_retries=None, total_timeout=3)
+        assert await wrapped_blob_create.aio(req, retry=RetryRPC(max_retries=None, total_timeout=3))
     total_time = time.time() - t0
     assert total_time <= 3.1
 

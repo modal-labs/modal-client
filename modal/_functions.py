@@ -53,7 +53,7 @@ from ._utils.function_utils import (
     get_function_type,
     is_async,
 )
-from ._utils.grpc_utils import RetryWarningMessage
+from ._utils.grpc_utils import RetryRPC, RetryWarningMessage
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
@@ -166,15 +166,17 @@ class _Invocation:
             request.from_spawn_map = True
             response = await client.stub.FunctionMap(
                 request,
-                max_retries=None,
-                max_delay=30.0,
-                retry_warning_message=RetryWarningMessage(
-                    message="Warning: `.spawn_map(...)` for function `{self._function_name}` is waiting to create"
-                    "more function calls. This may be due to hitting rate limits or function backlog limits.",
-                    warning_interval=10,
-                    errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
+                retry=RetryRPC(
+                    max_retries=None,
+                    max_delay=30.0,
+                    warning_message=RetryWarningMessage(
+                        message="Warning: `.spawn_map(...)` for function `{self._function_name}` is waiting to create"
+                        "more function calls. This may be due to hitting rate limits or function backlog limits.",
+                        warning_interval=10,
+                        errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
+                    ),
+                    additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                 ),
-                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
             )
         else:
             response = await client.stub.FunctionMap(request)
@@ -241,7 +243,7 @@ class _Invocation:
             )
             response: api_pb2.FunctionGetOutputsResponse = await self.stub.FunctionGetOutputs(
                 request,
-                attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                retry=RetryRPC(attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD),
             )
 
             if len(response.outputs) > 0:
@@ -366,7 +368,7 @@ class _Invocation:
                 end_idx=batch_end_index,
             )
             response: api_pb2.FunctionGetOutputsResponse = await self.stub.FunctionGetOutputs(
-                request, attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD
+                request, retry=RetryRPC(attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD)
             )
 
             outputs = list(response.outputs)
@@ -460,7 +462,7 @@ class _InputPlaneInvocation:
             metadata = await self.client.get_input_plane_metadata(self.input_plane_region)
             await_response: api_pb2.AttemptAwaitResponse = await self.stub.AttemptAwait(
                 await_request,
-                attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                retry=RetryRPC(attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD),
                 metadata=metadata,
             )
 
@@ -1873,7 +1875,7 @@ Use the `Function.get_web_url()` method instead.
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
         resp = await self.client.stub.FunctionGetCurrentStats(
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
-            total_timeout=10.0,
+            retry=RetryRPC(total_timeout=10.0),
         )
         return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
 

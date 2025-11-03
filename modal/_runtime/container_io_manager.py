@@ -36,6 +36,7 @@ from modal._traceback import print_exception
 from modal._utils.async_utils import TaskContext, aclosing, asyncify, synchronize_api, synchronizer
 from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload, format_blob_data
 from modal._utils.function_utils import _stream_function_call_data
+from modal._utils.grpc_utils import RetryRPC
 from modal._utils.package_utils import parse_major_minor_version
 from modal.client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from modal.config import config, logger
@@ -622,7 +623,9 @@ class _ContainerIOManager:
                 await self.heartbeat_condition.wait()
 
             request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs_v2=True)
-            response = await self._client.stub.ContainerHeartbeat(request, attempt_timeout=HEARTBEAT_TIMEOUT)
+            response = await self._client.stub.ContainerHeartbeat(
+                request, retry=RetryRPC(attempt_timeout=HEARTBEAT_TIMEOUT)
+            )
 
         if response.HasField("cancel_input_event"):
             # response.cancel_input_event.terminate_containers is never set, the server gets the worker to handle it.
@@ -670,7 +673,7 @@ class _ContainerIOManager:
                 )
                 resp = await self._client.stub.FunctionGetDynamicConcurrency(
                     request,
-                    attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS,
+                    retry=RetryRPC(attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS),
                 )
                 if resp.concurrency != self._input_slots.value and not self._stop_concurrency_loop:
                     logger.debug(f"Dynamic concurrency set from {self._input_slots.value} to {resp.concurrency}")
@@ -883,8 +886,10 @@ class _ContainerIOManager:
         for i in range(0, len(outputs), output_batch_size):
             await self._client.stub.FunctionPutOutputs(
                 api_pb2.FunctionPutOutputsRequest(outputs=outputs[i : i + output_batch_size]),
-                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-                max_retries=None,  # Retry indefinitely, trying every 1s.
+                retry=RetryRPC(
+                    additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                    max_retries=None,  # Retry indefinitely, trying every 1s.
+                ),
             )
         input_ids = [output.input_id for output in outputs]
         self.exit_context(started_at, input_ids)
@@ -1077,10 +1082,12 @@ class _ContainerIOManager:
             *[
                 self._client.stub.VolumeCommit(
                     api_pb2.VolumeCommitRequest(volume_id=v_id),
-                    max_retries=9,
-                    base_delay=0.25,
-                    max_delay=256,
-                    delay_factor=2,
+                    retry=RetryRPC(
+                        max_retries=9,
+                        base_delay=0.25,
+                        max_delay=256,
+                        delay_factor=2,
+                    ),
                 )
                 for v_id in volume_ids
             ],

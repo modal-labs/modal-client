@@ -22,7 +22,7 @@ from ._traceback import print_server_warnings, suppress_tb_frames
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.auth_token_manager import _AuthTokenManager
-from ._utils.grpc_utils import ConnectionManager, RetryWarningMessage, retry_transient_errors
+from ._utils.grpc_utils import ConnectionManager, RetryRPC, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed, NotFoundError
 
@@ -407,32 +407,16 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     async def __call__(
         self,
         req: RequestType,
-        base_delay: float = 0.1,
-        max_delay: float = 1,
-        delay_factor: float = 2,
-        max_retries: Optional[int] = 3,
-        additional_status_codes: list = [],
-        attempt_timeout: Optional[float] = None,
-        total_timeout: Optional[float] = None,
-        attempt_timeout_floor=2.0,
-        retry_warning_message: Optional[RetryWarningMessage] = None,
-        metadata: list[tuple[str, str]] = [],
+        *,
+        retry: Optional[RetryRPC] = None,
+        metadata: Optional[list[tuple[str, str]]] = None,
     ) -> ResponseType:
         with suppress_tb_frames(1):
             return await retry_transient_errors(
-                self.direct,
+                self,  # type: ignore
                 req,
-                base_delay=base_delay,
-                max_delay=max_delay,
-                delay_factor=delay_factor,
-                max_retries=max_retries,
-                additional_status_codes=additional_status_codes,
-                attempt_timeout=attempt_timeout,
-                total_timeout=total_timeout,
-                attempt_timeout_floor=attempt_timeout_floor,
-                retry_warning_message=retry_warning_message,
+                retry=retry or RetryRPC(),
                 metadata=metadata,
-                fn_name=self.name,
             )
 
     async def direct(
