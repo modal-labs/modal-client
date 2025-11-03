@@ -1,7 +1,5 @@
 # Copyright Modal Labs 2022
-import contextlib
 import hashlib
-import io
 import pytest
 import time
 import typing
@@ -270,28 +268,6 @@ def test_sandbox_exec_stdout_bytes_mode(app, servicer, exec_backend):
         assert line == b"foo\n"
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-async def test_sandbox_exec_stdout_prints_router_backend(app, exec_backend):
-    sb = await Sandbox.create.aio(app=app)
-
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        p = await sb.exec.aio("bash", "-c", "echo hello", stdout=StreamType.STDOUT, text=True)
-        await p.wait.aio()
-
-    assert buf.getvalue() == "hello\n"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-async def test_sandbox_exec_stdout_requires_text_true_router_backend(app, exec_backend):
-    sb = await Sandbox.create.aio(app=app)
-
-    with pytest.raises(ValueError, match="only supported when text=True"):
-        await sb.exec.aio("bash", "-c", "echo hello", stdout=StreamType.STDOUT, text=False)
-
-
 @skip_non_subprocess
 def test_app_sandbox(client, servicer):
     image = Image.debian_slim().pip_install("xyz").add_local_file(__file__, remote_path="/xyz")
@@ -538,7 +514,8 @@ def test_sandbox_gpu_fallbacks_support(client, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_exec_stdout(app, servicer, capsys):
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_with_streamtype_stdout_prints_to_stdout(app, servicer, exec_backend, capsys):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "echo hi", stdout=StreamType.STDOUT)
@@ -546,8 +523,36 @@ def test_sandbox_exec_stdout(app, servicer, capsys):
 
     assert capsys.readouterr().out == "hi\n"
 
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_with_streamtype_stdout_and_bufsize_1_prints_to_stdout(app, servicer, exec_backend, capsys):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("bash", "-c", "echo hi && echo bye", stdout=StreamType.STDOUT, bufsize=1)
+    cp.wait()
+
+    assert capsys.readouterr().out == "hi\nbye\n"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_with_streamtype_stdout_read_from_stdout_raises_error(app, servicer, exec_backend, capsys):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("bash", "-c", "echo hi", stdout=StreamType.STDOUT)
+
     with pytest.raises(InvalidError):
         cp.stdout.read()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+async def test_sandbox_exec_stdout_requires_text_true_router_backend(app, exec_backend):
+    sb = await Sandbox.create.aio(app=app)
+
+    with pytest.raises(ValueError, match="only supported when text=True"):
+        await sb.exec.aio("bash", "-c", "echo hello", stdout=StreamType.STDOUT, text=False)
 
 
 @skip_non_subprocess

@@ -493,8 +493,9 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
                     # Print exactly as received without adding extra newlines.
                     print(part, end="")
             finally:
-                if self._reader:
-                    await self._reader.aclose()
+                reader, self._reader = self._reader, None
+                if reader:
+                    await reader.aclose()
 
         self._task = asyncio.create_task(_run())
 
@@ -513,9 +514,9 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
             with contextlib.suppress(Exception):
                 await self._task
             self._task = None
-        if self._reader:
-            await self._reader.aclose()
-            self._reader = None
+        reader, self._reader = self._reader, None
+        if reader:
+            await reader.aclose()
 
 
 class _DevnullStreamReader(Generic[T]):

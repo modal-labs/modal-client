@@ -931,7 +931,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         elif stdout == StreamType.DEVNULL:
             stdout_config = sr_pb2.TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_DEVNULL
         elif stdout == StreamType.STDOUT:
-            # Mirror legacy behavior by streaming stdout to client and printing locally in the reader.
+            # Stream stdout to the client so that it can be printed locally in the reader.
             stdout_config = sr_pb2.TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_PIPE
         else:
             raise ValueError("Unsupported StreamType for stdout")
