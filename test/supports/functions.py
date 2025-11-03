@@ -667,7 +667,7 @@ def get_input_concurrency(timeout: int):
 @modal.concurrent(target_inputs=3, max_inputs=6)
 def set_input_concurrency(start: float):
     set_local_input_concurrency(3)
-    time.sleep(0.1)
+    time.sleep(0.2)
     return time.time() - start
 
 
