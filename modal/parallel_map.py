@@ -35,7 +35,7 @@ from modal._utils.function_utils import (
     _create_input,
     _process_result,
 )
-from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, RetryRPC, RetryWarningMessage
+from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, Retry, RetryWarningMessage
 from modal._utils.jwt_utils import DecodedJwt
 from modal.config import logger
 from modal.retries import RetryManager
@@ -199,7 +199,7 @@ class InputPumper:
         yield
 
     @property
-    def _function_inputs_retry(self) -> RetryRPC:
+    def _function_inputs_retry(self) -> Retry:
         # with 8 retries we log the warning below about every 30 seconds which isn't too spammy.
         retry_warning_message = RetryWarningMessage(
             message=f"Warning: map progress for function {self.function._function_name} is limited."
@@ -207,7 +207,7 @@ class InputPumper:
             warning_interval=8,
             errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
         )
-        return RetryRPC(
+        return Retry(
             max_retries=None,
             max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
             additional_status_codes=[Status.RESOURCE_EXHAUSTED],
@@ -284,7 +284,7 @@ class AsyncInputPumper(InputPumper):
             function_call_id=self.function_call_id,
             num_inputs=self.inputs_sent,
         )
-        await self.client.stub.FunctionFinishInputs(request, retry=RetryRPC(max_retries=None))
+        await self.client.stub.FunctionFinishInputs(request, retry=Retry(max_retries=None))
         yield
 
 
@@ -475,7 +475,7 @@ async def _map_invocation(
             get_response_task = asyncio.create_task(
                 client.stub.FunctionGetOutputs(
                     request,
-                    retry=RetryRPC(
+                    retry=Retry(
                         max_retries=20,
                         attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
                     ),
@@ -769,7 +769,7 @@ async def _map_invocation_inputplane(
             response: api_pb2.MapStartOrContinueResponse = await input_plane_stub.MapStartOrContinue(
                 request,
                 metadata=metadata,
-                retry=RetryRPC(
+                retry=Retry(
                     additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                     max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
                     max_retries=None,
@@ -858,7 +858,7 @@ async def _map_invocation_inputplane(
             get_response_task = asyncio.create_task(
                 input_plane_stub.MapAwait(
                     request,
-                    retry=RetryRPC(
+                    retry=Retry(
                         max_retries=20,
                         attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
                     ),

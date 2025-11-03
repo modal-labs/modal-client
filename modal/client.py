@@ -22,9 +22,9 @@ from ._traceback import print_server_warnings, suppress_tb_frames
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.auth_token_manager import _AuthTokenManager
-from ._utils.grpc_utils import ConnectionManager, RetryRPC, retry_transient_errors
+from ._utils.grpc_utils import ConnectionManager, Retry, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed, NotFoundError
+from .exception import AuthError, ClientClosed, InvalidError, NotFoundError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -408,14 +408,21 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         self,
         req: RequestType,
         *,
-        retry: Optional[RetryRPC] = None,
+        retry: Optional[Retry] = Retry(),
+        timeout: Optional[float] = None,
         metadata: Optional[list[tuple[str, str]]] = None,
     ) -> ResponseType:
         with suppress_tb_frames(1):
+            if retry is None:
+                return await self.direct(req, metadata=metadata, timeout=timeout)
+
+            if timeout is not None:
+                raise InvalidError("retry must be None when timeout is set")
+
             return await retry_transient_errors(
                 self,  # type: ignore
                 req,
-                retry=retry or RetryRPC(),
+                retry=retry,
                 metadata=metadata,
             )
 

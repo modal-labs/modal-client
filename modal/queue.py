@@ -25,7 +25,7 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
-from ._utils.grpc_utils import RetryRPC
+from ._utils.grpc_utils import Retry
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -581,7 +581,7 @@ class _Queue(_Object, type_prefix="qu"):
             await self._client.stub.QueuePut(
                 request,
                 # A full queue will return this status.
-                retry=RetryRPC(
+                retry=Retry(
                     additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                     max_delay=30.0,
                     max_retries=None,

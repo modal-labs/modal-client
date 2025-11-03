@@ -171,8 +171,8 @@ async def unary_stream(
         yield item
 
 
-@dataclass
-class RetryRPC:
+@dataclass(frozen=True)
+class Retry:
     base_delay: float = 0.1
     max_delay: float = 1
     delay_factor: float = 2
@@ -184,13 +184,10 @@ class RetryRPC:
     warning_message: Optional[RetryWarningMessage] = None
 
 
-R = TypeVar("R")
-
-
 async def retry_transient_errors(
     fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]",
     req: RequestType,
-    retry: RetryRPC,
+    retry: Retry,
     metadata: Optional[list[tuple[str, str]]] = None,
 ) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
