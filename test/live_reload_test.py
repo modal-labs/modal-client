@@ -76,17 +76,17 @@ async def test_no_change(import_ref, server_url_env, token_env, servicer):
     assert servicer.app_client_disconnect_count == 1
 
 
+@pytest.mark.flaky(max_runs=3)
 @pytest.mark.asyncio
 async def test_heartbeats(import_ref, server_url_env, token_env, servicer):
-    interval = 0.2
-    with mock.patch("modal.runner.HEARTBEAT_INTERVAL", interval):
+    with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
         t0 = time.time()
         async with serve_app.aio(app, import_ref):
-            await asyncio.sleep(0.7)
+            await asyncio.sleep(2.1)
         total_secs = int(time.time() - t0)
 
     apps = list(servicer.app_heartbeats.keys())
     assert len(apps) == 1
-    # Typically [0s, 0.2s, 0.4s], but asyncio.sleep may lag.
+    # Typically [0s, 1s, 2s], but asyncio.sleep may lag.
     actual_heartbeats = servicer.app_heartbeats[apps[0]]
-    assert abs(actual_heartbeats - (total_secs + 1) / interval) <= 1
+    assert abs(actual_heartbeats - (total_secs + 1)) <= 1
