@@ -548,7 +548,7 @@ def test_sandbox_exec_with_streamtype_stdout_read_from_stdout_raises_error(app, 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-async def test_sandbox_exec_stdout_requires_text_true_router_backend(app, exec_backend):
+async def test_sandbox_exec_stdout_requires_text_true_router_backend(app, servicer, exec_backend):
     sb = await Sandbox.create.aio(app=app)
 
     with pytest.raises(ValueError, match="only supported when text=True"):
