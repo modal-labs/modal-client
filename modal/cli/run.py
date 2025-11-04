@@ -613,6 +613,12 @@ def shell(
     ```
     modal shell sb-abc123xyz
     ```
+
+    Launch a shell to explore an Image by ID:
+
+    ```
+    modal shell im-abc123xyz
+    ```
     """
     env = ensure_env(env)
 
