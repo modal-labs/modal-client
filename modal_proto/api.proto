@@ -857,6 +857,7 @@ message CloudBucketMount {
   optional string bucket_endpoint_url = 7;
   optional string key_prefix = 8;
   optional string oidc_auth_role_arn = 9;
+  bool force_path_style = 10;
 }
 
 message ClusterGetRequest {
