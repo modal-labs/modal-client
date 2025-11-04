@@ -407,8 +407,9 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     async def __call__(
         self,
         req: RequestType,
-        *,
         retry: Optional[Union[Retry, NoRetry]] = None,
+        /,
+        *,
         metadata: Optional[list[tuple[str, str]]] = None,
     ) -> ResponseType:
         with suppress_tb_frames(1):

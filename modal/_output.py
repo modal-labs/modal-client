@@ -493,7 +493,7 @@ async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: as
             api_pb2.ContainerExecPutInputRequest(
                 exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
             ),
-            retry=Retry(total_timeout=10),
+            Retry(total_timeout=10),
         )
 
     async with stream_from_stdin(_handle_input, use_raw_terminal=True):

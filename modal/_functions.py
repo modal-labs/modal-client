@@ -166,7 +166,7 @@ class _Invocation:
             request.from_spawn_map = True
             response = await client.stub.FunctionMap(
                 request,
-                retry=Retry(
+                Retry(
                     max_retries=None,
                     max_delay=30.0,
                     warning_message=RetryWarningMessage(
@@ -243,7 +243,7 @@ class _Invocation:
             )
             response: api_pb2.FunctionGetOutputsResponse = await self.stub.FunctionGetOutputs(
                 request,
-                retry=Retry(attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD),
+                Retry(attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD),
             )
 
             if len(response.outputs) > 0:
@@ -368,7 +368,7 @@ class _Invocation:
                 end_idx=batch_end_index,
             )
             response: api_pb2.FunctionGetOutputsResponse = await self.stub.FunctionGetOutputs(
-                request, retry=Retry(attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD)
+                request, Retry(attempt_timeout=ATTEMPT_TIMEOUT_GRACE_PERIOD)
             )
 
             outputs = list(response.outputs)
@@ -462,7 +462,7 @@ class _InputPlaneInvocation:
             metadata = await self.client.get_input_plane_metadata(self.input_plane_region)
             await_response: api_pb2.AttemptAwaitResponse = await self.stub.AttemptAwait(
                 await_request,
-                retry=Retry(attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD),
+                Retry(attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD),
                 metadata=metadata,
             )
 
@@ -1875,7 +1875,7 @@ Use the `Function.get_web_url()` method instead.
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
         resp = await self.client.stub.FunctionGetCurrentStats(
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
-            retry=Retry(total_timeout=10.0),
+            Retry(total_timeout=10.0),
         )
         return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
 

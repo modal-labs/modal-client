@@ -552,7 +552,7 @@ class _Volume(_Object, type_prefix="vo"):
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
             try:
                 # TODO(gongy): only apply indefinite retries on 504 status.
-                resp = await self._client.stub.VolumeCommit(req, retry=Retry(max_retries=90))
+                resp = await self._client.stub.VolumeCommit(req, Retry(max_retries=90))
                 if not resp.skip_reload:
                     # Reload changes on successful commit.
                     await self._do_reload(lock=False)
@@ -793,12 +793,12 @@ class _Volume(_Object, type_prefix="vo"):
             request = api_pb2.VolumeCopyFilesRequest(
                 volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path, recursive=recursive
             )
-            await self._client.stub.VolumeCopyFiles(request, retry=Retry(base_delay=1))
+            await self._client.stub.VolumeCopyFiles(request, Retry(base_delay=1))
         else:
             request = api_pb2.VolumeCopyFiles2Request(
                 volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path, recursive=recursive
             )
-            await self._client.stub.VolumeCopyFiles2(request, retry=Retry(base_delay=1))
+            await self._client.stub.VolumeCopyFiles2(request, Retry(base_delay=1))
 
     @live_method
     async def batch_upload(self, force: bool = False) -> "_AbstractVolumeUploadContextManager":
@@ -958,7 +958,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                 disallow_overwrite_existing_files=not self._force,
             )
             try:
-                await self._client.stub.VolumePutFiles(request, retry=Retry(base_delay=1))
+                await self._client.stub.VolumePutFiles(request, Retry(base_delay=1))
             except GRPCError as exc:
                 raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
 
@@ -1018,7 +1018,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
         remote_filename = file_spec.mount_filename
         progress_task_id = self._progress_cb(name=remote_filename, size=file_spec.size)
         request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
-        response = await self._client.stub.MountPutFile(request, retry=Retry(base_delay=1))
+        response = await self._client.stub.MountPutFile(request, Retry(base_delay=1))
 
         start_time = time.monotonic()
         if not response.exists:
@@ -1042,7 +1042,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                 self._progress_cb(task_id=progress_task_id, complete=True)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
-                response = await self._client.stub.MountPutFile(request2, retry=Retry(base_delay=1))
+                response = await self._client.stub.MountPutFile(request2, Retry(base_delay=1))
                 if response.exists:
                     break
 
@@ -1202,7 +1202,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
             )
 
             try:
-                response = await self._client.stub.VolumePutFiles2(request, retry=Retry(base_delay=1))
+                response = await self._client.stub.VolumePutFiles2(request, Retry(base_delay=1))
             except GRPCError as exc:
                 raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
 

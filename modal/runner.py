@@ -54,7 +54,7 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
     # TODO(erikbern): we should capture exceptions here
     # * if request fails: destroy the client
     # * if server says the app is gone: print a helpful warning about detaching
-    await client.stub.AppHeartbeat(request, retry=Retry(attempt_timeout=HEARTBEAT_TIMEOUT))
+    await client.stub.AppHeartbeat(request, Retry(attempt_timeout=HEARTBEAT_TIMEOUT))
 
 
 async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> RunningApp:

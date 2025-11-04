@@ -284,7 +284,7 @@ class AsyncInputPumper(InputPumper):
             function_call_id=self.function_call_id,
             num_inputs=self.inputs_sent,
         )
-        await self.client.stub.FunctionFinishInputs(request, retry=Retry(max_retries=None))
+        await self.client.stub.FunctionFinishInputs(request, Retry(max_retries=None))
         yield
 
 
@@ -475,7 +475,7 @@ async def _map_invocation(
             get_response_task = asyncio.create_task(
                 client.stub.FunctionGetOutputs(
                     request,
-                    retry=Retry(
+                    Retry(
                         max_retries=20,
                         attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
                     ),
@@ -768,12 +768,12 @@ async def _map_invocation_inputplane(
 
             response: api_pb2.MapStartOrContinueResponse = await input_plane_stub.MapStartOrContinue(
                 request,
-                metadata=metadata,
-                retry=Retry(
+                Retry(
                     additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                     max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
                     max_retries=None,
                 ),
+                metadata=metadata,
             )
 
             # match response items to the corresponding request item index
@@ -858,7 +858,7 @@ async def _map_invocation_inputplane(
             get_response_task = asyncio.create_task(
                 input_plane_stub.MapAwait(
                     request,
-                    retry=Retry(
+                    Retry(
                         max_retries=20,
                         attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
                     ),
