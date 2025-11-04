@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2025
-from typing import TYPE_CHECKING, Any, Collection, Generic, Mapping, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Collection, Generic, Literal, Mapping, Optional, TypeVar, Union
 
 import grpclib.client
 from google.protobuf.message import Message
@@ -24,7 +24,7 @@ class grpc_error_converter:
     def __enter__(self):
         pass
 
-    def __exit__(self, exc_type, exc, traceback) -> bool:
+    def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
         # skip all internal frames from grpclib
         use_full_traceback = config.get("traceback")
         with suppress_tb_frames(1):
