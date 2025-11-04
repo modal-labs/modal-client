@@ -196,7 +196,10 @@ async def retry_transient_errors(
     metadata: Optional[list[tuple[str, str]]] = None,
 ) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
-    If max_retries is None, retry forever."""
+
+    - If max_retries is None, retry forever.
+    - If retry is a NoRetry object, then retries are disabled.
+    """
 
     if isinstance(retry, NoRetry):
         return await fn.direct(req, timeout=retry.timeout, metadata=metadata)

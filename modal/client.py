@@ -412,6 +412,12 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         *,
         metadata: Optional[list[tuple[str, str]]] = None,
     ) -> ResponseType:
+        """Call GRPC method with retries.
+
+        - retry is None (the default), then we use the default `Retry()` configuration.
+        - retry is a Retry object, then we use that configuration.
+        - retry is a NoRetry object, then retries are disabled.
+        """
         with suppress_tb_frames(1):
             return await retry_transient_errors(
                 self,  # type: ignore
