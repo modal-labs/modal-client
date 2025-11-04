@@ -187,7 +187,7 @@ class InputPumper:
                 f" push is {self.input_queue.qsize()}. "
             )
 
-            resp = await self.client.stub.FunctionPutInputs(request, retry=self._function_inputs_retry)
+            resp = await self.client.stub.FunctionPutInputs(request, self._function_inputs_retry)
             self.inputs_sent += len(items)
             # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
             if self.map_items_manager is not None:
@@ -250,7 +250,7 @@ class SyncInputPumper(InputPumper):
                 function_call_jwt=self.function_call_jwt,
                 inputs=inputs,
             )
-            resp = await self.client.stub.FunctionRetryInputs(request, retry=self._function_inputs_retry)
+            resp = await self.client.stub.FunctionRetryInputs(request, self._function_inputs_retry)
             # Update the state to WAITING_FOR_OUTPUT, and update the input_jwt in the context
             # to the new value in the response.
             self.map_items_manager.handle_retry_response(resp.input_jwts)
