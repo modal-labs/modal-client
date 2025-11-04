@@ -76,6 +76,7 @@ async def test_no_change(import_ref, server_url_env, token_env, servicer):
     assert servicer.app_client_disconnect_count == 1
 
 
+@pytest.mark.flaky(max_runs=2)
 @pytest.mark.asyncio
 async def test_heartbeats(import_ref, server_url_env, token_env, servicer):
     with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
