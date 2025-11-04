@@ -546,10 +546,11 @@ def test_sandbox_exec_with_streamtype_stdout_read_from_stdout_raises_error(app, 
         cp.stdout.read()
 
 
+@skip_non_subprocess
 @pytest.mark.asyncio
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_exec_stdout_requires_text_true_router_backend(app, servicer, exec_backend):
-    sb = Sandbox.create("sleep", "infinity", app=app)
+def test_sandbox_exec_stdout_requires_text_true_router_backend(app, exec_backend):
+    sb = Sandbox.create(app=app)
 
     with pytest.raises(ValueError, match="only supported when text=True"):
         sb.exec("bash", "-c", "echo hello", stdout=StreamType.STDOUT, text=False)
