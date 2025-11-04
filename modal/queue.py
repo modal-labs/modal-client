@@ -581,7 +581,7 @@ class _Queue(_Object, type_prefix="qu"):
             await self._client.stub.QueuePut(
                 request,
                 # A full queue will return this status.
-                Retry(
+                retry=Retry(
                     additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                     max_delay=30.0,
                     max_retries=None,

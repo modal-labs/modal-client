@@ -138,6 +138,8 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         request,
         metadata: Optional[Any] = None,
     ):
+        from .client import _Client
+
         if self.client._snapshotted:
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()

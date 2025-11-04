@@ -623,7 +623,9 @@ class _ContainerIOManager:
                 await self.heartbeat_condition.wait()
 
             request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs_v2=True)
-            response = await self._client.stub.ContainerHeartbeat(request, Retry(attempt_timeout=HEARTBEAT_TIMEOUT))
+            response = await self._client.stub.ContainerHeartbeat(
+                request, retry=Retry(attempt_timeout=HEARTBEAT_TIMEOUT)
+            )
 
         if response.HasField("cancel_input_event"):
             # response.cancel_input_event.terminate_containers is never set, the server gets the worker to handle it.
@@ -671,7 +673,7 @@ class _ContainerIOManager:
                 )
                 resp = await self._client.stub.FunctionGetDynamicConcurrency(
                     request,
-                    Retry(attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS),
+                    retry=Retry(attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS),
                 )
                 if resp.concurrency != self._input_slots.value and not self._stop_concurrency_loop:
                     logger.debug(f"Dynamic concurrency set from {self._input_slots.value} to {resp.concurrency}")
@@ -884,7 +886,7 @@ class _ContainerIOManager:
         for i in range(0, len(outputs), output_batch_size):
             await self._client.stub.FunctionPutOutputs(
                 api_pb2.FunctionPutOutputsRequest(outputs=outputs[i : i + output_batch_size]),
-                Retry(
+                retry=Retry(
                     additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                     max_retries=None,  # Retry indefinitely, trying every 1s.
                 ),
@@ -1080,7 +1082,7 @@ class _ContainerIOManager:
             *[
                 self._client.stub.VolumeCommit(
                     api_pb2.VolumeCommitRequest(volume_id=v_id),
-                    Retry(
+                    retry=Retry(
                         max_retries=9,
                         base_delay=0.25,
                         max_delay=256,

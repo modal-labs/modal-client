@@ -187,7 +187,7 @@ class InputPumper:
                 f" push is {self.input_queue.qsize()}. "
             )
 
-            resp = await self.client.stub.FunctionPutInputs(request, self._function_inputs_retry)
+            resp = await self.client.stub.FunctionPutInputs(request, retry=self._function_inputs_retry)
             self.inputs_sent += len(items)
             # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
             if self.map_items_manager is not None:
@@ -250,7 +250,7 @@ class SyncInputPumper(InputPumper):
                 function_call_jwt=self.function_call_jwt,
                 inputs=inputs,
             )
-            resp = await self.client.stub.FunctionRetryInputs(request, self._function_inputs_retry)
+            resp = await self.client.stub.FunctionRetryInputs(request, retry=self._function_inputs_retry)
             # Update the state to WAITING_FOR_OUTPUT, and update the input_jwt in the context
             # to the new value in the response.
             self.map_items_manager.handle_retry_response(resp.input_jwts)
@@ -284,7 +284,7 @@ class AsyncInputPumper(InputPumper):
             function_call_id=self.function_call_id,
             num_inputs=self.inputs_sent,
         )
-        await self.client.stub.FunctionFinishInputs(request, Retry(max_retries=None))
+        await self.client.stub.FunctionFinishInputs(request, retry=Retry(max_retries=None))
         yield
 
 
@@ -475,7 +475,7 @@ async def _map_invocation(
             get_response_task = asyncio.create_task(
                 client.stub.FunctionGetOutputs(
                     request,
-                    Retry(
+                    retry=Retry(
                         max_retries=20,
                         attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
                     ),
@@ -768,7 +768,7 @@ async def _map_invocation_inputplane(
 
             response: api_pb2.MapStartOrContinueResponse = await input_plane_stub.MapStartOrContinue(
                 request,
-                Retry(
+                retry=Retry(
                     additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                     max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
                     max_retries=None,
@@ -858,7 +858,7 @@ async def _map_invocation_inputplane(
             get_response_task = asyncio.create_task(
                 input_plane_stub.MapAwait(
                     request,
-                    Retry(
+                    retry=Retry(
                         max_retries=20,
                         attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
                     ),
