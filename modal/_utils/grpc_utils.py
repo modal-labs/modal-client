@@ -9,7 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, Optional, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -32,6 +32,7 @@ RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
 
 if typing.TYPE_CHECKING:
+    import modal._grpc_client
     import modal.client
 
 # Monkey patches grpclib to have a Modal User Agent header.
@@ -162,7 +163,7 @@ if typing.TYPE_CHECKING:
 
 
 async def unary_stream(
-    method: "modal.client.UnaryStreamWrapper[RequestType, ResponseType]",
+    method: "modal._grpc_client.UnaryStreamWrapper[RequestType, ResponseType]",
     request: RequestType,
     metadata: Optional[Any] = None,
 ) -> AsyncIterator[ResponseType]:
@@ -184,25 +185,14 @@ class Retry:
     warning_message: Optional[RetryWarningMessage] = None
 
 
-@dataclass(frozen=True)
-class NoRetry:
-    timeout: Optional[float] = None
-
-
 async def retry_transient_errors(
-    fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]",
+    fn: "modal._grpc_client.UnaryUnaryWrapper[RequestType, ResponseType]",
     req: RequestType,
-    retry: Union[Retry, NoRetry],
+    retry: Retry,
     metadata: Optional[list[tuple[str, str]]] = None,
 ) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
-
-    - If max_retries is None, retry forever.
-    - If retry is a NoRetry object, then retries are disabled.
-    """
-
-    if isinstance(retry, NoRetry):
-        return await fn.direct(req, timeout=retry.timeout, metadata=metadata)
+    If max_retries is None, retry forever."""
 
     delay = retry.base_delay
     n_retries = 0

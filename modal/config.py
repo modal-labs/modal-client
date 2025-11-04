@@ -143,12 +143,11 @@ _user_config = _read_user_config()
 
 
 async def _lookup_workspace(server_url: str, token_id: str, token_secret: str) -> api_pb2.WorkspaceNameLookupResponse:
-    from ._utils.grpc_utils import NoRetry
     from .client import _Client
 
     credentials = (token_id, token_secret)
     async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
-        return await client.stub.WorkspaceNameLookup(Empty(), NoRetry(timeout=3))
+        return await client.stub.WorkspaceNameLookup(Empty(), retry=None, timeout=3)
 
 
 def config_profiles():

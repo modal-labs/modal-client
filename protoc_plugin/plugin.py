@@ -103,9 +103,9 @@ def render(
                     name, cardinality, request_type, reply_type = method
                     wrapper_cls: str
                     if cardinality is const.Cardinality.UNARY_UNARY:
-                        wrapper_cls = "modal.client.UnaryUnaryWrapper"
+                        wrapper_cls = "modal._grpc_client.UnaryUnaryWrapper"
                     elif cardinality is const.Cardinality.UNARY_STREAM:
-                        wrapper_cls = "modal.client.UnaryStreamWrapper"
+                        wrapper_cls = "modal._grpc_client.UnaryStreamWrapper"
                     # elif cardinality is const.Cardinality.STREAM_UNARY:
                     #     wrapper_cls = StreamUnaryWrapper
                     # elif cardinality is const.Cardinality.STREAM_STREAM:
@@ -190,7 +190,7 @@ def main() -> None:
         module_name = _proto2grpc_module_name(file_to_generate)
         grpclib_module_path = Path(module_name.replace(".", "/") + ".py")
 
-        imports = ["modal._utils.grpc_utils", module_name]
+        imports = ["modal._grpc_client", module_name]
 
         services = []
         for service in proto_file.service:

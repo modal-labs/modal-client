@@ -166,7 +166,7 @@ class _Invocation:
             request.from_spawn_map = True
             response = await client.stub.FunctionMap(
                 request,
-                Retry(
+                retry=Retry(
                     max_retries=None,
                     max_delay=30.0,
                     warning_message=RetryWarningMessage(
@@ -243,7 +243,7 @@ class _Invocation:
             )
             response: api_pb2.FunctionGetOutputsResponse = await self.stub.FunctionGetOutputs(
                 request,
-                Retry(attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD),
+                retry=Retry(attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD),
             )
 
             if len(response.outputs) > 0:
