@@ -34,7 +34,12 @@ from ._utils.deprecation import (
     deprecation_warning,
     warn_on_renamed_autoscaler_settings,
 )
-from ._utils.function_utils import FunctionInfo, is_flash_object, is_global_object, is_method_fn
+from ._utils.flash_utils import (
+    get_flash_configs,
+    get_region_from_flash_configs,
+    is_flash_object,
+)
+from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name, check_tag_dict
@@ -998,7 +1003,6 @@ class _App:
                 wrapped_cls.registered = True
                 user_cls = wrapped_cls.user_cls
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options))
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
@@ -1052,9 +1056,24 @@ class _App:
                     "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
                 )
 
+            flash_configs = get_flash_configs(user_cls)
+
+            # TODO(claudia): Refactor this once flash is promoted from experimental options.
+            experimental_options_ = experimental_options or {}
+            if flash_configs:
+                flash_region = get_region_from_flash_configs(flash_configs)
+                experimental_options_["flash"] = flash_region
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
+
+            # TODO(claudia): Refactor this once flash is promoted from experimental options.
+            # This check is performed here due to experimental_options modification
+            if isinstance(wrapped_cls, _PartialFunction) and (
+                wrapped_cls.flags & _PartialFunctionFlags.FLASH_WEB_INTERFACE
+            ):
+                verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options_))
 
             cls_func = _Function.from_local(
                 info,
@@ -1089,7 +1108,7 @@ class _App:
                 cluster_size=cluster_size,
                 rdma=rdma,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
-                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                experimental_options={k: str(v) for k, v in experimental_options_.items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 restrict_output=_experimental_restrict_output,
