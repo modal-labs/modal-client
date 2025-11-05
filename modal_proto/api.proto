@@ -301,6 +301,7 @@ message AppCreateRequest {
   string description = 2;    // Human readable label for the app
   string environment_name = 5;
   AppState app_state = 6;
+  map<string, string> tags = 7;  // Additional metadata to attach to the App
 }
 
 message AppCreateResponse {
