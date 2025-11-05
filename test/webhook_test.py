@@ -221,6 +221,50 @@ def test_positional_method(servicer, client):
 
 
 @pytest.mark.asyncio
+async def test_asgi_app_missing_return(servicer, client):
+    """Test that forgetting to return from @asgi_app() gives a clear error."""
+    from unittest.mock import MagicMock
+
+    from modal._runtime import user_code_imports
+    from modal.app import _App
+
+    def my_asgi_no_return():
+        pass
+
+    service = user_code_imports.ImportedFunction(
+        app=_App(), service_deps=None, _user_defined_callable=my_asgi_no_return
+    )
+    fun_def = api_pb2.Function(webhook_config=api_pb2.WebhookConfig(type=api_pb2.WEBHOOK_TYPE_ASGI_APP))
+
+    with pytest.raises(
+        InvalidError, match=r"@modal\.asgi_app\(\).+callable.+NoneType.+Did you forget to add a return statement"
+    ):
+        service.get_finalized_functions(fun_def, container_io_manager=MagicMock())
+
+
+@pytest.mark.asyncio
+async def test_wsgi_app_missing_return(servicer, client):
+    """Test that forgetting to return from @wsgi_app() gives a clear error."""
+    from unittest.mock import MagicMock
+
+    from modal._runtime import user_code_imports
+    from modal.app import _App
+
+    def my_wsgi_no_return():
+        pass
+
+    service = user_code_imports.ImportedFunction(
+        app=_App(), service_deps=None, _user_defined_callable=my_wsgi_no_return
+    )
+    fun_def = api_pb2.Function(webhook_config=api_pb2.WebhookConfig(type=api_pb2.WEBHOOK_TYPE_WSGI_APP))
+
+    with pytest.raises(
+        InvalidError, match=r"@modal\.wsgi_app\(\).+callable.+NoneType.+Did you forget to add a return statement"
+    ):
+        service.get_finalized_functions(fun_def, container_io_manager=MagicMock())
+
+
+@pytest.mark.asyncio
 async def test_dev_suffix(servicer, client, modal_config):
     modal_toml = """
     [default]
