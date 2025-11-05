@@ -7,7 +7,6 @@ from typing import Generic, Optional, TypeVar
 from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
@@ -111,7 +110,7 @@ class _ContainerProcessThroughServer(Generic[T]):
             return self._returncode
 
         req = api_pb2.ContainerExecWaitRequest(exec_id=self._process_id, timeout=0)
-        resp: api_pb2.ContainerExecWaitResponse = await retry_transient_errors(self._client.stub.ContainerExecWait, req)
+        resp = await self._client.stub.ContainerExecWait(req)
 
         if resp.completed:
             self._returncode = resp.exit_code
@@ -123,9 +122,7 @@ class _ContainerProcessThroughServer(Generic[T]):
         assert self._process_id
         while True:
             req = api_pb2.ContainerExecWaitRequest(exec_id=self._process_id, timeout=10)
-            resp: api_pb2.ContainerExecWaitResponse = await retry_transient_errors(
-                self._client.stub.ContainerExecWait, req
-            )
+            resp = await self._client.stub.ContainerExecWait(req)
             if resp.completed:
                 return resp.exit_code
 

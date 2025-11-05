@@ -6,7 +6,6 @@ from modal_proto import api_pb2
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
-from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
 
 
@@ -28,9 +27,7 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
             client = await _Client.from_env()
 
         async def _load(self: _SandboxSnapshot, resolver: Resolver, existing_object_id: Optional[str]):
-            await retry_transient_errors(
-                client.stub.SandboxSnapshotGet, api_pb2.SandboxSnapshotGetRequest(snapshot_id=sandbox_snapshot_id)
-            )
+            await client.stub.SandboxSnapshotGet(api_pb2.SandboxSnapshotGetRequest(snapshot_id=sandbox_snapshot_id))
 
         rep = "SandboxSnapshot()"
         obj = _SandboxSnapshot._from_loader(_load, rep)
