@@ -849,6 +849,11 @@ message CloudBucketMount {
     GCP = 3;
   }
 
+  enum MetadataTTL {
+    METADATA_TTL_MINIMAL = 0;
+    METADATA_TTL_INDEFINITE = 1;
+  }
+
   string bucket_name = 1;
   string mount_path = 2;
   string credentials_secret_id = 3;
@@ -859,6 +864,10 @@ message CloudBucketMount {
   optional string key_prefix = 8;
   optional string oidc_auth_role_arn = 9;
   bool force_path_style = 10;
+  oneof metadata_ttl_oneof {
+    MetadataTTL metadata_ttl_type = 11;
+    int64 metadata_ttl_seconds = 12;
+  }
 }
 
 message ClusterGetRequest {
