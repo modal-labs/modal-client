@@ -24,6 +24,7 @@ from modal._utils.async_utils import (
     async_merge,
     async_zip,
     callable_to_agen,
+    is_port_connection_open,
     prevent_cancellation_abortion,
     queue_batch_iterator,
     retry,
@@ -1434,3 +1435,32 @@ async def test_prevent_cancellation_abortion():
     assert await t2 == 1
     with pytest.raises(asyncio.CancelledError):
         await t
+
+
+@pytest.mark.asyncio
+async def test_is_port_connection_open():
+    done = asyncio.Event()
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        try:
+            writer.close()
+            await writer.wait_closed()
+        finally:
+            done.set()
+
+    server = await asyncio.start_server(handle, "127.0.0.1")
+    port = server.sockets[0].getsockname()[1]
+
+    try:
+        is_open = await is_port_connection_open("127.0.0.1", port, timeout=0.1)
+        assert is_open
+        await asyncio.wait_for(done.wait(), timeout=0.1)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_is_port_connection_open_failure():
+    is_open = await is_port_connection_open("127.0.0.1", 58132, timeout=0.1)
+    assert not is_open

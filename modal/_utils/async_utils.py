@@ -887,3 +887,14 @@ async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
                 logger.exception(f"Error closing async generator: {e}")
         if first_exception is not None:
             raise first_exception
+
+
+async def is_port_connection_open(host: str, port: int, timeout: float) -> bool:
+    """Return True if the host + port is open."""
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+        writer.close()
+        await writer.wait_closed()
+        return True
+    except Exception:
+        return False
