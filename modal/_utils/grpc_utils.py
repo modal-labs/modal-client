@@ -186,13 +186,36 @@ class Retry:
 
 
 async def retry_transient_errors(
-    fn: "modal._grpc_client.UnaryUnaryWrapper[RequestType, ResponseType]",
+    fn: "grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]",
+    req: RequestType,
+    max_retries: Optional[int] = 3,
+) -> ResponseType:
+    """Minimum API version of _retry_transient_errors that works with grpclib.client.UnaryUnaryMethod.
+
+    Used by modal server.
+    """
+    return await _retry_transient_errors(fn, req, retry=Retry(max_retries=max_retries))
+
+
+async def _retry_transient_errors(
+    fn: typing.Union[
+        "modal._grpc_client.UnaryUnaryWrapper[RequestType, ResponseType]",
+        "grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]",
+    ],
     req: RequestType,
     retry: Retry,
     metadata: Optional[list[tuple[str, str]]] = None,
 ) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
+    import modal._grpc_client
+
+    if isinstance(fn, modal._grpc_client.UnaryUnaryWrapper):
+        fn_callable = fn.direct
+    elif isinstance(fn, grpclib.client.UnaryUnaryMethod):
+        fn_callable = fn  # type: ignore
+    else:
+        raise ValueError("Only modal._grpc_client.UnaryUnaryWrapper and grpclib.client.UnaryUnaryMethod are supported")
 
     delay = retry.base_delay
     n_retries = 0
@@ -228,7 +251,7 @@ async def retry_transient_errors(
             timeout = None
         try:
             with suppress_tb_frames(1):
-                return await fn.direct(req, metadata=attempt_metadata, timeout=timeout)
+                return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 if exc.status == Status.UNAUTHENTICATED:

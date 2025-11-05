@@ -6,7 +6,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
 from ._traceback import suppress_tb_frames
-from ._utils.grpc_utils import Retry, retry_transient_errors
+from ._utils.grpc_utils import Retry, _retry_transient_errors
 from .config import config, logger
 from .exception import InvalidError, NotFoundError
 
@@ -82,7 +82,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
             if retry is None:
                 return await self.direct(req, timeout=timeout, metadata=metadata)
 
-            return await retry_transient_errors(
+            return await _retry_transient_errors(
                 self,  # type: ignore
                 req,
                 retry=retry,
