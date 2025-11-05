@@ -35,7 +35,7 @@ if __name__ == "__main__":
     python_versions = SUPPORTED_PYTHON_SERIES[cast(ImageBuilderVersion, builder_version)]
 
     app = modal.App(f"build-{name.replace('_', '-')}-image")
-    with modal.enable_output(), app.run():
+    with app.run(), modal.enable_output():  # Image.build needs these in reverse of normal order to avoid duplicate logs
         images = asyncio.run(build_images(app, constructor, python_versions))
 
     table = Table(title=f"Images for {name} ({builder_version})")
