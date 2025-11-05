@@ -443,7 +443,7 @@ class TaskCommandRouterClient:
             except Exception as e:
                 # Exceptions here can stem from non-transient errors against the server sending
                 # the TaskGetCommandRouterAccess RPC, for instance, if the task has finished.
-                logger.warning(f"Background JWT refresh failed for exec with task ID {self._task_id}: {e}")
+                logger.debug(f"Background JWT refresh failed for exec with task ID {self._task_id}: {e}")
                 break
 
     async def _stream_stdio(
