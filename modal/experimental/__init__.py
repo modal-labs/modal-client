@@ -13,7 +13,6 @@ from .._object import _get_environment_name
 from .._partial_function import _clustered
 from .._runtime.container_io_manager import _ContainerIOManager
 from .._utils.async_utils import synchronize_api, synchronizer
-from .._utils.grpc_utils import retry_transient_errors
 from ..app import _App
 from ..client import _Client
 from ..cls import _Cls
@@ -116,7 +115,7 @@ async def get_app_objects(
 
     app = await _App.lookup(app_name, environment_name=environment_name, client=client)
     req = api_pb2.AppGetLayoutRequest(app_id=app.app_id)
-    app_layout_resp = await retry_transient_errors(client.stub.AppGetLayout, req)
+    app_layout_resp = await client.stub.AppGetLayout(req)
 
     app_objects: dict[str, Union[_Function, _Cls]] = {}
 
@@ -361,4 +360,4 @@ async def image_delete(
         client = await _Client.from_env()
 
     req = api_pb2.ImageDeleteRequest(image_id=image_id)
-    await retry_transient_errors(client.stub.ImageDelete, req)
+    await client.stub.ImageDelete(req)
