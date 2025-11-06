@@ -333,8 +333,8 @@ class GRPCErrorDetailsCodec(StatusDetailsCodecBase):
     ) -> bytes:
         encoded_details = [
             api_pb2.GRPCErrorDetail(
-                module=detail.__module__,
-                klass=detail.__qualname__,
+                module=type(detail).__module__,
+                klass=type(detail).__name__,
                 serialized_detail=detail.SerializeToString(),
             )
             for detail in details
