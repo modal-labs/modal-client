@@ -76,6 +76,7 @@ async def _init_local_app_existing(client: _Client, existing_app_id: str, enviro
 async def _init_local_app_new(
     client: _Client,
     description: str,
+    tags: dict[str, str],
     app_state: int,  # ValueType
     environment_name: str = "",
     interactive: bool = False,
@@ -84,6 +85,7 @@ async def _init_local_app_new(
         description=description,
         environment_name=environment_name,
         app_state=app_state,  # type: ignore
+        tags=tags,
     )
     app_resp, _ = await gather_cancel_on_exc(  # TODO: use TaskGroup?
         client.stub.AppCreate(app_req),
@@ -102,6 +104,7 @@ async def _init_local_app_new(
 async def _init_local_app_from_name(
     client: _Client,
     name: str,
+    tags: dict[str, str],
     environment_name: str = "",
 ) -> RunningApp:
     # Look up any existing deployment
@@ -117,7 +120,7 @@ async def _init_local_app_from_name(
         return await _init_local_app_existing(client, existing_app_id, environment_name)
     else:
         return await _init_local_app_new(
-            client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
+            client, name, tags, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
         )
 
 
@@ -295,9 +298,12 @@ async def _run_app(
         msg = "Interactive mode requires output to be enabled. (Use the the `modal.enable_output()` context manager.)"
         raise InvalidError(msg)
 
+    local_app_state = app._local_state
+
     running_app: RunningApp = await _init_local_app_new(
         client,
         app.description or "",
+        local_app_state.tags,
         environment_name=environment_name or "",
         app_state=app_state,
         interactive=interactive,
@@ -333,7 +339,6 @@ async def _run_app(
                 get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
             )
 
-        local_app_state = app._local_state
         try:
             # Create all members
             await _create_all_objects(client, running_app, local_app_state, environment_name)
@@ -521,12 +526,15 @@ async def _deploy_app(
     if client is None:
         client = await _Client.from_env()
 
+    local_app_state = app._local_state
     t0 = time.time()
 
     # Get git information to track deployment history
     commit_info_task = asyncio.create_task(get_git_commit_info())
 
-    running_app: RunningApp = await _init_local_app_from_name(client, name, environment_name=environment_name)
+    running_app: RunningApp = await _init_local_app_from_name(
+        client, name, local_app_state.tags, environment_name=environment_name
+    )
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
@@ -540,7 +548,7 @@ async def _deploy_app(
             await _create_all_objects(
                 client,
                 running_app,
-                app._local_state,
+                local_app_state,
                 environment_name=environment_name,
             )
 
@@ -554,7 +562,7 @@ async def _deploy_app(
                 client,
                 running_app,
                 api_pb2.APP_STATE_DEPLOYED,
-                app._local_state,
+                local_app_state,
                 name=name,
                 deployment_tag=tag,
                 commit_info=commit_info,
