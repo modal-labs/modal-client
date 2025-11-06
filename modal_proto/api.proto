@@ -2028,9 +2028,6 @@ message GPUConfig {
   string gpu_type = 4;
 }
 
-message GRPCErrorDetails {
-  repeated google.protobuf.Any details = 1;
-}
 
 message GeneratorDone {  // Sent as the output when a generator finishes running.
   uint64 items_total = 1;
@@ -2387,6 +2384,14 @@ message NotebookOutput {
     // This should not be included in saved notebook.
     optional string transient_display_id = 3;
   }
+
+// A copy google.rpc.Status for GRPCError details:
+// https://github.com/googleapis/googleapis/blob/master/google/rpc/status.proto
+message Status {
+  int32 code = 1;
+  string message = 2;
+  repeated google.protobuf.Any details = 3;
+}
 
   // Stream output from a code cell (stdout / stderr).
   message Stream {
