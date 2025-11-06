@@ -22,7 +22,6 @@ from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._utils.deprecation import warn_if_passing_namespace
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -188,14 +187,14 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             environment_name=_get_environment_name(environment_name),
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
         )
-        resp = await retry_transient_errors(client.stub.SharedVolumeGetOrCreate, request)
+        resp = await client.stub.SharedVolumeGetOrCreate(request)
         return resp.shared_volume_id
 
     @staticmethod
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
         obj = await _NetworkFileSystem.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.SharedVolumeDeleteRequest(shared_volume_id=obj.object_id)
-        await retry_transient_errors(obj._client.stub.SharedVolumeDelete, req)
+        await obj._client.stub.SharedVolumeDelete(req)
 
     @live_method
     async def write_file(self, remote_path: str, fp: BinaryIO, progress_cb: Optional[Callable[..., Any]] = None) -> int:
@@ -235,7 +234,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
         t0 = time.monotonic()
         while time.monotonic() - t0 < NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT:
-            response = await retry_transient_errors(self._client.stub.SharedVolumePutFile, req)
+            response = await self._client.stub.SharedVolumePutFile(req)
             if response.exists:
                 break
         else:
@@ -248,7 +247,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         """Read a file from the network file system"""
         req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self.object_id, path=path)
         try:
-            response = await retry_transient_errors(self._client.stub.SharedVolumeGetFile, req)
+            response = await self._client.stub.SharedVolumeGetFile(req)
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 
@@ -333,7 +332,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         """Remove a file in a network file system."""
         req = api_pb2.SharedVolumeRemoveFileRequest(shared_volume_id=self.object_id, path=path, recursive=recursive)
         try:
-            await retry_transient_errors(self._client.stub.SharedVolumeRemoveFile, req)
+            await self._client.stub.SharedVolumeRemoveFile(req)
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 

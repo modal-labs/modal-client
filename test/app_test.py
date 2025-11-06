@@ -473,6 +473,9 @@ def test_tags(servicer, client, mode):
             with app.run(client=client):
                 pass
 
+    request = ctx.pop_request("AppCreate")
+    assert request.tags == tags
+
     request = ctx.pop_request("AppPublish")
     assert request.tags == tags
 

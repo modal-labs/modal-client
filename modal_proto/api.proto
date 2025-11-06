@@ -301,6 +301,7 @@ message AppCreateRequest {
   string description = 2;    // Human readable label for the app
   string environment_name = 5;
   AppState app_state = 6;
+  map<string, string> tags = 7;  // Additional metadata to attach to the App
 }
 
 message AppCreateResponse {
@@ -857,6 +858,7 @@ message CloudBucketMount {
   optional string bucket_endpoint_url = 7;
   optional string key_prefix = 8;
   optional string oidc_auth_role_arn = 9;
+  bool force_path_style = 10;
 }
 
 message ClusterGetRequest {
@@ -2461,6 +2463,7 @@ message ProxyAddIpResponse {
 message ProxyCreateRequest {
   string name = 1;
   string environment_name = 2;
+  string region = 3;
 }
 
 message ProxyCreateResponse {
