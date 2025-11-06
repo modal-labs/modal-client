@@ -154,10 +154,14 @@ def test_CustomProtoStatusDetailsCodec_round_trip():
     msgs = [blob_msg, sandbox_msg]
 
     codec = CustomProtoStatusDetailsCodec()
-    encoded_msg = codec.encode(Status.OK, None, msgs)
+    encoded_msg = codec.encode(Status.CANCELLED, "this-is-a-message", msgs)
     assert isinstance(encoded_msg, bytes)
 
-    decoded_msg = codec.decode(Status.OK, None, encoded_msg)
+    decoded_status = api_pb2.Status.FromString(encoded_msg)
+    assert decoded_status.message == "this-is-a-message"
+    assert decoded_status.code == Status.CANCELLED.value
+
+    decoded_msg = codec.decode(Status.CANCELLED, None, encoded_msg)
     assert len(decoded_msg) == 2
     assert decoded_msg == msgs
 
@@ -174,7 +178,7 @@ def test_CustomProtoStatusDetailsCodec_unknown():
 
 
 def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
-    status_proto = status_pb2.Status()
+    status_proto = status_pb2.Status(code=4, message="abc")
     blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
     sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
     msgs = [blob_msg, sandbox_msg]
@@ -187,3 +191,4 @@ def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
 
     decoded_msg = codec.decode(Status.OK, None, status_proto.SerializeToString())
     assert len(decoded_msg) == 2
+    assert decoded_msg == msgs

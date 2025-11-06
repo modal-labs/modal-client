@@ -333,6 +333,8 @@ def _sym_db() -> SymbolDatabase:
     return Default()
 
 
+# From https://github.com/vmagamedov/grpclib/blob/b841b4e861c4ac82c7e1f3bfa0aea03dd0b9ba18/grpclib/encoding/proto.py#L66
+# which uses `api_pb2.Status`.
 class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
     def encode(
         self,
