@@ -86,17 +86,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         req: RequestType,
         *,
         retry: None,
-        timeout: float,
-        metadata: Optional[list[tuple[str, str]]] = None,
-    ) -> ResponseType: ...
-
-    @overload
-    async def __call__(
-        self,
-        req: RequestType,
-        *,
-        retry: None,
-        timeout: None,
+        timeout: Optional[float] = None,
         metadata: Optional[list[tuple[str, str]]] = None,
     ) -> ResponseType: ...
 
