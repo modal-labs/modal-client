@@ -9,7 +9,8 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence, Type, TypeVar
+from functools import cache
+from typing import Any, Optional, Sequence, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -17,6 +18,7 @@ import grpclib.events
 import grpclib.protocol
 import grpclib.stream
 from google.protobuf.message import Message
+from google.protobuf.symbol_database import SymbolDatabase
 from grpclib import GRPCError, Status
 from grpclib.encoding.base import StatusDetailsCodecBase
 from grpclib.exceptions import StreamTerminatedError
@@ -324,22 +326,26 @@ def get_proto_oneof(message: Message, oneof_group: str) -> Optional[Message]:
     return getattr(message, oneof_field)
 
 
+@cache
+def _sym_db() -> SymbolDatabase:
+    from google.protobuf.symbol_database import Default
+
+    return Default()
+
+
 class GRPCErrorDetailsCodec(StatusDetailsCodecBase):
     def encode(
         self,
         status: Status,
         message: Optional[str],
-        details: Sequence[Message],
+        details: Optional[Sequence[Message]],
     ) -> bytes:
-        encoded_details = [
-            api_pb2.GRPCErrorDetail(
-                module=type(detail).__module__,
-                klass=type(detail).__name__,
-                value=detail.SerializeToString(),
-            )
-            for detail in details
-        ]
-        return api_pb2.GRPCErrorDetails(details=encoded_details).SerializeToString()
+        details_proto = api_pb2.GRPCErrorDetails()
+        if details is not None:
+            for detail in details:
+                detail_container = details_proto.details.add()
+                detail_container.Pack(detail)
+        return details_proto.SerializeToString()
 
     def decode(
         self,
@@ -347,15 +353,15 @@ class GRPCErrorDetailsCodec(StatusDetailsCodecBase):
         message: Optional[str],
         data: bytes,
     ) -> Any:
-        import importlib
+        sym_db = _sym_db()
 
-        detail_container = api_pb2.GRPCErrorDetails().FromString(data)
+        details_proto = api_pb2.GRPCErrorDetails.FromString(data)
 
-        decoded_details = []
-        for detail in detail_container.details:
+        details = []
+        for detail_container in details_proto.details:
             with contextlib.suppress(Exception):
-                module = importlib.import_module(detail.module)
-                Klass: Type[Message] = getattr(module, detail.klass)
-                decoded_details.append(Klass().FromString(detail.value))
-
-        return decoded_details
+                msg_type = sym_db.GetSymbol(detail_container.TypeName())
+                detail = msg_type()
+                detail_container.Unpack(detail)
+                details.append(detail)
+        return details

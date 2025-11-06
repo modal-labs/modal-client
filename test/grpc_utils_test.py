@@ -2,6 +2,7 @@
 import pytest
 import time
 
+from google.protobuf.any_pb2 import Any
 from grpclib import GRPCError, Status
 
 import modal
@@ -162,7 +163,7 @@ def test_GRPCErrorDetailsCodec_round_trip():
 
 def test_GRPCErrorDetailsCodec_unknown():
     encoded_details = [
-        api_pb2.GRPCErrorDetail(module="unknown", klass="hidden", value=b"abc"),
+        Any(type_url="abc", value=b"bad"),
     ]
     encoded_msg = api_pb2.GRPCErrorDetails(details=encoded_details).SerializeToString()
     codec = GRPCErrorDetailsCodec()

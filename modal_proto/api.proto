@@ -4,6 +4,7 @@ option go_package = "github.com/modal-labs/modal/go/proto";
 
 package modal.client;
 
+import "google/protobuf/any.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
@@ -2027,14 +2028,8 @@ message GPUConfig {
   string gpu_type = 4;
 }
 
-message GRPCErrorDetail {
-  string module = 1;
-  string klass = 2;
-  bytes value = 3;
-}
-
 message GRPCErrorDetails {
-  repeated GRPCErrorDetail details = 1;
+  repeated google.protobuf.Any details = 1;
 }
 
 message GeneratorDone {  // Sent as the output when a generator finishes running.
