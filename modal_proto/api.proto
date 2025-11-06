@@ -850,8 +850,9 @@ message CloudBucketMount {
   }
 
   enum MetadataTTLType {
-    METADATA_TTL_TYPE_MINIMAL = 0;
-    METADATA_TTL_TYPE_INDEFINITE = 1;
+    METADATA_TTL_TYPE_UNSPECIFIED = 0;
+    METADATA_TTL_TYPE_MINIMAL = 1;
+    METADATA_TTL_TYPE_INDEFINITE = 2;
   }
 
   string bucket_name = 1;
