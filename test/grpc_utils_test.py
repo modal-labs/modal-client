@@ -14,7 +14,7 @@ from modal._utils.grpc_utils import (
     create_channel,
 )
 from modal.exception import InvalidError
-from modal_proto import api_grpc, api_pb2
+from modal_proto import api_grpc, api_pb2, sandbox_router_pb2
 
 from .supports.skip import skip_windows_unix_socket
 
@@ -146,16 +146,18 @@ async def test_retry_timeout_error(servicer, client):
         await wrapped_blob_create.aio(req, timeout=4.0)
 
 
-def test_GRPCErrorDetailsCodec_success():
-    msg = api_pb2.BlobCreateResponse(blob_id="abc")
+def test_GRPCErrorDetailsCodec_round_trip():
+    blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
+    sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
+    msgs = [blob_msg, sandbox_msg]
 
     codec = GRPCErrorDetailsCodec()
-    encoded_msg = codec.encode(Status.OK, None, [msg])
+    encoded_msg = codec.encode(Status.OK, None, msgs)
     assert isinstance(encoded_msg, bytes)
 
     decoded_msg = codec.decode(Status.OK, None, encoded_msg)
-    assert len(decoded_msg) == 1
-    assert decoded_msg[0] == msg
+    assert len(decoded_msg) == 2
+    assert decoded_msg == msgs
 
 
 def test_GRPCErrorDetailsCodec_unknown():
