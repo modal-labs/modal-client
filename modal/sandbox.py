@@ -29,7 +29,7 @@ from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
-from ._utils.name_utils import is_valid_object_name
+from ._utils.name_utils import check_object_name
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .container_process import _ContainerProcess
@@ -76,16 +76,6 @@ def _validate_exec_args(args: Sequence[str]) -> None:
         raise InvalidError(
             f"Total length of CMD arguments must be less than {ARG_MAX_BYTES} bytes (ARG_MAX). "
             f"Got {total_arg_len} bytes."
-        )
-
-
-def _warn_if_invalid_name(name: str) -> None:
-    if not is_valid_object_name(name):
-        deprecation_warning(
-            (2025, 9, 3),
-            f"Sandbox name '{name}' will be considered invalid in a future release."
-            "\n\nNames may contain only alphanumeric characters, dashes, periods, and underscores,"
-            " must be shorter than 64 characters, and cannot conflict with App ID strings.",
         )
 
 
@@ -440,7 +430,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         _validate_exec_args(args)
         if name is not None:
-            _warn_if_invalid_name(name)
+            check_object_name(name, "Sandbox")
 
         if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
             raise InvalidError("Cannot specify open ports when `block_network` is enabled")
@@ -1020,7 +1010,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         client = client or await _Client.from_env()
 
         if name is not None and name != _DEFAULT_SANDBOX_NAME_OVERRIDE:
-            _warn_if_invalid_name(name)
+            check_object_name(name, "Sandbox")
 
         if name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
             restore_req = api_pb2.SandboxRestoreRequest(
