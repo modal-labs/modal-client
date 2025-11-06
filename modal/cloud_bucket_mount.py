@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import Literal, Optional, Sequence, Union
 from urllib.parse import urlparse
 
 from modal_proto import api_pb2
@@ -117,6 +117,7 @@ class _CloudBucketMount:
 
     read_only: bool = False
     requester_pays: bool = False
+    metdata_ttl: Union[Literal["minimal", "indefinite"], int, None] = None
 
 
 def cloud_bucket_mounts_to_proto(mounts: Sequence[tuple[str, _CloudBucketMount]]) -> list[api_pb2.CloudBucketMount]:
@@ -149,6 +150,14 @@ def cloud_bucket_mounts_to_proto(mounts: Sequence[tuple[str, _CloudBucketMount]]
         else:
             key_prefix = mount.key_prefix
 
+        metadata_ttl_kwargs = {}
+        if mount.metdata_ttl == "minimal":
+            metadata_ttl_kwargs["metadata_ttl_type"] = api_pb2.CloudBucketMount.MetadataTTL.METADATA_TTL_MINIMAL
+        elif mount.metdata_ttl == "indefinite":
+            metadata_ttl_kwargs["metadata_ttl_type"] = api_pb2.CloudBucketMount.MetadataTTL.METADATA_TTL_INDEFINITE
+        elif isinstance(mount.metdata_ttl, int):
+            metadata_ttl_kwargs["metadata_ttl_seconds"] = mount.metdata_ttl
+
         cloud_bucket_mount = api_pb2.CloudBucketMount(
             bucket_name=mount.bucket_name,
             bucket_endpoint_url=mount.bucket_endpoint_url,
@@ -159,6 +168,7 @@ def cloud_bucket_mounts_to_proto(mounts: Sequence[tuple[str, _CloudBucketMount]]
             requester_pays=mount.requester_pays,
             key_prefix=key_prefix,
             oidc_auth_role_arn=mount.oidc_auth_role_arn,
+            **metadata_ttl_kwargs,
         )
         cloud_bucket_mounts.append(cloud_bucket_mount)
 
