@@ -539,7 +539,7 @@ def test_sandbox_exec_with_streamtype_stdout_and_text_true_and_bufsize_1_prints_
 
 @skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_with_streamtype_stdout_and_text_false_prints_to_stdout(app, servicer, exec_backend, capsys):
+def test_sandbox_exec_with_streamtype_stdout_and_text_false_prints_to_stdout(app, servicer, exec_backend, capsysbinary):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec(
@@ -551,7 +551,7 @@ def test_sandbox_exec_with_streamtype_stdout_and_text_false_prints_to_stdout(app
     )
     cp.wait()
 
-    assert capsys.readouterr().out == "\x01\x02\x03\n\x04\x05\x06\n"
+    assert capsysbinary.readouterr().out == b"\x01\x02\x03\n\x04\x05\x06\n"
 
 
 @skip_non_subprocess
