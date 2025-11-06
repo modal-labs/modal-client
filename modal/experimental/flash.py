@@ -112,6 +112,7 @@ class _FlashManager:
                             port=port,
                         ),
                         timeout=10,
+                        retry=None,
                     )
                     self.num_failures = 0
                     if first_registration:
@@ -145,9 +146,7 @@ class _FlashManager:
 
     async def stop(self):
         self.heartbeat_task.cancel()
-        await self.client.stub.FlashContainerDeregister(
-            api_pb2.FlashContainerDeregisterRequest(),
-        )
+        await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
 
         self.stopped = True
         logger.warning(f"[Modal Flash] No longer accepting new requests on {self.tunnel.url}.")
