@@ -849,7 +849,7 @@ message CloudBucketMount {
     GCP = 3;
   }
 
-  enum MetadataTTL {
+  enum MetadataTTLType {
     METADATA_TTL_MINIMAL = 0;
     METADATA_TTL_INDEFINITE = 1;
   }
@@ -865,8 +865,8 @@ message CloudBucketMount {
   optional string oidc_auth_role_arn = 9;
   bool force_path_style = 10;
   oneof metadata_ttl_oneof {
-    MetadataTTL metadata_ttl_type = 11;
-    int64 metadata_ttl_seconds = 12;
+    MetadataTTLType metadata_ttl_type = 11;
+    uint64 metadata_ttl_seconds = 12;
   }
 }
 
