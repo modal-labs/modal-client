@@ -2068,6 +2068,16 @@ message GenericResult {  // Used for both tasks and function outputs
   string propagation_reason = 13; // (?)
 }
 
+message GRPCErrorDetail {
+  string module = 1;
+  string klass = 2;
+  bytes serialized_detail = 3;
+}
+
+message GRPCErrorDetails {
+  repeated GRPCErrorDetail details = 1;
+}
+
 message Image {
   repeated BaseImage base_images = 5;
   repeated string dockerfile_commands = 6;

@@ -8,6 +8,7 @@ import modal
 from modal import __version__
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
+    GRPCErrorDetailsCodec,
     Retry,
     connect_channel,
     create_channel,
@@ -143,3 +144,26 @@ async def test_retry_timeout_error(servicer, client):
     req = api_pb2.BlobCreateRequest()
     with pytest.raises(InvalidError, match="Retry must be None when timeout is set"):
         await wrapped_blob_create.aio(req, timeout=4.0)
+
+
+def test_GRPCErrorDetailsCodec_success():
+    msg = api_pb2.BlobCreateResponse(blob_id="abc")
+
+    codec = GRPCErrorDetailsCodec()
+    encoded_msg = codec.encode(Status.OK, None, [msg])
+    assert isinstance(encoded_msg, bytes)
+
+    decoded_msg = codec.decode(Status.OK, None, encoded_msg)
+    assert len(decoded_msg) == 1
+    assert decoded_msg[0] == msg
+
+
+def test_GRPCErrorDetailsCodec_unknown():
+    encoded_details = [
+        api_pb2.GRPCErrorDetail(module="unknown", klass="hidden", serialized_detail=b"abc"),
+    ]
+    encoded_msg = api_pb2.GRPCErrorDetails(details=encoded_details).SerializeToString()
+    codec = GRPCErrorDetailsCodec()
+
+    decoded_msg = codec.decode(Status.OK, None, encoded_msg)
+    assert not decoded_msg

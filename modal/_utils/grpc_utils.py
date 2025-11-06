@@ -9,7 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Optional, TypeVar
+from typing import Any, Optional, Sequence, Type, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -18,10 +18,12 @@ import grpclib.protocol
 import grpclib.stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
+from grpclib.encoding.base import StatusDetailsCodecBase
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
 from modal.exception import AuthError, ConnectionError
+from modal_proto import api_pb2
 from modal_version import __version__
 
 from .._traceback import suppress_tb_frames
@@ -320,3 +322,40 @@ def get_proto_oneof(message: Message, oneof_group: str) -> Optional[Message]:
         return None
 
     return getattr(message, oneof_field)
+
+
+class GRPCErrorDetailsCodec(StatusDetailsCodecBase):
+    def encode(
+        self,
+        status: Status,
+        message: Optional[str],
+        details: Sequence[Message],
+    ) -> bytes:
+        encoded_details = [
+            api_pb2.GRPCErrorDetail(
+                module=detail.__module__,
+                klass=detail.__qualname__,
+                serialized_detail=detail.SerializeToString(),
+            )
+            for detail in details
+        ]
+        return api_pb2.GRPCErrorDetails(details=encoded_details).SerializeToString()
+
+    def decode(
+        self,
+        status: Status,
+        message: Optional[str],
+        data: bytes,
+    ) -> Any:
+        import importlib
+
+        detail_container = api_pb2.GRPCErrorDetails().FromString(data)
+
+        decoded_details = []
+        for detail in detail_container.details:
+            with contextlib.suppress(Exception):
+                module = importlib.import_module(detail.module)
+                Klass: Type[Message] = getattr(module, detail.klass)
+                decoded_details.append(Klass().FromString(detail.serialized_detail))
+
+        return decoded_details
