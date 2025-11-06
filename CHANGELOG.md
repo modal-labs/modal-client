@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.2.dev22 (2025-11-06)
+
+- Validate Sandbox names when creating and restoring Sandboxes.
+
+
 #### 1.2.2.dev11 (2025-10-31)
 
 - The JSON from `modal config show` can now be parsed by cli tools such as `jq`.
