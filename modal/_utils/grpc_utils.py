@@ -335,7 +335,7 @@ class GRPCErrorDetailsCodec(StatusDetailsCodecBase):
             api_pb2.GRPCErrorDetail(
                 module=type(detail).__module__,
                 klass=type(detail).__name__,
-                serialized_detail=detail.SerializeToString(),
+                value=detail.SerializeToString(),
             )
             for detail in details
         ]
@@ -356,6 +356,6 @@ class GRPCErrorDetailsCodec(StatusDetailsCodecBase):
             with contextlib.suppress(Exception):
                 module = importlib.import_module(detail.module)
                 Klass: Type[Message] = getattr(module, detail.klass)
-                decoded_details.append(Klass().FromString(detail.serialized_detail))
+                decoded_details.append(Klass().FromString(detail.value))
 
         return decoded_details

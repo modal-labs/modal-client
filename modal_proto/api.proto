@@ -2030,7 +2030,7 @@ message GPUConfig {
 message GRPCErrorDetail {
   string module = 1;
   string klass = 2;
-  bytes serialized_detail = 3;
+  bytes value = 3;
 }
 
 message GRPCErrorDetails {

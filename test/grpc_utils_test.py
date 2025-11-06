@@ -162,7 +162,7 @@ def test_GRPCErrorDetailsCodec_round_trip():
 
 def test_GRPCErrorDetailsCodec_unknown():
     encoded_details = [
-        api_pb2.GRPCErrorDetail(module="unknown", klass="hidden", serialized_detail=b"abc"),
+        api_pb2.GRPCErrorDetail(module="unknown", klass="hidden", value=b"abc"),
     ]
     encoded_msg = api_pb2.GRPCErrorDetails(details=encoded_details).SerializeToString()
     codec = GRPCErrorDetailsCodec()
