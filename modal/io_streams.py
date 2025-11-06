@@ -491,11 +491,11 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
         async def _run():
             try:
 
-                def print_text_part(part: str | bytes) -> None:
+                def print_text_part(part: Union[str, bytes]) -> None:
                     assert isinstance(part, str)
                     print(cast(str, part), end="")
 
-                def print_bytes_part(part: str | bytes) -> None:
+                def print_bytes_part(part: Union[str, bytes]) -> None:
                     assert isinstance(part, bytes)
                     sys.stdout.buffer.write(cast(bytes, part))
                     sys.stdout.buffer.flush()
