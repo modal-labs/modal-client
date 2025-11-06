@@ -2,6 +2,7 @@
 import asyncio
 import codecs
 import contextlib
+import sys
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
@@ -470,53 +471,69 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
     the local stdout immediately and is not readable via StreamReader methods.
     """
 
+    _reader: Union[_TextStreamReaderThroughCommandRouter, _BytesStreamReaderThroughCommandRouter]
+
     def __init__(
         self,
-        params: _StreamReaderThroughCommandRouterParams,
-        by_line: bool,
+        reader: Union[_TextStreamReaderThroughCommandRouter, _BytesStreamReaderThroughCommandRouter],
     ) -> None:
-        self._reader: Optional[_TextStreamReaderThroughCommandRouter] = None
+        self._reader = reader
         self._task: Optional[asyncio.Task[None]] = None
-        self._file_descriptor = params.file_descriptor
+        self._closed = False
         # Kick off a background task that reads from the underlying text stream and prints to stdout.
-        self._start_printing_task(params, by_line)
+        self._start_printing_task()
 
     @property
     def file_descriptor(self) -> int:
-        return self._file_descriptor
+        return self._reader.file_descriptor
 
-    def _start_printing_task(self, params: _StreamReaderThroughCommandRouterParams, by_line: bool) -> None:
+    def _start_printing_task(self) -> None:
         async def _run():
-            self._reader = _TextStreamReaderThroughCommandRouter(params, by_line)
             try:
+
+                def print_text_part(part: str | bytes) -> None:
+                    assert isinstance(part, str)
+                    print(cast(str, part), end="")
+
+                def print_bytes_part(part: str | bytes) -> None:
+                    assert isinstance(part, bytes)
+                    sys.stdout.buffer.write(cast(bytes, part))
+                    sys.stdout.buffer.flush()
+
+                if isinstance(self._reader, _BytesStreamReaderThroughCommandRouter):
+                    print_part = print_bytes_part
+                elif isinstance(self._reader, _TextStreamReaderThroughCommandRouter):
+                    print_part = print_text_part
+                else:
+                    raise ValueError("Unsupported reader type")
+
                 async for part in self._reader:
-                    # Print exactly as received without adding extra newlines.
-                    print(part, end="")
+                    print_part(part)
             finally:
-                reader, self._reader = self._reader, None
-                if reader:
-                    await reader.aclose()
+                closed, self._closed = self._closed, True
+                if not closed:
+                    await self._reader.aclose()
 
         self._task = asyncio.create_task(_run())
 
     async def read(self) -> T:
-        raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+        raise InvalidError("Output can only be retrieved using the PIPE stream type.")
 
     def __aiter__(self) -> AsyncIterator[T]:
-        raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+        raise InvalidError("Output can only be retrieved using the PIPE stream type.")
 
     async def __anext__(self) -> T:
-        raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+        raise InvalidError("Output can only be retrieved using the PIPE stream type.")
 
     async def aclose(self):
         if self._task is not None:
             self._task.cancel()
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
-        reader, self._reader = self._reader, None
-        if reader:
-            await reader.aclose()
+        closed, self._closed = self._closed, True
+        if not closed:
+            await self._reader.aclose()
 
 
 class _DevnullStreamReader(Generic[T]):
@@ -593,15 +610,15 @@ class _StreamReader(Generic[T]):
                 params = _StreamReaderThroughCommandRouterParams(
                     file_descriptor, task_id, object_id, command_router_client, deadline
                 )
-                if stream_type == StreamType.STDOUT:
-                    if not text:
-                        raise ValueError("StreamType.STDOUT is only supported when text=True")
-                    self._impl = _StdoutPrintingStreamReaderThroughCommandRouter(params, by_line)
+                if text:
+                    reader = _TextStreamReaderThroughCommandRouter(params, by_line)
                 else:
-                    if text:
-                        self._impl = _TextStreamReaderThroughCommandRouter(params, by_line)
-                    else:
-                        self._impl = _BytesStreamReaderThroughCommandRouter(params)
+                    reader = _BytesStreamReaderThroughCommandRouter(params)
+
+                if stream_type == StreamType.STDOUT:
+                    self._impl = _StdoutPrintingStreamReaderThroughCommandRouter(reader)
+                else:
+                    self._impl = reader
 
     @property
     def file_descriptor(self) -> int:
