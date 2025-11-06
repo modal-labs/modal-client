@@ -509,6 +509,8 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
 
                 async for part in self._reader:
                     print_part(part)
+            except Exception as e:
+                logger.exception(f"Error printing stream: {e}")
             finally:
                 closed, self._closed = self._closed, True
                 if not closed:
