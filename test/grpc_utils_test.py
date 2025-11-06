@@ -2,18 +2,21 @@
 import pytest
 import time
 
+from google.protobuf.any_pb2 import Any
+from google.rpc import status_pb2
 from grpclib import GRPCError, Status
 
 import modal
 from modal import __version__
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
+    CustomProtoStatusDetailsCodec,
     Retry,
     connect_channel,
     create_channel,
 )
 from modal.exception import InvalidError
-from modal_proto import api_grpc, api_pb2
+from modal_proto import api_grpc, api_pb2, sandbox_router_pb2
 
 from .supports.skip import skip_windows_unix_socket
 
@@ -143,3 +146,49 @@ async def test_retry_timeout_error(servicer, client):
     req = api_pb2.BlobCreateRequest()
     with pytest.raises(InvalidError, match="Retry must be None when timeout is set"):
         await wrapped_blob_create.aio(req, timeout=4.0)
+
+
+def test_CustomProtoStatusDetailsCodec_round_trip():
+    blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
+    sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
+    msgs = [blob_msg, sandbox_msg]
+
+    codec = CustomProtoStatusDetailsCodec()
+    encoded_msg = codec.encode(Status.CANCELLED, "this-is-a-message", msgs)
+    assert isinstance(encoded_msg, bytes)
+
+    decoded_status = api_pb2.Status.FromString(encoded_msg)
+    assert decoded_status.message == "this-is-a-message"
+    assert decoded_status.code == Status.CANCELLED.value
+
+    decoded_msg = codec.decode(Status.CANCELLED, None, encoded_msg)
+    assert len(decoded_msg) == 2
+    assert decoded_msg == msgs
+
+
+def test_CustomProtoStatusDetailsCodec_unknown():
+    encoded_details = [
+        Any(type_url="abc", value=b"bad"),
+    ]
+    encoded_msg = api_pb2.Status(details=encoded_details).SerializeToString()
+    codec = CustomProtoStatusDetailsCodec()
+
+    decoded_msg = codec.decode(Status.OK, None, encoded_msg)
+    assert not decoded_msg
+
+
+def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
+    status_proto = status_pb2.Status(code=4, message="abc")
+    blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
+    sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
+    msgs = [blob_msg, sandbox_msg]
+
+    for detail in msgs:
+        detail_container = status_proto.details.add()
+        detail_container.Pack(detail)
+
+    codec = CustomProtoStatusDetailsCodec()
+
+    decoded_msg = codec.decode(Status.OK, None, status_proto.SerializeToString())
+    assert len(decoded_msg) == 2
+    assert decoded_msg == msgs

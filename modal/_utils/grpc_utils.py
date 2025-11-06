@@ -9,7 +9,8 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Optional, TypeVar
+from functools import cache
+from typing import Any, Optional, Sequence, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -17,11 +18,14 @@ import grpclib.events
 import grpclib.protocol
 import grpclib.stream
 from google.protobuf.message import Message
+from google.protobuf.symbol_database import SymbolDatabase
 from grpclib import GRPCError, Status
+from grpclib.encoding.base import StatusDetailsCodecBase
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
 from modal.exception import AuthError, ConnectionError
+from modal_proto import api_pb2
 from modal_version import __version__
 
 from .._traceback import suppress_tb_frames
@@ -320,3 +324,45 @@ def get_proto_oneof(message: Message, oneof_group: str) -> Optional[Message]:
         return None
 
     return getattr(message, oneof_field)
+
+
+@cache
+def _sym_db() -> SymbolDatabase:
+    from google.protobuf.symbol_database import Default
+
+    return Default()
+
+
+# From https://github.com/vmagamedov/grpclib/blob/b841b4e861c4ac82c7e1f3bfa0aea03dd0b9ba18/grpclib/encoding/proto.py#L66
+# which uses `api_pb2.Status`.
+class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
+    def encode(
+        self,
+        status: Status,
+        message: Optional[str],
+        details: Optional[Sequence[Message]],
+    ) -> bytes:
+        details_proto = api_pb2.Status(code=status.value, message=message or "")
+        if details is not None:
+            for detail in details:
+                detail_container = details_proto.details.add()
+                detail_container.Pack(detail)
+        return details_proto.SerializeToString()
+
+    def decode(
+        self,
+        status: Status,
+        message: Optional[str],
+        data: bytes,
+    ) -> Any:
+        sym_db = _sym_db()
+        details_proto = api_pb2.Status.FromString(data)
+
+        details = []
+        for detail_container in details_proto.details:
+            with contextlib.suppress(Exception):
+                msg_type = sym_db.GetSymbol(detail_container.TypeName())
+                detail = msg_type()
+                detail_container.Unpack(detail)
+                details.append(detail)
+        return details
