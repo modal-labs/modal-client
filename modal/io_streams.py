@@ -378,7 +378,7 @@ async def _stdio_stream_from_command_router(
         return
 
 
-class _BytesStreamReaderThroughCommandRouter(Generic[T]):
+class _BytesStreamReaderThroughCommandRouter:
     """
     StreamReader implementation that will read directly from the worker that
     hosts the sandbox.
@@ -397,27 +397,27 @@ class _BytesStreamReaderThroughCommandRouter(Generic[T]):
     def file_descriptor(self) -> int:
         return self._params.file_descriptor
 
-    async def read(self) -> T:
+    async def read(self) -> bytes:
         data_bytes = b""
         async for part in self:
             data_bytes += cast(bytes, part)
-        return cast(T, data_bytes)
+        return data_bytes
 
-    def __aiter__(self) -> AsyncIterator[T]:
+    def __aiter__(self) -> AsyncIterator[bytes]:
         return self
 
-    async def __anext__(self) -> T:
+    async def __anext__(self) -> bytes:
         if self._stream is None:
             self._stream = _stdio_stream_from_command_router(self._params)
         # This raises StopAsyncIteration if the stream is at EOF.
-        return cast(T, await self._stream.__anext__())
+        return await self._stream.__anext__()
 
     async def aclose(self):
         if self._stream:
             await self._stream.aclose()
 
 
-class _TextStreamReaderThroughCommandRouter(Generic[T]):
+class _TextStreamReaderThroughCommandRouter:
     """
     StreamReader implementation that will read directly from the worker
     that hosts the sandbox.
@@ -438,16 +438,16 @@ class _TextStreamReaderThroughCommandRouter(Generic[T]):
     def file_descriptor(self) -> int:
         return self._params.file_descriptor
 
-    async def read(self) -> T:
+    async def read(self) -> str:
         data_str = ""
         async for part in self:
             data_str += cast(str, part)
-        return cast(T, data_str)
+        return data_str
 
-    def __aiter__(self) -> AsyncIterator[T]:
+    def __aiter__(self) -> AsyncIterator[str]:
         return self
 
-    async def __anext__(self) -> T:
+    async def __anext__(self) -> str:
         if self._stream is None:
             bytes_stream = _stdio_stream_from_command_router(self._params)
             if self._by_line:
@@ -455,7 +455,7 @@ class _TextStreamReaderThroughCommandRouter(Generic[T]):
             else:
                 self._stream = _decode_bytes_stream_to_str(bytes_stream)
         # This raises StopAsyncIteration if the stream is at EOF.
-        return cast(T, await self._stream.__anext__())
+        return await self._stream.__anext__()
 
     async def aclose(self):
         if self._stream:
@@ -475,7 +475,7 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
         params: _StreamReaderThroughCommandRouterParams,
         by_line: bool,
     ) -> None:
-        self._reader: Optional[_TextStreamReaderThroughCommandRouter[str]] = None
+        self._reader: Optional[_TextStreamReaderThroughCommandRouter] = None
         self._task: Optional[asyncio.Task[None]] = None
         self._file_descriptor = params.file_descriptor
         # Kick off a background task that reads from the underlying text stream and prints to stdout.
@@ -487,7 +487,7 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
 
     def _start_printing_task(self, params: _StreamReaderThroughCommandRouterParams, by_line: bool) -> None:
         async def _run():
-            self._reader = _TextStreamReaderThroughCommandRouter[str](params, by_line)
+            self._reader = _TextStreamReaderThroughCommandRouter(params, by_line)
             try:
                 async for part in self._reader:
                     # Print exactly as received without adding extra newlines.
@@ -610,7 +610,7 @@ class _StreamReader(Generic[T]):
 
     async def read(self) -> T:
         """Fetch the entire contents of the stream until EOF."""
-        return await self._impl.read()
+        return cast(T, await self._impl.read())
 
     # TODO(saltzm): I'd prefer to have the implementation classes only implement __aiter__
     # and have them return generator functions directly, but synchronicity doesn't let us
@@ -622,7 +622,7 @@ class _StreamReader(Generic[T]):
 
     async def __anext__(self) -> T:
         """mdmd:hidden"""
-        return await self._impl.__anext__()
+        return cast(T, await self._impl.__anext__())
 
     async def aclose(self):
         """mdmd:hidden"""
