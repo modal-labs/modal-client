@@ -450,6 +450,7 @@ async def _serve_update(
     load_context = await app._root_load_context.reset().in_place_upgrade(environment_name=environment_name)
     try:
         running_app: RunningApp = await _init_local_app_existing(load_context.client, existing_app_id, environment_name)
+        await load_context.in_place_upgrade(app_id=running_app.app_id)
         local_app_state = app._local_state
         # Create objects
         await _create_all_objects(running_app, local_app_state, load_context)

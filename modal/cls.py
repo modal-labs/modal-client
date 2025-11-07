@@ -901,7 +901,7 @@ More information on class parameterization can be found here: https://modal.com/
         # We create a synthetic dummy Function that is guaranteed to raise an AttributeError when
         # a user tries to use any of its "live methods" - this lets us raise exceptions for users
         # only if they try to access methods on a Cls as if they were methods on the instance.
-        async def method_loader(
+        async def error_loader(
             fun: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             raise AttributeError(
@@ -910,14 +910,11 @@ More information on class parameterization can be found here: https://modal.com/
             )
 
         return _Function._from_loader(
-            method_loader,
+            error_loader,
             rep=f"UnboundMethod({self._name}.{k})",
             deps=lambda: [],
             hydrate_lazily=True,
-            # mini optimization - LoadContext.no_defaults()
-            # to avoid creating an EnvClient if we just want to raise an error
-            # on disallowed method use
-            load_context_overrides=LoadContext.no_defaults(),
+            load_context_overrides=self._load_context_overrides,
         )
 
     def _is_local(self) -> bool:

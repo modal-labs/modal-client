@@ -4,13 +4,13 @@ import platform
 from collections.abc import AsyncGenerator
 from multiprocessing.context import SpawnProcess
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Optional, TypeVar
+from typing import TYPE_CHECKING, Optional
 
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._output import OutputManager
 
-from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
+from ._utils.async_utils import TaskContext, asyncify, synchronize_api
 from ._utils.logger import logger
 from ._watcher import watch
 from .cli.import_refs import ImportRef, import_app_from_ref
@@ -21,19 +21,15 @@ from .runner import _run_app, serve_update
 
 if TYPE_CHECKING:
     from .app import _App
-else:
-    _App = TypeVar("_App")
 
 
 def _run_serve(
     import_ref: ImportRef, existing_app_id: str, is_ready: Event, environment_name: str, show_progress: bool
 ):
-    # subprocess entrypoint
-    _app = import_app_from_ref(import_ref, base_cmd="modal serve")
-    blocking_app = synchronizer._translate_out(_app)
+    app = import_app_from_ref(import_ref, base_cmd="modal serve")
 
     with enable_output(show_progress=show_progress):
-        serve_update(blocking_app, existing_app_id, is_ready, environment_name)
+        serve_update(app, existing_app_id, is_ready, environment_name)
 
 
 async def _restart_serve(

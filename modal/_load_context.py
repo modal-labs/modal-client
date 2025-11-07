@@ -26,7 +26,6 @@ class LoadContext:
         self._client = client
         self._environment_name = environment_name
         self._app_id = app_id
-        self._apply_defaults = True
 
     @property
     def client(self) -> _Client:
@@ -42,8 +41,6 @@ class LoadContext:
     def app_id(self) -> Optional[str]:
         return self._app_id
 
-    _apply_defaults: bool = True
-
     @classmethod
     def empty(cls) -> "LoadContext":
         """Create an empty LoadContext with all fields set to None.
@@ -51,20 +48,6 @@ class LoadContext:
         Used when loading objects that don't have a parent context.
         """
         return cls(client=None, environment_name=None, app_id=None)
-
-    @classmethod
-    def no_defaults(cls) -> "LoadContext":
-        """Create a LoadContext that will never apply defaults
-
-        Use sparingly, only in places where we know the client and environment will not
-        be used, in order to not force defaults for those.
-
-        TODO: remove this once we get rid of `deps()` in the resolver (which lets us
-        partially resolve load context members within load functions instead)
-        """
-        empty_load_context = cls(client=None, environment_name=None, app_id=None)
-        empty_load_context._apply_defaults = False
-        return empty_load_context
 
     def merged_with(self, parent: "LoadContext") -> "LoadContext":
         """Create a new LoadContext with parent values filling in None fields.
@@ -82,8 +65,6 @@ class LoadContext:
         """Infer default client and environment_name if not present
 
         Returns a new instance (no in place mutation)"""
-        if not self._apply_defaults:
-            return self
 
         return LoadContext(
             client=await _Client.from_env() if self._client is None else self.client,

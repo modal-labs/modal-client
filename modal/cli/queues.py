@@ -40,8 +40,8 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
     q = _Queue.from_name(name, environment_name=env, create_if_missing=True)
     client = await _Client.from_env()
     resolver = Resolver()
-    parent_metadata = LoadContext(client=client, environment_name=env)
-    await resolver.load(q, parent_metadata)
+    load_context = LoadContext(client=client, environment_name=env)
+    await resolver.load(q, load_context)
 
 
 @queue_cli.command(name="delete", rich_help_panel="Management")

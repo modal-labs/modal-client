@@ -1138,7 +1138,7 @@ def test_unsupported_function_decorators_on_methods():
                 pass
 
 
-def test_using_method_on_uninstantiated_cls():
+def test_using_method_on_uninstantiated_cls(set_env_client):
     app = App(include_source=False)
 
     @app.cls(serialized=True)
