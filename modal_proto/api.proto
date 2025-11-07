@@ -1289,6 +1289,8 @@ message EnvironmentListItem {
   bool default = 4;
   bool is_managed = 5;
   string environment_id = 6;
+  google.protobuf.Int32Value max_concurrent_tasks = 7;
+  google.protobuf.Int32Value max_concurrent_gpus = 8;
 }
 
 message EnvironmentListResponse {
@@ -1312,6 +1314,8 @@ message EnvironmentUpdateRequest {
   string current_name = 1;
   google.protobuf.StringValue name = 2;
   google.protobuf.StringValue web_suffix = 3;
+  google.protobuf.Int32Value max_concurrent_tasks = 4;
+  google.protobuf.Int32Value max_concurrent_gpus = 5;
 }
 
 // A file entry when listing files in a volume or network file system.
