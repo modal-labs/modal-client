@@ -25,7 +25,7 @@ from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
-from ._utils.grpc_utils import retry_transient_errors
+from ._utils.grpc_utils import Retry
 from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
 from .client import _Client
@@ -525,7 +525,7 @@ class _Mount(_Object, type_prefix="mo"):
 
             request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
             accounted_hashes.add(file_spec.sha256_hex)
-            response = await retry_transient_errors(load_context.client.stub.MountPutFile, request, base_delay=1)
+            response = await load_context.client.stub.MountPutFile(request, retry=Retry(base_delay=1))
 
             if response.exists:
                 n_finished += 1
@@ -551,7 +551,7 @@ class _Mount(_Object, type_prefix="mo"):
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
-                response = await retry_transient_errors(load_context.client.stub.MountPutFile, request2, base_delay=1)
+                response = await load_context.client.stub.MountPutFile(request2, retry=Retry(base_delay=1))
                 if response.exists:
                     n_finished += 1
                     return mount_file
@@ -598,7 +598,7 @@ class _Mount(_Object, type_prefix="mo"):
                 environment_name=load_context.environment_name,
             )
 
-        resp = await retry_transient_errors(load_context.client.stub.MountGetOrCreate, req, base_delay=1)
+        resp = await load_context.client.stub.MountGetOrCreate(req, retry=Retry(base_delay=1))
         status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {total_uploads} new files and {total_bytes} bytes in {time.monotonic() - t0}s")

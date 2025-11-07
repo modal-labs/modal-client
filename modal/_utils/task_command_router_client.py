@@ -18,7 +18,7 @@ from modal.exception import ExecTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
-from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel, retry_transient_errors
+from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel
 
 
 def _b64url_decode(data: str) -> bytes:
@@ -99,8 +99,7 @@ async def call_with_retries_on_transient_errors(
 
 async def fetch_command_router_access(server_client, task_id: str) -> api_pb2.TaskGetCommandRouterAccessResponse:
     """Fetch direct command router access info from Modal server."""
-    return await retry_transient_errors(
-        server_client.stub.TaskGetCommandRouterAccess,
+    return await server_client.stub.TaskGetCommandRouterAccess(
         api_pb2.TaskGetCommandRouterAccessRequest(task_id=task_id),
     )
 
@@ -444,7 +443,7 @@ class TaskCommandRouterClient:
             except Exception as e:
                 # Exceptions here can stem from non-transient errors against the server sending
                 # the TaskGetCommandRouterAccess RPC, for instance, if the task has finished.
-                logger.warning(f"Background JWT refresh failed for exec with task ID {self._task_id}: {e}")
+                logger.debug(f"Background JWT refresh failed for exec with task ID {self._task_id}: {e}")
                 break
 
     async def _stream_stdio(

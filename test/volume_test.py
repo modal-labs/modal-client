@@ -48,7 +48,7 @@ def test_volume_info(servicer, client):
 @pytest.mark.parametrize("read_only", [True, False])
 @pytest.mark.parametrize("version", VERSIONS)
 def test_volume_mount(client, servicer, version, read_only):
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     vol = modal.Volume.from_name("xyz", create_if_missing=True, version=version)
     if read_only:
@@ -119,7 +119,6 @@ def test_volume_commit(client, servicer, skip_reload):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO(dflemstr) this test has started flaking at a high rate recently")
 @pytest.mark.parametrize("version", VERSIONS)
 @pytest.mark.parametrize("file_contents_size", [100, 8 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024 + 4711])
 async def test_volume_get(servicer, client, tmp_path, version, file_contents_size):

@@ -31,7 +31,6 @@ from ._utils.deprecation import (
     warn_if_passing_namespace,
     warn_on_renamed_autoscaler_settings,
 )
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
@@ -653,7 +652,7 @@ More information on class parameterization can be found here: https://modal.com/
                 only_class_function=True,
             )
             try:
-                response = await retry_transient_errors(load_context.client.stub.ClassGet, request)
+                response = await load_context.client.stub.ClassGet(request)
             except NotFoundError as exc:
                 env_context = (
                     f" (in the '{load_context.environment_name}' environment)" if load_context.environment_name else ""

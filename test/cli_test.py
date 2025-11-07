@@ -517,7 +517,7 @@ def test_no_user_code_in_synchronicity_deploy(servicer, set_env_client, test_dir
 
 def test_serve(servicer, set_env_client, server_url_env, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
-    _run(["serve", app_file.as_posix(), "--timeout", "3"], expected_exit_code=0)
+    _run(["serve", app_file.as_posix(), "--timeout", "1"], expected_exit_code=0)
 
 
 @pytest.fixture
@@ -981,8 +981,8 @@ def test_config_show(servicer, server_url_env, modal_config):
     """
     with modal_config(config):
         res = _run(["config", "show"])
-        assert "'token_id': 'ak-abc'" in res.stdout
-        assert "'token_secret': '***'" in res.stdout
+        assert '"token_id": "ak-abc"' in res.stdout
+        assert '"token_secret": "***"' in res.stdout
 
 
 def test_app_list(servicer, mock_dir, set_env_client):

@@ -7,7 +7,6 @@ from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
-from ._utils.grpc_utils import retry_transient_errors
 from .client import _Client
 
 
@@ -25,14 +24,12 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
         """
         Construct a `SandboxSnapshot` object from a sandbox snapshot ID.
         """
-        client = client or await _Client.from_env()
 
         async def _load(
             self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            await retry_transient_errors(
-                load_context.client.stub.SandboxSnapshotGet,
-                api_pb2.SandboxSnapshotGetRequest(snapshot_id=sandbox_snapshot_id),
+            await load_context.client.stub.SandboxSnapshotGet(
+                api_pb2.SandboxSnapshotGetRequest(snapshot_id=sandbox_snapshot_id)
             )
 
         rep = "SandboxSnapshot()"

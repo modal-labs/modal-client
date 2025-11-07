@@ -1655,9 +1655,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def MountPutFile(self, stream):
         request: api_pb2.MountPutFileRequest = await stream.recv_message()
         if request.WhichOneof("data_oneof") is not None:
-            if request.data.startswith(b"large"):
-                # Useful for simulating a slow upload, e.g. to test our checks for mid-deploy modifications
-                await asyncio.sleep(2)
             self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
             self.n_mount_files += 1
             await stream.send_message(api_pb2.MountPutFileResponse(exists=True))
@@ -2777,7 +2774,8 @@ def blob_server_factory():
             block_id, start, length = rest
             start = int(start)
             length = int(length)
-            body = blocks[block_id][start : start + length]
+            block = blocks[block_id][start : start + length]
+            body = block.ljust(length, b"\0")
         else:
             return aiohttp.web.Response(status=404)
 

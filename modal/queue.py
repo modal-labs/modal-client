@@ -26,7 +26,7 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
-from ._utils.grpc_utils import retry_transient_errors
+from ._utils.grpc_utils import Retry
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -96,7 +96,7 @@ class _QueueManager:
             object_creation_type=object_creation_type,
         )
         try:
-            await retry_transient_errors(client.stub.QueueGetOrCreate, req)
+            await client.stub.QueueGetOrCreate(req)
         except GRPCError as exc:
             if exc.status == Status.ALREADY_EXISTS and not allow_existing:
                 raise AlreadyExistsError(exc.message)
@@ -148,7 +148,7 @@ class _QueueManager:
             req = api_pb2.QueueListRequest(
                 environment_name=_get_environment_name(environment_name), pagination=pagination
             )
-            resp = await retry_transient_errors(client.stub.QueueList, req)
+            resp = await client.stub.QueueList(req)
             items.extend(resp.queues)
             finished = (len(resp.queues) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
             return finished
@@ -206,7 +206,7 @@ class _QueueManager:
                 raise
         else:
             req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
-            await retry_transient_errors(obj._client.stub.QueueDelete, req)
+            await obj._client.stub.QueueDelete(req)
 
 
 QueueManager = synchronize_api(_QueueManager)
@@ -433,7 +433,7 @@ class _Queue(_Object, type_prefix="qu"):
             n_values=n_values,
         )
 
-        response = await retry_transient_errors(self._client.stub.QueueGet, request)
+        response = await self._client.stub.QueueGet(request)
         if response.values:
             return [deserialize(value, self._client) for value in response.values]
         else:
@@ -458,7 +458,7 @@ class _Queue(_Object, type_prefix="qu"):
                 n_values=n_values,
             )
 
-            response = await retry_transient_errors(self._client.stub.QueueGet, request)
+            response = await self._client.stub.QueueGet(request)
 
             if response.values:
                 return [deserialize(value, self._client) for value in response.values]
@@ -478,7 +478,7 @@ class _Queue(_Object, type_prefix="qu"):
             partition_key=self.validate_partition_key(partition),
             all_partitions=all,
         )
-        await retry_transient_errors(self._client.stub.QueueClear, request)
+        await self._client.stub.QueueClear(request)
 
     @live_method
     async def get(
@@ -587,14 +587,15 @@ class _Queue(_Object, type_prefix="qu"):
             partition_ttl_seconds=partition_ttl,
         )
         try:
-            await retry_transient_errors(
-                self._client.stub.QueuePut,
+            await self._client.stub.QueuePut(
                 request,
                 # A full queue will return this status.
-                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-                max_delay=30.0,
-                max_retries=None,
-                total_timeout=timeout,
+                retry=Retry(
+                    additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                    max_delay=30.0,
+                    max_retries=None,
+                    total_timeout=timeout,
+                ),
             )
         except GRPCError as exc:
             if exc.status == Status.RESOURCE_EXHAUSTED:
@@ -614,7 +615,7 @@ class _Queue(_Object, type_prefix="qu"):
             partition_ttl_seconds=partition_ttl,
         )
         try:
-            await retry_transient_errors(self._client.stub.QueuePut, request)
+            await self._client.stub.QueuePut(request)
         except GRPCError as exc:
             if exc.status == Status.RESOURCE_EXHAUSTED:
                 raise queue.Full(exc.message)
@@ -634,7 +635,7 @@ class _Queue(_Object, type_prefix="qu"):
             partition_key=self.validate_partition_key(partition),
             total=total,
         )
-        response = await retry_transient_errors(self._client.stub.QueueLen, request)
+        response = await self._client.stub.QueueLen(request)
         return response.len
 
     @warn_if_generator_is_not_consumed()
@@ -660,9 +661,7 @@ class _Queue(_Object, type_prefix="qu"):
                 item_poll_timeout=poll_duration,
             )
 
-            response: api_pb2.QueueNextItemsResponse = await retry_transient_errors(
-                self._client.stub.QueueNextItems, request
-            )
+            response: api_pb2.QueueNextItemsResponse = await self._client.stub.QueueNextItems(request)
             if response.items:
                 for item in response.items:
                     yield deserialize(item.value, self._client)

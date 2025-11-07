@@ -342,7 +342,7 @@ def test_service_options_defaults_untruthiness():
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw
 # an exception if the user tries to reuse an app.
-app_remote = App()
+app_remote = App(include_source=False)
 
 
 @app_remote.cls(cpu=42)
@@ -375,7 +375,7 @@ def test_call_cls_remote_invalid_type(client):
         assert "function" in str(exc)
 
 
-app_2 = App()
+app_2 = App(include_source=False)
 
 
 @app_2.cls(cpu=42)
@@ -393,7 +393,7 @@ async def test_call_class_async(client, servicer):
 
 
 def test_run_class_serialized(client, servicer):
-    app_ser = App()
+    app_ser = App(include_source=False)
 
     @app_ser.cls(cpu=42, serialized=True)
     class FooSer:
@@ -417,7 +417,7 @@ def test_run_class_serialized(client, servicer):
     assert bound_bar(100) == 1000000
 
 
-app_remote_2 = App()
+app_remote_2 = App(include_source=False)
 
 
 @app_remote_2.cls(cpu=42)
@@ -437,7 +437,7 @@ async def test_call_cls_remote_async(client):
         assert await bar_remote.baz.remote.aio(8) == 64  # Mock servicer just squares the argument
 
 
-app_local = App()
+app_local = App(include_source=False)
 
 
 @app_local.cls(cpu=42, enable_memory_snapshot=True)
@@ -481,7 +481,7 @@ def test_can_call_remotely_from_local(client):
         assert foo.baz.remote(9) == 81
 
 
-app_remote_3 = App()
+app_remote_3 = App(include_source=False)
 
 
 @app_remote_3.cls(cpu=42)
@@ -572,7 +572,7 @@ def test_failed_lookup_error(client):
         Cls.from_name("my-cls-app", "Foo", environment_name="some-env", client=client).hydrate()
 
 
-baz_app = App()
+baz_app = App(include_source=False)
 
 
 @baz_app.cls()
@@ -589,7 +589,7 @@ def test_call_not_modal_method():
     assert baz.not_modal_method(7) == 35
 
 
-cls_with_enter_app = App()
+cls_with_enter_app = App(include_source=False)
 
 
 def get_thread_id():
@@ -659,7 +659,7 @@ async def test_async_enter_on_local_modal_call():
     assert obj.entered
 
 
-inheritance_app = App()
+inheritance_app = App(include_source=False)
 
 
 class BaseCls:
@@ -683,7 +683,7 @@ def test_derived_cls(client, servicer):
         assert DerivedCls().run.remote(3) == 9
 
 
-inheritance_app_2 = App()
+inheritance_app_2 = App(include_source=False)
 
 
 @inheritance_app_2.cls()
@@ -718,7 +718,7 @@ def test_rehydrate(client, servicer, reset_container_app):
     assert obj.bar.local(7) == 343
 
 
-app_unhydrated = App()
+app_unhydrated = App(include_source=False)
 
 
 @app_unhydrated.cls()
@@ -744,7 +744,7 @@ def test_unhydrated(set_env_client):
         foo.bar.remote(42)
 
 
-app_method_args = App()
+app_method_args = App(include_source=False)
 
 
 @app_method_args.cls(min_containers=5)
@@ -765,7 +765,7 @@ def test_method_args(servicer, client):
 
 
 def test_cls_update_autoscaler(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     @app.cls(serialized=True)
     class ClsWithMethod:
@@ -856,7 +856,7 @@ def test_handlers():
     assert list(pfs.keys()) == ["my_exit"]
 
 
-web_app_app = App()
+web_app_app = App(include_source=False)
 
 
 @web_app_app.cls()
@@ -877,13 +877,13 @@ def test_web_cls(client):
         assert c.asgi.get_web_url() == "http://asgi.internal"
 
 
-handler_app = App("handler-app")
+handler_app = App("handler-app", include_source=False)
 
 
 image = Image.debian_slim().pip_install("xyz")
 
 
-other_handler_app = App("other-handler-app")
+other_handler_app = App("other-handler-app", include_source=False)
 
 
 @pytest.mark.parametrize("decorator", [enter, exit])
@@ -938,7 +938,7 @@ def test_partial_function_descriptors(client):
 
     assert Foo().bar() == "a"  # type: ignore   # edge case - using a non-decorated class should just return the bound original method
     assert inspect.ismethod(Foo().bar)
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     modal_foo_class = app.cls(serialized=True)(Foo)
 
@@ -970,7 +970,7 @@ def test_cross_process_userclass_serde(supports_dir):
     assert revived_cls().method() == "a"  # this should be bound to the object
 
 
-app2 = App("app2")
+app2 = App("app2", include_source=False)
 
 
 @app2.cls()
@@ -1061,7 +1061,7 @@ class ParametrizedClass3:
         pass
 
 
-app_batched = App()
+app_batched = App(include_source=False)
 
 
 def test_batched_method_duplicate_error(client):
@@ -1139,7 +1139,7 @@ def test_unsupported_function_decorators_on_methods():
 
 
 def test_using_method_on_uninstantiated_cls():
-    app = App()
+    app = App(include_source=False)
 
     @app.cls(serialized=True)
     class C:
@@ -1160,7 +1160,7 @@ def test_using_method_on_uninstantiated_cls():
 
 
 def test_using_method_on_uninstantiated_hydrated_cls(client):
-    app = App()
+    app = App(include_source=False)
 
     @app.cls(serialized=True)
     class C:
@@ -1190,7 +1190,7 @@ def test_using_method_on_uninstantiated_remote_cls(client):
 
 
 def test_bytes_serialization_validation(servicer, client):
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     @app.cls(serialized=True)
     class C:
@@ -1219,7 +1219,7 @@ def test_bytes_serialization_validation(servicer, client):
 
 def test_class_can_not_use_list_parameter(client):
     # we might want to allow lists in the future though...
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     with pytest.raises(InvalidError, match="list is not a supported modal.parameter"):
 
@@ -1286,7 +1286,7 @@ def test_class_can_use_future_full_type_only_schema(servicer, client):
 
 
 def test_concurrent_decorator_on_method_error():
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
 
@@ -1298,7 +1298,7 @@ def test_concurrent_decorator_on_method_error():
 
 
 def test_concurrent_decorator_stacked_with_method_decorator():
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
 
@@ -1311,7 +1311,7 @@ def test_concurrent_decorator_stacked_with_method_decorator():
 
 
 def test_parameter_inheritance(client):
-    app = modal.App("inherit-params")
+    app = modal.App("inherit-params", include_source=False)
 
     class Base:
         a: int = modal.parameter()  # parameter in base class
@@ -1359,7 +1359,7 @@ def test_cls_namespace_deprecated(servicer):
     assert len(namespace_warnings) == 0
 
 
-clustered_app = App()
+clustered_app = App(include_source=False)
 
 
 def test_clustered_cls(client, servicer):
@@ -1393,7 +1393,7 @@ def test_clustered_cls(client, servicer):
         assert regular_function.resources.rdma == 0
 
 
-invalid_clustered_app = App()
+invalid_clustered_app = App(include_source=False)
 
 
 def test_clustered_cls_with_multiple_methods(client, servicer):
@@ -1440,7 +1440,7 @@ def test_cls_get_flash_url(servicer, client):
         assert flash_urls == ["https://flash.example.com/service1", "https://flash.example.com/service2"]
 
 
-timeout_app = App("timeout-app")
+timeout_app = App("timeout-app", include_source=False)
 
 
 @timeout_app.cls(startup_timeout=30)
@@ -1465,7 +1465,7 @@ def test_startup_timeout(client, servicer):
     assert function_request.function.startup_timeout_secs == 30
 
 
-timeout_app_default = App("timeout-app-default")
+timeout_app_default = App("timeout-app-default", include_source=False)
 
 
 @timeout_app_default.cls(timeout=20)

@@ -13,7 +13,6 @@ import json
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal._utils.async_utils import TaskContext
-from modal._utils.grpc_utils import retry_transient_errors
 from modal.exception import ClientClosed
 from modal_proto import api_pb2
 
@@ -57,8 +56,7 @@ async def _delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optio
     if start is not None and end is not None:
         if start >= end:
             raise ValueError("start must be less than end")
-    resp = await retry_transient_errors(
-        file._client.stub.ContainerFilesystemExec,
+    resp = await file._client.stub.ContainerFilesystemExec(
         api_pb2.ContainerFilesystemExecRequest(
             file_delete_bytes_request=api_pb2.ContainerFileDeleteBytesRequest(
                 file_descriptor=file._file_descriptor,
@@ -85,8 +83,7 @@ async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = No
             raise InvalidError("start must be less than end")
     if len(data) > WRITE_CHUNK_SIZE:
         raise InvalidError("Write request payload exceeds 16 MiB limit")
-    resp = await retry_transient_errors(
-        file._client.stub.ContainerFilesystemExec,
+    resp = await file._client.stub.ContainerFilesystemExec(
         api_pb2.ContainerFilesystemExecRequest(
             file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
                 file_descriptor=file._file_descriptor,
@@ -261,8 +258,7 @@ class _FileIO(Generic[T]):
             raise TypeError("Expected str when in text mode")
 
     async def _open_file(self, path: str, mode: str) -> None:
-        resp = await retry_transient_errors(
-            self._client.stub.ContainerFilesystemExec,
+        resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_open_request=api_pb2.ContainerFileOpenRequest(path=path, mode=mode),
                 task_id=self._task_id,
@@ -285,8 +281,7 @@ class _FileIO(Generic[T]):
         return self
 
     async def _make_read_request(self, n: Optional[int]) -> bytes:
-        resp = await retry_transient_errors(
-            self._client.stub.ContainerFilesystemExec,
+        resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_read_request=api_pb2.ContainerFileReadRequest(file_descriptor=self._file_descriptor, n=n),
                 task_id=self._task_id,
@@ -309,8 +304,7 @@ class _FileIO(Generic[T]):
         """Read a single line from the current position."""
         self._check_closed()
         self._check_readable()
-        resp = await retry_transient_errors(
-            self._client.stub.ContainerFilesystemExec,
+        resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_read_line_request=api_pb2.ContainerFileReadLineRequest(file_descriptor=self._file_descriptor),
                 task_id=self._task_id,
@@ -351,8 +345,7 @@ class _FileIO(Generic[T]):
             raise ValueError("Write request payload exceeds 1 GiB limit")
         for i in range(0, len(data), WRITE_CHUNK_SIZE):
             chunk = data[i : i + WRITE_CHUNK_SIZE]
-            resp = await retry_transient_errors(
-                self._client.stub.ContainerFilesystemExec,
+            resp = await self._client.stub.ContainerFilesystemExec(
                 api_pb2.ContainerFilesystemExecRequest(
                     file_write_request=api_pb2.ContainerFileWriteRequest(
                         file_descriptor=self._file_descriptor,
@@ -367,8 +360,7 @@ class _FileIO(Generic[T]):
         """Flush the buffer to disk."""
         self._check_closed()
         self._check_writable()
-        resp = await retry_transient_errors(
-            self._client.stub.ContainerFilesystemExec,
+        resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_flush_request=api_pb2.ContainerFileFlushRequest(file_descriptor=self._file_descriptor),
                 task_id=self._task_id,
@@ -393,8 +385,7 @@ class _FileIO(Generic[T]):
         (relative to the current position) and 2 (relative to the file's end).
         """
         self._check_closed()
-        resp = await retry_transient_errors(
-            self._client.stub.ContainerFilesystemExec,
+        resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_seek_request=api_pb2.ContainerFileSeekRequest(
                     file_descriptor=self._file_descriptor,
@@ -410,8 +401,7 @@ class _FileIO(Generic[T]):
     async def ls(cls, path: str, client: _Client, task_id: str) -> list[str]:
         """List the contents of the provided directory."""
         self = _FileIO(client, task_id)
-        resp = await retry_transient_errors(
-            self._client.stub.ContainerFilesystemExec,
+        resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
                 task_id=task_id,
@@ -427,8 +417,7 @@ class _FileIO(Generic[T]):
     async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
         """Create a new directory."""
         self = _FileIO(client, task_id)
-        resp = await retry_transient_errors(
-            self._client.stub.ContainerFilesystemExec,
+        resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, make_parents=parents),
                 task_id=self._task_id,
@@ -440,8 +429,7 @@ class _FileIO(Generic[T]):
     async def rm(cls, path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
         """Remove a file or directory in the Sandbox."""
         self = _FileIO(client, task_id)
-        resp = await retry_transient_errors(
-            self._client.stub.ContainerFilesystemExec,
+        resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
                 task_id=self._task_id,
@@ -460,8 +448,7 @@ class _FileIO(Generic[T]):
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
         self = _FileIO(client, task_id)
-        resp = await retry_transient_errors(
-            self._client.stub.ContainerFilesystemExec,
+        resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_watch_request=api_pb2.ContainerFileWatchRequest(
                     path=path,
@@ -503,8 +490,7 @@ class _FileIO(Generic[T]):
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
-        resp = await retry_transient_errors(
-            self._client.stub.ContainerFilesystemExec,
+        resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_close_request=api_pb2.ContainerFileCloseRequest(file_descriptor=self._file_descriptor),
                 task_id=self._task_id,

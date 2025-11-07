@@ -39,7 +39,8 @@ from ._utils.docker_utils import (
     find_dockerignore_file,
 )
 from ._utils.function_utils import FunctionInfo
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
+from ._utils.mount_utils import validate_only_modal_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
@@ -492,12 +493,16 @@ class _Image(_Object, type_prefix="im"):
         context_mount_function: Optional[Callable[[], Optional[_Mount]]] = None,
         force_build: bool = False,
         build_args: dict[str, str] = {},
+        validated_volumes: Optional[Sequence[tuple[str, _Volume]]] = None,
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
     ):
         if base_images is None:
             base_images = {}
+
+        if validated_volumes is None:
+            validated_volumes = []
 
         if secrets is None:
             secrets = []
@@ -519,6 +524,8 @@ class _Image(_Object, type_prefix="im"):
                 deps += (build_function,)
             if image_registry_config and image_registry_config.secret:
                 deps += (image_registry_config.secret,)
+            for _, vol in validated_volumes:
+                deps += (vol,)
             return deps
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
@@ -597,6 +604,17 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id = ""
                 _build_function = None
 
+            # Relies on dicts being ordered (true as of Python 3.6).
+            volume_mounts = [
+                api_pb2.VolumeMount(
+                    mount_path=path,
+                    volume_id=volume.object_id,
+                    allow_background_commits=True,
+                    read_only=volume._read_only,
+                )
+                for path, volume in validated_volumes
+            ]
+
             image_definition = api_pb2.Image(
                 base_images=base_images_pb2s,
                 dockerfile_commands=dockerfile.commands,
@@ -609,6 +627,7 @@ class _Image(_Object, type_prefix="im"):
                 runtime_debug=config.get("function_runtime_debug"),
                 build_function=_build_function,
                 build_args=build_args,
+                volume_mounts=volume_mounts,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -624,7 +643,7 @@ class _Image(_Object, type_prefix="im"):
                 allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT") == "1",
                 ignore_cache=config.get("ignore_cache"),
             )
-            resp = await retry_transient_errors(load_context.client.stub.ImageGetOrCreate, req)
+            resp = await load_context.client.stub.ImageGetOrCreate(req)
             image_id = resp.image_id
             result: api_pb2.GenericResult
             metadata: Optional[api_pb2.ImageMetadata] = None
@@ -851,9 +870,7 @@ class _Image(_Object, type_prefix="im"):
         """
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
-            resp = await retry_transient_errors(
-                load_context.client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id)
-            )
+            resp = await load_context.client.stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, load_context.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
@@ -1692,6 +1709,7 @@ class _Image(_Object, type_prefix="im"):
         *commands: Union[str, list[str]],
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
+        volumes: Optional[dict[Union[str, PurePosixPath], _Volume]] = None,
         gpu: GPU_T = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
@@ -1714,6 +1732,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
             force_build=self.force_build or force_build,
+            validated_volumes=validate_only_modal_volumes(volumes, "Image.run_commands"),
         )
 
     @staticmethod
