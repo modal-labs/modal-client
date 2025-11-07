@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.2.dev28 (2025-11-07)
+
+- `CloudBucketMount` now supports `force_path_style=True` to disable virtual-host-style addressing. See [mountpoint-s3 endpoints docs](https://github.com/awslabs/mountpoint-s3/blob/main/doc/CONFIGURATION.md#endpoints-and-aws-privatelink) for details.
+
+
 #### 1.2.2.dev26 (2025-11-06)
 
 - Fixed a bug where App tags were not attached to Image builds that occur when running or first deploying the App.
