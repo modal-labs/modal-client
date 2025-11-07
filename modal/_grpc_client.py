@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2025
-from typing import TYPE_CHECKING, Any, Collection, Generic, Literal, Mapping, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Collection, Generic, Literal, Mapping, Optional, TypeVar, Union, overload
 
 import grpclib.client
 from google.protobuf.message import Message
@@ -47,6 +47,9 @@ class grpc_error_converter:
         return False
 
 
+_DEFAULT_RETRY = Retry()
+
+
 class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     # Calls a grpclib.UnaryUnaryMethod using a specific Client instance, respecting
     # if that client is closed etc. and possibly introducing Modal-specific retry logic
@@ -67,11 +70,31 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     def name(self) -> str:
         return self.wrapped_method.name
 
+    @overload
     async def __call__(
         self,
         req: RequestType,
         *,
-        retry: Optional[Retry] = Retry(),
+        retry: Retry = _DEFAULT_RETRY,
+        timeout: None = None,
+        metadata: Optional[list[tuple[str, str]]] = None,
+    ) -> ResponseType: ...
+
+    @overload
+    async def __call__(
+        self,
+        req: RequestType,
+        *,
+        retry: None,
+        timeout: Optional[float] = None,
+        metadata: Optional[list[tuple[str, str]]] = None,
+    ) -> ResponseType: ...
+
+    async def __call__(
+        self,
+        req: RequestType,
+        *,
+        retry: Optional[Retry] = _DEFAULT_RETRY,
         timeout: Optional[float] = None,
         metadata: Optional[list[tuple[str, str]]] = None,
     ) -> ResponseType:
