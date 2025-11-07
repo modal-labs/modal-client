@@ -886,8 +886,8 @@ class _Image(_Object, type_prefix="im"):
         ```python
         image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
 
-        app = modal.App("build-image")
-        with modal.enable_output(), app.run():
+        app = modal.App.lookup("build-image", create_if_missing=True)
+        with modal.enable_output():  # To see logs in your local terminal
             image.build(app)
 
         # Save the image id
@@ -900,7 +900,7 @@ class _Image(_Object, type_prefix="im"):
         Alternatively, you can pre-build a image and use it in a sandbox.
 
         ```python notest
-        app = modal.App.lookup("sandbox-example")
+        app = modal.App.lookup("sandbox-example", create_if_missing=True)
 
         with modal.enable_output():
             image = modal.Image.debian_slim().uv_pip_install("scipy")
