@@ -14,7 +14,7 @@ runs:
       with:
         python-version: ${{ inputs.version }}
 
-    - name: Enable caching
+    - name: Setup uv with caching
       uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.1.2
       with:
         enable-cache: true
