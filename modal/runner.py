@@ -260,7 +260,9 @@ async def _run_app(
     interactive: bool = False,
 ) -> AsyncGenerator["modal.app._App", None]:
     """mdmd:hidden"""
-    load_context = await app._root_load_context.in_place_upgrade(client=client, environment_name=environment_name)
+    load_context = await app._root_load_context.reset().in_place_upgrade(
+        client=client, environment_name=environment_name
+    )
 
     if modal._runtime.execution_context._is_currently_importing:
         raise InvalidError("Can not run an app in global scope within a container")
@@ -440,7 +442,7 @@ async def _serve_update(
 ) -> None:
     """mdmd:hidden"""
     # Used by child process to reinitialize a served app
-    load_context = await app._root_load_context.in_place_upgrade(environment_name=environment_name)
+    load_context = await app._root_load_context.reset().in_place_upgrade(environment_name=environment_name)
     try:
         running_app: RunningApp = await _init_local_app_existing(load_context.client, existing_app_id, environment_name)
         local_app_state = app._local_state
@@ -516,7 +518,7 @@ async def _deploy_app(
 
     # We need to do in-place replacement of fields in self._root_load_context in case it has already "spread"
     # to with_options() instances or similar before load
-    root_load_context = await app._root_load_context.in_place_upgrade(
+    root_load_context = await app._root_load_context.reset().in_place_upgrade(
         client=client,
         environment_name=environment_name,
     )

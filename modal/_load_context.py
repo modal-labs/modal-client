@@ -91,6 +91,12 @@ class LoadContext:
             app_id=self._app_id,
         )
 
+    def reset(self) -> "LoadContext":
+        self._client = None
+        self._environment_name = None
+        self._app_id = None
+        return self
+
     async def in_place_upgrade(
         self, client: Optional[_Client] = None, environment_name: Optional[str] = None, app_id: Optional[str] = None
     ) -> "LoadContext":
