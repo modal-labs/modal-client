@@ -16,7 +16,6 @@ from modal_proto import api_pb2
 
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
-from .._utils.grpc_utils import retry_transient_errors
 from ..client import _Client
 from ..config import logger
 from ..exception import InvalidError
@@ -113,6 +112,7 @@ class _FlashManager:
                             port=port,
                         ),
                         timeout=10,
+                        retry=None,
                     )
                     self.num_failures = 0
                     if first_registration:
@@ -126,10 +126,8 @@ class _FlashManager:
                         f"due to error: {port_check_error}, num_failures: {self.num_failures}"
                     )
                     self.num_failures += 1
-                    await retry_transient_errors(
-                        self.client.stub.FlashContainerDeregister,
-                        api_pb2.FlashContainerDeregisterRequest(),
-                    )
+                    await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
+
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
@@ -148,10 +146,7 @@ class _FlashManager:
 
     async def stop(self):
         self.heartbeat_task.cancel()
-        await retry_transient_errors(
-            self.client.stub.FlashContainerDeregister,
-            api_pb2.FlashContainerDeregisterRequest(),
-        )
+        await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
 
         self.stopped = True
         logger.warning(f"[Modal Flash] No longer accepting new requests on {self.tunnel.url}.")
@@ -306,7 +301,7 @@ class _FlashPrometheusAutoscaler:
                 )
                 await self.autoscaling_decisions_dict.put("current_replicas", actual_target_containers)
 
-                await self.cls.update_autoscaler(min_containers=actual_target_containers)
+                await self._set_target_slots(actual_target_containers)
 
                 if time.time() - autoscaling_time < self.autoscaling_interval_seconds:
                     await asyncio.sleep(self.autoscaling_interval_seconds - (time.time() - autoscaling_time))
@@ -321,7 +316,7 @@ class _FlashPrometheusAutoscaler:
 
     async def _compute_target_containers(self, current_replicas: int) -> int:
         """
-        Gets internal metrics from container to autoscale up or down.
+        Gets metrics from container to autoscale up or down.
         """
         containers = await self._get_all_containers()
         if len(containers) > current_replicas:
@@ -334,7 +329,7 @@ class _FlashPrometheusAutoscaler:
         if current_replicas == 0:
             return 1
 
-        # Get metrics based on autoscaler type (prometheus or internal)
+        # Get metrics based on autoscaler type
         sum_metric, n_containers_with_metrics = await self._get_scaling_info(containers)
 
         desired_replicas = self._calculate_desired_replicas(
@@ -406,39 +401,26 @@ class _FlashPrometheusAutoscaler:
         return desired_replicas
 
     async def _get_scaling_info(self, containers) -> tuple[float, int]:
-        """Get metrics using either internal container metrics API or prometheus HTTP endpoints."""
-        if self.metrics_endpoint == "internal":
-            container_metrics_results = await asyncio.gather(
-                *[self._get_container_metrics(container.task_id) for container in containers]
-            )
-            container_metrics_list = []
-            for container_metric in container_metrics_results:
-                if container_metric is None:
-                    continue
-                container_metrics_list.append(getattr(container_metric.metrics, self.target_metric))
+        """Get metrics using container exposed metrics endpoints."""
+        sum_metric = 0
+        n_containers_with_metrics = 0
 
-            sum_metric = sum(container_metrics_list)
-            n_containers_with_metrics = len(container_metrics_list)
-        else:
-            sum_metric = 0
-            n_containers_with_metrics = 0
+        container_metrics_list = await asyncio.gather(
+            *[
+                self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
+                for container in containers
+            ]
+        )
 
-            container_metrics_list = await asyncio.gather(
-                *[
-                    self._get_metrics(f"https://{container.host}:{container.port}/{self.metrics_endpoint}")
-                    for container in containers
-                ]
-            )
-
-            for container_metrics in container_metrics_list:
-                if (
-                    container_metrics is None
-                    or self.target_metric not in container_metrics
-                    or len(container_metrics[self.target_metric]) == 0
-                ):
-                    continue
-                sum_metric += container_metrics[self.target_metric][0].value
-                n_containers_with_metrics += 1
+        for container_metrics in container_metrics_list:
+            if (
+                container_metrics is None
+                or self.target_metric not in container_metrics
+                or len(container_metrics[self.target_metric]) == 0
+            ):
+                continue
+            sum_metric += container_metrics[self.target_metric][0].value
+            n_containers_with_metrics += 1
 
         return sum_metric, n_containers_with_metrics
 
@@ -474,19 +456,15 @@ class _FlashPrometheusAutoscaler:
 
         return metrics
 
-    async def _get_container_metrics(self, container_id: str) -> Optional[api_pb2.TaskGetAutoscalingMetricsResponse]:
-        req = api_pb2.TaskGetAutoscalingMetricsRequest(task_id=container_id)
-        try:
-            resp = await retry_transient_errors(self.client.stub.TaskGetAutoscalingMetrics, req)
-            return resp
-        except Exception as e:
-            logger.warning(f"[Modal Flash] Error getting metrics for container {container_id}: {e}")
-            return None
-
     async def _get_all_containers(self):
         req = api_pb2.FlashContainerListRequest(function_id=self.fn.object_id)
-        resp = await retry_transient_errors(self.client.stub.FlashContainerList, req)
+        resp = await self.client.stub.FlashContainerList(req)
         return resp.containers
+
+    async def _set_target_slots(self, target_slots: int):
+        req = api_pb2.FlashSetTargetSlotsMetricsRequest(function_id=self.fn.object_id, target_slots=target_slots)
+        await self.client.stub.FlashSetTargetSlotsMetrics(req)
+        return
 
     def _make_scaling_decision(
         self,
@@ -515,6 +493,7 @@ class _FlashPrometheusAutoscaler:
         Returns:
             The target number of containers.
         """
+
         if not autoscaling_decisions:
             # Without data we can’t make a new decision – stay where we are.
             return current_replicas
@@ -566,14 +545,10 @@ async def flash_prometheus_autoscaler(
     app_name: str,
     cls_name: str,
     # Endpoint to fetch metrics from. Must be in Prometheus format. Example: "/metrics"
-    # If metrics_endpoint is "internal", we will use containers' internal metrics to autoscale instead.
     metrics_endpoint: str,
     # Target metric to autoscale on. Example: "vllm:num_requests_running"
-    # If metrics_endpoint is "internal", target_metrics options are: [cpu_usage_percent, memory_usage_percent]
     target_metric: str,
     # Target metric value. Example: 25
-    # If metrics_endpoint is "internal", target_metric_value is a percentage value between 0.1 and 1.0 (inclusive),
-    # indicating container's usage of that metric.
     target_metric_value: float,
     min_containers: Optional[int] = None,
     max_containers: Optional[int] = None,
@@ -639,5 +614,5 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
     assert fn is not None
     await fn.hydrate(client=client)
     req = api_pb2.FlashContainerListRequest(function_id=fn.object_id)
-    resp = await retry_transient_errors(client.stub.FlashContainerList, req)
+    resp = await client.stub.FlashContainerList(req)
     return resp.containers

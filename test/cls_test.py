@@ -27,6 +27,7 @@ from modal.partial_function import (
     PartialFunction,
     asgi_app,
     fastapi_endpoint,
+    web_server,
 )
 from modal.runner import deploy_app
 from modal.running_app import RunningApp
@@ -34,7 +35,7 @@ from modal_proto import api_pb2
 
 from .supports.base_class import BaseCls2
 
-app = App("app")
+app = App("app", include_source=False)
 
 
 @pytest.fixture(autouse=True)
@@ -56,7 +57,7 @@ class NoParamsCls:
         return x**2
 
 
-@app.cls(cpu=42)
+@app.cls(cpu=42, _experimental_restrict_output=True)
 class Foo:
     @method()
     def bar(self, x: int) -> float:
@@ -65,6 +66,10 @@ class Foo:
     @method()
     def baz(self, y: int) -> float:
         return y**4
+
+    @web_server(8080)
+    def web(self):
+        pass
 
 
 def test_run_class(client, servicer):
@@ -89,6 +94,7 @@ def test_run_class(client, servicer):
     assert objects["Foo"] == class_id
     assert class_function_id.startswith("fu-")
     assert servicer.app_functions[class_function_id].is_class
+
     assert servicer.app_functions[class_function_id].method_definitions == {
         "bar": api_pb2.MethodDefinition(
             function_name="Foo.bar",
@@ -107,8 +113,8 @@ def test_run_class(client, servicer):
                     base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
                 ),
             ),
-            supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE],
-            supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE],
+            supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+            supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],
         ),
         "baz": api_pb2.MethodDefinition(
             function_name="Foo.baz",
@@ -127,8 +133,21 @@ def test_run_class(client, servicer):
                     base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
                 ),
             ),
-            supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE],
-            supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE],
+            supported_input_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+            supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],
+        ),
+        "web": api_pb2.MethodDefinition(
+            function_name="Foo.web",
+            function_type=api_pb2.Function.FunctionType.FUNCTION_TYPE_FUNCTION,
+            webhook_config=api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+                web_server_port=8080,
+                web_server_startup_timeout=5,
+            ),
+            supported_input_formats=[api_pb2.DATA_FORMAT_ASGI],
+            supported_output_formats=[api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE],
+            web_url="http://web.internal",
         ),
     }
 
@@ -159,11 +178,15 @@ def test_call_class_sync(client, servicer, set_env_client):
 def test_class_with_options(client, servicer):
     unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
     unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
+    unhydrated_aws_secret = modal.Secret.from_dict(
+        {"AWS_ACCESS_KEY_ID": "my-key", "AWS_SECRET_ACCESS_KEY": "my-secret"}
+    )
+    cloud_bucket_mount = modal.CloudBucketMount(bucket_name="s3-bucket-name", secret=unhydrated_aws_secret)
     with servicer.intercept() as ctx:
         foo = Foo.with_options(  # type: ignore
             cpu=48,
             retries=5,
-            volumes={"/vol": unhydrated_volume},
+            volumes={"/vol": unhydrated_volume, "/cloud_mnt": cloud_bucket_mount},
             secrets=[unhydrated_secret],
             region="us-east-1",
             cloud="aws",
@@ -179,9 +202,15 @@ def test_class_with_options(client, servicer):
             assert function_bind_params.function_options.resources.milli_cpu == 48000
             assert function_bind_params.function_options.scheduler_placement.regions == ["us-east-1"]
             assert function_bind_params.function_options.cloud_provider_str == "aws"
+            assert function_bind_params.function_options.replace_cloud_bucket_mounts
+            assert function_bind_params.function_options.replace_secret_ids
+            cloud_bucket_mounts = function_bind_params.function_options.cloud_bucket_mounts
+            assert len(cloud_bucket_mounts) == 1
+            assert cloud_bucket_mounts[0].mount_path == "/cloud_mnt"
+            assert cloud_bucket_mounts[0].bucket_name == "s3-bucket-name"
 
             assert len(ctx.get_requests("VolumeGetOrCreate")) == 1
-            assert len(ctx.get_requests("SecretGetOrCreate")) == 1
+            assert len(ctx.get_requests("SecretGetOrCreate")) == 2
 
         with servicer.intercept() as ctx:
             res = foo.bar.remote(2)
@@ -321,7 +350,7 @@ def test_service_options_defaults_untruthiness():
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw
 # an exception if the user tries to reuse an app.
-app_remote = App()
+app_remote = App(include_source=False)
 
 
 @app_remote.cls(cpu=42)
@@ -354,7 +383,7 @@ def test_call_cls_remote_invalid_type(client):
         assert "function" in str(exc)
 
 
-app_2 = App()
+app_2 = App(include_source=False)
 
 
 @app_2.cls(cpu=42)
@@ -372,7 +401,7 @@ async def test_call_class_async(client, servicer):
 
 
 def test_run_class_serialized(client, servicer):
-    app_ser = App()
+    app_ser = App(include_source=False)
 
     @app_ser.cls(cpu=42, serialized=True)
     class FooSer:
@@ -396,7 +425,7 @@ def test_run_class_serialized(client, servicer):
     assert bound_bar(100) == 1000000
 
 
-app_remote_2 = App()
+app_remote_2 = App(include_source=False)
 
 
 @app_remote_2.cls(cpu=42)
@@ -416,7 +445,7 @@ async def test_call_cls_remote_async(client):
         assert await bar_remote.baz.remote.aio(8) == 64  # Mock servicer just squares the argument
 
 
-app_local = App()
+app_local = App(include_source=False)
 
 
 @app_local.cls(cpu=42, enable_memory_snapshot=True)
@@ -460,7 +489,7 @@ def test_can_call_remotely_from_local(client):
         assert foo.baz.remote(9) == 81
 
 
-app_remote_3 = App()
+app_remote_3 = App(include_source=False)
 
 
 @app_remote_3.cls(cpu=42)
@@ -482,42 +511,6 @@ if TYPE_CHECKING:
     # can't use assert_type with named arguments, as it will diff in the name
     # vs the anonymous argument in the assertion type
     # assert_type(Foo().bar, Function[[int], float])
-
-
-def test_lookup(client, servicer):
-    # basically same test as test_from_name_lazy_method_resolve, but assumes everything is hydrated
-    deploy_app(app, "my-cls-app", client=client)
-
-    with pytest.warns(DeprecationError, match="Cls.lookup"):
-        cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
-
-    # objects are resolved
-    assert cls.object_id.startswith("cs-")
-    assert cls._get_class_service_function().object_id.startswith("fu-")
-
-    # Check that function properties are preserved
-    assert cls().bar.is_generator is False
-
-    # Make sure we can instantiate the class
-    with servicer.intercept() as ctx:
-        obj = cls("foo", 234)
-        assert len(ctx.calls) == 0  # no rpc requests for class instantiation
-
-        # Make sure we can call methods
-        # (mock servicer just returns the sum of the squares of the args)
-        assert obj.bar.remote(42) == 1764
-        assert len(ctx.get_requests("FunctionBindParams")) == 1  # bind params
-
-        assert obj.baz.remote(41) == 1681
-        assert len(ctx.get_requests("FunctionBindParams")) == 1  # call to other method shouldn't need a bind
-
-    # Not allowed for remote classes:
-    with pytest.raises(NotFoundError, match="can't be accessed for remote classes"):
-        assert obj.a == "foo"
-
-    # Make sure local calls fail
-    with pytest.raises(ExecutionError):
-        assert obj.bar.local(1, 2)
 
 
 def test_from_name_lazy_method_hydration(client, servicer):
@@ -579,7 +572,7 @@ def test_failed_lookup_error(client, servicer):
         Cls.from_name("my-cls-app", "Foo", environment_name="some-env").hydrate(client=client)
 
 
-baz_app = App()
+baz_app = App(include_source=False)
 
 
 @baz_app.cls()
@@ -596,7 +589,7 @@ def test_call_not_modal_method():
     assert baz.not_modal_method(7) == 35
 
 
-cls_with_enter_app = App()
+cls_with_enter_app = App(include_source=False)
 
 
 def get_thread_id():
@@ -666,7 +659,7 @@ async def test_async_enter_on_local_modal_call():
     assert obj.entered
 
 
-inheritance_app = App()
+inheritance_app = App(include_source=False)
 
 
 class BaseCls:
@@ -690,7 +683,7 @@ def test_derived_cls(client, servicer):
         assert DerivedCls().run.remote(3) == 9
 
 
-inheritance_app_2 = App()
+inheritance_app_2 = App(include_source=False)
 
 
 @inheritance_app_2.cls()
@@ -725,7 +718,7 @@ def test_rehydrate(client, servicer, reset_container_app):
     assert obj.bar.local(7) == 343
 
 
-app_unhydrated = App()
+app_unhydrated = App(include_source=False)
 
 
 @app_unhydrated.cls()
@@ -740,7 +733,7 @@ def test_unhydrated():
         foo.bar.remote(42)
 
 
-app_method_args = App()
+app_method_args = App(include_source=False)
 
 
 @app_method_args.cls(min_containers=5)
@@ -761,7 +754,7 @@ def test_method_args(servicer, client):
 
 
 def test_cls_update_autoscaler(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     @app.cls(serialized=True)
     class ClsWithMethod:
@@ -851,7 +844,7 @@ def test_handlers():
     assert list(pfs.keys()) == ["my_exit"]
 
 
-web_app_app = App()
+web_app_app = App(include_source=False)
 
 
 @web_app_app.cls()
@@ -872,13 +865,13 @@ def test_web_cls(client):
         assert c.asgi.get_web_url() == "http://asgi.internal"
 
 
-handler_app = App("handler-app")
+handler_app = App("handler-app", include_source=False)
 
 
 image = Image.debian_slim().pip_install("xyz")
 
 
-other_handler_app = App("other-handler-app")
+other_handler_app = App("other-handler-app", include_source=False)
 
 
 @pytest.mark.parametrize("decorator", [enter, exit])
@@ -933,7 +926,7 @@ def test_partial_function_descriptors(client):
 
     assert Foo().bar() == "a"  # type: ignore   # edge case - using a non-decorated class should just return the bound original method
     assert inspect.ismethod(Foo().bar)
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     modal_foo_class = app.cls(serialized=True)(Foo)
 
@@ -965,7 +958,7 @@ def test_cross_process_userclass_serde(supports_dir):
     assert revived_cls().method() == "a"  # this should be bound to the object
 
 
-app2 = App("app2")
+app2 = App("app2", include_source=False)
 
 
 @app2.cls()
@@ -1056,7 +1049,7 @@ class ParametrizedClass3:
         pass
 
 
-app_batched = App()
+app_batched = App(include_source=False)
 
 
 def test_batched_method_duplicate_error(client):
@@ -1133,34 +1126,59 @@ def test_unsupported_function_decorators_on_methods():
                 pass
 
 
-def test_using_method_on_uninstantiated_cls(recwarn):
-    app = App()
+def test_using_method_on_uninstantiated_cls():
+    app = App(include_source=False)
 
     @app.cls(serialized=True)
     class C:
+        some_non_param_variable = 10
+
         @method()
         def method(self):
             pass
 
-    assert len(recwarn) == 0
-    with pytest.raises(AttributeError):
-        C.blah  # type: ignore   # noqa
-    assert len(recwarn) == 0
+    assert C.some_non_param_variable == 10
 
-    assert isinstance(C().method, Function)  # should be fine to access on an instance of the class
-    assert len(recwarn) == 0
+    with pytest.raises(AttributeError, match="blah"):
+        C.blah  # type: ignore
 
-    # The following should warn since it's accessed on the class directly
-    C.method  # noqa  # triggers a deprecation warning
-    # TODO: this will be an AttributeError or return a non-modal unbound function in the future:
-    assert len(recwarn) == 1
-    warning_string = str(recwarn[0].message)
-    assert "instantiate the class first" in warning_string
-    assert "C().method instead of C.method" in warning_string
+    with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
+        # The following should error since the class is supposed to be instantiated first
+        C.method.remote()  # noqa
+
+
+def test_using_method_on_uninstantiated_hydrated_cls(set_env_client, client):
+    app = App(include_source=False)
+
+    @app.cls(serialized=True)
+    class C:
+        some_non_param_variable = 10
+
+        @method()
+        def method(self):
+            pass
+
+    with app.run(client=client):
+        assert C.some_non_param_variable == 10
+
+        with pytest.raises(AttributeError, match="blah"):
+            C.blah  # type: ignore
+
+        with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
+            # The following should error since the class is supposed to be instantiated first
+            C.method.remote()  # noqa
+
+
+def test_using_method_on_uninstantiated_remote_cls(set_env_client):
+    C = modal.Cls.from_name("app", "C")
+
+    with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
+        # The following should error since the class is supposed to be instantiated first
+        C.method.remote()  # noqa
 
 
 def test_bytes_serialization_validation(servicer, client, set_env_client):
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     @app.cls(serialized=True)
     class C:
@@ -1189,7 +1207,7 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
 
 def test_class_can_not_use_list_parameter(client):
     # we might want to allow lists in the future though...
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     with pytest.raises(InvalidError, match="list is not a supported modal.parameter"):
 
@@ -1256,7 +1274,7 @@ def test_class_can_use_future_full_type_only_schema(servicer, set_env_client):
 
 
 def test_concurrent_decorator_on_method_error():
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
 
@@ -1268,7 +1286,7 @@ def test_concurrent_decorator_on_method_error():
 
 
 def test_concurrent_decorator_stacked_with_method_decorator():
-    app = modal.App()
+    app = modal.App(include_source=False)
 
     with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
 
@@ -1281,7 +1299,7 @@ def test_concurrent_decorator_stacked_with_method_decorator():
 
 
 def test_parameter_inheritance(client):
-    app = modal.App("inherit-params")
+    app = modal.App("inherit-params", include_source=False)
 
     class Base:
         a: int = modal.parameter()  # parameter in base class
@@ -1329,7 +1347,7 @@ def test_cls_namespace_deprecated(servicer, client):
     assert len(namespace_warnings) == 0
 
 
-clustered_app = App()
+clustered_app = App(include_source=False)
 
 
 def test_clustered_cls(client, servicer):
@@ -1363,7 +1381,7 @@ def test_clustered_cls(client, servicer):
         assert regular_function.resources.rdma == 0
 
 
-invalid_clustered_app = App()
+invalid_clustered_app = App(include_source=False)
 
 
 def test_clustered_cls_with_multiple_methods(client, servicer):
@@ -1410,7 +1428,7 @@ def test_cls_get_flash_url(servicer):
         assert flash_urls == ["https://flash.example.com/service1", "https://flash.example.com/service2"]
 
 
-timeout_app = App("timeout-app")
+timeout_app = App("timeout-app", include_source=False)
 
 
 @timeout_app.cls(startup_timeout=30)
@@ -1435,7 +1453,7 @@ def test_startup_timeout(client, servicer):
     assert function_request.function.startup_timeout_secs == 30
 
 
-timeout_app_default = App("timeout-app-default")
+timeout_app_default = App("timeout-app-default", include_source=False)
 
 
 @timeout_app_default.cls(timeout=20)

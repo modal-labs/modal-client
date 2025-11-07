@@ -8,7 +8,7 @@ from grpclib.exceptions import GRPCError
 
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter
-from modal.io_streams import StreamReader
+from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line, _StreamWriter
 from modal_proto import api_pb2
 
 
@@ -299,7 +299,7 @@ async def test_stream_reader_timeout(servicer, client):
         # Send three messages, third one heavily delayed
         for i in range(3):
             if i == 2:
-                await asyncio.sleep(3)
+                await asyncio.sleep(1)
             await stream.send_message(
                 api_pb2.RuntimeOutputBatch(
                     batch_index=i,
@@ -319,7 +319,7 @@ async def test_stream_reader_timeout(servicer, client):
                 object_type="container_process",
                 client=client,
                 by_line=True,
-                deadline=time.monotonic() + 2,  # use a 2-second timeout
+                deadline=time.monotonic() + 0.5,  # use a 2-second timeout
             )
             output: list[str] = []
             async for line in stdout:
@@ -327,3 +327,213 @@ async def test_stream_reader_timeout(servicer, client):
             # message 3 should not be received, due to the timeout
             assert output == [f"msg{i}\n" for i in range(2)]
             assert time.monotonic() - time_first_send <= 4
+
+
+async def _bytes_stream(items: list[bytes]):
+    for item in items:
+        yield item
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_yields_nothing_with_empty_input_stream():
+    stream = _stream_by_line(_bytes_stream([]))
+    result = [chunk async for chunk in stream]
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_yields_entire_chunk_without_newline_at_end():
+    stream = _stream_by_line(_bytes_stream([b"hello world"]))
+    result = [chunk async for chunk in stream]
+    assert result == [b"hello world"]
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_splits_single_chunk_into_multiple_lines():
+    stream = _stream_by_line(_bytes_stream([b"a\nb\nc\n"]))
+    result = [chunk async for chunk in stream]
+    assert result == [b"a\n", b"b\n", b"c\n"]
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_merges_chunks_until_newline_then_yields_one_line():
+    # "ab" + "c\n" should yield "abc\n" as a single line
+    stream = _stream_by_line(_bytes_stream([b"ab", b"c\n", b"de\n"]))
+    result = [chunk async for chunk in stream]
+    assert result == [b"abc\n", b"de\n"]
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_yields_leftover_without_newline_at_end():
+    stream = _stream_by_line(_bytes_stream([b"line1\nline2"]))
+    result = [chunk async for chunk in stream]
+    assert result == [b"line1\n", b"line2"]
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_handles_consecutive_empty_lines():
+    stream = _stream_by_line(_bytes_stream([b"\n\n", b"a\n", b"\n"]))
+    result = [chunk async for chunk in stream]
+    assert result == [b"\n", b"\n", b"a\n", b"\n"]
+
+
+@pytest.mark.asyncio
+async def test_stream_by_line_raises_assertion_error_for_non_bytes_items():
+    async def _bad_stream():
+        yield "not-bytes"  # type: ignore[misc]
+
+    with pytest.raises(AssertionError):
+        async for _ in _stream_by_line(_bad_stream()):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_decode_bytes_stream_to_str_yields_nothing_with_empty_input_stream():
+    stream = _decode_bytes_stream_to_str(_bytes_stream([]))
+    result = [chunk async for chunk in stream]
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_decode_bytes_stream_to_str_decodes_single_ascii_chunk():
+    stream = _decode_bytes_stream_to_str(_bytes_stream([b"hello"]))
+    result = [chunk async for chunk in stream]
+    assert result == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_decode_bytes_stream_to_str_decodes_multiple_chunks_in_order():
+    stream = _decode_bytes_stream_to_str(_bytes_stream([b"hello", b" ", b"world"]))
+    result = [chunk async for chunk in stream]
+    assert result == ["hello", " ", "world"]
+
+
+@pytest.mark.asyncio
+async def test_decode_bytes_stream_to_str_decodes_utf8_multibyte_characters_in_single_chunk():
+    stream = _decode_bytes_stream_to_str(_bytes_stream(["café".encode("utf-8")]))
+    result = [chunk async for chunk in stream]
+    assert result == ["café"]
+
+
+@pytest.mark.asyncio
+async def test_decode_bytes_stream_to_str_handles_multibyte_split_across_chunks():
+    # 'é' in UTF-8 is b"\xc3\xa9"; splitting across chunks should be decoded incrementally
+    stream = _decode_bytes_stream_to_str(_bytes_stream([b"caf\xc3", b"\xa9"]))
+    result = [chunk async for chunk in stream]
+    assert result == ["caf", "é"]
+
+
+# ---------------------------------------
+# _StreamWriter (command router) tests
+# ---------------------------------------
+
+
+class _FakeCommandRouterClient:
+    def __init__(self):
+        self.calls: list[dict[str, object]] = []
+
+    async def exec_stdin_write(self, *, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool) -> None:
+        self.calls.append(
+            {
+                "task_id": task_id,
+                "exec_id": exec_id,
+                "offset": offset,
+                "data": data,
+                "eof": eof,
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_stream_writer_drain_calls_exec_stdin_with_eof_when_closed_and_no_data():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,  # unused when command_router_client is provided
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+    )
+
+    writer.write_eof()
+    await writer.drain()
+
+    assert len(router.calls) == 1
+    call = router.calls[0]
+    assert call["task_id"] == "task-1"
+    assert call["exec_id"] == "tp-123"
+    assert call["offset"] == 0
+    assert call["data"] == b""
+    assert call["eof"] is True
+
+
+@pytest.mark.asyncio
+async def test_stream_writer_drain_writes_all_written_data_since_last_drain():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+    )
+
+    writer.write(b"abc")
+    writer.write(b"def")
+    await writer.drain()
+
+    assert len(router.calls) == 1
+    call = router.calls[0]
+    assert call["offset"] == 0
+    assert call["data"] == b"abcdef"
+    assert call["eof"] is False
+
+
+@pytest.mark.asyncio
+async def test_stream_writer_drain_does_not_rewrite_data_written_prior_to_last_drain():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+    )
+
+    writer.write(b"ab")
+    await writer.drain()
+
+    writer.write(b"cd")
+    await writer.drain()
+
+    assert len(router.calls) == 2
+    first, second = router.calls
+    assert first["offset"] == 0
+    assert first["data"] == b"ab"
+    assert first["eof"] is False
+
+    assert second["offset"] == 2  # advances by len(b"ab")
+    assert second["data"] == b"cd"
+    assert second["eof"] is False
+
+
+@pytest.mark.asyncio
+async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with_both():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+    )
+
+    writer.write(b"xyz")
+    writer.write_eof()
+    await writer.drain()
+
+    assert len(router.calls) == 1
+    call = router.calls[0]
+    assert call["offset"] == 0
+    assert call["data"] == b"xyz"
+    assert call["eof"] is True

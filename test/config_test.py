@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import json
 import os
 import pathlib
 import pytest
@@ -36,7 +37,7 @@ def _cli(args, env={}):
 
 def _get_config(env={}):
     stdout = _cli(["config", "show", "--no-redact"], env=env)
-    return eval(stdout)
+    return json.loads(stdout)
 
 
 def test_config():
@@ -178,3 +179,14 @@ def test_malformed_config_better(modal_config):
     with pytest.raises(InvalidError, match="Key name found without value"):
         with modal_config(modal_toml):
             pass
+
+
+@pytest.mark.parametrize("suffix", ["a" * 9, "abc-xyz"])
+def test_dev_suffix_rules(modal_config, suffix):
+    modal_toml = f"""
+    [default]
+    dev_suffix = "{suffix}"
+    """
+    with modal_config(modal_toml):
+        with pytest.raises(InvalidError, match="alphanumeric string"):
+            Config().get("dev_suffix")

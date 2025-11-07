@@ -7,7 +7,6 @@ from rich.text import Text
 from modal._object import _get_environment_name
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
-from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, display_table, is_tty, stream_app_logs
 from modal.client import _Client
@@ -80,10 +79,12 @@ async def exec(
     res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
 
     if pty:
-        await _ContainerProcess(res.exec_id, client).attach()
+        await _ContainerProcess(res.exec_id, container_id, client).attach()
     else:
         # TODO: redirect stderr to its own stream?
-        await _ContainerProcess(res.exec_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT).wait()
+        await _ContainerProcess(
+            res.exec_id, container_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT
+        ).wait()
 
 
 @container_cli.command("stop")
@@ -95,4 +96,4 @@ async def stop(container_id: str = typer.Argument(help="Container ID")):
     """
     client = await _Client.from_env()
     request = api_pb2.ContainerStopRequest(task_id=container_id)
-    await retry_transient_errors(client.stub.ContainerStop, request)
+    await client.stub.ContainerStop(request)

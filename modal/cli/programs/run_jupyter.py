@@ -54,7 +54,7 @@ def wait_for_port(url: str, q: Queue):
     cpu=args.get("cpu"),
     memory=args.get("memory"),
     gpu=args.get("gpu"),
-    timeout=args.get("timeout"),
+    timeout=args.get("timeout", 3600),
     secrets=[Secret.from_dict({"MODAL_LAUNCH_ARGS": json.dumps(args)})],
     volumes=volumes,
     max_containers=1 if volume else None,

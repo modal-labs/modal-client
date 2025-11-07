@@ -25,20 +25,21 @@ from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from typing_extensions import Self
 
+from modal._serialization import serialize_data_format
 from modal_proto import api_pb2
 
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
-from ._serialization import serialize
+from ._serialization import get_preferred_payload_format, serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
-from ._utils.deprecation import deprecation_warning
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
 )
 from ._utils.function_utils import FunctionInfo
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
+from ._utils.mount_utils import validate_only_modal_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
@@ -283,24 +284,12 @@ def _create_context_mount_function(
     ignore: Union[Sequence[str], Callable[[Path], bool], _AutoDockerIgnoreSentinel],
     dockerfile_cmds: list[str] = [],
     dockerfile_path: Optional[Path] = None,
-    context_mount: Optional[_Mount] = None,
     context_dir: Optional[Union[Path, str]] = None,
 ):
     if dockerfile_path and dockerfile_cmds:
         raise InvalidError("Cannot provide both dockerfile and docker commands")
 
-    if context_mount:
-        if ignore is not AUTO_DOCKERIGNORE:
-            raise InvalidError("Cannot set both `context_mount` and `ignore`")
-        if context_dir is not None:
-            raise InvalidError("Cannot set both `context_mount` and `context_dir`")
-
-        def identity_context_mount_fn() -> Optional[_Mount]:
-            return context_mount
-
-        return identity_context_mount_fn
-
-    elif ignore is AUTO_DOCKERIGNORE:
+    if ignore is AUTO_DOCKERIGNORE:
 
         def auto_created_context_mount_fn() -> Optional[_Mount]:
             nonlocal context_dir
@@ -499,12 +488,16 @@ class _Image(_Object, type_prefix="im"):
         context_mount_function: Optional[Callable[[], Optional[_Mount]]] = None,
         force_build: bool = False,
         build_args: dict[str, str] = {},
+        validated_volumes: Optional[Sequence[tuple[str, _Volume]]] = None,
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
     ):
         if base_images is None:
             base_images = {}
+
+        if validated_volumes is None:
+            validated_volumes = []
 
         if secrets is None:
             secrets = []
@@ -526,6 +519,8 @@ class _Image(_Object, type_prefix="im"):
                 deps += (build_function,)
             if image_registry_config and image_registry_config.secret:
                 deps += (image_registry_config.secret,)
+            for _, vol in validated_volumes:
+                deps += (vol,)
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
@@ -604,6 +599,17 @@ class _Image(_Object, type_prefix="im"):
                 build_function_id = ""
                 _build_function = None
 
+            # Relies on dicts being ordered (true as of Python 3.6).
+            volume_mounts = [
+                api_pb2.VolumeMount(
+                    mount_path=path,
+                    volume_id=volume.object_id,
+                    allow_background_commits=True,
+                    read_only=volume._read_only,
+                )
+                for path, volume in validated_volumes
+            ]
+
             image_definition = api_pb2.Image(
                 base_images=base_images_pb2s,
                 dockerfile_commands=dockerfile.commands,
@@ -616,6 +622,7 @@ class _Image(_Object, type_prefix="im"):
                 runtime_debug=config.get("function_runtime_debug"),
                 build_function=_build_function,
                 build_args=build_args,
+                volume_mounts=volume_mounts,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -631,7 +638,7 @@ class _Image(_Object, type_prefix="im"):
                 allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT") == "1",
                 ignore_cache=config.get("ignore_cache"),
             )
-            resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
+            resp = await resolver.client.stub.ImageGetOrCreate(req)
             image_id = resp.image_id
             result: api_pb2.GenericResult
             metadata: Optional[api_pb2.ImageMetadata] = None
@@ -860,7 +867,7 @@ class _Image(_Object, type_prefix="im"):
             client = await _Client.from_env()
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            resp = await retry_transient_errors(client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id))
+            resp = await client.stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, resolver.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
@@ -1453,6 +1460,15 @@ class _Image(_Object, type_prefix="im"):
         The `pyproject.toml` and `uv.lock` in `uv_project_dir` are automatically added to the build context. The
         `uv_project_dir` is relative to the current working directory of where `modal` is called.
 
+        NOTE: This does *not* install the project itself into the environment (this is equivalent to the
+        `--no-install-project` flag in the `uv sync` command) and you would be expected to add any local python source
+        files using `Image.add_local_python_source` or similar methods after this call.
+
+        This ensures that updates to your project code wouldn't require reinstalling third-party dependencies
+        after every change.
+
+        uv workspaces are currently not supported.
+
         Added in v1.1.0.
         """
 
@@ -1595,7 +1611,6 @@ class _Image(_Object, type_prefix="im"):
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
         gpu: GPU_T = None,
-        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
@@ -1641,12 +1656,6 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        if context_mount is not None:
-            deprecation_warning(
-                (2025, 1, 13),
-                "The `context_mount` parameter of `Image.dockerfile_commands` is deprecated."
-                " Files are now automatically added to the build context based on the commands.",
-            )
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
             return self
@@ -1664,7 +1673,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
             context_mount_function=_create_context_mount_function(
-                ignore=ignore, dockerfile_cmds=cmds, context_mount=context_mount, context_dir=context_dir
+                ignore=ignore, dockerfile_cmds=cmds, context_dir=context_dir
             ),
             force_build=self.force_build or force_build,
         )
@@ -1700,6 +1709,7 @@ class _Image(_Object, type_prefix="im"):
         *commands: Union[str, list[str]],
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
+        volumes: Optional[dict[Union[str, PurePosixPath], _Volume]] = None,
         gpu: GPU_T = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
@@ -1722,6 +1732,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
             force_build=self.force_build or force_build,
+            validated_volumes=validate_only_modal_volumes(volumes, "Image.run_commands"),
         )
 
     @staticmethod
@@ -2021,7 +2032,6 @@ class _Image(_Object, type_prefix="im"):
     def from_dockerfile(
         path: Union[str, Path],  # Filepath to Dockerfile.
         *,
-        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
         env: Optional[dict[str, Optional[str]]] = None,
@@ -2085,13 +2095,6 @@ class _Image(_Object, type_prefix="im"):
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
-        if context_mount is not None:
-            deprecation_warning(
-                (2025, 1, 13),
-                "The `context_mount` parameter of `Image.from_dockerfile` is deprecated."
-                " Files are now automatically added to the build context based on the commands in the Dockerfile.",
-            )
-
         # --- Build the base dockerfile
 
         def build_dockerfile_base(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -2103,7 +2106,7 @@ class _Image(_Object, type_prefix="im"):
         base_image = _Image._from_args(
             dockerfile_function=build_dockerfile_base,
             context_mount_function=_create_context_mount_function(
-                ignore=ignore, dockerfile_path=Path(path), context_mount=context_mount, context_dir=context_dir
+                ignore=ignore, dockerfile_path=Path(path), context_dir=context_dir
             ),
             gpu_config=gpu_config,
             secrets=secrets,
@@ -2318,13 +2321,19 @@ class _Image(_Object, type_prefix="im"):
             include_source=include_source,
         )
         if len(args) + len(kwargs) > 0:
-            args_serialized = serialize((args, kwargs))
+            data_format = get_preferred_payload_format()
+            args_serialized = serialize_data_format((args, kwargs), data_format)
+
             if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
                 raise InvalidError(
                     f"Arguments to `run_function` are too large ({len(args_serialized)} bytes). "
                     f"Maximum size is {MAX_OBJECT_SIZE_BYTES} bytes."
                 )
-            build_function_input = api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE)
+
+            build_function_input = api_pb2.FunctionInput(
+                args=args_serialized,
+                data_format=data_format,
+            )
         else:
             build_function_input = None
         return _Image._from_args(

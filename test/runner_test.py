@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import asyncio
 import contextlib
 import pytest
 import time
@@ -7,6 +6,7 @@ import typing
 from unittest import mock
 
 import modal
+from modal._resolver import Resolver
 from modal.client import Client
 from modal.exception import AuthError, DeprecationError
 from modal.runner import deploy_app, run_app
@@ -58,7 +58,7 @@ def dummy(): ...
 def test_run_app_profile_env_with_refs(servicer, client, monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "profile_env")
     with servicer.intercept() as ctx:
-        dummy_app = modal.App()
+        dummy_app = modal.App(include_source=False)
         ref = modal.Secret.from_name("some_secret")
         dummy_app.function(secrets=[ref])(dummy)
 
@@ -81,7 +81,7 @@ def test_run_app_profile_env_with_refs(servicer, client, monkeypatch):
 
 def test_run_app_custom_env_with_refs(servicer, client, monkeypatch):
     monkeypatch.setenv("MODAL_ENVIRONMENT", "profile_env")
-    dummy_app = modal.App()
+    dummy_app = modal.App(include_source=False)
     own_env_secret = modal.Secret.from_name("own_env_secret")
     other_env_secret = modal.Secret.from_name("other_env_secret", environment_name="third")  # explicit lookup
 
@@ -107,7 +107,7 @@ def test_run_app_custom_env_with_refs(servicer, client, monkeypatch):
 
 
 def test_deploy_without_rich(servicer, client, no_rich):
-    app = modal.App("dummy-app")
+    app = modal.App("dummy-app", include_source=False)
     app.function()(dummy)
     deploy_app(app, client=client)
 
@@ -117,19 +117,21 @@ def test_deploy_without_rich(servicer, client, no_rich):
 async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, build_validation):
     monkeypatch.setenv("MODAL_BUILD_VALIDATION", build_validation)
 
+    # Patch resolver to give it a build start time that is old, which triggers validation.
+    class PatchedResolver(Resolver):
+        @property
+        def build_start(self) -> float:
+            return 0.0
+
+    monkeypatch.setattr("modal.runner.Resolver", PatchedResolver)
+
     (large_dir := tmp_path / "large_files").mkdir()
-    for i in range(512 + 1):  # Equivalent to file upload concurrency
-        (large_dir / f"{i:02d}.txt").write_bytes(f"large {i:02d}".encode())
+    (large_dir / "1.txt").write_bytes("large 1".encode())
 
     image = modal.Image.debian_slim().add_local_dir(large_dir, "/root/large_files")
 
     app = modal.App(image=image, include_source=False)
     app.function()(dummy)
-
-    async def change_file_after_delay():
-        await asyncio.sleep(0.2)  # "Uploading" large should take 2 seconds; see mock MountPutFile
-        for f in large_dir.iterdir():
-            f.touch()
 
     handler_assertion: contextlib.AbstractContextManager
     if build_validation == "error":
@@ -139,10 +141,9 @@ async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, 
     else:
         handler_assertion = contextlib.nullcontext()
 
-    asyncio.create_task(change_file_after_delay())
     with handler_assertion:
         async with app.run.aio(client=client):
-            ...
+            pass
 
 
 def test_deploy_app_namespace_deprecated(servicer, client):
@@ -164,3 +165,20 @@ def test_deploy_app_namespace_deprecated(servicer, client):
     # Filter out any unrelated warnings
     namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
     assert len(namespace_warnings) == 0
+
+
+def test_run_app_interactive_no_spinner(servicer, client):
+    """Don't show status spinner in interactive mode to avoid interfering with breakpoints."""
+    app = modal.App()
+
+    with mock.patch("modal._output.OutputManager.show_status_spinner") as mock_spinner:
+        with modal.enable_output():
+            with run_app(app, client=client, interactive=True):
+                pass
+        mock_spinner.return_value.__enter__.assert_not_called()
+
+    with mock.patch("modal._output.OutputManager.show_status_spinner") as mock_spinner:
+        with modal.enable_output():
+            with run_app(app, client=client, interactive=False):
+                pass
+        mock_spinner.return_value.__enter__.assert_called_once()

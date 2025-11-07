@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
 from urllib.parse import urlparse
 
 from modal_proto import api_pb2
@@ -117,9 +117,10 @@ class _CloudBucketMount:
 
     read_only: bool = False
     requester_pays: bool = False
+    force_path_style: bool = False
 
 
-def cloud_bucket_mounts_to_proto(mounts: list[tuple[str, _CloudBucketMount]]) -> list[api_pb2.CloudBucketMount]:
+def cloud_bucket_mounts_to_proto(mounts: Sequence[tuple[str, _CloudBucketMount]]) -> list[api_pb2.CloudBucketMount]:
     """Helper function to convert `CloudBucketMount` to a list of protobufs that can be passed to the server."""
     cloud_bucket_mounts: list[api_pb2.CloudBucketMount] = []
 
@@ -159,6 +160,7 @@ def cloud_bucket_mounts_to_proto(mounts: list[tuple[str, _CloudBucketMount]]) ->
             requester_pays=mount.requester_pays,
             key_prefix=key_prefix,
             oidc_auth_role_arn=mount.oidc_auth_role_arn,
+            force_path_style=mount.force_path_style,
         )
         cloud_bucket_mounts.append(cloud_bucket_mount)
 

@@ -15,7 +15,6 @@ from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -91,7 +90,7 @@ class _SecretManager:
             env_dict=env_dict,
         )
         try:
-            await retry_transient_errors(client.stub.SecretGetOrCreate, req)
+            await client.stub.SecretGetOrCreate(req)
         except GRPCError as exc:
             if exc.status == Status.ALREADY_EXISTS and not allow_existing:
                 raise AlreadyExistsError(exc.message)
@@ -143,7 +142,7 @@ class _SecretManager:
             req = api_pb2.SecretListRequest(
                 environment_name=_get_environment_name(environment_name), pagination=pagination
             )
-            resp = await retry_transient_errors(client.stub.SecretList, req)
+            resp = await client.stub.SecretList(req)
             items.extend(resp.items)
             finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
             return finished
@@ -200,7 +199,7 @@ class _SecretManager:
                 raise
         else:
             req = api_pb2.SecretDeleteRequest(secret_id=obj.object_id)
-            await retry_transient_errors(obj._client.stub.SecretDelete, req)
+            await obj._client.stub.SecretDelete(req)
 
 
 SecretManager = synchronize_api(_SecretManager)
@@ -413,35 +412,6 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret._from_loader(_load, rep, hydrate_lazily=True, name=name)
 
     @staticmethod
-    async def lookup(
-        name: str,
-        namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-        required_keys: list[str] = [],
-    ) -> "_Secret":
-        """mdmd:hidden"""
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Secret.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Secret.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-
-        warn_if_passing_namespace(namespace, "modal.Secret.lookup")
-
-        obj = _Secret.from_name(
-            name,
-            environment_name=environment_name,
-            required_keys=required_keys,
-        )
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
-
-    @staticmethod
     async def create_deployed(
         deployment_name: str,
         env_dict: dict[str, str],
@@ -483,7 +453,7 @@ class _Secret(_Object, type_prefix="st"):
             object_creation_type=object_creation_type,
             env_dict=env_dict,
         )
-        resp = await retry_transient_errors(client.stub.SecretGetOrCreate, request)
+        resp = await client.stub.SecretGetOrCreate(request)
         return resp.secret_id
 
     @live_method

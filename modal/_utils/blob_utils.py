@@ -27,7 +27,6 @@ from modal_proto.modal_api_grpc import ModalClientModal
 
 from ..exception import ExecutionError
 from .async_utils import TaskContext, retry
-from .grpc_utils import retry_transient_errors
 from .hash_utils import UploadHashes, get_upload_hashes
 from .http_utils import ClientSessionRegistry
 from .logger import logger
@@ -229,7 +228,7 @@ async def _blob_upload(
         content_sha256_base64=upload_hashes.sha256_base64,
         content_length=content_length,
     )
-    resp = await retry_transient_errors(stub.BlobCreate, req)
+    resp = await stub.BlobCreate(req)
 
     if resp.WhichOneof("upload_types_oneof") == "multiparts":
 
@@ -300,6 +299,10 @@ async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
     return blob_id
 
 
+async def format_blob_data(data: bytes, api_stub: ModalClientModal) -> dict[str, Any]:
+    return {"data_blob_id": await blob_upload(data, api_stub)} if len(data) > MAX_OBJECT_SIZE_BYTES else {"data": data}
+
+
 async def blob_upload_file(
     file_obj: BinaryIO,
     stub: ModalClientModal,
@@ -331,7 +334,7 @@ async def blob_download(blob_id: str, stub: ModalClientModal) -> bytes:
     logger.debug(f"Downloading large blob {blob_id}")
     t0 = time.time()
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
-    resp = await retry_transient_errors(stub.BlobGet, req)
+    resp = await stub.BlobGet(req)
     data = await _download_from_url(resp.download_url)
     size_mib = len(data) / 1024 / 1024
     dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
@@ -344,7 +347,7 @@ async def blob_download(blob_id: str, stub: ModalClientModal) -> bytes:
 
 async def blob_iter(blob_id: str, stub: ModalClientModal) -> AsyncIterator[bytes]:
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
-    resp = await retry_transient_errors(stub.BlobGet, req)
+    resp = await stub.BlobGet(req)
     download_url = resp.download_url
     async with ClientSessionRegistry.get_session().get(download_url) as s3_resp:
         # S3 signal to slow down request rate.

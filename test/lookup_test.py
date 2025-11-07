@@ -23,7 +23,7 @@ def square(x):
 
 
 def test_lookup_function(servicer, client):
-    app = App()
+    app = App(include_source=False)
 
     app.function()(square)
     deploy_app(app, "my-function", client=client)
@@ -47,7 +47,7 @@ def test_lookup_function(servicer, client):
 
 
 def test_fastapi_endpoint_lookup(servicer, client):
-    app = App()
+    app = App(include_source=False)
     app.function()(fastapi_endpoint(method="POST")(square))
     deploy_app(app, "my-webhook", client=client)
 

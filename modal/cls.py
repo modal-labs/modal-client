@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import dataclasses
 import inspect
-import os
 import typing
 from collections.abc import Collection
+from pathlib import PurePosixPath
 from typing import Any, Callable, Optional, Sequence, TypeVar, Union
 
 from google.protobuf.message import Message
@@ -30,9 +30,8 @@ from ._utils.deprecation import (
     warn_if_passing_namespace,
     warn_on_renamed_autoscaler_settings,
 )
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
-from .client import _Client
+from .cloud_bucket_mount import _CloudBucketMount
 from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .gpu import GPU_T
@@ -95,6 +94,7 @@ class _ServiceOptions:
     batch_wait_ms: Optional[int] = None
     scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
     cloud: Optional[str] = None
+    cloud_bucket_mounts: typing.Sequence[tuple[str, _CloudBucketMount]] = ()
 
     def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
         """Implement protobuf-like MergeFrom semantics for this dataclass.
@@ -576,21 +576,14 @@ More information on class parameterization can be found here: https://modal.com/
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        method_partials: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
-            user_cls, _PartialFunctionFlags.interface_flags()
-        )
-
-        for method_name, partial_function in method_partials.items():
-            if partial_function.params.webhook_config is not None:
-                full_name = f"{user_cls.__name__}.{method_name}"
-                app._web_endpoints.append(full_name)
-            partial_function.registered = True
-
         # Disable the warning that lifecycle methods are not wrapped
-        for partial_function in _find_partial_methods_for_user_cls(
+        lifecycle_method_partials = _find_partial_methods_for_user_cls(
             user_cls, ~_PartialFunctionFlags.interface_flags()
-        ).values():
+        )
+        for partial_function in lifecycle_method_partials.values():
             partial_function.registered = True
+
+        method_partials = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.interface_flags())
 
         # Get all callables
         callables: dict[str, Callable] = {
@@ -649,7 +642,7 @@ More information on class parameterization can be found here: https://modal.com/
                 only_class_function=True,
             )
             try:
-                response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
+                response = await resolver.client.stub.ClassGet(request)
             except NotFoundError as exc:
                 env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
                 raise NotFoundError(
@@ -688,7 +681,7 @@ More information on class parameterization can be found here: https://modal.com/
         gpu: GPU_T = None,
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
-        volumes: dict[Union[str, os.PathLike], _Volume] = {},
+        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         retries: Optional[Union[int, Retries]] = None,
         max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
         buffer_containers: Optional[int] = None,  # Additional containers to scale up while Function is active.
@@ -762,13 +755,19 @@ More information on class parameterization can be found here: https://modal.com/
         cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
         cls._initialize_from_other(self)
 
+        # Validate volumes
+        validated_volumes = validate_volumes(volumes)
+        cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
+        validated_volumes_no_cloud_buckets = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
+
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
         new_options = _ServiceOptions(
             secrets=secrets,
-            validated_volumes=validate_volumes(volumes),
+            validated_volumes=validated_volumes_no_cloud_buckets,
+            cloud_bucket_mounts=cloud_bucket_mounts,
             resources=resources,
             retry_policy=retry_policy,
             max_containers=max_containers,
@@ -844,46 +843,6 @@ More information on class parameterization can be found here: https://modal.com/
         cls._options.merge_options(batching_options)
         return cls
 
-    @staticmethod
-    async def lookup(
-        app_name: str,
-        name: str,
-        namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-    ) -> "_Cls":
-        """mdmd:hidden
-        Lookup a Cls from a deployed App by its name.
-
-        DEPRECATED: This method is deprecated in favor of `modal.Cls.from_name`.
-
-        In contrast to `modal.Cls.from_name`, this is an eager method
-        that will hydrate the local object with metadata from Modal servers.
-
-        ```python notest
-        Model = modal.Cls.from_name("other-app", "Model")
-        model = Model()
-        model.inference(...)
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 27),
-            "`modal.Cls.lookup` is deprecated and will be removed in a future release."
-            " It can be replaced with `modal.Cls.from_name`."
-            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-        )
-        warn_if_passing_namespace(namespace, "modal.Cls.lookup")
-        obj = _Cls.from_name(
-            app_name,
-            name,
-            environment_name=environment_name,
-        )
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client)
-        await resolver.load(obj)
-        return obj
-
     @synchronizer.no_input_translation
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
@@ -896,18 +855,28 @@ More information on class parameterization can be found here: https://modal.com/
         )
 
     def __getattr__(self, k):
-        # TODO: remove this method - access to attributes on classes (not instances) should be discouraged
-        if not self._is_local() or k in self._method_partials:
-            # if not local (== k *could* be a method) or it is local and we know k is a method
-            deprecation_warning(
-                (2025, 1, 13),
-                "Calling a method on an uninstantiated class will soon be deprecated; "
-                "update your code to instantiate the class first, i.e.:\n"
-                f"{self._name}().{k} instead of {self._name}.{k}",
+        if self._user_cls is not None:
+            # local class, we can check if there are static attributes and let the user access them
+            # except if they are PartialFunction (i.e. methods)
+            v = getattr(self._user_cls, k)
+            if not isinstance(v, modal.partial_function.PartialFunction):
+                return v
+
+        # We create a synthetic dummy Function that is guaranteed to raise an AttributeError when
+        # a user tries to use any of its "live methods" - this lets us raise exceptions for users
+        # only if they try to access methods on a Cls as if they were methods on the instance.
+        async def method_loader(fun: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            raise AttributeError(
+                "You can't access methods on a Cls directly - Did you forget to instantiate the class first?\n"
+                "e.g. instead of MyClass.method.remote(), do MyClass().method.remote()"
             )
-            return getattr(self(), k)
-        # non-method attribute access on local class - arguably shouldn't be used either:
-        return getattr(self._user_cls, k)
+
+        return _Function._from_loader(
+            method_loader,
+            rep=f"UnboundMethod({self._name}.{k})",
+            deps=lambda: [],
+            hydrate_lazily=True,
+        )
 
     def _is_local(self) -> bool:
         return self._user_cls is not None

@@ -2,6 +2,7 @@
 from typing import Optional, Union
 
 import typer
+from rich.table import Column
 from rich.text import Text
 
 from modal._object import _get_environment_name
@@ -33,7 +34,12 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
         api_pb2.ClusterListRequest(environment_name=environment_name)
     )
 
-    column_names = ["Cluster ID", "App ID", "Start Time", "Nodes"]
+    column_names: list[Union[Column, str]] = [
+        Column("Cluster ID", min_width=25),
+        Column("App ID", min_width=25),
+        "Start Time",
+        "Nodes",
+    ]
     rows: list[list[Union[Text, str]]] = []
     res.clusters.sort(key=lambda c: c.started_at, reverse=True)
 
@@ -77,7 +83,9 @@ async def shell(
     )
     exec_res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
     if pty:
-        await _ContainerProcess(exec_res.exec_id, client).attach()
+        await _ContainerProcess(exec_res.exec_id, task_id, client).attach()
     else:
         # TODO: redirect stderr to its own stream?
-        await _ContainerProcess(exec_res.exec_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT).wait()
+        await _ContainerProcess(
+            exec_res.exec_id, task_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT
+        ).wait()

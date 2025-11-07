@@ -22,7 +22,7 @@ from ..app import App, LocalEntrypoint
 from ..cls import _get_class_constructor_signature
 from ..config import config
 from ..environments import ensure_env
-from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
+from ..exception import ExecutionError, InvalidError, NotFoundError, _CliUserExecutionError
 from ..functions import Function
 from ..image import Image
 from ..output import enable_output
@@ -467,11 +467,10 @@ def deploy(
     if not name:
         raise ExecutionError(
             "You need to either supply an explicit deployment name on the command line "
-            "or have a name set on the app.\n"
+            "or have a name set on the App.\n"
             "\n"
             "Examples:\n"
-            'app = modal.App("some-name")'
-            "or\n"
+            'app = modal.App("some-name")\n'
             "modal deploy ... --name=some-name"
         )
 
@@ -497,6 +496,12 @@ def serve(
     ```
     modal serve hello_world.py
     ```
+
+    Modal-generated URLs will have a `-dev` suffix appended to them when running with `modal serve`.
+    To customize this suffix (i.e., to avoid collisions with other users in your workspace who are
+    concurrently serving the App), you can set the `dev_suffix` in your `.modal.toml` file or the
+    `MODAL_DEV_SUFFIX` environment variable.
+
     """
     env = ensure_env(env)
     import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
@@ -517,13 +522,12 @@ def serve(
 
 
 def shell(
-    container_or_function: Optional[str] = typer.Argument(
+    ref: Optional[str] = typer.Argument(
         default=None,
         help=(
-            "ID of running container, or path to a Python file containing a Modal App."
-            " Can also include a function specifier, like `module.py::func`, if the file defines multiple functions."
+            "ID of running container or Sandbox, or path to a Python file containing an App."
+            " Can also include a Function specifier, like `module.py::func`, if the file defines multiple Functions."
         ),
-        metavar="REF",
     ),
     cmd: str = typer.Option("/bin/bash", "-c", "--cmd", help="Command to run inside the Modal image."),
     env: str = ENV_OPTION,
@@ -603,6 +607,12 @@ def shell(
     ```
     modal shell hello_world.py -c 'uv pip list' > env.txt
     ```
+
+    Connect to a running Sandbox by ID:
+
+    ```
+    modal shell sb-abc123xyz
+    ```
     """
     env = ensure_env(env)
 
@@ -614,19 +624,28 @@ def shell(
 
     app = App("modal shell")
 
-    if container_or_function is not None:
+    if ref is not None:
+        # `modal shell` with a sandbox ID gets the task_id, that's then handled by the `ta-*` flow below.
+        if ref.startswith("sb-") and len(ref[3:]) > 0 and ref[3:].isalnum():
+            from ..sandbox import Sandbox
+
+            try:
+                sandbox = Sandbox.from_id(ref)
+                task_id = sandbox._get_task_id()
+                ref = task_id
+            except NotFoundError as e:
+                raise ClickException(f"Sandbox '{ref}' not found")
+            except Exception as e:
+                raise ClickException(f"Error connecting to sandbox '{ref}': {str(e)}")
+
         # `modal shell` with a container ID is a special case, alias for `modal container exec`.
-        if (
-            container_or_function.startswith("ta-")
-            and len(container_or_function[3:]) > 0
-            and container_or_function[3:].isalnum()
-        ):
+        if ref.startswith("ta-") and len(ref[3:]) > 0 and ref[3:].isalnum():
             from .container import exec
 
-            exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
+            exec(container_id=ref, command=shlex.split(cmd), pty=pty)
             return
 
-        import_ref = parse_import_ref(container_or_function, use_module_mode=use_module_mode)
+        import_ref = parse_import_ref(ref, use_module_mode=use_module_mode)
         runnable, all_usable_commands = import_and_filter(
             import_ref, base_cmd="modal shell", accept_local_entrypoint=False, accept_webhook=True
         )

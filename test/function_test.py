@@ -6,23 +6,33 @@ import os
 import pytest
 import time
 import typing
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
 import modal
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
+from modal._functions import MAX_INTERNAL_FAILURE_COUNT
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
+from modal.client import Client
+from modal.exception import (
+    DeprecationError,
+    ExecutionError,
+    FunctionTimeoutError,
+    InternalFailure,
+    InvalidError,
+    NotFoundError,
+    RemoteError,
+)
 from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
 from modal_proto import api_pb2
-from test.conftest import GrpcErrorAndCount
+from test.conftest import GrpcErrorAndCount, MockClientServicer
 from test.helpers import deploy_app_externally
 
-app = App()
+app = App(include_source=False)
 
 
 if os.environ.get("GITHUB_ACTIONS") == "true":
@@ -45,11 +55,202 @@ def dummy():
     pass  # not actually used in test (servicer returns sum of square of all args)
 
 
+@app.function(experimental_options={"input_plane_region": "us-east"})
+def input_plane_func():
+    return "DEADBEEF"
+
+
+@app.function(experimental_options={"input_plane_region": "us-east"}, retries=modal.Retries(max_retries=1))
+def input_plane_failing_func_with_retry():
+    raise ValueError()
+
+
+@app.function(
+    experimental_options={"input_plane_region": "us-east"},
+    retries=modal.Retries(max_retries=1, initial_delay=0, backoff_coefficient=1.0),
+)
+def input_plane_func_with_immediate_retry():
+    raise ValueError()
+
+
+# Set the timeout and sleep to more than the outputs_timeout_override of the
+# "long running" test_remote_input_plane() test case.
+@app.function(timeout=2, experimental_options={"input_plane_region": "us-east"})
+def input_plane_func_long_running():
+    time.sleep(2)
+    return "DEADBEEF"
+
+
 def test_run_function(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with app.run(client=client):
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
+
+
+def _attempt_await_response(status: "api_pb2.GenericResult.GenericStatus.ValueType"):
+    """Helper function to create an AttemptAwaitResponse with a given GenericResult status."""
+    return api_pb2.AttemptAwaitResponse(
+        output=api_pb2.FunctionGetOutputsItem(result=api_pb2.GenericResult(status=status))
+    )
+
+
+@pytest.mark.parametrize(
+    "func, attempt_await_responses, outputs_timeout_override, expectation, attempt_await_count, function_call_count",
+    [
+        # If the function runs successfully the first time, the client should call the
+        # AttemptAwait RPC once and the user's function should be called once.
+        pytest.param(input_plane_func, [], None, nullcontext("DEADBEEF"), 1, 1, id="success"),
+        # The client should call the AttemptAwait RPC until it receives an AttemptAwaitResponse
+        # with an output attribute and then return a successful AttemptAwaitResponse.
+        pytest.param(
+            input_plane_func,
+            [api_pb2.AttemptAwaitResponse()] * 2,
+            None,
+            nullcontext("DEADBEEF"),
+            3,
+            1,
+            id="no output",
+        ),
+        # The client should raise a RemoteError if the AttemptAwaitResponse has a GENERIC_STATUS_TERMINATED status.
+        pytest.param(
+            input_plane_func,
+            [_attempt_await_response(api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)],
+            None,
+            pytest.raises(RemoteError),
+            1,
+            0,
+            id="terminated",
+        ),
+        # The client should retry up to a MAX_INTERNAL_FAILURE_COUNT number of times when it receives an
+        # internal failure status.
+        pytest.param(
+            input_plane_func,
+            [_attempt_await_response(api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE)]
+            * (MAX_INTERNAL_FAILURE_COUNT - 1),
+            None,
+            nullcontext("DEADBEEF"),
+            MAX_INTERNAL_FAILURE_COUNT,
+            1,
+            id="internal failure",
+        ),
+        # The client should raise an InternalFailure if it receives more than MAX_INTERNAL_FAILURE_COUNT
+        # internal failure statuses.
+        pytest.param(
+            input_plane_func,
+            [_attempt_await_response(api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE)]
+            * MAX_INTERNAL_FAILURE_COUNT,
+            None,
+            pytest.raises(InternalFailure),
+            MAX_INTERNAL_FAILURE_COUNT,
+            0,
+            id="internal failure max",
+        ),
+        # The client should raise a RemoteError and not retry when it receives a GENERIC_STATUS_UNSPECIFIED status.
+        pytest.param(
+            input_plane_func,
+            [_attempt_await_response(api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED)],
+            None,
+            pytest.raises(RemoteError),
+            1,
+            0,
+            id="unspecified",
+        ),
+        # The client should raise a RemoteError and not retry when it receives a GENERIC_STATUS_FAILURE status.
+        pytest.param(
+            input_plane_func,
+            [_attempt_await_response(api_pb2.GenericResult.GENERIC_STATUS_FAILURE)],
+            None,
+            pytest.raises(RemoteError),
+            1,
+            0,
+            id="failure",
+        ),
+        # The client should raise a FunctionTimeoutError and not retry when it receives a GENERIC_STATUS_TIMEOUT status.
+        pytest.param(
+            input_plane_func,
+            [_attempt_await_response(api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT)],
+            None,
+            pytest.raises(FunctionTimeoutError),
+            1,
+            0,
+            id="timeout",
+        ),
+        # The client should raise a RemoteError and not retry when it receives a GENERIC_STATUS_INIT_FAILURE status.
+        pytest.param(
+            input_plane_func,
+            [_attempt_await_response(api_pb2.GenericResult.GENERIC_STATUS_INIT_FAILURE)],
+            None,
+            pytest.raises(RemoteError),
+            1,
+            0,
+            id="init failure",
+        ),
+        # The client should raise a RemoteError and not retry when it receives a GENERIC_STATUS_IDLE_TIMEOUT status.
+        pytest.param(
+            input_plane_func,
+            [_attempt_await_response(api_pb2.GenericResult.GENERIC_STATUS_IDLE_TIMEOUT)],
+            None,
+            pytest.raises(RemoteError),
+            1,
+            0,
+            id="idle timeout",
+        ),
+        # The client should retry up to user-specified number of retries when the user's function raises an exception.
+        pytest.param(
+            input_plane_failing_func_with_retry, [], None, pytest.raises(ValueError), 2, 2, id="honor user retry policy"
+        ),
+        # Internal failure retries shouldn't use up user-specified retries.
+        pytest.param(
+            input_plane_failing_func_with_retry,
+            [_attempt_await_response(api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE)]
+            * (MAX_INTERNAL_FAILURE_COUNT - 1),
+            None,
+            pytest.raises(ValueError),
+            MAX_INTERNAL_FAILURE_COUNT + 1,
+            2,
+            id="internal failure does not use up user retries",
+        ),
+        # The client should retry when the retry policy has an initial delay of 0 seconds.
+        pytest.param(
+            input_plane_func_with_immediate_retry, [], None, pytest.raises(ValueError), 2, 2, id="immediate retry"
+        ),
+        # The client should call AttemptAwait multiple times when a function call lasts longer than
+        # function_utils.OUTPUTS_TIMEOUT, but the client should not retry the function call itself.
+        pytest.param(
+            input_plane_func_long_running,
+            [],
+            1,
+            # Currently MockClientServicer returns this string instead of the function return value
+            # when the function call takes longer than function_utils.OUTPUTS_TIMEOUT to run.
+            nullcontext("DEADBEEF"),
+            2,
+            1,
+            id="long running",
+        ),
+    ],
+)
+def test_remote_input_plane(
+    client: Client,
+    servicer: MockClientServicer,
+    monkeypatch: pytest.MonkeyPatch,
+    func: Function,
+    attempt_await_responses: list[api_pb2.AttemptAwaitResponse],
+    outputs_timeout_override: typing.Optional[int],
+    expectation: typing.Any,
+    attempt_await_count: int,
+    function_call_count: int,
+):
+    if outputs_timeout_override is not None:
+        monkeypatch.setattr(modal._functions, "OUTPUTS_TIMEOUT", outputs_timeout_override)
+        monkeypatch.setattr(modal._functions, "ATTEMPT_TIMEOUT_GRACE_PERIOD", 0)
+
+    servicer.attempt_await_responses = attempt_await_responses
+    servicer.function_body(func.get_raw_f())
+    with app.run(client=client), expectation as e:
+        assert func.remote() == e
+    assert servicer.attempt_await_count == attempt_await_count
+    assert servicer.function_call_count == function_call_count
 
 
 def test_single_input_function_call_uses_single_rpc(client, servicer):
@@ -78,7 +279,7 @@ async def test_call_function_locally(client, servicer):
 def test_map(client, servicer, slow_put_inputs):
     servicer.slow_put_inputs = slow_put_inputs
 
-    app = App()
+    app = App(include_source=False)
     dummy_modal = app.function()(dummy)
 
     assert len(servicer.cleared_function_calls) == 0
@@ -91,10 +292,10 @@ def test_map(client, servicer, slow_put_inputs):
 
 @pytest.mark.parametrize("slow_put_inputs", [False, True])
 @pytest.mark.timeout(120)
-def test_map_inputplane(client, servicer, slow_put_inputs):
+def test_map_input_plane(client, servicer, slow_put_inputs):
     servicer.slow_put_inputs = slow_put_inputs
 
-    app = App()
+    app = App(include_source=False)
     dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
     assert len(servicer.cleared_function_calls) == 0
@@ -104,7 +305,7 @@ def test_map_inputplane(client, servicer, slow_put_inputs):
 
 
 def test_nested_map(client):
-    app = App()
+    app = App(include_source=False)
     dummy_modal = app.function()(dummy)
 
     with app.run(client=client):
@@ -113,8 +314,8 @@ def test_nested_map(client):
         assert final_results == [1, 16]
 
 
-def test_nested_map_inputplane(client):
-    app = App()
+def test_nested_map_input_plane(client):
+    app = App(include_source=False)
     dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
     with app.run(client=client):
@@ -132,7 +333,7 @@ def test_exception_in_input_iterator(client, map_type):
         yield 1
         raise CustomException()
 
-    app = App()
+    app = App(include_source=False)
     dummy_modal = app.function()(dummy)
 
     with app.run(client=client):
@@ -146,7 +347,7 @@ def test_exception_in_input_iterator(client, map_type):
 
 
 @pytest.mark.parametrize("map_type", ["map", "starmap"])
-def test_exception_in_input_iterator_inputplane(client, map_type):
+def test_exception_in_input_iterator_input_plane(client, map_type):
     class CustomException(Exception):
         pass
 
@@ -154,7 +355,7 @@ def test_exception_in_input_iterator_inputplane(client, map_type):
         yield 1
         raise CustomException()
 
-    app = App()
+    app = App(include_source=False)
     dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
     with app.run(client=client):
@@ -167,7 +368,7 @@ def test_exception_in_input_iterator_inputplane(client, map_type):
 
 @pytest.mark.asyncio
 async def test_map_async_generator(client):
-    app = App()
+    app = App(include_source=False)
     dummy_modal = app.function()(dummy)
 
     async def gen_num():
@@ -180,8 +381,8 @@ async def test_map_async_generator(client):
 
 
 @pytest.mark.asyncio
-async def test_map_async_generator_inputplane(client):
-    app = App()
+async def test_map_async_generator_input_plane(client):
+    app = App(include_source=False)
     dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
     async def gen_num():
@@ -217,7 +418,7 @@ def synchronicity_loop_delay_tracker():
 
 @pytest.mark.timeout(5)
 def test_map_empty_input(client):
-    app = App()
+    app = App(include_source=False)
 
     @app.function(serialized=True)
     def f():
@@ -230,7 +431,7 @@ def test_map_empty_input(client):
 
 
 def test_map_blocking_iterator_blocking_synchronicity_loop(client):
-    app = App()
+    app = App(include_source=False)
     SLEEP_DUR = 0.5
 
     def blocking_iter():
@@ -252,7 +453,7 @@ def test_map_blocking_iterator_blocking_synchronicity_loop(client):
 
 @pytest.mark.asyncio
 async def test_map_blocking_iterator_blocking_synchronicity_loop_async(client):
-    app = App()
+    app = App(include_source=False)
     SLEEP_DUR = 0.5
 
     def blocking_iter():
@@ -281,7 +482,7 @@ def side_effect(_):
 
 
 def test_for_each(client, servicer):
-    app = App()
+    app = App(include_source=False)
     servicer.function_body(side_effect)
     side_effect_modal = app.function()(side_effect)
     assert _side_effect_count == 0
@@ -297,7 +498,7 @@ def custom_function(x):
 
 
 def test_map_none_values(client, servicer):
-    app = App()
+    app = App(include_source=False)
     servicer.function_body(custom_function)
     custom_function_modal = app.function()(custom_function)
 
@@ -305,8 +506,8 @@ def test_map_none_values(client, servicer):
         assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
 
 
-def test_map_none_values_inputplane(client, servicer):
-    app = App()
+def test_map_none_values_input_plane(client, servicer):
+    app = App(include_source=False)
     servicer.function_body(custom_function)
     custom_function_modal = app.function(experimental_options={"input_plane_region": "us-east"})(custom_function)
 
@@ -315,7 +516,7 @@ def test_map_none_values_inputplane(client, servicer):
 
 
 def test_starmap(client):
-    app = App()
+    app = App(include_source=False)
 
     dummy_modal = app.function()(dummy)
     with app.run(client=client):
@@ -323,12 +524,12 @@ def test_starmap(client):
 
 
 def test_function_memory_request(client):
-    app = App()
+    app = App(include_source=False)
     app.function(memory=2048)(dummy)
 
 
 def test_function_memory_limit(client):
-    app = App()
+    app = App(include_source=False)
     f = app.function(memory=(2048, 4096))(dummy)
 
     with app.run(client=client):
@@ -340,7 +541,7 @@ def test_function_memory_limit(client):
 
 
 def test_function_cpu_request(client, servicer):
-    app = App()
+    app = App(include_source=False)
     f = app.function(cpu=2.0)(dummy)
 
     with app.run(client=client):
@@ -349,7 +550,7 @@ def test_function_cpu_request(client, servicer):
         assert servicer.app_functions["fu-1"].resources.milli_cpu_max == 0
     assert f.spec.cpu == 2.0
 
-    app = App()
+    app = App(include_source=False)
     g = app.function(cpu=7)(dummy)
 
     with app.run(client=client):
@@ -360,7 +561,7 @@ def test_function_cpu_request(client, servicer):
 
 
 def test_function_cpu_limit(client, servicer):
-    app = App()
+    app = App(include_source=False)
     f = app.function(cpu=(1, 3))(dummy)
     assert f.spec.cpu == (1, 3)
 
@@ -375,12 +576,12 @@ def test_function_cpu_limit(client, servicer):
 
 
 def test_function_disk_request(client):
-    app = App()
+    app = App(include_source=False)
     app.function(ephemeral_disk=1_000_000)(dummy)
 
 
 def test_scaledown_window_must_be_positive():
-    app = App()
+    app = App(include_source=False)
     with pytest.raises(InvalidError, match="must be > 0"):
         app.function(scaledown_window=0)(dummy)
 
@@ -390,7 +591,7 @@ def later():
 
 
 def test_function_spawn(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     servicer.function_body(later)
     later_modal = app.function()(later)
@@ -421,7 +622,7 @@ def test_function_spawn(client, servicer):
 
 @pytest.mark.asyncio
 async def test_function_future_async(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     servicer.function_body(later)
     later_modal = app.function()(later)
@@ -448,7 +649,7 @@ async def async_later_gen():
 
 @pytest.mark.asyncio
 async def test_generator(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     later_gen_modal = app.function()(later_gen)
 
@@ -473,7 +674,7 @@ async def test_generator(client, servicer):
 
 
 def test_generator_map_invalid(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     later_gen_modal = app.function()(later_gen)
 
@@ -493,8 +694,8 @@ def test_generator_map_invalid(client, servicer):
 
 
 # This test is somewhat redundant, but it's good to have when we remove the old python server.
-def test_generator_map_invalid_inputplane(client, servicer):
-    app = App()
+def test_generator_map_invalid_input_plane(client, servicer):
+    app = App(include_source=False)
 
     later_gen_modal = app.function(experimental_options={"input_plane_region": "us-east"})(later_gen)
 
@@ -515,7 +716,7 @@ def test_generator_map_invalid_inputplane(client, servicer):
 
 @pytest.mark.asyncio
 async def test_generator_async(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     later_gen_modal = app.function()(async_later_gen)
 
@@ -541,7 +742,7 @@ async def test_generator_async(client, servicer):
 
 @pytest.mark.asyncio
 async def test_generator_future(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     servicer.function_body(later_gen)
     later_modal = app.function()(later_gen)
@@ -558,7 +759,7 @@ async def slo1(sleep_seconds):
 
 
 def test_sync_parallelism(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     servicer.function_body(slo1)
     slo1_modal = app.function()(slo1)
@@ -572,7 +773,7 @@ def test_sync_parallelism(client, servicer):
 
 
 def test_proxy(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     app.function(proxy=Proxy.from_name("my-proxy"))(dummy)
     with app.run(client=client):
@@ -588,7 +789,7 @@ def failure():
 
 
 def test_function_exception(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     servicer.function_body(failure)
     failure_modal = app.function()(failure)
@@ -600,7 +801,7 @@ def test_function_exception(client, servicer):
 
 @pytest.mark.asyncio
 async def test_function_exception_async(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     servicer.function_body(failure)
     failure_modal = app.function()(failure)
@@ -621,7 +822,7 @@ def custom_exception_function(x):
 
 
 def test_map_exceptions(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     servicer.function_body(custom_exception_function)
     custom_function_modal = app.function()(custom_exception_function)
@@ -645,8 +846,8 @@ def test_map_exceptions(client, servicer):
         assert type(res[4]) is CustomException and "bad" in str(res[4])
 
 
-def test_map_exceptions_inputplane(client, servicer):
-    app = App()
+def test_map_exceptions_input_plane(client, servicer):
+    app = App(include_source=False)
 
     servicer.function_body(custom_exception_function)
     custom_function_modal = app.function(experimental_options={"input_plane_region": "us-east"})(
@@ -674,7 +875,7 @@ def test_map_exceptions_inputplane(client, servicer):
 
 @pytest.mark.asyncio
 async def test_async_map_wrapped_exception_warning(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     servicer.function_body(custom_exception_function)
     custom_function_modal = app.function()(custom_exception_function)
@@ -689,8 +890,8 @@ async def test_async_map_wrapped_exception_warning(client, servicer):
 
 # This test is somewhat redundant, but it's good to have when we remove the old python server.
 @pytest.mark.asyncio
-async def test_async_map_wrapped_exception_warning_inputplane(client, servicer):
-    app = App()
+async def test_async_map_wrapped_exception_warning_input_plane(client, servicer):
+    app = App(include_source=False)
 
     servicer.function_body(custom_exception_function)
     custom_function_modal = app.function(experimental_options={"input_plane_region": "us-east"})(
@@ -710,7 +911,7 @@ def import_failure():
 
 
 def test_function_relative_import_hint(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     servicer.function_body(import_failure)
     import_failure_modal = app.function()(import_failure)
@@ -722,7 +923,7 @@ def test_function_relative_import_hint(client, servicer):
 
 
 def test_nonglobal_function():
-    app = App()
+    app = App(include_source=False)
 
     with pytest.raises(InvalidError) as excinfo:
 
@@ -734,7 +935,7 @@ def test_nonglobal_function():
 
 
 def test_non_global_serialized_function():
-    app = App()
+    app = App(include_source=False)
 
     @app.function(serialized=True)
     def f():
@@ -742,7 +943,7 @@ def test_non_global_serialized_function():
 
 
 def test_closure_valued_serialized_function(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     def make_function(s):
         @app.function(name=f"ret_{s}", serialized=True)
@@ -765,7 +966,7 @@ def test_closure_valued_serialized_function(client, servicer):
 
 
 def test_custom_name_requires_serialized():
-    app = App()
+    app = App(include_source=False)
 
     with pytest.raises(InvalidError, match="`serialized=True`"):
         app.function(name="foo")(dummy)
@@ -777,7 +978,7 @@ def test_new_hydrated_internal(client, servicer):
 
 
 def test_from_id(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     @app.function(serialized=True)
     def foo():
@@ -802,7 +1003,7 @@ def test_from_id(client, servicer):
 
 
 def test_local_execution_on_web_endpoint(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     @app.function(serialized=True)
     @fastapi_endpoint()
@@ -822,7 +1023,7 @@ def test_local_execution_on_web_endpoint(client, servicer):
 def test_local_execution_on_asgi_app(client, servicer):
     from fastapi import FastAPI
 
-    app = App()
+    app = App(include_source=False)
 
     @app.function(serialized=True)
     @asgi_app()
@@ -849,7 +1050,7 @@ def test_local_execution_on_asgi_app(client, servicer):
 
 @pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn"])
 def test_invalid_remote_executor_on_web_endpoint(client, servicer, remote_executor):
-    app = App()
+    app = App(include_source=False)
 
     @app.function(serialized=True)
     @fastapi_endpoint()
@@ -873,7 +1074,7 @@ def test_invalid_remote_executor_on_web_endpoint(client, servicer, remote_execut
 
 @pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn"])
 def test_invalid_remote_executor_on_asgi_app(client, servicer, remote_executor):
-    app = App()
+    app = App(include_source=False)
 
     @app.function(serialized=True)
     @asgi_app()
@@ -903,7 +1104,7 @@ def test_invalid_remote_executor_on_asgi_app(client, servicer, remote_executor):
     assert "webhook" in str(excinfo.value) and remote_executor in str(excinfo.value)
 
 
-lc_app = App()
+lc_app = App(include_source=False)
 
 
 @lc_app.function()
@@ -914,7 +1115,7 @@ def f(x):
 def test_serialize_deserialize_function_handle(servicer, client):
     from modal._serialization import deserialize, serialize
 
-    app = App()
+    app = App(include_source=False)
 
     @app.function(serialized=True)
     @fastapi_endpoint()
@@ -934,7 +1135,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
 
 
 def test_default_cloud_provider(client, servicer, monkeypatch):
-    app = App()
+    app = App(include_source=False)
 
     monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "xyz")
     app.function()(dummy)
@@ -947,7 +1148,7 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
 
 
 def test_autoscaler_settings(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     kwargs: dict[str, typing.Any] = dict(  # No idea why we need that type hint
         min_containers=2,
@@ -974,10 +1175,31 @@ def test_autoscaler_settings(client, servicer):
     ],
 )
 def test_autoscaler_settings_deprecations(new, old):
-    app = App()
+    app = App(include_source=False)
 
     with pytest.warns(DeprecationError, match=f"{old} -> {new}"):
         app.function(**{old: 10})(dummy)  # type: ignore
+
+
+def test_timeout(servicer, client):
+    app = App(include_source=False)
+
+    with pytest.raises(InvalidError, match="cannot be set to None"):
+
+        @app.function(serialized=True, timeout=None)
+        def f():
+            pass
+
+    @app.function(serialized=True)
+    def g():
+        pass
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    req = ctx.pop_request("FunctionCreate")
+    assert req.function.timeout_secs == 300
 
 
 def test_not_hydrated():
@@ -992,7 +1214,7 @@ def test_invalid_large_serialization(client):
         return big_data
 
     with pytest.warns(UserWarning, match="larger than the recommended limit"):
-        app = App()
+        app = App(include_source=False)
         app.function(serialized=True)(f)
         with app.run(client=client):
             pass
@@ -1003,7 +1225,7 @@ def test_invalid_large_serialization(client):
         return bigger_data
 
     with pytest.raises(InvalidError):
-        app = App()
+        app = App(include_source=False)
         app.function(serialized=True)(g)
         with app.run(client=client):
             pass
@@ -1015,7 +1237,7 @@ def test_call_unhydrated_function():
 
 
 def test_deps_explicit(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     image = Image.debian_slim()
     nfs_1 = NetworkFileSystem.from_name("nfs-1", create_if_missing=True)
@@ -1037,7 +1259,7 @@ def assert_is_wrapped_dict(some_arg):
 
 
 def test_calls_should_not_unwrap_modal_objects(servicer, client):
-    app = App()
+    app = App(include_source=False)
     foo = app.function()(assert_is_wrapped_dict)
     servicer.function_body(assert_is_wrapped_dict)
 
@@ -1061,7 +1283,7 @@ def assert_is_wrapped_dict_gen(some_arg):
 
 
 def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
-    app = App()
+    app = App(include_source=False)
     foo = app.function()(assert_is_wrapped_dict_gen)
     servicer.function_body(assert_is_wrapped_dict_gen)
 
@@ -1105,20 +1327,20 @@ def test_no_state_reuse(client, servicer, supports_dir):
         .add_local_file(supports_dir / "pyproject.toml", "/root/")
         .add_local_file(supports_dir / "pyproject.toml", "/root/")
     )
-    app = App("reuse-mount-app")
+    app = App("reuse-mount-app", include_source=False)
     app.function(image=img)(dummy)
 
     with servicer.intercept() as ctx:
         deploy_app(app, client=client)
         func_create = ctx.pop_request("FunctionCreate")
         first_deploy_mounts = set(func_create.function.mount_ids)
-        assert len(first_deploy_mounts) == 3  # client mount, one of the explicit mounts, entrypoint mount
+        assert len(first_deploy_mounts) == 2  # client mount & explicit mount
 
     with servicer.intercept() as ctx:
         deploy_app(app, client=client)
         func_create = ctx.pop_request("FunctionCreate")
         second_deploy_mounts = set(func_create.function.mount_ids)
-        assert len(second_deploy_mounts) == 3  # client mount, one of the explicit mounts, entrypoint mount
+        assert len(second_deploy_mounts) == 2  # client mount & explicit mount
 
     # mount ids should not overlap between first and second deploy, except for client mount
     assert first_deploy_mounts & second_deploy_mounts == {servicer.default_published_client_mount}
@@ -1131,7 +1353,7 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
     #  by the test itself otherwise... Should move to its own thread.
     servicer.use_blob_outputs = True
     servicer.max_object_size_bytes = 1
-    app = App()
+    app = App(include_source=False)
     dummy_modal = app.function()(dummy)
 
     _, blobs, _, _ = blob_server
@@ -1164,7 +1386,7 @@ async def test_non_aio_map_in_async_caller_error(client):
 
 # This test is somewhat redundant, but it's good to have when we remove the old python server.
 @pytest.mark.asyncio
-async def test_non_aio_map_in_async_caller_error_inputplane(client):
+async def test_non_aio_map_in_async_caller_error_input_plane(client):
     dummy_function = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
     with app.run(client=client):
@@ -1247,7 +1469,7 @@ def test_function_decorator_on_method():
 
 
 def test_batch_function_invalid_error():
-    app = App()
+    app = App(include_source=False)
 
     with pytest.raises(InvalidError, match="must be a positive integer"):
         app.function(batched(max_batch_size=0, wait_ms=1))(dummy)
@@ -1277,7 +1499,7 @@ def test_batch_function_invalid_error():
 
 
 def test_experimental_spawn(client, servicer):
-    app = App()
+    app = App(include_source=False)
     dummy_modal = app.function()(dummy)
 
     with servicer.intercept() as ctx:
@@ -1352,7 +1574,7 @@ def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
     intended for RESOURCE_EXHAUSTED only. The warning is logged every 8 attempts, which is why we retry 10 times.
     """
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
-    app = App()
+    app = App(include_source=False)
     pow2 = app.function()(_pow2)
     servicer.function_body(_pow2)
     servicer.fail_put_inputs_with_grpc_error = GrpcErrorAndCount(Status.INTERNAL, 10)
@@ -1372,7 +1594,7 @@ def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog
     intended for RESOURCE_EXHAUSTED only. The warning is logged every 8 attempts, which is why we retry 10 times.
     """
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
-    app = App()
+    app = App(include_source=False)
     pow2 = app.function()(_pow2)
     servicer.function_body(_pow2)
     servicer.fail_put_inputs_with_grpc_error = GrpcErrorAndCount(Status.RESOURCE_EXHAUSTED, 10)
@@ -1393,7 +1615,7 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
     intended for RESOURCE_EXHAUSTED only. The warning is logged every 8 attempts, which is why we retry 10 times.
     """
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
-    app = App()
+    app = App(include_source=False)
     pow2 = app.function()(_pow2)
     servicer.function_body(_pow2)
     servicer.fail_put_inputs_with_stream_terminated_error = 10
@@ -1454,7 +1676,7 @@ def test_concurrency_config_migration(client, servicer):
 
 @pytest.mark.usefixtures("set_env_client")
 def test_function_schema_recording(client, servicer):
-    app = App("app")
+    app = App("app", include_source=False)
 
     @app.function(name="f", serialized=True)
     def f(a: int) -> list[str]: ...
@@ -1486,7 +1708,7 @@ def test_function_schema_recording(client, servicer):
 
 @pytest.mark.usefixtures("set_env_client")
 def test_function_supported_input_formats(client, servicer):
-    app = App("app")
+    app = App("app", include_source=False)
 
     @app.function(serialized=True)
     def f(a): ...
@@ -1498,6 +1720,9 @@ def test_function_supported_input_formats(client, servicer):
     @modal.fastapi_endpoint()
     def web_f(): ...
 
+    @app.function(serialized=True, _experimental_restrict_output=True)
+    def cbor_f(a): ...
+
     @app.cls(serialized=True)
     class A:
         @modal.method()
@@ -1506,29 +1731,58 @@ def test_function_supported_input_formats(client, servicer):
         @modal.web_server(8080)
         def web_f(self): ...
 
+        @modal.method()
+        def g(self):
+            yield 1
+
     deploy_app(app, client=client)
     f_metadata = f._get_metadata()
-    assert set(f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE}
-    assert f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    assert set(f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+    assert set(f_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
     g_metadata = g._get_metadata()
-    assert set(g_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE}
-    assert g_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    assert set(g_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+    assert set(g_metadata.supported_output_formats) == {
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+        api_pb2.DATA_FORMAT_GENERATOR_DONE,
+    }
     web_f_metadata = web_f._get_metadata()
     assert set(web_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_ASGI}
-    assert web_f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
+    assert web_f_metadata.supported_output_formats == [api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE]
+    cbor_f_metadata = cbor_f._get_metadata()
+    assert set(cbor_f_metadata.supported_input_formats) == {api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR}
+    assert set(cbor_f_metadata.supported_output_formats) == {api_pb2.DATA_FORMAT_CBOR}
 
     cls_metadata = typing.cast(modal.Cls, A)._get_class_service_function()._get_metadata()
-    assert cls_metadata.method_handle_metadata["f"].supported_input_formats == [api_pb2.DATA_FORMAT_PICKLE]
-    assert cls_metadata.method_handle_metadata["f"].supported_output_formats == [api_pb2.DATA_FORMAT_PICKLE]
+    assert set(cls_metadata.method_handle_metadata["f"].supported_input_formats) == {
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+    }
+    assert set(cls_metadata.method_handle_metadata["f"].supported_output_formats) == {
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+    }
     assert cls_metadata.method_handle_metadata["web_f"].supported_input_formats == [api_pb2.DATA_FORMAT_ASGI]
-    assert cls_metadata.method_handle_metadata["web_f"].supported_output_formats == [api_pb2.DATA_FORMAT_ASGI]
+    assert cls_metadata.method_handle_metadata["web_f"].supported_output_formats == [
+        api_pb2.DATA_FORMAT_ASGI,
+        api_pb2.DATA_FORMAT_GENERATOR_DONE,
+    ]
+    assert set(cls_metadata.method_handle_metadata["g"].supported_input_formats) == {
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+    }
+    assert set(cls_metadata.method_handle_metadata["g"].supported_output_formats) == {
+        api_pb2.DATA_FORMAT_PICKLE,
+        api_pb2.DATA_FORMAT_CBOR,
+        api_pb2.DATA_FORMAT_GENERATOR_DONE,
+    }
 
 
 @pytest.mark.usefixtures("set_env_client")
 def test_function_schema_excludes_web_endpoints(client, servicer):
     # for now we exclude web endpoints since they don't use straight-forward arguments
     # in the same way as regular modal functions
-    app = App("app")
+    app = App("app", include_source=False)
 
     @app.function(name="f", serialized=True)
     @modal.fastapi_endpoint()
@@ -1540,8 +1794,173 @@ def test_function_schema_excludes_web_endpoints(client, servicer):
 
 
 @pytest.mark.usefixtures("set_env_client")
+def test_cbor_output_complex_data_types(client, servicer):
+    """Test that a received cbor payload is decoded as such, even if the submitted input is pickle"""
+    app = App("app", include_source=False)
+
+    @app.function(serialized=True)
+    def complex_cbor_function(data: list) -> dict:
+        return {"processed": True, "data": data}
+
+    deploy_app(app, client=client)
+
+    # Test with complex nested data structures
+    complex_result = {
+        "processed": True,
+        "data": [1, 2.5, "string", {"nested": True, "values": [None, False, True]}],
+        "metadata": {
+            "timestamp": 1234567890,
+            "tags": ("test", "cbor", "serialization"),
+            "config": {"enabled": True, "count": 42},
+        },
+    }
+    expected_decoded_output = {
+        "processed": True,
+        "data": [1, 2.5, "string", {"nested": True, "values": [None, False, True]}],
+        "metadata": {
+            "timestamp": 1234567890,
+            "tags": ["test", "cbor", "serialization"],  # same but tuple converted to list since cbor doesnt distinguish
+            "config": {"enabled": True, "count": 42},
+        },
+    }
+
+    with servicer.intercept() as ctx:
+        from modal._serialization import serialize_data_format
+
+        # Create CBOR-encoded complex data
+        cbor_encoded_data = serialize_data_format(complex_result, api_pb2.DATA_FORMAT_CBOR)
+
+        # Inject FunctionGetOutputs response with complex CBOR data
+        ctx.add_response(
+            "FunctionGetOutputs",
+            api_pb2.FunctionGetOutputsResponse(
+                outputs=[
+                    api_pb2.FunctionGetOutputsItem(
+                        input_id="complex-test-id",
+                        idx=0,
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, data=cbor_encoded_data
+                        ),
+                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        retry_count=0,
+                    )
+                ]
+            ),
+        )
+
+        # Call the function remotely
+        result = complex_cbor_function.remote(["doesnt_matter"])
+
+        # Verify that the input was submitted as pickle format (default)
+        function_map_requests = ctx.get_requests("FunctionMap")
+        assert len(function_map_requests) == 1
+        function_map_request = function_map_requests[0]
+        assert function_map_request.pipelined_inputs[0].input.data_format == api_pb2.DATA_FORMAT_PICKLE
+
+        # Verify complex data structure is properly decoded
+        assert result == expected_decoded_output
+
+
+@pytest.mark.usefixtures("set_env_client")
+def test_cbor_output_failed_result_handling(client, servicer):
+    """Test that CBOR output format is handled correctly even when the result failed"""
+    app = App("app", include_source=False)
+
+    @app.function(serialized=True)
+    def failing_cbor_function(x: int) -> int:
+        return x * 2
+
+    deploy_app(app, client=client)
+
+    with servicer.intercept() as ctx:
+        # Inject a failed FunctionGetOutputs response with CBOR data format
+        # but no data field set (only exception text)
+        ctx.add_response(
+            "FunctionGetOutputs",
+            api_pb2.FunctionGetOutputsResponse(
+                outputs=[
+                    api_pb2.FunctionGetOutputsItem(
+                        input_id="failed-test-id",
+                        idx=0,
+                        # simulate that the function was cbor only and had an exception
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                            exception="ValueError: Something went wrong in the function",
+                            traceback=(
+                                "Traceback (most recent call last):\n"
+                                '  File "test.py", line 1, in <module>\n'
+                                "ValueError: Something went wrong in the function\n"
+                            ),
+                        ),
+                        data_format=api_pb2.DATA_FORMAT_CBOR,
+                        retry_count=0,
+                    )
+                ]
+            ),
+        )
+
+        # Call the function remotely and expect it to raise the exception
+        with pytest.raises(RemoteError, match="Something went wrong in the function"):
+            failing_cbor_function.remote(42)
+
+        # Verify that the input was submitted as pickle format (default)
+        function_map_requests = ctx.get_requests("FunctionMap")
+        assert len(function_map_requests) == 1
+        function_map_request = function_map_requests[0]
+        assert function_map_request.pipelined_inputs[0].input.data_format == api_pb2.DATA_FORMAT_PICKLE
+
+
+@pytest.mark.usefixtures("set_env_client")
+def test_cbor_input_only_function_uses_cbor_input(client, servicer):
+    """Test that if a Function has supported_input_formats set to CBOR only in its handle metadata,
+    the client will use CBOR encoded FunctionMap when calling it."""
+
+    # Use an existing function from a previous test
+    cbor_only_function = Function.from_name("app", "f")
+
+    with servicer.intercept() as ctx:
+        # Mock the FunctionGet response to return metadata with CBOR-only input format
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-test-function-id",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    function_name="f",
+                    function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+                    supported_input_formats=[api_pb2.DATA_FORMAT_CBOR],
+                    supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+                ),
+            ),
+        )
+
+        # Call the function remotely
+        cbor_only_function.remote(42)
+
+        # Verify that the input was submitted as CBOR format
+        function_map_requests = ctx.get_requests("FunctionMap")
+        assert len(function_map_requests) == 1
+        function_map_request = function_map_requests[0]
+
+        # The client should use CBOR encoding when the function only supports CBOR input
+        assert function_map_request.pipelined_inputs[0].input.data_format == api_pb2.DATA_FORMAT_CBOR
+
+        # Verify the CBOR-encoded data can be properly decoded
+        cbor_encoded_args = function_map_request.pipelined_inputs[0].input.args
+        from modal._serialization import deserialize_data_format
+
+        decoded_args = deserialize_data_format(cbor_encoded_args, api_pb2.DATA_FORMAT_CBOR, client)
+        expected_args = [
+            [
+                42,
+            ],
+            {},
+        ]  # (args, kwargs) tuple
+        assert decoded_args == expected_args
+
+
+@pytest.mark.usefixtures("set_env_client")
 def test_class_schema_recording(client, servicer):
-    app = App("app")
+    app = App("app", include_source=False)
 
     @app.cls(serialized=True)
     class F:
@@ -1597,7 +2016,7 @@ def test_failed_lookup_error(client, servicer):
 
 @pytest.mark.parametrize("decorator", ["function", "cls"])
 def test_experimental_options(client, servicer, decorator):
-    app = App()
+    app = App(include_source=False)
 
     experimental_options = {"foo": 2, "bar": True}
 
@@ -1623,7 +2042,7 @@ def test_experimental_options(client, servicer, decorator):
 
 
 def test_restrict_modal_access(client, servicer):
-    app = App()
+    app = App(include_source=False)
 
     @app.function(serialized=True, restrict_modal_access=True)
     def f():
@@ -1739,7 +2158,7 @@ def test_function_call_iter(client, servicer):
         assert subset_results == expected_subset
 
 
-timeout_app = App("timeout-app")
+timeout_app = App("timeout-app", include_source=False)
 
 
 @timeout_app.function(startup_timeout=14)
@@ -1758,7 +2177,7 @@ def test_startup_timeout(client, servicer):
     assert function_request.function.startup_timeout_secs == 14
 
 
-timeout_app_default = App("timeout-app-default")
+timeout_app_default = App("timeout-app-default", include_source=False)
 
 
 @timeout_app_default.function(timeout=23)

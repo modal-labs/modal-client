@@ -23,8 +23,7 @@ launch_cli = Typer(
     no_args_is_help=True,
     rich_markup_mode="markdown",
     help="""
-    Open a serverless app instance on Modal.
-    >⚠️  `modal launch` is **experimental** and may change in the future.
+    [Experimental] Open a serverless app instance on Modal.
     """,
 )
 

@@ -53,15 +53,17 @@ def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
 def protoc(ctx):
     """Compile protocol buffer files for gRPC and Modal-specific wrappers.
 
-    Generates Python stubs for api.proto and options.proto."""
+    Generates Python stubs for api.proto."""
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
-    input_files = "modal_proto/api.proto modal_proto/options.proto"
+    client_proto_files = "modal_proto/api.proto"
+    sandbox_router_proto_file = "modal_proto/sandbox_router.proto"
+    task_command_router_proto_file = "modal_proto/task_command_router.proto"
     py_protoc = (
         protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
     print(py_protoc)
     # generate grpcio and grpclib proto files:
-    ctx.run(f"{py_protoc} -I . {input_files}")
+    ctx.run(f"{py_protoc} -I . {client_proto_files} {sandbox_router_proto_file} {task_command_router_proto_file}")
 
     # generate modal-specific wrapper around grpclib api stub using custom plugin:
     grpc_plugin_pyfile = Path("protoc_plugin/plugin.py")
@@ -69,7 +71,7 @@ def protoc(ctx):
     with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
         ctx.run(
             f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
-            + f" --modal-grpclib-python_out=. -I . {input_files}"
+            + f" --modal-grpclib-python_out=. -I . {client_proto_files}"
         )
 
 
@@ -80,16 +82,11 @@ def protoc(ctx):
 )
 def lint(ctx, fix=False):
     """Run linter on all files."""
-    ctx.run(f"ruff check . {'--fix' if fix else ''}", pty=True)
+    ctx.run(f"ruff check {'--fix' if fix else ''}", pty=True, echo=True)
+    ctx.run(f"ruff format {'' if fix else '--diff'}", pty=True, echo=True)
 
 
-@task
-def lint_protos(ctx):
-    """Lint protocol buffer files.
-
-    Ensures imports/enums/messages/services are ordered correctly and RPCs are alphabetized.
-    """
-    proto_fname = "modal_proto/api.proto"
+def lint_protos_impl(ctx, proto_fname: str):
     with open(proto_fname) as f:
         proto_text = f.read()
 
@@ -131,6 +128,17 @@ def lint_protos(ctx):
                 console.print(f"\nThe {rpc_a} rpc proto is out of order relative to the {rpc_b} rpc.")
                 console.print("\nRPC definitions should be ordered within each service proto.", style="dim")
                 sys.exit(1)
+
+
+@task
+def lint_protos(ctx):
+    """Lint protocol buffer files.
+
+    Ensures imports/enums/messages/services are ordered correctly and RPCs are alphabetized.
+    """
+    lint_protos_impl(ctx, "modal_proto/api.proto")
+    lint_protos_impl(ctx, "modal_proto/sandbox_router.proto")
+    lint_protos_impl(ctx, "modal_proto/task_command_router.proto")
 
 
 @task
@@ -224,6 +232,7 @@ def type_check(ctx):
         "modal/config.py",
         "modal/object.py",
         "modal/_type_manager.py",
+        "modal/container_process.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
@@ -450,17 +459,21 @@ def update_changelog(ctx, sha: str = ""):
         print("Aborting: No PR description in response from GitHub API")
         return
 
-    # Parse the PR description to get a changelog update
-    comment_pattern = r"<!--.+?-->"
-    pr_description = re.sub(comment_pattern, "", pr_description, flags=re.DOTALL)
+    # Parse the PR description to get a changelog update, which is all text between
+    # the changelog header and any auto comments appended by Cursor
 
-    changelog_pattern = r"## Changelog\s*(.+)$"
+    changelog_pattern = r"## Changelog\s*(.*?)(?:<!--\s*\w*CURSOR\w*\s*-->|$)"
     m = re.search(changelog_pattern, pr_description, flags=re.DOTALL)
     if m:
-        update = m.group(1).strip()
+        update = m.group(1)
     else:
         print("Aborting: No changelog section in PR description")
         return
+
+    # Remove any HTML comments
+    comment_pattern = r"<!--.+?-->"
+    update = re.sub(comment_pattern, "", update, flags=re.DOTALL).strip()
+
     if not update:
         print("Aborting: Empty changelog in PR description")
         return
@@ -493,6 +506,7 @@ def show_deprecations(ctx):
     """Analyze Modal source code and display all deprecation warnings/errors.
 
     Shows deprecation date, level, location, function, and message in a formatted table."""
+
     def get_modal_source_files() -> list[str]:
         source_files: list[str] = []
         for root, _, files in os.walk("modal"):

@@ -38,23 +38,147 @@ from grpclib.events import RecvRequest, listen
 from modal import __version__, config
 from modal._functions import _Function
 from modal._runtime.container_io_manager import _ContainerIOManager
-from modal._serialization import deserialize, deserialize_params, serialize_data_format
+from modal._serialization import deserialize, deserialize_data_format, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import find_free_port
 from modal._utils.http_utils import run_temporary_http_server
 from modal._utils.jwt_utils import DecodedJwt
+from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.client import Client
 from modal.cls import _Cls
 from modal.image import ImageBuilderVersion
 from modal.mount import PYTHON_STANDALONE_VERSIONS, client_mount_name, python_standalone_mount_name
-from modal_proto import api_grpc, api_pb2
+from modal_proto import api_grpc, api_pb2, task_command_router_pb2 as sr_pb2
 
 VALID_GPU_TYPES = ["ANY", "T4", "L4", "A10G", "L40S", "A100", "A100-40GB", "A100-80GB", "H100"]
 VALID_CLOUD_PROVIDERS = ["AWS", "GCP", "OCI", "AUTO", "XYZ"]
+
+
+class FakeTaskCommandRouterClient:
+    """Test helper that mimics the task command router API using a local subprocess."""
+
+    def __init__(self, server_client):
+        self._procs: dict[str, asyncio.subprocess.Process] = {}
+        self._stdin_offsets: dict[str, int] = {}
+
+    async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
+        # Spawn the command locally.
+        proc = await asyncio.subprocess.create_subprocess_exec(
+            *list(request.command_args),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE,
+            cwd=(request.workdir or None),
+        )
+        self._procs[request.exec_id] = proc
+        self._stdin_offsets[request.exec_id] = 0
+        return sr_pb2.TaskExecStartResponse()
+
+    async def exec_stdio_read(
+        self,
+        task_id: str,
+        exec_id: str,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        deadline: float | None = None,
+    ):
+        proc = self._procs[exec_id]
+        if file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            stream = proc.stdout
+        elif file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
+            stream = proc.stderr
+        else:
+            raise ValueError("Unsupported file descriptor")
+
+        while True:
+            try:
+                timeout = (deadline - time.monotonic()) if deadline is not None else None
+                chunk = await asyncio.wait_for(stream.read(4096), timeout=timeout)
+            except asyncio.TimeoutError:
+                from modal.exception import ExecTimeoutError
+
+                raise ExecTimeoutError("deadline exceeded")
+
+            if not chunk:
+                return
+            yield sr_pb2.TaskExecStdioReadResponse(data=chunk)
+
+    async def exec_stdin_write(self, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool):
+        proc = self._procs[exec_id]
+        # Simple offset handling: ignore if offset is behind current.
+        current = self._stdin_offsets[exec_id]
+        if offset != current:
+            # For tests, assume sequential writes; ignore mismatches.
+            pass
+        if data:
+            proc.stdin.write(data)
+            await proc.stdin.drain()
+            self._stdin_offsets[exec_id] = current + len(data)
+        if eof:
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
+        return sr_pb2.TaskExecStdinWriteResponse()
+
+    async def exec_poll(self, task_id: str, exec_id: str, deadline: float | None = None) -> sr_pb2.TaskExecPollResponse:
+        proc = self._procs[exec_id]
+        if deadline is not None and time.monotonic() >= deadline:
+            from modal.exception import ExecTimeoutError
+
+            raise ExecTimeoutError("deadline exceeded")
+
+        if proc.returncode is None:
+            return sr_pb2.TaskExecPollResponse()
+        else:
+            return sr_pb2.TaskExecPollResponse(code=proc.returncode)
+
+    async def exec_wait(self, task_id: str, exec_id: str, deadline: float | None = None) -> sr_pb2.TaskExecWaitResponse:
+        proc = self._procs[exec_id]
+        try:
+            if deadline is None:
+                await proc.wait()
+            else:
+                timeout = max(0, deadline - time.monotonic())
+                await asyncio.wait_for(proc.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            from modal.exception import ExecTimeoutError
+
+            raise ExecTimeoutError("deadline exceeded")
+
+        return sr_pb2.TaskExecWaitResponse(code=proc.returncode)
+
+
+@pytest.fixture
+def exec_backend(request, monkeypatch, client):
+    """Parametrized fixture to toggle between server and command-router exec backends.
+
+    Usage: add to test via parametrize with values ["server", "router"].
+    """
+    backend = getattr(request, "param", "server")
+
+    if backend == "server":
+        # Force server path by making try_init return None
+        async def _no_router(*args, **kwargs):
+            return None
+
+        async def _try_init(cls, *a, **k):
+            return await _no_router()
+
+        monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_try_init))
+    elif backend == "router":
+
+        async def _mk_router(cls, server_client, task_id):
+            return FakeTaskCommandRouterClient(server_client)
+
+        monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+    else:
+        raise ValueError(f"Unknown exec backend: {backend}")
+
+    return backend
 
 
 @dataclasses.dataclass
@@ -202,6 +326,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             }
         ]
         self.app_objects = {}
+        self.app_tags: dict[str, dict[str, str]] = {}
         self.app_unindexed_objects = {}
         self.max_object_size_bytes = MAX_OBJECT_SIZE_BYTES
         self.n_inputs = 0
@@ -316,12 +441,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_get_server_warnings = None
         self.resp_jitter_secs: float = 0.0
         self.port = port
-        # AttemptAwait will return a failure until this is 0. It is decremented by 1 each time AttemptAwait is called.
-        self.attempt_await_failures_remaining = 0
+        # Set a list of custom, fixed responses for the AttemptAwait RPC.
+        # This mock server will return responses in order. The regular behavior will resume once this list is exhausted.
+        self.attempt_await_responses: list[api_pb2.AttemptAwaitResponse] = []
         # Value returned by AuthTokenGet
         self.auth_token = jwt.encode({"exp": int(time.time()) + 3600}, "my-secret-key", algorithm="HS256")
         self.auth_tokens_generated = 0
         self.function_id_to_definition_id: dict[str, str] = {}
+        # Number of times AttemptAwait was called.
+        self.attempt_await_count = 0
+        # Number of times the user's function was called.
+        self.function_call_count = 0
+        self.function_call_result: Any = None
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -700,6 +831,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         await stream.send_message(api_pb2.AppListResponse(apps=apps))
 
+    async def AppSetTags(self, stream):
+        request: api_pb2.AppSetTagsRequest = await stream.recv_message()
+        self.app_tags[request.app_id] = dict(request.tags)
+        await stream.send_message(Empty())
+
     async def AppStop(self, stream):
         request: api_pb2.AppStopRequest = await stream.recv_message()
         self.deployed_apps = {k: v for k, v in self.deployed_apps.items() if v != request.app_id}
@@ -975,6 +1111,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for update in request.updates:
             self.dicts[request.dict_id][update.key] = update.value
         await stream.send_message(api_pb2.DictUpdateResponse(created=True))
+
+    async def DictPop(self, stream):
+        request: api_pb2.DictPopRequest = await stream.recv_message()
+        d = self.dicts[request.dict_id]
+        if request.key in d:
+            value = d.pop(request.key)
+            await stream.send_message(api_pb2.DictPopResponse(found=True, value=value))
+        else:
+            await stream.send_message(api_pb2.DictPopResponse(found=False))
+
+    async def DictContains(self, stream):
+        request: api_pb2.DictContainsRequest = await stream.recv_message()
+        d = self.dicts[request.dict_id]
+        found = request.key in d
+        await stream.send_message(api_pb2.DictContainsResponse(found=found))
 
     async def DictContents(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
@@ -1282,9 +1433,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     def add_function_call_input(self, function_call_id, item: api_pb2.FunctionPutInputsItem, input_id, retry_count):
         if item.input.WhichOneof("args_oneof") == "args":
-            args, kwargs = deserialize(item.input.args, None)
+            args, kwargs = deserialize_data_format(item.input.args, item.input.data_format, None)
         else:
-            args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
+            args, kwargs = deserialize_data_format(self.blobs[item.input.args_blob_id], item.input.data_format, None)
         function_call_inputs = self.function_call_inputs.setdefault(function_call_id, [])
         function_call_inputs.append(((item.idx, input_id, retry_count), (args, kwargs)))
         self.function_call_inputs_update_event.set()
@@ -1486,14 +1637,24 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
+    async def ImageDelete(self, stream):
+        request: api_pb2.ImageDeleteRequest = await stream.recv_message()
+        if request.image_id not in self.images:
+            raise GRPCError(Status.NOT_FOUND, f"Image {request.image_id} not found")
+
+        self.images.pop(request.image_id)
+        self.image_build_function_ids.pop(request.image_id, None)
+        self.image_builder_versions.pop(request.image_id, None)
+        if request.image_id in self.force_built_images:
+            self.force_built_images.remove(request.image_id)
+
+        await stream.send_message(Empty())
+
     ### Mount
 
     async def MountPutFile(self, stream):
         request: api_pb2.MountPutFileRequest = await stream.recv_message()
         if request.WhichOneof("data_oneof") is not None:
-            if request.data.startswith(b"large"):
-                # Useful for simulating a slow upload, e.g. to test our checks for mid-deploy modifications
-                await asyncio.sleep(2)
             self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
             self.n_mount_files += 1
             await stream.send_message(api_pb2.MountPutFileResponse(exists=True))
@@ -1777,6 +1938,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         _request: api_pb2.SandboxRestoreRequest = await stream.recv_message()
         await stream.send_message(api_pb2.SandboxRestoreResponse(sandbox_id="sb-123"))
 
+    async def TaskGetCommandRouterAccess(self, stream):
+        # In tests, we disable command router access so client falls back to server RPCs,
+        # unless the exec_backend is "router".
+        _request: api_pb2.TaskGetCommandRouterAccessRequest = await stream.recv_message()
+        raise GRPCError(Status.FAILED_PRECONDITION, "Command router access not enabled in tests")
+
     async def SandboxGetTaskId(self, stream):
         # only used for `modal shell` / `modal container exec`
         _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
@@ -1966,6 +2133,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 token_secret="xyz",
             )
         )
+
+    async def WorkspaceBillingReport(self, stream):
+        # Dummy implementation
+        await stream.recv_message()
+
+        item = api_pb2.WorkspaceBillingReportItem(
+            object_id="ap-123",
+            description="app1",
+            environment_name="test",
+            cost="100.123456",
+            tags={"team": "eng", "project": "p7r"},
+        )
+        item.interval.FromDatetime(datetime.datetime(2025, 1, 1, 0, 0, 0))
+        await stream.send_message(item)
 
     async def WorkspaceNameLookup(self, stream):
         await stream.send_message(api_pb2.WorkspaceNameLookupResponse(username="test-username"))
@@ -2319,28 +2500,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def AttemptAwait(self, stream):
+        self.attempt_await_count += 1
         # TODO(dxia): implement attempt token logic
 
-        # To test client retries for internal failures, tests can configure outputs to fail some number of times.
+        if len(self.attempt_await_responses) > 0:
+            await stream.send_message(self.attempt_await_responses.pop(0))
+            return
+
         status = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        if self.attempt_await_failures_remaining > 0:
-            status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
-            self.attempt_await_failures_remaining = self.attempt_await_failures_remaining - 1
 
         if self.function_call_inputs:
             function_call_id = f"fc-{self.fcidx}"
             (idx, input_id, retry_count), (args, kwargs) = self.function_call_inputs.pop(function_call_id)[0]
             self.fcidx -= 1
             try:
-                res = self._function_body(*args, **kwargs)
+                self.function_call_count += 1
+                self.function_call_result = self._function_body(*args, **kwargs)
             except Exception as e:
-                res = e
+                self.function_call_result = e
                 status = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
         else:
             input_id = "in-1"
             idx = 0
             retry_count = 0
-            res = "attempt_await_bogus_response"
 
         await stream.send_message(
             api_pb2.AttemptAwaitResponse(
@@ -2349,7 +2531,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     idx=idx,
                     result=api_pb2.GenericResult(
                         status=status,
-                        data=serialize_data_format(res, api_pb2.DATA_FORMAT_PICKLE),
+                        data=serialize_data_format(self.function_call_result, api_pb2.DATA_FORMAT_PICKLE),
                     ),
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
                     retry_count=retry_count,
@@ -2371,13 +2553,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def MapStartOrContinue(self, stream):
         request: api_pb2.MapStartOrContinueRequest = await stream.recv_message()
 
-        # If function_call_id is provided, this is a continue request, otherwise it's a start
-        if request.function_call_id:
-            function_call_id = request.function_call_id
+        # If map_token is provided, this is a continue request, otherwise it's a start
+        if request.map_token:
+            map_token = request.map_token
         else:
             self.fcidx += 1
-            function_call_id = f"fc-{self.fcidx}"
-            self.function_id_for_function_call[function_call_id] = request.function_id
+            map_token = f"test-map-token:{self.fcidx}"
+            self.function_id_for_function_call[map_token] = request.function_id
 
         # Process inputs and store them for MapAwait to pick up later
         attempt_tokens = []
@@ -2389,15 +2571,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
             # Store inputs for MapAwait to process
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
-            self.add_function_call_input(function_call_id, item.input, input_id, retry_count)
+            self.add_function_call_input(map_token, item.input, input_id, retry_count)
 
         # Get retry policy from function definition if available
         fn_definition = self.app_functions.get(request.function_id)
         retry_policy = fn_definition.retry_policy if fn_definition else None
 
+        # We don't send fcID since that is what the server will do eventually.
         response = api_pb2.MapStartOrContinueResponse(
             function_id=request.function_id,
-            function_call_id=function_call_id,
+            map_token=map_token,
             max_inputs_outstanding=1000,
             attempt_tokens=attempt_tokens,
             retry_policy=retry_policy,
@@ -2410,9 +2593,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def MapAwait(self, stream):
         request: api_pb2.MapAwaitRequest = await stream.recv_message()
+        map_token = request.map_token
 
         # Check if we have any function call inputs for this function call
-        fc_inputs = self.function_call_inputs.setdefault(request.function_call_id, [])
+        fc_inputs = self.function_call_inputs.setdefault(map_token, [])
         outputs = []
 
         if fc_inputs and not self.function_is_running:
@@ -2429,7 +2613,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     count = 0
                     for item in res:
                         count += 1
-                        await self.fc_data_out[request.function_call_id].put(
+                        await self.fc_data_out[map_token].put(
                             api_pb2.DataChunk(
                                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                                 data=serialize_data_format(item, api_pb2.DATA_FORMAT_PICKLE),
@@ -2504,8 +2688,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.MapCheckInputsResponse(lost=lost))
 
 
-@pytest.fixture
-def blob_server():
+@contextlib.contextmanager
+def blob_server_factory():
+    """Utility context manager to create a blob server for testing. Yields (host, blobs, blocks, files_sha2data)."""
     blobs = {}
     blob_parts: dict[str, dict[int, bytes]] = defaultdict(dict)
     blocks = {}
@@ -2569,6 +2754,12 @@ def blob_server():
         if magic != "test-get-request":
             return aiohttp.web.Response(status=400, text="bad token")
 
+        # Special versions for testing HTTP error handling
+        if version == "error-404":
+            return aiohttp.web.Response(status=404, text="block not found")
+        if version == "error-500":
+            return aiohttp.web.Response(status=500, text="internal server error")
+
         if version == "v1":
             file_sha256_hex, block_idx, start, length = rest
             start = BLOCK_SIZE * int(block_idx) + int(start)
@@ -2583,7 +2774,8 @@ def blob_server():
             block_id, start, length = rest
             start = int(start)
             length = int(length)
-            body = blocks[block_id][start : start + length]
+            block = blocks[block_id][start : start + length]
+            body = block.ljust(length, b"\0")
         else:
             return aiohttp.web.Response(status=404)
 
@@ -2624,15 +2816,17 @@ def blob_server():
     thread = threading.Thread(target=run_server_other_thread)
     thread.start()
     started.wait()
-    yield host, blobs, blocks, files_sha2data
-    stop_server.set()
-    thread.join()
+    try:
+        yield host, blobs, blocks, files_sha2data
+    finally:
+        stop_server.set()
+        thread.join()
 
 
-@pytest_asyncio.fixture(scope="function")
-def temporary_sock_path():
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        yield os.path.join(tmpdirname, "servicer.sock")
+@pytest.fixture
+def blob_server():
+    with blob_server_factory() as server:
+        yield server
 
 
 @contextlib.asynccontextmanager
@@ -2672,19 +2866,25 @@ def credentials():
     return (token_id, token_secret)
 
 
-@pytest_asyncio.fixture(scope="function")
-async def servicer(blob_server, temporary_sock_path, credentials) -> AsyncGenerator[MockClientServicer, None]:
+@contextlib.asynccontextmanager
+async def servicer_factory(blob_server, credentials):
+    """
+    Utility function to create a servicer for testing.
+    Returns an async context manager that yields a MockClientServicer.
+    """
     port = find_free_port()
 
     blob_host, blobs, blocks, files_sha2data = blob_server
     servicer = MockClientServicer(blob_host, blobs, blocks, files_sha2data, credentials, port)  # type: ignore
 
     if platform.system() != "Windows":
-        async with run_server(servicer, host="0.0.0.0", port=port):
-            async with run_server(servicer, path=temporary_sock_path):
-                servicer.client_addr = f"http://127.0.0.1:{port}"
-                servicer.container_addr = f"unix://{temporary_sock_path}"
-                yield servicer
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            temporary_sock_path = os.path.join(tmpdirname, "servicer.sock")
+            async with run_server(servicer, host="0.0.0.0", port=port):
+                async with run_server(servicer, path=temporary_sock_path):
+                    servicer.client_addr = f"http://127.0.0.1:{port}"
+                    servicer.container_addr = f"unix://{temporary_sock_path}"
+                    yield servicer
     else:
         # Use a regular TCP socket for the container connection
         container_port = find_free_port()
@@ -2693,6 +2893,12 @@ async def servicer(blob_server, temporary_sock_path, credentials) -> AsyncGenera
                 servicer.client_addr = f"http://127.0.0.1:{port}"
                 servicer.container_addr = f"http://127.0.0.1:{container_port}"
                 yield servicer
+
+
+@pytest_asyncio.fixture(scope="function")
+async def servicer(blob_server, credentials) -> AsyncGenerator[MockClientServicer, None]:
+    async with servicer_factory(blob_server, credentials) as s:
+        yield s
 
 
 @pytest_asyncio.fixture(scope="function")

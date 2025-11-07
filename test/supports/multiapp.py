@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import modal
 
-a = modal.App()
+a = modal.App(include_source=False)
 
 
 @a.function()
