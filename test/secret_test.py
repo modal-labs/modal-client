@@ -10,7 +10,7 @@ from modal import App, Sandbox, Secret
 from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
-from .supports.skip import skip_old_py
+from .supports.skip import skip_old_py, skip_windows
 
 
 def dummy(): ...
@@ -49,6 +49,7 @@ def test_secret_from_dotenv(servicer, client):
             assert servicer.secrets["st-1"] == {"USER": "user2", "PASSWORD": "abc456"}
 
 
+@skip_windows("uses sandbox to repro app-ness of secret, and sandboxe tests use subprocess")
 def test_secret_from_dotenv_lazy(client, servicer):
     with servicer.intercept() as ctx:
         dummy_app = App.lookup("blah", client=client, create_if_missing=True)
