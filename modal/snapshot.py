@@ -24,6 +24,8 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
         """
         Construct a `SandboxSnapshot` object from a sandbox snapshot ID.
         """
+        # TODO: remove this - from_id constructor should not do io:
+        client = client or await _Client.from_env()
 
         async def _load(
             self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]

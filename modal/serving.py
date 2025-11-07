@@ -20,7 +20,7 @@ from .output import _get_output_manager, enable_output
 from .runner import _run_app, serve_update
 
 if TYPE_CHECKING:
-    from .app import _App
+    import modal.app
 
 
 def _run_serve(
@@ -93,12 +93,12 @@ async def _run_watch_loop(
 
 @asynccontextmanager
 async def _serve_app(
-    app: "_App",
+    app: "modal.app._App",
     import_ref: ImportRef,
     *,
     _watcher: Optional[AsyncGenerator[set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
-) -> AsyncGenerator["_App", None]:
+) -> AsyncGenerator["modal.app._App", None]:
     if environment_name is None:
         environment_name = config.get("environment")
 
