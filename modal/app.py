@@ -314,6 +314,7 @@ class _App:
         app._local_state_attr = None  # this is not a locally defined App, so no local state
         app._app_id = response.app_id
         app._client = client
+        app._root_load_context = LoadContext(client=client, environment_name=environment_name, app_id=response.app_id)
         app._running_app = RunningApp(response.app_id, interactive=False)
         return app
 
