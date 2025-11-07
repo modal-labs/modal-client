@@ -1946,7 +1946,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         """Get the number of inputs in the function call."""
         if self._num_inputs is None:
             request = api_pb2.FunctionCallFromIdRequest(function_call_id=self.object_id)
-            resp = await retry_transient_errors(self.client.stub.FunctionCallFromId, request)
+            resp = await self.client.stub.FunctionCallFromId(request)
             self._num_inputs = resp.num_inputs  # cached
         return self._num_inputs
 
