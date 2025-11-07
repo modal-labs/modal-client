@@ -8,7 +8,6 @@ import asyncio
 import dataclasses
 import os
 import time
-import typing
 from collections.abc import AsyncGenerator
 from contextlib import nullcontext
 from multiprocessing.synchronize import Event
@@ -19,6 +18,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 import modal._runtime.execution_context
 import modal_proto.api_pb2
+from modal._load_context import LoadContext
 from modal._utils.grpc_utils import Retry
 from modal_proto import api_pb2
 
@@ -125,18 +125,14 @@ async def _init_local_app_from_name(
 
 
 async def _create_all_objects(
-    client: _Client,
     running_app: RunningApp,
     local_app_state: "modal.app._LocalAppState",
-    environment_name: str,
+    load_context: LoadContext,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
     indexed_objects: dict[str, _Object] = {**local_app_state.functions, **local_app_state.classes}
-    resolver = Resolver(
-        client,
-        environment_name=environment_name,
-        app_id=running_app.app_id,
-    )
+
+    resolver = Resolver()
     with resolver.display():
         # Get current objects, and reset all objects
         tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
@@ -159,7 +155,7 @@ async def _create_all_objects(
             # Note: preload only currently implemented for Functions, returns None otherwise
             # this is to ensure that directly referenced functions from the global scope has
             # ids associated with them when they are serialized into other functions
-            await resolver.preload(obj, existing_object_id)
+            await resolver.preload(obj, load_context, existing_object_id)
             if obj.is_hydrated:
                 tag_to_object_id[tag] = obj.object_id
 
@@ -167,7 +163,8 @@ async def _create_all_objects(
 
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
-            await resolver.load(obj, existing_object_id)
+            # Pass load_context so dependencies can inherit app_id, client, etc.
+            await resolver.load(obj, load_context, existing_object_id=existing_object_id)
             if _Function._is_id_type(obj.object_id):
                 running_app.function_ids[tag] = obj.object_id
             elif _Cls._is_id_type(obj.object_id):
@@ -266,8 +263,9 @@ async def _run_app(
     interactive: bool = False,
 ) -> AsyncGenerator["modal.app._App", None]:
     """mdmd:hidden"""
-    if environment_name is None:
-        environment_name = typing.cast(str, config.get("environment"))
+    load_context = await app._root_load_context.reset().in_place_upgrade(
+        client=client, environment_name=environment_name
+    )
 
     if modal._runtime.execution_context._is_currently_importing:
         raise InvalidError("Can not run an app in global scope within a container")
@@ -288,9 +286,6 @@ async def _run_app(
             # https://docs.python.org/3/library/__main__.html#import-main
             app.set_description(__main__.__name__)
 
-    if client is None:
-        client = await _Client.from_env()
-
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
 
     output_mgr = _get_output_manager()
@@ -301,21 +296,22 @@ async def _run_app(
     local_app_state = app._local_state
 
     running_app: RunningApp = await _init_local_app_new(
-        client,
+        load_context.client,
         app.description or "",
         local_app_state.tags,
-        environment_name=environment_name or "",
+        environment_name=load_context.environment_name,
         app_state=app_state,
         interactive=interactive,
     )
+    await load_context.in_place_upgrade(app_id=running_app.app_id)
 
     logs_timeout = config["logs_timeout"]
-    async with app._set_local_app(client, running_app), TaskContext(grace=logs_timeout) as tc:
+    async with app._set_local_app(load_context.client, running_app), TaskContext(grace=logs_timeout) as tc:
         # Start heartbeats loop to keep the client alive
         # we don't log heartbeat exceptions in detached mode
         # as losing the local connection will not affect the running app
         def heartbeat():
-            return _heartbeat(client, running_app.app_id)
+            return _heartbeat(load_context.client, running_app.app_id)
 
         heartbeat_loop = tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
         logs_loop: Optional[asyncio.Task] = None
@@ -336,24 +332,26 @@ async def _run_app(
             # Start logs loop
 
             logs_loop = tc.create_task(
-                get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
+                get_app_logs_loop(
+                    load_context.client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url
+                )
             )
 
         try:
             # Create all members
-            await _create_all_objects(client, running_app, local_app_state, environment_name)
+            await _create_all_objects(running_app, local_app_state, load_context)
 
             # Publish the app
-            await _publish_app(client, running_app, app_state, local_app_state)
+            await _publish_app(load_context.client, running_app, app_state, local_app_state)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
                 output_mgr.print("Aborting app initialization...\n")
 
-            await _status_based_disconnect(client, running_app.app_id, e)
+            await _status_based_disconnect(load_context.client, running_app.app_id, e)
             raise
         except BaseException as e:
-            await _status_based_disconnect(client, running_app.app_id, e)
+            await _status_based_disconnect(load_context.client, running_app.app_id, e)
             raise
 
         detached_disconnect_msg = (
@@ -381,7 +379,7 @@ async def _run_app(
                 yield app
             # successful completion!
             heartbeat_loop.cancel()
-            await _status_based_disconnect(client, running_app.app_id, exc_info=None)
+            await _status_based_disconnect(load_context.client, running_app.app_id, exc_info=None)
         except KeyboardInterrupt as e:
             # this happens only if sigint comes in during the yield block above
             if detach:
@@ -390,13 +388,13 @@ async def _run_app(
                     output_mgr.print(detached_disconnect_msg)
                 if logs_loop:
                     logs_loop.cancel()
-                await _status_based_disconnect(client, running_app.app_id, e)
+                await _status_based_disconnect(load_context.client, running_app.app_id, e)
             else:
                 if output_mgr := _get_output_manager():
                     output_mgr.print(
                         "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                     )
-                await _status_based_disconnect(client, running_app.app_id, e)
+                await _status_based_disconnect(load_context.client, running_app.app_id, e)
                 if logs_loop:
                     try:
                         await asyncio.wait_for(logs_loop, timeout=logs_timeout)
@@ -421,7 +419,7 @@ async def _run_app(
             raise
         except BaseException as e:
             logger.info("Exception during app run")
-            await _status_based_disconnect(client, running_app.app_id, e)
+            await _status_based_disconnect(load_context.client, running_app.app_id, e)
             raise
 
         # wait for logs gracefully, even though the task context would do the same
@@ -449,21 +447,17 @@ async def _serve_update(
 ) -> None:
     """mdmd:hidden"""
     # Used by child process to reinitialize a served app
-    client = await _Client.from_env()
+    load_context = await app._root_load_context.reset().in_place_upgrade(environment_name=environment_name)
     try:
-        running_app: RunningApp = await _init_local_app_existing(client, existing_app_id, environment_name)
+        running_app: RunningApp = await _init_local_app_existing(load_context.client, existing_app_id, environment_name)
+        await load_context.in_place_upgrade(app_id=running_app.app_id)
         local_app_state = app._local_state
         # Create objects
-        await _create_all_objects(
-            client,
-            running_app,
-            local_app_state,
-            environment_name,
-        )
+        await _create_all_objects(running_app, local_app_state, load_context)
 
         # Publish the updated app
         await _publish_app(
-            client,
+            load_context.client,
             running_app,
             app_state=api_pb2.APP_STATE_UNSPECIFIED,
             app_local_state=local_app_state,
@@ -498,9 +492,6 @@ async def _deploy_app(
 
     Users should prefer the `modal deploy` CLI or the `App.deploy` method.
     """
-    if environment_name is None:
-        environment_name = typing.cast(str, config.get("environment"))
-
     warn_if_passing_namespace(namespace, "modal.runner.deploy_app")
 
     name = name or app.name or ""
@@ -532,8 +523,18 @@ async def _deploy_app(
     # Get git information to track deployment history
     commit_info_task = asyncio.create_task(get_git_commit_info())
 
+    # We need to do in-place replacement of fields in self._root_load_context in case it has already "spread"
+    # to with_options() instances or similar before load
+    root_load_context = await app._root_load_context.reset().in_place_upgrade(
+        client=client,
+        environment_name=environment_name,
+    )
     running_app: RunningApp = await _init_local_app_from_name(
-        client, name, local_app_state.tags, environment_name=environment_name
+        root_load_context.client, name, local_app_state.tags, environment_name=root_load_context.environment_name
+    )
+
+    await root_load_context.in_place_upgrade(
+        app_id=running_app.app_id,
     )
 
     async with TaskContext(0) as tc:
@@ -545,12 +546,7 @@ async def _deploy_app(
 
         try:
             # Create all members
-            await _create_all_objects(
-                client,
-                running_app,
-                local_app_state,
-                environment_name=environment_name,
-            )
+            await _create_all_objects(running_app, local_app_state, root_load_context)
 
             commit_info = None
             try:

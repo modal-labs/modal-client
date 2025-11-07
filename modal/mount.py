@@ -20,7 +20,8 @@ import modal.file_pattern_matcher
 from modal_proto import api_pb2
 from modal_version import __version__
 
-from ._object import _get_environment_name, _Object
+from ._load_context import LoadContext
+from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
@@ -310,7 +311,7 @@ class _Mount(_Object, type_prefix="mo"):
     _entries: Optional[list[_MountEntry]] = None
     _deployment_name: Optional[str] = None
     _namespace: Optional[int] = None
-    _environment_name: Optional[str] = None
+
     _allow_overwrite: bool = False
     _content_checksum_sha256_hex: Optional[str] = None
 
@@ -325,7 +326,12 @@ class _Mount(_Object, type_prefix="mo"):
                 return None
             return (_Mount._type_prefix, "local", frozenset(included_files))
 
-        obj = _Mount._from_loader(_Mount._load_mount, rep, deduplication_key=mount_content_deduplication_key)
+        obj = _Mount._from_loader(
+            _Mount._load_mount,
+            rep,
+            deduplication_key=mount_content_deduplication_key,
+            load_context_overrides=LoadContext.empty(),
+        )
         obj._entries = entries
         obj._is_local = True
         return obj
@@ -477,6 +483,7 @@ class _Mount(_Object, type_prefix="mo"):
     async def _load_mount(
         self: "_Mount",
         resolver: Resolver,
+        load_context: LoadContext,
         existing_object_id: Optional[str],
     ):
         t0 = time.monotonic()
@@ -518,7 +525,7 @@ class _Mount(_Object, type_prefix="mo"):
 
             request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
             accounted_hashes.add(file_spec.sha256_hex)
-            response = await resolver.client.stub.MountPutFile(request, retry=Retry(base_delay=1))
+            response = await load_context.client.stub.MountPutFile(request, retry=Retry(base_delay=1))
 
             if response.exists:
                 n_finished += 1
@@ -532,7 +539,7 @@ class _Mount(_Object, type_prefix="mo"):
                 async with blob_upload_concurrency:
                     with file_spec.source() as fp:
                         blob_id = await blob_upload_file(
-                            fp, resolver.client.stub, sha256_hex=file_spec.sha256_hex, md5_hex=file_spec.md5_hex
+                            fp, load_context.client.stub, sha256_hex=file_spec.sha256_hex, md5_hex=file_spec.md5_hex
                         )
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
@@ -544,7 +551,7 @@ class _Mount(_Object, type_prefix="mo"):
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
-                response = await resolver.client.stub.MountPutFile(request2, retry=Retry(base_delay=1))
+                response = await load_context.client.stub.MountPutFile(request2, retry=Retry(base_delay=1))
                 if response.exists:
                     n_finished += 1
                     return mount_file
@@ -574,28 +581,28 @@ class _Mount(_Object, type_prefix="mo"):
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=self._deployment_name,
                 namespace=self._namespace,
-                environment_name=self._environment_name,
+                environment_name=load_context.environment_name,
                 object_creation_type=creation_type,
                 files=files,
             )
-        elif resolver.app_id is not None:
+        elif load_context.app_id is not None:
             req = api_pb2.MountGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
                 files=files,
-                app_id=resolver.app_id,
+                app_id=load_context.app_id,
             )
         else:
             req = api_pb2.MountGetOrCreateRequest(
                 object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
                 files=files,
-                environment_name=resolver.environment_name,
+                environment_name=load_context.environment_name,
             )
 
-        resp = await resolver.client.stub.MountGetOrCreate(req, retry=Retry(base_delay=1))
+        resp = await load_context.client.stub.MountGetOrCreate(req, retry=Retry(base_delay=1))
         status_row.finish(f"Created mount {message_label}")
 
         logger.debug(f"Uploaded {total_uploads} new files and {total_bytes} bytes in {time.monotonic() - t0}s")
-        self._hydrate(resp.mount_id, resolver.client, resp.handle_metadata)
+        self._hydrate(resp.mount_id, load_context.client, resp.handle_metadata)
 
     @staticmethod
     def _from_local_python_packages(
@@ -628,19 +635,25 @@ class _Mount(_Object, type_prefix="mo"):
         *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
+        client: Optional[_Client] = None,
     ) -> "_Mount":
         """mdmd:hidden"""
 
-        async def _load(provider: _Mount, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(provider: _Mount, resolver: Resolver, load_context, existing_object_id: Optional[str]):
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=name,
                 namespace=namespace,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=load_context.environment_name,
             )
-            response = await resolver.client.stub.MountGetOrCreate(req)
-            provider._hydrate(response.mount_id, resolver.client, response.handle_metadata)
+            response = await load_context.client.stub.MountGetOrCreate(req)
+            provider._hydrate(response.mount_id, load_context.client, response.handle_metadata)
 
-        return _Mount._from_loader(_load, "Mount()", hydrate_lazily=True)
+        return _Mount._from_loader(
+            _load,
+            "Mount()",
+            hydrate_lazily=True,
+            load_context_overrides=LoadContext(environment_name=environment_name, client=client),
+        )
 
     async def _deploy(
         self: "_Mount",
@@ -652,15 +665,12 @@ class _Mount(_Object, type_prefix="mo"):
         client: Optional[_Client] = None,
     ) -> None:
         check_object_name(deployment_name, "Mount")
-        environment_name = _get_environment_name(environment_name, resolver=None)
         self._deployment_name = deployment_name
         self._namespace = namespace
-        self._environment_name = environment_name
         self._allow_overwrite = allow_overwrite
-        if client is None:
-            client = await _Client.from_env()
-        resolver = Resolver(client=client, environment_name=environment_name)
-        await resolver.load(self)
+        resolver = Resolver()
+        root_metadata = LoadContext(client=client, environment_name=environment_name)
+        await resolver.load(self, root_metadata)
 
     def _get_metadata(self) -> api_pb2.MountHandleMetadata:
         if self._content_checksum_sha256_hex is None:

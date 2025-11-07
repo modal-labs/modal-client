@@ -23,6 +23,7 @@ from modal.mount import _Mount
 from modal.volume import _Volume
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
+from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -191,7 +192,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 deps.append(proxy)
             return deps
 
-        async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
+        async def _load(
+            self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
+        ):
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
                 api_pb2.VolumeMount(
@@ -260,18 +263,18 @@ class _Sandbox(_Object, type_prefix="sb"):
                 experimental_options=experimental_options,
             )
 
-            create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
+            create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
             try:
-                create_resp = await resolver.client.stub.SandboxCreate(create_req)
+                create_resp = await load_context.client.stub.SandboxCreate(create_req)
             except GRPCError as exc:
                 if exc.status == Status.ALREADY_EXISTS:
                     raise AlreadyExistsError(exc.message)
                 raise exc
 
             sandbox_id = create_resp.sandbox_id
-            self._hydrate(sandbox_id, resolver.client, None)
+            self._hydrate(sandbox_id, load_context.client, None)
 
-        return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
+        return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_context_overrides=LoadContext.empty())
 
     @staticmethod
     async def create(
@@ -486,6 +489,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             app_id = app.app_id
             app_client = app._client
         elif (container_app := _App._get_container_app()) is not None:
+            # implicit app/client provided by running in a modal Function
             app_id = container_app.app_id
             app_client = container_app._client
         else:
@@ -498,10 +502,11 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "```",
             )
 
-        client = client or app_client or await _Client.from_env()
+        client = client or app_client
 
-        resolver = Resolver(client, app_id=app_id)
-        await resolver.load(obj)
+        resolver = Resolver()
+        load_context = LoadContext(client=client, app_id=app_id)
+        await resolver.load(obj, load_context)
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
@@ -606,12 +611,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         image_id = resp.image_id
         metadata = resp.image_metadata
 
-        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             # no need to hydrate again since we do it eagerly below
             pass
 
         rep = "Image()"
-        image = _Image._from_loader(_load, rep, hydrate_lazily=True)
+        # TODO: use ._new_hydrated instead
+        image = _Image._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
         image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
 
         return image
@@ -990,12 +996,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         if wait_resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
             raise ExecutionError(wait_resp.result.exception)
 
-        async def _load(self: _SandboxSnapshot, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             # we eagerly hydrate the sandbox snapshot below
             pass
 
         rep = "SandboxSnapshot()"
-        obj = _SandboxSnapshot._from_loader(_load, rep, hydrate_lazily=True)
+        # TODO: use ._new_hydrated instead
+        obj = _SandboxSnapshot._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
         obj._hydrate(snapshot_id, self._client, None)
 
         return obj

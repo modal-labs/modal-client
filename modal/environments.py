@@ -8,6 +8,7 @@ from google.protobuf.wrappers_pb2 import StringValue
 
 from modal_proto import api_pb2
 
+from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
@@ -52,6 +53,7 @@ class _Environment(_Object, type_prefix="en"):
         name: str,
         *,
         create_if_missing: bool = False,
+        client: Optional[_Client] = None,
     ):
         if name:
             # Allow null names for the case where we want to look up the "default" environment,
@@ -61,7 +63,9 @@ class _Environment(_Object, type_prefix="en"):
             # environments as part of public API when we make this class more useful.
             check_object_name(name, "Environment")
 
-        async def _load(self: _Environment, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Environment, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             request = api_pb2.EnvironmentGetOrCreateRequest(
                 deployment_name=name,
                 object_creation_type=(
@@ -70,12 +74,17 @@ class _Environment(_Object, type_prefix="en"):
                     else api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
                 ),
             )
-            response = await resolver.client.stub.EnvironmentGetOrCreate(request)
+            response = await load_context.client.stub.EnvironmentGetOrCreate(request)
             logger.debug(f"Created environment with id {response.environment_id}")
-            self._hydrate(response.environment_id, resolver.client, response.metadata)
+            self._hydrate(response.environment_id, load_context.client, response.metadata)
 
-        # TODO environment name (and id?) in the repr? (We should make reprs consistently more useful)
-        return _Environment._from_loader(_load, "Environment()", is_another_app=True, hydrate_lazily=True)
+        return _Environment._from_loader(
+            _load,
+            f"Environment.from_name({name!r})",
+            is_another_app=True,
+            hydrate_lazily=True,
+            load_context_overrides=LoadContext(client=client),
+        )
 
 
 Environment = synchronize_api(_Environment)
@@ -88,7 +97,7 @@ ENVIRONMENT_CACHE: dict[str, _Environment] = {}
 async def _get_environment_cached(name: str, client: _Client) -> _Environment:
     if name in ENVIRONMENT_CACHE:
         return ENVIRONMENT_CACHE[name]
-    environment = await _Environment.from_name(name).hydrate(client)
+    environment = await _Environment.from_name(name, client=client).hydrate()
     ENVIRONMENT_CACHE[name] = environment
     return environment
 
