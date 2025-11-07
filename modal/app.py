@@ -22,6 +22,7 @@ from modal_proto import api_pb2
 
 from ._functions import _Function
 from ._ipython import is_notebook
+from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
 from ._partial_function import (
     _find_partial_methods_for_user_cls,
@@ -176,6 +177,10 @@ class _App:
     _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
 
+    # Metadata for loading objects within this app
+    # passed by reference to functions and classes so it can be updated by run()/deploy()
+    _root_load_context: LoadContext
+
     @property
     def _local_state(self) -> _LocalAppState:
         """For internal use only. Do not use this property directly."""
@@ -237,6 +242,7 @@ class _App:
         # Client is special - needed to be set just before the app is "hydrated" or running at the latest
         # Guaranteed to be set for running apps, but also needed to actually *hydrate* the app and make it running
         self._client = None
+        self._root_load_context = LoadContext.empty()
 
         # Register this app. This is used to look up the app in the container, when we can't get it from the function
         _App._all_apps.setdefault(self._name, []).append(self)
@@ -308,6 +314,7 @@ class _App:
         app._local_state_attr = None  # this is not a locally defined App, so no local state
         app._app_id = response.app_id
         app._client = client
+        app._root_load_context = LoadContext(client=client, environment_name=environment_name, app_id=response.app_id)
         app._running_app = RunningApp(response.app_id, interactive=False)
         return app
 

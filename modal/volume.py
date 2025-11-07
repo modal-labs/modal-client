@@ -33,6 +33,7 @@ import modal_proto.api_pb2
 from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
+from ._load_context import LoadContext
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -362,11 +363,19 @@ class _Volume(_Object, type_prefix="vo"):
         Added in v1.0.5.
         """
 
-        async def _load(new_volume: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            new_volume: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             new_volume._initialize_from_other(self)
             new_volume._read_only = True
 
-        obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, deps=lambda: [self])
+        obj = _Volume._from_loader(
+            _load,
+            "Volume()",
+            hydrate_lazily=True,
+            deps=lambda: [self],
+            load_context_overrides=self._load_context_overrides,
+        )
         return obj
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
@@ -408,6 +417,7 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
+        client: Optional[_Client] = None,
     ) -> "_Volume":
         """Reference a Volume by name, creating if necessary.
 
@@ -429,18 +439,26 @@ class _Volume(_Object, type_prefix="vo"):
         check_object_name(name, "Volume")
         warn_if_passing_namespace(namespace, "modal.Volume.from_name")
 
-        async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             req = api_pb2.VolumeGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=load_context.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 version=version,
             )
-            response = await resolver.client.stub.VolumeGetOrCreate(req)
-            self._hydrate(response.volume_id, resolver.client, response.metadata)
+            response = await load_context.client.stub.VolumeGetOrCreate(req)
+            self._hydrate(response.volume_id, load_context.client, response.metadata)
 
         rep = _Volume._repr(name, environment_name)
-        return _Volume._from_loader(_load, rep, hydrate_lazily=True, name=name)
+        return _Volume._from_loader(
+            _load,
+            rep,
+            hydrate_lazily=True,
+            name=name,
+            load_context_overrides=LoadContext(client=client, environment_name=environment_name),
+        )
 
     @classmethod
     @asynccontextmanager

@@ -12,6 +12,7 @@ from grpclib import GRPCError, Status
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
+from ._load_context import LoadContext
 from ._object import _Object, live_method
 from ._partial_function import (
     _find_callables_for_obj,
@@ -31,8 +32,8 @@ from ._utils.deprecation import (
     warn_on_renamed_autoscaler_settings,
 )
 from ._utils.mount_utils import validate_volumes
+from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
-from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .gpu import GPU_T
 from .retries import Retries
@@ -134,7 +135,7 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
         method_metadata = cls._method_metadata[method_name]
         new_function._hydrate(service_function.object_id, service_function.client, method_metadata)
 
-    async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+    async def _load(fun: "_Function", resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
         # there is currently no actual loading logic executed to create each method on
         # the *parametrized* instance of a class - it uses the parameter-bound service-function
         # for the instance. This load method just makes sure to set all attributes after the
@@ -153,11 +154,14 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
 
     rep = f"Method({cls._name}.{method_name})"
 
+    # Bound methods should *reference* their parent Cls's LoadContext
+    # so that it can be modified in place on the parent and be reflected in the method
     fun = _Function._from_loader(
         _load,
         rep,
         deps=_deps,
         hydrate_lazily=True,
+        load_context_overrides=cls._load_context_overrides,
     )
     if service_function.is_hydrated:
         # Eager hydration (skip load) if the instance service function is already loaded
@@ -421,14 +425,13 @@ class _Obj:
 
         # Not hydrated Cls, and we don't have the class - typically a Cls.from_name that
         # has not yet been loaded. So use a special loader that loads it lazily:
-        async def method_loader(fun, resolver: Resolver, existing_object_id):
-            await resolver.load(self._cls)  # load class so we get info about methods
+        async def method_loader(fun, resolver: Resolver, load_context: LoadContext, existing_object_id):
             method_function = _get_maybe_method()
             if method_function is None:
                 raise NotFoundError(
                     f"Class has no method {k}, and attributes can't be accessed for `Cls.from_name` instances"
                 )
-            await resolver.load(method_function)  # get the appropriate method handle (lazy)
+            await resolver.load(method_function, load_context)  # get the appropriate method handle (lazy)
             fun._hydrate_from_other(method_function)
 
         # The reason we don't *always* use this lazy loader is because it precludes attribute access
@@ -436,8 +439,9 @@ class _Obj:
         return _Function._from_loader(
             method_loader,
             rep=f"Method({self._cls._name}.{k})",
-            deps=lambda: [],  # TODO: use cls as dep instead of loading inside method_loader?
+            deps=lambda: [self._cls],
             hydrate_lazily=True,
+            load_context_overrides=self._cls._load_context_overrides,
         )
 
 
@@ -484,6 +488,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._callables = other._callables
         self._name = other._name
         self._method_metadata = other._method_metadata
+        self._load_context_overrides = other._load_context_overrides
 
     def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
@@ -595,15 +600,18 @@ More information on class parameterization can be found here: https://modal.com/
         def _deps() -> list[_Function]:
             return [class_service_function]
 
-        async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: "_Cls", resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(
-                app_id=resolver.app_id, existing_class_id=existing_object_id, only_class_function=True
+                app_id=load_context.app_id, existing_class_id=existing_object_id, only_class_function=True
             )
-            resp = await resolver.client.stub.ClassCreate(req)
-            self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
+            resp = await load_context.client.stub.ClassCreate(req)
+            self._hydrate(resp.class_id, load_context.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
-        cls: _Cls = _Cls._from_loader(_load, rep, deps=_deps)
+        # Pass a *reference* to the App's LoadContext - this is important since the App is
+        # the only way to infer a LoadContext for an `@app.cls`, and the App doesn't
+        # get its client until *after* the Cls is created.
+        cls: _Cls = _Cls._from_loader(_load, rep, deps=_deps, load_context_overrides=app._root_load_context)
         cls._app = app
         cls._user_cls = user_cls
         cls._class_service_function = class_service_function
@@ -620,6 +628,7 @@ More information on class parameterization can be found here: https://modal.com/
         *,
         namespace: Any = None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
+        client: Optional["_Client"] = None,
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
 
@@ -632,19 +641,22 @@ More information on class parameterization can be found here: https://modal.com/
         ```
         """
         warn_if_passing_namespace(namespace, "modal.Cls.from_name")
-        _environment_name = environment_name or config.get("environment")
 
-        async def _load_remote(self: _Cls, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load_remote(
+            self: _Cls, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                environment_name=_environment_name,
+                environment_name=load_context.environment_name,
                 only_class_function=True,
             )
             try:
-                response = await resolver.client.stub.ClassGet(request)
+                response = await load_context.client.stub.ClassGet(request)
             except NotFoundError as exc:
-                env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                env_context = (
+                    f" (in the '{load_context.environment_name}' environment)" if load_context.environment_name else ""
+                )
                 raise NotFoundError(
                     f"Lookup failed for Cls '{name}' from the '{app_name}' app{env_context}: {exc}."
                 ) from None
@@ -655,19 +667,26 @@ More information on class parameterization can be found here: https://modal.com/
                     raise
 
             print_server_warnings(response.server_warnings)
-            await resolver.load(self._class_service_function)
-            self._hydrate(response.class_id, resolver.client, response.handle_metadata)
+            await resolver.load(self._class_service_function, load_context)
+            self._hydrate(response.class_id, load_context.client, response.handle_metadata)
 
         environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
         rep = f"Cls.from_name({app_name!r}, {name!r}{environment_rep})"
-        cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
+
+        load_context_overrides = LoadContext(client=client, environment_name=environment_name)
+        cls = cls._from_loader(
+            _load_remote,
+            rep,
+            is_another_app=True,
+            hydrate_lazily=True,
+            load_context_overrides=load_context_overrides,
+        )
 
         class_service_name = f"{name}.*"  # special name of the base service function for the class
         cls._class_service_function = _Function._from_name(
             app_name,
             class_service_name,
-            namespace=namespace,
-            environment_name=_environment_name,
+            load_context_overrides=load_context_overrides,
         )
         cls._name = name
         return cls
@@ -736,7 +755,7 @@ More information on class parameterization can be found here: https://modal.com/
                 " please use the `.with_concurrency` method instead.",
             )
 
-        async def _load_from_base(new_cls, resolver, existing_object_id):
+        async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
             # this is a bit confusing, the cls will always have the same metadata
             # since it has the same *class* service function (i.e. "template")
             # But the (instance) service function for each Obj will be different
@@ -745,14 +764,21 @@ More information on class parameterization can be found here: https://modal.com/
             if not self.is_hydrated:
                 # this should only happen for Cls.from_name instances
                 # other classes should already be hydrated!
-                await resolver.load(self)
+                await resolver.load(self, load_context)
 
             new_cls._initialize_from_other(self)
 
         def _deps():
             return []
 
-        cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
+        cls = _Cls._from_loader(
+            _load_from_base,
+            rep=f"{self._name}.with_options(...)",
+            is_another_app=True,
+            deps=_deps,
+            load_context_overrides=self._load_context_overrides,
+            hydrate_lazily=True,
+        )
         cls._initialize_from_other(self)
 
         # Validate volumes
@@ -797,16 +823,21 @@ More information on class parameterization can be found here: https://modal.com/
         ```
         """
 
-        async def _load_from_base(new_cls, resolver, existing_object_id):
+        async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
             if not self.is_hydrated:
-                await resolver.load(self)
+                await resolver.load(self, load_context)
             new_cls._initialize_from_other(self)
 
         def _deps():
             return []
 
         cls = _Cls._from_loader(
-            _load_from_base, rep=f"{self._name}.with_concurrency(...)", is_another_app=True, deps=_deps
+            _load_from_base,
+            rep=f"{self._name}.with_concurrency(...)",
+            is_another_app=True,
+            deps=_deps,
+            load_context_overrides=self._load_context_overrides,
+            hydrate_lazily=True,
         )
         cls._initialize_from_other(self)
 
@@ -826,16 +857,21 @@ More information on class parameterization can be found here: https://modal.com/
         ```
         """
 
-        async def _load_from_base(new_cls, resolver, existing_object_id):
+        async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
             if not self.is_hydrated:
-                await resolver.load(self)
+                await resolver.load(self, load_context)
             new_cls._initialize_from_other(self)
 
         def _deps():
             return []
 
         cls = _Cls._from_loader(
-            _load_from_base, rep=f"{self._name}.with_concurrency(...)", is_another_app=True, deps=_deps
+            _load_from_base,
+            rep=f"{self._name}.with_concurrency(...)",
+            is_another_app=True,
+            deps=_deps,
+            load_context_overrides=self._load_context_overrides,
+            hydrate_lazily=True,
         )
         cls._initialize_from_other(self)
 
@@ -865,17 +901,20 @@ More information on class parameterization can be found here: https://modal.com/
         # We create a synthetic dummy Function that is guaranteed to raise an AttributeError when
         # a user tries to use any of its "live methods" - this lets us raise exceptions for users
         # only if they try to access methods on a Cls as if they were methods on the instance.
-        async def method_loader(fun: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+        async def error_loader(
+            fun: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             raise AttributeError(
                 "You can't access methods on a Cls directly - Did you forget to instantiate the class first?\n"
                 "e.g. instead of MyClass.method.remote(), do MyClass().method.remote()"
             )
 
         return _Function._from_loader(
-            method_loader,
+            error_loader,
             rep=f"UnboundMethod({self._name}.{k})",
             deps=lambda: [],
             hydrate_lazily=True,
+            load_context_overrides=self._load_context_overrides,
         )
 
     def _is_local(self) -> bool:

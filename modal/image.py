@@ -28,6 +28,7 @@ from typing_extensions import Self
 from modal._serialization import serialize_data_format
 from modal_proto import api_pb2
 
+from ._load_context import LoadContext
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import get_preferred_payload_format, serialize
@@ -434,12 +435,16 @@ class _Image(_Object, type_prefix="im"):
 
         base_image = self
 
-        async def _load(self2: "_Image", resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self2: "_Image", resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             self2._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
             self2._deferred_mounts = tuple(base_image._deferred_mounts) + (mount,)
             self2._serve_mounts = base_image._serve_mounts | ({mount} if mount.is_local() else set())
 
-        img = _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
+        img = _Image._from_loader(
+            _load, "Image(local files)", deps=lambda: [base_image, mount], load_context_overrides=LoadContext.empty()
+        )
         img._added_python_source_set = base_image._added_python_source_set
         return img
 
@@ -523,18 +528,18 @@ class _Image(_Object, type_prefix="im"):
                 deps += (vol,)
             return deps
 
-        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             context_mount = context_mount_function() if context_mount_function else None
             if context_mount:
-                await resolver.load(context_mount)
+                await resolver.load(context_mount, load_context)
 
             if _do_assert_no_mount_layers:
                 for image in base_images.values():
                     # base images can't have
                     image._assert_no_mount_layers()
 
-            assert resolver.app_id  # type narrowing
-            environment = await _get_environment_cached(resolver.environment_name or "", resolver.client)
+            assert load_context.app_id  # type narrowing
+            environment = await _get_environment_cached(load_context.environment_name or "", load_context.client)
             # A bit hacky,but assume that the environment provides a valid builder version
             image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
             builder_version = _get_image_builder_version(image_builder_version)
@@ -626,7 +631,7 @@ class _Image(_Object, type_prefix="im"):
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
-                app_id=resolver.app_id,
+                app_id=load_context.app_id,
                 image=image_definition,
                 existing_image_id=existing_object_id or "",  # TODO: ignored
                 build_function_id=build_function_id,
@@ -638,7 +643,7 @@ class _Image(_Object, type_prefix="im"):
                 allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT") == "1",
                 ignore_cache=config.get("ignore_cache"),
             )
-            resp = await resolver.client.stub.ImageGetOrCreate(req)
+            resp = await load_context.client.stub.ImageGetOrCreate(req)
             image_id = resp.image_id
             result: api_pb2.GenericResult
             metadata: Optional[api_pb2.ImageMetadata] = None
@@ -651,7 +656,7 @@ class _Image(_Object, type_prefix="im"):
             else:
                 # not built or in the process of building - wait for build
                 logger.debug("Waiting for image %s" % image_id)
-                resp = await _image_await_build_result(image_id, resolver.client)
+                resp = await _image_await_build_result(image_id, load_context.client)
                 result = resp.result
                 if resp.HasField("metadata"):
                     metadata = resp.metadata
@@ -681,7 +686,7 @@ class _Image(_Object, type_prefix="im"):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            self._hydrate(image_id, resolver.client, metadata)
+            self._hydrate(image_id, load_context.client, metadata)
             local_mounts = set()
             for base in base_images.values():
                 local_mounts |= base._serve_mounts
@@ -690,7 +695,7 @@ class _Image(_Object, type_prefix="im"):
             self._serve_mounts = frozenset(local_mounts)
 
         rep = f"Image({dockerfile_function})"
-        obj = _Image._from_loader(_load, rep, deps=_deps)
+        obj = _Image._from_loader(_load, rep, deps=_deps, load_context_overrides=LoadContext.empty())
         obj.force_build = force_build
         obj._added_python_source_set = frozenset.union(
             frozenset(), *(base._added_python_source_set for base in base_images.values())
@@ -863,15 +868,13 @@ class _Image(_Object, type_prefix="im"):
 
         The ID of an Image object can be accessed using `.object_id`.
         """
-        if client is None:
-            client = await _Client.from_env()
 
-        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            resp = await client.stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
-            self._hydrate(resp.image_id, resolver.client, resp.metadata)
+        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+            resp = await load_context.client.stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
+            self._hydrate(resp.image_id, load_context.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
-        obj = _Image._from_loader(_load, rep)
+        obj = _Image._from_loader(_load, rep, load_context_overrides=LoadContext(client=client))
 
         return obj
 
@@ -930,11 +933,8 @@ class _Image(_Object, type_prefix="im"):
         if app.app_id is None:
             raise InvalidError("App has not been initialized yet. Use the content manager `app.run()` or `App.lookup`")
 
-        app_id = app.app_id
-        app_client = app._client or await _Client.from_env()
-
-        resolver = Resolver(app_client, app_id=app_id)
-        await resolver.load(self)
+        resolver = Resolver()
+        await resolver.load(self, app._root_load_context)
         return self
 
     def pip_install(
