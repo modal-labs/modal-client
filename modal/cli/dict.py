@@ -32,8 +32,8 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
     client = await _Client.from_env()
     resolver = Resolver()
 
-    parent_metadata = LoadContext(client=client, environment_name=env)
-    await resolver.load(d, parent_metadata)
+    load_context = LoadContext(client=client, environment_name=env)
+    await resolver.load(d, load_context)
 
 
 @dict_cli.command(name="list", rich_help_panel="Management")

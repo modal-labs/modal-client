@@ -30,9 +30,9 @@ async def test_multi_resolve_sequential_loads_once(client):
     obj = _DumbObject._from_loader(_load, "DumbObject()", load_context_overrides=LoadContext.empty())
 
     t0 = time.monotonic()
-    parent_metadata = LoadContext(client=client)
-    await resolver.load(obj, parent_metadata)
-    await resolver.load(obj, parent_metadata)
+    load_context = LoadContext(client=client)
+    await resolver.load(obj, load_context)
+    await resolver.load(obj, load_context)
     assert 0.08 < time.monotonic() - t0 < 0.15
 
     assert load_count == 1
@@ -57,8 +57,8 @@ async def test_multi_resolve_concurrent_loads_once(client):
 
     obj = _DumbObject._from_loader(_load, "DumbObject()", load_context_overrides=LoadContext.empty())
     t0 = time.monotonic()
-    parent_metadata = LoadContext(client=client)
-    await asyncio.gather(resolver.load(obj, parent_metadata), resolver.load(obj, parent_metadata))
+    load_context = LoadContext(client=client)
+    await asyncio.gather(resolver.load(obj, load_context), resolver.load(obj, load_context))
     assert 0.08 < time.monotonic() - t0 < 0.17
     assert load_count == 1
 
