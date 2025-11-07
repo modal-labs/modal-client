@@ -977,7 +977,7 @@ def test_new_hydrated_internal(client, servicer):
     assert obj.object_id == "fc-123"
 
 
-def test_from_id(client, servicer):
+def test_from_id_custom_client(client, servicer):
     app = App(include_source=False)
 
     @app.function(serialized=True)
@@ -992,14 +992,45 @@ def test_from_id(client, servicer):
 
     servicer.function_body(lambda: 42)
     with servicer.intercept() as ctx:
-        fc2 = FunctionCall.from_id(fc_id, client)
-        assert fc2.object_id == fc_id
+        fc2 = FunctionCall.from_id(fc_id, client=client)
         assert fc2.get() == 42
+        assert fc2.object_id == fc_id
         # Also test cancel
         fc2.cancel()
 
     req = ctx.pop_request("FunctionCallCancel")
     assert req.function_call_id == fc_id
+
+
+def test_from_id_env_client(servicer, set_env_client):
+    # FunctionCall.from_id is weird since it has two different hydration modes
+    # depending on which methods are being used. It will be partially hydrated
+    # already on initialization, but some methods will require "additional" hydration
+    # metadata from the server
+
+    app = App()
+
+    @app.function(serialized=True)
+    def foo():
+        return 42
+
+    deploy_app(app, "dummy")
+
+    function_call = foo.spawn(10)
+    fc_id = function_call.object_id
+    assert fc_id
+
+    with servicer.intercept() as ctx:
+        fc2 = FunctionCall.from_id(fc_id)  # intentionally no client passed in
+        assert fc2.get() == 100
+        assert len(ctx.calls) == 1
+        ctx.pop_request("FunctionGetOutputs")  # get outputs should be the only request at this point
+        assert fc2.object_id == fc_id
+        assert len(ctx.calls) == 0
+        # Also test cancel
+        fc2.cancel()
+        assert len(ctx.calls) == 1
+        ctx.pop_request("FunctionCallCancel")
 
 
 def test_local_execution_on_web_endpoint(client, servicer):
@@ -1433,14 +1464,22 @@ def test_experimental_spawn_map_sync(client, servicer):
         with app.run(client=client):
             fc1 = dummy_function.experimental_spawn_map([1, 2, 3])
 
+        # for now, we can avoid FunctionCallFromId since we all it adds is num_inputs, which we have:
+        assert ctx.get_requests("FunctionCallFromId") is not None
         # Verify the correct invocation type was used
         function_put_inputs = ctx.pop_request("FunctionPutInputs")
         assert function_put_inputs is not None
         assert type(fc1) is modal.FunctionCall
-
+        ctx.calls.clear()
         assert fc1.num_inputs() == 3
+        assert len(ctx.calls) == 0  # no more rpcs
+
+        ctx.calls.clear()
         fc2 = FunctionCall.from_id(fc1.object_id, client=client)
+        assert len(ctx.calls) == 0
         assert fc2.num_inputs() == 3
+        # a looked up function call should still do FunctionCallFromId to get num_inputs
+        assert len(ctx.calls) == 1 and ctx.get_requests("FunctionCallFromId") is not None
 
         # The server squares the inputs.
         assert fc1.get(index=0) == 1

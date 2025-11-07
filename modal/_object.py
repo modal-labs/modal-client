@@ -310,19 +310,19 @@ class _Object:
                 logger.debug(f"rehydrating {self} after snapshot")
                 self._is_hydrated = False  # un-hydrate and re-resolve
                 # Set the client on LoadContext before loading
-                root_context = LoadContext(client=client)
+                root_load_context = LoadContext(client=client)
                 resolver = Resolver()
-                await resolver.load(typing.cast(_Object, self), root_context, existing_object_id=None)
+                await resolver.load(typing.cast(_Object, self), root_load_context)
                 self._is_rehydrated = True
                 logger.debug(f"rehydrated {self} with client {id(self.client)}")
         elif not self._hydrate_lazily:
             self._validate_is_hydrated()
         else:
             # Set the client on LoadContext before loading
-            root_context = LoadContext(client=client)
+            root_load_context = LoadContext(client=client)
             resolver = Resolver()
             with suppress_tb_frames(1):  # skip this frame by default
-                await resolver.load(self, root_context)
+                await resolver.load(self, root_load_context)
         return self
 
 
