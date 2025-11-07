@@ -68,7 +68,7 @@ class LoadContext:
 
         return LoadContext(
             client=await _Client.from_env() if self._client is None else self.client,
-            environment_name=config.get("environment") if self._environment_name is None else self._environment_name,
+            environment_name=self._environment_name or config.get("environment") or "",
             app_id=self._app_id,
         )
 
@@ -100,6 +100,6 @@ class LoadContext:
             ...
         """
         self._client = self._client or client or await _Client.from_env()
-        self._environment_name = self._environment_name or environment_name or config.get("environment")
+        self._environment_name = self._environment_name or environment_name or config.get("environment") or ""
         self._app_id = self._app_id or app_id
         return self
