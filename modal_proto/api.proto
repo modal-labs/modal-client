@@ -2983,11 +2983,6 @@ message Schedule {
 }
 
 message SchedulerPlacement {
-  // TODO(irfansharif):
-  // - Fold in cloud, resource needs here too.
-  // - Allow specifying list of zones, cloud, fallback and alternative
-  //   GPU types.
-
   bool nonpreemptible = 6; 
   repeated string regions = 4;
   // TODO(irfansharif): Make these two repeated.
