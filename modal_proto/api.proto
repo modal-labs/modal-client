@@ -1291,6 +1291,8 @@ message EnvironmentListItem {
   string environment_id = 6;
   optional int32 max_concurrent_tasks = 7;
   optional int32 max_concurrent_gpus = 8;
+  int32 current_concurrent_tasks = 9;
+  int32 current_concurrent_gpus = 10;
 }
 
 message EnvironmentListResponse {
