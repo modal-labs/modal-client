@@ -635,7 +635,7 @@ class _Queue(_Object, type_prefix="qu"):
             partition_key=self.validate_partition_key(partition),
             total=total,
         )
-        response = await self._client.stub.QueueLen(request)
+        response = await self._client.stub.QueueLen(request, metadata=[("x-modal-go-collections", "always")])
         return response.len
 
     @warn_if_generator_is_not_consumed()
