@@ -6,36 +6,21 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.2.2.dev28 (2025-11-07)
+### 1.2.2 (2025-11-10)
 
-- `CloudBucketMount` now supports `force_path_style=True` to disable virtual-host-style addressing. See [mountpoint-s3 endpoints docs](https://github.com/awslabs/mountpoint-s3/blob/main/doc/CONFIGURATION.md#endpoints-and-aws-privatelink) for details.
+- `modal.Image.run_commands` now supports `modal.Volume` mounts. This can be helpful for accelerating builds by keeping a package manager cache on the Volume:
 
+  ```python
+  cache_vol = modal.Volume.from_name("cache-mount")
+  cmd_using_cache = "..."
+  image = modal.Image.debian_slim().run_commands(cmd_using_cache, volumes={"/cache": cache_vol})
+  ```
 
-#### 1.2.2.dev26 (2025-11-06)
-
-- Fixed a bug where App tags were not attached to Image builds that occur when running or first deploying the App.
-
-
-#### 1.2.2.dev22 (2025-11-06)
-
-- Validate Sandbox names when creating and restoring Sandboxes.
-
-
-#### 1.2.2.dev11 (2025-10-31)
-
-- The JSON from `modal config show` can now be parsed by cli tools such as `jq`.
-
-
-#### 1.2.2.dev2 (2025-10-28)
-
-- `Image.run_commands` supports `volumes` for mounting a volume for build caching
-
-```python
-cache_vol = modal.Volume.from_name("cache-mount")
-cmd_using_cache = "..."
-image = modal.Image.debian_slim().run_commands(cmd_using_cache, volumes={"/cache": cache_vol})
-```
-
+- All Modal objects now accept an optional `modal.Client` object in their constructor methods. Passing an explicit client can be helpful in cases where Modal credentials are retrieved from within the Python process that is making requests.
+- The `name=` passed to `modal.Sandbox.create` and `modal.Sandbox.from_name` is now required to follow other Modal object naming rules (must contain only alphanumeric characters, dashes, periods, or underscores and cannot exceed 64 characters). Passing an invalid name will now error.
+- `modal.CloudBucketMount` now supports `force_path_style=True` to disable virtual-host-style addressing. See [mountpoint-s3 endpoints docs](https://github.com/awslabs/mountpoint-s3/blob/main/doc/CONFIGURATION.md#endpoints-and-aws-privatelink) for details.
+- The output from `modal config show` is now valid JSON and can be parsed by CLI tools such as `jq`.
+- Fixed a bug where App tags were not attached to Image builds that occur when first deploying the App.
 
 ### 1.2.1 (2025-10-22)
 
