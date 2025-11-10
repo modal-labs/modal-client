@@ -2465,6 +2465,7 @@ message Proxy {
   double created_at = 2;
   string environment_name = 3;
   string proxy_id = 5;
+  string region = 6;
   repeated ProxyIp proxy_ips = 4;
 }
 
