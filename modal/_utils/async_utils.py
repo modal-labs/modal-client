@@ -5,8 +5,10 @@ import contextlib
 import functools
 import inspect
 import itertools
+import os
 import sys
 import time
+import types
 import typing
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterable, Awaitable, Iterable, Iterator
@@ -26,6 +28,8 @@ import synchronicity
 from synchronicity.async_utils import Runner
 from synchronicity.exceptions import NestedEventLoops
 from typing_extensions import ParamSpec, assert_type
+
+from modal._ipython import is_interactive_ipython
 
 from ..exception import InvalidError
 from .logger import logger
@@ -125,14 +129,67 @@ def rewrite_sync_to_async(code_line: str, func_name: str) -> tuple[bool, str]:
     return (True, suggestion)
 
 
-def _sync_in_async_warning(original_func, call_frame):
+@dataclass
+class _CallFrame:
+    """Simple dataclass to hold call frame information."""
+
+    filename: str
+    lineno: int
+    line: Optional[str]
+
+
+def _extract_user_call_frame():
+    """
+    Extract the call frame from user code by filtering out frames from synchronicity and asyncio.
+
+    Returns a _CallFrame with the filename, line number, and source line, or None if not found.
+    """
+    import linecache
+    import os
+
+    # Get the current call stack
+    stack = inspect.stack()
+
+    # Get the absolute path of this module to filter it out
+    this_file = os.path.abspath(__file__)
+
+    # Filter out frames from synchronicity, asyncio, and this module
+    for frame_info in stack:
+        filename = frame_info.filename
+        # Skip frames from synchronicity, asyncio packages, and this module
+        # Use path separators to ensure we're matching packages, not just filenames containing these words
+        if (
+            os.path.sep + "synchronicity" + os.path.sep in filename
+            or os.path.sep + "asyncio" + os.path.sep in filename
+            or os.path.abspath(filename) == this_file
+        ):
+            continue
+
+        # Found a user frame
+        line = linecache.getline(filename, frame_info.lineno)
+        return _CallFrame(filename=filename, lineno=frame_info.lineno, line=line if line else None)
+
+    # Fallback if we can't find a suitable frame
+    return None
+
+
+def _blocking_in_async_warning(original_func: types.FunctionType):
+    if is_interactive_ipython():
+        # in notebooks or interactive sessions where sync usage is expected
+        # even if it's actually running in an event loop
+        return
+
     import warnings
 
     # Skip warnings for __aexit__ and __anext__ - the __aenter__ and __aiter__ warnings are sufficient
     if original_func:
         func_name = getattr(original_func, "__name__", str(original_func))
         if func_name in ("__aexit__", "__anext__"):
+            # These dunders would typically already have caused a warning on the __aenter__ or __aiter__ respectively
             return
+
+    # Extract the call frame from the stack
+    call_frame = _extract_user_call_frame()
 
     # Build detailed warning message with location and function first
     message_parts = ["Blocking Modal interface used from within an async code block"]
@@ -159,8 +216,6 @@ def _sync_in_async_warning(original_func, call_frame):
     # Use warn_explicit to provide precise location information from the call frame
     if call_frame:
         # Extract module name from filename, or use a default
-        import os
-
         module_name = os.path.splitext(os.path.basename(call_frame.filename))[0]
 
         warnings.warn_explicit(
@@ -172,10 +227,24 @@ def _sync_in_async_warning(original_func, call_frame):
         )
     else:
         # Fallback to regular warn if no frame information available
-        warnings.warn("".join(message_parts), UserWarning, stacklevel=3)
+        warnings.warn("".join(message_parts), UserWarning)
 
 
-synchronizer = synchronicity.Synchronizer(sync_in_async_warning_callback=_sync_in_async_warning)
+def _safe_blocking_in_async_warning(original_func: types.FunctionType):
+    """
+    Safety wrapper around _blocking_in_async_warning to ensure it never raises exceptions.
+
+    This is non-critical functionality (just a warning), so we don't want it to break user code.
+    """
+    try:
+        _blocking_in_async_warning(original_func)
+    except Exception:
+        # Silently ignore any errors in the warning system
+        # We don't want the warning mechanism itself to cause problems
+        pass
+
+
+synchronizer = synchronicity.Synchronizer(blocking_in_async_callback=_safe_blocking_in_async_warning)
 
 
 def synchronize_api(obj, target_module=None):
