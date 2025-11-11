@@ -1434,3 +1434,29 @@ async def test_prevent_cancellation_abortion():
     assert await t2 == 1
     with pytest.raises(asyncio.CancelledError):
         await t
+
+
+def test_volume_ephemeral_global_scope_no_errors():
+    """
+    Test that Volume.ephemeral() in global scope doesn't emit errors on exit.
+
+    This test is expected to fail currently due to a bug in TaskContext where
+    loops aren't fully cancelled on task context exit, which causes ClientClosed
+    errors to be emitted.
+    """
+    import subprocess
+
+    script_path = os.path.join(os.path.dirname(__file__), "supports", "volume_ephemeral_global_scope.py")
+
+    result = subprocess.run(
+        [sys.executable, script_path],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    # There used to be a bug causing "unhandled exception during asyncio.run() shutdown"
+    # during shutdown due to TaskContext loops with rpcs not getting cleaned up immedately
+    # on context manager exit
+    assert "exception" not in result.stderr
+    assert "Traceback" not in result.stderr
+    print(result.stderr)
