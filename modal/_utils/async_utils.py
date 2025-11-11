@@ -135,29 +135,16 @@ def _sync_in_async_warning(original_func, call_frame):
     # Build detailed warning message with location and function first
     message_parts = ["Blocking Modal interface used from within an async code block"]
 
-    # Add location information
-    if call_frame:
-        message_parts.append(f"\n  Location: {call_frame.filename}:{call_frame.lineno}")
-
     # Generate intelligent suggestion based on the context
     suggestion = None
     code_line = None
-    show_function_name = True  # Default to showing function name
 
     if original_func and call_frame and call_frame.line:
         func_name = getattr(original_func, "__name__", str(original_func))
         code_line = call_frame.line.strip()
 
         # Use the unified rewrite function for all patterns
-        success, suggestion = rewrite_sync_to_async(code_line, func_name)
-
-        # Hide function name for __aiter__ and __aenter__ when successfully rewritten
-        if success and func_name in ("__aiter__", "__aenter__"):
-            show_function_name = False
-
-        # Add function name if appropriate
-        if show_function_name:
-            message_parts.append(f"\n  Function: {func_name}")
+        _, suggestion = rewrite_sync_to_async(code_line, func_name)
 
     # Add suggestion in "change X to Y" format
     if suggestion and code_line:
@@ -176,15 +163,14 @@ def _sync_in_async_warning(original_func, call_frame):
 
         warnings.warn_explicit(
             "".join(message_parts),
-            RuntimeWarning,
+            UserWarning,
             filename=call_frame.filename,
             lineno=call_frame.lineno,
             module=module_name,
-            source=code_line,
         )
     else:
         # Fallback to regular warn if no frame information available
-        warnings.warn("".join(message_parts), RuntimeWarning, stacklevel=3)
+        warnings.warn("".join(message_parts), UserWarning, stacklevel=3)
 
 
 synchronizer = synchronicity.Synchronizer(sync_in_async_warning_callback=_sync_in_async_warning)
