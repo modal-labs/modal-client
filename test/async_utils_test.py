@@ -1640,7 +1640,7 @@ def test_extract_user_call_frame_filters_packages_not_filenames():
 
 def test_extract_user_call_frame_with_asyncio_in_filename():
     """Test that files with 'asyncio' or 'synchronicity' in their names are not filtered out."""
-    from test.my_asyncio_test_helper import call_extract_from_asyncio_named_file
+    from test.supports.my_asyncio_test_helper import call_extract_from_asyncio_named_file
 
     # Call the function from a file that has 'asyncio' in its name
     call_frame = call_extract_from_asyncio_named_file()
