@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import modal
 
-app = modal.App()
+app = modal.App(include_source=False)
 
 
 def foo(x):

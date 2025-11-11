@@ -9,8 +9,10 @@ from grpclib import GRPCError, Status
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
+from modal._utils.grpc_utils import Retry
 from modal_proto import api_pb2
 
+from ._load_context import LoadContext
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -22,7 +24,6 @@ from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -105,7 +106,7 @@ class _DictManager:
             object_creation_type=object_creation_type,
         )
         try:
-            await retry_transient_errors(client.stub.DictGetOrCreate, req)
+            await client.stub.DictGetOrCreate(req)
         except GRPCError as exc:
             if exc.status == Status.ALREADY_EXISTS and not allow_existing:
                 raise AlreadyExistsError(exc.message)
@@ -157,7 +158,7 @@ class _DictManager:
             req = api_pb2.DictListRequest(
                 environment_name=_get_environment_name(environment_name), pagination=pagination
             )
-            resp = await retry_transient_errors(client.stub.DictList, req)
+            resp = await client.stub.DictList(req)
             items.extend(resp.dicts)
             finished = (len(resp.dicts) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
             return finished
@@ -215,7 +216,7 @@ class _DictManager:
                 raise
         else:
             req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
-            await retry_transient_errors(obj._client.stub.DictDelete, req)
+            await obj._client.stub.DictDelete(req)
 
 
 DictManager = synchronize_api(_DictManager)
@@ -327,7 +328,7 @@ class _Dict(_Object, type_prefix="di"):
             environment_name=_get_environment_name(environment_name),
             data=serialized,
         )
-        response = await retry_transient_errors(client.stub.DictGetOrCreate, request, total_timeout=10.0)
+        response = await client.stub.DictGetOrCreate(request, retry=Retry(total_timeout=10.0))
         async with TaskContext() as tc:
             request = api_pb2.DictHeartbeatRequest(dict_id=response.dict_id)
             tc.infinite_loop(lambda: client.stub.DictHeartbeat(request), sleep=_heartbeat_sleep)
@@ -347,6 +348,7 @@ class _Dict(_Object, type_prefix="di"):
         namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        client: Optional[_Client] = None,
     ) -> "_Dict":
         """Reference a named Dict, creating if necessary.
 
@@ -368,20 +370,27 @@ class _Dict(_Object, type_prefix="di"):
                 "Passing data to `modal.Dict.from_name` is deprecated and will stop working in a future release.",
             )
 
-        async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Dict, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=load_context.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 data=serialized,
             )
-            response = await resolver.client.stub.DictGetOrCreate(req)
+            response = await load_context.client.stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
-            self._hydrate(response.dict_id, resolver.client, response.metadata)
+            self._hydrate(response.dict_id, load_context.client, response.metadata)
 
         rep = _Dict._repr(name, environment_name)
-        return _Dict._from_loader(_load, rep, is_another_app=True, hydrate_lazily=True, name=name)
+        return _Dict._from_loader(
+            _load,
+            rep,
+            is_another_app=True,
+            hydrate_lazily=True,
+            name=name,
+            load_context_overrides=LoadContext(environment_name=environment_name, client=client),
+        )
 
     @staticmethod
     async def delete(
@@ -418,7 +427,7 @@ class _Dict(_Object, type_prefix="di"):
     async def clear(self) -> None:
         """Remove all items from the Dict."""
         req = api_pb2.DictClearRequest(dict_id=self.object_id)
-        await retry_transient_errors(self._client.stub.DictClear, req)
+        await self._client.stub.DictClear(req)
 
     @live_method
     async def get(self, key: Any, default: Optional[Any] = None) -> Any:
@@ -427,7 +436,7 @@ class _Dict(_Object, type_prefix="di"):
         Returns `default` if key does not exist.
         """
         req = api_pb2.DictGetRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await retry_transient_errors(self._client.stub.DictGet, req)
+        resp = await self._client.stub.DictGet(req)
         if not resp.found:
             return default
         return deserialize(resp.value, self._client)
@@ -436,7 +445,7 @@ class _Dict(_Object, type_prefix="di"):
     async def contains(self, key: Any) -> bool:
         """Return if a key is present."""
         req = api_pb2.DictContainsRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await retry_transient_errors(self._client.stub.DictContains, req)
+        resp = await self._client.stub.DictContains(req)
         return resp.found
 
     @live_method
@@ -446,7 +455,7 @@ class _Dict(_Object, type_prefix="di"):
         Note: This is an expensive operation and will return at most 100,000.
         """
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
-        resp = await retry_transient_errors(self._client.stub.DictLen, req)
+        resp = await self._client.stub.DictLen(req)
         return resp.len
 
     @live_method
@@ -475,7 +484,7 @@ class _Dict(_Object, type_prefix="di"):
         serialized = _serialize_dict(contents)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         try:
-            await retry_transient_errors(self._client.stub.DictUpdate, req)
+            await self._client.stub.DictUpdate(req)
         except GRPCError as exc:
             if "status = '413'" in exc.message:
                 raise RequestSizeError("Dict.update request is too large") from exc
@@ -493,7 +502,7 @@ class _Dict(_Object, type_prefix="di"):
         serialized = _serialize_dict(updates)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized, if_not_exists=skip_if_exists)
         try:
-            resp = await retry_transient_errors(self._client.stub.DictUpdate, req)
+            resp = await self._client.stub.DictUpdate(req)
             return resp.created
         except GRPCError as exc:
             if "status = '413'" in exc.message:
@@ -516,7 +525,7 @@ class _Dict(_Object, type_prefix="di"):
         If key is not found, return default if provided, otherwise raise KeyError.
         """
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
-        resp = await retry_transient_errors(self._client.stub.DictPop, req)
+        resp = await self._client.stub.DictPop(req)
         if not resp.found:
             if default is not _NO_DEFAULT:
                 return default

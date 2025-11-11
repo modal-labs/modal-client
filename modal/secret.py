@@ -10,12 +10,12 @@ from synchronicity import classproperty
 
 from modal_proto import api_pb2
 
+from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object, live_method
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -91,7 +91,7 @@ class _SecretManager:
             env_dict=env_dict,
         )
         try:
-            await retry_transient_errors(client.stub.SecretGetOrCreate, req)
+            await client.stub.SecretGetOrCreate(req)
         except GRPCError as exc:
             if exc.status == Status.ALREADY_EXISTS and not allow_existing:
                 raise AlreadyExistsError(exc.message)
@@ -143,7 +143,7 @@ class _SecretManager:
             req = api_pb2.SecretListRequest(
                 environment_name=_get_environment_name(environment_name), pagination=pagination
             )
-            resp = await retry_transient_errors(client.stub.SecretList, req)
+            resp = await client.stub.SecretList(req)
             items.extend(resp.items)
             finished = (len(resp.items) < max_page_size) or (max_objects is not None and len(items) >= max_objects)
             return finished
@@ -200,10 +200,37 @@ class _SecretManager:
                 raise
         else:
             req = api_pb2.SecretDeleteRequest(secret_id=obj.object_id)
-            await retry_transient_errors(obj._client.stub.SecretDelete, req)
+            await obj._client.stub.SecretDelete(req)
 
 
 SecretManager = synchronize_api(_SecretManager)
+
+
+async def _load_from_env_dict(instance: "_Secret", load_context: LoadContext, env_dict: dict[str, str]):
+    """helper method for loaders .from_dict and .from_dotenv etc."""
+    if load_context.app_id is not None:
+        req = api_pb2.SecretGetOrCreateRequest(
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
+            env_dict=env_dict,
+            app_id=load_context.app_id,
+            environment_name=load_context.environment_name,
+        )
+    else:
+        req = api_pb2.SecretGetOrCreateRequest(
+            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
+            env_dict=env_dict,
+            environment_name=load_context.environment_name,
+        )
+
+    try:
+        resp = await load_context.client.stub.SecretGetOrCreate(req)
+    except GRPCError as exc:
+        if exc.status == Status.INVALID_ARGUMENT:
+            raise InvalidError(exc.message)
+        if exc.status == Status.FAILED_PRECONDITION:
+            raise InvalidError(exc.message)
+        raise
+    instance._hydrate(resp.secret_id, load_context.client, resp.metadata)
 
 
 class _Secret(_Object, type_prefix="st"):
@@ -260,30 +287,14 @@ class _Secret(_Object, type_prefix="st"):
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
-            if resolver.app_id is not None:
-                object_creation_type = api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
-            else:
-                object_creation_type = api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL
-
-            req = api_pb2.SecretGetOrCreateRequest(
-                object_creation_type=object_creation_type,
-                env_dict=env_dict_filtered,
-                app_id=resolver.app_id,
-                environment_name=resolver.environment_name,
-            )
-            try:
-                resp = await resolver.client.stub.SecretGetOrCreate(req)
-            except GRPCError as exc:
-                if exc.status == Status.INVALID_ARGUMENT:
-                    raise InvalidError(exc.message)
-                if exc.status == Status.FAILED_PRECONDITION:
-                    raise InvalidError(exc.message)
-                raise
-            self._hydrate(resp.secret_id, resolver.client, resp.metadata)
+        async def _load(
+            self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
+            await _load_from_env_dict(self, load_context, env_dict_filtered)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
-        return _Secret._from_loader(_load, rep, hydrate_lazily=True)
+        # TODO: scoping - these should probably not be lazily hydrated without having an app and/or sandbox association
+        return _Secret._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
 
     @staticmethod
     def from_local_environ(
@@ -303,7 +314,7 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret.from_dict({})
 
     @staticmethod
-    def from_dotenv(path=None, *, filename=".env") -> "_Secret":
+    def from_dotenv(path=None, *, filename=".env", client: Optional[_Client] = None) -> "_Secret":
         """Create secrets from a .env file automatically.
 
         If no argument is provided, it will use the current working directory as the starting
@@ -331,7 +342,9 @@ class _Secret(_Object, type_prefix="st"):
         ```
         """
 
-        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             try:
                 from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
@@ -355,18 +368,13 @@ class _Secret(_Object, type_prefix="st"):
                 # To simplify this, we just support the cwd and don't do any automatic path inference.
                 dotenv_path = find_dotenv(filename, usecwd=True)
 
-            env_dict = dotenv_values(dotenv_path)
+            env_dict = {k: v or "" for k, v in dotenv_values(dotenv_path).items()}
 
-            req = api_pb2.SecretGetOrCreateRequest(
-                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
-                env_dict=env_dict,
-                app_id=resolver.app_id,
-            )
-            resp = await resolver.client.stub.SecretGetOrCreate(req)
+            await _load_from_env_dict(self, load_context, env_dict)
 
-            self._hydrate(resp.secret_id, resolver.client, resp.metadata)
-
-        return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
+        return _Secret._from_loader(
+            _load, "Secret.from_dotenv()", hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
+        )
 
     @staticmethod
     def from_name(
@@ -377,6 +385,7 @@ class _Secret(_Object, type_prefix="st"):
         required_keys: list[
             str
         ] = [],  # Optionally, a list of required environment variables (will be asserted server-side)
+        client: Optional[_Client] = None,
     ) -> "_Secret":
         """Reference a Secret by its name.
 
@@ -394,23 +403,31 @@ class _Secret(_Object, type_prefix="st"):
         """
         warn_if_passing_namespace(namespace, "modal.Secret.from_name")
 
-        async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=load_context.environment_name,
                 required_keys=required_keys,
             )
             try:
-                response = await resolver.client.stub.SecretGetOrCreate(req)
+                response = await load_context.client.stub.SecretGetOrCreate(req)
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
                     raise NotFoundError(exc.message)
                 else:
                     raise
-            self._hydrate(response.secret_id, resolver.client, response.metadata)
+            self._hydrate(response.secret_id, load_context.client, response.metadata)
 
         rep = _Secret._repr(name, environment_name)
-        return _Secret._from_loader(_load, rep, hydrate_lazily=True, name=name)
+        return _Secret._from_loader(
+            _load,
+            rep,
+            hydrate_lazily=True,
+            name=name,
+            load_context_overrides=LoadContext(environment_name=environment_name, client=client),
+        )
 
     @staticmethod
     async def create_deployed(
@@ -454,7 +471,7 @@ class _Secret(_Object, type_prefix="st"):
             object_creation_type=object_creation_type,
             env_dict=env_dict,
         )
-        resp = await retry_transient_errors(client.stub.SecretGetOrCreate, request)
+        resp = await client.stub.SecretGetOrCreate(request)
         return resp.secret_id
 
     @live_method

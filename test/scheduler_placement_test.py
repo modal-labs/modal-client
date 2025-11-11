@@ -4,7 +4,7 @@ from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
 
-app = App()
+app = App(include_source=False)
 
 
 @app.function(

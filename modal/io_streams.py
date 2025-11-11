@@ -21,7 +21,7 @@ from modal.exception import ClientClosed, ExecTimeoutError, InvalidError
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .config import logger
@@ -492,21 +492,6 @@ class _StreamReader(Generic[T]):
 
     As an asynchronous iterable, the object supports the `for` and `async for`
     statements. Just loop over the object to read in chunks.
-
-    **Usage**
-
-    ```python fixture:running_app
-    from modal import Sandbox
-
-    sandbox = Sandbox.create(
-        "bash",
-        "-c",
-        "for i in $(seq 1 10); do echo foo; sleep 0.1; done",
-        app=running_app,
-    )
-    for message in sandbox.stdout:
-        print(f"Message: {message}")
-    ```
     """
 
     _impl: Union[
@@ -574,19 +559,7 @@ class _StreamReader(Generic[T]):
         return self._impl.file_descriptor
 
     async def read(self) -> T:
-        """Fetch the entire contents of the stream until EOF.
-
-        **Usage**
-
-        ```python fixture:running_app
-        from modal import Sandbox
-
-        sandbox = Sandbox.create("echo", "hello", app=running_app)
-        sandbox.wait()
-
-        print(sandbox.stdout.read())
-        ```
-        """
+        """Fetch the entire contents of the stream until EOF."""
         return await self._impl.read()
 
     # TODO(saltzm): I'd prefer to have the implementation classes only implement __aiter__
@@ -664,15 +637,13 @@ class _StreamWriterThroughServer:
 
         try:
             if self._object_type == "sandbox":
-                await retry_transient_errors(
-                    self._client.stub.SandboxStdinWrite,
+                await self._client.stub.SandboxStdinWrite(
                     api_pb2.SandboxStdinWriteRequest(
                         sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
                     ),
                 )
             else:
-                await retry_transient_errors(
-                    self._client.stub.ContainerExecPutInput,
+                await self._client.stub.ContainerExecPutInput(
                     api_pb2.ContainerExecPutInputRequest(
                         exec_id=self._object_id,
                         input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
@@ -757,21 +728,16 @@ class _StreamWriter:
 
         **Usage**
 
-        ```python fixture:running_app
-        from modal import Sandbox
-
-        sandbox = Sandbox.create(
+        ```python fixture:sandbox
+        proc = sandbox.exec(
             "bash",
             "-c",
             "while read line; do echo $line; done",
-            app=running_app,
         )
-        sandbox.stdin.write(b"foo\\n")
-        sandbox.stdin.write(b"bar\\n")
-        sandbox.stdin.write_eof()
-
-        sandbox.stdin.drain()
-        sandbox.wait()
+        proc.stdin.write(b"foo\\n")
+        proc.stdin.write(b"bar\\n")
+        proc.stdin.write_eof()
+        proc.stdin.drain()
         ```
         """
         self._impl.write(data)

@@ -24,7 +24,7 @@ def square(x):
 
 @pytest.mark.asyncio
 async def test_redeploy(servicer, client):
-    app = App(image=Image.debian_slim().pip_install("pandas"))
+    app = App(image=Image.debian_slim().pip_install("pandas"), include_source=False)
     app.function()(square)
 
     # Deploy app
@@ -59,7 +59,7 @@ def dummy():
 def test_create_object_internal_exception(servicer, client):
     servicer.function_create_error = GRPCError(Status.INTERNAL, "Function create failed")
 
-    app = App()
+    app = App(include_source=False)
     app.function()(dummy)
 
     with servicer.intercept() as ctx:
@@ -77,7 +77,7 @@ def test_create_object_internal_exception(servicer, client):
 def test_create_object_invalid_exception(servicer, client):
     servicer.function_create_error = GRPCError(Status.INVALID_ARGUMENT, "something was invalid")
 
-    app = App()
+    app = App(include_source=False)
     app.function()(dummy)
 
     with servicer.intercept() as ctx:
@@ -256,7 +256,7 @@ def test_redeploy_delete_objects(servicer, client):
 
 @pytest.mark.asyncio
 async def test_unhydrate(servicer, client):
-    app = App()
+    app = App(include_source=False)
 
     f = app.function()(dummy)
 
@@ -269,7 +269,7 @@ async def test_unhydrate(servicer, client):
 
 
 def test_keyboard_interrupt(servicer, client):
-    app = App()
+    app = App(include_source=False)
     app.function()(square)
     with app.run(client=client):
         # The exit handler should catch this interrupt and exit gracefully
@@ -320,7 +320,7 @@ def test_parse_custom_domains():
 
 
 def test_hydrated_other_app_object_gets_referenced(servicer, client):
-    app = App("my-app")
+    app = App("my-app", include_source=False)
     with servicer.intercept() as ctx:
         with Volume.ephemeral(client=client) as vol:
             app.function(volumes={"/vol": vol})(dummy)  # implicitly load vol
@@ -335,7 +335,7 @@ def test_hasattr():
 
 
 def test_app(client):
-    app = App()
+    app = App(include_source=False)
     square_modal = app.function()(square)
 
     with app.run(client=client):
@@ -348,7 +348,7 @@ def test_non_string_app_name():
 
 
 def test_app_logs(servicer, client):
-    app = App()
+    app = App(include_source=False)
     f = app.function()(dummy)
 
     with app.run(client=client):
@@ -400,7 +400,7 @@ def test_app_interactive_no_output(servicer, client):
 
 @pytest.mark.asyncio
 async def test_deploy_from_container(servicer, container_client):
-    app = App(image=Image.debian_slim().pip_install("pandas"))
+    app = App(image=Image.debian_slim().pip_install("pandas"), include_source=False)
     app.function()(square)
 
     # Deploy app
@@ -464,7 +464,7 @@ def test_lookup_invalid_name(name):
 @pytest.mark.parametrize("mode", ["run", "deploy"])
 def test_tags(servicer, client, mode):
     tags = {"foo": "bar", "baz": "qux"}
-    app = App(name="tag-tester", tags=tags)
+    app = App(name="tag-tester", tags=tags, include_source=False)
     app.function()(square)
     with servicer.intercept() as ctx:
         if mode == "deploy":
@@ -472,6 +472,9 @@ def test_tags(servicer, client, mode):
         elif mode == "run":
             with app.run(client=client):
                 pass
+
+    request = ctx.pop_request("AppCreate")
+    assert request.tags == tags
 
     request = ctx.pop_request("AppPublish")
     assert request.tags == tags
@@ -487,7 +490,7 @@ def test_invalid_tags(s):
 
 @pytest.mark.parametrize("inherit_tags", [True, False])
 def test_app_composition_tags(servicer, client, inherit_tags):
-    base_app = App(tags={"foo": "bar", "baz": "bum"})
+    base_app = App(tags={"foo": "bar", "baz": "bum"}, include_source=False)
     base_app.function()(square)
 
     main_app = App(tags={"baz": "qux"})
@@ -504,7 +507,7 @@ def test_app_composition_tags(servicer, client, inherit_tags):
 
 
 def test_app_set_tags(servicer, client):
-    app = App()
+    app = App(include_source=False)
     app.function()(square)
     app.deploy(name="set-tags-test", client=client)
 

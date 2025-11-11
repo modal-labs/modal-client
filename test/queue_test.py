@@ -116,13 +116,13 @@ def test_queue_nonblocking_put(servicer, client):
     assert i == servicer.queue_max_len
 
 
-def test_queue_deploy(servicer, client):
-    d = Queue.from_name("xyz", create_if_missing=True).hydrate(client)
-    d.put(123)
+def test_queue_deploy(client):
+    Queue.from_name("xyz", create_if_missing=True, client=client).hydrate()
+    Queue.from_name("xyz", client=client).put(123)
 
 
-def test_queue_lazy_hydrate_from_name(set_env_client):
-    q = Queue.from_name("foo", create_if_missing=True)
+def test_queue_lazy_hydrate_from_name(client):
+    q = Queue.from_name("foo", create_if_missing=True, client=client)
     q.put(123)
     assert q.get() == 123
 

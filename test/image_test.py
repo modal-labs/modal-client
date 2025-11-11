@@ -545,7 +545,11 @@ def run_f():
 
 
 def test_image_run_function(builder_version, servicer, client):
-    image = Image.debian_slim().pip_install("pandas").run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})])
+    image = (
+        Image.debian_slim()
+        .pip_install("pandas")
+        .run_function(run_f, secrets=[Secret.from_dict({"xyz": "123"})], include_source=False)
+    )
     build_image(image, client)
     image_id = image.object_id
     layers = get_image_layers(image_id, servicer)
@@ -566,7 +570,7 @@ def test_image_run_function(builder_version, servicer, client):
 
 
 def test_image_run_function_interactivity(builder_version, servicer, client):
-    image = Image.debian_slim().pip_install("pandas").run_function(run_f)
+    image = Image.debian_slim().pip_install("pandas").run_function(run_f, include_source=False)
 
     build_image(image, client)
     image_id = image.object_id
@@ -617,7 +621,7 @@ def run_f_unserializable_globals():
 
 
 def test_image_run_unserializable_function(builder_version, servicer, client):
-    image = Image.debian_slim().run_function(run_f_unserializable_globals)
+    image = Image.debian_slim().run_function(run_f_unserializable_globals, include_source=False)
 
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
@@ -630,7 +634,9 @@ def run_f_with_args(arg, *, kwarg):
 
 
 def test_image_run_function_with_args(builder_version, servicer, client):
-    image = Image.debian_slim().run_function(run_f_with_args, args=("foo",), kwargs={"kwarg": "bar"})
+    image = Image.debian_slim().run_function(
+        run_f_with_args, args=("foo",), kwargs={"kwarg": "bar"}, include_source=False
+    )
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
     input = layers[0].build_function.input
@@ -638,7 +644,7 @@ def test_image_run_function_with_args(builder_version, servicer, client):
 
 
 def test_image_run_function_with_region_selection(servicer, client):
-    image = Image.debian_slim().run_function(run_f, region="us-east")
+    image = Image.debian_slim().run_function(run_f, region="us-east", include_source=False)
     build_image(image, client)
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
@@ -646,7 +652,7 @@ def test_image_run_function_with_region_selection(servicer, client):
 
 
 def test_image_run_function_with_cloud_selection(servicer, client):
-    image = Image.debian_slim().run_function(run_f, cloud="oci")
+    image = Image.debian_slim().run_function(run_f, cloud="oci", include_source=False)
     build_image(image, client)
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
@@ -1717,7 +1723,7 @@ async def test_logs(servicer, client):
     assert logs == ["build starting\n", "build finished\n"]
 
 
-def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_path):
+def test_add_local_lazy_vs_copy(client, servicer, supports_on_path):
     deb = Image.debian_slim()
     image_with_mount = deb.add_local_python_source("pkg_a")
     build_image(image_with_mount, client)
@@ -1775,7 +1781,7 @@ def test_add_locals_are_attached_to_functions(servicer, client, supports_on_path
     assert added_mounts == {img._mount_layers[0].object_id}
 
 
-def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path, set_env_client):
+def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_source("pkg_a")
     app = App("my-app", include_source=False)
@@ -1837,7 +1843,7 @@ def empty_fun():
 def test_add_locals_build_function(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_source("pkg_a")
-    img_with_build_function = img.run_function(empty_fun)
+    img_with_build_function = img.run_function(empty_fun, include_source=False)
     with pytest.raises(InvalidError):
         # build functions could still potentially rewrite mount contents,
         # so we still require them to use copy=True

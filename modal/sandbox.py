@@ -23,14 +23,14 @@ from modal.mount import _Mount
 from modal.volume import _Volume
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
+from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
-from ._utils.name_utils import is_valid_object_name
+from ._utils.name_utils import check_object_name
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .container_process import _ContainerProcess
@@ -77,16 +77,6 @@ def _validate_exec_args(args: Sequence[str]) -> None:
         raise InvalidError(
             f"Total length of CMD arguments must be less than {ARG_MAX_BYTES} bytes (ARG_MAX). "
             f"Got {total_arg_len} bytes."
-        )
-
-
-def _warn_if_invalid_name(name: str) -> None:
-    if not is_valid_object_name(name):
-        deprecation_warning(
-            (2025, 9, 3),
-            f"Sandbox name '{name}' will be considered invalid in a future release."
-            "\n\nNames may contain only alphanumeric characters, dashes, periods, and underscores,"
-            " must be shorter than 64 characters, and cannot conflict with App ID strings.",
         )
 
 
@@ -202,7 +192,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 deps.append(proxy)
             return deps
 
-        async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
+        async def _load(
+            self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
+        ):
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
                 api_pb2.VolumeMount(
@@ -271,18 +263,18 @@ class _Sandbox(_Object, type_prefix="sb"):
                 experimental_options=experimental_options,
             )
 
-            create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
+            create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
             try:
-                create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
+                create_resp = await load_context.client.stub.SandboxCreate(create_req)
             except GRPCError as exc:
                 if exc.status == Status.ALREADY_EXISTS:
                     raise AlreadyExistsError(exc.message)
                 raise exc
 
             sandbox_id = create_resp.sandbox_id
-            self._hydrate(sandbox_id, resolver.client, None)
+            self._hydrate(sandbox_id, load_context.client, None)
 
-        return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps)
+        return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_context_overrides=LoadContext.empty())
 
     @staticmethod
     async def create(
@@ -441,7 +433,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         _validate_exec_args(args)
         if name is not None:
-            _warn_if_invalid_name(name)
+            check_object_name(name, "Sandbox")
 
         if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
             raise InvalidError("Cannot specify open ports when `block_network` is enabled")
@@ -497,6 +489,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             app_id = app.app_id
             app_client = app._client
         elif (container_app := _App._get_container_app()) is not None:
+            # implicit app/client provided by running in a modal Function
             app_id = container_app.app_id
             app_client = container_app._client
         else:
@@ -509,10 +502,11 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "```",
             )
 
-        client = client or app_client or await _Client.from_env()
+        client = client or app_client
 
-        resolver = Resolver(client, app_id=app_id)
-        await resolver.load(obj)
+        resolver = Resolver()
+        load_context = LoadContext(client=client, app_id=app_id)
+        await resolver.load(obj, load_context)
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
@@ -547,7 +541,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         env_name = _get_environment_name(environment_name)
 
         req = api_pb2.SandboxGetFromNameRequest(sandbox_name=name, app_name=app_name, environment_name=env_name)
-        resp = await retry_transient_errors(client.stub.SandboxGetFromName, req)
+        resp = await client.stub.SandboxGetFromName(req)
         return _Sandbox._new_hydrated(resp.sandbox_id, client, None)
 
     @staticmethod
@@ -560,7 +554,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             client = await _Client.from_env()
 
         req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0)
-        resp = await retry_transient_errors(client.stub.SandboxWait, req)
+        resp = await client.stub.SandboxWait(req)
 
         obj = _Sandbox._new_hydrated(sandbox_id, client, None)
 
@@ -573,7 +567,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Fetches any tags (key-value pairs) currently attached to this Sandbox from the server."""
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
         try:
-            resp = await retry_transient_errors(self._client.stub.SandboxTagsGet, req)
+            resp = await self._client.stub.SandboxTagsGet(req)
         except GRPCError as exc:
             raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
@@ -597,7 +591,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             tags=tags_list,
         )
         try:
-            await retry_transient_errors(self._client.stub.SandboxTagsSet, req)
+            await self._client.stub.SandboxTagsSet(req)
         except GRPCError as exc:
             raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
@@ -609,7 +603,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         """
         await self._get_task_id()  # Ensure the sandbox has started
         req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout)
-        resp = await retry_transient_errors(self._client.stub.SandboxSnapshotFs, req)
+        resp = await self._client.stub.SandboxSnapshotFs(req)
 
         if resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
             raise ExecutionError(resp.result.exception)
@@ -617,12 +611,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         image_id = resp.image_id
         metadata = resp.image_metadata
 
-        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             # no need to hydrate again since we do it eagerly below
             pass
 
         rep = "Image()"
-        image = _Image._from_loader(_load, rep, hydrate_lazily=True)
+        # TODO: use ._new_hydrated instead
+        image = _Image._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
         image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
 
         return image
@@ -634,7 +629,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         while True:
             req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
-            resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
+            resp = await self._client.stub.SandboxWait(req)
             if resp.result.status:
                 logger.debug(f"Sandbox {self.object_id} wait completed with status {resp.result.status}")
                 self._result = resp.result
@@ -660,7 +655,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             return self._tunnels
 
         req = api_pb2.SandboxGetTunnelsRequest(sandbox_id=self.object_id, timeout=timeout)
-        resp = await retry_transient_errors(self._client.stub.SandboxGetTunnels, req)
+        resp = await self._client.stub.SandboxGetTunnels(req)
 
         # If we couldn't get the tunnels in time, report the timeout.
         if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
@@ -688,7 +683,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 raise InvalidError(f"Failed to serialize user_metadata: {e}")
 
         req = api_pb2.SandboxCreateConnectTokenRequest(sandbox_id=self.object_id, user_metadata=user_metadata)
-        resp = await retry_transient_errors(self._client.stub.SandboxCreateConnectToken, req)
+        resp = await self._client.stub.SandboxCreateConnectToken(req)
         return SandboxConnectCredentials(resp.url, resp.token)
 
     async def reload_volumes(self) -> None:
@@ -697,8 +692,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         Added in v1.1.0.
         """
         task_id = await self._get_task_id()
-        await retry_transient_errors(
-            self._client.stub.ContainerReloadVolumes,
+        await self._client.stub.ContainerReloadVolumes(
             api_pb2.ContainerReloadVolumesRequest(
                 task_id=task_id,
             ),
@@ -709,9 +703,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         This is a no-op if the Sandbox has already finished running."""
 
-        await retry_transient_errors(
-            self._client.stub.SandboxTerminate, api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
-        )
+        await self._client.stub.SandboxTerminate(api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id))
 
     async def poll(self) -> Optional[int]:
         """Check if the Sandbox has finished running.
@@ -720,7 +712,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         """
 
         req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=0)
-        resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
+        resp = await self._client.stub.SandboxWait(req)
 
         if resp.result.status:
             self._result = resp.result
@@ -729,9 +721,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def _get_task_id(self) -> str:
         while not self._task_id:
-            resp = await retry_transient_errors(
-                self._client.stub.SandboxGetTaskId, api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id)
-            )
+            resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
             self._task_id = resp.task_id
             if not self._task_id:
                 await asyncio.sleep(0.5)
@@ -805,13 +795,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         **Usage**
 
-        ```python
-        app = modal.App.lookup("my-app", create_if_missing=True)
-
-        sandbox = modal.Sandbox.create("sleep", "infinity", app=app)
-
-        process = sandbox.exec("bash", "-c", "for i in $(seq 1 10); do echo foo $i; sleep 0.5; done")
-
+        ```python fixture:sandbox
+        process = sandbox.exec("bash", "-c", "for i in $(seq 1 3); do echo foo $i; sleep 0.1; done")
         for line in process.stdout:
             print(line)
         ```
@@ -913,7 +898,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             workdir=workdir,
             secret_ids=secret_ids,
         )
-        resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
+        resp = await self._client.stub.ContainerExec(req)
         by_line = bufsize == 1
         exec_deadline = time.monotonic() + int(timeout) + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
         logger.debug(f"Created ContainerProcess for exec_id {resp.exec_id} on Sandbox {self.object_id}")
@@ -1000,23 +985,26 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
         await self._get_task_id()
         snap_req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.object_id)
-        snap_resp = await retry_transient_errors(self._client.stub.SandboxSnapshot, snap_req)
+        snap_resp = await self._client.stub.SandboxSnapshot(snap_req)
 
         snapshot_id = snap_resp.snapshot_id
 
         # wait for the snapshot to succeed. this is implemented as a second idempotent rpc
         # because the snapshot itself may take a while to complete.
         wait_req = api_pb2.SandboxSnapshotWaitRequest(snapshot_id=snapshot_id, timeout=55.0)
-        wait_resp = await retry_transient_errors(self._client.stub.SandboxSnapshotWait, wait_req)
+        wait_resp = await self._client.stub.SandboxSnapshotWait(wait_req)
         if wait_resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
             raise ExecutionError(wait_resp.result.exception)
 
-        async def _load(self: _SandboxSnapshot, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             # we eagerly hydrate the sandbox snapshot below
             pass
 
         rep = "SandboxSnapshot()"
-        obj = _SandboxSnapshot._from_loader(_load, rep, hydrate_lazily=True)
+        # TODO: use ._new_hydrated instead
+        obj = _SandboxSnapshot._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
         obj._hydrate(snapshot_id, self._client, None)
 
         return obj
@@ -1031,7 +1019,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         client = client or await _Client.from_env()
 
         if name is not None and name != _DEFAULT_SANDBOX_NAME_OVERRIDE:
-            _warn_if_invalid_name(name)
+            check_object_name(name, "Sandbox")
 
         if name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
             restore_req = api_pb2.SandboxRestoreRequest(
@@ -1050,9 +1038,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING,
             )
         try:
-            restore_resp: api_pb2.SandboxRestoreResponse = await retry_transient_errors(
-                client.stub.SandboxRestore, restore_req
-            )
+            restore_resp: api_pb2.SandboxRestoreResponse = await client.stub.SandboxRestore(restore_req)
         except GRPCError as exc:
             if exc.status == Status.ALREADY_EXISTS:
                 raise AlreadyExistsError(exc.message)
@@ -1063,7 +1049,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         task_id_req = api_pb2.SandboxGetTaskIdRequest(
             sandbox_id=restore_resp.sandbox_id, wait_until_ready=True, timeout=55.0
         )
-        resp = await retry_transient_errors(client.stub.SandboxGetTaskId, task_id_req)
+        resp = await client.stub.SandboxGetTaskId(task_id_req)
         if resp.task_result.status not in [
             api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED,
             api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -1198,7 +1184,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             # Fetches a batch of sandboxes.
             try:
-                resp = await retry_transient_errors(client.stub.SandboxList, req)
+                resp = await client.stub.SandboxList(req)
             except GRPCError as exc:
                 raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 

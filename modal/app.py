@@ -22,6 +22,7 @@ from modal_proto import api_pb2
 
 from ._functions import _Function
 from ._ipython import is_notebook
+from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
 from ._partial_function import (
     _find_partial_methods_for_user_cls,
@@ -35,7 +36,6 @@ from ._utils.deprecation import (
     warn_on_renamed_autoscaler_settings,
 )
 from ._utils.function_utils import FunctionInfo, is_flash_object, is_global_object, is_method_fn
-from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name, check_tag_dict
 from .client import _Client
@@ -177,6 +177,10 @@ class _App:
     _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
 
+    # Metadata for loading objects within this app
+    # passed by reference to functions and classes so it can be updated by run()/deploy()
+    _root_load_context: LoadContext
+
     @property
     def _local_state(self) -> _LocalAppState:
         """For internal use only. Do not use this property directly."""
@@ -238,6 +242,7 @@ class _App:
         # Client is special - needed to be set just before the app is "hydrated" or running at the latest
         # Guaranteed to be set for running apps, but also needed to actually *hydrate* the app and make it running
         self._client = None
+        self._root_load_context = LoadContext.empty()
 
         # Register this app. This is used to look up the app in the container, when we can't get it from the function
         _App._all_apps.setdefault(self._name, []).append(self)
@@ -303,12 +308,13 @@ class _App:
             object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
         )
 
-        response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
+        response = await client.stub.AppGetOrCreate(request)
 
         app = _App(name)  # TODO: this should probably be a distinct constructor, possibly even a distinct type
         app._local_state_attr = None  # this is not a locally defined App, so no local state
         app._app_id = response.app_id
         app._client = client
+        app._root_load_context = LoadContext(client=client, environment_name=environment_name, app_id=response.app_id)
         app._running_app = RunningApp(response.app_id, interactive=False)
         return app
 
@@ -1183,7 +1189,7 @@ class _App:
         req = api_pb2.AppSetTagsRequest(app_id=self._app_id, tags=tags)
 
         client = client or self._client or await _Client.from_env()
-        await retry_transient_errors(client.stub.AppSetTags, req)
+        await client.stub.AppSetTags(req)
 
     async def get_tags(self, *, client: Optional[_Client] = None) -> dict[str, str]:
         """Get the tags that are currently attached to the App."""
@@ -1191,7 +1197,7 @@ class _App:
             raise InvalidError("`App.get_tags` cannot be called before the App is running.")
         req = api_pb2.AppGetTagsRequest(app_id=self._app_id)
         client = client or self._client or await _Client.from_env()
-        resp = await retry_transient_errors(client.stub.AppGetTags, req)
+        resp = await client.stub.AppGetTags(req)
         return dict(resp.tags)
 
     async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:

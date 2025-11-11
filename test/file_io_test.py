@@ -133,9 +133,16 @@ def test_file_write(servicer, client):
         f.close()
 
 
-def test_file_write_large(servicer, client):
+@pytest.mark.parametrize(
+    "file_size, expected_counter",
+    [
+        (int(5.5 * WRITE_CHUNK_SIZE), 6),
+        (int(2 * WRITE_CHUNK_SIZE), 2),
+    ],
+)
+def test_file_write_chunks(servicer, client, file_size, expected_counter):
     """Test file write chunking logic."""
-    content = "A" * WRITE_FILE_SIZE_LIMIT
+    content = "A" * file_size
     write_counter = 0
 
     async def container_filesystem_exec_get_output(servicer, stream):
@@ -151,7 +158,7 @@ def test_file_write_large(servicer, client):
 
         f = FileIO.create("/test.txt", "a+", client, "task-123")
         f.write(content)
-        assert write_counter == WRITE_FILE_SIZE_LIMIT // WRITE_CHUNK_SIZE
+        assert write_counter == expected_counter
         f.close()
 
 

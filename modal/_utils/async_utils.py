@@ -188,6 +188,10 @@ def synchronize_api(obj, target_module=None):
     return synchronizer.create_blocking(obj, blocking_name, target_module=target_module)
 
 
+# Used for testing to configure the `n_attempts` that `retry` will use.
+RETRY_N_ATTEMPTS_OVERRIDE: Optional[int] = None
+
+
 def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
     """Decorator that calls an async function multiple times, with a given timeout.
 
@@ -212,8 +216,13 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
     def decorator(fn):
         @functools.wraps(fn)
         async def f_wrapped(*args, **kwargs):
+            if RETRY_N_ATTEMPTS_OVERRIDE is not None:
+                local_n_attempts = RETRY_N_ATTEMPTS_OVERRIDE
+            else:
+                local_n_attempts = n_attempts
+
             delay = base_delay
-            for i in range(n_attempts):
+            for i in range(local_n_attempts):
                 t0 = time.time()
                 try:
                     return await asyncio.wait_for(fn(*args, **kwargs), timeout=timeout)
@@ -221,12 +230,12 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
                     logger.debug(f"Function {fn} was cancelled")
                     raise
                 except Exception as e:
-                    if i >= n_attempts - 1:
+                    if i >= local_n_attempts - 1:
                         raise
                     logger.debug(
                         f"Failed invoking function {fn}: {e}"
                         f" (took {time.time() - t0}s, sleeping {delay}s"
-                        f" and trying {n_attempts - i - 1} more times)"
+                        f" and trying {local_n_attempts - i - 1} more times)"
                     )
                 await asyncio.sleep(delay)
                 delay *= delay_factor

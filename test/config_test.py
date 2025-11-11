@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import json
 import os
 import pathlib
 import pytest
@@ -36,7 +37,7 @@ def _cli(args, env={}):
 
 def _get_config(env={}):
     stdout = _cli(["config", "show", "--no-redact"], env=env)
-    return eval(stdout)
+    return json.loads(stdout)
 
 
 def test_config():

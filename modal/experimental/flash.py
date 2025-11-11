@@ -16,7 +16,6 @@ from modal_proto import api_pb2
 
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
-from .._utils.grpc_utils import retry_transient_errors
 from ..client import _Client
 from ..config import logger
 from ..exception import InvalidError
@@ -113,6 +112,7 @@ class _FlashManager:
                             port=port,
                         ),
                         timeout=10,
+                        retry=None,
                     )
                     self.num_failures = 0
                     if first_registration:
@@ -126,10 +126,8 @@ class _FlashManager:
                         f"due to error: {port_check_error}, num_failures: {self.num_failures}"
                     )
                     self.num_failures += 1
-                    await retry_transient_errors(
-                        self.client.stub.FlashContainerDeregister,
-                        api_pb2.FlashContainerDeregisterRequest(),
-                    )
+                    await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
+
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
@@ -148,10 +146,7 @@ class _FlashManager:
 
     async def stop(self):
         self.heartbeat_task.cancel()
-        await retry_transient_errors(
-            self.client.stub.FlashContainerDeregister,
-            api_pb2.FlashContainerDeregisterRequest(),
-        )
+        await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
 
         self.stopped = True
         logger.warning(f"[Modal Flash] No longer accepting new requests on {self.tunnel.url}.")
@@ -463,12 +458,12 @@ class _FlashPrometheusAutoscaler:
 
     async def _get_all_containers(self):
         req = api_pb2.FlashContainerListRequest(function_id=self.fn.object_id)
-        resp = await retry_transient_errors(self.client.stub.FlashContainerList, req)
+        resp = await self.client.stub.FlashContainerList(req)
         return resp.containers
 
     async def _set_target_slots(self, target_slots: int):
         req = api_pb2.FlashSetTargetSlotsMetricsRequest(function_id=self.fn.object_id, target_slots=target_slots)
-        await retry_transient_errors(self.client.stub.FlashSetTargetSlotsMetrics, req)
+        await self.client.stub.FlashSetTargetSlotsMetrics(req)
         return
 
     def _make_scaling_decision(
@@ -619,5 +614,5 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
     assert fn is not None
     await fn.hydrate(client=client)
     req = api_pb2.FlashContainerListRequest(function_id=fn.object_id)
-    resp = await retry_transient_errors(client.stub.FlashContainerList, req)
+    resp = await client.stub.FlashContainerList(req)
     return resp.containers
