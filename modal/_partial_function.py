@@ -47,7 +47,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     BATCHED = 64
     CONCURRENT = 128
     CLUSTERED = 256  # Experimental: Clustered functions
-    HTTP_WEB_INTERFACE = 512 # Experimental: HTTP server
+    HTTP_WEB_INTERFACE = 512  # Experimental: HTTP server
 
     @staticmethod
     def all() -> int:
@@ -69,11 +69,15 @@ class _PartialFunctionFlags(enum.IntFlag):
     def all_web_interface_flags() -> int:
         return _PartialFunctionFlags.HTTP_WEB_INTERFACE | _PartialFunctionFlags.WEB_INTERFACE
 
+
 @dataclass
 class _HTTPConfig:
     port: int
-    proxy_region: list[Literal['us-east', 'us-west', 'ap-south']]
+    proxy_region: Literal[
+        "us-east", "us-west", "ap-south", "all"
+    ]  # 'all' means all regions, cannot use a list since experimental_options is of type dict[str, str]
     exit_grace_period: Optional[int] = None
+
 
 @dataclass
 class _PartialFunctionParams:
@@ -88,7 +92,6 @@ class _PartialFunctionParams:
     build_timeout: Optional[int] = None
     rdma: Optional[bool] = None
     http_config: Optional[_HTTPConfig] = None
-
 
     def update(self, other: "_PartialFunctionParams") -> None:
         """Update self with params set in other."""
@@ -915,7 +918,9 @@ def _clustered(
 def _http_server(
     port: int,
     *,
-    proxy_region: list[Literal['us-east', 'us-west', 'ap-south']],
+    proxy_region: Literal[
+        "us-east", "us-west", "ap-south", "all"
+    ],  # 'all' means all regions, cannot use a list since experimental_options is of type dict[str, str]
     exit_grace_period: Optional[int] = None,
 ):
     from typing import Union
