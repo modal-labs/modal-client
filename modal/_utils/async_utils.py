@@ -172,7 +172,7 @@ class TaskContext:
                 with contextlib.suppress(asyncio.CancelledError):
                     await gather_future
 
-            cancelled_tasks = []
+            cancelled_tasks: list[asyncio.Task] = []
             for task in self._tasks:
                 if task.done() and not task.cancelled():
                     # Raise any exceptions if they happened.
