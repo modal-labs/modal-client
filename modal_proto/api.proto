@@ -1603,6 +1603,7 @@ message FunctionCallGetDataRequest {
     string attempt_token = 3;
   }
   uint64 last_index = 2;
+  bool use_gapless_read = 3;
 }
 
 message FunctionCallInfo {
