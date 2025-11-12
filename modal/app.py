@@ -999,12 +999,19 @@ class _App:
 
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             local_state = self._local_state
+            experimental_options_ = experimental_options or {}
             # Check if the decorated object is a class
             if isinstance(wrapped_cls, _PartialFunction):
                 wrapped_cls.registered = True
                 user_cls = wrapped_cls.user_cls
+                if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
+                    http_config = wrapped_cls.params.http_config
+                    if http_config:
+                        flash_region = http_config.proxy_region
+                        experimental_options_["flash"] = flash_region
+
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options))
+                    verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options_))
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
@@ -1014,6 +1021,7 @@ class _App:
                 if wrapped_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_cls.params.cluster_size
                     rdma = wrapped_cls.params.rdma
+
                 else:
                     cluster_size = None
                     rdma = None
@@ -1058,6 +1066,14 @@ class _App:
                     "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
                 )
 
+            for method in _find_partial_methods_for_user_cls(
+                user_cls, _PartialFunctionFlags.HTTP_WEB_INTERFACE
+            ).values():
+                method.registered = True  # Avoid warning about not registering the method (hacky!)
+                raise InvalidError(
+                    "The `@modal.http_server` decorator cannot be used on methods; decorate the class instead."
+                )
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
@@ -1095,7 +1111,7 @@ class _App:
                 cluster_size=cluster_size,
                 rdma=rdma,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
-                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                experimental_options={k: str(v) for k, v in (experimental_options_).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 restrict_output=_experimental_restrict_output,

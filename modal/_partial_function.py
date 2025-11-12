@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import (
     Any,
     Callable,
+    Literal,
     Optional,
     Union,
 )
@@ -46,6 +47,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     BATCHED = 64
     CONCURRENT = 128
     CLUSTERED = 256  # Experimental: Clustered functions
+    HTTP_WEB_INTERFACE = 512 # Experimental: HTTP server
 
     @staticmethod
     def all() -> int:
@@ -63,6 +65,15 @@ class _PartialFunctionFlags(enum.IntFlag):
     def interface_flags() -> int:
         return _PartialFunctionFlags.CALLABLE_INTERFACE | _PartialFunctionFlags.WEB_INTERFACE
 
+    @staticmethod
+    def all_web_interface_flags() -> int:
+        return _PartialFunctionFlags.HTTP_WEB_INTERFACE | _PartialFunctionFlags.WEB_INTERFACE
+
+@dataclass
+class _HTTPConfig:
+    port: int
+    proxy_region: list[Literal['us-east', 'us-west', 'ap-south']]
+    exit_grace_period: Optional[int] = None
 
 @dataclass
 class _PartialFunctionParams:
@@ -76,6 +87,8 @@ class _PartialFunctionParams:
     target_concurrent_inputs: Optional[int] = None
     build_timeout: Optional[int] = None
     rdma: Optional[bool] = None
+    http_config: Optional[_HTTPConfig] = None
+
 
     def update(self, other: "_PartialFunctionParams") -> None:
         """Update self with params set in other."""
@@ -157,9 +170,9 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError("Interface decorators cannot be combined with lifecycle decorators.")
 
-        has_web_interface = self.flags & _PartialFunctionFlags.WEB_INTERFACE
+        has_any_web_interface = self.flags & _PartialFunctionFlags.all_web_interface_flags()
         has_callable_interface = self.flags & _PartialFunctionFlags.CALLABLE_INTERFACE
-        if has_web_interface and has_callable_interface:
+        if has_any_web_interface and has_callable_interface:
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
 
@@ -894,6 +907,35 @@ def _clustered(
         else:
             pf = _PartialFunction(obj, flags, params)
         pf.validate_obj_compatibility("clustered")
+        return pf
+
+    return wrapper
+
+
+def _http_server(
+    port: int,
+    *,
+    proxy_region: list[Literal['us-east', 'us-west', 'ap-south']],
+    exit_grace_period: Optional[int] = None,
+):
+    from typing import Union
+
+    params = _PartialFunctionParams(
+        http_config=_HTTPConfig(
+            port=port,
+            proxy_region=proxy_region,
+            exit_grace_period=exit_grace_period,
+        )
+    )
+
+    def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
+        flags = _PartialFunctionFlags.HTTP_WEB_INTERFACE
+
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        pf.validate_obj_compatibility("`http_server`")
         return pf
 
     return wrapper

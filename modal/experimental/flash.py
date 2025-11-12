@@ -28,8 +28,9 @@ class _FlashManager:
         self,
         client: _Client,
         port: int,
-        process: Optional[subprocess.Popen] = None,
+        process: Optional[subprocess.Popen] = None, # to be deprecated
         health_check_url: Optional[str] = None,
+        exit_grace_period: Optional[int] = None,
     ):
         self.client = client
         self.port = port
@@ -40,6 +41,7 @@ class _FlashManager:
         self.stopped = False
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
+        self.exit_grace_period = exit_grace_period
 
     async def is_port_connection_healthy(
         self, process: Optional[subprocess.Popen], timeout: float = 0.5
@@ -48,10 +50,33 @@ class _FlashManager:
 
         start_time = time.monotonic()
 
+        def check_process_is_running():
+            if process is not None and process.poll() is not None:
+                return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
+            # INSERT_YOUR_CODE
+            # Attempt to use lsof to see if any process is holding the port
+            import subprocess
+
+            try:
+                # lsof -i:<port>
+                result = subprocess.run(
+                    ["lsof", f"-i:{self.port}"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                # If lsof lists a process, treat port as being in use/running
+                if result.returncode == 0 and result.stdout.strip():
+                    return True, None
+            except Exception as lsof_exc:
+                return False, Exception(f"Error checking port {self.port} with lsof: {lsof_exc}")
+            return True, None
+
         while time.monotonic() - start_time < timeout:
             try:
-                if process is not None and process.poll() is not None:
-                    return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
+                running, error =check_process_is_running()
+                if not running:
+                    return False, error
                 with socket.create_connection(("localhost", self.port), timeout=0.5):
                     return True, None
             except (ConnectionRefusedError, OSError):
@@ -616,3 +641,24 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
     req = api_pb2.FlashContainerListRequest(function_id=fn.object_id)
     resp = await client.stub.FlashContainerList(req)
     return resp.containers
+
+class _FlashContainerEntry:
+    def __init__(self):
+        self.flash_manager: Optional[FlashManager] = None # type: ignore
+        self.exit_grace_period = 0
+
+    def enter(self, service):
+        http_config = service.user_cls.params.http_config
+        if http_config:
+            self.exit_grace_period = max(self.exit_grace_period, http_config.exit_grace_period or 0)
+            self.flash_manager = flash_forward(http_config.port)
+
+    def stop(self):
+        if self.flash_manager:
+            self.flash_manager.stop()
+
+    @synchronizer.wrap
+    async def close(self):
+        if self.flash_manager:
+            await asyncio.sleep(self.exit_grace_period) # TODO(claudia): write a test for this!
+            self.flash_manager.close()
