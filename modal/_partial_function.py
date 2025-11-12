@@ -917,34 +917,3 @@ def _clustered(
         return pf
 
     return wrapper
-
-
-def _http_server(
-    port: int,
-    *,
-    proxy_region: Optional[Literal["us-east", "us-west", "ap-south"]] = None,  # None defaults to all regions
-    exit_grace_period: Optional[int] = None,
-):
-    from typing import Union
-
-    params = _PartialFunctionParams(
-        http_config=_HTTPConfig(
-            port=port,
-            proxy_region=proxy_region
-            if proxy_region
-            else "True",  # "True" selects all regions, we're using a string since experimental_options is of type dict[str, str]
-            exit_grace_period=exit_grace_period,
-        )
-    )
-
-    def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
-        flags = _PartialFunctionFlags.HTTP_WEB_INTERFACE
-
-        if isinstance(obj, _PartialFunction):
-            pf = obj.stack(flags, params)
-        else:
-            pf = _PartialFunction(obj, flags, params)
-        pf.validate_obj_compatibility("`http_server`")
-        return pf
-
-    return wrapper

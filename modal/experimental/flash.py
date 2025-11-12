@@ -7,7 +7,7 @@ import sys
 import time
 import traceback
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any, Callable, Literal, Optional, Union
 from urllib.parse import urlparse
 
 from modal.cls import _Cls
@@ -640,6 +640,40 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
     resp = await client.stub.FlashContainerList(req)
     return resp.containers
 
+
+def _http_server(
+    port: int,
+    *,
+    proxy_region: Optional[Literal["us-east", "us-west", "ap-south"]] = None,  # None defaults to all regions
+    exit_grace_period: Optional[int] = None,
+):
+
+    from modal._partial_function import _HTTPConfig, _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
+
+    params = _PartialFunctionParams(
+        http_config=_HTTPConfig(
+            port=port,
+            proxy_region=proxy_region
+            if proxy_region
+            else "True",  # "True" selects all regions, we're using a string since experimental_options is of type dict[str, str]
+            exit_grace_period=exit_grace_period,
+        )
+    )
+
+    def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
+        flags = _PartialFunctionFlags.HTTP_WEB_INTERFACE
+
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        pf.validate_obj_compatibility("`http_server`")
+        return pf
+
+    return wrapper
+
+
+http_server = synchronize_api(_http_server, target_module=__name__)
 class _FlashContainerEntry:
     def __init__(self):
         self.flash_manager: Optional[FlashManager] = None # type: ignore
