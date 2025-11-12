@@ -74,8 +74,8 @@ class _PartialFunctionFlags(enum.IntFlag):
 class _HTTPConfig:
     port: int
     proxy_region: Literal[
-        "us-east", "us-west", "ap-south", "all"
-    ]  # 'all' means all regions, cannot use a list since experimental_options is of type dict[str, str]
+        "us-east", "us-west", "ap-south", "True"  # True means all regions
+    ]
     exit_grace_period: Optional[int] = None
 
 
@@ -918,9 +918,7 @@ def _clustered(
 def _http_server(
     port: int,
     *,
-    proxy_region: Literal[
-        "us-east", "us-west", "ap-south", "all"
-    ],  # 'all' means all regions, cannot use a list since experimental_options is of type dict[str, str]
+    proxy_region: Optional[Literal["us-east", "us-west", "ap-south"]] = None,  # None defaults to all regions
     exit_grace_period: Optional[int] = None,
 ):
     from typing import Union
@@ -928,7 +926,9 @@ def _http_server(
     params = _PartialFunctionParams(
         http_config=_HTTPConfig(
             port=port,
-            proxy_region=proxy_region,
+            proxy_region=proxy_region
+            if proxy_region
+            else "True",  # "True" selects all regions, we're using a string since experimental_options is of type dict[str, str]
             exit_grace_period=exit_grace_period,
         )
     )
