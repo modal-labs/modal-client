@@ -779,6 +779,7 @@ class _App:
                     "The `@app.function` decorator cannot be used on a class. Please use `@app.cls` instead."
                 )
 
+            experimental_options_ = experimental_options or {}
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.registered = True
@@ -808,8 +809,13 @@ class _App:
                 is_generator = f.params.is_generator
                 batch_max_size = f.params.batch_max_size
                 batch_wait_ms = f.params.batch_wait_ms
+                if f.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
+                    http_config = f.params.http_config
+                    if http_config:
+                        flash_region = http_config.proxy_region
+                        experimental_options_["flash"] = flash_region
                 if f.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options))
+                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options_))
                     max_concurrent_inputs = f.params.max_concurrent_inputs
                     target_concurrent_inputs = f.params.target_concurrent_inputs
                 else:
@@ -902,7 +908,7 @@ class _App:
                 cluster_size=cluster_size,  # Experimental: Clustered functions
                 rdma=rdma,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
-                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                experimental_options={k: str(v) for k, v in (experimental_options_).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 restrict_output=_experimental_restrict_output,
             )

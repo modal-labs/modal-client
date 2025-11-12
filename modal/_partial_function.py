@@ -65,11 +65,6 @@ class _PartialFunctionFlags(enum.IntFlag):
     def interface_flags() -> int:
         return _PartialFunctionFlags.CALLABLE_INTERFACE | _PartialFunctionFlags.WEB_INTERFACE
 
-    @staticmethod
-    def all_web_interface_flags() -> int:
-        return _PartialFunctionFlags.HTTP_WEB_INTERFACE | _PartialFunctionFlags.WEB_INTERFACE
-
-
 @dataclass
 class _HTTPConfig:
     port: int
@@ -173,11 +168,20 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError("Interface decorators cannot be combined with lifecycle decorators.")
 
-        has_any_web_interface = self.flags & _PartialFunctionFlags.all_web_interface_flags()
+        has_web_interface = self.flags & _PartialFunctionFlags.WEB_INTERFACE
+        has_http_web_interface = self.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE
         has_callable_interface = self.flags & _PartialFunctionFlags.CALLABLE_INTERFACE
-        if has_any_web_interface and has_callable_interface:
+        if (has_web_interface or has_http_web_interface) and has_callable_interface:
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
+        if has_web_interface and has_http_web_interface:
+            self.registered = True  # Hacky, avoid false-positive warning
+            raise InvalidError(
+                "Web interface decorators cannot be combined with HTTP web interface decorators. Please only use one."
+            )
+        if has_http_web_interface and _PartialFunctionFlags.BATCHED:
+            self.registered = True  # Hacky, avoid false-positive warning
+            raise InvalidError("HTTP web interface decorators cannot be combined with batched decorators.")
 
     def validate_obj_compatibility(
         self, decorator_name: str, require_sync: bool = False, require_nullary: bool = False
