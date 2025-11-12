@@ -53,8 +53,6 @@ class _FlashManager:
         def check_process_is_running():
             if process is not None and process.poll() is not None:
                 return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
-            # INSERT_YOUR_CODE
-            # Attempt to use lsof to see if any process is holding the port
             import subprocess
 
             try:
