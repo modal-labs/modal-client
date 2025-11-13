@@ -112,6 +112,7 @@ class _FlashManager:
                             port=port,
                         ),
                         timeout=10,
+                        retry=None,
                     )
                     self.num_failures = 0
                     if first_registration:
