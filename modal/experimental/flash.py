@@ -29,21 +29,21 @@ class _FlashManager:
         client: _Client,
         port: int,
         process: Optional[subprocess.Popen] = None,  # to be deprecated
-        startup_timeout: Optional[int] = None,
         health_check_url: Optional[str] = None,
+        startup_timeout: Optional[int] = None,
         exit_grace_period: Optional[int] = None,
     ):
         self.client = client
         self.port = port
-        self.startup_timeout = startup_timeout
+        self.process = process
         # Health check is not currently being used
         self.health_check_url = health_check_url
-        self.process = process
+        self.startup_timeout = startup_timeout
+        self.exit_grace_period = exit_grace_period
         self.tunnel_manager = _forward_tunnel(port, client=client)
         self.stopped = False
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
-        self.exit_grace_period = exit_grace_period
 
     async def is_port_connection_healthy(
         self, process: Optional[subprocess.Popen], timeout: float = 0.5
