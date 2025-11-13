@@ -158,16 +158,15 @@ async def test_flash_container_register_deregister(servicer, client):
         return await client_stub.FlashContainerDeregister(req, **kwargs)
 
     # Test invalid request
-    req = api_pb2.FlashContainerRegisterRequest(service_name="test", host="localhost", port=8000)
+    register_req = api_pb2.FlashContainerRegisterRequest(service_name="test", host="localhost", port=8000)
     with pytest.raises(InvalidError, match="Retry must be None when timeout is set"):
-        await wrapped_flash_container_register.aio(req, timeout=4.0)
+        await wrapped_flash_container_register.aio(register_req, timeout=4.0)
 
     # Test working request
-    req = api_pb2.FlashContainerRegisterRequest(service_name="test", host="localhost", port=8000)
-    await wrapped_flash_container_register.aio(req)
+    await wrapped_flash_container_register.aio(register_req)
     assert servicer.flash_container_registrations == {"test": "http://localhost:8000"}
 
     # Test working request
-    req = api_pb2.FlashContainerDeregisterRequest(service_name="test")
-    await wrapped_flash_container_deregister.aio(req, timeout=4.0, retry=None)
+    deregister_req = api_pb2.FlashContainerDeregisterRequest(service_name="test")
+    await wrapped_flash_container_deregister.aio(deregister_req, timeout=4.0, retry=None)
     assert servicer.flash_container_registrations == {}
