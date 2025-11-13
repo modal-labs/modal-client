@@ -10,6 +10,31 @@ from urllib.parse import urlparse
 from modal.experimental.flash import _FlashManager, _FlashPrometheusAutoscaler
 
 
+@pytest.fixture
+def mock_tunnel_manager():
+    """Mock the tunnel manager async context manager."""
+    mock_tunnel_manager = MagicMock()
+    mock_tunnel = MagicMock()
+    mock_tunnel.url = "https://test.modal.test"
+    mock_tunnel_manager.__aenter__ = AsyncMock(return_value=mock_tunnel)
+    mock_tunnel_manager.__aexit__ = AsyncMock()
+    return mock_tunnel_manager
+
+
+@pytest.fixture
+def flash_manager(client, mock_tunnel_manager):
+    """Create a FlashManager with mocked dependencies."""
+    with (
+        patch.dict(os.environ, {"MODAL_TASK_ID": "test-task-123"}),
+        patch(
+            "modal.experimental.flash._forward_tunnel",
+            return_value=mock_tunnel_manager,
+        ),
+    ):
+        manager = _FlashManager(client=client, port=8000)
+        return manager
+
+
 class _DummyContainer:
     def __init__(self, host: str):
         self.host = host
@@ -150,29 +175,6 @@ class TestFlashInternalMetricAutoscalerLogic:
 
 
 class TestFlashManagerStopping:
-    @pytest.fixture
-    def mock_tunnel_manager(self):
-        """Mock the tunnel manager async context manager."""
-        mock_tunnel_manager = MagicMock()
-        mock_tunnel = MagicMock()
-        mock_tunnel.url = "https://test.modal.test"
-        mock_tunnel_manager.__aenter__ = AsyncMock(return_value=mock_tunnel)
-        mock_tunnel_manager.__aexit__ = AsyncMock()
-        return mock_tunnel_manager
-
-    @pytest.fixture
-    def flash_manager(self, client, mock_tunnel_manager):
-        """Create a FlashManager with mocked dependencies."""
-        with (
-            patch.dict(os.environ, {"MODAL_TASK_ID": "test-task-123"}),
-            patch(
-                "modal.experimental.flash._forward_tunnel",
-                return_value=mock_tunnel_manager,
-            ),
-        ):
-            manager = _FlashManager(client=client, port=8000)
-            return manager
-
     @pytest.mark.asyncio
     async def test_heartbeat_failure_increments_counter(self, flash_manager):
         """Test that heartbeat failures properly increment the failure counter."""
