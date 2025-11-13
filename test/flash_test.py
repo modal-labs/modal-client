@@ -296,3 +296,28 @@ class TestFlashManagerStopping:
             )
 
             mock_stop.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_heartbeat(self, flash_manager, servicer):
+        """Integration test that _run_heartbeat uses the real FlashContainerRegister RPC."""
+
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.is_port_connection_healthy = AsyncMock(return_value=(True, None))
+
+        host = "heartbeat-host.modal.test"
+        port = 9000
+
+        task = asyncio.create_task(flash_manager._run_heartbeat(host, port))
+        await asyncio.sleep(0.2)
+
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        assert len(servicer.flash_registered_containers) >= 1
+        registered = servicer.flash_registered_containers[0]
+        assert registered["host"] == host
+        assert registered["port"] == port
