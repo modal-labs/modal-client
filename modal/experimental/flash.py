@@ -40,7 +40,6 @@ class _FlashManager:
         self.health_check_url = health_check_url
         self.process = process
         self.tunnel_manager = _forward_tunnel(port, client=client)
-        self.started = False
         self.stopped = False
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
@@ -56,18 +55,6 @@ class _FlashManager:
         def check_process_is_running():
             if process is not None and process.poll() is not None:
                 return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
-            import subprocess
-
-            try:
-                # lsof -i:<port>
-                result = subprocess.run(
-                    ["lsof", f"-i:{self.port}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-                )
-                # If lsof lists a process, treat port as being in use/running
-                if result.returncode == 0 and result.stdout.strip():
-                    return True, None
-            except Exception as lsof_exc:
-                return False, Exception(f"Error checking port {self.port} with lsof: {lsof_exc}")
             return True, None
 
         while time.monotonic() - start_time < timeout:
