@@ -299,7 +299,7 @@ class TestFlashManagerStopping:
 
     @pytest.mark.asyncio
     async def test_run_heartbeat(self, flash_manager, servicer):
-        """Integration test that _run_heartbeat uses the real FlashContainerRegister RPC."""
+        """Integration test that _run_heartbeat registers using FlashContainerRegister RPC."""
 
         flash_manager.tunnel = MagicMock()
         flash_manager.tunnel.url = "https://test.modal.test"
