@@ -354,6 +354,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_apps = 0
         self.classes = []
         self.environments = {"main": "en-1"}
+        self.flash_registered_containers: list[dict[str, Any]] = []
+        self.flash_deregister_count = 0
         self.resource_creation_timestamps = {}
 
         self.task_result = None
@@ -1156,6 +1158,27 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(
             api_pb2.EnvironmentGetOrCreateResponse(environment_id=environment_id, metadata=metadata)
         )
+
+    ### Flash
+
+    async def FlashContainerRegister(self, stream):
+        request: api_pb2.FlashContainerRegisterRequest = await stream.recv_message()
+        self.flash_registered_containers.append(
+            {
+                "service_name": request.service_name,
+                "priority": request.priority,
+                "weight": request.weight,
+                "host": request.host,
+                "port": request.port,
+            }
+        )
+        url = f"https://{request.host}:{request.port}/flash"
+        await stream.send_message(api_pb2.FlashContainerRegisterResponse(url=url))
+
+    async def FlashContainerDeregister(self, stream):
+        request: api_pb2.FlashContainerDeregisterRequest = await stream.recv_message()
+        self.flash_deregister_count += 1
+        await stream.send_message(Empty())
 
     ### Function
 
