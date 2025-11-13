@@ -492,6 +492,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         sys.breakpointhook = breakpoint_wrapper
 
         from modal.experimental.flash import _FlashContainerEntry
+
         flash_entry = _FlashContainerEntry()
 
         # Identify the "enter" methods to run after resuming from a snapshot.

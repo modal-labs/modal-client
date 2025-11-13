@@ -209,7 +209,14 @@ async def flash_forward(
     """
     client = await _Client.from_env()
 
-    manager = _FlashManager(client, port, process=process, health_check_url=health_check_url, startup_timeout=startup_timeout, exit_grace_period=exit_grace_period)
+    manager = _FlashManager(
+        client,
+        port,
+        process=process,
+        health_check_url=health_check_url,
+        startup_timeout=startup_timeout,
+        exit_grace_period=exit_grace_period,
+    )
     await manager._start()
     return manager
 
@@ -709,11 +716,14 @@ class _FlashContainerEntry:
         self.exit_grace_period = 0
 
     from modal._partial_function import _HTTPConfig
+
     def validate_flash_configs(self, flash_configs: list[_HTTPConfig]):
         assert len(flash_configs) == 1, "Only one @http_server decorator is supported"
         flash_config = flash_configs[0]
         if flash_config.port < 1 or flash_config.port > 65535:
-            raise InvalidError("The `port` argument of `@http_server` must be a local port, such as `@http_server(8000)`.")
+            raise InvalidError(
+                "The `port` argument of `@http_server` must be a local port, such as `@http_server(8000)`."
+            )
         if flash_config.startup_timeout is not None and flash_config.startup_timeout <= 0:
             raise InvalidError("The `startup_timeout` argument of `@http_server` must be positive.")
         if flash_config.exit_grace_period is not None and flash_config.exit_grace_period < 0:
@@ -721,6 +731,7 @@ class _FlashContainerEntry:
 
     def get_http_config(self, user_cls: type[Any]) -> Optional[_HTTPConfig]:
         from modal._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
+
         flash_configs = [
             partial_method.params.http_config
             for partial_method in _find_partial_methods_for_user_cls(
@@ -733,12 +744,15 @@ class _FlashContainerEntry:
         self.validate_flash_configs(flash_configs)
         return flash_configs[0]
 
-
     def enter(self, service):
         http_config = self.get_http_config(service)
         if http_config:
             self.exit_grace_period = max(self.exit_grace_period, http_config.exit_grace_period or 0)
-            self.flash_manager = flash_forward(http_config.port, startup_timeout=http_config.startup_timeout, exit_grace_period=http_config.exit_grace_period)
+            self.flash_manager = flash_forward(
+                http_config.port,
+                startup_timeout=http_config.startup_timeout,
+                exit_grace_period=http_config.exit_grace_period,
+            )
 
     def stop(self):
         if self.flash_manager:
@@ -748,5 +762,7 @@ class _FlashContainerEntry:
         if self.flash_manager:
             await asyncio.sleep(self.exit_grace_period)  # TODO(claudia): write a test for this!
             self.flash_manager.close()
+
+
 # FlashContainerEntry = synchronize_api(_FlashContainerEntry, target_module=__name__)
 # question: when do we choose to synchronize this vs just running in event loop?
