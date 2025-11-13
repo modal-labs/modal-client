@@ -492,7 +492,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         sys.breakpointhook = breakpoint_wrapper
 
         from modal.experimental.flash import _FlashContainerEntry
-
         flash_entry = _FlashContainerEntry()
 
         # Identify the "enter" methods to run after resuming from a snapshot.
@@ -548,8 +547,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                         flash_entry.stop()
                         exit_methods = _find_callables_for_obj(service.user_cls_instance, _PartialFunctionFlags.EXIT)
                         call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
-                        flash_entry.close()
-
+                        event_loop.run(flash_entry.close())
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
                 # commit errors.
                 container_io_manager.volume_commit(
