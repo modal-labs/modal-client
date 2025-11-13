@@ -745,7 +745,8 @@ class _FlashContainerEntry:
         return flash_configs[0]
 
     def enter(self, service):
-        http_config = self.get_http_config(service)
+        # http_config = self.get_http_config(service)
+        http_config = None
         if http_config:
             self.exit_grace_period = max(self.exit_grace_period, http_config.exit_grace_period or 0)
             self.flash_manager = flash_forward(
