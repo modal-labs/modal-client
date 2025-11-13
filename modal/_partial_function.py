@@ -65,12 +65,14 @@ class _PartialFunctionFlags(enum.IntFlag):
     def interface_flags() -> int:
         return _PartialFunctionFlags.CALLABLE_INTERFACE | _PartialFunctionFlags.WEB_INTERFACE
 
+
 @dataclass
 class _HTTPConfig:
     port: int
     proxy_region: Literal[
         "us-east", "us-west", "ap-south", "True"  # True means all regions
     ]
+    startup_timeout: Optional[int] = None
     exit_grace_period: Optional[int] = None
 
 

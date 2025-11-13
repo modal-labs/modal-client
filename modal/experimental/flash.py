@@ -28,16 +28,19 @@ class _FlashManager:
         self,
         client: _Client,
         port: int,
-        process: Optional[subprocess.Popen] = None, # to be deprecated
+        process: Optional[subprocess.Popen] = None,  # to be deprecated
+        startup_timeout: Optional[int] = None,
         health_check_url: Optional[str] = None,
         exit_grace_period: Optional[int] = None,
     ):
         self.client = client
         self.port = port
+        self.startup_timeout = startup_timeout
         # Health check is not currently being used
         self.health_check_url = health_check_url
         self.process = process
         self.tunnel_manager = _forward_tunnel(port, client=client)
+        self.started = False
         self.stopped = False
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
@@ -58,10 +61,7 @@ class _FlashManager:
             try:
                 # lsof -i:<port>
                 result = subprocess.run(
-                    ["lsof", f"-i:{self.port}"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
+                    ["lsof", f"-i:{self.port}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
                 )
                 # If lsof lists a process, treat port as being in use/running
                 if result.returncode == 0 and result.stdout.strip():
@@ -72,7 +72,7 @@ class _FlashManager:
 
         while time.monotonic() - start_time < timeout:
             try:
-                running, error =check_process_is_running()
+                running, error = check_process_is_running()
                 if not running:
                     return False, error
                 with socket.create_connection(("localhost", self.port), timeout=0.5):
@@ -123,6 +123,7 @@ class _FlashManager:
 
     async def _run_heartbeat(self, host: str, port: int):
         first_registration = True
+        start_time = time.monotonic()
         while True:
             try:
                 port_check_resp, port_check_error = await self.is_port_connection_healthy(process=self.process)
@@ -144,12 +145,17 @@ class _FlashManager:
                         )
                         first_registration = False
                 else:
-                    logger.error(
-                        f"[Modal Flash] Deregistering container {self.task_id} on {self.tunnel.url} "
-                        f"due to error: {port_check_error}, num_failures: {self.num_failures}"
-                    )
-                    self.num_failures += 1
-                    await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
+                    if first_registration and (
+                        self.startup_timeout is None or time.monotonic() - start_time < self.startup_timeout
+                    ):
+                        continue
+                    else:
+                        logger.error(
+                            f"[Modal Flash] Deregistering container {self.task_id} on {self.tunnel.url} "
+                            f"due to error: {port_check_error}, num_failures: {self.num_failures}"
+                        )
+                        self.num_failures += 1
+                        await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
 
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
@@ -644,18 +650,19 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
 def _http_server(
     port: int,
     *,
-    proxy_region: Optional[Literal["us-east", "us-west", "ap-south"]] = None,  # None defaults to all regions
+    proxy_region: Literal[
+        "us-east", "us-west", "ap-south", "True"
+    ],  # Not defaulting since changing user behavior after allowing a default is tricky
+    startup_timeout: Optional[int] = None,
     exit_grace_period: Optional[int] = None,
 ):
-
     from modal._partial_function import _HTTPConfig, _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
 
     params = _PartialFunctionParams(
         http_config=_HTTPConfig(
             port=port,
-            proxy_region=proxy_region
-            if proxy_region
-            else "True",  # "True" selects all regions, we're using a string since experimental_options is of type dict[str, str]
+            proxy_region=proxy_region,
+            startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
         )
     )
@@ -674,9 +681,11 @@ def _http_server(
 
 
 http_server = synchronize_api(_http_server, target_module=__name__)
+
+
 class _FlashContainerEntry:
     def __init__(self):
-        self.flash_manager: Optional[FlashManager] = None # type: ignore
+        self.flash_manager: Optional[FlashManager] = None  # type: ignore
         self.exit_grace_period = 0
 
     def enter(self, service):
@@ -689,8 +698,7 @@ class _FlashContainerEntry:
         if self.flash_manager:
             self.flash_manager.stop()
 
-    @synchronizer.wrap
     async def close(self):
         if self.flash_manager:
-            await asyncio.sleep(self.exit_grace_period) # TODO(claudia): write a test for this!
+            await asyncio.sleep(self.exit_grace_period)  # TODO(claudia): write a test for this!
             self.flash_manager.close()
