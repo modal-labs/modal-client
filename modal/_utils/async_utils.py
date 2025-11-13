@@ -184,6 +184,7 @@ class TaskContext:
 
                 # Cancel any remaining unfinished tasks.
                 task.cancel()
+                cancelled_tasks.append(task)
 
             cancellation_gather = asyncio.gather(*cancelled_tasks, return_exceptions=True)
             try:
