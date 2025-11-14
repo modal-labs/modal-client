@@ -2240,11 +2240,13 @@ async def test_function_call_from_id_is_not_async(monkeypatch):
     monkeypatch.setattr("modal._utils.async_utils.synchronizer._run_function_async", forbidden_calls)
     # assert there is a deprecation warning emitted#
     with pytest.warns(DeprecationError, match=r"Please use FunctionCall\.from_id\("):
-        await FunctionCall.from_id.aio("fc-123")
+        fc = await FunctionCall.from_id.aio("fc-123")  # type: ignore
+    assert isinstance(fc, FunctionCall)  # should return wrapper type
 
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
-        FunctionCall.from_id("fc-123")
+        fc2 = FunctionCall.from_id("fc-123")
+    assert isinstance(fc2, FunctionCall)  # should return wrapper type
 
     forbidden_calls.assert_not_called()
     # there should also be no warnings about sync usage in async contexts:

@@ -97,6 +97,7 @@ from .volume import _Volume
 if TYPE_CHECKING:
     import modal.app
     import modal.cls
+    import modal.functions
 
 MAX_INTERNAL_FAILURE_COUNT = 8
 TERMINAL_STATUSES = (
@@ -1924,7 +1925,9 @@ Use the `Function.get_web_url()` method instead.
     experimental_spawn_map = MethodWithAio(_experimental_spawn_map_sync, _experimental_spawn_map_async, synchronizer)
 
 
-def _sync_function_call_from_id(cls, function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall[Any]":
+def _sync_function_call_from_id(
+    cls, function_call_id: str, client: Optional[_Client] = None
+) -> "modal.functions.FunctionCall[Any]":
     """Instantiate a FunctionCall object from an existing ID.
 
     Examples:
@@ -1951,15 +1954,15 @@ def _sync_function_call_from_id(cls, function_call_id: str, client: Optional[_Cl
         self._hydrate(function_call_id, load_context.client, None)
 
     rep = f"FunctionCall.from_id({function_call_id!r})"
-
-    return _FunctionCall._from_loader(
+    impl_instance = _FunctionCall._from_loader(
         _load, rep, hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
     )
+    return typing.cast("modal.functions.FunctionCall[Any]", synchronizer._translate_out(impl_instance))
 
 
 async def _async_function_call_from_id(
     cls, function_call_id: str, client: Optional[_Client] = None
-) -> "_FunctionCall[Any]":
+) -> "modal.functions.FunctionCall[Any]":
     deprecation_warning(
         (2025, 11, 14),
         """The async constructor FunctionCall.from_id.aio(...) will be deprecated in a future version of Modal.
