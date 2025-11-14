@@ -547,7 +547,7 @@ def shell(
     add_local: Optional[list[str]] = typer.Option(
         default=None,
         help=(
-            "Local file or directory to mount inside the shell at `/{basename}` (if not using REF)."
+            "Local file or directory to mount inside the shell at `/mnt/{basename}` (if not using REF)."
             " Can be used multiple times."
         ),
     ),
@@ -615,12 +615,6 @@ def shell(
 
     ```
     modal shell hello_world.py -c 'uv pip list' > env.txt
-    ```
-
-    Mount a local files or directories inside the shell:
-
-    ```
-    modal shell --add-local ./data/ --add-local ./script.sh
     ```
 
     Connect to a running Sandbox by ID:
@@ -712,8 +706,7 @@ def shell(
         if add_local:
             for local_path_str in add_local:
                 local_path = Path(local_path_str).expanduser().resolve()
-                # mount at /{basename}, matching the default of Image.add_local_dir()
-                remote_path = PurePosixPath(f"/{local_path.name}")
+                remote_path = PurePosixPath(f"/mnt/{local_path.name}")
 
                 if local_path.is_dir():
                     m = _Mount._from_local_dir(local_path, remote_path=remote_path)
