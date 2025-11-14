@@ -26,10 +26,12 @@ from typing import (
 
 import synchronicity
 from synchronicity.async_utils import Runner
+from synchronicity.combined_types import MethodWithAio
 from synchronicity.exceptions import NestedEventLoops
 from typing_extensions import ParamSpec, assert_type
 
 from modal._ipython import is_interactive_ipython
+from modal._utils.deprecation import deprecation_warning
 
 from ..exception import InvalidError
 from .logger import logger
@@ -1107,3 +1109,25 @@ async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
                 logger.exception(f"Error closing async generator: {e}")
         if first_exception is not None:
             raise first_exception
+
+
+def deprecate_aio_usage(deprecation_date: tuple[int, int, int], readable_sync_call: str):
+    def deco(sync_implementation):
+        if isinstance(sync_implementation, classmethod):
+            sync_implementation = sync_implementation.__func__
+            is_classmethod = True
+        else:
+            is_classmethod = False
+
+        async def _async_proxy(*args, **kwargs):
+            deprecation_warning(
+                deprecation_date,
+                f"""The async constructor {readable_sync_call}.aio(...) will be deprecated in a future version of Modal.
+                Please use {readable_sync_call}(...) instead (it doesn't perform any IO, and is safe in async contexts)
+                """,
+            )
+            return sync_implementation(*args, **kwargs)
+
+        return MethodWithAio(sync_implementation, _async_proxy, synchronizer, is_classmethod=is_classmethod)
+
+    return deco
