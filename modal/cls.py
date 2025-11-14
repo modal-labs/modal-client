@@ -867,7 +867,7 @@ More information on class parameterization can be found here: https://modal.com/
 
         cls = _Cls._from_loader(
             _load_from_base,
-            rep=f"{self._name}.with_concurrency(...)",
+            rep=f"{self._name}.with_batching(...)",
             is_another_app=True,
             deps=_deps,
             load_context_overrides=self._load_context_overrides,
