@@ -514,13 +514,52 @@ def test_sandbox_gpu_fallbacks_support(client, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_exec_stdout(app, servicer, capsys):
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_with_streamtype_stdout_and_text_true_prints_to_stdout(app, servicer, exec_backend, capsys):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "echo hi", stdout=StreamType.STDOUT)
     cp.wait()
 
     assert capsys.readouterr().out == "hi\n"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_with_streamtype_stdout_and_text_true_and_bufsize_1_prints_to_stdout(
+    app, servicer, exec_backend, capsys
+):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("bash", "-c", "echo hi && echo bye", stdout=StreamType.STDOUT, bufsize=1)
+    cp.wait()
+
+    assert capsys.readouterr().out == "hi\nbye\n"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_with_streamtype_stdout_and_text_false_prints_to_stdout(app, servicer, exec_backend, capsysbinary):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec(
+        "bash",
+        "-c",
+        "printf '\\x01\\x02\\x03\\n\\x04\\x05\\x06\\n'",
+        stdout=StreamType.STDOUT,
+        text=False,
+    )
+    cp.wait()
+
+    assert capsysbinary.readouterr().out == b"\x01\x02\x03\n\x04\x05\x06\n"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_with_streamtype_stdout_read_from_stdout_raises_error(app, servicer, exec_backend, capsys):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("bash", "-c", "echo hi", stdout=StreamType.STDOUT)
 
     with pytest.raises(InvalidError):
         cp.stdout.read()

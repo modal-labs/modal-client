@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 import asyncio
 import codecs
+import contextlib
+import sys
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
@@ -377,7 +379,7 @@ async def _stdio_stream_from_command_router(
         return
 
 
-class _BytesStreamReaderThroughCommandRouter(Generic[T]):
+class _BytesStreamReaderThroughCommandRouter:
     """
     StreamReader implementation that will read directly from the worker that
     hosts the sandbox.
@@ -396,27 +398,27 @@ class _BytesStreamReaderThroughCommandRouter(Generic[T]):
     def file_descriptor(self) -> int:
         return self._params.file_descriptor
 
-    async def read(self) -> T:
+    async def read(self) -> bytes:
         data_bytes = b""
         async for part in self:
             data_bytes += cast(bytes, part)
-        return cast(T, data_bytes)
+        return data_bytes
 
-    def __aiter__(self) -> AsyncIterator[T]:
+    def __aiter__(self) -> AsyncIterator[bytes]:
         return self
 
-    async def __anext__(self) -> T:
+    async def __anext__(self) -> bytes:
         if self._stream is None:
             self._stream = _stdio_stream_from_command_router(self._params)
         # This raises StopAsyncIteration if the stream is at EOF.
-        return cast(T, await self._stream.__anext__())
+        return await self._stream.__anext__()
 
     async def aclose(self):
         if self._stream:
             await self._stream.aclose()
 
 
-class _TextStreamReaderThroughCommandRouter(Generic[T]):
+class _TextStreamReaderThroughCommandRouter:
     """
     StreamReader implementation that will read directly from the worker
     that hosts the sandbox.
@@ -437,16 +439,16 @@ class _TextStreamReaderThroughCommandRouter(Generic[T]):
     def file_descriptor(self) -> int:
         return self._params.file_descriptor
 
-    async def read(self) -> T:
+    async def read(self) -> str:
         data_str = ""
         async for part in self:
             data_str += cast(str, part)
-        return cast(T, data_str)
+        return data_str
 
-    def __aiter__(self) -> AsyncIterator[T]:
+    def __aiter__(self) -> AsyncIterator[str]:
         return self
 
-    async def __anext__(self) -> T:
+    async def __anext__(self) -> str:
         if self._stream is None:
             bytes_stream = _stdio_stream_from_command_router(self._params)
             if self._by_line:
@@ -454,11 +456,86 @@ class _TextStreamReaderThroughCommandRouter(Generic[T]):
             else:
                 self._stream = _decode_bytes_stream_to_str(bytes_stream)
         # This raises StopAsyncIteration if the stream is at EOF.
-        return cast(T, await self._stream.__anext__())
+        return await self._stream.__anext__()
 
     async def aclose(self):
         if self._stream:
             await self._stream.aclose()
+
+
+class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
+    """
+    StreamReader implementation for StreamType.STDOUT when using the task command router.
+
+    This mirrors the behavior from the server-backed implementation: the stream is printed to
+    the local stdout immediately and is not readable via StreamReader methods.
+    """
+
+    _reader: Union[_TextStreamReaderThroughCommandRouter, _BytesStreamReaderThroughCommandRouter]
+
+    def __init__(
+        self,
+        reader: Union[_TextStreamReaderThroughCommandRouter, _BytesStreamReaderThroughCommandRouter],
+    ) -> None:
+        self._reader = reader
+        self._task: Optional[asyncio.Task[None]] = None
+        self._closed = False
+        # Kick off a background task that reads from the underlying text stream and prints to stdout.
+        self._start_printing_task()
+
+    @property
+    def file_descriptor(self) -> int:
+        return self._reader.file_descriptor
+
+    def _start_printing_task(self) -> None:
+        async def _run():
+            try:
+
+                def print_text_part(part: Union[str, bytes]) -> None:
+                    assert isinstance(part, str)
+                    print(cast(str, part), end="")
+
+                def print_bytes_part(part: Union[str, bytes]) -> None:
+                    assert isinstance(part, bytes)
+                    sys.stdout.buffer.write(cast(bytes, part))
+                    sys.stdout.buffer.flush()
+
+                if isinstance(self._reader, _BytesStreamReaderThroughCommandRouter):
+                    print_part = print_bytes_part
+                elif isinstance(self._reader, _TextStreamReaderThroughCommandRouter):
+                    print_part = print_text_part
+                else:
+                    raise ValueError("Unsupported reader type")
+
+                async for part in self._reader:
+                    print_part(part)
+            except Exception as e:
+                logger.exception(f"Error printing stream: {e}")
+            finally:
+                closed, self._closed = self._closed, True
+                if not closed:
+                    await self._reader.aclose()
+
+        self._task = asyncio.create_task(_run())
+
+    async def read(self) -> T:
+        raise InvalidError("Output can only be retrieved using the PIPE stream type.")
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        raise InvalidError("Output can only be retrieved using the PIPE stream type.")
+
+    async def __anext__(self) -> T:
+        raise InvalidError("Output can only be retrieved using the PIPE stream type.")
+
+    async def aclose(self):
+        if self._task is not None:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+        closed, self._closed = self._closed, True
+        if not closed:
+            await self._reader.aclose()
 
 
 class _DevnullStreamReader(Generic[T]):
@@ -499,6 +576,7 @@ class _StreamReader(Generic[T]):
         _DevnullStreamReader,
         _TextStreamReaderThroughCommandRouter,
         _BytesStreamReaderThroughCommandRouter,
+        _StdoutPrintingStreamReaderThroughCommandRouter,
     ]
 
     def __init__(
@@ -523,35 +601,26 @@ class _StreamReader(Generic[T]):
                 file_descriptor, object_id, object_type, client, stream_type, text, by_line, deadline
             )
         else:
-            # The only reason task_id is optional is because StreamReader is
-            # also used for sandbox logs, which don't have a task ID available
-            # when the StreamReader is created.
+            # The only reason task_id is optional is because StreamReader is also used for sandbox
+            # logs, which don't have a task ID available when the StreamReader is created.
             assert task_id is not None
             assert object_type == "container_process"
             if stream_type == StreamType.DEVNULL:
                 self._impl = _DevnullStreamReader(file_descriptor)
             else:
                 assert stream_type == StreamType.PIPE or stream_type == StreamType.STDOUT
-                # TODO(saltzm): The original implementation of STDOUT StreamType in
-                # _StreamReaderThroughServer prints to stdout immediately. This doesn't match
-                # python subprocess.run, which uses None to print to stdout immediately, and uses
-                # STDOUT as an argument to stderr to redirect stderr to the stdout stream. We should
-                # implement the old behavior here before moving out of beta, but after that
-                # we should consider changing the API to match python subprocess.run. I don't expect
-                # many customers are using this in any case, so I think it's fine to leave this
-                # unimplemented for now.
-                if stream_type == StreamType.STDOUT:
-                    raise NotImplementedError(
-                        "Currently the STDOUT stream type is not supported when using exec "
-                        "through a task command router, which is currently in beta."
-                    )
                 params = _StreamReaderThroughCommandRouterParams(
                     file_descriptor, task_id, object_id, command_router_client, deadline
                 )
                 if text:
-                    self._impl = _TextStreamReaderThroughCommandRouter(params, by_line)
+                    reader = _TextStreamReaderThroughCommandRouter(params, by_line)
                 else:
-                    self._impl = _BytesStreamReaderThroughCommandRouter(params)
+                    reader = _BytesStreamReaderThroughCommandRouter(params)
+
+                if stream_type == StreamType.STDOUT:
+                    self._impl = _StdoutPrintingStreamReaderThroughCommandRouter(reader)
+                else:
+                    self._impl = reader
 
     @property
     def file_descriptor(self) -> int:
@@ -560,7 +629,7 @@ class _StreamReader(Generic[T]):
 
     async def read(self) -> T:
         """Fetch the entire contents of the stream until EOF."""
-        return await self._impl.read()
+        return cast(T, await self._impl.read())
 
     # TODO(saltzm): I'd prefer to have the implementation classes only implement __aiter__
     # and have them return generator functions directly, but synchronicity doesn't let us
@@ -572,7 +641,7 @@ class _StreamReader(Generic[T]):
 
     async def __anext__(self) -> T:
         """mdmd:hidden"""
-        return await self._impl.__anext__()
+        return cast(T, await self._impl.__anext__())
 
     async def aclose(self):
         """mdmd:hidden"""
