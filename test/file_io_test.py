@@ -560,7 +560,7 @@ def test_file_io_create(client, servicer):
 
     @synchronizer.wrap
     async def tester(_client):
-        async with _FileIO.create("blah", "w", client=_client, task_id="task-123") as f:
+        async with await _FileIO.create("blah", "w", client=_client, task_id="task-123") as f:
             print(f)
 
     async def container_filesystem_exec_get_output(servicer, stream):
