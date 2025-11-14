@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import enum
 import json
 import os
 import time
@@ -100,6 +101,24 @@ class SandboxConnectCredentials:
 
     url: str
     token: str
+
+
+class SandboxStatus(enum.IntEnum):
+    """Enum representing status of a Sandbox."""
+
+    RUNNING = -1
+    UNKNOWN = 0  # GENERIC_STATUS_UNSPECIFIED
+    SUCCESS = 1  # GENERIC_STATUS_SUCCESS
+    FAILURE = 2  # GENERIC_STATUS_FAILURE
+    TERMINATED = 3  # GENERIC_STATUS_TERMINATED
+    TIMEOUT = 4  # GENERIC_STATUS_TIMEOUT
+    INIT_FAILURE = 5  # GENERIC_STATUS_INIT_FAILURE
+    INTERNAL_FAILURE = 6  # GENERIC_STATUS_INTERNAL_FAILURE
+    IDLE_TIMEOUT = 7  # GENERIC_STATUS_IDLE_TIMEOUT
+
+    @classmethod
+    def _missing_(cls, value):
+        return cls.UNKNOWN
 
 
 class _Sandbox(_Object, type_prefix="sb"):
@@ -718,6 +737,19 @@ class _Sandbox(_Object, type_prefix="sb"):
             self._result = resp.result
 
         return self.returncode
+
+    async def status(self) -> Optional[SandboxStatus]:
+        """Returns the status of the Sandbox."""
+        req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=0)
+        resp = await self._client.stub.SandboxWait(req)
+
+        if resp.result.status:
+            self._result = resp.result
+
+        if self._result is None:
+            return SandboxStatus.RUNNING
+
+        return SandboxStatus(self._result.status)
 
     async def _get_task_id(self) -> str:
         while not self._task_id:
