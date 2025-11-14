@@ -219,7 +219,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         # of the type PartialFunction and this descriptor would be triggered when accessing it,
         #
         # However, modal classes are *actually* Cls instances (which isn't reflected in type checkers
-        # due to Python's lack of type chekcing intersection types), so at runtime the Cls instance would
+        # due to Python's lack of type checking intersection types), so at runtime the Cls instance would
         # use its __getattr__ rather than this descriptor.
         assert self.raw_f is not None  # Should only be relevant in a method context
         k = self.raw_f.__name__
