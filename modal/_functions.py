@@ -38,6 +38,7 @@ from ._utils.async_utils import (
     aclosing,
     async_merge,
     callable_to_agen,
+    deprecate_aio_usage,
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
@@ -1925,28 +1926,6 @@ Use the `Function.get_web_url()` method instead.
     experimental_spawn_map = MethodWithAio(_experimental_spawn_map_sync, _experimental_spawn_map_async, synchronizer)
 
 
-def deprecate_aio_usage(deprecation_date: tuple[int, int, int], readable_sync_call: str):
-    def deco(sync_implementation):
-        if isinstance(sync_implementation, classmethod):
-            sync_implementation = sync_implementation.__func__
-            is_classmethod = True
-        else:
-            is_classmethod = False
-
-        async def _async_proxy(*args, **kwargs) -> "modal.functions.FunctionCall[Any]":
-            deprecation_warning(
-                deprecation_date,
-                f"""The async constructor {readable_sync_call}.aio(...) will be deprecated in a future version of Modal.
-                Please use {readable_sync_call}(...) instead (it doesn't perform any IO, and is safe in async contexts)
-                """,
-            )
-            return sync_implementation(*args, **kwargs)
-
-        return MethodWithAio(sync_implementation, _async_proxy, synchronizer, is_classmethod=is_classmethod)
-
-    return deco
-
-
 class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     """A reference to an executed function call.
 
@@ -2050,7 +2029,9 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
     @deprecate_aio_usage((2025, 11, 14), "FunctionCall.from_id")
     @classmethod
-    def from_id(cls, function_call_id: str, client: Optional[_Client] = None) -> "modal.functions.FunctionCall[Any]":
+    def from_id(
+        cls, function_call_id: str, client: Optional["modal.client.Client"] = None
+    ) -> "modal.functions.FunctionCall[Any]":
         """Instantiate a FunctionCall object from an existing ID.
 
         Examples:
@@ -2069,6 +2050,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         if you no longer have access to the original object returned from `Function.spawn`.
 
         """
+        _client = typing.cast(_Client, synchronizer._translate_in(client))
 
         async def _load(
             self: _FunctionCall, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
@@ -2078,7 +2060,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         rep = f"FunctionCall.from_id({function_call_id!r})"
         impl_instance = _FunctionCall._from_loader(
-            _load, rep, hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
+            _load, rep, hydrate_lazily=True, load_context_overrides=LoadContext(client=_client)
         )
         return typing.cast("modal.functions.FunctionCall[Any]", synchronizer._translate_out(impl_instance))
 
