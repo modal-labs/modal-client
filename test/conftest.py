@@ -454,6 +454,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_call_count = 0
         self.function_call_result: Any = None
 
+        self.flash_container_registrations = {}
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -2691,6 +2693,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         lost = [False] * len(request.attempt_tokens)
 
         await stream.send_message(api_pb2.MapCheckInputsResponse(lost=lost))
+
+    async def FlashContainerRegister(self, stream):
+        request: api_pb2.FlashContainerRegisterRequest = await stream.recv_message()
+        self.flash_container_registrations[request.service_name] = f"http://{request.host}:{request.port}"
+        await stream.send_message(api_pb2.FlashContainerRegisterResponse(url=f"http://{request.host}:{request.port}"))
+
+    async def FlashContainerDeregister(self, stream):
+        request: api_pb2.FlashContainerDeregisterRequest = await stream.recv_message()
+        self.flash_container_registrations.pop(request.service_name, None)
+        await stream.send_message(Empty())
 
 
 @contextlib.contextmanager
