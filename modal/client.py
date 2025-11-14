@@ -70,16 +70,15 @@ class _Client:
     _client_from_env: ClassVar[Optional["_Client"]] = None
     _client_from_env_lock: ClassVar[Optional[asyncio.Lock]] = None
     _cancellation_context: TaskContext
-    _cancellation_context_event_loop: Optional[asyncio.AbstractEventLoop] = None
-    _stub: Optional[api_grpc.ModalClientStub] = None
-    _auth_token_manager: Optional[_AuthTokenManager] = None
+    _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
+    _stub: Optional[api_grpc.ModalClientStub]
+    _auth_token_manager: _AuthTokenManager = None
     _snapshotted: bool
-    client_type: "api_pb2.ClientType.ValueType"
 
     def __init__(
         self,
         server_url: str,
-        client_type: "api_pb2.ClientType.ValueType",
+        client_type: int,
         credentials: Optional[tuple[str, str]],
         version: str = __version__,
     ):
@@ -91,6 +90,8 @@ class _Client:
         self._credentials = credentials
         self.version = version
         self._closed = False
+        self._stub: Optional[modal_api_grpc.ModalClientModal] = None
+        self._auth_token_manager: Optional[_AuthTokenManager] = None
         self._snapshotted = False
         self._owner_pid = None
 
