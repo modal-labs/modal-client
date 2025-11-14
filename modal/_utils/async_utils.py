@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import concurrent.futures
+import contextlib
 import functools
 import inspect
 import itertools
@@ -9,6 +10,7 @@ import sys
 import time
 import types
 import typing
+import warnings
 from collections.abc import AsyncGenerator, AsyncIterable, Awaitable, Iterable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -343,7 +345,8 @@ class TaskContext:
     _loops: set[asyncio.Task]
 
     def __init__(self, grace: Optional[float] = None):
-        self._grace = grace
+        self._grace = grace  # grace is the time we want for tasks to finish before cancelling them
+        self._cancellation_grace: float = 1.0  # extra graceperiod for the cancellation itself to "bubble up"
         self._loops = set()
 
     async def start(self):
@@ -375,22 +378,29 @@ class TaskContext:
             # still needs to be handled
             # (https://stackoverflow.com/a/63356323/2475114)
             if gather_future:
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await gather_future
-                except asyncio.CancelledError:
-                    pass
 
+            cancelled_tasks: list[asyncio.Task] = []
             for task in self._tasks:
                 if task.done() and not task.cancelled():
                     # Raise any exceptions if they happened.
                     # Only tasks without a done_callback will still be present in self._tasks
                     task.result()
 
-                if task.done() or task in self._loops:  # Note: Legacy code, we can probably cancel loops.
+                if task.done():
                     continue
 
                 # Cancel any remaining unfinished tasks.
                 task.cancel()
+                cancelled_tasks.append(task)
+
+            cancellation_gather = asyncio.gather(*cancelled_tasks, return_exceptions=True)
+            try:
+                await asyncio.wait_for(cancellation_gather, timeout=self._cancellation_grace)
+            except asyncio.TimeoutError:
+                warnings.warn(f"Internal warning: Tasks did not cancel in a timely manner: {cancelled_tasks}")
+
             await asyncio.sleep(0)  # wake up coroutines waiting for cancellations
 
     async def __aexit__(self, exc_type, value, tb):
