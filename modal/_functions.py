@@ -1935,7 +1935,7 @@ def _sync_function_call_from_id(cls, function_call_id: str, client: Optional[_Cl
     fc_id = fc.object_id
 
     # Later, use the ID to re-instantiate the FunctionCall object
-    fc = _FunctionCall.from_id(fc_id)
+    fc = FunctionCall.from_id(fc_id)
     result = fc.get()
     ```
 
