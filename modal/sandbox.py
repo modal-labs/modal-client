@@ -1151,14 +1151,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         if self._result is None or self._result.status == api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:
             return None
 
-        # Statuses are converted to exitcodes so we can conform to subprocess API.
-        # TODO: perhaps there should be a separate property that returns an enum directly?
-        elif self._result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-            return 124
-        elif self._result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
-            return 137
-        else:
-            return self._result.exitcode
+        return self._result.exitcode
 
     @staticmethod
     async def list(
