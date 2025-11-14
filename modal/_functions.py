@@ -1925,51 +1925,26 @@ Use the `Function.get_web_url()` method instead.
     experimental_spawn_map = MethodWithAio(_experimental_spawn_map_sync, _experimental_spawn_map_async, synchronizer)
 
 
-def _sync_function_call_from_id(
-    cls, function_call_id: str, client: Optional[_Client] = None
-) -> "modal.functions.FunctionCall[Any]":
-    """Instantiate a FunctionCall object from an existing ID.
+def deprecate_aio_usage(deprecation_date: tuple[int, int, int], readable_sync_call: str):
+    def deco(sync_implementation):
+        if isinstance(sync_implementation, classmethod):
+            sync_implementation = sync_implementation.__func__
+            is_classmethod = True
+        else:
+            is_classmethod = False
 
-    Examples:
+        async def _async_proxy(*args, **kwargs) -> "modal.functions.FunctionCall[Any]":
+            deprecation_warning(
+                deprecation_date,
+                f"""The async constructor {readable_sync_call}.aio(...) will be deprecated in a future version of Modal.
+                Please use {readable_sync_call}(...) instead (it doesn't perform any IO, and is safe in async contexts)
+                """,
+            )
+            return sync_implementation(*args, **kwargs)
 
-    ```python notest
-    # Spawn a FunctionCall and keep track of its object ID
-    fc = my_func.spawn()
-    fc_id = fc.object_id
+        return MethodWithAio(sync_implementation, _async_proxy, synchronizer, is_classmethod=is_classmethod)
 
-    # Later, use the ID to re-instantiate the FunctionCall object
-    fc = FunctionCall.from_id(fc_id)
-    result = fc.get()
-    ```
-
-    Note that it's only necessary to re-instantiate the `FunctionCall` with this method
-    if you no longer have access to the original object returned from `Function.spawn`.
-
-    """
-
-    async def _load(
-        self: _FunctionCall, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
-    ):
-        # this loader doesn't do anything in practice, but it will get the client from the load_context
-        self._hydrate(function_call_id, load_context.client, None)
-
-    rep = f"FunctionCall.from_id({function_call_id!r})"
-    impl_instance = _FunctionCall._from_loader(
-        _load, rep, hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
-    )
-    return typing.cast("modal.functions.FunctionCall[Any]", synchronizer._translate_out(impl_instance))
-
-
-async def _async_function_call_from_id(
-    cls, function_call_id: str, client: Optional[_Client] = None
-) -> "modal.functions.FunctionCall[Any]":
-    deprecation_warning(
-        (2025, 11, 14),
-        """The async constructor FunctionCall.from_id.aio(...) will be deprecated in a future version of Modal.
-        Please use FunctionCall.from_id(...) instead (it doesn't perform any IO, and is safe in async contexts)
-        """,
-    )
-    return _sync_function_call_from_id(cls, function_call_id, client)
+    return deco
 
 
 class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
@@ -2073,9 +2048,39 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         assert self._client and self._client.stub
         await self._client.stub.FunctionCallCancel(request)
 
-    from_id = MethodWithAio(
-        _sync_function_call_from_id, _async_function_call_from_id, synchronizer, is_classmethod=True
-    )
+    @deprecate_aio_usage((2025, 11, 14), "FunctionCall.from_id")
+    @classmethod
+    def from_id(cls, function_call_id: str, client: Optional[_Client] = None) -> "modal.functions.FunctionCall[Any]":
+        """Instantiate a FunctionCall object from an existing ID.
+
+        Examples:
+
+        ```python notest
+        # Spawn a FunctionCall and keep track of its object ID
+        fc = my_func.spawn()
+        fc_id = fc.object_id
+
+        # Later, use the ID to re-instantiate the FunctionCall object
+        fc = FunctionCall.from_id(fc_id)
+        result = fc.get()
+        ```
+
+        Note that it's only necessary to re-instantiate the `FunctionCall` with this method
+        if you no longer have access to the original object returned from `Function.spawn`.
+
+        """
+
+        async def _load(
+            self: _FunctionCall, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
+            # this loader doesn't do anything in practice, but it will get the client from the load_context
+            self._hydrate(function_call_id, load_context.client, None)
+
+        rep = f"FunctionCall.from_id({function_call_id!r})"
+        impl_instance = _FunctionCall._from_loader(
+            _load, rep, hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
+        )
+        return typing.cast("modal.functions.FunctionCall[Any]", synchronizer._translate_out(impl_instance))
 
     @staticmethod
     async def gather(*function_calls: "_FunctionCall[T]") -> typing.Sequence[T]:
