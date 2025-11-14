@@ -367,6 +367,7 @@ message AppGetLogsRequest {
   float timeout = 2;
   string last_entry_id = 4;
   string function_id = 5;
+  string parametrized_function_id = 11;
   string input_id = 6;
   string task_id = 7;
   string function_call_id = 9;
