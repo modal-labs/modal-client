@@ -203,13 +203,16 @@ def _blocking_in_async_warning(original_func: types.FunctionType):
         # Use the unified rewrite function for all patterns
         _, suggestion = rewrite_sync_to_async(code_line, func_name)
 
-    # Add suggestion in "change X to Y" format
-    if suggestion and code_line:
-        message_parts.append(f"\n\nSuggestion, change the line:\n  {code_line}\nto:\n  {suggestion}")
-
     message_parts.append(
         "\n\nThis may cause performance issues or bugs. Consider using Modal's async interfaces for async contexts."
     )
+    # Add suggestion in "change X to Y" format
+    if suggestion and code_line:
+        # this is a bit ugly, but the warnings formatter will show the offending source line
+        # on the last line regardless what we do, so we add this to not make it look out of place
+        message_parts.append(
+            f"\n\nSuggestion:\n  {suggestion}\n\n(This warning was triggered by the line shown below.)"
+        )
 
     # Use warn_explicit to provide precise location information from the call frame
     if call_frame:
