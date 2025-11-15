@@ -5,8 +5,10 @@ import contextlib
 import functools
 import inspect
 import itertools
+import os
 import sys
 import time
+import types
 import typing
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterable, Awaitable, Iterable, Iterator
@@ -27,6 +29,8 @@ from synchronicity.async_utils import Runner
 from synchronicity.exceptions import NestedEventLoops
 from typing_extensions import ParamSpec, assert_type
 
+from modal._ipython import is_interactive_ipython
+
 from ..exception import InvalidError
 from .logger import logger
 
@@ -38,7 +42,212 @@ if sys.platform == "win32":
     # quick workaround for deadlocks on shutdown - need to investigate further
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-synchronizer = synchronicity.Synchronizer()
+
+def rewrite_sync_to_async(code_line: str, func_name: str) -> tuple[bool, str]:
+    """
+    Rewrite a blocking call to use async/await syntax.
+
+    Handles three patterns:
+    1. __aiter__: for x in obj -> async for x in obj
+    2. __aenter__: with obj as x -> async with obj as x
+    3. Regular methods: obj.method() -> await obj.method.aio()
+
+    Args:
+        code_line: The line of code containing the blocking call
+        func_name: The name of the function being called (e.g., "method", "__aiter__", "__aenter__")
+
+    Returns:
+        A tuple of (success, rewritten_code):
+        - success: True if the pattern was found and rewritten, False if falling back to generic
+        - rewritten_code: The rewritten code or a generic suggestion
+    """
+    import re
+
+    # Handle __aiter__ pattern: for x in obj -> async for x in obj
+    if func_name == "__aiter__" and code_line.startswith("for "):
+        suggestion = code_line.replace("for ", "async for ", 1)
+        return (True, suggestion)
+
+    # Handle __aenter__ pattern: with obj as x -> async with obj as x
+    if func_name == "__aenter__" and code_line.startswith("with "):
+        suggestion = code_line.replace("with ", "async with ", 1)
+        return (True, suggestion)
+
+    # Handle regular method calls and property access
+    # First check if it's a property access (no parentheses after the name)
+    property_pattern = rf"\.{re.escape(func_name)}(?!\s*\()"
+    property_match = re.search(property_pattern, code_line)
+
+    if property_match:
+        # This is a property access, rewrite to use await without .aio()
+        # Find the start of the expression (skip statement keywords and assignments)
+        statement_start = 0
+        prefix_match = re.match(r"^(\s*(?:\w+\s*=|return|yield|raise)\s+)", code_line)
+        if prefix_match:
+            statement_start = len(prefix_match.group(1))
+
+        before_expr = code_line[:statement_start]
+        after_prefix = code_line[statement_start:]
+
+        # Just add await before the expression for properties
+        suggestion = before_expr + "await " + after_prefix.lstrip()
+        return (True, suggestion)
+
+    # Try to find a method call (with parentheses)
+    method_pattern = rf"\.{re.escape(func_name)}\s*\("
+    method_match = re.search(method_pattern, code_line)
+
+    if not method_match:
+        # Can't find the function call or property
+        return (False, f"await ...{func_name}.aio(...)")
+
+    # Safety check: don't attempt rewrite for complex expressions
+    unsafe_keywords = ["if", "elif", "while", "and", "or", "not", "in", "is", "for"]
+
+    # Check if line contains control flow keywords (might be too complex)
+    for keyword in unsafe_keywords:
+        if re.search(rf"\b{keyword}\b", code_line):
+            # Fall back to generic suggestion for complex expressions
+            return (False, f"await ...{func_name}.aio(...)")
+
+    # Find the start of the expression (skip statement keywords and assignments)
+    # Look for patterns like: "return ...", "x = ...", "yield ...", etc.
+    statement_start = 0
+    prefix_match = re.match(r"^(\s*(?:\w+\s*=|return|yield|raise)\s+)", code_line)
+    if prefix_match:
+        # Found a statement prefix, keep it
+        statement_start = len(prefix_match.group(1))
+
+    # Insert .aio before the opening parenthesis and await at the start of expression
+    before_expr = code_line[:statement_start]
+    after_prefix = code_line[statement_start:]
+
+    # Add .aio() after the method name
+    rewritten_expr = re.sub(rf"(\.{re.escape(func_name)})\s*\(", r"\1.aio(", after_prefix, count=1)
+    suggestion = before_expr + "await " + rewritten_expr.lstrip()
+
+    return (True, suggestion)
+
+
+@dataclass
+class _CallFrame:
+    """Simple dataclass to hold call frame information."""
+
+    filename: str
+    lineno: int
+    line: Optional[str]
+
+
+def _extract_user_call_frame():
+    """
+    Extract the call frame from user code by filtering out frames from synchronicity and asyncio.
+
+    Returns a _CallFrame with the filename, line number, and source line, or None if not found.
+    """
+    import linecache
+    import os
+
+    # Get the current call stack
+    stack = inspect.stack()
+
+    # Get the absolute path of this module to filter it out
+    this_file = os.path.abspath(__file__)
+
+    # Filter out frames from synchronicity, asyncio, and this module
+    for frame_info in stack:
+        filename = frame_info.filename
+        # Skip frames from synchronicity, asyncio packages, and this module
+        # Use path separators to ensure we're matching packages, not just filenames containing these words
+        if (
+            os.path.sep + "synchronicity" + os.path.sep in filename
+            or os.path.sep + "asyncio" + os.path.sep in filename
+            or os.path.abspath(filename) == this_file
+        ):
+            continue
+
+        # Found a user frame
+        line = linecache.getline(filename, frame_info.lineno)
+        return _CallFrame(filename=filename, lineno=frame_info.lineno, line=line if line else None)
+
+    # Fallback if we can't find a suitable frame
+    return None
+
+
+def _blocking_in_async_warning(original_func: types.FunctionType):
+    if is_interactive_ipython():
+        # in notebooks or interactive sessions where sync usage is expected
+        # even if it's actually running in an event loop
+        return
+
+    import warnings
+
+    # Skip warnings for __aexit__ and __anext__ - the __aenter__ and __aiter__ warnings are sufficient
+    if original_func:
+        func_name = getattr(original_func, "__name__", str(original_func))
+        if func_name in ("__aexit__", "__anext__"):
+            # These dunders would typically already have caused a warning on the __aenter__ or __aiter__ respectively
+            return
+
+    # Extract the call frame from the stack
+    call_frame = _extract_user_call_frame()
+
+    # Build detailed warning message with location and function first
+    message_parts = ["Blocking Modal interface used from within an async code block"]
+
+    # Generate intelligent suggestion based on the context
+    suggestion = None
+    code_line = None
+
+    if original_func and call_frame and call_frame.line:
+        func_name = getattr(original_func, "__name__", str(original_func))
+        code_line = call_frame.line.strip()
+
+        # Use the unified rewrite function for all patterns
+        _, suggestion = rewrite_sync_to_async(code_line, func_name)
+
+    message_parts.append(
+        "\n\nThis may cause performance issues or bugs. Consider using Modal's async interfaces for async contexts."
+    )
+    # Add suggestion in "change X to Y" format
+    if suggestion and code_line:
+        # this is a bit ugly, but the warnings formatter will show the offending source line
+        # on the last line regardless what we do, so we add this to not make it look out of place
+        message_parts.append(
+            f"\n\nSuggestion:\n  {suggestion}\n\n(This warning was triggered by the line shown below.)"
+        )
+
+    # Use warn_explicit to provide precise location information from the call frame
+    if call_frame:
+        # Extract module name from filename, or use a default
+        module_name = os.path.splitext(os.path.basename(call_frame.filename))[0]
+
+        warnings.warn_explicit(
+            "".join(message_parts),
+            UserWarning,
+            filename=call_frame.filename,
+            lineno=call_frame.lineno,
+            module=module_name,
+        )
+    else:
+        # Fallback to regular warn if no frame information available
+        warnings.warn("".join(message_parts), UserWarning)
+
+
+def _safe_blocking_in_async_warning(original_func: types.FunctionType):
+    """
+    Safety wrapper around _blocking_in_async_warning to ensure it never raises exceptions.
+
+    This is non-critical functionality (just a warning), so we don't want it to break user code.
+    """
+    try:
+        _blocking_in_async_warning(original_func)
+    except Exception:
+        # Silently ignore any errors in the warning system
+        # We don't want the warning mechanism itself to cause problems
+        pass
+
+
+synchronizer = synchronicity.Synchronizer(blocking_in_async_callback=_safe_blocking_in_async_warning)
 
 
 def synchronize_api(obj, target_module=None):
@@ -389,6 +598,7 @@ class _WarnIfGeneratorIsNotConsumed:
         self.function_name = function_name
         self.iterated = False
         self.warned = False
+        self.__wrapped__ = gen
 
     def __aiter__(self):
         self.iterated = True
