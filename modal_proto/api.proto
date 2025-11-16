@@ -367,6 +367,7 @@ message AppGetLogsRequest {
   float timeout = 2;
   string last_entry_id = 4;
   string function_id = 5;
+  string parametrized_function_id = 11;
   string input_id = 6;
   string task_id = 7;
   string function_call_id = 9;
@@ -1291,6 +1292,8 @@ message EnvironmentListItem {
   string environment_id = 6;
   optional int32 max_concurrent_tasks = 7;
   optional int32 max_concurrent_gpus = 8;
+  int32 current_concurrent_tasks = 9;
+  int32 current_concurrent_gpus = 10;
 }
 
 message EnvironmentListResponse {
@@ -1601,6 +1604,7 @@ message FunctionCallGetDataRequest {
     string attempt_token = 3;
   }
   uint64 last_index = 2;
+  bool use_gapless_read = 4;
 }
 
 message FunctionCallInfo {
@@ -2462,8 +2466,9 @@ message Proxy {
   string name = 1;
   double created_at = 2;
   string environment_name = 3;
-  string proxy_id = 5;
   repeated ProxyIp proxy_ips = 4;
+  string proxy_id = 5;
+  string region = 6;
 }
 
 message ProxyAddIpRequest {
