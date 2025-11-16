@@ -32,6 +32,7 @@ from ._partial_function import (
 )
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import (
+    deprecation_error,
     deprecation_warning,
     warn_on_renamed_autoscaler_settings,
 )
@@ -719,7 +720,7 @@ class _App:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
-        nonpreemptible: bool = False,  # Whether to run the function on an on-demand instance (spot is the default).
+        nonpreemptible: bool = False,  # Whether to run the function on a nonpreemptible instance.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this function access to other Modal resources
@@ -732,9 +733,6 @@ class _App:
         include_source: Optional[bool] = None,
         experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
-        _experimental_scheduler_placement: Optional[
-            SchedulerPlacement
-        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
         _experimental_restrict_output: bool = False,  # Don't use pickle for return values
@@ -744,6 +742,8 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Replaced in favor of
+        # using `region` and `nonpreemptible`
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal Function with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -761,6 +761,13 @@ class _App:
                 "The `allow_concurrent_inputs` parameter is deprecated."
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+            )
+
+        if _experimental_scheduler_placement is not None:
+            deprecation_error(
+                (2025, 11, 17),
+                "The `_experimental_scheduler_placement` parameter is deprecated."
+                " Please use the `region` and `nonpreemptible` parameters instead.",
             )
 
         secrets = secrets or []
@@ -861,15 +868,6 @@ class _App:
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
-            if gpu and nonpreemptible:
-                raise InvalidError("Non-preemptible option is not currently available for GPU workloads")
-
-            scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
-            if region or nonpreemptible:
-                if scheduler_placement:
-                    raise InvalidError("Cannot use `_experimental_scheduler_placement` with other scheduling options")
-                scheduler_placement = SchedulerPlacement(nonpreemptible=nonpreemptible, region=region)
-
             function = _Function.from_local(
                 info,
                 app=self,
@@ -896,12 +894,13 @@ class _App:
                 timeout=timeout,
                 startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
+                region=region,
+                nonpreemptible=nonpreemptible,
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
-                scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
                 rdma=rdma,
@@ -965,9 +964,6 @@ class _App:
         include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
         experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
-        _experimental_scheduler_placement: Optional[
-            SchedulerPlacement
-        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
         _experimental_restrict_output: bool = False,  # Don't use pickle for return values
@@ -977,22 +973,14 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Replaced in favor of
+        # using `region` and `nonpreemptible`
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](https://modal.com/docs/reference/modal.Cls) with this App.
         """
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
-
-        if gpu and nonpreemptible:
-            raise InvalidError("Non-preemptible option is not currently available for GPU workloads")
-
-        scheduler_placement = _experimental_scheduler_placement
-        if region or nonpreemptible:
-            if scheduler_placement:
-                raise InvalidError("Cannot use `_experimental_scheduler_placement` with other scheduling options")
-
-            scheduler_placement = SchedulerPlacement(nonpreemptible=nonpreemptible, region=region)
 
         if allow_concurrent_inputs is not None:
             deprecation_warning(
@@ -1095,11 +1083,12 @@ class _App:
                 timeout=timeout,
                 startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
+                region=region,
+                nonpreemptible=nonpreemptible,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
-                scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
                 rdma=rdma,

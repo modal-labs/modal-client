@@ -90,7 +90,6 @@ from .parallel_map import (
 from .proxy import _Proxy
 from .retries import Retries, RetryManager
 from .schedule import Schedule
-from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
 
@@ -589,7 +588,7 @@ class _FunctionSpec:
     cpu: Optional[Union[float, tuple[float, float]]]
     memory: Optional[Union[int, tuple[int, int]]]
     ephemeral_disk: Optional[int]
-    scheduler_placement: Optional[SchedulerPlacement]
+    scheduler_placement: Optional[api_pb2.SchedulerPlacement]
     proxy: Optional[_Proxy]
 
 
@@ -683,7 +682,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
         cloud: Optional[str] = None,
-        scheduler_placement: Optional[SchedulerPlacement] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,
+        nonpreemptible: bool = False,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
@@ -745,6 +745,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
+
+        scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+        if region or nonpreemptible:
+            scheduler_placement = api_pb2.SchedulerPlacement(regions=region, nonpreemptible=nonpreemptible)
 
         function_spec = _FunctionSpec(
             mounts=all_mounts,
@@ -1018,7 +1022,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     untrusted=restrict_modal_access,
                     max_inputs=max_inputs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
-                    scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
+                    scheduler_placement=scheduler_placement,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=i6pn_enabled,

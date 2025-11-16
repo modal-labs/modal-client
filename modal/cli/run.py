@@ -684,7 +684,7 @@ def shell(
             cpu=function_spec.cpu,
             memory=function_spec.memory,
             volumes=function_spec.volumes,
-            region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
+            region=function_spec.scheduler_placement.regions if function_spec.scheduler_placement else None,
             pty=pty,
             proxy=function_spec.proxy,
         )
