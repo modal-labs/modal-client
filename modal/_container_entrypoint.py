@@ -363,6 +363,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     is_snapshotting_function = (
         function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE") == "1"
     )
+    logger.warning(f"[CLAUDIA] function_def.http_config: {function_def.http_config}")
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
 
