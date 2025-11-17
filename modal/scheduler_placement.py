@@ -12,7 +12,6 @@ class SchedulerPlacement:
 
     def __init__(
         self,
-        nonpreemptible: bool = False,
         region: Optional[Union[str, Sequence[str]]] = None,
         zone: Optional[str] = None,
         spot: Optional[bool] = None,
@@ -39,7 +38,6 @@ class SchedulerPlacement:
 
         self.proto = api_pb2.SchedulerPlacement(
             regions=regions,
-            nonpreemptible=nonpreemptible,
             _zone=zone,
             _lifecycle=_lifecycle,
             _instance_types=instance_types,

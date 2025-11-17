@@ -32,7 +32,6 @@ from ._partial_function import (
 )
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import (
-    deprecation_error,
     deprecation_warning,
     warn_on_renamed_autoscaler_settings,
 )
@@ -764,11 +763,22 @@ class _App:
             )
 
         if _experimental_scheduler_placement is not None:
-            deprecation_error(
+            deprecation_warning(
                 (2025, 11, 17),
                 "The `_experimental_scheduler_placement` parameter is deprecated."
                 " Please use the `region` and `nonpreemptible` parameters instead.",
             )
+            if region is not None or nonpreemptible:
+                raise InvalidError(
+                    "Cannot use `_experimental_scheduler_placement` together with "
+                    "`region` or `nonpreemptible` parameters."
+                )
+            # Extract regions and lifecycle from scheduler placement
+            if _experimental_scheduler_placement.proto.regions:
+                region = list(_experimental_scheduler_placement.proto.regions)
+            if _experimental_scheduler_placement.proto._lifecycle:
+                # Convert lifecycle to nonpreemptible: "on-demand" -> True, "spot" -> False
+                nonpreemptible = _experimental_scheduler_placement.proto._lifecycle == "on-demand"
 
         secrets = secrets or []
         if env:
@@ -779,7 +789,7 @@ class _App:
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
         ) -> _Function:
-            nonlocal is_generator, cloud, serialized
+            nonlocal is_generator, cloud, serialized, region, nonpreemptible
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
@@ -989,6 +999,24 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
+
+        if _experimental_scheduler_placement is not None:
+            deprecation_warning(
+                (2025, 11, 17),
+                "The `_experimental_scheduler_placement` parameter is deprecated."
+                " Please use the `region` and `nonpreemptible` parameters instead.",
+            )
+            if region is not None or nonpreemptible:
+                raise InvalidError(
+                    "Cannot use `_experimental_scheduler_placement` together with "
+                    "`region` or `nonpreemptible` parameters."
+                )
+            # Extract regions and lifecycle from scheduler placement
+            if _experimental_scheduler_placement.proto.regions:
+                region = list(_experimental_scheduler_placement.proto.regions)
+            if _experimental_scheduler_placement.proto._lifecycle:
+                # Convert lifecycle to nonpreemptible: "on-demand" -> True, "spot" -> False
+                nonpreemptible = _experimental_scheduler_placement.proto._lifecycle == "on-demand"
 
         secrets = secrets or []
         if env:
