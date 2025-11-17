@@ -748,7 +748,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
         if region or nonpreemptible:
-            scheduler_placement = api_pb2.SchedulerPlacement(regions=region, nonpreemptible=nonpreemptible)
+            regions = [region] if isinstance(region, str) else (list(region) if region else None)
+            scheduler_placement = api_pb2.SchedulerPlacement(regions=regions, nonpreemptible=nonpreemptible)
 
         function_spec = _FunctionSpec(
             mounts=all_mounts,

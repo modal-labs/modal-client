@@ -789,7 +789,8 @@ More information on class parameterization can be found here: https://modal.com/
 
         scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
         if region:
-            scheduler_placement = api_pb2.SchedulerPlacement(regions=region)
+            regions = [region] if isinstance(region, str) else list(region)
+            scheduler_placement = api_pb2.SchedulerPlacement(regions=regions)
 
         new_options = _ServiceOptions(
             secrets=secrets,
