@@ -963,7 +963,7 @@ class _App:
         startup_timeout: Optional[int] = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
-        nonpreemptible: bool = False,  # Whether to run the function on an on-demand instance (spot is the default).
+        nonpreemptible: bool = False,  # Whether to run the function on a non-preemptible instance.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this class access to other Modal resources
