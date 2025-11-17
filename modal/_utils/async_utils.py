@@ -1112,6 +1112,7 @@ async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
 
 
 def deprecate_aio_usage(deprecation_date: tuple[int, int, int], readable_sync_call: str):
+    # Note: Currently only works on methods, not top level functions
     def deco(sync_implementation):
         if isinstance(sync_implementation, classmethod):
             sync_implementation = sync_implementation.__func__

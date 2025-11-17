@@ -21,6 +21,7 @@ from typing import (
     get_args,
 )
 
+import typing_extensions
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from typing_extensions import Self
@@ -864,8 +865,8 @@ class _Image(_Object, type_prefix="im"):
         return img
 
     @deprecate_aio_usage((2025, 11, 14), "Image.from_id")
-    @staticmethod
-    def from_id(image_id: str, client: Optional["modal.client.Client"] = None) -> "modal.image.Image":
+    @classmethod
+    def from_id(cls, image_id: str, client: Optional["modal.client.Client"] = None) -> typing_extensions.Self:
         """Construct an Image from an id and look up the Image result.
 
         The ID of an Image object can be accessed using `.object_id`.
@@ -879,7 +880,7 @@ class _Image(_Object, type_prefix="im"):
         rep = f"Image.from_id({image_id!r})"
         obj = _Image._from_loader(_load, rep, load_context_overrides=LoadContext(client=_client))
 
-        return typing.cast("modal.image.Image", synchronizer._translate_out(obj))
+        return typing.cast(typing_extensions.Self, synchronizer._translate_out(obj))
 
     async def build(self, app: "modal.app._App") -> "_Image":
         """Eagerly build an image.
