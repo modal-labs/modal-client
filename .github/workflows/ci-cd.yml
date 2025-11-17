@@ -210,8 +210,8 @@ jobs:
       - name: Install all dependencies
         run: pip install -e .
 
-      - name: Install synchronicity compile time deps
-        run: pip install "synchronicity[compile]==0.10.3"
+      - name: Install dev dependencies
+        run: pip install -r requirements.dev.txt
 
       - name: Build type stubs
         run: inv type-stubs
