@@ -1096,10 +1096,6 @@ class _App:
                     startup_timeout=http_config_.startup_timeout or 0,
                     exit_grace_period=http_config_.exit_grace_period or 0,
                 )
-                logger.warning(f"[CLAUDIA] Created http_config_proto: {http_config_proto}")
-            else:
-                logger.warning("[CLAUDIA] http_config_ is None, skipping protobuf conversion")
-
             cls_func = _Function.from_local(
                 info,
                 app=self,

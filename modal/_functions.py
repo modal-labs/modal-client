@@ -1046,7 +1046,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     supported_output_formats=supported_output_formats,
                     http_config=http_config,
                 )
-                logger.warning(f"[CLAUDIA] ffunction in normal case right after creation: {function_definition.http_config}")
 
                 if isinstance(gpu, list):
                     function_data = api_pb2.FunctionData(
@@ -1085,8 +1084,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         supported_output_formats=supported_output_formats,
                         http_config=http_config,
                     )
-                    logger.warning(f"[CLAUDIA] FunctionData (gpu list branch) - http_config input: {http_config}")
-                    logger.warning(f"[CLAUDIA] FunctionData (gpu list branch) - function_data.http_config: {function_data.http_config}")
 
                     ranked_functions = []
                     for rank, _gpu in enumerate(gpu):
