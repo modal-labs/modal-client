@@ -502,7 +502,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
 
-            flash_entry.enter(service)
+            flash_entry.enter(service.user_cls_instance)
 
         with container_io_manager.handle_user_exception():
             finalized_functions = service.get_finalized_functions(function_def, container_io_manager)

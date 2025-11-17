@@ -6,10 +6,12 @@ import subprocess
 import sys
 import time
 import traceback
+import typing
 from collections import defaultdict
 from typing import Any, Callable, Literal, Optional, Union
 from urllib.parse import urlparse
 
+from modal._partial_function import _HTTPConfig, _PartialFunctionFlags
 from modal.cls import _Cls
 from modal.dict import _Dict
 from modal_proto import api_pb2
@@ -670,7 +672,7 @@ def _http_server(
     if exit_grace_period is not None and exit_grace_period < 0:
         raise InvalidError("The `exit_grace_period` argument of `@http_server` must be non-negative.")
 
-    from modal._partial_function import _HTTPConfig, _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
+    from modal._partial_function import _HTTPConfig, _PartialFunction, _PartialFunctionParams
 
     params = _PartialFunctionParams(
         http_config=_HTTPConfig(
@@ -697,43 +699,62 @@ def _http_server(
 http_server = synchronize_api(_http_server, target_module=__name__)
 
 
+def get_http_config(cls_or_user_cls: Union[type[Any], Any]) -> Optional[_HTTPConfig]:
+    """Extract HTTP config from a Modal class or user class.
+
+    Args:
+        cls_or_user_cls: Either a Modal _Cls object, a user class type, an instance of a user class,
+                         or an ImportedClass (serialized class)
+
+    Returns:
+        The _HTTPConfig if found, None otherwise
+    """
+    if isinstance(cls_or_user_cls, _Cls):
+        logger.warning("unwrapping as _Cls")
+        return cls_or_user_cls._options.http_config
+    unwrapped = typing.cast(_Cls, synchronizer._translate_in(cls_or_user_cls))
+    if isinstance(unwrapped, _Cls):
+        logger.warning("unwrapped is _Cls")
+        # wtf does this do?
+        if unwrapped._options.http_config is not None:
+            return unwrapped._options.http_config
+        # Fall through to check methods on the user_cls
+        user_cls = unwrapped._user_cls
+        if user_cls is None:
+            return None  # Remote Cls without local definition
+    # Check if it has an http_config attribute (ImportedClass from container runtime)
+    if hasattr(unwrapped, "http_config"):
+        logger.warning("found http_config attribute")
+        return unwrapped.http_config
+    if hasattr(cls_or_user_cls, '_modal_http_config'):
+        logger.warning("found _modal_http_config attribute on user instance")
+        return cls_or_user_cls._modal_http_config
+
+    elif hasattr(unwrapped, "_partial_functions"):
+        logger.warning("unwrapping as _partial_functions")
+        partial_functions = unwrapped._partial_functions
+        logger.warning(f"partial_functions: {list(partial_functions.items())}")
+        for partial_func in partial_functions.values():
+            if partial_func.params.http_config is not None:
+                return partial_func.params.http_config
+        return None
+    else:
+        logger.warning(f"returning None for type {type(unwrapped).__name__}")
+        return None
+
 class _FlashContainerEntry:
     def __init__(self):
         self.flash_manager: Optional[FlashManager] = None  # type: ignore
         self.exit_grace_period = 0
 
-    from modal._partial_function import _HTTPConfig
 
     def validate_flash_configs(self, flash_configs: list[_HTTPConfig]):
         assert len(flash_configs) == 1, "Only one @http_server decorator is supported"
         flash_config = flash_configs[0]
-        if flash_config.port < 1 or flash_config.port > 65535:
-            raise InvalidError(
-                "The `port` argument of `@http_server` must be a local port, such as `@http_server(8000)`."
-            )
-        if flash_config.startup_timeout is not None and flash_config.startup_timeout <= 0:
-            raise InvalidError("The `startup_timeout` argument of `@http_server` must be positive.")
-        if flash_config.exit_grace_period is not None and flash_config.exit_grace_period < 0:
-            raise InvalidError("The `exit_grace_period` argument of `@http_server` must be non-negative.")
-
-    def get_http_config(self, user_cls: type[Any]) -> Optional[_HTTPConfig]:
-        from modal._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
-
-        flash_configs = [
-            partial_method.params.http_config
-            for partial_method in _find_partial_methods_for_user_cls(
-                user_cls, _PartialFunctionFlags.HTTP_WEB_INTERFACE
-            ).values()
-            if partial_method.params.http_config
-        ]
-        if len(flash_configs) == 0:
-            return None
-        self.validate_flash_configs(flash_configs)
-        return flash_configs[0]
 
     def enter(self, service):
-        # http_config = self.get_http_config(service)
-        http_config = None
+        http_config = get_http_config(service)
+        print(f"http_config: {http_config}")
         if http_config:
             self.exit_grace_period = max(self.exit_grace_period, http_config.exit_grace_period or 0)
             self.flash_manager = flash_forward(

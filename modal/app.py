@@ -972,6 +972,7 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        http_config: Optional[api_pb2.HTTPConfig] = None,  # HTTP config to use for the class
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](https://modal.com/docs/reference/modal.Cls) with this App.
@@ -1000,6 +1001,7 @@ class _App:
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             local_state = self._local_state
             experimental_options_ = experimental_options or {}
+            http_config_ = None
             # Check if the decorated object is a class
             if isinstance(wrapped_cls, _PartialFunction):
                 wrapped_cls.registered = True
@@ -1009,6 +1011,12 @@ class _App:
                     if http_config:
                         flash_region = http_config.proxy_region
                         experimental_options_["flash"] = flash_region
+                        http_config_ = api_pb2.HTTPConfig(
+                            port=http_config.port,
+                            proxy_region=http_config.proxy_region,
+                            startup_timeout=http_config.startup_timeout or 0,
+                            exit_grace_period=http_config.exit_grace_period or 0,
+                        )  # Store for later use
 
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
                     verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options_))
@@ -1078,6 +1086,20 @@ class _App:
 
             i6pn_enabled = i6pn or cluster_size is not None
 
+            # Convert _HTTPConfig dataclass to protobuf message
+            http_config_proto = None
+            if http_config_:
+                logger.warning(f"[CLAUDIA] Converting http_config_ to protobuf: {http_config_}")
+                http_config_proto = api_pb2.HTTPConfig(
+                    port=http_config_.port,
+                    proxy_region=http_config_.proxy_region,
+                    startup_timeout=http_config_.startup_timeout or 0,
+                    exit_grace_period=http_config_.exit_grace_period or 0,
+                )
+                logger.warning(f"[CLAUDIA] Created http_config_proto: {http_config_proto}")
+            else:
+                logger.warning("[CLAUDIA] http_config_ is None, skipping protobuf conversion")
+
             cls_func = _Function.from_local(
                 info,
                 app=self,
@@ -1106,6 +1128,7 @@ class _App:
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
+                http_config=http_config_proto,
                 scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
@@ -1116,10 +1139,12 @@ class _App:
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 restrict_output=_experimental_restrict_output,
             )
+            logger.warning(f"[CLAUDIA] cls_func created, checking if http_config stored: {cls_func}")
 
             self._add_function(cls_func, is_web_endpoint=False)
 
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
+
             for method_name, partial_function in cls._method_partials.items():
                 if partial_function.params.webhook_config is not None:
                     full_name = f"{user_cls.__name__}.{method_name}"

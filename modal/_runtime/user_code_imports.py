@@ -286,6 +286,8 @@ def import_class_service(
 
     See import_function.
     """
+    logger.warning(f"[CLAUDIA] import_class_service called, function_def.http_config={function_def.http_config}")
+    logger.warning(f"[CLAUDIA] import_class_service called, HasField http_config? {function_def.HasField('http_config')}")
     active_app: Optional["modal.app._App"]
     service_deps: Optional[Sequence["modal._object._Object"]]
     cls_or_user_cls: typing.Union[type, modal.cls.Cls]
@@ -334,8 +336,23 @@ def import_class_service(
         # that transfers metadata from the service function to the class. TODO: cleanup!
         _cls._hydrate(class_id, _client, api_pb2.ClassHandleMetadata())
 
+    # UPDATE TO USE with_http_config from ImportedClass in USER_CODE_IMPORTs.py
+    # Instead of extracting from experimental_options, extract from protobuf:
+    from modal._partial_function import _HTTPConfig
+    http_config: Optional[_HTTPConfig] = None
+    if function_def.http_config:
+        logger.warning(f"[CLAUDIA] Fetching http_config from function_def: {function_def.http_config}")
+        http_config = _HTTPConfig(
+            port=function_def.http_config.port,
+            proxy_region=function_def.http_config.proxy_region, # type: ignore
+            startup_timeout=function_def.http_config.startup_timeout or None,
+            exit_grace_period=function_def.http_config.exit_grace_period or None,
+        )
+        _cls._options.http_config = http_config  # type: ignore
+        logger.warning(f"[CLAUDIA] Storing http_config on _cls: {http_config}")
     method_partials: dict[str, "modal._partial_function._PartialFunction"] = _cls._get_partial_functions()
     user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
+    user_cls_instance.http_config = http_config  # type: ignore
 
     return ImportedClass(
         user_cls_instance,

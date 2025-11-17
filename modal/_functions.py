@@ -16,6 +16,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal.config import logger
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -700,11 +701,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
         restrict_output: bool = False,
+        http_config: Optional[api_pb2.HTTPConfig] = None,
     ) -> "_Function":
         """mdmd:hidden
 
         Note: This is not intended to be public API.
         """
+        logger.warning(f"[CLAUDIA] _Functions.from_local called for tag={info.get_tag()}, http_config={http_config}")
         # Needed to avoid circular imports
         from ._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
@@ -910,6 +913,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _load(
             self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
+            logger.warning(f"[CLAUDIA] _load called for tag={tag}, http_config={http_config}")
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 timeout_secs = timeout
 
@@ -1040,7 +1044,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_schema=function_schema,
                     supported_input_formats=supported_input_formats,
                     supported_output_formats=supported_output_formats,
+                    http_config=http_config,
                 )
+                logger.warning(f"[CLAUDIA] ffunction in normal case right after creation: {function_definition.http_config}")
 
                 if isinstance(gpu, list):
                     function_data = api_pb2.FunctionData(
@@ -1077,7 +1083,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         untrusted=function_definition.untrusted,
                         supported_input_formats=supported_input_formats,
                         supported_output_formats=supported_output_formats,
+                        http_config=http_config,
                     )
+                    logger.warning(f"[CLAUDIA] FunctionData (gpu list branch) - http_config input: {http_config}")
+                    logger.warning(f"[CLAUDIA] FunctionData (gpu list branch) - function_data.http_config: {function_data.http_config}")
 
                     ranked_functions = []
                     for rank, _gpu in enumerate(gpu):
