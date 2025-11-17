@@ -360,6 +360,7 @@ class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
 
         details = []
         for detail_container in details_proto.details:
+            # If we do not know how to decode an emssage, we'll ignore it.
             with contextlib.suppress(Exception):
                 msg_type = sym_db.GetSymbol(detail_container.TypeName())
                 detail = msg_type()
