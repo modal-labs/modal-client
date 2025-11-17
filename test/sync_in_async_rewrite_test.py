@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2025
 """Unit tests for sync-in-async warning message rewriting logic."""
 
 from modal._utils.async_utils import rewrite_sync_to_async
