@@ -10,6 +10,7 @@ import time
 import typing
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Optional
 
 import click
@@ -25,6 +26,7 @@ from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, NotFoundError, _CliUserExecutionError
 from ..functions import Function
 from ..image import Image
+from ..mount import _Mount
 from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
 from ..secret import Secret
@@ -542,6 +544,13 @@ def shell(
             " Can be used multiple times."
         ),
     ),
+    add_local: Optional[list[str]] = typer.Option(
+        default=None,
+        help=(
+            "Local file or directory to mount inside the shell at `/mnt/{basename}` (if not using REF)."
+            " Can be used multiple times."
+        ),
+    ),
     secret: Optional[list[str]] = typer.Option(
         default=None,
         help=("Name of a `modal.Secret` to mount inside the shell (if not using REF). Can be used multiple times."),
@@ -692,9 +701,23 @@ def shell(
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
         volumes = {} if volume is None else {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
         secrets = [] if secret is None else [Secret.from_name(s) for s in secret]
+
+        mounts = []
+        if add_local:
+            for local_path_str in add_local:
+                local_path = Path(local_path_str).expanduser().resolve()
+                remote_path = PurePosixPath(f"/mnt/{local_path.name}")
+
+                if local_path.is_dir():
+                    m = _Mount._from_local_dir(local_path, remote_path=remote_path)
+                else:
+                    m = _Mount._from_local_file(local_path, remote_path=remote_path)
+                mounts.append(m)
+
         start_shell = partial(
             interactive_shell,
             image=modal_image,
+            mounts=mounts,
             cpu=cpu,
             memory=memory,
             gpu=gpu,
