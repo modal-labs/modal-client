@@ -41,6 +41,19 @@ class _FlashManager:
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
 
+    def check_process_is_running(self, process: Optional[subprocess.Popen]) -> tuple[bool, Optional[Exception]]:
+        if process is not None and process.poll() is not None:
+            return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
+        import subprocess
+
+        try:
+            result = subprocess.run(["lsof", f"-i:{self.port}"], text=True)
+            if result.returncode == 0 and result.stdout.strip():
+                return True, None
+        except Exception as lsof_exc:
+            return False, Exception(f"Error checking port {self.port} with lsof: {lsof_exc}")
+        return True, None
+
     async def is_port_connection_healthy(
         self, process: Optional[subprocess.Popen], timeout: float = 0.5
     ) -> tuple[bool, Optional[Exception]]:
@@ -50,8 +63,9 @@ class _FlashManager:
 
         while time.monotonic() - start_time < timeout:
             try:
-                if process is not None and process.poll() is not None:
-                    return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
+                running, error = self.check_process_is_running(process)
+                if not running:
+                    return False, error
                 with socket.create_connection(("localhost", self.port), timeout=0.5):
                     return True, None
             except (ConnectionRefusedError, OSError):

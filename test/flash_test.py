@@ -7,6 +7,8 @@ from types import MethodType
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
 
+from modal_server.server.tunnel_utils import get_tunnel_url_from_task_port_worker
+
 from modal.experimental.flash import _FlashManager, _FlashPrometheusAutoscaler
 
 
@@ -15,7 +17,7 @@ def mock_tunnel_manager():
     """Mock the tunnel manager async context manager."""
     mock_tunnel_manager = MagicMock()
     mock_tunnel = MagicMock()
-    mock_tunnel.url = "https://test.modal.test"
+    mock_tunnel.url = get_tunnel_url_from_task_port_worker("ta-abc", 8000, "wo-123")
     mock_tunnel_manager.__aenter__ = AsyncMock(return_value=mock_tunnel)
     mock_tunnel_manager.__aexit__ = AsyncMock()
     return mock_tunnel_manager
@@ -203,7 +205,7 @@ class TestFlashManagerStopping:
         """Test that heartbeat failures properly increment the failure counter."""
 
         flash_manager.tunnel = MagicMock()
-        flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.tunnel.url = get_tunnel_url_from_task_port_worker("ta-abc", 8000, "wo-123")
         flash_manager.client.stub.FlashContainerRegister = AsyncMock()
         flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
         flash_manager.is_port_connection_healthy = AsyncMock(return_value=(True, None))
