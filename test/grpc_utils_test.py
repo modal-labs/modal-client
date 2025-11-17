@@ -3,8 +3,8 @@ import pytest
 import time
 
 from google.protobuf.any_pb2 import Any
-from google.rpc import status_pb2
 from grpclib import GRPCError, Status
+from grpclib.encoding.proto import ProtoStatusDetailsCodec
 
 import modal
 from modal import __version__
@@ -178,17 +178,17 @@ def test_CustomProtoStatusDetailsCodec_unknown():
 
 
 def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
-    status_proto = status_pb2.Status(code=4, message="abc")
+    """Check that rpc's encoded with the default GRPC codec works with the
+    CustomProtoStatusDetailsCodec decoder."""
+
     blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
     sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
     msgs = [blob_msg, sandbox_msg]
 
-    for detail in msgs:
-        detail_container = status_proto.details.add()
-        detail_container.Pack(detail)
-
+    grpclib_codec = ProtoStatusDetailsCodec()
+    message = grpclib_codec.encode(Status.OK, "my-message", details=msgs)
     codec = CustomProtoStatusDetailsCodec()
 
-    decoded_msg = codec.decode(Status.OK, None, status_proto.SerializeToString())
+    decoded_msg = codec.decode(Status.OK, None, message)
     assert len(decoded_msg) == 2
     assert decoded_msg == msgs
