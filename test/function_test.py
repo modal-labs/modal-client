@@ -977,7 +977,7 @@ def test_new_hydrated_internal(client, servicer):
     assert obj.object_id == "fc-123"
 
 
-def test_from_id(client, servicer):
+def test_from_id_custom_client(client, servicer):
     app = App(include_source=False)
 
     @app.function(serialized=True)
@@ -992,14 +992,45 @@ def test_from_id(client, servicer):
 
     servicer.function_body(lambda: 42)
     with servicer.intercept() as ctx:
-        fc2 = FunctionCall.from_id(fc_id, client)
-        assert fc2.object_id == fc_id
+        fc2 = FunctionCall.from_id(fc_id, client=client)
         assert fc2.get() == 42
+        assert fc2.object_id == fc_id
         # Also test cancel
         fc2.cancel()
 
     req = ctx.pop_request("FunctionCallCancel")
     assert req.function_call_id == fc_id
+
+
+def test_from_id_env_client(servicer, set_env_client):
+    # FunctionCall.from_id is weird since it has two different hydration modes
+    # depending on which methods are being used. It will be partially hydrated
+    # already on initialization, but some methods will require "additional" hydration
+    # metadata from the server
+
+    app = App()
+
+    @app.function(serialized=True)
+    def foo():
+        return 42
+
+    deploy_app(app, "dummy")
+
+    function_call = foo.spawn(10)
+    fc_id = function_call.object_id
+    assert fc_id
+
+    with servicer.intercept() as ctx:
+        fc2 = FunctionCall.from_id(fc_id)  # intentionally no client passed in
+        assert fc2.get() == 100
+        assert len(ctx.calls) == 1
+        ctx.pop_request("FunctionGetOutputs")  # get outputs should be the only request at this point
+        assert fc2.object_id == fc_id
+        assert len(ctx.calls) == 0
+        # Also test cancel
+        fc2.cancel()
+        assert len(ctx.calls) == 1
+        ctx.pop_request("FunctionCallCancel")
 
 
 def test_local_execution_on_web_endpoint(client, servicer):
@@ -1296,7 +1327,7 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
     assert len(servicer.function_call_inputs) == 1
 
 
-def test_function_deps_have_ids(client, servicer, monkeypatch, test_dir, set_env_client):
+def test_function_deps_have_ids(client, servicer, monkeypatch, test_dir):
     monkeypatch.syspath_prepend(test_dir / "supports")
     app = App()
     app.function(
@@ -1427,20 +1458,28 @@ def test_spawn_map_sync(client, servicer):
         assert deserialize(function_map.pipelined_inputs[0].input.args, client) == ((1,), {})
 
 
-def test_experimental_spawn_map_sync(set_env_client, servicer):
+def test_experimental_spawn_map_sync(client, servicer):
     dummy_function = app.function()(dummy)
     with servicer.intercept() as ctx:
-        with app.run(client=set_env_client):
+        with app.run(client=client):
             fc1 = dummy_function.experimental_spawn_map([1, 2, 3])
 
+        # for now, we can avoid FunctionCallFromId since we all it adds is num_inputs, which we have:
+        assert ctx.get_requests("FunctionCallFromId") is not None
         # Verify the correct invocation type was used
         function_put_inputs = ctx.pop_request("FunctionPutInputs")
         assert function_put_inputs is not None
         assert type(fc1) is modal.FunctionCall
-
+        ctx.calls.clear()
         assert fc1.num_inputs() == 3
-        fc2 = FunctionCall.from_id(fc1.object_id, client=set_env_client)
+        assert len(ctx.calls) == 0  # no more rpcs
+
+        ctx.calls.clear()
+        fc2 = FunctionCall.from_id(fc1.object_id, client=client)
+        assert len(ctx.calls) == 0
         assert fc2.num_inputs() == 3
+        # a looked up function call should still do FunctionCallFromId to get num_inputs
+        assert len(ctx.calls) == 1 and ctx.get_requests("FunctionCallFromId") is not None
 
         # The server squares the inputs.
         assert fc1.get(index=0) == 1
@@ -1511,8 +1550,8 @@ def test_experimental_spawn(client, servicer):
     assert function_map.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
 
 
-def test_from_name_web_url(servicer, set_env_client):
-    f = Function.from_name("dummy-app", "func")
+def test_from_name_web_url(servicer, client):
+    f = Function.from_name("dummy-app", "func", client=client)
 
     with servicer.intercept() as ctx:
         ctx.add_response(
@@ -1674,7 +1713,6 @@ def test_concurrency_config_migration(client, servicer):
             raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
 
 
-@pytest.mark.usefixtures("set_env_client")
 def test_function_schema_recording(client, servicer):
     app = App("app", include_source=False)
 
@@ -1703,10 +1741,9 @@ def test_function_schema_recording(client, servicer):
     )
     assert f._get_schema() == expected_schema
     # test lazy lookup
-    assert Function.from_name("app", "f")._get_schema() == expected_schema
+    assert Function.from_name("app", "f", client=client)._get_schema() == expected_schema
 
 
-@pytest.mark.usefixtures("set_env_client")
 def test_function_supported_input_formats(client, servicer):
     app = App("app", include_source=False)
 
@@ -1778,7 +1815,6 @@ def test_function_supported_input_formats(client, servicer):
     }
 
 
-@pytest.mark.usefixtures("set_env_client")
 def test_function_schema_excludes_web_endpoints(client, servicer):
     # for now we exclude web endpoints since they don't use straight-forward arguments
     # in the same way as regular modal functions
@@ -1793,7 +1829,6 @@ def test_function_schema_excludes_web_endpoints(client, servicer):
     assert schema.schema_type == api_pb2.FunctionSchema.FUNCTION_SCHEMA_UNSPECIFIED
 
 
-@pytest.mark.usefixtures("set_env_client")
 def test_cbor_output_complex_data_types(client, servicer):
     """Test that a received cbor payload is decoded as such, even if the submitted input is pickle"""
     app = App("app", include_source=False)
@@ -1861,7 +1896,6 @@ def test_cbor_output_complex_data_types(client, servicer):
         assert result == expected_decoded_output
 
 
-@pytest.mark.usefixtures("set_env_client")
 def test_cbor_output_failed_result_handling(client, servicer):
     """Test that CBOR output format is handled correctly even when the result failed"""
     app = App("app", include_source=False)
@@ -1910,13 +1944,12 @@ def test_cbor_output_failed_result_handling(client, servicer):
         assert function_map_request.pipelined_inputs[0].input.data_format == api_pb2.DATA_FORMAT_PICKLE
 
 
-@pytest.mark.usefixtures("set_env_client")
 def test_cbor_input_only_function_uses_cbor_input(client, servicer):
     """Test that if a Function has supported_input_formats set to CBOR only in its handle metadata,
     the client will use CBOR encoded FunctionMap when calling it."""
 
     # Use an existing function from a previous test
-    cbor_only_function = Function.from_name("app", "f")
+    cbor_only_function = Function.from_name("app", "f", client=client)
 
     with servicer.intercept() as ctx:
         # Mock the FunctionGet response to return metadata with CBOR-only input format
@@ -1958,7 +1991,6 @@ def test_cbor_input_only_function_uses_cbor_input(client, servicer):
         assert decoded_args == expected_args
 
 
-@pytest.mark.usefixtures("set_env_client")
 def test_class_schema_recording(client, servicer):
     app = App("app", include_source=False)
 
@@ -1989,7 +2021,7 @@ def test_class_schema_recording(client, servicer):
         ),
     )
 
-    deploy_app(app)
+    deploy_app(app, client=client)
     (constructor_arg,) = modal.cls._get_constructor_args(typing.cast(modal.Cls, F))
     assert constructor_arg.name == "b"
     assert constructor_arg.full_type == api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
@@ -2001,8 +2033,9 @@ def test_class_schema_recording(client, servicer):
     assert method_schemas["f"] == expected_method_schema
 
     # Test lazy lookups
-    assert modal.cls._get_method_schemas(modal.Cls.from_name("app", "F")) == method_schemas
-    (looked_up_construct_arg,) = modal.cls._get_constructor_args(modal.Cls.from_name("app", "F"))
+    lazy_cls = modal.Cls.from_name("app", "F", client=client)
+    assert modal.cls._get_method_schemas(lazy_cls) == method_schemas
+    (looked_up_construct_arg,) = modal.cls._get_constructor_args(lazy_cls)
     assert looked_up_construct_arg == constructor_arg
 
 

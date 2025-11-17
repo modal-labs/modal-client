@@ -192,3 +192,30 @@ def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     decoded_msg = codec.decode(Status.OK, None, message)
     assert len(decoded_msg) == 2
     assert decoded_msg == msgs
+
+
+@pytest.mark.asyncio
+async def test_flash_container_register_deregister(servicer, client):
+    client_stub = client.stub
+
+    @synchronize_api
+    async def wrapped_flash_container_register(req, **kwargs):
+        return await client_stub.FlashContainerRegister(req, **kwargs)
+
+    @synchronize_api
+    async def wrapped_flash_container_deregister(req, **kwargs):
+        return await client_stub.FlashContainerDeregister(req, **kwargs)
+
+    # Test invalid request
+    register_req = api_pb2.FlashContainerRegisterRequest(service_name="test", host="localhost", port=8000)
+    with pytest.raises(InvalidError, match="Retry must be None when timeout is set"):
+        await wrapped_flash_container_register.aio(register_req, timeout=4.0)
+
+    # Test working request
+    await wrapped_flash_container_register.aio(register_req)
+    assert servicer.flash_container_registrations == {"test": "http://localhost:8000"}
+
+    # Test working request
+    deregister_req = api_pb2.FlashContainerDeregisterRequest(service_name="test")
+    await wrapped_flash_container_deregister.aio(deregister_req, timeout=4.0, retry=None)
+    assert servicer.flash_container_registrations == {}

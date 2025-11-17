@@ -5,6 +5,7 @@ from typing import Optional
 import typer
 from typer import Argument, Option, Typer
 
+from modal._load_context import LoadContext
 from modal._output import make_console
 from modal._resolver import Resolver
 from modal._utils.async_utils import synchronizer
@@ -38,8 +39,9 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
     """
     q = _Queue.from_name(name, environment_name=env, create_if_missing=True)
     client = await _Client.from_env()
-    resolver = Resolver(client=client)
-    await resolver.load(q)
+    resolver = Resolver()
+    load_context = LoadContext(client=client, environment_name=env)
+    await resolver.load(q, load_context)
 
 
 @queue_cli.command(name="delete", rich_help_panel="Management")

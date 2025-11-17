@@ -368,6 +368,7 @@ message AppGetLogsRequest {
   float timeout = 2;
   string last_entry_id = 4;
   string function_id = 5;
+  string parametrized_function_id = 11;
   string input_id = 6;
   string task_id = 7;
   string function_call_id = 9;
@@ -850,6 +851,12 @@ message CloudBucketMount {
     GCP = 3;
   }
 
+  enum MetadataTTLType {
+    METADATA_TTL_TYPE_UNSPECIFIED = 0;
+    METADATA_TTL_TYPE_MINIMAL = 1;
+    METADATA_TTL_TYPE_INDEFINITE = 2;
+  }
+
   string bucket_name = 1;
   string mount_path = 2;
   string credentials_secret_id = 3;
@@ -860,6 +867,10 @@ message CloudBucketMount {
   optional string key_prefix = 8;
   optional string oidc_auth_role_arn = 9;
   bool force_path_style = 10;
+  oneof metadata_ttl_oneof {
+    MetadataTTLType metadata_ttl_type = 11;
+    uint64 metadata_ttl_seconds = 12;
+  }
 }
 
 message ClusterGetRequest {
@@ -1280,6 +1291,10 @@ message EnvironmentListItem {
   bool default = 4;
   bool is_managed = 5;
   string environment_id = 6;
+  optional int32 max_concurrent_tasks = 7;
+  optional int32 max_concurrent_gpus = 8;
+  int32 current_concurrent_tasks = 9;
+  int32 current_concurrent_gpus = 10;
 }
 
 message EnvironmentListResponse {
@@ -1303,6 +1318,8 @@ message EnvironmentUpdateRequest {
   string current_name = 1;
   google.protobuf.StringValue name = 2;
   google.protobuf.StringValue web_suffix = 3;
+  optional int32 max_concurrent_tasks = 4;
+  optional int32 max_concurrent_gpus = 5;
 }
 
 // A file entry when listing files in a volume or network file system.
@@ -1588,6 +1605,7 @@ message FunctionCallGetDataRequest {
     string attempt_token = 3;
   }
   uint64 last_index = 2;
+  bool use_gapless_read = 4;
 }
 
 message FunctionCallInfo {
@@ -2451,8 +2469,9 @@ message Proxy {
   string name = 1;
   double created_at = 2;
   string environment_name = 3;
-  string proxy_id = 5;
   repeated ProxyIp proxy_ips = 4;
+  string proxy_id = 5;
+  string region = 6;
 }
 
 message ProxyAddIpRequest {
@@ -2972,16 +2991,11 @@ message Schedule {
 }
 
 message SchedulerPlacement {
-  // TODO(irfansharif):
-  // - Fold in cloud, resource needs here too.
-  // - Allow specifying list of zones, cloud, fallback and alternative
-  //   GPU types.
-
   repeated string regions = 4;
-  // TODO(irfansharif): Make these two repeated.
-  optional string _zone = 2; // admin-only
-  optional string _lifecycle = 3; // admin-only, "on-demand" or "spot", else ignored
-  repeated string _instance_types = 5; // admin-only
+  optional string _zone = 2; // TODO: Deprecate
+  optional string _lifecycle = 3; // TODO: Deprecate
+  repeated string _instance_types = 5; // TODO: Deprecate
+  bool nonpreemptible = 6;
 
   reserved 1;
 }

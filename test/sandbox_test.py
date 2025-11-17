@@ -349,8 +349,8 @@ def test_sandbox_exec_poll_timeout(app, servicer, exec_backend):
 def test_sandbox_exec_output_timeout(app, servicer, exec_backend):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
-    cp = sb.exec("sh", "-c", "echo hi; sleep 999", timeout=1)
     t1 = time.monotonic()
+    cp = sb.exec("sh", "-c", "echo hi; sleep 999", timeout=1)
     assert cp.stdout.read() == "hi\n"
     assert 1 < time.monotonic() - t1 < 2.0
     assert cp.wait() == -1

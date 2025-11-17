@@ -35,15 +35,7 @@ from modal_proto import api_pb2
 
 from .supports.base_class import BaseCls2
 
-app = App("app", include_source=False)
-
-
-@pytest.fixture(autouse=True)
-def auto_use_set_env_client(set_env_client):
-    # TODO(elias): remove set_env_client fixture here if/when possible - this is required only since
-    #  Client.from_env happens to inject an unused client when loading the
-    #  parametrized function
-    return
+app = App("app")
 
 
 @app.cls()
@@ -152,7 +144,7 @@ def test_run_class(client, servicer):
     }
 
 
-def test_call_class_sync(client, servicer, set_env_client):
+def test_call_class_sync(client, servicer):
     with servicer.intercept() as ctx:
         with app.run(client=client):
             assert len(ctx.get_requests("FunctionCreate")) == 2  # one for Foo, one for NoParamsCls
@@ -285,12 +277,12 @@ def test_class_multiple_with_options_calls(client, servicer, read_only):
             assert function_bind_params.function_options.volume_mounts[0].read_only == read_only
 
 
-def test_with_options_from_name(servicer):
+def test_with_options_from_name(servicer, client):
     unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
     unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
 
     with servicer.intercept() as ctx:
-        SomeClass = modal.Cls.from_name("some_app", "SomeClass")
+        SomeClass = modal.Cls.from_name("some_app", "SomeClass", client=client)
         OptionedClass = SomeClass.with_options(cpu=10, secrets=[unhydrated_secret], volumes={"/vol": unhydrated_volume})
         inst = OptionedClass(x=10)
         assert len(ctx.calls) == 0
@@ -515,7 +507,7 @@ if TYPE_CHECKING:
 
 def test_from_name_lazy_method_hydration(client, servicer):
     deploy_app(app, "my-cls-app", client=client)
-    cls: Cls = Cls.from_name("my-cls-app", "Foo")
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
 
     # Make sure we can instantiate the class
     obj = cls("foo", 234)
@@ -547,29 +539,37 @@ def test_from_name_lazy_method_hydration(client, servicer):
         obj.non_exist.remote("hello")
 
 
-def test_lookup_lazy_remote(client, servicer):
+def test_lookup_lazy_remote(client):
     # See #972 (PR) and #985 (revert PR): adding unit test to catch regression
     deploy_app(app, "my-cls-app", client=client)
-    cls: Cls = Cls.from_name("my-cls-app", "Foo").hydrate(client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
     obj = cls("foo", 234)
     assert obj.bar.remote(42, 77) == 7693
 
 
-def test_lookup_lazy_spawn(client, servicer):
+def test_lookup_lazy_remote_legacy_syntax(client):
+    # See #972 (PR) and #985 (revert PR): adding unit test to catch regression
+    deploy_app(app, "my-cls-app", client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
+    obj = cls("foo", 234)
+    assert obj.bar.remote(42, 77) == 7693
+
+
+def test_lookup_lazy_spawn(client):
     # See #1071
     deploy_app(app, "my-cls-app", client=client)
-    cls: Cls = Cls.from_name("my-cls-app", "Foo").hydrate(client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
     obj = cls("foo", 234)
     function_call = obj.bar.spawn(42, 77)
     assert function_call.get() == 7693
 
 
-def test_failed_lookup_error(client, servicer):
+def test_failed_lookup_error(client):
     with pytest.raises(NotFoundError, match="Lookup failed for Cls 'Foo' from the 'my-cls-app' app"):
-        Cls.from_name("my-cls-app", "Foo").hydrate(client=client)
+        Cls.from_name("my-cls-app", "Foo", client=client).hydrate()
 
     with pytest.raises(NotFoundError, match="in the 'some-env' environment"):
-        Cls.from_name("my-cls-app", "Foo", environment_name="some-env").hydrate(client=client)
+        Cls.from_name("my-cls-app", "Foo", environment_name="some-env", client=client).hydrate()
 
 
 baz_app = App(include_source=False)
@@ -727,7 +727,18 @@ class FooUnhydrated:
     def bar(self, x): ...
 
 
-def test_unhydrated():
+def test_unhydrated(set_env_client):
+    # TODO: get rid of set_env_client here.
+    #  It's needed since the Resolver will
+    #  currently try to infer a Client here before it gets to the load code that
+    #  raises the exception (which happens because the client has not been added
+    #  to the load context by the app "run" in this case)
+    #  The crux is that a Method Function is *conditionally* lazily loadable
+    #  depending on if the root Cls is defined through from_name() or via @app.cls()
+    #  and in the latter case if the app is already running...
+    #  We would need something like the resolver checking that all dependencies of
+    #  a lazy object if they are either hydrated or lazily loadable to determine
+    #  if we should attempt lazy loads
     foo = FooUnhydrated()
     with pytest.raises(ExecutionError, match="hydrated"):
         foo.bar.remote(42)
@@ -789,7 +800,8 @@ def test_cls_update_autoscaler(client, servicer):
         assert instance_service_defn.concurrency_limit == instance_autoscaler_settings.max_containers == 10
 
 
-def test_cls_lookup_update_autoscaler(client, servicer):
+def test_cls_lookup_update_autoscaler(client, servicer, set_env_client):
+    # TODO: get rid of set_env_client, see `test_unhydrated`
     app = App(name := "my-cls-app")
 
     @app.cls(serialized=True)
@@ -805,7 +817,7 @@ def test_cls_lookup_update_autoscaler(client, servicer):
 
     deploy_app(app, name, client=client)
 
-    C = Cls.from_name(name, "ClsWithMethod")
+    C = Cls.from_name(name, "ClsWithMethod", client=client)
     obj = C()
     obj.update_autoscaler(min_containers=3)
 
@@ -976,7 +988,7 @@ class UsingAnnotationParameters:
 init_side_effects = []
 
 
-def test_implicit_constructor(client, set_env_client):
+def test_implicit_constructor(client):
     c = UsingAnnotationParameters(a=10)
 
     assert c.a == 10
@@ -1126,7 +1138,7 @@ def test_unsupported_function_decorators_on_methods():
                 pass
 
 
-def test_using_method_on_uninstantiated_cls():
+def test_using_method_on_uninstantiated_cls(set_env_client):
     app = App(include_source=False)
 
     @app.cls(serialized=True)
@@ -1147,7 +1159,7 @@ def test_using_method_on_uninstantiated_cls():
         C.method.remote()  # noqa
 
 
-def test_using_method_on_uninstantiated_hydrated_cls(set_env_client, client):
+def test_using_method_on_uninstantiated_hydrated_cls(client):
     app = App(include_source=False)
 
     @app.cls(serialized=True)
@@ -1169,15 +1181,15 @@ def test_using_method_on_uninstantiated_hydrated_cls(set_env_client, client):
             C.method.remote()  # noqa
 
 
-def test_using_method_on_uninstantiated_remote_cls(set_env_client):
-    C = modal.Cls.from_name("app", "C")
+def test_using_method_on_uninstantiated_remote_cls(client):
+    C = modal.Cls.from_name("app", "C", client=client)
 
     with pytest.raises(AttributeError, match="Did you forget to instantiate the class first?"):
         # The following should error since the class is supposed to be instantiated first
         C.method.remote()  # noqa
 
 
-def test_bytes_serialization_validation(servicer, client, set_env_client):
+def test_bytes_serialization_validation(servicer, client):
     app = modal.App(include_source=False)
 
     @app.cls(serialized=True)
@@ -1189,7 +1201,7 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
             return self.foo
 
     with servicer.intercept() as ctx:
-        with app.run():
+        with app.run(client=client):
             with pytest.raises(TypeError, match="Expected bytes"):
                 C(foo="this is a string").get_foo.spawn()  # type: ignore   # string should not be allowed, unspecified encoding
 
@@ -1216,7 +1228,7 @@ def test_class_can_not_use_list_parameter(client):
             p: list[int] = modal.parameter()
 
 
-def test_class_can_use_073_schema_definition(servicer, set_env_client):
+def test_class_can_use_073_schema_definition(servicer, client):
     # in ~0.74, we introduced the new full_type type generic that supersedes
     # the .type "flat" type. This tests that lookups on classes deployed with
     # the old proto can still be validated when instantiated.
@@ -1238,11 +1250,11 @@ def test_class_can_use_073_schema_definition(servicer, set_env_client):
         )
         with pytest.raises(TypeError, match="Expected str, got int"):
             # wrong type for p triggers when .remote goes off
-            obj = Cls.from_name("some_app", "SomeCls")(p=10)
+            obj = Cls.from_name("some_app", "SomeCls", client=client)(p=10)
             obj.some_method.remote(1)
 
 
-def test_class_can_use_future_full_type_only_schema(servicer, set_env_client):
+def test_class_can_use_future_full_type_only_schema(servicer, client):
     # in ~0.74, we introduced the new full_type type generic that supersedes
     # the .type "flat" type. This tests that the client can use a *future
     # version* that drops support for the .type attribute and only fills the
@@ -1269,7 +1281,7 @@ def test_class_can_use_future_full_type_only_schema(servicer, set_env_client):
         )
         with pytest.raises(TypeError, match="Expected str, got int"):
             # wrong type for p triggers when .remote goes off
-            obj = Cls.from_name("some_app", "SomeCls")(p=10)
+            obj = Cls.from_name("some_app", "SomeCls", client=client)(p=10)
             obj.some_method.remote(1)
 
 
@@ -1331,7 +1343,7 @@ def test_parameter_inheritance(client):
         ChangingParameterDefinitions(a="10").update_autoscaler()  # type: ignore
 
 
-def test_cls_namespace_deprecated(servicer, client):
+def test_cls_namespace_deprecated(servicer):
     # Test from_name with namespace parameter warns
     with pytest.warns(DeprecationError, match="The `namespace` parameter for `modal.Cls.from_name` is deprecated"):
         Cls.from_name("test-app", "test-cls", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
@@ -1401,9 +1413,9 @@ def test_clustered_cls_with_multiple_methods(client, servicer):
                 return x * 3
 
 
-def test_cls_get_flash_url(servicer):
+def test_cls_get_flash_url(servicer, client):
     """Test get_flash_url method on Cls.from_name instances"""
-    cls = Cls.from_name("dummy-app", "MyClass")
+    cls = Cls.from_name("dummy-app", "MyClass", client=client)
 
     with servicer.intercept() as ctx:
         ctx.add_response(
@@ -1476,3 +1488,57 @@ def test_startup_timeout_default_copies_timeout(client, servicer):
     assert len(function_creates_requests) == 1
     function_request = function_creates_requests[0]
     assert function_request.function.startup_timeout_secs == 20
+
+
+def test_cls_load_context_transfers_to_methods():
+    C = modal.Cls.from_name("dummy-app", "MyClass")
+    c = C(p=1)
+    d = C(p=2)
+    t = synchronizer._translate_in
+    # the *instance* of load_context_overrides from the Cls should be the same as the child
+    expected_load_context = t(C)._load_context_overrides  # type: ignore
+    assert t(c.some_method)._load_context_overrides is expected_load_context  # type: ignore
+    assert t(c.some_method)._load_context_overrides is t(d.some_method)._load_context_overrides  # type: ignore
+    assert t(C.with_options(gpu="A100")().some_method)._load_context_overrides is expected_load_context  # type: ignore
+
+
+def test_cls_load_context_transfers_to_methods_local():
+    app = modal.App()
+
+    @app.cls(serialized=True)
+    class C:
+        p: str = modal.parameter()
+
+        @method()
+        def some_method(self):
+            pass
+
+    t = synchronizer._translate_in
+    c = C(p="1")
+    assert t(c.some_method)._load_context_overrides is t(C)._load_context_overrides  # type: ignore
+
+    # the *instance* of LoadContext from the Cls should be the same as the child
+    d = C(p="2")
+    assert t(c.some_method)._load_context_overrides is t(d.some_method)._load_context_overrides  # type: ignore
+
+
+def test_with_options_is_lazy(client):
+    deploy_app(app, "my-cls-app", client=client)
+
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
+    optioned_cls = cls.with_options(gpu="A100")
+    optioned_cls.hydrate()
+
+
+def test_with_concurrency_is_lazy(client):
+    deploy_app(app, "my-cls-app", client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
+    optioned_cls = cls.with_concurrency(max_inputs=100)
+    optioned_cls.hydrate()
+
+
+def test_with_batching_is_lazy(client):
+    deploy_app(app, "my-cls-app", client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
+    optioned_cls = cls.with_batching(max_batch_size=4, wait_ms=100)
+    optioned_cls.hydrate()

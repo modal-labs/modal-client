@@ -11,6 +11,7 @@ from synchronicity.async_wrap import asynccontextmanager
 import modal
 from modal_proto import api_pb2
 
+from ._load_context import LoadContext
 from ._object import (
     EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     _get_environment_name,
@@ -95,6 +96,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        client: Optional[_Client] = None,
     ) -> "_NetworkFileSystem":
         """Reference a NetworkFileSystem by its name, creating if necessary.
 
@@ -113,15 +115,17 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         check_object_name(name, "NetworkFileSystem")
         warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.from_name")
 
-        async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
+        async def _load(
+            self: _NetworkFileSystem, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
                 deployment_name=name,
-                environment_name=_get_environment_name(environment_name, resolver),
+                environment_name=load_context.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
             try:
-                response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
-                self._hydrate(response.shared_volume_id, resolver.client, None)
+                response = await load_context.client.stub.SharedVolumeGetOrCreate(req)
+                self._hydrate(response.shared_volume_id, load_context.client, None)
             except modal.exception.NotFoundError as exc:
                 if exc.args[0] == "App has wrong entity vo":
                     raise InvalidError(
@@ -129,7 +133,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                     )
                 raise
 
-        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()", hydrate_lazily=True)
+        return _NetworkFileSystem._from_loader(
+            _load,
+            "NetworkFileSystem()",
+            hydrate_lazily=True,
+            load_context_overrides=LoadContext(environment_name=environment_name, client=client),
+        )
 
     @classmethod
     @asynccontextmanager
