@@ -1089,7 +1089,6 @@ class _App:
             # Convert _HTTPConfig dataclass to protobuf message
             http_config_proto = None
             if http_config_:
-                logger.warning(f"[CLAUDIA] Converting http_config_ to protobuf: {http_config_}")
                 http_config_proto = api_pb2.HTTPConfig(
                     port=http_config_.port,
                     proxy_region=http_config_.proxy_region,
@@ -1135,7 +1134,6 @@ class _App:
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 restrict_output=_experimental_restrict_output,
             )
-            logger.warning(f"[CLAUDIA] cls_func created, checking if http_config stored: {cls_func}")
 
             self._add_function(cls_func, is_web_endpoint=False)
 

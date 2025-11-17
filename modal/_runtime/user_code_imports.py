@@ -340,7 +340,6 @@ def import_class_service(
 
     http_config: Optional[_HTTPConfig] = None
     if function_def.http_config:
-        logger.warning(f"[CLAUDIA] Fetching http_config from function_def: {function_def.http_config}")
         http_config = _HTTPConfig(
             port=function_def.http_config.port,
             proxy_region=function_def.http_config.proxy_region,  # type: ignore
@@ -348,7 +347,6 @@ def import_class_service(
             exit_grace_period=function_def.http_config.exit_grace_period or None,
         )
         _cls._options.http_config = http_config  # type: ignore
-        logger.warning(f"[CLAUDIA] Storing http_config on _cls: {http_config}")
     method_partials: dict[str, "modal._partial_function._PartialFunction"] = _cls._get_partial_functions()
     user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
     user_cls_instance.http_config = http_config  # type: ignore

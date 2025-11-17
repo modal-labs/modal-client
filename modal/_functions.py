@@ -16,7 +16,6 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
-from modal.config import logger
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -707,7 +706,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         Note: This is not intended to be public API.
         """
-        logger.warning(f"[CLAUDIA] _Functions.from_local called for tag={info.get_tag()}, http_config={http_config}")
         # Needed to avoid circular imports
         from ._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
@@ -913,7 +911,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _load(
             self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            logger.warning(f"[CLAUDIA] _load called for tag={tag}, http_config={http_config}")
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 timeout_secs = timeout
 
