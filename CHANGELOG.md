@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.3.dev7 (2025-11-17)
+
+- Added `modal shell --add-local dir/` for mounting local files and directories.
+
+
 ### 1.2.2 (2025-11-10)
 
 - `modal.Image.run_commands` now supports `modal.Volume` mounts. This can be helpful for accelerating builds by keeping a package manager cache on the Volume:
