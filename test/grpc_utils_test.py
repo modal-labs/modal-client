@@ -17,7 +17,6 @@ from modal._utils.grpc_utils import (
 )
 from modal.exception import InvalidError
 from modal_proto import api_grpc, api_pb2, sandbox_router_pb2
-from test.conftest import protobuf_version_less_than_4
 
 from .supports.skip import skip_windows_unix_socket
 
@@ -181,9 +180,6 @@ def test_CustomProtoStatusDetailsCodec_unknown():
 def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     """Check that rpc's encoded with the default GRPC codec works with the
     CustomProtoStatusDetailsCodec decoder."""
-
-    if protobuf_version_less_than_4():
-        pytest.skip("Test requires protobuf version 4+")
 
     blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
     sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)

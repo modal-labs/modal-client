@@ -22,8 +22,6 @@ import traceback
 import uuid
 from collections import defaultdict
 from collections.abc import Iterator
-from functools import cache
-from importlib.metadata import version
 from pathlib import Path
 from types import ModuleType
 from typing import Any, AsyncGenerator, Callable, Optional, Union, get_args
@@ -35,7 +33,6 @@ import pkg_resources
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
-from grpclib.encoding.proto import ProtoStatusDetailsCodec
 from grpclib.events import RecvRequest, listen
 
 from modal import __version__, config
@@ -45,7 +42,7 @@ from modal._serialization import deserialize, deserialize_data_format, deseriali
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
-from modal._utils.grpc_utils import custom_detail_codec, find_free_port
+from modal._utils.grpc_utils import find_free_port
 from modal._utils.http_utils import run_temporary_http_server
 from modal._utils.jwt_utils import DecodedJwt
 from modal._utils.task_command_router_client import TaskCommandRouterClient
@@ -2843,27 +2840,6 @@ def blob_server_factory():
         thread.join()
 
 
-@cache
-def protobuf_version_less_than_4():
-    try:
-        protobuf_version = version("protobuf")
-        return int(protobuf_version.split(".")[0]) < 4
-    except Exception:
-        return False
-
-
-@cache
-def status_details_codec():
-    # For the minimum protobuf version 3.19, the default grpclib codec's encoder does
-    # not work, so we use our custom codec. For the rest, we can use the grpclib's
-    # default codec. Note that the server can use the default codec because it uses
-    # protobuf >= 4, which is compatible with the our custom codec's decoder.
-    if protobuf_version_less_than_4():
-        return custom_detail_codec
-    else:
-        return ProtoStatusDetailsCodec()
-
-
 @pytest.fixture
 def blob_server():
     with blob_server_factory() as server:
@@ -2876,7 +2852,7 @@ async def run_server(servicer, host=None, port=None, path=None):
 
     async def _start_servicer():
         nonlocal server
-        server = grpclib.server.Server([servicer], status_details_codec=status_details_codec())
+        server = grpclib.server.Server([servicer])
         listen(server, RecvRequest, servicer.recv_request)
         await server.start(host=host, port=port, path=path)
 
