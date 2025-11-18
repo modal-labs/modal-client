@@ -111,6 +111,52 @@ class ConnectionManager:
         self._channels.clear()
 
 
+@cache
+def _sym_db() -> SymbolDatabase:
+    from google.protobuf.symbol_database import Default
+
+    return Default()
+
+
+# From https://github.com/vmagamedov/grpclib/blob/b841b4e861c4ac82c7e1f3bfa0aea03dd0b9ba18/grpclib/encoding/proto.py#L66
+# which uses `api_pb2.Status`.
+class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
+    def encode(
+        self,
+        status: Status,
+        message: Optional[str],
+        details: Optional[Sequence[Message]],
+    ) -> bytes:
+        details_proto = api_pb2.Status(code=status.value, message=message or "")
+        if details is not None:
+            for detail in details:
+                detail_container = details_proto.details.add()
+                detail_container.Pack(detail)
+        return details_proto.SerializeToString()
+
+    def decode(
+        self,
+        status: Status,
+        message: Optional[str],
+        data: bytes,
+    ) -> Any:
+        sym_db = _sym_db()
+        details_proto = api_pb2.Status.FromString(data)
+
+        details = []
+        for detail_container in details_proto.details:
+            # If we do not know how to decode an emssage, we'll ignore it.
+            with contextlib.suppress(Exception):
+                msg_type = sym_db.GetSymbol(detail_container.TypeName())
+                detail = msg_type()
+                detail_container.Unpack(detail)
+                details.append(detail)
+        return details
+
+
+custom_detail_codec = CustomProtoStatusDetailsCodec()
+
+
 def create_channel(
     server_url: str,
     metadata: dict[str, str] = {},
@@ -129,7 +175,9 @@ def create_channel(
     )
 
     if o.scheme == "unix":
-        channel = grpclib.client.Channel(path=o.path, config=config)  # probably pointless to use a pool ever
+        channel = grpclib.client.Channel(
+            path=o.path, config=config, status_details_codec=custom_detail_codec
+        )  # probably pointless to use a pool ever
     elif o.scheme in ("http", "https"):
         target = o.netloc
         parts = target.split(":")
@@ -137,7 +185,7 @@ def create_channel(
         ssl = o.scheme.endswith("s")
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 else 443 if ssl else 80
-        channel = grpclib.client.Channel(host, port, ssl=ssl, config=config)
+        channel = grpclib.client.Channel(host, port, ssl=ssl, config=config, status_details_codec=custom_detail_codec)
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
 
@@ -262,7 +310,6 @@ async def _retry_transient_errors(
                     raise AuthError(exc.message)
                 else:
                     raise exc
-
             if retry.max_retries is not None and n_retries >= retry.max_retries:
                 final_attempt = True
             elif total_deadline is not None and time.time() + delay + retry.attempt_timeout_floor >= total_deadline:
@@ -324,46 +371,3 @@ def get_proto_oneof(message: Message, oneof_group: str) -> Optional[Message]:
         return None
 
     return getattr(message, oneof_field)
-
-
-@cache
-def _sym_db() -> SymbolDatabase:
-    from google.protobuf.symbol_database import Default
-
-    return Default()
-
-
-# From https://github.com/vmagamedov/grpclib/blob/b841b4e861c4ac82c7e1f3bfa0aea03dd0b9ba18/grpclib/encoding/proto.py#L66
-# which uses `api_pb2.Status`.
-class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
-    def encode(
-        self,
-        status: Status,
-        message: Optional[str],
-        details: Optional[Sequence[Message]],
-    ) -> bytes:
-        details_proto = api_pb2.Status(code=status.value, message=message or "")
-        if details is not None:
-            for detail in details:
-                detail_container = details_proto.details.add()
-                detail_container.Pack(detail)
-        return details_proto.SerializeToString()
-
-    def decode(
-        self,
-        status: Status,
-        message: Optional[str],
-        data: bytes,
-    ) -> Any:
-        sym_db = _sym_db()
-        details_proto = api_pb2.Status.FromString(data)
-
-        details = []
-        for detail_container in details_proto.details:
-            # If we do not know how to decode an emssage, we'll ignore it.
-            with contextlib.suppress(Exception):
-                msg_type = sym_db.GetSymbol(detail_container.TypeName())
-                detail = msg_type()
-                detail_container.Unpack(detail)
-                details.append(detail)
-        return details
