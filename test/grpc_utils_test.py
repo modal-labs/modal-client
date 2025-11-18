@@ -190,6 +190,7 @@ def _protobuf_version_less_than_4() -> bool:
 def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     """Check that rpc's encoded with the default GRPC codec works with the
     CustomProtoStatusDetailsCodec decoder."""
+
     if _protobuf_version_less_than_4():
         pytest.skip("Test requires protobuf version 4+")
 
@@ -204,6 +205,27 @@ def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     decoded_msg = codec.decode(Status.OK, None, message)
     assert len(decoded_msg) == 2
     assert decoded_msg == msgs
+
+
+def test_create_object_internal_exception(servicer, client):
+    """Check codec works with channel."""
+
+    details = [api_pb2.BlobCreateResponse(blob_id="abc")]
+
+    async def raise_error(servicer, stream):
+        raise GRPCError(Status.INTERNAL, "Function create failed", details=details)
+
+    request = api_pb2.FunctionCreateRequest(app_id="xyz")
+
+    @synchronize_api
+    async def wrapped_function_create(req, **kwargs):
+        return await client.stub.FunctionCreate(request)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionCreate", raise_error)
+        with pytest.raises(GRPCError) as excinfo:
+            wrapped_function_create(request)  # type: ignore
+    assert excinfo.value.details == details
 
 
 @pytest.mark.asyncio
