@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 import time
+from importlib.metadata import version
 
 from google.protobuf.any_pb2 import Any
 from grpclib import GRPCError, Status
@@ -177,9 +178,20 @@ def test_CustomProtoStatusDetailsCodec_unknown():
     assert not decoded_msg
 
 
+def _protobuf_version_less_than_4() -> bool:
+    """Return True if protobuf version is less than 4."""
+    try:
+        protobuf_version = version("protobuf")
+        return int(protobuf_version.split(".")[0]) < 4
+    except Exception:
+        return False
+
+
 def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     """Check that rpc's encoded with the default GRPC codec works with the
     CustomProtoStatusDetailsCodec decoder."""
+    if _protobuf_version_less_than_4():
+        pytest.skip("Test requires protobuf version 4+")
 
     blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
     sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
