@@ -339,7 +339,6 @@ def import_class_service(
     from modal._partial_function import _HTTPConfig
 
     http_config: Optional[_HTTPConfig] = None
-    logger.warning(f"[CLAUDIA] function_def.http_config: {function_def.http_config}")
     if function_def.http_config:
         http_config = _HTTPConfig(
             port=function_def.http_config.port,

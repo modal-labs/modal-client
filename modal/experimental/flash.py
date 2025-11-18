@@ -748,7 +748,3 @@ class _FlashContainerEntry:
         if self.flash_manager:
             await asyncio.sleep(self.exit_grace_period)  # TODO(claudia): write a test for this!
             self.flash_manager.close()
-
-
-# FlashContainerEntry = synchronize_api(_FlashContainerEntry, target_module=__name__)
-# question: when do we choose to synchronize this vs just running in event loop?
