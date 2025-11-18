@@ -710,43 +710,20 @@ def get_http_config(cls_or_user_cls: Union[type[Any], Any]) -> Optional[_HTTPCon
         The _HTTPConfig if found, None otherwise
     """
     if isinstance(cls_or_user_cls, _Cls):
-        logger.warning("unwrapping as _Cls")
         return cls_or_user_cls._options.http_config
     unwrapped = typing.cast(_Cls, synchronizer._translate_in(cls_or_user_cls))
     if isinstance(unwrapped, _Cls):
-        logger.warning("unwrapped is _Cls")
-        # wtf does this do?
         if unwrapped._options.http_config is not None:
             return unwrapped._options.http_config
-        # Fall through to check methods on the user_cls
-        user_cls = unwrapped._user_cls
-        if user_cls is None:
-            return None  # Remote Cls without local definition
-    # Check if it has an http_config attribute (ImportedClass from container runtime)
-    if hasattr(unwrapped, "http_config"):
-        logger.warning("found http_config attribute")
         return unwrapped.http_config
-    if hasattr(cls_or_user_cls, '_modal_http_config'):
-        logger.warning("found _modal_http_config attribute on user instance")
-        return cls_or_user_cls._modal_http_config
-
-    elif hasattr(unwrapped, "_partial_functions"):
-        logger.warning("unwrapping as _partial_functions")
-        partial_functions = unwrapped._partial_functions
-        logger.warning(f"partial_functions: {list(partial_functions.items())}")
-        for partial_func in partial_functions.values():
-            if partial_func.params.http_config is not None:
-                return partial_func.params.http_config
-        return None
     else:
-        logger.warning(f"returning None for type {type(unwrapped).__name__}")
         return None
+
 
 class _FlashContainerEntry:
     def __init__(self):
         self.flash_manager: Optional[FlashManager] = None  # type: ignore
         self.exit_grace_period = 0
-
 
     def validate_flash_configs(self, flash_configs: list[_HTTPConfig]):
         assert len(flash_configs) == 1, "Only one @http_server decorator is supported"
