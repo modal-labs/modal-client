@@ -42,8 +42,6 @@ jobs:
 
       - run: pip install -e .  # gets all dependencies and the package itself into python env
 
-      - run: pip install -r requirements.dev.txt
-
       - name: Build type stubs
         run: inv type-stubs
 
