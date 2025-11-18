@@ -206,7 +206,7 @@ def test_codec_with_channel(servicer, client):
 
     @synchronize_api
     async def wrapped_function_create(req, **kwargs):
-        return await client.stub.FunctionCreate(request)
+        return await client.stub.FunctionCreate(req, **kwargs)
 
     with servicer.intercept() as ctx:
         ctx.set_responder("FunctionCreate", raise_error)
