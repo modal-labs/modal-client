@@ -158,7 +158,7 @@ def test_CustomProtoStatusDetailsCodec_round_trip():
     encoded_msg = codec.encode(Status.CANCELLED, "this-is-a-message", msgs)
     assert isinstance(encoded_msg, bytes)
 
-    decoded_status = api_pb2.Status.FromString(encoded_msg)
+    decoded_status = api_pb2.RPCStatus.FromString(encoded_msg)
     assert decoded_status.message == "this-is-a-message"
     assert decoded_status.code == Status.CANCELLED.value
 
@@ -171,7 +171,7 @@ def test_CustomProtoStatusDetailsCodec_unknown():
     encoded_details = [
         Any(type_url="abc", value=b"bad"),
     ]
-    encoded_msg = api_pb2.Status(details=encoded_details).SerializeToString()
+    encoded_msg = api_pb2.RPCStatus(details=encoded_details).SerializeToString()
     codec = CustomProtoStatusDetailsCodec()
 
     decoded_msg = codec.decode(Status.OK, None, encoded_msg)
