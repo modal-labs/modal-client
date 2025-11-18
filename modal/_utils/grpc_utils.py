@@ -118,9 +118,13 @@ def _sym_db() -> SymbolDatabase:
     return Default()
 
 
-# From https://github.com/vmagamedov/grpclib/blob/b841b4e861c4ac82c7e1f3bfa0aea03dd0b9ba18/grpclib/encoding/proto.py#L66
-# which uses `api_pb2.Status`.
 class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
+    """grpclib compatible details codec.
+
+    The server can encode the details using `google.rpc.Status` using grpclib's default codec and this custom codec
+    can decode it into a `api_pb2.RPCStatus`.
+    """
+
     def encode(
         self,
         status: Status,
