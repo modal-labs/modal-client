@@ -207,7 +207,7 @@ def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     assert decoded_msg == msgs
 
 
-def test_create_object_internal_exception(servicer, client):
+def test_codec_with_channel(servicer, client):
     """Check codec works with channel."""
 
     details = [api_pb2.BlobCreateResponse(blob_id="abc")]

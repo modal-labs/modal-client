@@ -175,9 +175,7 @@ def create_channel(
     )
 
     if o.scheme == "unix":
-        channel = grpclib.client.Channel(
-            path=o.path, config=config, status_details_codec=custom_detail_codec
-        )  # probably pointless to use a pool ever
+        channel = grpclib.client.Channel(path=o.path, config=config, status_details_codec=custom_detail_codec)
     elif o.scheme in ("http", "https"):
         target = o.netloc
         parts = target.split(":")
