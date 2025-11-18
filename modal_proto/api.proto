@@ -2634,6 +2634,13 @@ message QueuePutRequest {
   int32 partition_ttl_seconds = 6;
 }
 
+// A copy google.rpc.Status for GRPCError details:
+// https://github.com/googleapis/googleapis/blob/master/google/rpc/status.proto
+message RPCStatus {
+  int32 code = 1;
+  string message = 2;
+  repeated google.protobuf.Any details = 3;
+}
 
 message RateLimit {
   int32 limit = 1;
@@ -3139,14 +3146,6 @@ message SharedVolumeRemoveFileRequest {
   string shared_volume_id = 1;
   string path = 2;
   bool recursive = 3;
-}
-
-// A copy google.rpc.Status for GRPCError details:
-// https://github.com/googleapis/googleapis/blob/master/google/rpc/status.proto
-message Status {
-  int32 code = 1;
-  string message = 2;
-  repeated google.protobuf.Any details = 3;
 }
 
 message SystemErrorMessage {

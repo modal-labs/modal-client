@@ -127,7 +127,7 @@ class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
         message: Optional[str],
         details: Optional[Sequence[Message]],
     ) -> bytes:
-        details_proto = api_pb2.Status(code=status.value, message=message or "")
+        details_proto = api_pb2.RPCStatus(code=status.value, message=message or "")
         if details is not None:
             for detail in details:
                 detail_container = details_proto.details.add()
@@ -141,7 +141,7 @@ class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
         data: bytes,
     ) -> Any:
         sym_db = _sym_db()
-        details_proto = api_pb2.Status.FromString(data)
+        details_proto = api_pb2.RPCStatus.FromString(data)
 
         details = []
         for detail_container in details_proto.details:
