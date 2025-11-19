@@ -173,7 +173,7 @@ def test_CustomProtoStatusDetailsCodec_unknown():
     encoded_msg = api_pb2.RPCStatus(details=encoded_details).SerializeToString()
     codec = CustomProtoStatusDetailsCodec()
 
-    decoded_msg = codec.decode(Status.OK, None, encoded_msg)
+    decoded_msg = codec.decode(Status.INTERNAL, None, encoded_msg)
     assert not decoded_msg
 
 
@@ -186,10 +186,10 @@ def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     msgs = [blob_msg, sandbox_msg]
 
     grpclib_codec = ProtoStatusDetailsCodec()
-    message = grpclib_codec.encode(Status.OK, "my-message", details=msgs)
+    message = grpclib_codec.encode(Status.INTERNAL, "my-message", details=msgs)
     codec = CustomProtoStatusDetailsCodec()
 
-    decoded_msg = codec.decode(Status.OK, None, message)
+    decoded_msg = codec.decode(Status.INTERNAL, None, message)
     assert len(decoded_msg) == 2
     assert decoded_msg == msgs
 
