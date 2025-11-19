@@ -194,7 +194,8 @@ def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     assert decoded_msg == msgs
 
 
-def test_codec_with_channel(servicer, client):
+@pytest.mark.asyncio
+async def test_codec_with_channel(servicer, client):
     """Check codec works with channel."""
 
     details = [api_pb2.BlobCreateResponse(blob_id="abc")]
@@ -202,16 +203,12 @@ def test_codec_with_channel(servicer, client):
     async def raise_error(servicer, stream):
         raise GRPCError(Status.INTERNAL, "Function create failed", details=details)
 
-    request = api_pb2.FunctionCreateRequest(app_id="xyz")
-
-    @synchronize_api
-    async def wrapped_function_create(req, **kwargs):
-        return await client.stub.FunctionCreate(req, **kwargs)
+    req = api_pb2.FunctionCreateRequest(app_id="xyz")
 
     with servicer.intercept() as ctx:
         ctx.set_responder("FunctionCreate", raise_error)
         with pytest.raises(GRPCError) as excinfo:
-            wrapped_function_create(request)  # type: ignore
+            await client.stub.FunctionCreate(req, retry=None, timeout=0.01)
     assert excinfo.value.details == details
 
 
