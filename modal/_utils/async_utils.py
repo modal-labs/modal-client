@@ -43,6 +43,10 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
+class BlockingInAsyncContextWarning(Warning):
+    pass
+
+
 def rewrite_sync_to_async(code_line: str, func_name: str) -> tuple[bool, str]:
     """
     Rewrite a blocking call to use async/await syntax.
@@ -223,14 +227,14 @@ def _blocking_in_async_warning(original_func: types.FunctionType):
 
         warnings.warn_explicit(
             "".join(message_parts),
-            UserWarning,
+            BlockingInAsyncContextWarning,
             filename=call_frame.filename,
             lineno=call_frame.lineno,
             module=module_name,
         )
     else:
         # Fallback to regular warn if no frame information available
-        warnings.warn("".join(message_parts), UserWarning)
+        warnings.warn("".join(message_parts), BlockingInAsyncContextWarning)
 
 
 def _safe_blocking_in_async_warning(original_func: types.FunctionType):
@@ -238,11 +242,16 @@ def _safe_blocking_in_async_warning(original_func: types.FunctionType):
     Safety wrapper around _blocking_in_async_warning to ensure it never raises exceptions.
 
     This is non-critical functionality (just a warning), so we don't want it to break user code.
+    However, if the warning has been configured to be treated as an error (via filterwarnings),
+    we should let that propagate.
     """
     try:
         _blocking_in_async_warning(original_func)
+    except BlockingInAsyncContextWarning:
+        # Re-raise the warning if it's been configured as an error
+        raise
     except Exception:
-        # Silently ignore any errors in the warning system
+        # Silently ignore any other errors in the warning system
         # We don't want the warning mechanism itself to cause problems
         pass
 
