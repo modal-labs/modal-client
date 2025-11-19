@@ -8,7 +8,7 @@ import time
 import traceback
 import typing
 from collections import defaultdict
-from typing import Any, Callable, Literal, Optional, Union
+from typing import Any, Callable, Optional, Union
 from urllib.parse import urlparse
 
 from modal._partial_function import _HTTPConfig, _PartialFunctionFlags
@@ -648,9 +648,7 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
 def _http_server(
     port: int,
     *,
-    proxy_regions: Literal[
-        "us-east", "us-west", "ap-south", "True"
-    ],  # Not defaulting since changing user behavior after allowing a default is tricky
+    proxy_regions: list[str],
     startup_timeout: Optional[int] = None,
     exit_grace_period: Optional[int] = None,
 ):

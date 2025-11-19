@@ -7,7 +7,6 @@ from dataclasses import asdict, dataclass
 from typing import (
     Any,
     Callable,
-    Literal,
     Optional,
     Union,
 )
@@ -69,8 +68,7 @@ class _PartialFunctionFlags(enum.IntFlag):
 @dataclass
 class _HTTPConfig:
     port: int
-    proxy_regions: list[Literal[
-        "us-east", "us-west", "ap-south"]]
+    proxy_regions: list[str]
     startup_timeout: Optional[int] = None
     exit_grace_period: Optional[int] = None
 
