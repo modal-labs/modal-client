@@ -179,7 +179,11 @@ def test_CustomProtoStatusDetailsCodec_unknown():
 def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     """Check that rpc's encoded with the default GRPC codec works with the
     CustomProtoStatusDetailsCodec decoder."""
+
+    # ProtoStatusDetailsCodec requires `googleapis-common-protos` to be installed,
+    # which installs `google.rpc`.
     pytest.importorskip("google.rpc")
+
     from grpclib.encoding.proto import ProtoStatusDetailsCodec
 
     blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
