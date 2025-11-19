@@ -37,7 +37,6 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .gpu import GPU_T
 from .retries import Retries
-from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
 
@@ -746,8 +745,6 @@ More information on class parameterization can be found here: https://modal.com/
         else:
             resources = None
 
-        scheduler_placement = SchedulerPlacement(region=region).proto if region else None
-
         if allow_concurrent_inputs is not None:
             deprecation_warning(
                 (2025, 5, 9),
@@ -789,6 +786,11 @@ More information on class parameterization can be found here: https://modal.com/
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
+
+        scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+        if region:
+            regions = [region] if isinstance(region, str) else list(region)
+            scheduler_placement = api_pb2.SchedulerPlacement(regions=regions)
 
         new_options = _ServiceOptions(
             secrets=secrets,
