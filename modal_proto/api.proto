@@ -1731,13 +1731,6 @@ message FunctionData {
   optional HTTPConfig http_config = 39;
 }
 
-message HTTPConfig {
-  uint32 port = 1;
-  repeated string proxy_regions = 2;
-  uint32 startup_timeout_secs = 3;
-  uint32 exit_grace_period_secs = 4;
-}
-
 message FunctionExtended {
   uint32 type_identifier = 1;
   // FunctionExtended is a union type that exists while we migrate between
@@ -2093,6 +2086,13 @@ message GenericResult {  // Used for both tasks and function outputs
   }
 
   string propagation_reason = 13; // (?)
+}
+
+message HTTPConfig {
+  uint32 port = 1;
+  repeated string proxy_regions = 2;
+  uint32 startup_timeout_secs = 3;
+  uint32 exit_grace_period_secs = 4;
 }
 
 message Image {
