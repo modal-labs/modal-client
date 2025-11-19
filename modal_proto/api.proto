@@ -2638,7 +2638,6 @@ message QueuePutRequest {
 // for the client to retry.
 message RPCRetryPolicy {
   float retry_after_secs = 1;
-  string warning_suffix = 2;
 }
 
 // A copy google.rpc.Status for GRPCError.details:

@@ -72,6 +72,7 @@ RETRYABLE_GRPC_STATUS_CODES = [
     Status.INTERNAL,
     Status.UNKNOWN,
 ]
+SERVER_RETRY_WARNING_TIME_INTERVAL = 30.0
 
 
 @dataclass
@@ -291,6 +292,8 @@ async def _retry_transient_errors(
     idempotency_key = str(uuid.uuid4())
 
     t0 = time.time()
+    last_server_retry_warning_time = None
+
     if retry.total_timeout is not None:
         total_deadline = t0 + retry.total_timeout
     else:
@@ -324,8 +327,14 @@ async def _retry_transient_errors(
             if isinstance(exc, GRPCError) and (server_retry_policy := get_server_retry_policy(exc)):
                 retry_after_sec = server_retry_policy.retry_after_secs
 
-                if server_retry_policy.warning_suffix:
-                    logger.warning(f"{exc.status}: {exc.message}{server_retry_policy.warning_suffix}")
+                now = time.time()
+                if last_server_retry_warning_time is None or (
+                    now - last_server_retry_warning_time >= SERVER_RETRY_WARNING_TIME_INTERVAL
+                ):
+                    last_server_retry_warning_time = now
+                    logger.warning(
+                        f"Warning: Received {exc.status}: {exc.message}. Will retry in {retry_after_sec:0.2f} seconds."
+                    )
 
                 n_retries += 1
                 logger.debug(
