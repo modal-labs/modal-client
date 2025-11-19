@@ -38,7 +38,6 @@ pyright==1.1.351
 python-json-logger==2.0.7  # unpinned transitive dependency of jupytext breaking on later versions
 console-ctrl==0.1.0
 synchronicity[compile]==0.10.3
-# Although we use a older `googleapis-common-proto` version of testing protobuf 3.19, as long as the server uses
-# protobuf >= 4.0, a client with protobuf 3.19 will still be able to decode the message.
-googleapis-common-protos~=1.56.4;python_version<='3.9'  # TODO: remove when we drop client support for Protobuf 3.19
-googleapis-common-protos~=1.72.0;python_version>'3.9'
+# `googleapis-common-protos` is unbounded so that the CI can later install the `googleapis-common-protos` that is
+# compatible with the protobuf version
+googleapis-common-protos
