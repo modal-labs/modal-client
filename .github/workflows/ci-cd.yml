@@ -114,7 +114,7 @@ jobs:
 
       - if: matrix.proto-version != 'latest'
         name: Install protobuf
-        run: uv pip install protobuf==${{ matrix.proto-version }} googleapis-common-protos
+        run: uv pip install protobuf==${{ matrix.proto-version }} googleapis-common-protos --system
 
       - name: Build protobuf
         run: inv protoc
