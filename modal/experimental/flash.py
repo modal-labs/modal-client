@@ -6,7 +6,6 @@ import subprocess
 import sys
 import time
 import traceback
-import typing
 from collections import defaultdict
 from typing import Any, Callable, Optional, Union
 from urllib.parse import urlparse
@@ -695,28 +694,6 @@ def _http_server(
 
 
 http_server = synchronize_api(_http_server, target_module=__name__)
-
-
-def get_http_config(cls_or_user_cls: Union[type[Any], Any]) -> Optional[_HTTPConfig]:
-    """Extract HTTP config from a Modal class or user class.
-
-    Args:
-        cls_or_user_cls: Either a Modal _Cls object, a user class type, an instance of a user class,
-                         or an ImportedClass (serialized class)
-
-    Returns:
-        The _HTTPConfig if found, None otherwise
-    """
-    if isinstance(cls_or_user_cls, _Cls):
-        return cls_or_user_cls._options.http_config
-    unwrapped = typing.cast(_Cls, synchronizer._translate_in(cls_or_user_cls))
-    if isinstance(unwrapped, _Cls):
-        if unwrapped._options.http_config is not None:
-            return unwrapped._options.http_config
-        return unwrapped.http_config
-    else:
-        return None
-
 
 class _FlashContainerEntry:
     def __init__(self):

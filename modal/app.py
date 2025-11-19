@@ -809,7 +809,7 @@ class _App:
                 batch_max_size = f.params.batch_max_size
                 batch_wait_ms = f.params.batch_wait_ms
                 if f.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options))
+                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options, None))
                     max_concurrent_inputs = f.params.max_concurrent_inputs
                     target_concurrent_inputs = f.params.target_concurrent_inputs
                 else:
@@ -999,7 +999,6 @@ class _App:
 
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             local_state = self._local_state
-            experimental_options_ = experimental_options or {}
             http_config_ = None
             # Check if the decorated object is a class
             if isinstance(wrapped_cls, _PartialFunction):
@@ -1011,7 +1010,10 @@ class _App:
                         http_config_ = http_config._to_proto()
 
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options_))
+                    verify_concurrent_params(
+                        params=wrapped_cls.params,
+                        is_flash=is_flash_object(experimental_options or {}, http_config=http_config_
+                    ))
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
@@ -1111,7 +1113,7 @@ class _App:
                 cluster_size=cluster_size,
                 rdma=rdma,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
-                experimental_options={k: str(v) for k, v in (experimental_options_).items()},
+                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 restrict_output=_experimental_restrict_output,

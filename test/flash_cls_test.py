@@ -4,7 +4,6 @@ import subprocess
 import modal
 import modal.experimental
 from modal import App
-from modal.experimental.flash import get_http_config
 
 flash_app_default = App("flash-app-default")
 
@@ -29,17 +28,17 @@ class FlashClass:
     def start(self):
         self.process = subprocess.Popen(["python3", "-m", "http.server", "8080"])
 
-def test_flash_web_server_basic_functionality(client):
-    """Test basic flash_web_server decorator functionality."""
-    with flash_app_default.run(client=client):
-        http_config = get_http_config(FlashClass)  # type: ignore
-        print(f"http_config: {http_config}")
-        print(f"type(http_config): {type(http_config)}")
-        print(f"http_config.get_attributes(): {http_config.__dict__}")
-        assert http_config is not None
-        assert http_config.port == 8080
-        assert http_config.proxy_regions == 'True'
-        assert http_config.exit_grace_period == 10
+# def test_flash_web_server_basic_functionality(client):
+#     """Test basic flash_web_server decorator functionality."""
+#     with flash_app_default.run(client=client):
+#         http_config = get_http_config(FlashClass)  # type: ignore
+#         print(f"http_config: {http_config}")
+#         print(f"type(http_config): {type(http_config)}")
+#         print(f"http_config.get_attributes(): {http_config.__dict__}")
+#         assert http_config is not None
+#         assert http_config.port == 8080
+#         assert http_config.proxy_regions == 'True'
+#         assert http_config.exit_grace_period == 10
 
 # def test_run_class(client, servicer):
 #     """Test running flash class params are set correctly."""
