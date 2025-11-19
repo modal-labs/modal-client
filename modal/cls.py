@@ -881,14 +881,14 @@ More information on class parameterization can be found here: https://modal.com/
         cls._options.merge_options(batching_options)
         return cls
 
-    def with_http_server(self: "_Cls", *, port: int, proxy_region: Literal["us-east", "us-west", "ap-south", "True"], startup_timeout: Optional[int] = None, exit_grace_period: Optional[int] = None) -> "_Cls":
+    def with_http_server(self: "_Cls", *, port: int, proxy_regions: list[Literal["us-east", "us-west", "ap-south"]], startup_timeout: Optional[int] = None, exit_grace_period: Optional[int] = None) -> "_Cls":
         """Create an instance of the Cls with HTTP server enabled or overridden with new values.
 
         **Usage:**
 
         ```python notest
         Model = modal.Cls.from_name("my_app", "Model")
-        ModelUsingGPU = Model.with_options(gpu="A100").with_http_server(port=8000, proxy_region="True")
+        ModelUsingGPU = Model.with_options(gpu="A100").with_http_server(port=8000, proxy_regions=["us-east", "us-west", "ap-south"])
         ModelUsingGPU().generate.remote(42)  # will run on an A100 GPU with HTTP server enabled
     """
         async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
@@ -909,7 +909,7 @@ More information on class parameterization can be found here: https://modal.com/
         )
         cls._initialize_from_other(self)
 
-        http_config = _ServiceOptions(http_config=_HTTPConfig(port=port, proxy_region=proxy_region, startup_timeout=startup_timeout, exit_grace_period=exit_grace_period))
+        http_config = _ServiceOptions(http_config=_HTTPConfig(port=port, proxy_regions=proxy_regions, startup_timeout=startup_timeout, exit_grace_period=exit_grace_period))
         cls._options.merge_options(http_config)
         return cls
 

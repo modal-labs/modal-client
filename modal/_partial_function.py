@@ -69,9 +69,8 @@ class _PartialFunctionFlags(enum.IntFlag):
 @dataclass
 class _HTTPConfig:
     port: int
-    proxy_region: Literal[
-        "us-east", "us-west", "ap-south", "True"  # True means all regions
-    ]
+    proxy_regions: list[Literal[
+        "us-east", "us-west", "ap-south"]]
     startup_timeout: Optional[int] = None
     exit_grace_period: Optional[int] = None
 

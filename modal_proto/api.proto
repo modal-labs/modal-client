@@ -1733,7 +1733,7 @@ message FunctionData {
 
 message HTTPConfig {
   int32 port = 1;
-  string proxy_region = 2;
+  repeated string proxy_regions = 2;
   int32 startup_timeout = 3;
   int32 exit_grace_period = 4;
 }

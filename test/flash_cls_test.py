@@ -11,7 +11,7 @@ flash_app_default = App("flash-app-default")
 
 # @flash_app_default.cls()
 # @modal.concurrent(target_inputs=10)
-# @modal.experimental.http_server(8080, proxy_region='True', exit_grace_period=10)
+# @modal.experimental.http_server(8080, proxy_regions='True', exit_grace_period=10)
 # class FlashClassDefault:
 #     @modal.enter()
 #     def serve(self):
@@ -23,7 +23,7 @@ app = App("flash-app-2")
     image=modal.Image.debian_slim().pip_install("fastapi", "uvicorn"),
 )
 @modal.concurrent(target_inputs=100)
-@modal.experimental.http_server(8080, proxy_region="True", startup_timeout=10, exit_grace_period=10)
+@modal.experimental.http_server(8080, proxy_regions=["us-east", "us-west", "ap-south"], startup_timeout=10, exit_grace_period=10)
 class FlashClass:
     @modal.enter()
     def start(self):
@@ -38,7 +38,7 @@ def test_flash_web_server_basic_functionality(client):
         print(f"http_config.get_attributes(): {http_config.__dict__}")
         assert http_config is not None
         assert http_config.port == 8080
-        assert http_config.proxy_region == 'True'
+        assert http_config.proxy_regions == 'True'
         assert http_config.exit_grace_period == 10
 
 # def test_run_class(client, servicer):

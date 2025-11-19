@@ -648,7 +648,7 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
 def _http_server(
     port: int,
     *,
-    proxy_region: Literal[
+    proxy_regions: Literal[
         "us-east", "us-west", "ap-south", "True"
     ],  # Not defaulting since changing user behavior after allowing a default is tricky
     startup_timeout: Optional[int] = None,
@@ -658,7 +658,7 @@ def _http_server(
 
     Args:
         port: The local port to forward to the Flash service.
-        proxy_region: The region to proxy the Flash service to.
+        proxy_regions: The region to proxy the Flash service to.
         startup_timeout: The maximum time to wait for the Flash service to start.
         exit_grace_period: The time to wait for the Flash service to exit gracefully.
 
@@ -677,7 +677,7 @@ def _http_server(
     params = _PartialFunctionParams(
         http_config=_HTTPConfig(
             port=port,
-            proxy_region=proxy_region,
+            proxy_regions=proxy_regions,
             startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
         )
@@ -722,7 +722,7 @@ def get_http_config(cls_or_user_cls: Union[type[Any], Any]) -> Optional[_HTTPCon
 
 class _FlashContainerEntry:
     def __init__(self):
-        self.flash_manager: Optional[FlashManager] = None  # type: ignore
+        self.flash_manager: Optional[FlashManager] = None # type: ignore
         self.exit_grace_period = 0
 
     def validate_flash_configs(self, flash_configs: list[_HTTPConfig]):
@@ -731,7 +731,6 @@ class _FlashContainerEntry:
 
     def enter(self, service):
         http_config = get_http_config(service)
-        print(f"http_config: {http_config}")
         if http_config:
             self.exit_grace_period = max(self.exit_grace_period, http_config.exit_grace_period or 0)
             self.flash_manager = flash_forward(

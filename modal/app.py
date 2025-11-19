@@ -1009,11 +1009,9 @@ class _App:
                 if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
                     http_config = wrapped_cls.params.http_config
                     if http_config:
-                        flash_region = http_config.proxy_region
-                        experimental_options_["flash"] = flash_region
                         http_config_ = api_pb2.HTTPConfig(
                             port=http_config.port,
-                            proxy_region=http_config.proxy_region,
+                            proxy_regions=http_config.proxy_regions,
                             startup_timeout=http_config.startup_timeout or 0,
                             exit_grace_period=http_config.exit_grace_period or 0,
                         )  # Store for later use
@@ -1091,7 +1089,7 @@ class _App:
             if http_config_:
                 http_config_proto = api_pb2.HTTPConfig(
                     port=http_config_.port,
-                    proxy_region=http_config_.proxy_region,
+                    proxy_regions=http_config_.proxy_regions,
                     startup_timeout=http_config_.startup_timeout or 0,
                     exit_grace_period=http_config_.exit_grace_period or 0,
                 )

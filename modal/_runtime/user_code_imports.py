@@ -342,7 +342,7 @@ def import_class_service(
     if function_def.http_config:
         http_config = _HTTPConfig(
             port=function_def.http_config.port,
-            proxy_region=function_def.http_config.proxy_region,  # type: ignore
+            proxy_regions=function_def.http_config.proxy_regions, # type: ignore
             startup_timeout=function_def.http_config.startup_timeout or None,
             exit_grace_period=function_def.http_config.exit_grace_period or None,
         )
