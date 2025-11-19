@@ -4,7 +4,6 @@ import time
 
 from google.protobuf.any_pb2 import Any
 from grpclib import GRPCError, Status
-from grpclib.encoding.proto import ProtoStatusDetailsCodec
 
 import modal
 from modal import __version__
@@ -180,6 +179,8 @@ def test_CustomProtoStatusDetailsCodec_unknown():
 def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     """Check that rpc's encoded with the default GRPC codec works with the
     CustomProtoStatusDetailsCodec decoder."""
+    pytest.importorskip("google.rpc")
+    from grpclib.encoding.proto import ProtoStatusDetailsCodec
 
     blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
     sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
