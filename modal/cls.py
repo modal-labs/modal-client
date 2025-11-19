@@ -4,7 +4,7 @@ import inspect
 import typing
 from collections.abc import Collection
 from pathlib import PurePosixPath
-from typing import Any, Callable, Literal, Optional, Sequence, TypeVar, Union
+from typing import Any, Callable, Optional, Sequence, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -879,38 +879,6 @@ More information on class parameterization can be found here: https://modal.com/
 
         batching_options = _ServiceOptions(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
         cls._options.merge_options(batching_options)
-        return cls
-
-    def with_http_server(self: "_Cls", *, port: int, proxy_regions: list[Literal["us-east", "us-west", "ap-south"]], startup_timeout: Optional[int] = None, exit_grace_period: Optional[int] = None) -> "_Cls":
-        """Create an instance of the Cls with HTTP server enabled or overridden with new values.
-
-        **Usage:**
-
-        ```python notest
-        Model = modal.Cls.from_name("my_app", "Model")
-        ModelUsingGPU = Model.with_options(gpu="A100").with_http_server(port=8000, proxy_regions=["us-east", "us-west", "ap-south"])
-        ModelUsingGPU().generate.remote(42)  # will run on an A100 GPU with HTTP server enabled
-    """
-        async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
-            if not self.is_hydrated:
-                await resolver.load(self, load_context)
-            new_cls._initialize_from_other(self)
-
-        def _deps():
-            return []
-
-        cls = _Cls._from_loader(
-            _load_from_base,
-            rep=f"{self._name}.with_http_server(...)",
-            is_another_app=True,
-            deps=_deps,
-            load_context_overrides=self._load_context_overrides,
-            hydrate_lazily=True,
-        )
-        cls._initialize_from_other(self)
-
-        http_config = _ServiceOptions(http_config=_HTTPConfig(port=port, proxy_regions=proxy_regions, startup_timeout=startup_timeout, exit_grace_period=exit_grace_period))
-        cls._options.merge_options(http_config)
         return cls
 
     @synchronizer.no_input_translation

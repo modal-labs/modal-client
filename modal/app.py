@@ -972,7 +972,6 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
-        http_config: Optional[api_pb2.HTTPConfig] = None,  # HTTP config to use for the class
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](https://modal.com/docs/reference/modal.Cls) with this App.
@@ -1083,16 +1082,6 @@ class _App:
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
-
-            # Convert _HTTPConfig dataclass to protobuf message
-            http_config_proto = None
-            if http_config_:
-                http_config_proto = api_pb2.HTTPConfig(
-                    port=http_config_.port,
-                    proxy_regions=http_config_.proxy_regions,
-                    startup_timeout=http_config_.startup_timeout or 0,
-                    exit_grace_period=http_config_.exit_grace_period or 0,
-                )
             cls_func = _Function.from_local(
                 info,
                 app=self,
