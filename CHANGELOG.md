@@ -6,6 +6,12 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.3.dev9 (2025-11-19)
+
+* Added `nonpreemptible` parameter to @app.function() and @app.cls() for running CPU-only functions on non-preemptible instances. Note that using this flag applies a 3x multiplier to CPU and memory pricing.
+* The `_experimental_scheduler_placement` parameter is now deprecated in favor of `region` and `nonpreemptible`.
+
+
 #### 1.2.3.dev7 (2025-11-17)
 
 - Added `modal shell --add-local dir/` for mounting local files and directories.
