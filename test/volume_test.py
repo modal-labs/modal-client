@@ -142,7 +142,7 @@ async def test_volume_get(servicer, client, tmp_path, version, file_contents_siz
     assert data == file_contents
 
     output = io.BytesIO()
-    vol.read_file_into_fileobj(file_path, output)
+    await vol.read_file_into_fileobj.aio(file_path, output)
 
     # Faster assert to avoid huge error when there are large content differences:
     assert len(output.getvalue()) == file_contents_size
@@ -466,7 +466,7 @@ async def test_volume_copy_2(client, tmp_path, servicer, version):
                 batch.put_file(local_file_path, file_path)
             object_id = vol.object_id
 
-        vol.copy_files(file_paths, "test_dir", False)
+        await vol.copy_files.aio(file_paths, "test_dir", False)
 
     returned_volume_files = [Path(file) for file in servicer.volumes[object_id].files.keys()]
     expected_volume_files = [
@@ -679,6 +679,6 @@ async def test_volume_read_file_into_fileobj_http_404_error(monkeypatch, service
         async with modal.Volume.ephemeral(client=client, version=version) as vol:
             output = io.BytesIO()
             with pytest.raises(aiohttp.ClientResponseError) as exc_info:
-                vol.read_file_into_fileobj("foo.bin", output)
+                await vol.read_file_into_fileobj.aio("foo.bin", output)
 
             assert exc_info.value.status == 404
