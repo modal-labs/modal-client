@@ -2634,9 +2634,11 @@ message QueuePutRequest {
   int32 partition_ttl_seconds = 6;
 }
 
+// Retry repolicy used by GRPCError.details for the server to give instructions
+// for the client to retry.
 message RPCRetryPolicy {
   float retry_after_secs = 1;
-  string warning_message = 2;
+  string warning_suffix = 2;
 }
 
 // A copy google.rpc.Status for GRPCError.details:

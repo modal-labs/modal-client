@@ -251,8 +251,8 @@ async def retry_transient_errors(
     return await _retry_transient_errors(fn, req, retry=Retry(max_retries=max_retries))
 
 
-def get_server_retry_instruction(exc: Exception) -> Optional[api_pb2.RPCRetryPolicy]:
-    """Find server retry instruction."""
+def get_server_retry_policy(exc: Exception) -> Optional[api_pb2.RPCRetryPolicy]:
+    """Get server retry policy."""
     if not isinstance(exc, GRPCError) or not exc.details:
         return None
 
@@ -321,17 +321,17 @@ async def _retry_transient_errors(
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             # Follow server instruction for handling retries, we skip the final_attempt flow
             # because the server instruction takes precedence
-            if server_retry_instruction := get_server_retry_instruction(exc):
-                retry_after_sec = server_retry_instruction.retry_after_secs
-                n_retries += 1
+            if isinstance(exc, GRPCError) and (server_retry_policy := get_server_retry_policy(exc)):
+                retry_after_sec = server_retry_policy.retry_after_secs
 
+                if server_retry_policy.warning_suffix:
+                    logger.warning(f"{exc.status}: {exc.message}{server_retry_policy.warning_suffix}")
+
+                n_retries += 1
                 logger.debug(
                     f"Retryable failure {repr(exc)} {n_retries=} {retry_after_sec=} "
                     f"for {fn.name} ({idempotency_key[:8]})"
                 )
-                if server_retry_instruction.warning_message:
-                    logger.warning(server_retry_instruction.warning_message)
-
                 await asyncio.sleep(retry_after_sec)
                 continue
 

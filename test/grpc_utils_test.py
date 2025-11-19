@@ -13,7 +13,7 @@ from modal._utils.grpc_utils import (
     Retry,
     connect_channel,
     create_channel,
-    get_server_retry_instruction,
+    get_server_retry_policy,
 )
 from modal.exception import InvalidError
 from modal_proto import api_grpc, api_pb2, sandbox_router_pb2
@@ -80,27 +80,30 @@ async def test_retry_transient_errors(servicer, client):
     # Use the BlobCreate request for retries
     req = api_pb2.BlobCreateRequest()
 
+    def wrap_grpc_error(status):
+        return [GRPCError(s, "foobar") for s in status]
+
     # Fail 3 times -> should still succeed
-    servicer.fail_blob_create = [Status.UNAVAILABLE] * 3
+    servicer.fail_blob_create = wrap_grpc_error([Status.UNAVAILABLE] * 3)
     await wrapped_blob_create.aio(req)
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "3"
 
     # Fail 4 times -> should fail
-    servicer.fail_blob_create = [Status.UNAVAILABLE] * 4
+    servicer.fail_blob_create = wrap_grpc_error([Status.UNAVAILABLE] * 4)
     with pytest.raises(GRPCError):
         await wrapped_blob_create.aio(req)
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "3"
 
     # Fail 5 times, but set max_retries to infinity
-    servicer.fail_blob_create = [Status.UNAVAILABLE] * 5
+    servicer.fail_blob_create = wrap_grpc_error([Status.UNAVAILABLE] * 5)
     assert await wrapped_blob_create.aio(req, retry=Retry(max_retries=None, base_delay=0))
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "5"
 
     # Not a transient error.
-    servicer.fail_blob_create = [Status.PERMISSION_DENIED]
+    servicer.fail_blob_create = wrap_grpc_error([Status.PERMISSION_DENIED])
     with pytest.raises(GRPCError):
         assert await wrapped_blob_create.aio(req, retry=Retry(max_retries=None, base_delay=0))
     assert servicer.blob_create_metadata.get("x-idempotency-key")
@@ -108,7 +111,7 @@ async def test_retry_transient_errors(servicer, client):
 
     # Make sure to respect total_timeout
     t0 = time.time()
-    servicer.fail_blob_create = [Status.UNAVAILABLE] * 99
+    servicer.fail_blob_create = wrap_grpc_error([Status.UNAVAILABLE] * 99)
     with pytest.raises(GRPCError):
         assert await wrapped_blob_create.aio(req, retry=Retry(max_retries=None, total_timeout=3))
     total_time = time.time() - t0
@@ -120,14 +123,14 @@ async def test_retry_transient_errors(servicer, client):
     assert servicer.blob_create_metadata.get("x-modal-input-plane-region") == "us-east"
 
     # Check input_plane_region not included
-    servicer.fail_blob_create = [Status.UNAVAILABLE] * 3
+    servicer.fail_blob_create = wrap_grpc_error([Status.UNAVAILABLE] * 3)
     await wrapped_blob_create.aio(req)
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "3"
     assert servicer.blob_create_metadata.get("x-modal-input-plane-region") is None
 
     # Check all metadata is included
-    servicer.fail_blob_create = [Status.UNAVAILABLE] * 3
+    servicer.fail_blob_create = wrap_grpc_error([Status.UNAVAILABLE] * 3)
     await wrapped_blob_create.aio(req, metadata=[("x-modal-input-plane-region", "us-east")])
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "3"
@@ -255,11 +258,32 @@ async def test_flash_container_register_deregister(servicer, client):
             GRPCError(
                 Status.UNAVAILABLE,
                 "my-message",
-                details=[api_pb2.RPCRetryPolicy(retry_after_secs=2, warning_message="this-is-a-warning")],
+                details=[api_pb2.RPCRetryPolicy(retry_after_secs=2, warning_suffix="this-is-a-suffix")],
             ),
-            api_pb2.RPCRetryPolicy(retry_after_secs=2, warning_message="this-is-a-warning"),
+            api_pb2.RPCRetryPolicy(retry_after_secs=2, warning_suffix="this-is-a-suffix"),
         ),
     ],
 )
-def test_get_server_retry_instruction(exception, expected_instruction):
-    assert get_server_retry_instruction(exception) == expected_instruction
+def test_get_server_retry_policy(exception, expected_instruction):
+    assert get_server_retry_policy(exception) == expected_instruction
+
+
+@pytest.mark.asyncio
+async def test_retry_transient_errors_grp_retry(servicer, client):
+    client_stub = client.stub
+    retry_policy = api_pb2.RPCRetryPolicy(retry_after_secs=0.1)
+
+    @synchronize_api
+    async def wrapped_blob_create(req, **kwargs):
+        return await client_stub.BlobCreate(req, **kwargs)
+
+    req = api_pb2.BlobCreateRequest()
+
+    servicer.fail_blob_create = [GRPCError(Status.RESOURCE_EXHAUSTED, "foobar")] + [
+        GRPCError(Status.RESOURCE_EXHAUSTED, "foobar", details=[retry_policy])
+    ] * 2
+
+    with pytest.raises(GRPCError):
+        await wrapped_blob_create.aio(req)
+    assert servicer.blob_create_metadata.get("x-idempotency-key")
+    assert servicer.blob_create_metadata.get("x-retry-attempt") == "2"
