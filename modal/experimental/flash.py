@@ -659,8 +659,6 @@ def _http_server(
         startup_timeout: The maximum time to wait for the HTTP server to start.
         exit_grace_period: The time to wait for the HTTP server to exit gracefully.
 
-    This is a highly experimental decorator that can break or be removed at any time without warning.
-    Do not use this decorator unless explicitly instructed to do so by Modal support.
     """
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError("First argument of `@http_server` must be a local port, such as `@http_server(8000)`.")
