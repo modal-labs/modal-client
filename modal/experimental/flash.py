@@ -654,10 +654,10 @@ def _http_server(
     """Decorator for Flash-enabled HTTP servers on Modal classes.
 
     Args:
-        port: The local port to forward to the Flash service.
-        proxy_regions: The region to proxy the Flash service to.
-        startup_timeout: The maximum time to wait for the Flash service to start.
-        exit_grace_period: The time to wait for the Flash service to exit gracefully.
+        port: The local port to forward to the HTTP server.
+        proxy_regions: The regions to proxy the HTTP server to.
+        startup_timeout: The maximum time to wait for the HTTP server to start.
+        exit_grace_period: The time to wait for the HTTP server to exit gracefully.
 
     This is a highly experimental decorator that can break or be removed at any time without warning.
     Do not use this decorator unless explicitly instructed to do so by Modal support.
