@@ -1008,12 +1008,7 @@ class _App:
                 if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
                     http_config = wrapped_cls.params.http_config
                     if http_config:
-                        http_config_ = api_pb2.HTTPConfig(
-                            port=http_config.port,
-                            proxy_regions=http_config.proxy_regions,
-                            startup_timeout=http_config.startup_timeout or 0,
-                            exit_grace_period=http_config.exit_grace_period or 0,
-                        )  # Store for later use
+                        http_config_ = http_config._to_proto()
 
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
                     verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options_))
@@ -1110,7 +1105,7 @@ class _App:
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
-                http_config=http_config_proto,
+                http_config=http_config_,
                 scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,

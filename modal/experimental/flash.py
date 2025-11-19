@@ -727,8 +727,7 @@ class _FlashContainerEntry:
         assert len(flash_configs) == 1, "Only one @http_server decorator is supported"
         flash_config = flash_configs[0]
 
-    def enter(self, service):
-        http_config = get_http_config(service)
+    def enter(self, http_config: _HTTPConfig):
         if http_config:
             self.exit_grace_period = max(self.exit_grace_period, http_config.exit_grace_period or 0)
             self.flash_manager = flash_forward(

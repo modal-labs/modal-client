@@ -334,22 +334,8 @@ def import_class_service(
         # that transfers metadata from the service function to the class. TODO: cleanup!
         _cls._hydrate(class_id, _client, api_pb2.ClassHandleMetadata())
 
-    # UPDATE TO USE with_http_config from ImportedClass in USER_CODE_IMPORTs.py
-    # Instead of extracting from experimental_options, extract from protobuf:
-    from modal._partial_function import _HTTPConfig
-
-    http_config: Optional[_HTTPConfig] = None
-    if function_def.http_config:
-        http_config = _HTTPConfig(
-            port=function_def.http_config.port,
-            proxy_regions=function_def.http_config.proxy_regions, # type: ignore
-            startup_timeout=function_def.http_config.startup_timeout or None,
-            exit_grace_period=function_def.http_config.exit_grace_period or None,
-        )
-        _cls._options.http_config = http_config  # type: ignore
     method_partials: dict[str, "modal._partial_function._PartialFunction"] = _cls._get_partial_functions()
     user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
-    user_cls_instance.http_config = http_config  # type: ignore
 
     return ImportedClass(
         user_cls_instance,
