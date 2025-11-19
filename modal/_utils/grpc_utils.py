@@ -307,6 +307,9 @@ async def _retry_transient_errors(
             with suppress_tb_frames(1):
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
+            if isinstance(exc, GRPCError) and exc.details:
+                pass
+
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 if exc.status == Status.UNAUTHENTICATED:
                     raise AuthError(exc.message)

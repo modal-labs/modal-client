@@ -202,14 +202,14 @@ async def test_codec_with_channel(servicer, client):
     details = [api_pb2.BlobCreateResponse(blob_id="abc")]
 
     async def raise_error(servicer, stream):
-        raise GRPCError(Status.INTERNAL, "Function create failed", details=details)
+        raise GRPCError(Status.INTERNAL, "Blob create failed", details=details)
 
-    req = api_pb2.FunctionCreateRequest(app_id="xyz")
+    req = api_pb2.BlobCreateRequest()
 
     with servicer.intercept() as ctx:
-        ctx.set_responder("FunctionCreate", raise_error)
+        ctx.set_responder("BlobCreate", raise_error)
         with pytest.raises(GRPCError) as excinfo:
-            await client.stub.FunctionCreate(req, retry=None, timeout=0.01)
+            await client.stub.BlobCreate(req, retry=None, timeout=0.01)
     assert excinfo.value.details == details
 
 
