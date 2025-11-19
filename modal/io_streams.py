@@ -11,6 +11,7 @@ from typing import (
     Generic,
     Literal,
     Optional,
+    Protocol,
     TypeVar,
     Union,
     cast,
@@ -417,6 +418,12 @@ class _BytesStreamReaderThroughCommandRouter:
         if self._stream:
             await self._stream.aclose()
 
+    @staticmethod
+    def print_chunk(chunk: bytes) -> None:
+        """Print a chunk of stream output to the console. Used for StreamType.STDOUT streams."""
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.buffer.flush()
+
 
 class _TextStreamReaderThroughCommandRouter:
     """
@@ -462,6 +469,22 @@ class _TextStreamReaderThroughCommandRouter:
         if self._stream:
             await self._stream.aclose()
 
+    @staticmethod
+    def print_chunk(chunk: str) -> None:
+        """Print a chunk of stream output to the console. Used for StreamType.STDOUT streams."""
+        print(chunk, end="")
+
+
+class _StreamReaderProtocol(Protocol[T]):
+    @property
+    def file_descriptor(self) -> int: ...
+
+    def __aiter__(self) -> AsyncIterator[T]: ...
+
+    async def aclose(self) -> None: ...
+
+    def print_chunk(self, chunk: T) -> None: ...
+
 
 class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
     """
@@ -471,11 +494,11 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
     the local stdout immediately and is not readable via StreamReader methods.
     """
 
-    _reader: Union[_TextStreamReaderThroughCommandRouter, _BytesStreamReaderThroughCommandRouter]
+    _reader: _StreamReaderProtocol[T]
 
     def __init__(
         self,
-        reader: Union[_TextStreamReaderThroughCommandRouter, _BytesStreamReaderThroughCommandRouter],
+        reader: _StreamReaderProtocol[T],
     ) -> None:
         self._reader = reader
         self._task: Optional[asyncio.Task[None]] = None
@@ -490,25 +513,8 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
     def _start_printing_task(self) -> None:
         async def _run():
             try:
-
-                def print_text_part(part: Union[str, bytes]) -> None:
-                    assert isinstance(part, str)
-                    print(cast(str, part), end="")
-
-                def print_bytes_part(part: Union[str, bytes]) -> None:
-                    assert isinstance(part, bytes)
-                    sys.stdout.buffer.write(cast(bytes, part))
-                    sys.stdout.buffer.flush()
-
-                if isinstance(self._reader, _BytesStreamReaderThroughCommandRouter):
-                    print_part = print_bytes_part
-                elif isinstance(self._reader, _TextStreamReaderThroughCommandRouter):
-                    print_part = print_text_part
-                else:
-                    raise ValueError("Unsupported reader type")
-
-                async for part in self._reader:
-                    print_part(part)
+                async for chunk in self._reader:
+                    self._reader.print_chunk(chunk)
             except Exception as e:
                 logger.exception(f"Error printing stream: {e}")
             finally:
@@ -618,7 +624,7 @@ class _StreamReader(Generic[T]):
                     reader = _BytesStreamReaderThroughCommandRouter(params)
 
                 if stream_type == StreamType.STDOUT:
-                    self._impl = _StdoutPrintingStreamReaderThroughCommandRouter(reader)
+                    self._impl = _StdoutPrintingStreamReaderThroughCommandRouter(cast(_StreamReaderProtocol[T], reader))
                 else:
                     self._impl = reader
 
