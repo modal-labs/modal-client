@@ -9,8 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from functools import cache
-from typing import Any, Optional, Sequence, TypeVar
+from typing import Any, Optional, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -18,14 +17,11 @@ import grpclib.events
 import grpclib.protocol
 import grpclib.stream
 from google.protobuf.message import Message
-from google.protobuf.symbol_database import SymbolDatabase
 from grpclib import GRPCError, Status
-from grpclib.encoding.base import StatusDetailsCodecBase
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
 from modal.exception import AuthError, ConnectionError
-from modal_proto import api_pb2
 from modal_version import __version__
 
 from .._traceback import suppress_tb_frames
@@ -111,56 +107,6 @@ class ConnectionManager:
         self._channels.clear()
 
 
-@cache
-def _sym_db() -> SymbolDatabase:
-    from google.protobuf.symbol_database import Default
-
-    return Default()
-
-
-class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
-    """grpclib compatible details codec.
-
-    The server can encode the details using `google.rpc.Status` using grpclib's default codec and this custom codec
-    can decode it into a `api_pb2.RPCStatus`.
-    """
-
-    def encode(
-        self,
-        status: Status,
-        message: Optional[str],
-        details: Optional[Sequence[Message]],
-    ) -> bytes:
-        details_proto = api_pb2.RPCStatus(code=status.value, message=message or "")
-        if details is not None:
-            for detail in details:
-                detail_container = details_proto.details.add()
-                detail_container.Pack(detail)
-        return details_proto.SerializeToString()
-
-    def decode(
-        self,
-        status: Status,
-        message: Optional[str],
-        data: bytes,
-    ) -> Any:
-        sym_db = _sym_db()
-        details_proto = api_pb2.RPCStatus.FromString(data)
-
-        details = []
-        for detail_container in details_proto.details:
-            # If we do not know how to decode an emssage, we'll ignore it.
-            with contextlib.suppress(Exception):
-                msg_type = sym_db.GetSymbol(detail_container.TypeName())
-                detail = msg_type()
-                detail_container.Unpack(detail)
-                details.append(detail)
-        return details
-
-
-custom_detail_codec = CustomProtoStatusDetailsCodec()
-
-
 def create_channel(
     server_url: str,
     metadata: dict[str, str] = {},
@@ -179,7 +125,7 @@ def create_channel(
     )
 
     if o.scheme == "unix":
-        channel = grpclib.client.Channel(path=o.path, config=config, status_details_codec=custom_detail_codec)
+        channel = grpclib.client.Channel(path=o.path, config=config)  # probably pointless to use a pool ever
     elif o.scheme in ("http", "https"):
         target = o.netloc
         parts = target.split(":")
@@ -187,7 +133,7 @@ def create_channel(
         ssl = o.scheme.endswith("s")
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 else 443 if ssl else 80
-        channel = grpclib.client.Channel(host, port, ssl=ssl, config=config, status_details_codec=custom_detail_codec)
+        channel = grpclib.client.Channel(host, port, ssl=ssl, config=config)
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
 
@@ -312,6 +258,7 @@ async def _retry_transient_errors(
                     raise AuthError(exc.message)
                 else:
                     raise exc
+
             if retry.max_retries is not None and n_retries >= retry.max_retries:
                 final_attempt = True
             elif total_deadline is not None and time.time() + delay + retry.attempt_timeout_floor >= total_deadline:
