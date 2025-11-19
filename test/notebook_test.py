@@ -1,19 +1,19 @@
 # Copyright Modal Labs 2022
 import pytest
+import sys
 from pathlib import Path
-
-import jupytext
-from nbclient.exceptions import CellExecutionError
 
 
 @pytest.fixture
 def notebook_runner(servicer, credentials):
+    # local imports so we don't break on Python 3.9 before the pytest skip
+    import jupytext
     import nbformat
     from nbclient import NotebookClient
+    from nbclient.exceptions import CellExecutionError
 
     def runner(notebook_path: Path):
         output_notebook_path = notebook_path.with_suffix(".output.ipynb")
-
         nb = jupytext.read(
             notebook_path,
         )
@@ -48,12 +48,9 @@ Inspect the output notebook: {output_notebook_path}
     return runner
 
 
-# for some reason this import is failing due to a circular import of IPython.terminal.embed
-# but only when running in CI (sometimes?), causing these tests to fail:
-# from IPython.terminal import interactiveshell
-
-
-# @pytest.mark.skip("temporarily disabled until IPython import issues in CI are resolved")
+@pytest.mark.skipif(
+    sys.version_info < (3, 10), reason="Python 3.9 causes some annoying deprecation warnings on jupytext import"
+)
 def test_notebook_outputs_status(notebook_runner, test_dir):
     input_notebook_path = test_dir / "supports" / "notebooks" / "simple.notebook.py"
     tagged_cells = notebook_runner(input_notebook_path)
@@ -63,6 +60,9 @@ def test_notebook_outputs_status(notebook_runner, test_dir):
     assert "App completed." in combined_output
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 10), reason="Python 3.9 causes some annoying deprecation warnings on jupytext import"
+)
 def test_is_interactive_ipython_in_real_notebook(notebook_runner, test_dir):
     """Integration test: Run actual notebook to verify is_interactive_ipython returns True."""
     notebook_path = test_dir / "supports" / "notebooks" / "ipython_detection.notebook.py"
