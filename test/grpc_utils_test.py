@@ -13,6 +13,7 @@ from modal._utils.grpc_utils import (
     Retry,
     connect_channel,
     create_channel,
+    get_server_retry_instruction,
 )
 from modal.exception import InvalidError
 from modal_proto import api_grpc, api_pb2, sandbox_router_pb2
@@ -242,3 +243,23 @@ async def test_flash_container_register_deregister(servicer, client):
     deregister_req = api_pb2.FlashContainerDeregisterRequest(service_name="test")
     await wrapped_flash_container_deregister.aio(deregister_req, timeout=4.0, retry=None)
     assert servicer.flash_container_registrations == {}
+
+
+@pytest.mark.parametrize(
+    "exception, expected_instruction",
+    [
+        (ValueError(), None),
+        (GRPCError(Status.UNAVAILABLE, "my-message"), None),
+        (GRPCError(Status.UNAVAILABLE, "my-message", details=[api_pb2.FlashContainerListResponse()]), None),
+        (
+            GRPCError(
+                Status.UNAVAILABLE,
+                "my-message",
+                details=[api_pb2.RPCRetry(retry_after_secs=2, warning_message="this-is-a-warning")],
+            ),
+            api_pb2.RPCRetry(retry_after_secs=2, warning_message="this-is-a-warning"),
+        ),
+    ],
+)
+def test_get_server_retry_instruction(exception, expected_instruction):
+    assert get_server_retry_instruction(exception) == expected_instruction
