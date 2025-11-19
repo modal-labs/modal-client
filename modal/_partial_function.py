@@ -46,6 +46,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     BATCHED = 64
     CONCURRENT = 128
     CLUSTERED = 256  # Experimental: Clustered functions
+    HTTP_WEB_INTERFACE = 512  # Experimental: HTTP server
 
     @staticmethod
     def all() -> int:
@@ -65,6 +66,22 @@ class _PartialFunctionFlags(enum.IntFlag):
 
 
 @dataclass
+class _HTTPConfig:
+    port: int
+    proxy_regions: list[str]
+    startup_timeout: Optional[int] = None
+    exit_grace_period: Optional[int] = None
+
+    def _to_proto(self) -> api_pb2.HTTPConfig:
+        return api_pb2.HTTPConfig(
+            port=self.port,
+            proxy_regions=self.proxy_regions,
+            startup_timeout=self.startup_timeout or 0,
+            exit_grace_period=self.exit_grace_period or 0,
+        )
+
+
+@dataclass
 class _PartialFunctionParams:
     webhook_config: Optional[api_pb2.WebhookConfig] = None
     is_generator: Optional[bool] = None
@@ -76,6 +93,7 @@ class _PartialFunctionParams:
     target_concurrent_inputs: Optional[int] = None
     build_timeout: Optional[int] = None
     rdma: Optional[bool] = None
+    http_config: Optional[_HTTPConfig] = None
 
     def update(self, other: "_PartialFunctionParams") -> None:
         """Update self with params set in other."""
@@ -158,8 +176,9 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             raise InvalidError("Interface decorators cannot be combined with lifecycle decorators.")
 
         has_web_interface = self.flags & _PartialFunctionFlags.WEB_INTERFACE
+        has_http_web_interface = self.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE
         has_callable_interface = self.flags & _PartialFunctionFlags.CALLABLE_INTERFACE
-        if has_web_interface and has_callable_interface:
+        if (has_web_interface or has_http_web_interface) and has_callable_interface:
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
 

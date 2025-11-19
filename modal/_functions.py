@@ -700,6 +700,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
         restrict_output: bool = False,
+        http_config: Optional[api_pb2.HTTPConfig] = None,
     ) -> "_Function":
         """mdmd:hidden
 
@@ -1045,6 +1046,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_schema=function_schema,
                     supported_input_formats=supported_input_formats,
                     supported_output_formats=supported_output_formats,
+                    http_config=http_config,
                 )
 
                 if isinstance(gpu, list):
@@ -1082,6 +1084,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         untrusted=function_definition.untrusted,
                         supported_input_formats=supported_input_formats,
                         supported_output_formats=supported_output_formats,
+                        http_config=http_config,
                     )
 
                     ranked_functions = []
