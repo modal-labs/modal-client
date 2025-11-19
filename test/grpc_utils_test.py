@@ -209,7 +209,7 @@ async def test_codec_with_channel(servicer, client):
     with servicer.intercept() as ctx:
         ctx.set_responder("BlobCreate", raise_error)
         with pytest.raises(GRPCError) as excinfo:
-            await client.stub.BlobCreate(req, retry=None, timeout=0.01)
+            await client.stub.BlobCreate(req, retry=None, timeout=0.1)
     assert excinfo.value.details == details
 
 
