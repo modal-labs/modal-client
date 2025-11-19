@@ -2634,7 +2634,7 @@ message QueuePutRequest {
   int32 partition_ttl_seconds = 6;
 }
 
-message RPCRetry {
+message RPCRetryPolicy {
   float retry_after_secs = 1;
   string warning_message = 2;
 }

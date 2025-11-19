@@ -251,14 +251,14 @@ async def retry_transient_errors(
     return await _retry_transient_errors(fn, req, retry=Retry(max_retries=max_retries))
 
 
-def get_server_retry_instruction(exc: Exception) -> Optional[api_pb2.RPCRetry]:
+def get_server_retry_instruction(exc: Exception) -> Optional[api_pb2.RPCRetryPolicy]:
     """Find server retry instruction."""
     if not isinstance(exc, GRPCError) or not exc.details:
         return None
 
     # Server should not set multiple retry instructions, but if there is more than one, pick the first one
     for entry in exc.details:
-        if isinstance(entry, api_pb2.RPCRetry):
+        if isinstance(entry, api_pb2.RPCRetryPolicy):
             return entry
     return None
 

@@ -255,9 +255,9 @@ async def test_flash_container_register_deregister(servicer, client):
             GRPCError(
                 Status.UNAVAILABLE,
                 "my-message",
-                details=[api_pb2.RPCRetry(retry_after_secs=2, warning_message="this-is-a-warning")],
+                details=[api_pb2.RPCRetryPolicy(retry_after_secs=2, warning_message="this-is-a-warning")],
             ),
-            api_pb2.RPCRetry(retry_after_secs=2, warning_message="this-is-a-warning"),
+            api_pb2.RPCRetryPolicy(retry_after_secs=2, warning_message="this-is-a-warning"),
         ),
     ],
 )
