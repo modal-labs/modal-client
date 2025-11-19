@@ -2,18 +2,20 @@
 import pytest
 import time
 
+from google.protobuf.any_pb2 import Any
 from grpclib import GRPCError, Status
 
 import modal
 from modal import __version__
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
+    CustomProtoStatusDetailsCodec,
     Retry,
     connect_channel,
     create_channel,
 )
 from modal.exception import InvalidError
-from modal_proto import api_grpc, api_pb2
+from modal_proto import api_grpc, api_pb2, sandbox_router_pb2
 
 from .supports.skip import skip_windows_unix_socket
 
@@ -143,6 +145,76 @@ async def test_retry_timeout_error(servicer, client):
     req = api_pb2.BlobCreateRequest()
     with pytest.raises(InvalidError, match="Retry must be None when timeout is set"):
         await wrapped_blob_create.aio(req, timeout=4.0)
+
+
+def test_CustomProtoStatusDetailsCodec_round_trip():
+    blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
+    sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
+    msgs = [blob_msg, sandbox_msg]
+
+    codec = CustomProtoStatusDetailsCodec()
+    encoded_msg = codec.encode(Status.CANCELLED, "this-is-a-message", msgs)
+    assert isinstance(encoded_msg, bytes)
+
+    decoded_status = api_pb2.RPCStatus.FromString(encoded_msg)
+    assert decoded_status.message == "this-is-a-message"
+    assert decoded_status.code == Status.CANCELLED.value
+
+    decoded_msg = codec.decode(Status.CANCELLED, None, encoded_msg)
+    assert len(decoded_msg) == 2
+    assert decoded_msg == msgs
+
+
+def test_CustomProtoStatusDetailsCodec_unknown():
+    encoded_details = [
+        Any(type_url="abc", value=b"bad"),
+    ]
+    encoded_msg = api_pb2.RPCStatus(details=encoded_details).SerializeToString()
+    codec = CustomProtoStatusDetailsCodec()
+
+    decoded_msg = codec.decode(Status.INTERNAL, None, encoded_msg)
+    assert not decoded_msg
+
+
+def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
+    """Check that rpc's encoded with the default GRPC codec works with the
+    CustomProtoStatusDetailsCodec decoder."""
+
+    # ProtoStatusDetailsCodec requires `googleapis-common-protos` to be installed,
+    # which installs `google.rpc`.
+    pytest.importorskip("google.rpc")
+
+    from grpclib.encoding.proto import ProtoStatusDetailsCodec
+
+    blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
+    sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
+    msgs = [blob_msg, sandbox_msg]
+
+    grpclib_codec = ProtoStatusDetailsCodec()
+    message = grpclib_codec.encode(Status.INTERNAL, "my-message", details=msgs)
+    codec = CustomProtoStatusDetailsCodec()
+
+    decoded_msg = codec.decode(Status.INTERNAL, None, message)
+    assert len(decoded_msg) == 2
+    assert decoded_msg == msgs
+
+
+@pytest.mark.asyncio
+async def test_codec_with_channel(servicer, client):
+    """Check codec works with channel."""
+
+    details = [api_pb2.BlobCreateResponse(blob_id="abc")]
+
+    async def raise_error(servicer, stream):
+        raise GRPCError(Status.INTERNAL, "Blob create failed", details=details)
+
+    req = api_pb2.BlobCreateRequest()
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("BlobCreate", raise_error)
+        with pytest.raises(GRPCError) as excinfo:
+            await client.stub.BlobCreate(req, retry=None, timeout=0.1)
+    assert excinfo.value.details == details
 
 
 @pytest.mark.asyncio
