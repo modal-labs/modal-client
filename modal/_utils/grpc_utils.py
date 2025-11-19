@@ -251,6 +251,18 @@ async def retry_transient_errors(
     return await _retry_transient_errors(fn, req, retry=Retry(max_retries=max_retries))
 
 
+def _server_retry_instruction(exc: Exception) -> Optional[api_pb2.RPCRetry]:
+    """Find server retry instruction."""
+    if not isinstance(exc, GRPCError) or not exc.details:
+        return None
+
+    # Server should not set multiple retry instructions, but if there is more than one, pick the first one
+    for entry in exc.details:
+        if isinstance(entry, api_pb2.RPCRetry):
+            return entry
+    return None
+
+
 async def _retry_transient_errors(
     fn: typing.Union[
         "modal._grpc_client.UnaryUnaryWrapper[RequestType, ResponseType]",
@@ -307,6 +319,18 @@ async def _retry_transient_errors(
             with suppress_tb_frames(1):
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
+            # Follow server instruction for handling retries
+            if server_retry_instruction := _server_retry_instruction(exc):
+                retry_after_sec = server_retry_instruction.retry_after_secs
+                n_retries += 1
+                logger.debug(
+                    f"Retryable failure {repr(exc)} {n_retries=} {retry_after_sec=} for {fn.name} ({idempotency_key[:8]})"
+                )
+
+                await asyncio.sleep(retry_after_sec)
+                continue
+
+            # Handle retry logic in the client
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 if exc.status == Status.UNAUTHENTICATED:
                     raise AuthError(exc.message)

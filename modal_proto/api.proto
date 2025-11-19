@@ -2645,6 +2645,11 @@ message RPCStatus {
   repeated google.protobuf.Any details = 3;
 }
 
+message RPCRetry {
+  float retry_after_secs = 1;
+  string warning_message = 2;
+}
+
 message RateLimit {
   int32 limit = 1;
   RateLimitInterval interval = 2;
