@@ -14,12 +14,14 @@
 
 # + tags=["parameters"]
 server_addr = None
+token_id = None
+token_secret = None
 # -
 
 from modal.client import Client
 from modal_proto import api_pb2
 
-client = Client(server_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"))
+client = Client(server_addr, api_pb2.CLIENT_TYPE_CLIENT, (token_id, token_secret))
 
 # +
 import modal
@@ -34,6 +36,7 @@ def hello():
 
 # + tags=["main"]
 with client:
-    with app.run(client=client):
-        hello.remote()
+    with modal.enable_output():
+        with app.run(client=client):
+            hello.remote()
 # -
