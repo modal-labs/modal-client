@@ -12,6 +12,12 @@
 #     name: python3
 # ---
 
+# + tags=["parameters"]
+server_addr = None
+token_id = None
+token_secret = None
+# -
+
 # + tags=["test_ipython_detection"]
 from modal._ipython import is_interactive_ipython
 
