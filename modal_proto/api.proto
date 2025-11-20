@@ -1550,6 +1550,7 @@ message Function {
   uint32 startup_timeout_secs = 86;
   repeated DataFormat supported_input_formats = 87; // can be used as inputs
   repeated DataFormat supported_output_formats = 88;
+  optional HTTPConfig http_config = 89;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1728,6 +1729,7 @@ message FunctionData {
   uint32 startup_timeout_secs = 36;
   repeated DataFormat supported_input_formats = 37;
   repeated DataFormat supported_output_formats = 38;
+  optional HTTPConfig http_config = 39;
 }
 
 message FunctionExtended {
@@ -2088,6 +2090,12 @@ message GenericResult {  // Used for both tasks and function outputs
   string propagation_reason = 13; // (?)
 }
 
+message HTTPConfig {
+  uint32 port = 1;
+  repeated string proxy_regions = 2;
+  uint32 startup_timeout = 3;
+  uint32 exit_grace_period = 4;
+}
 
 message Image {
   repeated BaseImage base_images = 5;
