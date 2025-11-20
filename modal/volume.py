@@ -39,6 +39,7 @@ from ._object import (
     _get_environment_name,
     _Object,
     live_method,
+    live_method_contextmanager,
     live_method_gen,
 )
 from ._resolver import Resolver
@@ -818,8 +819,8 @@ class _Volume(_Object, type_prefix="vo"):
             )
             await self._client.stub.VolumeCopyFiles2(request, retry=Retry(base_delay=1))
 
-    @live_method
-    async def batch_upload(self, force: bool = False) -> "_AbstractVolumeUploadContextManager":
+    @live_method_contextmanager
+    def batch_upload(self, force: bool = False) -> "_AbstractVolumeUploadContextManager":
         """
         Initiate a batched upload to a volume.
 

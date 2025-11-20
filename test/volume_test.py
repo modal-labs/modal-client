@@ -134,7 +134,7 @@ async def test_volume_get(servicer, client, tmp_path, version, file_contents_siz
         batch.put_file(local_file_path, file_path)
 
     data = b""
-    for chunk in vol.read_file(file_path):
+    async for chunk in vol.read_file(file_path):
         data += chunk
 
     # Faster assert to avoid huge error when there are large content differences:
