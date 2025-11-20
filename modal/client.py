@@ -5,7 +5,7 @@ import platform
 import sys
 import urllib.parse
 import warnings
-from collections.abc import AsyncGenerator, AsyncIterator, Collection, Mapping
+from collections.abc import AsyncGenerator, Collection, Mapping
 from typing import Any, ClassVar, Optional, TypeVar, Union
 
 import grpclib.client
@@ -14,7 +14,7 @@ from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._utils.async_utils import synchronizer
-from modal_proto import api_grpc, api_pb2, modal_api_grpc
+from modal_proto import api_pb2, modal_api_grpc
 from modal_version import __version__
 
 from ._traceback import print_server_warnings
@@ -70,9 +70,9 @@ class _Client:
     _client_from_env: ClassVar[Optional["_Client"]] = None
     _client_from_env_lock: ClassVar[Optional[asyncio.Lock]] = None
     _cancellation_context: TaskContext
-    _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
-    _stub: Optional[api_grpc.ModalClientStub]
-    _auth_token_manager: _AuthTokenManager = None
+    _cancellation_context_event_loop: Optional[asyncio.AbstractEventLoop] = None
+    _stub: Optional[modal_api_grpc.ModalClientModal]
+    _auth_token_manager: Optional[_AuthTokenManager] = None
     _snapshotted: bool
 
     def __init__(
@@ -90,8 +90,8 @@ class _Client:
         self._credentials = credentials
         self.version = version
         self._closed = False
-        self._stub: Optional[modal_api_grpc.ModalClientModal] = None
-        self._auth_token_manager: Optional[_AuthTokenManager] = None
+        self._stub = None
+        self._auth_token_manager = None
         self._snapshotted = False
         self._owner_pid = None
 
@@ -163,7 +163,7 @@ class _Client:
 
     @classmethod
     @asynccontextmanager
-    async def anonymous(cls, server_url: str) -> AsyncIterator["_Client"]:
+    async def anonymous(cls, server_url: str) -> AsyncGenerator["_Client", None]:
         """mdmd:hidden
         Create a connection with no credentials; to be used for token creation.
         """
