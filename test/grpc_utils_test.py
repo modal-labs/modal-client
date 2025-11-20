@@ -274,7 +274,7 @@ def test_get_server_retry_policy(exception, expected_instruction):
 
 @synchronize_api
 async def test_retry_transient_errors_grpc_retry(servicer, client, caplog, monkeypatch):
-    monkeypatch.setattr(modal._utils.grpc_utils, "SERVER_RETRY_WARNING_TIME_INTERVAL", 0.2)
+    monkeypatch.setattr(modal._utils.grpc_utils, "SERVER_RETRY_WARNING_TIME_INTERVAL", 0.3)
     req = api_pb2.BlobCreateRequest()
     servicer.fail_blob_create = [GRPCError(Status.RESOURCE_EXHAUSTED, "foobar")] + [
         GRPCError(Status.RESOURCE_EXHAUSTED, "foobar-message", details=[api_pb2.RPCRetryPolicy(retry_after_secs=0.1)])
@@ -286,7 +286,8 @@ async def test_retry_transient_errors_grpc_retry(servicer, client, caplog, monke
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "10"
 
-    assert caplog.text.count("foobar-message. Will retry in 0.10 seconds") == 5
+    # With an interval of 0.3 sec and retrying for a 1.0 sec, warning message is shown at time 0.0, 0.3, 0.6, 0.9
+    assert caplog.text.count("foobar-message. Will retry in 0.10 seconds") == 4
 
 
 @synchronize_api
