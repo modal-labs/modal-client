@@ -875,8 +875,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # This is used to test retry_transient_errors, see grpc_utils_test.py
         self.blob_create_metadata = stream.metadata
         if len(self.fail_blob_create) > 0:
-            status_code = self.fail_blob_create.pop()
-            raise GRPCError(status_code, "foobar")
+            raise self.fail_blob_create.pop()
         elif req.content_length > self.blob_multipart_threshold:
             blob_id = await self.next_blob_id()
             num_parts = (req.content_length + self.blob_multipart_threshold - 1) // self.blob_multipart_threshold

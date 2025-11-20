@@ -29,6 +29,7 @@ from modal_proto import api_pb2
 from modal_version import __version__
 
 from .._traceback import suppress_tb_frames
+from ..config import config
 from .async_utils import retry
 from .logger import logger
 
@@ -72,6 +73,7 @@ RETRYABLE_GRPC_STATUS_CODES = [
     Status.INTERNAL,
     Status.UNKNOWN,
 ]
+SERVER_RETRY_WARNING_TIME_INTERVAL = 30.0
 
 
 @dataclass
@@ -251,6 +253,50 @@ async def retry_transient_errors(
     return await _retry_transient_errors(fn, req, retry=Retry(max_retries=max_retries))
 
 
+def get_server_retry_policy(exc: Exception) -> Optional[api_pb2.RPCRetryPolicy]:
+    """Get server retry policy."""
+    if not isinstance(exc, GRPCError) or not exc.details:
+        return None
+
+    # Server should not set multiple retry instructions, but if there is more than one, pick the first one
+    for entry in exc.details:
+        if isinstance(entry, api_pb2.RPCRetryPolicy):
+            return entry
+    return None
+
+
+def process_exception_before_retry(
+    exc: Exception,
+    final_attempt: bool,
+    fn_name: str,
+    n_retries: int,
+    delay: float,
+    total_deadline: Optional[float],
+    idempotency_key: str,
+):
+    """Process exception before retry, used by `_retry_transient_errors`."""
+    with suppress_tb_frames(1):
+        if final_attempt:
+            logger.debug(
+                f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                f"{total_deadline=} for {fn_name} ({idempotency_key[:8]})"
+            )
+            if isinstance(exc, OSError):
+                raise ConnectionError(str(exc))
+            elif isinstance(exc, asyncio.TimeoutError):
+                raise ConnectionError(str(exc))
+            else:
+                raise exc
+
+        if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
+            # StreamTerminatedError are not properly raised in grpclib<=0.4.7
+            # fixed in https://github.com/vmagamedov/grpclib/issues/185
+            # TODO: update to newer version (>=0.4.8) once stable
+            raise exc
+
+    logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})")
+
+
 async def _retry_transient_errors(
     fn: typing.Union[
         "modal._grpc_client.UnaryUnaryWrapper[RequestType, ResponseType]",
@@ -273,12 +319,15 @@ async def _retry_transient_errors(
 
     delay = retry.base_delay
     n_retries = 0
+    n_throttled_retries = 0
 
     status_codes = [*RETRYABLE_GRPC_STATUS_CODES, *retry.additional_status_codes]
 
     idempotency_key = str(uuid.uuid4())
 
     t0 = time.time()
+    last_server_retry_warning_time = None
+
     if retry.total_timeout is not None:
         total_deadline = t0 + retry.total_timeout
     else:
@@ -290,14 +339,18 @@ async def _retry_transient_errors(
         attempt_metadata = [
             ("x-idempotency-key", idempotency_key),
             ("x-retry-attempt", str(n_retries)),
+            ("x-throttle-retry-attempt", str(n_throttled_retries)),
             *metadata,
         ]
         if n_retries > 0:
             attempt_metadata.append(("x-retry-delay", str(time.time() - t0)))
+        if n_throttled_retries > 0:
+            attempt_metadata.append(("x-throttle-retry-delay", str(time.time() - t0)))
+
         timeouts = []
         if retry.attempt_timeout is not None:
             timeouts.append(retry.attempt_timeout)
-        if retry.total_timeout is not None and total_deadline is not None:
+        if total_deadline is not None:
             timeouts.append(max(total_deadline - time.time(), retry.attempt_timeout_floor))
         if timeouts:
             timeout = min(timeouts)  # In case the function provided both types of timeouts
@@ -307,6 +360,39 @@ async def _retry_transient_errors(
             with suppress_tb_frames(1):
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
+            # Server side instruction for retries
+            if isinstance(exc, GRPCError) and (server_retry_policy := get_server_retry_policy(exc)):
+                server_delay = server_retry_policy.retry_after_secs
+
+                # When `total_deadline` is not defined and server gives instruction for retries, then use
+                # `max_throttle_wait`.
+                if total_deadline is None and (max_throttle_wait := config.get("max_throttle_wait")):
+                    total_deadline = t0 + max_throttle_wait
+
+                final_attempt = (
+                    total_deadline is not None
+                    and time.time() + server_delay + retry.attempt_timeout_floor >= total_deadline
+                )
+                with suppress_tb_frames(1):
+                    process_exception_before_retry(
+                        exc, final_attempt, fn.name, n_retries, server_delay, total_deadline, idempotency_key
+                    )
+
+                now = time.time()
+                if last_server_retry_warning_time is None or (
+                    now - last_server_retry_warning_time >= SERVER_RETRY_WARNING_TIME_INTERVAL
+                ):
+                    last_server_retry_warning_time = now
+                    logger.warning(
+                        f"Warning: Received failure {exc.status}: {exc.message}. "
+                        f"Will retry in {server_delay:0.2f} seconds."
+                    )
+
+                n_throttled_retries += 1
+                await asyncio.sleep(server_delay)
+                continue
+
+            # Client handles retry
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 if exc.status == Status.UNAUTHENTICATED:
                     raise AuthError(exc.message)
@@ -320,25 +406,9 @@ async def _retry_transient_errors(
                 final_attempt = False
 
             with suppress_tb_frames(1):
-                if final_attempt:
-                    logger.debug(
-                        f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
-                        f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
-                    )
-                    if isinstance(exc, OSError):
-                        raise ConnectionError(str(exc))
-                    elif isinstance(exc, asyncio.TimeoutError):
-                        raise ConnectionError(str(exc))
-                    else:
-                        raise exc
-
-                if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
-                    # StreamTerminatedError are not properly raised in grpclib<=0.4.7
-                    # fixed in https://github.com/vmagamedov/grpclib/issues/185
-                    # TODO: update to newer version (>=0.4.8) once stable
-                    raise exc
-
-            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
+                process_exception_before_retry(
+                    exc, final_attempt, fn.name, n_retries, delay, total_deadline, idempotency_key
+                )
 
             n_retries += 1
 

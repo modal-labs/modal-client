@@ -217,6 +217,13 @@ def _enforce_suffix_rules(x: str) -> str:
     return x
 
 
+def _int_or_none(x: str) -> Optional[int]:
+    if not x:
+        return None
+    x_int = int(x)
+    return x_int if x_int > 0 else None
+
+
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
@@ -258,6 +265,7 @@ _SETTINGS = {
         transform=lambda s: _check_value(["pickle", "cbor"])(s.lower()),
     ),
     "dev_suffix": _Setting("", transform=_enforce_suffix_rules),
+    "max_throttle_wait": _Setting(None, transform=_int_or_none),
 }
 
 
