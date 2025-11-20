@@ -66,8 +66,9 @@ class LoadContext:
 
         Returns a new instance (no in place mutation)"""
 
+        is_valid_client = self._client is not None and not self._client._snapshotted
         return LoadContext(
-            client=await _Client.from_env() if self._client is None else self.client,
+            client=self.client if is_valid_client else await _Client.from_env(),
             environment_name=self._environment_name or config.get("environment") or "",
             app_id=self._app_id,
         )
