@@ -52,7 +52,7 @@ Other possible configuration options are:
   Number of seconds to wait for logs to drain when closing the session,
   before giving up.
 * `max_throttle_wait` (in the .toml file) / `MODAL_MAX_THROTTLE_WAIT` (as an env var).
-  Defaults to None.
+  Defaults to None (no limit).
   Maximum number of seconds to wait when requests are being throttled (i.e., due
   to rate limiting or other cases that can normally be resolved through backoff).
 * `force_build` (in the .toml file) / `MODAL_FORCE_BUILD` (as an env var).

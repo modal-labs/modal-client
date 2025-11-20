@@ -292,6 +292,8 @@ def process_exception_before_retry(
             # StreamTerminatedError are not properly raised in grpclib<=0.4.7
             # fixed in https://github.com/vmagamedov/grpclib/issues/185
             # TODO: update to newer version (>=0.4.8) once stable
+            # Also be sure to remove the AttributeError from the set of exceptions
+            # we handle in the retry logic once we drop this check!
             raise exc
 
     logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})")
