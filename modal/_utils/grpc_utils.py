@@ -292,6 +292,8 @@ def process_exception_before_retry(
             # StreamTerminatedError are not properly raised in grpclib<=0.4.7
             # fixed in https://github.com/vmagamedov/grpclib/issues/185
             # TODO: update to newer version (>=0.4.8) once stable
+            # Also be sure to remove the AttributeError from the set of exceptions
+            # we handle in the retry logic once we drop this check!
             raise exc
 
     logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})")
@@ -360,6 +362,9 @@ async def _retry_transient_errors(
             with suppress_tb_frames(1):
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
+            # Note that we only catch AttributeError to handle a specific case that works around a bug
+            # in grpclib<=0.4.7. See above (search for `write_appdata`).
+
             # Server side instruction for retries
             if isinstance(exc, GRPCError) and (server_retry_policy := get_server_retry_policy(exc)):
                 server_delay = server_retry_policy.retry_after_secs
@@ -384,7 +389,7 @@ async def _retry_transient_errors(
                 ):
                     last_server_retry_warning_time = now
                     logger.warning(
-                        f"Warning: Received failure {exc.status}: {exc.message}. "
+                        f"Warning: Received {exc.status} status: {exc.message}. "
                         f"Will retry in {server_delay:0.2f} seconds."
                     )
 
