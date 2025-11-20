@@ -311,7 +311,8 @@ class _Object:
                 if self._hydrate_lazily:
                     logger.debug(f"reloading lazy {self} from server")
                     self._is_hydrated = False  # un-hydrate and re-resolve
-                    # client will be defaulted by resolver that ignores stale clients
+                    # we don't set an explicit Client here, relying on the default
+                    # env client to be applied by LoadContext.apply_default
                     root_load_context = LoadContext.empty()
                     resolver = Resolver()
                     await resolver.load(typing.cast(_Object, self), root_load_context)
