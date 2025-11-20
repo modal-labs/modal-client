@@ -383,7 +383,6 @@ async def _retry_transient_errors(
                         f"Will retry in {server_delay:0.2f} seconds."
                     )
 
-                n_retries += 1
                 await asyncio.sleep(server_delay)
                 continue
 
