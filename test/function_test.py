@@ -637,6 +637,8 @@ async def test_function_future_async(client, servicer):
         servicer.function_is_running = False
         assert await future.get.aio(0.01) == "hello"
         assert future.object_id not in servicer.cleared_function_calls  # keep results around a bit longer for futures
+        fc2 = modal.FunctionCall.from_id(future.object_id, client=client)
+        assert await fc2.get.aio() == "hello"
 
 
 def later_gen():
