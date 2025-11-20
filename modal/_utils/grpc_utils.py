@@ -345,7 +345,7 @@ async def _retry_transient_errors(
         timeouts = []
         if retry.attempt_timeout is not None:
             timeouts.append(retry.attempt_timeout)
-        if retry.total_timeout is not None and total_deadline is not None:
+        if total_deadline is not None:
             timeouts.append(max(total_deadline - time.time(), retry.attempt_timeout_floor))
         if timeouts:
             timeout = min(timeouts)  # In case the function provided both types of timeouts
