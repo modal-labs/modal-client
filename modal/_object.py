@@ -43,7 +43,7 @@ class _Object:
     _prefix_to_type: ClassVar[dict[str, type]] = {}
 
     # For constructors
-    _load: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]]
+    _load: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None
     _preload: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]]
     _rep: str
     _is_another_app: bool
@@ -293,6 +293,18 @@ class _Object:
 
         return self._deps if self._deps is not None else default_deps
 
+    def _is_loadable(self) -> bool:
+        """If the object can be freely loaded/reloaded from backend to get metadata etc.
+
+        This is typically True, except for some things:
+        * Objects that have to be loaded as part of App creation, e.g. @app.function-returned modal.Function objects
+        * Objects returned by Object._new_hydrated() - these should typically have all their metadata statically
+          assigned at creation
+
+        For internal use.
+        """
+        return self._load is not None
+
     async def hydrate(self, client: Optional[_Client] = None) -> Self:
         """Synchronize the local object with its identity on the Modal server.
 
@@ -308,11 +320,16 @@ class _Object:
                 # memory snapshots capture references which must be rehydrated
                 # on restore to handle staleness.
                 logger.debug(f"rehydrating {self} after snapshot")
-                self._is_hydrated = False  # un-hydrate and re-resolve
-                # Set the client on LoadContext before loading
-                root_load_context = LoadContext(client=client)
-                resolver = Resolver()
-                await resolver.load(typing.cast(_Object, self), root_load_context)
+                if self._is_loadable():
+                    logger.debug(f"reloading {self} from server")
+                    self._is_hydrated = False  # un-hydrate and re-resolve
+                    # Set the client on LoadContext before loading
+                    root_load_context = LoadContext(client=client)
+                    resolver = Resolver()
+                    await resolver.load(typing.cast(_Object, self), root_load_context)
+                else:
+                    logger.debug(f"updating client of {self} in-place")
+                    self._client = client or await _Client.from_env()
                 self._is_rehydrated = True
                 logger.debug(f"rehydrated {self} with client {id(self.client)}")
         elif not self._hydrate_lazily:
