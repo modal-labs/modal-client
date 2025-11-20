@@ -361,12 +361,17 @@ async def _retry_transient_errors(
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             # Server side instruction for retries
-            if isinstance(exc, GRPCError) and (server_retry_policy := get_server_retry_policy(exc)):
+            max_throttle_wait: Optional[int] = config.get("max_throttle_wait")
+            if (
+                max_throttle_wait != 0
+                and isinstance(exc, GRPCError)
+                and (server_retry_policy := get_server_retry_policy(exc))
+            ):
                 server_delay = server_retry_policy.retry_after_secs
 
                 # When `total_deadline` is not defined and server gives instruction for retries, then use
                 # `max_throttle_wait`.
-                if total_deadline is None and (max_throttle_wait := config.get("max_throttle_wait")):
+                if total_deadline is None and max_throttle_wait is not None:
                     total_deadline = t0 + max_throttle_wait
 
                 final_attempt = (

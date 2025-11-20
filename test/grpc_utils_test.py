@@ -297,11 +297,33 @@ async def test_retry_transient_errors_grpc_retry_total_timeout(servicer, client,
     monkeypatch.setenv("MODAL_MAX_THROTTLE_WAIT", "1")
     req = api_pb2.BlobCreateRequest()
     servicer.fail_blob_create = [
+        GRPCError(Status.RESOURCE_EXHAUSTED, "foobar"),
         GRPCError(
             Status.RESOURCE_EXHAUSTED,
             "foobar-message",
-            details=[api_pb2.RPCRetryPolicy(retry_after_secs=3)],
-        )
+            details=[api_pb2.RPCRetryPolicy(retry_after_secs=2)],
+        ),
+    ]
+
+    with pytest.raises(GRPCError):
+        await client.stub.BlobCreate(req)
+
+    assert servicer.blob_create_metadata.get("x-throttle-retry-attempt") == "0"
+
+
+@synchronize_api
+async def test_retry_transient_errors_grpc_no_retries(servicer, client, monkeypatch):
+    """No retries when MODAL_MAX_THROTTLE_WAIT is 0."""
+
+    monkeypatch.setenv("MODAL_MAX_THROTTLE_WAIT", "0")
+    req = api_pb2.BlobCreateRequest()
+    servicer.fail_blob_create = [
+        GRPCError(Status.RESOURCE_EXHAUSTED, "foobar"),
+        GRPCError(
+            Status.RESOURCE_EXHAUSTED,
+            "foobar-message",
+            details=[api_pb2.RPCRetryPolicy(retry_after_secs=0.1)],
+        ),
     ]
 
     with pytest.raises(GRPCError):
