@@ -192,7 +192,7 @@ def test_dev_suffix_rules(modal_config, suffix):
             Config().get("dev_suffix")
 
 
-@pytest.mark.parametrize("wait, expected", [("0", None), ("13", 13)])
+@pytest.mark.parametrize("wait, expected", [("0", 0), ("13", 13)])
 def test_max_throttle_wait(modal_config, wait, expected):
     modal_toml = f"""
     [default]
