@@ -271,15 +271,13 @@ def process_exception_before_retry(
     fn_name: str,
     n_retries: int,
     delay: float,
-    total_deadline: Optional[float],
     idempotency_key: str,
 ):
     """Process exception before retry, used by `_retry_transient_errors`."""
     with suppress_tb_frames(1):
         if final_attempt:
             logger.debug(
-                f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
-                f"{total_deadline=} for {fn_name} ({idempotency_key[:8]})"
+                f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})"
             )
             if isinstance(exc, OSError):
                 raise ConnectionError(str(exc))
@@ -356,6 +354,7 @@ async def _retry_transient_errors(
             timeout = min(timeouts)  # In case the function provided both types of timeouts
         else:
             timeout = None
+
         try:
             with suppress_tb_frames(1):
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
@@ -369,18 +368,21 @@ async def _retry_transient_errors(
             ):
                 server_delay = server_retry_policy.retry_after_secs
 
-                # When `total_deadline` is not defined and server gives instruction for retries, then use
-                # `max_throttle_wait`.
-                if total_deadline is None and max_throttle_wait is not None:
-                    total_deadline = t0 + max_throttle_wait
+                now = time.time()
 
-                final_attempt = (
-                    total_deadline is not None
-                    and time.time() + server_delay + retry.attempt_timeout_floor >= total_deadline
+                # We check if the timeout will be reached **after** the sleep so we can raise the error early
+                # without needing to actually sleep
+                total_timeout_will_be_reached = (
+                    retry.total_timeout is not None and (now + server_delay - t0) >= retry.total_timeout
                 )
+                max_throttle_will_be_reached = (
+                    max_throttle_wait is not None and (now + server_delay - t0) >= max_throttle_wait
+                )
+                final_attempt = total_timeout_will_be_reached or max_throttle_will_be_reached
+
                 with suppress_tb_frames(1):
                     process_exception_before_retry(
-                        exc, final_attempt, fn.name, n_retries, server_delay, total_deadline, idempotency_key
+                        exc, final_attempt, fn.name, n_retries, server_delay, idempotency_key
                     )
 
                 now = time.time()
@@ -411,9 +413,7 @@ async def _retry_transient_errors(
                 final_attempt = False
 
             with suppress_tb_frames(1):
-                process_exception_before_retry(
-                    exc, final_attempt, fn.name, n_retries, delay, total_deadline, idempotency_key
-                )
+                process_exception_before_retry(exc, final_attempt, fn.name, n_retries, delay, idempotency_key)
 
             n_retries += 1
 
