@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.3.dev13 (2025-11-20)
+
+* Fixed an issue where some modal Objects (like FunctionCall as returned by Function.spawn()) that were captured by memory snapshots were not usable in resumed containers, resulting in `has no loader function` errors when these objects were used.
+
+
 #### 1.2.3.dev9 (2025-11-19)
 
 * Added `nonpreemptible` parameter to @app.function() and @app.cls() for running CPU-only functions on non-preemptible instances. Note that using this flag applies a 3x multiplier to CPU and memory pricing.
