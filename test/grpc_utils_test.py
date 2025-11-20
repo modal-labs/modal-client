@@ -284,7 +284,7 @@ async def test_retry_transient_errors_grpc_retry(servicer, client, caplog, monke
         await client.stub.BlobCreate(req)
 
     assert servicer.blob_create_metadata.get("x-idempotency-key")
-    assert servicer.blob_create_metadata.get("x-retry-attempt") == "10"
+    assert servicer.blob_create_metadata.get("x-throttle-retry-attempt") == "10"
 
     # With an interval of 0.3 sec and retrying for a 1.0 sec, warning message is shown at time 0.0, 0.3, 0.6, 0.9
     assert caplog.text.count("foobar-message. Will retry in 0.10 seconds") == 4
@@ -307,4 +307,4 @@ async def test_retry_transient_errors_grpc_retry_total_timeout(servicer, client,
     with pytest.raises(GRPCError):
         await client.stub.BlobCreate(req)
 
-    assert servicer.blob_create_metadata.get("x-retry-attempt") == "0"
+    assert servicer.blob_create_metadata.get("x-throttle-retry-attempt") == "0"

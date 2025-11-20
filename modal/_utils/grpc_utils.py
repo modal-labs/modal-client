@@ -344,6 +344,9 @@ async def _retry_transient_errors(
         ]
         if n_retries > 0:
             attempt_metadata.append(("x-retry-delay", str(time.time() - t0)))
+        if n_throttled_retries > 0:
+            attempt_metadata.append(("x-throttle-retry-delay", str(time.time() - t0)))
+
         timeouts = []
         if retry.attempt_timeout is not None:
             timeouts.append(retry.attempt_timeout)
