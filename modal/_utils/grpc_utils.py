@@ -319,6 +319,7 @@ async def _retry_transient_errors(
 
     delay = retry.base_delay
     n_retries = 0
+    n_throttled_retries = 0
 
     status_codes = [*RETRYABLE_GRPC_STATUS_CODES, *retry.additional_status_codes]
 
@@ -338,6 +339,7 @@ async def _retry_transient_errors(
         attempt_metadata = [
             ("x-idempotency-key", idempotency_key),
             ("x-retry-attempt", str(n_retries)),
+            ("x-throttle-retry-attempt", str(n_throttled_retries)),
             *metadata,
         ]
         if n_retries > 0:
@@ -383,6 +385,7 @@ async def _retry_transient_errors(
                         f"Will retry in {server_delay:0.2f} seconds."
                     )
 
+                n_throttled_retries += 1
                 await asyncio.sleep(server_delay)
                 continue
 
