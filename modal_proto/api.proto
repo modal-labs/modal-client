@@ -4,6 +4,7 @@ option go_package = "github.com/modal-labs/modal/go/proto";
 
 package modal.client;
 
+import "google/protobuf/any.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
@@ -2047,6 +2048,7 @@ message GPUConfig {
   string gpu_type = 4;
 }
 
+
 message GeneratorDone {  // Sent as the output when a generator finishes running.
   uint64 items_total = 1;
 }
@@ -2640,6 +2642,16 @@ message QueuePutRequest {
   int32 partition_ttl_seconds = 6;
 }
 
+// A copy google.rpc.Status for GRPCError.details:
+// https://github.com/googleapis/googleapis/blob/master/google/rpc/status.proto
+// RPCStatus is compatible with google.rpc.Status, so one can encode messages using
+// google.rpc.Status. The `details` field can be a list of any message, but for client
+// to decode it, the messages should be defined here (`modal_proto`).
+message RPCStatus {
+  int32 code = 1;
+  string message = 2;
+  repeated google.protobuf.Any details = 3;
+}
 
 message RateLimit {
   int32 limit = 1;
