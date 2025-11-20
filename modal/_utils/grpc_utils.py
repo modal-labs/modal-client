@@ -265,7 +265,7 @@ def get_server_retry_policy(exc: Exception) -> Optional[api_pb2.RPCRetryPolicy]:
     return None
 
 
-def _process_exception_before_retry(
+def process_exception_before_retry(
     exc: Exception,
     final_attempt: bool,
     fn_name: str,
@@ -369,7 +369,7 @@ async def _retry_transient_errors(
                     and time.time() + server_delay + retry.attempt_timeout_floor >= total_deadline
                 )
                 with suppress_tb_frames(1):
-                    _process_exception_before_retry(
+                    process_exception_before_retry(
                         exc, final_attempt, fn.name, n_retries, server_delay, total_deadline, idempotency_key
                     )
 
@@ -401,7 +401,7 @@ async def _retry_transient_errors(
                 final_attempt = False
 
             with suppress_tb_frames(1):
-                _process_exception_before_retry(
+                process_exception_before_retry(
                     exc, final_attempt, fn.name, n_retries, delay, total_deadline, idempotency_key
                 )
 
