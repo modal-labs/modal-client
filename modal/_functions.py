@@ -1677,9 +1677,7 @@ Use the `Function.get_web_url()` method instead.
             input_queue,
             self.client,
         )
-        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
-            function_call_id, self.client, None, rep="modal.Function._spawn_map(...)"
-        )
+        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(function_call_id, self.client, None)
         fc._num_inputs = num_inputs  # set the cached value of num_inputs
         return fc
 
@@ -1866,7 +1864,7 @@ Use the `Function.get_web_url()` method instead.
             )
 
         fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
-            invocation.function_call_id, invocation.client, None, rep="modal.Function._experimental_spawn(...)"
+            invocation.function_call_id, invocation.client, None
         )
         fc._is_generator = self._is_generator if self._is_generator else False
         return fc
@@ -1897,7 +1895,7 @@ Use the `Function.get_web_url()` method instead.
             invocation = await self._call_function_nowait(args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC)
 
         fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
-            invocation.function_call_id, invocation.client, None, rep="modal.Function.spawn(...)"
+            invocation.function_call_id, invocation.client, None
         )
         return fc
 
