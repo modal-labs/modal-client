@@ -73,7 +73,7 @@ class _Client:
     _cancellation_context_event_loop: Optional[asyncio.AbstractEventLoop] = None
     _stub: Optional[modal_api_grpc.ModalClientModal]
     _auth_token_manager: Optional[_AuthTokenManager] = None
-    _snapshotted: bool
+    _snapshotted: bool = False
 
     def __init__(
         self,
