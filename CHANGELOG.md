@@ -6,26 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.2.3.dev14 (2025-11-20)
-
-- Improve reliability with server side instruction used to retry RPC calls.
-
-
-#### 1.2.3.dev13 (2025-11-20)
-
-* Fixed an issue where some modal Objects (like FunctionCall as returned by Function.spawn()) that were captured by memory snapshots were not usable in resumed containers, resulting in `has no loader function` errors when these objects were used.
-
-
-#### 1.2.3.dev9 (2025-11-19)
-
-* Added `nonpreemptible` parameter to @app.function() and @app.cls() for running CPU-only functions on non-preemptible instances. Note that using this flag applies a 3x multiplier to CPU and memory pricing.
-* The `_experimental_scheduler_placement` parameter is now deprecated in favor of `region` and `nonpreemptible`.
-
-
-#### 1.2.3.dev7 (2025-11-17)
-
-- Added `modal shell --add-local dir/` for mounting local files and directories.
-
+- CPU Functions can now be configured to run on non-preemptible capacity by setting `nonpreemptible=True` in the `@app.function()` or `@app.cls()` decorator. This feature is not currently available when requesting a GPU. Note that non-preemptibility incurs a 3x multiplier on CPU and memory pricing. See the [Guide](https://modal.com/docs/guide/preemption) for more information on preemptions.
+- The Modal client can now respond more gracefully to server throttling (e.g., rate limiting) by backing off and automatically retrying. This behavior can be controlled with a new `MODAL_MAX_THROTTLE_WAIT` config variable. Setting the config to `0` will preserve the previous behavior and treat rate limits as an exception; setting it to a nonzero number (the unit is seconds) will allow a limited duration of retries.
+- The `modal.Sandbox.exec` implementation been rewritten to be more reliable and efficient.
+- Added a new `--add-local` flag to `modal shell`, allowing local files and directories to be included in the shell's container.
+- Fixed a bug introduced in 1.2.2 where some Modal objects (e.g., `modal.FunctionCall`) were not usable after being captured in a Memory Snapshot. The bug would result in a `has no loader function` error when the object was used.
 
 ### 1.2.2 (2025-11-10)
 
