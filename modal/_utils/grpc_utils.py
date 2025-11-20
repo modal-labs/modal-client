@@ -395,7 +395,7 @@ async def _retry_transient_errors(
                     f"Warning: Received failure {exc.status}: {exc.message}. Will retry in {server_delay:0.2f} seconds."
                 )
 
-            if server_delay:
+            if server_delay is not None:
                 await asyncio.sleep(server_delay)
             else:
                 await asyncio.sleep(delay)
