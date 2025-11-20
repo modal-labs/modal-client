@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.3.dev14 (2025-11-20)
+
+- Improve reliability with server side instruction used to retry RPC calls.
+
+
 #### 1.2.3.dev13 (2025-11-20)
 
 * Fixed an issue where some modal Objects (like FunctionCall as returned by Function.spawn()) that were captured by memory snapshots were not usable in resumed containers, resulting in `has no loader function` errors when these objects were used.
