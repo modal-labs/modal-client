@@ -370,8 +370,8 @@ async def _retry_transient_errors(
 
                 now = time.time()
 
-                # We check if the timeout will be reached **after** the sleep so we can raise the error early
-                # without needing to actually sleep
+                # We check if the timeout will be reached **after** the sleep, so we can raise an error early
+                # without needing to actually sleep.
                 total_timeout_will_be_reached = (
                     retry.total_timeout is not None and (now + server_delay - t0) >= retry.total_timeout
                 )
