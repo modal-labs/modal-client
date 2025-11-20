@@ -273,7 +273,7 @@ def test_get_server_retry_policy(exception, expected_instruction):
 
 
 @pytest.mark.asyncio
-async def test_retry_transient_errors_grp_retry(servicer, client, caplog, monkeypatch):
+async def test_retry_transient_errors_grpc_retry(servicer, client, caplog, monkeypatch):
     monkeypatch.setattr(modal._utils.grpc_utils, "SERVER_RETRY_WARNING_TIME_INTERVAL", 0.2)
     client_stub = client.stub
 
@@ -282,14 +282,40 @@ async def test_retry_transient_errors_grp_retry(servicer, client, caplog, monkey
         return await client_stub.BlobCreate(req, **kwargs)
 
     req = api_pb2.BlobCreateRequest()
-
     servicer.fail_blob_create = [GRPCError(Status.RESOURCE_EXHAUSTED, "foobar")] + [
         GRPCError(Status.RESOURCE_EXHAUSTED, "foobar-message", details=[api_pb2.RPCRetryPolicy(retry_after_secs=0.1)])
     ] * 10
 
     with pytest.raises(GRPCError):
         await wrapped_blob_create.aio(req)
+
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "10"
 
     assert caplog.text.count("foobar-message. Will retry in 0.10 seconds") == 5
+
+
+@pytest.mark.asyncio
+async def test_retry_transient_errors_grpc_retry_total_timeout(servicer, client, monkeypatch):
+    """No retries when MODAL_MAX_THROTTLE_WAIT is lower than retry_after_secs."""
+
+    monkeypatch.setenv("MODAL_MAX_THROTTLE_WAIT", "1")
+    client_stub = client.stub
+
+    @synchronize_api
+    async def wrapped_blob_create(req, **kwargs):
+        return await client_stub.BlobCreate(req, **kwargs)
+
+    req = api_pb2.BlobCreateRequest()
+    servicer.fail_blob_create = [
+        GRPCError(
+            Status.RESOURCE_EXHAUSTED,
+            "foobar-message",
+            details=[api_pb2.RPCRetryPolicy(retry_after_secs=3)],
+        )
+    ]
+
+    with pytest.raises(GRPCError):
+        await wrapped_blob_create.aio(req)
+
+    assert servicer.blob_create_metadata.get("x-retry-attempt") == "0"

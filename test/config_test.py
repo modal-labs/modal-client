@@ -190,3 +190,14 @@ def test_dev_suffix_rules(modal_config, suffix):
     with modal_config(modal_toml):
         with pytest.raises(InvalidError, match="alphanumeric string"):
             Config().get("dev_suffix")
+
+
+@pytest.mark.parametrize("wait, expected", [("0", None), ("13", 13)])
+def test_max_throttle_wait(modal_config, wait, expected):
+    modal_toml = f"""
+    [default]
+    max_throttle_wait = '{wait}'
+    """
+    with modal_config(modal_toml):
+        result = Config().get("max_throttle_wait")
+        assert result == expected

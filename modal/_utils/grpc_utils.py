@@ -29,6 +29,7 @@ from modal_proto import api_pb2
 from modal_version import __version__
 
 from .._traceback import suppress_tb_frames
+from ..config import config
 from .async_utils import retry
 from .logger import logger
 
@@ -322,45 +323,36 @@ async def _retry_transient_errors(
             with suppress_tb_frames(1):
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
-            # Follow server instruction for handling retries, we skip the final_attempt flow
-            # because the server instruction takes precedence
+            server_delay = None
             if isinstance(exc, GRPCError) and (server_retry_policy := get_server_retry_policy(exc)):
-                retry_after_sec = server_retry_policy.retry_after_secs
+                server_delay = server_retry_policy.retry_after_secs
 
-                now = time.time()
-                if last_server_retry_warning_time is None or (
-                    now - last_server_retry_warning_time >= SERVER_RETRY_WARNING_TIME_INTERVAL
-                ):
-                    last_server_retry_warning_time = now
-                    logger.warning(
-                        f"Warning: Received {exc.status}: {exc.message}. Will retry in {retry_after_sec:0.2f} seconds."
-                    )
+                # Override total_deadline with `max_throttle_wait` when a server signals to retry.
+                if total_deadline is None and (max_throttle_wait := config.get("max_throttle_wait")):
+                    total_deadline = t0 + max_throttle_wait
 
-                n_retries += 1
-                logger.debug(
-                    f"Retryable failure {repr(exc)} {n_retries=} {retry_after_sec=} "
-                    f"for {fn.name} ({idempotency_key[:8]})"
-                )
-                await asyncio.sleep(retry_after_sec)
-                continue
-
-            # Handle retry logic in the client
-            if isinstance(exc, GRPCError) and exc.status not in status_codes:
+            elif isinstance(exc, GRPCError) and exc.status not in status_codes:
                 if exc.status == Status.UNAUTHENTICATED:
                     raise AuthError(exc.message)
                 else:
                     raise exc
-            if retry.max_retries is not None and n_retries >= retry.max_retries:
-                final_attempt = True
-            elif total_deadline is not None and time.time() + delay + retry.attempt_timeout_floor >= total_deadline:
-                final_attempt = True
-            else:
-                final_attempt = False
+
+            current_delay = server_delay or delay
+            now = time.time()
+
+            # If there is server supplied delay, then we do not check for max_retries.
+            max_retried_reached = (
+                server_delay is None and retry.max_retries is not None and n_retries >= retry.max_retries
+            )
+            deadline_reached = (
+                total_deadline is not None and now + current_delay + retry.attempt_timeout_floor >= total_deadline
+            )
+            final_attempt = max_retried_reached or deadline_reached
 
             with suppress_tb_frames(1):
                 if final_attempt:
                     logger.debug(
-                        f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                        f"Final attempt failed with {repr(exc)} {n_retries=} {current_delay=} "
                         f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
                     )
                     if isinstance(exc, OSError):
@@ -376,7 +368,9 @@ async def _retry_transient_errors(
                     # TODO: update to newer version (>=0.4.8) once stable
                     raise exc
 
-            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
+            logger.debug(
+                f"Retryable failure {repr(exc)} {n_retries=} {current_delay=} for {fn.name} ({idempotency_key[:8]})"
+            )
 
             n_retries += 1
 
@@ -388,8 +382,24 @@ async def _retry_transient_errors(
             ):
                 logger.warning(retry.warning_message.message)
 
-            await asyncio.sleep(delay)
-            delay = min(delay * retry.delay_factor, retry.max_delay)
+            if (
+                isinstance(exc, GRPCError)
+                and server_delay
+                and (
+                    last_server_retry_warning_time is None
+                    or (now - last_server_retry_warning_time >= SERVER_RETRY_WARNING_TIME_INTERVAL)
+                )
+            ):
+                last_server_retry_warning_time = now
+                logger.warning(
+                    f"Warning: Received failure {exc.status}: {exc.message}. Will retry in {server_delay:0.2f} seconds."
+                )
+
+            if server_delay:
+                await asyncio.sleep(server_delay)
+            else:
+                await asyncio.sleep(delay)
+                delay = min(delay * retry.delay_factor, retry.max_delay)
 
 
 def find_free_port() -> int:
