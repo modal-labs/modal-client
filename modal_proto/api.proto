@@ -2091,8 +2091,8 @@ message GenericResult {  // Used for both tasks and function outputs
 message HTTPConfig {
   uint32 port = 1;
   repeated string proxy_regions = 2;
-  uint32 startup_timeout_secs = 3;
-  uint32 exit_grace_period_secs = 4;
+  uint32 startup_timeout = 3;
+  uint32 exit_grace_period = 4;
 }
 
 message Image {
