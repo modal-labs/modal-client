@@ -21,7 +21,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._functions import _Function
-from ._ipython import is_notebook
+from ._ipython import is_interactive_ipython
 from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
 from ._partial_function import (
@@ -509,7 +509,7 @@ class _App:
             if old_function is function:
                 return  # already added the same exact instance, ignore
 
-            if not is_notebook():
+            if not is_interactive_ipython():
                 logger.warning(
                     f"Warning: function name '{function.tag}' collision!"
                     " Overriding existing function "
