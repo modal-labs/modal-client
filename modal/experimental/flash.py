@@ -30,13 +30,14 @@ class _FlashManager:
         port: int,
         process: Optional[subprocess.Popen] = None,
         health_check_url: Optional[str] = None,
+        h2_enabled: bool = False,
     ):
         self.client = client
         self.port = port
         # Health check is not currently being used
         self.health_check_url = health_check_url
         self.process = process
-        self.tunnel_manager = _forward_tunnel(port, client=client)
+        self.tunnel_manager = _forward_tunnel(port, h2_enabled=h2_enabled, client=client)
         self.stopped = False
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
@@ -170,6 +171,7 @@ async def flash_forward(
     port: int,
     process: Optional[subprocess.Popen] = None,
     health_check_url: Optional[str] = None,
+    h2_enabled: bool = False,
 ) -> _FlashManager:
     """
     Forward a port to the Modal Flash service, exposing that port as a stable web endpoint.
@@ -178,7 +180,7 @@ async def flash_forward(
     """
     client = await _Client.from_env()
 
-    manager = _FlashManager(client, port, process=process, health_check_url=health_check_url)
+    manager = _FlashManager(client, port, process=process, health_check_url=health_check_url, h2_enabled=h2_enabled)
     await manager._start()
     return manager
 

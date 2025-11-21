@@ -51,12 +51,16 @@ class Tunnel:
 
 
 @asynccontextmanager
-async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Client] = None) -> AsyncIterator[Tunnel]:
+async def _forward(
+    port: int, *, unencrypted: bool = False, h2_enabled: bool = False, client: Optional[_Client] = None
+) -> AsyncIterator[Tunnel]:
     """Expose a port publicly from inside a running Modal container, with TLS.
 
     If `unencrypted` is set, this also exposes the TCP socket without encryption on a random port
     number. This can be used to SSH into a container (see example below). Note that it is on the public Internet, so
     make sure you are using a secure protocol over TCP.
+
+    If `h2_enabled` is set, the TLS server will advertise support for HTTP/2.
 
     **Important:** This is an experimental API which may change in the future.
 
@@ -168,6 +172,8 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
         raise InvalidError(f"The port argument should be an int, not {port!r}")
     if port < 1 or port > 65535:
         raise InvalidError(f"Invalid port number {port}")
+    if h2_enabled and unencrypted:
+        raise InvalidError("H2 can only be used with encrypted ports")
 
     if not client:
         client = await _Client.from_env()
@@ -175,8 +181,11 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
     if client.client_type != api_pb2.CLIENT_TYPE_CONTAINER:
         raise InvalidError("Forwarding ports only works inside a Modal container")
 
+    tunnel_type = api_pb2.TUNNEL_TYPE_H2 if h2_enabled else api_pb2.TUNNEL_TYPE_UNSPECIFIED
     try:
-        response = await client.stub.TunnelStart(api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted))
+        response = await client.stub.TunnelStart(
+            api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted, tunnel_type=tunnel_type)
+        )
     except GRPCError as exc:
         if exc.status == Status.ALREADY_EXISTS:
             raise InvalidError(f"Port {port} is already forwarded")
