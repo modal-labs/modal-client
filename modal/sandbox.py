@@ -938,7 +938,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         elif stderr == StreamType.DEVNULL:
             stderr_config = sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_DEVNULL
         elif stderr == StreamType.STDOUT:
-            stderr_config = sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_STDOUT
+            # Stream stderr to the client so that it can be printed locally in the reader.
+            stderr_config = sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_PIPE
         else:
             raise ValueError("Unsupported StreamType for stderr")
 
