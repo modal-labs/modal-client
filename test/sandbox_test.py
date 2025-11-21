@@ -526,6 +526,17 @@ def test_sandbox_exec_with_streamtype_stdout_and_text_true_prints_to_stdout(app,
 
 @skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_with_streamtype_stderr_and_text_true_prints_to_stdout(app, servicer, exec_backend, capsys):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("bash", "-c", "echo hi >&2", stderr=StreamType.STDOUT)
+    cp.wait()
+
+    assert capsys.readouterr().out == "hi\n"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
 def test_sandbox_exec_with_streamtype_stdout_and_text_true_and_bufsize_1_prints_to_stdout(
     app, servicer, exec_backend, capsys
 ):
