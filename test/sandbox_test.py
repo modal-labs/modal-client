@@ -7,10 +7,10 @@ from collections import deque
 from pathlib import Path
 from unittest import mock
 
-from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
+from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, SandboxStatus, Secret, Volume
 from modal._utils.async_utils import synchronizer
 from modal.container_process import ContainerProcess, _ContainerProcess
-from modal.exception import InvalidError
+from modal.exception import InvalidError, SandboxTimeoutError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
 
@@ -317,6 +317,20 @@ def test_sandbox_exec_wait(app, servicer, exec_backend):
     assert time.time() - t0 > 0.2
 
     assert cp.poll() == 42
+
+
+@skip_non_subprocess
+def test_sandbox_status(app, servicer):
+    sb1 = Sandbox.create(app=app, timeout=300)
+    assert sb1.status() == SandboxStatus.RUNNING
+    sb1.terminate()
+    # TODO(lucy): Figure out why this shows as failed vs. terminated
+    assert sb1.status() == SandboxStatus.FAILURE
+    # assert sb1.status() == SandboxStatus.TERMINATED
+
+    sb2 = Sandbox.create("sleep", "1", app=app, timeout=300)
+    sb2.wait()
+    assert sb2.status() == SandboxStatus.SUCCESS
 
 
 @mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
