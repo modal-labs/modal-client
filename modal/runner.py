@@ -587,7 +587,7 @@ async def _interactive_shell(
 
     This is useful for online debugging and interactive exploration of the
     contents of this image. If `cmd` is optionally provided, it will be run
-    instead of the default shell inside this image.
+    instead of /bin/sh inside this image.
 
     **Example**
 
@@ -608,7 +608,7 @@ async def _interactive_shell(
 
     client = await _Client.from_env()
     async with _run_app(_app, client=client, environment_name=environment_name):
-        sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
+        sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/sh"]
         sandbox_env = {
             "MODAL_TOKEN_ID": config["token_id"],
             "MODAL_TOKEN_SECRET": config["token_secret"],
