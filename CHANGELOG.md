@@ -6,11 +6,18 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 1.2.4 (2025-11-21)
+
+- Fixed a bug in `modal.Sandbox.exec` when using `stderr=StreamType.STDOUT` (introduced in v1.2.3).
+- Added a new `h2_enabled` option in `modal.forward`, which enables HTTP/2 advertisement in TLS establishment.
+
+### 1.2.3 (2025-11-20)
+
 - CPU Functions can now be configured to run on non-preemptible capacity by setting `nonpreemptible=True` in the `@app.function()` or `@app.cls()` decorator. This feature is not currently available when requesting a GPU. Note that non-preemptibility incurs a 3x multiplier on CPU and memory pricing. See the [Guide](https://modal.com/docs/guide/preemption) for more information on preemptions.
 - The Modal client can now respond more gracefully to server throttling (e.g., rate limiting) by backing off and automatically retrying. This behavior can be controlled with a new `MODAL_MAX_THROTTLE_WAIT` config variable. Setting the config to `0` will preserve the previous behavior and treat rate limits as an exception; setting it to a nonzero number (the unit is seconds) will allow a limited duration of retries.
-- The `modal.Sandbox.exec` implementation been rewritten to be more reliable and efficient.
+- The `modal.Sandbox.exec` implementation has been rewritten to be more reliable and efficient.
 - Added a new `--add-local` flag to `modal shell`, allowing local files and directories to be included in the shell's container.
-- Fixed a bug introduced in 1.2.2 where some Modal objects (e.g., `modal.FunctionCall`) were not usable after being captured in a Memory Snapshot. The bug would result in a `has no loader function` error when the object was used.
+- Fixed a bug introduced in v1.2.2 where some Modal objects (e.g., `modal.FunctionCall`) were not usable after being captured in a Memory Snapshot. The bug would result in a `has no loader function` error when the object was used.
 
 ### 1.2.2 (2025-11-10)
 
