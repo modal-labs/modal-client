@@ -8,7 +8,7 @@ from rich.rule import Rule
 from modal._output import make_console
 from modal._utils.async_utils import synchronizer
 
-from . import run
+from . import run, shell as shell_module
 from .app import app_cli
 from .cluster import cluster_cli
 from .config import config_cli
@@ -94,7 +94,7 @@ async def setup(profile: Optional[str] = None):
 # Commands
 entrypoint_cli_typer.command("deploy", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
-entrypoint_cli_typer.command("shell")(run.shell)
+entrypoint_cli_typer.command("shell")(shell_module.shell)
 entrypoint_cli_typer.add_typer(launch_cli)
 
 # Deployments
