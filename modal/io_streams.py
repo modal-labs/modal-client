@@ -11,6 +11,7 @@ from typing import (
     Generic,
     Literal,
     Optional,
+    TextIO,
     TypeVar,
     Union,
     cast,
@@ -22,7 +23,7 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 from modal.exception import ClientClosed, ExecTimeoutError, InvalidError
 from modal_proto import api_pb2
 
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import aclosing, synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
@@ -417,6 +418,11 @@ class _BytesStreamReaderThroughCommandRouter:
         if self._stream:
             await self._stream.aclose()
 
+    async def _print_all(self, output_stream: TextIO) -> None:
+        async for part in self:
+            output_stream.buffer.write(part)
+            output_stream.buffer.flush()
+
 
 class _TextStreamReaderThroughCommandRouter:
     """
@@ -433,7 +439,6 @@ class _TextStreamReaderThroughCommandRouter:
     ) -> None:
         self._params = params
         self._by_line = by_line
-        self._stream = None
 
     @property
     def file_descriptor(self) -> int:
@@ -445,22 +450,21 @@ class _TextStreamReaderThroughCommandRouter:
             data_str += cast(str, part)
         return data_str
 
-    def __aiter__(self) -> AsyncIterator[str]:
-        return self
-
-    async def __anext__(self) -> str:
-        if self._stream is None:
-            bytes_stream = _stdio_stream_from_command_router(self._params)
+    async def __aiter__(self) -> AsyncGenerator[str]:
+        async with aclosing(_stdio_stream_from_command_router(self._params)) as bytes_stream:
             if self._by_line:
-                self._stream = _decode_bytes_stream_to_str(_stream_by_line(bytes_stream))
+                stream = _decode_bytes_stream_to_str(_stream_by_line(bytes_stream))
             else:
-                self._stream = _decode_bytes_stream_to_str(bytes_stream)
-        # This raises StopAsyncIteration if the stream is at EOF.
-        return await self._stream.__anext__()
+                stream = _decode_bytes_stream_to_str(bytes_stream)
 
-    async def aclose(self):
-        if self._stream:
-            await self._stream.aclose()
+            async with aclosing(stream):
+                async for part in stream:
+                    yield part
+
+    async def _print_all(self, output_stream: TextIO) -> None:
+        async with aclosing(self.__aiter__()) as stream:
+            async for part in stream:
+                output_stream.write(part)
 
 
 class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
@@ -490,25 +494,7 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
     def _start_printing_task(self) -> None:
         async def _run():
             try:
-
-                def print_text_part(part: Union[str, bytes]) -> None:
-                    assert isinstance(part, str)
-                    print(cast(str, part), end="")
-
-                def print_bytes_part(part: Union[str, bytes]) -> None:
-                    assert isinstance(part, bytes)
-                    sys.stdout.buffer.write(cast(bytes, part))
-                    sys.stdout.buffer.flush()
-
-                if isinstance(self._reader, _BytesStreamReaderThroughCommandRouter):
-                    print_part = print_bytes_part
-                elif isinstance(self._reader, _TextStreamReaderThroughCommandRouter):
-                    print_part = print_text_part
-                else:
-                    raise ValueError("Unsupported reader type")
-
-                async for part in self._reader:
-                    print_part(part)
+                await self._reader._print_all(sys.stdout)
             except Exception as e:
                 logger.exception(f"Error printing stream: {e}")
             finally:
