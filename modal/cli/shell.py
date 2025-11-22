@@ -232,6 +232,7 @@ def shell(
             pty=pty,
         )
 
-    # NB: invoking under bash makes --cmd a lot more flexible.
-    cmds = shlex.split(f'/bin/bash -c "{cmd}"')
+    # Invoking under sh makes --cmd a lot more flexible.
+    # We use /bin/sh rather than bash because e.g. alpine images don't come with bash.
+    cmds = ["/bin/sh", "-c", cmd]
     start_shell(app, cmds=cmds, environment_name=env, timeout=3600)
