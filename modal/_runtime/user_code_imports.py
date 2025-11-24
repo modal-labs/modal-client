@@ -42,21 +42,22 @@ class FinalizedFunction:
     supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"]
     lifespan_manager: Optional["LifespanManager"] = None
 
-
 def call_lifecycle_functions(
-    event_loop: Any,
-    container_io_manager: Any,
+    event_loop: UserCodeEventLoop,
+    container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
     funcs: Sequence[Callable[..., Any]],
 ) -> None:
     """Call function(s), can be sync or async, but any return values are ignored."""
-    import inspect
-
     with container_io_manager.handle_user_exception():
         for func in funcs:
             # We are deprecating parametrized exit methods but want to gracefully handle old code.
+            # We can remove this once the deprecation in the actual @exit decorator is enforced.
             args = (None, None, None) if callable_has_non_self_params(func) else ()
+            # in case func is non-async, it's executed here and sigint will by default
+            # interrupt it using a KeyboardInterrupt exception
             res = func(*args)
             if inspect.iscoroutine(res):
+                # if however func is async, we have to jump through some hoops
                 event_loop.run(res)
 
 
