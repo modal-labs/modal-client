@@ -246,7 +246,7 @@ def call_function(
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
 
-def get_serialized_user_class_and_function(function_def: api_pb2.Function, client: Client) -> tuple[Any, Any]:
+def get_serialized_user_class_and_function(function_def: api_pb2.Function, client: _Client) -> tuple[Any, Any]:
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert function_def.function_serialized or function_def.class_serialized
 
@@ -285,7 +285,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     with container_io_manager.heartbeats(is_snapshotting_function), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
-        ser_usr_cls, ser_fun = get_serialized_user_class_and_function(function_def, client)
+        ser_usr_cls, ser_fun = get_serialized_user_class_and_function(function_def, _client)
 
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
