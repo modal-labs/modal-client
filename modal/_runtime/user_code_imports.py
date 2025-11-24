@@ -2,12 +2,12 @@
 import importlib
 import inspect
 import os
+import signal
 import sys
 import typing
 from abc import ABCMeta, abstractmethod
-from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, Generator, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import modal._object
 import modal._runtime.container_io_manager
@@ -18,6 +18,7 @@ from modal._partial_function import (
     _find_callables_for_obj,
     _PartialFunctionFlags,
 )
+from modal._user_code_event_loop import UserCodeEventLoop
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import (
     LocalFunctionError,
@@ -35,9 +36,6 @@ if typing.TYPE_CHECKING:
     import modal._partial_function
     import modal.app
     from modal._runtime.asgi import LifespanManager
-import signal
-
-from modal._user_code_event_loop import UserCodeEventLoop
 
 
 @dataclass
@@ -51,21 +49,66 @@ class FinalizedFunction:
 
 def call_lifecycle_functions(
     event_loop: UserCodeEventLoop,
-    container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
+    container_io_manager: Any,
     funcs: Sequence[Callable[..., Any]],
 ) -> None:
     """Call function(s), can be sync or async, but any return values are ignored."""
     with container_io_manager.handle_user_exception():
         for func in funcs:
             # We are deprecating parametrized exit methods but want to gracefully handle old code.
-            # We can remove this once the deprecation in the actual @exit decorator is enforced.
             args = (None, None, None) if callable_has_non_self_params(func) else ()
-            # in case func is non-async, it's executed here and sigint will by default
-            # interrupt it using a KeyboardInterrupt exception
             res = func(*args)
             if inspect.iscoroutine(res):
-                # if however func is async, we have to jump through some hoops
                 event_loop.run(res)
+
+
+def _run_service_lifecycle(
+    event_loop: UserCodeEventLoop,
+    container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    function_def: api_pb2.Function,
+    finalized_functions: dict[str, FinalizedFunction],
+    exit_callback: Optional[Callable[[], None]],
+    call_function_callback: Optional[Callable[[dict[str, FinalizedFunction]], None]],
+) -> None:
+    lifespan_background_tasks = []
+    try:
+        for finalized_function in finalized_functions.values():
+            if finalized_function.lifespan_manager:
+                lifespan_background_tasks.append(
+                    event_loop.create_task(finalized_function.lifespan_manager.background_task())
+                )
+                with container_io_manager.handle_user_exception():
+                    event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
+        if call_function_callback:
+            call_function_callback(finalized_functions)
+    finally:
+        # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
+        # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
+        # may have been sent to cancel inputs.
+        int_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+        try:
+            try:
+                for finalized_function in finalized_functions.values():
+                    if finalized_function.lifespan_manager:
+                        with container_io_manager.handle_user_exception():
+                            event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
+            finally:
+                for task in lifespan_background_tasks:
+                    task.cancel()
+
+            if exit_callback:
+                exit_callback()
+
+            # Finally, commit on exit to catch uncommitted volume changes and surface background
+            # commit errors.
+            container_io_manager.volume_commit(
+                [v.volume_id for v in function_def.volume_mounts if v.allow_background_commits]
+            )
+        finally:
+            # Restore the original signal handler
+            signal.signal(signal.SIGINT, int_handler)
+            signal.signal(signal.SIGUSR1, usr1_handler)
 
 
 class Service(metaclass=ABCMeta):
@@ -85,7 +128,6 @@ class Service(metaclass=ABCMeta):
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> dict[str, "FinalizedFunction"]: ...
 
-    @contextmanager
     @abstractmethod
     def execution_context(
         self,
@@ -93,7 +135,8 @@ class Service(metaclass=ABCMeta):
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
         function_def: api_pb2.Function,
         is_auto_snapshot: bool,
-    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
+        call_function_callback: Optional[Callable[[dict[str, FinalizedFunction]], None]],
+    ) -> None:
         """
         Manages the lifecycle of the user code:
         1. Runs pre-snapshot 'enter' methods
@@ -101,10 +144,9 @@ class Service(metaclass=ABCMeta):
         3. Creates breakpoint wrapper
         4. Runs post-snapshot 'enter' methods
         5. Initializes finalized functions (and ASGI/WSGI lifespan)
-        6. Yields finalized_functions for execution
+        6. call finalized_functions for execution
         7. Handles cleanup (lifespan shutdown, 'exit' methods)
         """
-        yield {}
 
 
 def construct_webhook_callable(
@@ -216,55 +258,28 @@ class ImportedFunction(Service):
             )
         }
 
-    @contextmanager
     def execution_context(
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
         function_def: api_pb2.Function,
         is_auto_snapshot: bool,
-    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
+        call_function_callback: Optional[Callable[[dict[str, FinalizedFunction]], None]],
+    ) -> None:
         snapshot_callback(container_io_manager, function_def)
         create_breakpoint_wrapper(container_io_manager)
 
         with container_io_manager.handle_user_exception():
             finalized_functions = self.get_finalized_functions(function_def, container_io_manager)
 
-        lifespan_background_tasks = []
-        try:
-            for finalized_function in finalized_functions.values():
-                if finalized_function.lifespan_manager:
-                    lifespan_background_tasks.append(
-                        event_loop.create_task(finalized_function.lifespan_manager.background_task())
-                    )
-                    with container_io_manager.handle_user_exception():
-                        event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
-            yield finalized_functions
-        finally:
-            # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
-            # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
-            # may have been sent to cancel inputs.
-            int_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
-            usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
-            try:
-                try:
-                    for finalized_function in finalized_functions.values():
-                        if finalized_function.lifespan_manager:
-                            with container_io_manager.handle_user_exception():
-                                event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
-                finally:
-                    for task in lifespan_background_tasks:
-                        task.cancel()
-                # Finally, commit on exit to catch uncommitted volume changes and surface background
-                # commit errors.
-                container_io_manager.volume_commit(
-                    [v.volume_id for v in function_def.volume_mounts if v.allow_background_commits]
-                )
-            finally:
-                # Restore the original signal handler, needed for container_test hygiene since the
-                # test runs `main()` multiple times in the same process.
-                signal.signal(signal.SIGINT, int_handler)
-                signal.signal(signal.SIGUSR1, usr1_handler)
+        _run_service_lifecycle(
+            event_loop,
+            container_io_manager,
+            function_def,
+            finalized_functions,
+            exit_callback=None,
+            call_function_callback=call_function_callback,
+        )
 
 
 @dataclass
@@ -317,14 +332,14 @@ class ImportedClass(Service):
             finalized_functions[method_name] = finalized_function
         return finalized_functions
 
-    @contextmanager
     def execution_context(
         self,
-        event_loop: Any,
+        event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
         function_def: api_pb2.Function,
         is_auto_snapshot: bool,
-    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
+        call_function_callback: Optional[Callable[[dict[str, FinalizedFunction]], None]],
+    ) -> None:
         # 1. Pre-snapshot Enter
         if not is_auto_snapshot:
             pre_snapshot_methods = _find_callables_for_obj(
@@ -349,49 +364,14 @@ class ImportedClass(Service):
         with container_io_manager.handle_user_exception():
             finalized_functions = self.get_finalized_functions(function_def, container_io_manager)
 
-        lifespan_background_tasks = []
-        try:
-            for finalized_function in finalized_functions.values():
-                if finalized_function.lifespan_manager:
-                    lifespan_background_tasks.append(
-                        event_loop.create_task(finalized_function.lifespan_manager.background_task())
-                    )
-                    with container_io_manager.handle_user_exception():
-                        event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
-            # 6. Yield finalized functions
-            yield finalized_functions
-        finally:
-            # 7. Cleanup
-                        # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
-            # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
-            # may have been sent to cancel inputs.
-            int_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
-            usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
-            try:
-                try:
-                    # run lifespan shutdown for asgi apps
-                    for finalized_function in finalized_functions.values():
-                        if finalized_function.lifespan_manager:
-                            with container_io_manager.handle_user_exception():
-                                event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
-                finally:
-                    # no need to keep the lifespan asgi call around - we send it no more messages
-                    for lifespan_background_task in lifespan_background_tasks:
-                        lifespan_background_task.cancel()  # prevent dangling tasks
-                    # Identify "exit" methods and run them.
-                    # want to make sure this is called even if the lifespan manager fails
-                    exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
-                    call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
-                # Finally, commit on exit to catch uncommitted volume changes and surface background
-                # commit errors.
-                container_io_manager.volume_commit(
-                    [v.volume_id for v in function_def.volume_mounts if v.allow_background_commits]
-                )
-            finally:
-                # Restore the original signal handler, needed for container_test hygiene since the
-                # test runs `main()` multiple times in the same process.
-                signal.signal(signal.SIGINT, int_handler)
-                signal.signal(signal.SIGUSR1, usr1_handler)
+        def exit_callback():
+            if self.user_cls_instance and not is_auto_snapshot:
+                exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
+                call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
+
+        _run_service_lifecycle(
+            event_loop, container_io_manager, function_def, finalized_functions, exit_callback, call_function_callback
+        )
 
 
 def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs: dict[str, Any]) -> typing.Any:
@@ -545,7 +525,6 @@ def import_class_service(
         user_cls_instance,
         active_app,
         service_deps,
-        # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
         method_partials,
     )
 

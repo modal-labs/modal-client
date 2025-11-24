@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 # ruff: noqa: E402
+import functools
 import os
 
 from modal._runtime.user_code_imports import (
@@ -93,7 +94,7 @@ class DaemonizedThreadPool:
 def call_function(
     user_code_event_loop: UserCodeEventLoop,
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    finalized_functions: dict[str, Any],
+    finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
     batch_max_size: int,
     batch_wait_ms: int,
 ):
@@ -366,26 +367,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_def._experimental_group_size,
             )
 
-        with service.execution_context(
+        service.execution_context(
             event_loop,
             container_io_manager,
             function_def,
             is_auto_snapshot,
-        ) as finalized_functions:
-            call_function(
-                event_loop,
-                container_io_manager,
-                finalized_functions,
-                batch_max_size,
-                batch_wait_ms,
-            )
-
-        # Finally, commit on exit to catch uncommitted volume changes and surface background
-        # commit errors.
-        container_io_manager.volume_commit(
-            [v.volume_id for v in function_def.volume_mounts if v.allow_background_commits]
+            call_function_callback=functools.partial(call_function, user_code_event_loop=event_loop, container_io_manager=container_io_manager, batch_max_size=batch_max_size, batch_wait_ms=batch_wait_ms),
         )
-
 
 if __name__ == "__main__":
     logger.debug("Container: starting")
