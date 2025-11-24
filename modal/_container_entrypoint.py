@@ -272,7 +272,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     active_app: _App
     service: Service
     function_def = container_args.function_def
-    is_auto_snapshot: bool = function_def.is_auto_snapshot
     # The worker sets this flag to "1" for snapshot and restore tasks. Otherwise, this flag is unset,
     # in which case snapshots should be disabled.
     is_snapshotting_function = (
@@ -369,13 +368,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_def._experimental_group_size,
             )
 
-        with service.execution_context(event_loop, container_io_manager):
-            call_function(
-                user_code_event_loop=event_loop,
-                container_io_manager=container_io_manager,
-                batch_max_size=batch_max_size,
-                batch_wait_ms=batch_wait_ms
-            )
+        with service.execution_context(event_loop, container_io_manager) as finalized_functions:
+            call_function(event_loop, container_io_manager, finalized_functions, batch_max_size, batch_wait_ms)
 
 
 if __name__ == "__main__":

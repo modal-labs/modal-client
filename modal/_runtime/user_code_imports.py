@@ -63,15 +63,14 @@ def call_lifecycle_functions(
             if inspect.iscoroutine(res):
                 event_loop.run(res)
 
-
+@contextmanager
 def _run_service_lifecycle(
     event_loop: UserCodeEventLoop,
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     function_def: api_pb2.Function,
     finalized_functions: dict[str, FinalizedFunction],
     exit_callback: Optional[Callable[[], None]],
-    call_function_callback: Optional[Callable[[dict[str, FinalizedFunction]], None]],
-) -> None:
+) -> Generator[dict[str, FinalizedFunction], None, None]:
     lifespan_background_tasks = []
     try:
         for finalized_function in finalized_functions.values():
@@ -81,8 +80,7 @@ def _run_service_lifecycle(
                 )
                 with container_io_manager.handle_user_exception():
                     event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
-        if call_function_callback:
-            call_function_callback(finalized_functions)
+        yield finalized_functions
     finally:
         # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
         # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
@@ -136,9 +134,6 @@ class Service(metaclass=ABCMeta):
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-        function_def: api_pb2.Function,
-        is_auto_snapshot: bool,
-        call_function_callback: Optional[Callable[[dict[str, FinalizedFunction]], None]],
     ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
         """
         Manages the lifecycle of the user code:
@@ -220,6 +215,7 @@ class ImportedFunction(Service):
     app: modal.app._App
     service_deps: Optional[Sequence["modal._object._Object"]]
     user_cls_instance = None
+    _function_def: api_pb2.Function
 
     _user_defined_callable: Callable[..., Any]
 
@@ -262,28 +258,22 @@ class ImportedFunction(Service):
             )
         }
 
+    @contextmanager
     def execution_context(
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-        function_def: api_pb2.Function,
-        is_auto_snapshot: bool,
-        call_function_callback: Optional[Callable[[dict[str, FinalizedFunction]], None]],
-    ) -> None:
-        snapshot_callback(container_io_manager, function_def)
+    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
+        snapshot_callback(container_io_manager, self._function_def)
         create_breakpoint_wrapper(container_io_manager)
 
         with container_io_manager.handle_user_exception():
-            finalized_functions = self.get_finalized_functions(function_def, container_io_manager)
+            finalized_functions = self.get_finalized_functions(self._function_def, container_io_manager)
 
-        _run_service_lifecycle(
-            event_loop,
-            container_io_manager,
-            function_def,
-            finalized_functions,
-            exit_callback=None,
-            call_function_callback=call_function_callback,
-        )
+        with _run_service_lifecycle(
+            event_loop, container_io_manager, self._function_def, finalized_functions, None,
+        ) as finalized_functions:
+            yield finalized_functions
 
 
 @dataclass
@@ -293,6 +283,7 @@ class ImportedClass(Service):
     service_deps: Optional[Sequence["modal._object._Object"]]
 
     _partial_functions: dict[str, "modal._partial_function._PartialFunction"]
+    _function_def: api_pb2.Function
 
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
@@ -336,29 +327,27 @@ class ImportedClass(Service):
             finalized_functions[method_name] = finalized_function
         return finalized_functions
 
+    @contextmanager
     def execution_context(
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-        function_def: api_pb2.Function,
-        is_auto_snapshot: bool,
-        call_function_callback: Optional[Callable[[dict[str, FinalizedFunction]], None]],
-    ) -> None:
+    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
         # 1. Pre-snapshot Enter
-        if not is_auto_snapshot:
+        if not self._function_def.is_auto_snapshot:
             pre_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
 
         # 2. Snapshot
-        snapshot_callback(container_io_manager, function_def)
+        snapshot_callback(container_io_manager, self._function_def)
 
         # 3. Breakpoint wrapper
         create_breakpoint_wrapper(container_io_manager)
 
         # 4. Post-snapshot Enter
-        if self.user_cls_instance and not is_auto_snapshot:
+        if not self._function_def.is_auto_snapshot:
             post_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
@@ -366,16 +355,17 @@ class ImportedClass(Service):
 
         # 5. Get Functions & Start Lifespan
         with container_io_manager.handle_user_exception():
-            finalized_functions = self.get_finalized_functions(function_def, container_io_manager)
+            finalized_functions = self.get_finalized_functions(self._function_def, container_io_manager)
 
         def exit_callback():
-            if self.user_cls_instance and not is_auto_snapshot:
+            if not self._function_def.is_auto_snapshot:
                 exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
                 call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
 
-        _run_service_lifecycle(
-            event_loop, container_io_manager, function_def, finalized_functions, exit_callback, call_function_callback
-        )
+        with _run_service_lifecycle(
+            event_loop, container_io_manager, self._function_def, finalized_functions, exit_callback,
+        ) as finalized_functions:
+            yield finalized_functions
 
 
 def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs: dict[str, Any]) -> typing.Any:
@@ -457,6 +447,7 @@ def import_single_function_service(
         active_app,
         service_deps,
         user_defined_callable,
+        _function_def=function_def,
     )
 
 
@@ -530,6 +521,7 @@ def import_class_service(
         active_app,
         service_deps,
         method_partials,
+        _function_def=function_def,
     )
 
 
