@@ -20,10 +20,10 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
-from _runtime.user_code_event_loop import UserCodeEventLoop
 from google.protobuf.message import Message
 
 from modal._clustered_functions import initialize_clustered_function
+from modal._runtime.user_code_event_loop import UserCodeEventLoop
 from modal._serialization import deserialize, deserialize_params
 from modal._utils.async_utils import TaskContext, aclosing, synchronizer
 from modal.app import App, _App

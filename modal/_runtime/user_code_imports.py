@@ -10,8 +10,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Callable, Generator, Optional, Sequence
 
-from _runtime.user_code_event_loop import UserCodeEventLoop
-
 import modal._object
 import modal._runtime.container_io_manager
 import modal.cls
@@ -21,6 +19,7 @@ from modal._partial_function import (
     _find_callables_for_obj,
     _PartialFunctionFlags,
 )
+from modal._runtime.user_code_event_loop import UserCodeEventLoop
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import (
     LocalFunctionError,
@@ -70,7 +69,7 @@ def _run_service_lifecycle(
     function_def: api_pb2.Function,
     finalized_functions: dict[str, FinalizedFunction],
     exit_callback: Optional[Callable[[], None]],
-) -> Generator[dict[str, FinalizedFunction], None, None]:
+) -> Generator[None, None, None]:
     lifespan_background_tasks = []
     try:
         for finalized_function in finalized_functions.values():
@@ -80,7 +79,7 @@ def _run_service_lifecycle(
                 )
                 with container_io_manager.handle_user_exception():
                     event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
-        yield finalized_functions
+        yield
     finally:
         # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
         # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
@@ -272,7 +271,7 @@ class ImportedFunction(Service):
 
         with _run_service_lifecycle(
             event_loop, container_io_manager, self._function_def, finalized_functions, None,
-        ) as finalized_functions:
+        ):
             yield finalized_functions
 
 
@@ -364,7 +363,7 @@ class ImportedClass(Service):
 
         with _run_service_lifecycle(
             event_loop, container_io_manager, self._function_def, finalized_functions, exit_callback,
-        ) as finalized_functions:
+        ):
             yield finalized_functions
 
 
@@ -444,10 +443,10 @@ def import_single_function_service(
             active_app = get_active_app_fallback(function_def)
 
     return ImportedFunction(
-        active_app,
-        service_deps,
-        user_defined_callable,
+        app=active_app,
+        service_deps=service_deps,
         _function_def=function_def,
+        _user_defined_callable=user_defined_callable,
     )
 
 
@@ -517,10 +516,10 @@ def import_class_service(
     user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
 
     return ImportedClass(
-        user_cls_instance,
-        active_app,
-        service_deps,
-        method_partials,
+        user_cls_instance=user_cls_instance,
+        app=active_app,
+        service_deps=service_deps,
+        _partial_functions=method_partials,
         _function_def=function_def,
     )
 
