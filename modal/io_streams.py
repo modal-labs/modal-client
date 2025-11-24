@@ -604,7 +604,8 @@ class _StreamReader(Generic[T]):
         return cast(T, await self._impl.read())
 
     def __aiter__(self) -> AsyncGenerator[T, None]:
-        self._read_gen = cast(AsyncGenerator[T, None], self._impl.__aiter__())
+        if not self._read_gen:
+            self._read_gen = cast(AsyncGenerator[T, None], self._impl.__aiter__())
         return self._read_gen
 
     async def __anext__(self) -> T:
@@ -622,6 +623,7 @@ class _StreamReader(Generic[T]):
         """mdmd:hidden"""
         if self._read_gen:
             await self._read_gen.aclose()
+            self._read_gen = None
 
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
