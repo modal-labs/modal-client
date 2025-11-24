@@ -91,6 +91,7 @@ class DaemonizedThreadPool:
 
         self.inputs.put((func, args))
 
+
 def call_function(
     user_code_event_loop: UserCodeEventLoop,
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
@@ -245,6 +246,7 @@ def call_function(
                 finally:
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
+
 def get_serialized_user_class_and_function(function_def: api_pb2.Function, client: Client) -> tuple[Any, Any]:
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert function_def.function_serialized or function_def.class_serialized
@@ -262,6 +264,7 @@ def get_serialized_user_class_and_function(function_def: api_pb2.Function, clien
         ser_usr_cls, ser_fun = None, None
 
     return ser_usr_cls, ser_fun
+
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
@@ -372,8 +375,15 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             container_io_manager,
             function_def,
             is_auto_snapshot,
-            call_function_callback=functools.partial(call_function, user_code_event_loop=event_loop, container_io_manager=container_io_manager, batch_max_size=batch_max_size, batch_wait_ms=batch_wait_ms),
+            call_function_callback=functools.partial(
+                call_function,
+                user_code_event_loop=event_loop,
+                container_io_manager=container_io_manager,
+                batch_max_size=batch_max_size,
+                batch_wait_ms=batch_wait_ms,
+            ),
         )
+
 
 if __name__ == "__main__":
     logger.debug("Container: starting")
