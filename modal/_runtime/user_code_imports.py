@@ -62,6 +62,7 @@ def call_lifecycle_functions(
             if inspect.iscoroutine(res):
                 event_loop.run(res)
 
+
 @contextmanager
 def _run_service_lifecycle(
     event_loop: UserCodeEventLoop,
@@ -270,7 +271,11 @@ class ImportedFunction(Service):
             finalized_functions = self.get_finalized_functions(self._function_def, container_io_manager)
 
         with _run_service_lifecycle(
-            event_loop, container_io_manager, self._function_def, finalized_functions, None,
+            event_loop,
+            container_io_manager,
+            self._function_def,
+            finalized_functions,
+            None,
         ):
             yield finalized_functions
 
@@ -362,7 +367,11 @@ class ImportedClass(Service):
                 call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
 
         with _run_service_lifecycle(
-            event_loop, container_io_manager, self._function_def, finalized_functions, exit_callback,
+            event_loop,
+            container_io_manager,
+            self._function_def,
+            finalized_functions,
+            exit_callback,
         ):
             yield finalized_functions
 
