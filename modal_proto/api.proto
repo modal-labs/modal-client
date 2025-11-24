@@ -731,7 +731,7 @@ message BuildFunction {
 message CancelInputEvent {
   repeated string input_ids = 1;
   bool terminate_containers = 2;
-  GenericResult result = 3;
+  string cancellation_reason = 3;
 }
 
 message CheckpointInfo {
