@@ -317,6 +317,7 @@ def _container_args(
     function_def = api_pb2.Function(
         module_name=module_name,
         function_name=function_name,
+        import_name=function_name,
         function_type=function_type,
         volume_mounts=volume_mounts,
         webhook_config=webhook_config,
@@ -1357,6 +1358,7 @@ def test_cli(servicer, tmp_path, credentials):
     function_def = api_pb2.Function(
         module_name="test.supports.functions",
         function_name="square",
+        import_name="square",
         function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
         definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
         object_dependencies=[api_pb2.ObjectDependency(object_id="im-123")],
@@ -3059,3 +3061,9 @@ def test_batch_sync_function_mixed_input_data_formats_exceptions(servicer, deplo
             assert item.result.data == b""
             assert item.result.tb_line_cache == b""
             assert item.result.exception == "Exception('custom error!')"
+
+
+@skip_github_non_linux
+def test_custom_name(servicer, deployed_support_function_definitions):
+    ret = _run_container_auto(servicer, "custom_name", deployed_support_function_definitions)
+    assert _unwrap_scalar(ret) == 42**2

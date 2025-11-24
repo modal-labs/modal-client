@@ -465,7 +465,7 @@ def import_single_function_service(
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
-        qual_name: str = function_def.function_name
+        qual_name: str = function_def.import_name
 
         if not is_global_object(qual_name):
             raise LocalFunctionError("Attempted to load a function defined in a function scope")

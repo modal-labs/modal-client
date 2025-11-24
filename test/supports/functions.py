@@ -887,3 +887,8 @@ class FlashClsWithEnter:
         # Print lifecycle events after all enter methods have run
         # This will be captured by the test before the container exits
         print(f"[flash_lifecycle_events:{','.join(flash_cls_lifecycle_events)}]")
+
+
+@app.function(name="custom_name")
+def impl_for_custom_name(x):
+    return x * x

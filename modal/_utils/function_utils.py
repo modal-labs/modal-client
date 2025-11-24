@@ -129,6 +129,7 @@ class FunctionInfo:
 
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
+    import_name: str
     user_cls: Optional[type[Any]]
     module_name: Optional[str]
 
@@ -160,20 +161,16 @@ class FunctionInfo:
         self.raw_f = f
         self.user_cls = user_cls
 
-        if name_override is not None:
-            if not serialized:
-                # We may relax this constraint in the future, but currently we don't track the distinction between
-                # the Function's name inside modal and the name of the object that we need to import in a container.
-                raise InvalidError("Setting a custom `name=` also requires setting `serialized=True`")
-            self.function_name = name_override
-        elif f is None and user_cls:
+        if f is None and user_cls:
             # "service function" for running all methods of a class
-            self.function_name = f"{user_cls.__name__}.*"
+            self.import_name = f"{user_cls.__name__}.*"
         elif f and user_cls:
             # Method may be defined on superclass of the wrapped class
-            self.function_name = f"{user_cls.__name__}.{f.__name__}"
+            self.import_name = f"{user_cls.__name__}.{f.__name__}"
         else:
-            self.function_name = f.__qualname__
+            self.import_name = f.__qualname__
+
+        self.function_name = name_override or self.import_name
 
         # If it's a cls, the @method could be defined in a base class in a different file.
         if user_cls is not None:

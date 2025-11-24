@@ -988,6 +988,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
                     function_name=info.function_name,
+                    import_name=info.import_name,
                     mount_ids=loaded_mount_ids,
                     secret_ids=[secret.object_id for secret in secrets],
                     image_id=(image.object_id if image else ""),
@@ -1054,6 +1055,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_data = api_pb2.FunctionData(
                         module_name=function_definition.module_name,
                         function_name=function_definition.function_name,
+                        import_name=function_definition.import_name,
                         function_type=function_definition.function_type,
                         warm_pool_size=function_definition.warm_pool_size,
                         concurrency_limit=function_definition.concurrency_limit,
