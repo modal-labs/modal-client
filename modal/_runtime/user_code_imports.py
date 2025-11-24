@@ -89,16 +89,20 @@ def _run_service_lifecycle(
         usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
         try:
             try:
+                # run lifespan shutdown for asgi apps
                 for finalized_function in finalized_functions.values():
                     if finalized_function.lifespan_manager:
                         with container_io_manager.handle_user_exception():
                             event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
             finally:
+                # no need to keep the lifespan asgi call around - we send it no more messages
                 for task in lifespan_background_tasks:
                     task.cancel()
 
-            if exit_callback:
-                exit_callback()
+                # Identify "exit" methods and run them.
+                # want to make sure this is called even if the lifespan manager fails
+                if exit_callback:
+                    exit_callback()
 
             # Finally, commit on exit to catch uncommitted volume changes and surface background
             # commit errors.
@@ -106,7 +110,8 @@ def _run_service_lifecycle(
                 [v.volume_id for v in function_def.volume_mounts if v.allow_background_commits]
             )
         finally:
-            # Restore the original signal handler
+            # Restore the original signal handler, needed for container_test hygiene since the
+            # test runs `main()` multiple times in the same process.
             signal.signal(signal.SIGINT, int_handler)
             signal.signal(signal.SIGUSR1, usr1_handler)
 
