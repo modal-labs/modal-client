@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 # ruff: noqa: E402
-import functools
 import os
 
 from modal._runtime.user_code_imports import (
@@ -21,6 +20,7 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
+from _runtime.user_code_event_loop import UserCodeEventLoop
 from google.protobuf.message import Message
 
 from modal._clustered_functions import initialize_clustered_function
@@ -39,7 +39,6 @@ from ._runtime.container_io_manager import (
     IOContext,
     UserException,
 )
-from ._user_code_event_loop import UserCodeEventLoop
 
 if TYPE_CHECKING:
     import modal._object
@@ -370,19 +369,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_def._experimental_group_size,
             )
 
-        service.execution_context(
-            event_loop,
-            container_io_manager,
-            function_def,
-            is_auto_snapshot,
-            call_function_callback=functools.partial(
-                call_function,
+        with service.execution_context(event_loop, container_io_manager):
+            call_function(
                 user_code_event_loop=event_loop,
                 container_io_manager=container_io_manager,
                 batch_max_size=batch_max_size,
-                batch_wait_ms=batch_wait_ms,
-            ),
-        )
+                batch_wait_ms=batch_wait_ms
+            )
 
 
 if __name__ == "__main__":

@@ -6,8 +6,11 @@ import signal
 import sys
 import typing
 from abc import ABCMeta, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Generator, Optional, Sequence
+
+from _runtime.user_code_event_loop import UserCodeEventLoop
 
 import modal._object
 import modal._runtime.container_io_manager
@@ -18,7 +21,6 @@ from modal._partial_function import (
     _find_callables_for_obj,
     _PartialFunctionFlags,
 )
-from modal._user_code_event_loop import UserCodeEventLoop
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import (
     LocalFunctionError,
@@ -128,6 +130,7 @@ class Service(metaclass=ABCMeta):
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> dict[str, "FinalizedFunction"]: ...
 
+    @contextmanager
     @abstractmethod
     def execution_context(
         self,
@@ -136,7 +139,7 @@ class Service(metaclass=ABCMeta):
         function_def: api_pb2.Function,
         is_auto_snapshot: bool,
         call_function_callback: Optional[Callable[[dict[str, FinalizedFunction]], None]],
-    ) -> None:
+    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
         """
         Manages the lifecycle of the user code:
         1. Runs pre-snapshot 'enter' methods
@@ -144,9 +147,10 @@ class Service(metaclass=ABCMeta):
         3. Creates breakpoint wrapper
         4. Runs post-snapshot 'enter' methods
         5. Initializes finalized functions (and ASGI/WSGI lifespan)
-        6. call finalized_functions for execution
+        6. Yield finalized_functions for execution
         7. Handles cleanup (lifespan shutdown, 'exit' methods)
         """
+        yield {}
 
 
 def construct_webhook_callable(

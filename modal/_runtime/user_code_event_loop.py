@@ -1,12 +1,5 @@
 # Copyright Modal Labs 2022
 # ruff: noqa: E402
-import os
-
-telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
-if telemetry_socket:
-    from ._runtime.telemetry import instrument_imports
-
-    instrument_imports(telemetry_socket)
 import asyncio
 import signal
 import sys
