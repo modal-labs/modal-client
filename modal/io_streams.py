@@ -293,7 +293,7 @@ class _StreamReaderThroughServer(Generic[T]):
             yield self._line_buffer
             self._line_buffer = b""
 
-    def _ensure_stream(self) -> AsyncGenerator[T, None]:
+    def __aiter__(self) -> AsyncGenerator[T, None]:
         if not self._stream:
             if self._by_line:
                 # TODO: This is quite odd - it does line buffering in binary mode
@@ -306,11 +306,6 @@ class _StreamReaderThroughServer(Generic[T]):
                 stream = _decode_bytes_stream_to_str(stream)
             self._stream = cast(AsyncGenerator[T, None], stream)
         return self._stream
-
-    async def __anext__(self) -> T:
-        """mdmd:hidden"""
-        stream = self._ensure_stream()
-        return cast(T, await stream.__anext__())
 
     async def aclose(self):
         """mdmd:hidden"""
@@ -337,17 +332,23 @@ async def _decode_bytes_stream_to_str(stream: AsyncGenerator[bytes, None]) -> As
 
 
 async def _stream_by_line(stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[bytes, None]:
-    """Yield complete lines only (ending with \n), buffering partial lines until complete."""
-    line_buffer = b""
-    async for message in stream:
-        assert isinstance(message, bytes)
-        line_buffer += message
-        while b"\n" in line_buffer:
-            line, line_buffer = line_buffer.split(b"\n", 1)
-            yield line + b"\n"
+    """Yield complete lines only (ending with \n), buffering partial lines until complete.
 
-    if line_buffer:
-        yield line_buffer
+    When this generator is returns, the underlying generator is closed.
+    """
+    line_buffer = b""
+    try:
+        async for message in stream:
+            assert isinstance(message, bytes)
+            line_buffer += message
+            while b"\n" in line_buffer:
+                line, line_buffer = line_buffer.split(b"\n", 1)
+                yield line + b"\n"
+
+        if line_buffer:
+            yield line_buffer
+    finally:
+        await stream.aclose()
 
 
 @dataclass
@@ -363,21 +364,23 @@ async def _stdio_stream_from_command_router(
     params: _StreamReaderThroughCommandRouterParams,
 ) -> AsyncGenerator[bytes, None]:
     """Stream raw bytes from the router client."""
-    stream = params.command_router_client.exec_stdio_read(
-        params.task_id, params.object_id, params.file_descriptor, params.deadline
-    )
-    try:
-        async for item in stream:
-            if len(item.data) == 0:
-                # This is an error.
-                raise ValueError("Received empty message streaming stdio from sandbox.")
+    async with aclosing(
+        params.command_router_client.exec_stdio_read(
+            params.task_id, params.object_id, params.file_descriptor, params.deadline
+        )
+    ) as stream:
+        try:
+            async for item in stream:
+                if len(item.data) == 0:
+                    # This is an error.
+                    raise ValueError("Received empty message streaming stdio from sandbox.")
 
-            yield item.data
-    except ExecTimeoutError:
-        logger.debug(f"Deadline exceeded while streaming stdio for exec {params.object_id}")
-        # TODO(saltzm): This is a weird API, but customers currently may rely on it. We
-        # should probably raise this error rather than just ending the stream.
-        return
+                yield item.data
+        except ExecTimeoutError:
+            logger.debug(f"Deadline exceeded while streaming stdio for exec {params.object_id}")
+            # TODO(saltzm): This is a weird API, but customers currently may rely on it. We
+            # should probably raise this error rather than just ending the stream.
+            return
 
 
 class _BytesStreamReaderThroughCommandRouter:
@@ -405,18 +408,8 @@ class _BytesStreamReaderThroughCommandRouter:
             data_bytes += cast(bytes, part)
         return data_bytes
 
-    def __aiter__(self) -> AsyncIterator[bytes]:
-        return self
-
-    async def __anext__(self) -> bytes:
-        if self._stream is None:
-            self._stream = _stdio_stream_from_command_router(self._params)
-        # This raises StopAsyncIteration if the stream is at EOF.
-        return await self._stream.__anext__()
-
-    async def aclose(self):
-        if self._stream:
-            await self._stream.aclose()
+    def __aiter__(self) -> AsyncGenerator[bytes, None]:
+        return _stdio_stream_from_command_router(self._params)
 
     async def _print_all(self, output_stream: TextIO) -> None:
         async for part in self:
@@ -450,7 +443,7 @@ class _TextStreamReaderThroughCommandRouter:
             data_str += cast(str, part)
         return data_str
 
-    async def __aiter__(self) -> AsyncGenerator[str]:
+    async def __aiter__(self) -> AsyncGenerator[str, None]:
         async with aclosing(_stdio_stream_from_command_router(self._params)) as bytes_stream:
             if self._by_line:
                 stream = _decode_bytes_stream_to_str(_stream_by_line(bytes_stream))
@@ -483,7 +476,6 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
     ) -> None:
         self._reader = reader
         self._task: Optional[asyncio.Task[None]] = None
-        self._closed = False
         # Kick off a background task that reads from the underlying text stream and prints to stdout.
         self._start_printing_task()
 
@@ -497,10 +489,6 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
                 await self._reader._print_all(sys.stdout)
             except Exception as e:
                 logger.exception(f"Error printing stream: {e}")
-            finally:
-                closed, self._closed = self._closed, True
-                if not closed:
-                    await self._reader.aclose()
 
         self._task = asyncio.create_task(_run())
 
@@ -519,9 +507,6 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
-        closed, self._closed = self._closed, True
-        if not closed:
-            await self._reader.aclose()
 
 
 class _DevnullStreamReader(Generic[T]):
@@ -564,6 +549,7 @@ class _StreamReader(Generic[T]):
         _BytesStreamReaderThroughCommandRouter,
         _StdoutPrintingStreamReaderThroughCommandRouter,
     ]
+    _read_gen: Optional[AsyncGenerator[T, None]] = None
 
     def __init__(
         self,
@@ -617,21 +603,25 @@ class _StreamReader(Generic[T]):
         """Fetch the entire contents of the stream until EOF."""
         return cast(T, await self._impl.read())
 
-    # TODO(saltzm): I'd prefer to have the implementation classes only implement __aiter__
-    # and have them return generator functions directly, but synchronicity doesn't let us
-    # return self._impl.__aiter__() here because it won't properly wrap the implementation
-    # classes.
-    def __aiter__(self) -> AsyncIterator[T]:
-        """mdmd:hidden"""
-        return self
+    def __aiter__(self) -> AsyncGenerator[T, None]:
+        self._read_gen = cast(AsyncGenerator[T, None], self._impl.__aiter__())
+        return self._read_gen
 
     async def __anext__(self) -> T:
-        """mdmd:hidden"""
-        return cast(T, await self._impl.__anext__())
+        """Deprecated: This exists for backwards compatibility and will be removed in a future version of Modal
+
+        Only use next/anext on the return value of iter/aiter on the StreamReader object (treat streamreader as
+        an iterable, not an iterator).
+        """
+        if not self._read_gen:
+            self.__aiter__()  # initialize the read generator
+        assert self._read_gen
+        return await self._read_gen.__anext__()
 
     async def aclose(self):
         """mdmd:hidden"""
-        await self._impl.aclose()
+        if self._read_gen:
+            await self._read_gen.aclose()
 
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
