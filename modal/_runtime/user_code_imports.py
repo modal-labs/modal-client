@@ -2,16 +2,26 @@
 import importlib
 import typing
 from abc import ABCMeta, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Generator, Optional, Sequence
 
 import modal._object
 import modal._runtime.container_io_manager
 import modal.cls
 from modal import Function
 from modal._functions import _Function
+from modal._partial_function import (
+    _find_callables_for_obj,
+    _PartialFunctionFlags,
+)
 from modal._utils.async_utils import synchronizer
-from modal._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_object
+from modal._utils.function_utils import (
+    LocalFunctionError,
+    callable_has_non_self_params,
+    is_async as get_is_async,
+    is_global_object,
+)
 from modal.app import _App
 from modal.config import logger
 from modal.exception import ExecutionError, InvalidError
@@ -33,6 +43,23 @@ class FinalizedFunction:
     lifespan_manager: Optional["LifespanManager"] = None
 
 
+def call_lifecycle_functions(
+    event_loop: Any,
+    container_io_manager: Any,
+    funcs: Sequence[Callable[..., Any]],
+) -> None:
+    """Call function(s), can be sync or async, but any return values are ignored."""
+    import inspect
+
+    with container_io_manager.handle_user_exception():
+        for func in funcs:
+            # We are deprecating parametrized exit methods but want to gracefully handle old code.
+            args = (None, None, None) if callable_has_non_self_params(func) else ()
+            res = func(*args)
+            if inspect.iscoroutine(res):
+                event_loop.run(res)
+
+
 class Service(metaclass=ABCMeta):
     """Common interface for singular functions and class-based "services"
 
@@ -49,6 +76,27 @@ class Service(metaclass=ABCMeta):
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> dict[str, "FinalizedFunction"]: ...
+
+    @contextmanager
+    @abstractmethod
+    def execution_context(
+        self,
+        event_loop: Any,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+        function_def: api_pb2.Function,
+        is_auto_snapshot: bool,
+        snapshot_callback: Callable[[], None],
+    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
+        """
+        Manages the lifecycle of the user code:
+        1. Runs pre-snapshot 'enter' methods
+        2. Calls snapshot_callback()
+        3. Runs post-snapshot 'enter' methods
+        4. Initializes finalized functions (and ASGI/WSGI lifespan)
+        5. Yields finalized_functions for execution
+        6. Handles cleanup (lifespan shutdown, 'exit' methods)
+        """
+        yield {}
 
 
 def construct_webhook_callable(
@@ -138,6 +186,40 @@ class ImportedFunction(Service):
             )
         }
 
+    @contextmanager
+    def execution_context(
+        self,
+        event_loop: Any,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+        function_def: api_pb2.Function,
+        is_auto_snapshot: bool,
+        snapshot_callback: Callable[[], None],
+    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
+        snapshot_callback()
+
+        with container_io_manager.handle_user_exception():
+            finalized_functions = self.get_finalized_functions(function_def, container_io_manager)
+
+        lifespan_background_tasks = []
+        try:
+            for finalized_function in finalized_functions.values():
+                if finalized_function.lifespan_manager:
+                    lifespan_background_tasks.append(
+                        event_loop.create_task(finalized_function.lifespan_manager.background_task())
+                    )
+                    with container_io_manager.handle_user_exception():
+                        event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
+            yield finalized_functions
+        finally:
+            try:
+                for finalized_function in finalized_functions.values():
+                    if finalized_function.lifespan_manager:
+                        with container_io_manager.handle_user_exception():
+                            event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
+            finally:
+                for task in lifespan_background_tasks:
+                    task.cancel()
+
 
 @dataclass
 class ImportedClass(Service):
@@ -188,6 +270,62 @@ class ImportedClass(Service):
                 )
             finalized_functions[method_name] = finalized_function
         return finalized_functions
+
+    @contextmanager
+    def execution_context(
+        self,
+        event_loop: Any,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+        function_def: api_pb2.Function,
+        is_auto_snapshot: bool,
+        snapshot_callback: Callable[[], None],
+    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
+        # 1. Pre-snapshot Enter
+        if self.user_cls_instance and not is_auto_snapshot:
+            pre_snapshot_methods = _find_callables_for_obj(
+                self.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
+            )
+            call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
+
+        # 2. Snapshot
+        snapshot_callback()
+
+        # 3. Post-snapshot Enter
+        if self.user_cls_instance and not is_auto_snapshot:
+            post_snapshot_methods = _find_callables_for_obj(
+                self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
+            )
+            call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
+
+        # 4. Get Functions & Start Lifespan (if applicable)
+        with container_io_manager.handle_user_exception():
+            finalized_functions = self.get_finalized_functions(function_def, container_io_manager)
+
+        lifespan_background_tasks = []
+        try:
+            for finalized_function in finalized_functions.values():
+                if finalized_function.lifespan_manager:
+                    lifespan_background_tasks.append(
+                        event_loop.create_task(finalized_function.lifespan_manager.background_task())
+                    )
+                    with container_io_manager.handle_user_exception():
+                        event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
+
+            yield finalized_functions
+        finally:
+            # 5. Cleanup: Stop Lifespan & Run Exit
+            try:
+                for finalized_function in finalized_functions.values():
+                    if finalized_function.lifespan_manager:
+                        with container_io_manager.handle_user_exception():
+                            event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
+            finally:
+                for task in lifespan_background_tasks:
+                    task.cancel()
+
+                if self.user_cls_instance and not is_auto_snapshot:
+                    exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
+                    call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
 
 
 def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs: dict[str, Any]) -> typing.Any:

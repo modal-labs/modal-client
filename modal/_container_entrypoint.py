@@ -13,7 +13,6 @@ if telemetry_socket:
     from ._runtime.telemetry import instrument_imports
 
     instrument_imports(telemetry_socket)
-
 import asyncio
 import inspect
 import queue
@@ -21,21 +20,13 @@ import signal
 import sys
 import threading
 import time
-from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from google.protobuf.message import Message
 
 from modal._clustered_functions import initialize_clustered_function
-from modal._partial_function import (
-    _find_callables_for_obj,
-    _PartialFunctionFlags,
-)
 from modal._serialization import deserialize, deserialize_params
 from modal._utils.async_utils import TaskContext, aclosing, synchronizer
-from modal._utils.function_utils import (
-    callable_has_non_self_params,
-)
 from modal.app import App, _App
 from modal.client import Client, _Client
 from modal.config import logger
@@ -179,7 +170,7 @@ class UserCodeEventLoop:
 def call_function(
     user_code_event_loop: UserCodeEventLoop,
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
+    finalized_functions: dict[str, Any],
     batch_max_size: int,
     batch_wait_ms: int,
 ):
@@ -330,25 +321,23 @@ def call_function(
                 finally:
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
+def get_serialized_user_class_and_function(function_def: api_pb2.Function, client: Client) -> tuple[Any, Any]:
+    if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
+        assert function_def.function_serialized or function_def.class_serialized
 
-def call_lifecycle_functions(
-    event_loop: UserCodeEventLoop,
-    container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
-    funcs: Sequence[Callable[..., Any]],
-) -> None:
-    """Call function(s), can be sync or async, but any return values are ignored."""
-    with container_io_manager.handle_user_exception():
-        for func in funcs:
-            # We are deprecating parametrized exit methods but want to gracefully handle old code.
-            # We can remove this once the deprecation in the actual @exit decorator is enforced.
-            args = (None, None, None) if callable_has_non_self_params(func) else ()
-            # in case func is non-async, it's executed here and sigint will by default
-            # interrupt it using a KeyboardInterrupt exception
-            res = func(*args)
-            if inspect.iscoroutine(res):
-                # if however func is async, we have to jump through some hoops
-                event_loop.run(res)
+        if function_def.function_serialized:
+            ser_fun = deserialize(function_def.function_serialized, client)
+        else:
+            ser_fun = None
 
+        if function_def.class_serialized:
+            ser_usr_cls = deserialize(function_def.class_serialized, client)
+        else:
+            ser_usr_cls = None
+    else:
+        ser_usr_cls, ser_fun = None, None
+
+    return ser_usr_cls, ser_fun
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
@@ -371,20 +360,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     with container_io_manager.heartbeats(is_snapshotting_function), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
-        if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            assert function_def.function_serialized or function_def.class_serialized
-
-            if function_def.function_serialized:
-                ser_fun = deserialize(function_def.function_serialized, _client)
-            else:
-                ser_fun = None
-
-            if function_def.class_serialized:
-                ser_usr_cls = deserialize(function_def.class_serialized, _client)
-            else:
-                ser_usr_cls = None
-        else:
-            ser_usr_cls, ser_fun = None, None
+        ser_usr_cls, ser_fun = get_serialized_user_class_and_function(function_def, client)
 
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
@@ -456,7 +432,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     "that evaluates differently in the local and remote environments."
                 )
             for object_id, obj in zip(dep_object_ids, service.service_deps):
-                metadata: Message = container_app.object_handle_metadata[object_id]
+                metadata: Message | None = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
 
         # Initialize clustered functions.
@@ -467,49 +443,32 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_def._experimental_group_size,
             )
 
-        # Identify all "enter" methods that need to run before we snapshot.
-        if service.user_cls_instance is not None and not is_auto_snapshot:
-            pre_snapshot_methods = _find_callables_for_obj(
-                service.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
-            )
-            call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
+        def snapshot_callback():
+            # If this container is being used to create a checkpoint, checkpoint the container after
+            # global imports and initialization. Checkpointed containers run from this point onwards.
+            if is_snapshotting_function:
+                container_io_manager.memory_snapshot()
 
-        # If this container is being used to create a checkpoint, checkpoint the container after
-        # global imports and initialization. Checkpointed containers run from this point onwards.
-        if is_snapshotting_function:
-            container_io_manager.memory_snapshot()
+            # Install hooks for interactive functions.
+            def breakpoint_wrapper():
+                # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
+                container_io_manager.interact(from_breakpoint=True)
+                import pdb
 
-        # Install hooks for interactive functions.
-        def breakpoint_wrapper():
-            # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
-            container_io_manager.interact(from_breakpoint=True)
-            import pdb
+                current_frame = inspect.currentframe()
+                if current_frame is not None:
+                    frame = current_frame.f_back
+                    pdb.Pdb().set_trace(frame)
 
-            frame = inspect.currentframe().f_back
+            sys.breakpointhook = breakpoint_wrapper
 
-            pdb.Pdb().set_trace(frame)
-
-        sys.breakpointhook = breakpoint_wrapper
-
-        # Identify the "enter" methods to run after resuming from a snapshot.
-        if service.user_cls_instance is not None and not is_auto_snapshot:
-            post_snapshot_methods = _find_callables_for_obj(
-                service.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
-            )
-            call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
-
-        with container_io_manager.handle_user_exception():
-            finalized_functions = service.get_finalized_functions(function_def, container_io_manager)
-        # Execute the function.
-        lifespan_background_tasks = []
-        try:
-            for finalized_function in finalized_functions.values():
-                if finalized_function.lifespan_manager:
-                    lifespan_background_tasks.append(
-                        event_loop.create_task(finalized_function.lifespan_manager.background_task())
-                    )
-                    with container_io_manager.handle_user_exception():
-                        event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
+        with service.execution_context(
+            event_loop,
+            container_io_manager,
+            function_def,
+            is_auto_snapshot,
+            snapshot_callback,
+        ) as finalized_functions:
             call_function(
                 event_loop,
                 container_io_manager,
@@ -517,41 +476,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 batch_max_size,
                 batch_wait_ms,
             )
-        finally:
-            # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
-            # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
-            # may have been sent to cancel inputs.
-            int_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
-            usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
 
-            try:
-                try:
-                    # run lifespan shutdown for asgi apps
-                    for finalized_function in finalized_functions.values():
-                        if finalized_function.lifespan_manager:
-                            with container_io_manager.handle_user_exception():
-                                event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
-                finally:
-                    # no need to keep the lifespan asgi call around - we send it no more messages
-                    for lifespan_background_task in lifespan_background_tasks:
-                        lifespan_background_task.cancel()  # prevent dangling tasks
-
-                    # Identify "exit" methods and run them.
-                    # want to make sure this is called even if the lifespan manager fails
-                    if service.user_cls_instance is not None and not is_auto_snapshot:
-                        exit_methods = _find_callables_for_obj(service.user_cls_instance, _PartialFunctionFlags.EXIT)
-                        call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
-
-                # Finally, commit on exit to catch uncommitted volume changes and surface background
-                # commit errors.
-                container_io_manager.volume_commit(
-                    [v.volume_id for v in function_def.volume_mounts if v.allow_background_commits]
-                )
-            finally:
-                # Restore the original signal handler, needed for container_test hygiene since the
-                # test runs `main()` multiple times in the same process.
-                signal.signal(signal.SIGINT, int_handler)
-                signal.signal(signal.SIGUSR1, usr1_handler)
+        # Finally, commit on exit to catch uncommitted volume changes and surface background
+        # commit errors.
+        container_io_manager.volume_commit(
+            [v.volume_id for v in function_def.volume_mounts if v.allow_background_commits]
+        )
 
 
 if __name__ == "__main__":
