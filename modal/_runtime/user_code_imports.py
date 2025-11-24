@@ -211,7 +211,8 @@ def create_breakpoint_wrapper(container_io_manager: "modal._runtime.container_io
         if current_frame is not None:
             frame = current_frame.f_back
             pdb.Pdb().set_trace(frame)
-
+        else:
+            raise RuntimeError("No current frame found")
     sys.breakpointhook = breakpoint_wrapper
 
 
