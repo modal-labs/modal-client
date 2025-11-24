@@ -213,6 +213,7 @@ def create_breakpoint_wrapper(container_io_manager: "modal._runtime.container_io
             pdb.Pdb().set_trace(frame)
         else:
             raise RuntimeError("No current frame found")
+
     sys.breakpointhook = breakpoint_wrapper
 
 
