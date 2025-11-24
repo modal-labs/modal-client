@@ -269,6 +269,8 @@ class ImportedFunction(Service):
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
+        # If this container is being used to create a checkpoint, checkpoint the container after
+        # global imports and initialization. Checkpointed containers run from this point onwards.
         snapshot_callback(container_io_manager, self._function_def)
         create_breakpoint_wrapper(container_io_manager)
 
@@ -343,6 +345,7 @@ class ImportedClass(Service):
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
         # 1. Pre-snapshot Enter
+        # Identify all "enter" methods that need to run before we snapshot.
         if not self._function_def.is_auto_snapshot:
             pre_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
@@ -350,12 +353,15 @@ class ImportedClass(Service):
             call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
 
         # 2. Snapshot
+        # If this container is being used to create a checkpoint, checkpoint the container after
+        # global imports and initialization. Checkpointed containers run from this point onwards.
         snapshot_callback(container_io_manager, self._function_def)
 
         # 3. Breakpoint wrapper
         create_breakpoint_wrapper(container_io_manager)
 
         # 4. Post-snapshot Enter
+        # Identify the "enter" methods to run after resuming from a snapshot.
         if not self._function_def.is_auto_snapshot:
             post_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
@@ -533,6 +539,7 @@ def import_class_service(
         user_cls_instance=user_cls_instance,
         app=active_app,
         service_deps=service_deps,
+        # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
         _partial_functions=method_partials,
         _function_def=function_def,
     )
