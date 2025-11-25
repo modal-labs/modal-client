@@ -20,7 +20,7 @@ import signal
 import threading
 import time
 import types
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from google.protobuf.message import Message
 
@@ -45,6 +45,7 @@ from ._runtime.container_io_manager import (
 if TYPE_CHECKING:
     import modal._object
     import modal._runtime.container_io_manager
+    import modal._runtime.user_code_imports
 
 
 class DaemonizedThreadPool:
@@ -282,7 +283,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE") == "1"
     )
 
-    _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
+    _client: _Client = cast(_Client, synchronizer._translate_in(client))  # TODO(erikbern): ugly
 
     # Call ContainerHello - currently a noop but might be used later for things
     container_io_manager.hello()
@@ -341,7 +342,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize objects on the app.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
-        app: App = synchronizer._translate_out(active_app)
+        app: App = cast(App, synchronizer._translate_out(active_app))
         app._init_container(client, container_app)
 
         # Hydrate all function dependencies.
