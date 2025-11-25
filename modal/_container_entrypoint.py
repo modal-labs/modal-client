@@ -362,7 +362,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     "that evaluates differently in the local and remote environments."
                 )
             for object_id, obj in zip(dep_object_ids, service.service_deps):
-                metadata: Message | None = container_app.object_handle_metadata[object_id]
+                metadata: Optional[Message] = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
 
         # Initialize clustered functions.

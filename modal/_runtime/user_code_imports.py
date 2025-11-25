@@ -143,7 +143,7 @@ class Service(metaclass=ABCMeta):
         """
         Manages the lifecycle of the user code:
         1. Runs pre-snapshot 'enter' methods
-        2. Calls snapshot_callback(container_io_manager, function_def)
+        2. Calls maybe_snapshot(container_io_manager, function_def)
         3. Creates breakpoint wrapper
         4. Runs post-snapshot 'enter' methods
         5. Initializes finalized functions (and ASGI/WSGI lifespan)
@@ -192,7 +192,7 @@ def construct_webhook_callable(
         raise InvalidError(f"Unrecognized web endpoint type {webhook_config.type}")
 
 
-def snapshot_callback(
+def maybe_snapshot(
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager", function_def: api_pb2.Function
 ):
     if function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE") == "1":
@@ -272,7 +272,7 @@ class ImportedFunction(Service):
     ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and initialization. Checkpointed containers run from this point onwards.
-        snapshot_callback(container_io_manager, self.function_def)
+        maybe_snapshot(container_io_manager, self.function_def)
         create_breakpoint_wrapper(container_io_manager)
 
         with container_io_manager.handle_user_exception():
@@ -356,7 +356,7 @@ class ImportedClass(Service):
         # 2. Snapshot
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and initialization. Checkpointed containers run from this point onwards.
-        snapshot_callback(container_io_manager, self.function_def)
+        maybe_snapshot(container_io_manager, self.function_def)
 
         # 3. Breakpoint wrapper
         create_breakpoint_wrapper(container_io_manager)
