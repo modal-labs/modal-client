@@ -62,10 +62,13 @@ def call_lifecycle_functions(
             if inspect.iscoroutine(res):
                 event_loop.run(res)
 
+
 @contextmanager
-def lifecycle_asgi(event_loop: UserCodeEventLoop,
+def lifecycle_asgi(
+    event_loop: UserCodeEventLoop,
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    finalized_functions: dict[str, FinalizedFunction]) -> Generator[None, None, None]:
+    finalized_functions: dict[str, FinalizedFunction],
+) -> Generator[None, None, None]:
     lifespan_background_tasks = []
     try:
         for finalized_function in finalized_functions.values():
@@ -88,19 +91,23 @@ def lifecycle_asgi(event_loop: UserCodeEventLoop,
             for task in lifespan_background_tasks:
                 task.cancel()
 
+
 def disable_signals():
     int_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
     usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
     return int_handler, usr1_handler
 
-def enable_signals(int_handler: signal.Handler, usr1_handler: signal.Handler):
+
+def enable_signals(int_handler, usr1_handler):
     signal.signal(signal.SIGINT, int_handler)
     signal.signal(signal.SIGUSR1, usr1_handler)
 
-def volume_commit(container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager", function_def: api_pb2.Function):
-    container_io_manager.volume_commit(
-        [v.volume_id for v in function_def.volume_mounts if v.allow_background_commits]
-    )
+
+def volume_commit(
+    container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager", function_def: api_pb2.Function
+):
+    container_io_manager.volume_commit([v.volume_id for v in function_def.volume_mounts if v.allow_background_commits])
+
 
 class Service(metaclass=ABCMeta):
     """Common interface for singular functions and class-based "services"
@@ -265,10 +272,10 @@ class ImportedFunction(Service):
             finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
         with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
             yield finalized_functions
-            disable_signals()
+            int_handler, usr1_handler = disable_signals()
 
-        volume_commit()
-        enable_signals()
+        volume_commit(container_io_manager, self.function_def)
+        enable_signals(int_handler, usr1_handler)
 
 
 @dataclass
@@ -323,7 +330,11 @@ class ImportedClass(Service):
         return finalized_functions
 
     @contextmanager
-    def lifecycle_presnapshot(self, event_loop: UserCodeEventLoop, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"):
+    def lifecycle_presnapshot(
+        self,
+        event_loop: UserCodeEventLoop,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    ):
         # Identify all "enter" methods that need to run before we snapshot.
         if not self.function_def.is_auto_snapshot:
             pre_snapshot_methods = _find_callables_for_obj(
@@ -333,7 +344,11 @@ class ImportedClass(Service):
         yield
 
     @contextmanager
-    def lifecycle_postsnapshot(self, event_loop: UserCodeEventLoop, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"):
+    def lifecycle_postsnapshot(
+        self,
+        event_loop: UserCodeEventLoop,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    ):
         # Identify the "enter" methods to run after resuming from a snapshot.
         if not self.function_def.is_auto_snapshot:
             post_snapshot_methods = _find_callables_for_obj(
@@ -343,12 +358,15 @@ class ImportedClass(Service):
         yield
 
     @contextmanager
-    def lifecycle_exit(self, event_loop: UserCodeEventLoop, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"):
+    def lifecycle_exit(
+        self,
+        event_loop: UserCodeEventLoop,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    ):
         yield
         if not self.function_def.is_auto_snapshot:
             exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
             call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
-
 
     @contextmanager
     def execution_context(
