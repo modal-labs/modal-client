@@ -13,11 +13,13 @@ if telemetry_socket:
     from ._runtime.telemetry import instrument_imports
 
     instrument_imports(telemetry_socket)
+
 import asyncio
 import queue
 import signal
 import threading
 import time
+import types
 from typing import TYPE_CHECKING, Any, Optional
 
 from google.protobuf.message import Message
@@ -246,7 +248,9 @@ def call_function(
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
 
-def get_serialized_user_class_and_function(function_def: api_pb2.Function, client: _Client) -> tuple[Any, Any]:
+def get_serialized_user_class_and_function(
+    function_def: api_pb2.Function, client: _Client
+) -> tuple[Optional[type], Optional[types.FunctionType]]:
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert function_def.function_serialized or function_def.class_serialized
 
