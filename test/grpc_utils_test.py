@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import pytest
-import time
 
 from google.protobuf.any_pb2 import Any
 from grpclib import GRPCError, Status
@@ -108,14 +107,6 @@ async def test_retry_transient_errors(servicer, client):
         assert await wrapped_blob_create.aio(req, retry=Retry(max_retries=None, base_delay=0))
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "0"
-
-    # Make sure to respect total_timeout
-    t0 = time.time()
-    servicer.fail_blob_create = wrap_grpc_error([Status.UNAVAILABLE] * 99)
-    with pytest.raises(GRPCError):
-        assert await wrapped_blob_create.aio(req, retry=Retry(max_retries=None, total_timeout=3))
-    total_time = time.time() - t0
-    assert total_time <= 3.1
 
     # Check input_plane_region included
     servicer.fail_blob_create = []  # Reset to no failures

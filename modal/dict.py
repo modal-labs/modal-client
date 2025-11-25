@@ -9,7 +9,6 @@ from grpclib import GRPCError, Status
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal._utils.grpc_utils import Retry
 from modal_proto import api_pb2
 
 from ._load_context import LoadContext
@@ -328,7 +327,7 @@ class _Dict(_Object, type_prefix="di"):
             environment_name=_get_environment_name(environment_name),
             data=serialized,
         )
-        response = await client.stub.DictGetOrCreate(request, retry=Retry(total_timeout=10.0))
+        response = await client.stub.DictGetOrCreate(request)
         async with TaskContext() as tc:
             request = api_pb2.DictHeartbeatRequest(dict_id=response.dict_id)
             tc.infinite_loop(lambda: client.stub.DictHeartbeat(request), sleep=_heartbeat_sleep)

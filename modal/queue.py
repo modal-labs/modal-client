@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import queue  # The system library
 import time
 import warnings
@@ -30,7 +31,7 @@ from ._utils.grpc_utils import Retry
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
-from .exception import AlreadyExistsError, InvalidError, NotFoundError, RequestSizeError
+from .exception import AlreadyExistsError, ConnectionError, InvalidError, NotFoundError, RequestSizeError
 
 
 @dataclass
@@ -587,16 +588,18 @@ class _Queue(_Object, type_prefix="qu"):
             partition_ttl_seconds=partition_ttl,
         )
         try:
-            await self._client.stub.QueuePut(
-                request,
-                # A full queue will return this status.
-                retry=Retry(
-                    additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-                    max_delay=30.0,
-                    max_retries=None,
-                    total_timeout=timeout,
-                ),
-            )
+            async with asyncio.timeout(timeout):
+                await self._client.stub.QueuePut(
+                    request,
+                    # A full queue will return this status.
+                    retry=Retry(
+                        additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                        max_delay=30.0,
+                        max_retries=None,
+                    ),
+                )
+        except asyncio.TimeoutError as exc:
+            raise ConnectionError("Deadline exceeded") from exc
         except GRPCError as exc:
             if exc.status == Status.RESOURCE_EXHAUSTED:
                 raise queue.Full(str(exc))

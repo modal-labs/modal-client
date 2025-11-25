@@ -236,8 +236,6 @@ class Retry:
     max_retries: Optional[int] = 3
     additional_status_codes: list = field(default_factory=list)
     attempt_timeout: Optional[float] = None  # timeout for each attempt
-    total_timeout: Optional[float] = None  # timeout for the entire function call
-    attempt_timeout_floor: float = 2.0  # always have at least this much timeout (only for total_timeout)
     warning_message: Optional[RetryWarningMessage] = None
 
 
@@ -327,12 +325,6 @@ async def _retry_transient_errors(
 
     t0 = time.time()
     last_server_retry_warning_time = None
-
-    if retry.total_timeout is not None:
-        total_deadline = t0 + retry.total_timeout
-    else:
-        total_deadline = None
-
     metadata = (metadata or []) + [("x-modal-timestamp", str(time.time()))]
 
     while True:
@@ -347,19 +339,9 @@ async def _retry_transient_errors(
         if n_throttled_retries > 0:
             attempt_metadata.append(("x-throttle-retry-delay", str(time.time() - t0)))
 
-        timeouts = []
-        if retry.attempt_timeout is not None:
-            timeouts.append(retry.attempt_timeout)
-        if total_deadline is not None:
-            timeouts.append(max(total_deadline - time.time(), retry.attempt_timeout_floor))
-        if timeouts:
-            timeout = min(timeouts)  # In case the function provided both types of timeouts
-        else:
-            timeout = None
-
         try:
             with suppress_tb_frames(1):
-                return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
+                return await fn_callable(req, metadata=attempt_metadata, timeout=retry.attempt_timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             # Note that we only catch AttributeError to handle a specific case that works around a bug
             # in grpclib<=0.4.7. See above (search for `write_appdata`).
@@ -377,13 +359,7 @@ async def _retry_transient_errors(
 
                 # We check if the timeout will be reached **after** the sleep, so we can raise an error early
                 # without needing to actually sleep.
-                total_timeout_will_be_reached = (
-                    retry.total_timeout is not None and (now + server_delay - t0) >= retry.total_timeout
-                )
-                max_throttle_will_be_reached = (
-                    max_throttle_wait is not None and (now + server_delay - t0) >= max_throttle_wait
-                )
-                final_attempt = total_timeout_will_be_reached or max_throttle_will_be_reached
+                final_attempt = max_throttle_wait is not None and (now + server_delay - t0) >= max_throttle_wait
 
                 with suppress_tb_frames(1):
                     process_exception_before_retry(
@@ -410,12 +386,8 @@ async def _retry_transient_errors(
                     raise AuthError(exc.message)
                 else:
                     raise exc
-            if retry.max_retries is not None and n_retries >= retry.max_retries:
-                final_attempt = True
-            elif total_deadline is not None and time.time() + delay + retry.attempt_timeout_floor >= total_deadline:
-                final_attempt = True
-            else:
-                final_attempt = False
+
+            final_attempt = retry.max_retries is not None and n_retries >= retry.max_retries
 
             with suppress_tb_frames(1):
                 process_exception_before_retry(exc, final_attempt, fn.name, n_retries, delay, idempotency_key)

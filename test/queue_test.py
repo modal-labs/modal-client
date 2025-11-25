@@ -1,11 +1,12 @@
 # Copyright Modal Labs 2022
+import asyncio
 import pytest
 import queue
 import sys
 import time
 
 from modal import Queue
-from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError
+from modal.exception import AlreadyExistsError, ConnectionError, DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_macos, skip_windows
@@ -175,3 +176,22 @@ def test_queue_create(servicer, client):
     Queue.objects.create(name="test-queue-create", allow_existing=True, client=client)
     with pytest.raises(InvalidError, match="Invalid Queue name"):
         Queue.objects.create(name="has space", client=client)
+
+
+def test_queue_timeout_error(servicer, client):
+    name = "queue-timeout"
+    q = Queue.from_name(name, create_if_missing=True)
+    q.hydrate(client)
+
+    async def slow_response(servicer, stream):
+        await asyncio.sleep(1)
+
+    expected_msg = "Deadline exceeded"
+
+    start = time.monotonic()
+    with servicer.intercept() as ctx:
+        ctx.set_responder("QueuePut", slow_response)
+        with pytest.raises(ConnectionError, match=expected_msg):
+            q.put(1, timeout=0.2)
+    duration = time.monotonic() - start
+    assert duration == pytest.approx(0.2, abs=0.05)

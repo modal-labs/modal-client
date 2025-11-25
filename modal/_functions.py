@@ -1908,8 +1908,7 @@ Use the `Function.get_web_url()` method instead.
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
         resp = await self.client.stub.FunctionGetCurrentStats(
-            api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
-            retry=Retry(total_timeout=10.0),
+            api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id)
         )
         return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
 
