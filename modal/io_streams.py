@@ -334,7 +334,7 @@ async def _decode_bytes_stream_to_str(stream: AsyncGenerator[bytes, None]) -> As
 async def _stream_by_line(stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[bytes, None]:
     """Yield complete lines only (ending with \n), buffering partial lines until complete.
 
-    When this generator is returns, the underlying generator is closed.
+    When this generator returns, the underlying generator is closed.
     """
     line_buffer = b""
     try:
