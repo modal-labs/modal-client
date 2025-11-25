@@ -536,6 +536,7 @@ class _InputPlaneInvocation:
     async def _get_metadata(input_plane_region: str, client: _Client) -> list[tuple[str, str]]:
         if not input_plane_region:
             return []
+        assert client._auth_token_manager, "Client is not open"
         token = await client._auth_token_manager.get_token()
         return [("x-modal-input-plane-region", input_plane_region), ("x-modal-auth-token", token)]
 

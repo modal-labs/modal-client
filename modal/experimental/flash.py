@@ -33,6 +33,7 @@ class _FlashManager:
         health_check_url: Optional[str] = None,
         startup_timeout: Optional[int] = None,
         exit_grace_period: Optional[int] = None,
+        h2_enabled: bool = False,
     ):
         self.client = client
         self.port = port
@@ -41,7 +42,7 @@ class _FlashManager:
         self.health_check_url = health_check_url
         self.startup_timeout = startup_timeout
         self.exit_grace_period = exit_grace_period
-        self.tunnel_manager = _forward_tunnel(port, client=client)
+        self.tunnel_manager = _forward_tunnel(port, h2_enabled=h2_enabled, client=client)
         self.stopped = False
         self.num_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
@@ -189,6 +190,7 @@ async def flash_forward(
     health_check_url: Optional[str] = None,
     startup_timeout: Optional[int] = None,
     exit_grace_period: Optional[int] = None,
+    h2_enabled: bool = False,
 ) -> _FlashManager:
     """
     Forward a port to the Modal Flash service, exposing that port as a stable web endpoint.
@@ -204,6 +206,7 @@ async def flash_forward(
         health_check_url=health_check_url,
         startup_timeout=startup_timeout,
         exit_grace_period=exit_grace_period,
+        h2_enabled=h2_enabled,
     )
     await manager._start()
     return manager
@@ -693,9 +696,10 @@ def _http_server(
 
 http_server = synchronize_api(_http_server, target_module=__name__)
 
+
 class _FlashContainerEntry:
     def __init__(self):
-        self.flash_manager: Optional[FlashManager] = None # type: ignore
+        self.flash_manager: Optional[FlashManager] = None  # type: ignore
         self.exit_grace_period = 0
 
     def validate_flash_configs(self, flash_configs: list[_HTTPConfig]):

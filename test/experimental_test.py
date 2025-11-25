@@ -38,3 +38,11 @@ def test_image_delete(client, servicer):
 
     with pytest.raises(NotFoundError):
         modal.experimental.image_delete("im-nonexistent", client=client)
+
+
+def test_stop_app(client, servicer):
+    app_name, environment_name = "test", "dev"
+    app.deploy(name=app_name, environment_name=environment_name, client=client)
+    modal.experimental.stop_app(app_name, environment_name=environment_name, client=client)
+    with pytest.raises(NotFoundError):
+        modal.App.lookup(app_name, environment_name=environment_name, client=client)

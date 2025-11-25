@@ -43,7 +43,7 @@ class _Object:
     _prefix_to_type: ClassVar[dict[str, type]] = {}
 
     # For constructors
-    _load: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]]
+    _load: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None
     _preload: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]]
     _rep: str
     _is_another_app: bool
@@ -308,11 +308,17 @@ class _Object:
                 # memory snapshots capture references which must be rehydrated
                 # on restore to handle staleness.
                 logger.debug(f"rehydrating {self} after snapshot")
-                self._is_hydrated = False  # un-hydrate and re-resolve
-                # Set the client on LoadContext before loading
-                root_load_context = LoadContext(client=client)
-                resolver = Resolver()
-                await resolver.load(typing.cast(_Object, self), root_load_context)
+                if self._hydrate_lazily:
+                    logger.debug(f"reloading lazy {self} from server")
+                    self._is_hydrated = False  # un-hydrate and re-resolve
+                    # we don't set an explicit Client here, relying on the default
+                    # env client to be applied by LoadContext.apply_default
+                    root_load_context = LoadContext.empty()
+                    resolver = Resolver()
+                    await resolver.load(typing.cast(_Object, self), root_load_context)
+                else:
+                    logger.debug(f"reloading non-lazy {self} by replacing client")
+                    self._client = client or await _Client.from_env()
                 self._is_rehydrated = True
                 logger.debug(f"rehydrated {self} with client {id(self.client)}")
         elif not self._hydrate_lazily:

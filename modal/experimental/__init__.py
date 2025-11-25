@@ -92,6 +92,19 @@ async def list_deployed_apps(environment_name: str = "", client: Optional[_Clien
 
 
 @synchronizer.create_blocking
+async def stop_app(name: str, *, environment_name: Optional[str] = None, client: Optional[_Client] = None) -> None:
+    """Stop a deployed App.
+
+    This interface is experimental and may change in the future,
+    although the functionality will continue to be supported.
+    """
+    client_ = client or await _Client.from_env()
+    app = await _App.lookup(name, environment_name=environment_name, client=client_)
+    req = api_pb2.AppStopRequest(app_id=app.app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
+    await client_.stub.AppStop(req)
+
+
+@synchronizer.create_blocking
 async def get_app_objects(
     app_name: str, *, environment_name: Optional[str] = None, client: Optional[_Client] = None
 ) -> dict[str, Union[_Function, _Cls]]:
