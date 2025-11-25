@@ -150,7 +150,6 @@ class Service(metaclass=ABCMeta):
         6. Yield finalized_functions for execution
         7. Handles cleanup (lifespan shutdown, 'exit' methods)
         """
-        yield {}
 
 
 def construct_webhook_callable(
