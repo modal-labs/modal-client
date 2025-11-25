@@ -222,7 +222,7 @@ class ImportedFunction(Service):
     app: modal.app._App
     service_deps: Optional[Sequence["modal._object._Object"]]
     user_cls_instance = None
-    _function_def: api_pb2.Function
+    function_def: api_pb2.Function
 
     _user_defined_callable: Callable[..., Any]
 
@@ -273,16 +273,16 @@ class ImportedFunction(Service):
     ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and initialization. Checkpointed containers run from this point onwards.
-        snapshot_callback(container_io_manager, self._function_def)
+        snapshot_callback(container_io_manager, self.function_def)
         create_breakpoint_wrapper(container_io_manager)
 
         with container_io_manager.handle_user_exception():
-            finalized_functions = self.get_finalized_functions(self._function_def, container_io_manager)
+            finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
 
         with _run_service_lifecycle(
             event_loop,
             container_io_manager,
-            self._function_def,
+            self.function_def,
             finalized_functions,
             None,
         ):
@@ -296,7 +296,7 @@ class ImportedClass(Service):
     service_deps: Optional[Sequence["modal._object._Object"]]
 
     _partial_functions: dict[str, "modal._partial_function._PartialFunction"]
-    _function_def: api_pb2.Function
+    function_def: api_pb2.Function
 
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
@@ -348,7 +348,7 @@ class ImportedClass(Service):
     ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
         # 1. Pre-snapshot Enter
         # Identify all "enter" methods that need to run before we snapshot.
-        if not self._function_def.is_auto_snapshot:
+        if not self.function_def.is_auto_snapshot:
             pre_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
             )
@@ -357,14 +357,14 @@ class ImportedClass(Service):
         # 2. Snapshot
         # If this container is being used to create a checkpoint, checkpoint the container after
         # global imports and initialization. Checkpointed containers run from this point onwards.
-        snapshot_callback(container_io_manager, self._function_def)
+        snapshot_callback(container_io_manager, self.function_def)
 
         # 3. Breakpoint wrapper
         create_breakpoint_wrapper(container_io_manager)
 
         # 4. Post-snapshot Enter
         # Identify the "enter" methods to run after resuming from a snapshot.
-        if not self._function_def.is_auto_snapshot:
+        if not self.function_def.is_auto_snapshot:
             post_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
@@ -372,17 +372,17 @@ class ImportedClass(Service):
 
         # 5. Get Functions & Start Lifespan
         with container_io_manager.handle_user_exception():
-            finalized_functions = self.get_finalized_functions(self._function_def, container_io_manager)
+            finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
 
         def exit_callback():
-            if not self._function_def.is_auto_snapshot:
+            if not self.function_def.is_auto_snapshot:
                 exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
                 call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
 
         with _run_service_lifecycle(
             event_loop,
             container_io_manager,
-            self._function_def,
+            self.function_def,
             finalized_functions,
             exit_callback,
         ):
@@ -467,7 +467,7 @@ def import_single_function_service(
     return ImportedFunction(
         app=active_app,
         service_deps=service_deps,
-        _function_def=function_def,
+        function_def=function_def,
         _user_defined_callable=user_defined_callable,
     )
 
@@ -543,7 +543,7 @@ def import_class_service(
         service_deps=service_deps,
         # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
         _partial_functions=method_partials,
-        _function_def=function_def,
+        function_def=function_def,
     )
 
 
