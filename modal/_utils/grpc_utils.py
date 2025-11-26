@@ -397,7 +397,8 @@ async def _retry_transient_errors(
                 ):
                     last_server_retry_warning_time = now
                     logger.warning(
-                        f"Warning: Received {exc.status} status: {exc.message}{os.linesep}"
+                        f"Warning: Received {exc.status}{os.linesep}"
+                        f"Status: {exc.message}{os.linesep}"
                         f"Will retry in {server_delay:0.2f} seconds."
                     )
 
