@@ -252,6 +252,39 @@ class TestFlashManagerStopping:
         assert flash_manager.num_failures > 0
 
     @pytest.mark.asyncio
+    async def test_hearbeat_on_dead_process(self, flash_manager, servicer):
+        """Test that flash heartbeat kills task if process dies."""
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+        # Set a short startup_timeout so failures are recorded after timeout expires
+        flash_manager.startup_timeout = 0.05
+        # Spin up a dead process, and set is_port_connection_healthy to call the real method on it.
+        import subprocess
+
+        # Start a process that will exit immediately
+        dead_process = subprocess.Popen(["sleep", "0"])
+        dead_process.wait(timeout=2)  # ensure it is dead
+
+        async def mock_is_port_connection_healthy(process, timeout=0.5):
+            return await type(flash_manager).is_port_connection_healthy(flash_manager, dead_process, timeout=timeout)
+
+        flash_manager.is_port_connection_healthy = AsyncMock(side_effect=mock_is_port_connection_healthy)
+        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+
+        host = "heartbeat-host.modal.test"
+        port = 9000
+
+        task = asyncio.create_task(flash_manager._run_heartbeat(host, port))
+        await asyncio.sleep(0.2)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        assert flash_manager.num_failures > 0
+
+    @pytest.mark.asyncio
     async def test_full_failure_and_stop_integration(self, flash_manager):
         """Test the full integration: failures -> drain -> stop."""
 

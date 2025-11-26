@@ -383,8 +383,9 @@ async def test_stream_by_line_raises_assertion_error_for_non_bytes_items():
         yield "not-bytes"  # type: ignore[misc]
 
     with pytest.raises(AssertionError):
-        async for _ in _stream_by_line(_bad_stream()):
-            pass
+        async with aclosing(_stream_by_line(_bad_stream())) as stream:
+            async for _ in stream:
+                pass
 
 
 @pytest.mark.asyncio
