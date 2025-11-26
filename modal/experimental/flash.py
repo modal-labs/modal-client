@@ -689,25 +689,3 @@ def _http_server(
 
 
 http_server = synchronize_api(_http_server, target_module=__name__)
-
-
-class _FlashContainerEntry:
-    def __init__(self):
-        self.flash_manager: Optional[FlashManager] = None  # type: ignore
-
-    def enter(self, http_config: Optional[api_pb2.HTTPConfig]):
-        if http_config:
-            self.exit_grace_period = max(self.exit_grace_period, http_config.exit_grace_period or 0)
-            self.flash_manager = flash_forward(
-                http_config.port,
-                startup_timeout=http_config.startup_timeout,
-            )
-
-    def stop(self):
-        if self.flash_manager:
-            self.flash_manager.stop()
-
-    async def close(self):
-        if self.flash_manager:
-            await asyncio.sleep(self.exit_grace_period)
-            self.flash_manager.close()
