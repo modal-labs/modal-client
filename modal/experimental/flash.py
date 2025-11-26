@@ -702,11 +702,7 @@ class _FlashContainerEntry:
         self.flash_manager: Optional[FlashManager] = None  # type: ignore
         self.exit_grace_period = 0
 
-    def validate_flash_configs(self, flash_configs: list[api_pb2.HTTPConfig]):
-        assert len(flash_configs) == 1, "Only one @http_server decorator is supported"
-        flash_config = flash_configs[0]
-
-    def enter(self, http_config: api_pb2.HTTPConfig):
+    def enter(self, http_config: Optional[api_pb2.HTTPConfig]):
         if http_config:
             self.exit_grace_period = max(self.exit_grace_period, http_config.exit_grace_period or 0)
             self.flash_manager = flash_forward(
@@ -721,5 +717,5 @@ class _FlashContainerEntry:
 
     async def close(self):
         if self.flash_manager:
-            await asyncio.sleep(self.exit_grace_period)  # TODO(claudia): write a test for this!
+            await asyncio.sleep(self.exit_grace_period)
             self.flash_manager.close()
