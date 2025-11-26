@@ -650,9 +650,9 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
 def _http_server(
     port: int,
     *,
-    proxy_regions: list[str] = [],
-    startup_timeout: Optional[int] = None,
-    exit_grace_period: Optional[int] = None,
+    proxy_regions: list[str] = [], # The regions to proxy the HTTP server to.
+    startup_timeout: int = 30, # Maximum number of seconds to wait for the HTTP server to start.
+    exit_grace_period: Optional[int] = None, # The time to wait for the HTTP server to exit gracefully.
 ):
     """Decorator for Flash-enabled HTTP servers on Modal classes.
 
@@ -665,7 +665,7 @@ def _http_server(
     """
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError("First argument of `@http_server` must be a local port, such as `@http_server(8000)`.")
-    if startup_timeout is not None and startup_timeout <= 0:
+    if startup_timeout <= 0:
         raise InvalidError("The `startup_timeout` argument of `@http_server` must be positive.")
     if exit_grace_period is not None and exit_grace_period < 0:
         raise InvalidError("The `exit_grace_period` argument of `@http_server` must be non-negative.")
@@ -676,8 +676,8 @@ def _http_server(
         http_config=api_pb2.HTTPConfig(
             port=port,
             proxy_regions=proxy_regions,
-            startup_timeout=startup_timeout,
-            exit_grace_period=exit_grace_period,
+            startup_timeout=startup_timeout or 0,
+            exit_grace_period=exit_grace_period or 0,
         )
     )
 

@@ -95,7 +95,6 @@ class _ServiceOptions:
     scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
     cloud: Optional[str] = None
     cloud_bucket_mounts: typing.Sequence[tuple[str, _CloudBucketMount]] = ()
-    http_config: Optional[api_pb2.HTTPConfig] = None
 
     def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
         """Implement protobuf-like MergeFrom semantics for this dataclass.

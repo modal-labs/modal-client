@@ -353,3 +353,44 @@ class TestFlashManagerStopping:
             pass
 
         assert len(servicer.flash_container_registrations) >= 1
+
+    async def test_flash_startup_heartbeat(self, flash_manager):
+        """Test that flash startup heartbeat registers the container."""
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+
+        async def side_effect(*args, **kwargs):
+            if not hasattr(flash_manager, "_call_count"):
+                flash_manager._call_count = 0
+            flash_manager._call_count += 1
+            if flash_manager._call_count <= 30:
+                return (False, None)
+            return (True, None)
+        flash_manager.is_port_connection_healthy = AsyncMock(side_effect=side_effect)
+
+        host = "heartbeat-host.modal.test"
+        port = 9000
+
+        task = asyncio.create_task(flash_manager._run_heartbeat(host, port))
+        await asyncio.sleep(0.2)
+        task.cancel()
+
+    async def test_flash_startup_timeout(self, flash_manager):
+        """Test that flash startup timeout works."""
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.startup_timeout = 0.05
+        flash_manager.is_port_connection_healthy = AsyncMock(return_value=(False, None))
+        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+
+        task = asyncio.create_task(flash_manager._run_heartbeat("heartbeat-host.modal.test", 9000))
+        await asyncio.sleep(0.2)
+        task.cancel()
+
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        assert flash_manager.num_failures > 0
+        assert flash_manager.num_failures == _MAX_FAILURES
