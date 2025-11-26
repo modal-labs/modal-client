@@ -15,6 +15,7 @@ from .config import config_cli
 from .container import container_cli
 from .dict import dict_cli
 from .environment import environment_cli
+from .function import function_cli
 from .launch import launch_cli
 from .network_file_system import nfs_cli
 from .profile import profile_cli
@@ -102,6 +103,7 @@ entrypoint_cli_typer.add_typer(app_cli, rich_help_panel="Deployments")
 entrypoint_cli_typer.add_typer(container_cli, rich_help_panel="Deployments")
 # TODO: cluster is hidden while multi-node is in beta/experimental
 entrypoint_cli_typer.add_typer(cluster_cli, rich_help_panel="Deployments", hidden=True)
+entrypoint_cli_typer.add_typer(function_cli, rich_help_panel="Deployments", hidden=True)
 
 # Storage
 entrypoint_cli_typer.add_typer(dict_cli, rich_help_panel="Storage")
