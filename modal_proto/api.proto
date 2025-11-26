@@ -1552,6 +1552,9 @@ message Function {
   repeated DataFormat supported_input_formats = 87; // can be used as inputs
   repeated DataFormat supported_output_formats = 88;
   optional HTTPConfig http_config = 89;
+
+  string implementation_name = 90; // Name that can be used to import the implementation when using a different identifier
+
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1731,6 +1734,8 @@ message FunctionData {
   repeated DataFormat supported_input_formats = 37;
   repeated DataFormat supported_output_formats = 38;
   optional HTTPConfig http_config = 39;
+
+  string implementation_name = 40; // Name that can be used to import the implementation when using a different identifier
 }
 
 message FunctionExtended {

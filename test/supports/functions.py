@@ -779,3 +779,8 @@ class Foo:
 @app.function(serialized=True)
 def serialized_triple(x):
     return 3 * x
+
+
+@app.function(name="custom_name")
+def impl_for_custom_name(x):
+    return x * x
