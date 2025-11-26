@@ -10,7 +10,7 @@ from collections import defaultdict
 from typing import Any, Callable, Optional, Union
 from urllib.parse import urlparse
 
-from modal._partial_function import _HTTPConfig, _PartialFunctionFlags
+from modal._partial_function import _PartialFunctionFlags
 from modal.cls import _Cls
 from modal.dict import _Dict
 from modal_proto import api_pb2
@@ -650,7 +650,7 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
 def _http_server(
     port: int,
     *,
-    proxy_regions: list[str],
+    proxy_regions: list[str] = [],
     startup_timeout: Optional[int] = None,
     exit_grace_period: Optional[int] = None,
 ):
@@ -670,10 +670,10 @@ def _http_server(
     if exit_grace_period is not None and exit_grace_period < 0:
         raise InvalidError("The `exit_grace_period` argument of `@http_server` must be non-negative.")
 
-    from modal._partial_function import _HTTPConfig, _PartialFunction, _PartialFunctionParams
+    from modal._partial_function import _PartialFunction, _PartialFunctionParams
 
     params = _PartialFunctionParams(
-        http_config=_HTTPConfig(
+        http_config=api_pb2.HTTPConfig(
             port=port,
             proxy_regions=proxy_regions,
             startup_timeout=startup_timeout,
@@ -702,11 +702,11 @@ class _FlashContainerEntry:
         self.flash_manager: Optional[FlashManager] = None  # type: ignore
         self.exit_grace_period = 0
 
-    def validate_flash_configs(self, flash_configs: list[_HTTPConfig]):
+    def validate_flash_configs(self, flash_configs: list[api_pb2.HTTPConfig]):
         assert len(flash_configs) == 1, "Only one @http_server decorator is supported"
         flash_config = flash_configs[0]
 
-    def enter(self, http_config: _HTTPConfig):
+    def enter(self, http_config: api_pb2.HTTPConfig):
         if http_config:
             self.exit_grace_period = max(self.exit_grace_period, http_config.exit_grace_period or 0)
             self.flash_manager = flash_forward(

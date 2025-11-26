@@ -17,7 +17,6 @@ from ._object import _Object, live_method
 from ._partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
-    _HTTPConfig,
     _PartialFunction,
     _PartialFunctionFlags,
 )
@@ -96,7 +95,7 @@ class _ServiceOptions:
     scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
     cloud: Optional[str] = None
     cloud_bucket_mounts: typing.Sequence[tuple[str, _CloudBucketMount]] = ()
-    http_config: Optional[_HTTPConfig] = None
+    http_config: Optional[api_pb2.HTTPConfig] = None
 
     def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
         """Implement protobuf-like MergeFrom semantics for this dataclass.
@@ -976,6 +975,7 @@ class _Parameter:
 
 def is_parameter(p: Any) -> bool:
     return isinstance(p, _Parameter) and p.init
+
 
 def parameter(*, default: Any = _no_default, init: bool = True) -> Any:
     """Used to specify options for modal.cls parameters, similar to dataclass.field for dataclasses

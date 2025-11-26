@@ -66,22 +66,6 @@ class _PartialFunctionFlags(enum.IntFlag):
 
 
 @dataclass
-class _HTTPConfig:
-    port: int
-    proxy_regions: list[str]
-    startup_timeout: Optional[int] = None
-    exit_grace_period: Optional[int] = None
-
-    def _to_proto(self) -> api_pb2.HTTPConfig:
-        return api_pb2.HTTPConfig(
-            port=self.port,
-            proxy_regions=self.proxy_regions,
-            startup_timeout=self.startup_timeout or 0,
-            exit_grace_period=self.exit_grace_period or 0,
-        )
-
-
-@dataclass
 class _PartialFunctionParams:
     webhook_config: Optional[api_pb2.WebhookConfig] = None
     is_generator: Optional[bool] = None
@@ -93,7 +77,7 @@ class _PartialFunctionParams:
     target_concurrent_inputs: Optional[int] = None
     build_timeout: Optional[int] = None
     rdma: Optional[bool] = None
-    http_config: Optional[_HTTPConfig] = None
+    http_config: Optional[api_pb2.HTTPConfig] = None
 
     def update(self, other: "_PartialFunctionParams") -> None:
         """Update self with params set in other."""
