@@ -1024,21 +1024,18 @@ class _App:
 
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             local_state = self._local_state
-            http_config_ = None
             # Check if the decorated object is a class
+            http_config = None
             if isinstance(wrapped_cls, _PartialFunction):
                 wrapped_cls.registered = True
                 user_cls = wrapped_cls.user_cls
                 if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
                     http_config = wrapped_cls.params.http_config
-                    if http_config:
-                        http_config_ = http_config._to_proto()
-
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
                     verify_concurrent_params(
                         params=wrapped_cls.params,
-                        is_flash=is_flash_object(experimental_options or {}, http_config=http_config_
-                    ))
+                        is_flash=is_flash_object(experimental_options or {}, http_config=http_config),
+                    )
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
@@ -1134,7 +1131,7 @@ class _App:
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
-                http_config=http_config_,
+                http_config=http_config,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
                 rdma=rdma,
