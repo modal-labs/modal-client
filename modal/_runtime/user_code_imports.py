@@ -370,7 +370,7 @@ class ImportedClass(Service):
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
-            flash_entry.enter(self.function_def.http_config if self.function_def.http_config else None)
+            flash_entry.enter(self.function_def.http_config)
 
         # 5. Get Functions & Start Lifespan
         with container_io_manager.handle_user_exception():
