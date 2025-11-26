@@ -650,9 +650,9 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
 def _http_server(
     port: int,
     *,
-    proxy_regions: list[str] = [], # The regions to proxy the HTTP server to.
-    startup_timeout: int = 30, # Maximum number of seconds to wait for the HTTP server to start.
-    exit_grace_period: Optional[int] = None, # The time to wait for the HTTP server to exit gracefully.
+    proxy_regions: list[str] = [],  # The regions to proxy the HTTP server to.
+    startup_timeout: int = 30,  # Maximum number of seconds to wait for the HTTP server to start.
+    exit_grace_period: Optional[int] = None,  # The time to wait for the HTTP server to exit gracefully.
 ):
     """Decorator for Flash-enabled HTTP servers on Modal classes.
 

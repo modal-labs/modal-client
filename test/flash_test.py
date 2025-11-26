@@ -366,6 +366,7 @@ class TestFlashManagerStopping:
             if flash_manager._call_count <= 30:
                 return (False, None)
             return (True, None)
+
         flash_manager.is_port_connection_healthy = AsyncMock(side_effect=side_effect)
 
         host = "heartbeat-host.modal.test"
