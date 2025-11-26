@@ -2,6 +2,7 @@
 import asyncio
 import codecs
 import contextlib
+import io
 import sys
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -403,10 +404,10 @@ class _BytesStreamReaderThroughCommandRouter:
         return self._params.file_descriptor
 
     async def read(self) -> bytes:
-        data_bytes = b""
+        buffer = io.BytesIO()
         async for part in self:
-            data_bytes += cast(bytes, part)
-        return data_bytes
+            buffer.write(cast(bytes, part))
+        return await asyncio.to_thread(buffer.read)
 
     def __aiter__(self) -> AsyncGenerator[bytes, None]:
         return _stdio_stream_from_command_router(self._params)
