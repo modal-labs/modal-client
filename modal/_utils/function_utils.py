@@ -129,7 +129,7 @@ class FunctionInfo:
 
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
-    import_name: str
+    implementation_name: str
     user_cls: Optional[type[Any]]
     module_name: Optional[str]
 
@@ -163,14 +163,14 @@ class FunctionInfo:
 
         if f is None and user_cls:
             # "service function" for running all methods of a class
-            self.import_name = f"{user_cls.__name__}.*"
+            self.implementation_name = f"{user_cls.__name__}.*"
         elif f and user_cls:
             # Method may be defined on superclass of the wrapped class
-            self.import_name = f"{user_cls.__name__}.{f.__name__}"
+            self.implementation_name = f"{user_cls.__name__}.{f.__name__}"
         else:
-            self.import_name = f.__qualname__
+            self.implementation_name = f.__qualname__
 
-        self.function_name = name_override or self.import_name
+        self.function_name = name_override or self.implementation_name
 
         # If it's a cls, the @method could be defined in a base class in a different file.
         if user_cls is not None:

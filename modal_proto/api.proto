@@ -1552,7 +1552,7 @@ message Function {
   repeated DataFormat supported_output_formats = 88;
   optional HTTPConfig http_config = 89;
 
-  string import_name = 90; // Name that can be used to import the implementation when using a different identifier
+  string implementation_name = 90; // Name that can be used to import the implementation when using a different identifier
 
 }
 
@@ -1734,7 +1734,7 @@ message FunctionData {
   repeated DataFormat supported_output_formats = 38;
   optional HTTPConfig http_config = 39;
 
-  string import_name = 40; // Name that can be used to import the implementation when using a different identifier
+  string implementation_name = 40; // Name that can be used to import the implementation when using a different identifier
 }
 
 message FunctionExtended {

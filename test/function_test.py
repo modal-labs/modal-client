@@ -974,7 +974,7 @@ def test_custom_function_name(client, servicer):
     with servicer.intercept() as ctx, app.run(client=client):
         request = ctx.pop_request("FunctionCreate")
         assert request.function.function_name == "smarty"
-        assert request.function.import_name == "dummy"
+        assert request.function.implementation_name == "dummy"
 
 
 def test_new_hydrated_internal(client, servicer):
