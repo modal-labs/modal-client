@@ -2,14 +2,15 @@
 import asyncio
 import pytest
 import time
+from typing import AsyncGenerator, Optional
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter
-from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line, _StreamWriter
-from modal_proto import api_pb2
+from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line, _StreamReader, _StreamWriter
+from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
 def test_stream_reader(servicer, client):
@@ -444,6 +445,17 @@ class _FakeCommandRouterClient:
             }
         )
 
+    async def exec_stdio_read(
+        self,
+        task_id: str,
+        exec_id: str,
+        file_descriptor: api_pb2.FileDescriptor.ValueType,
+        deadline: Optional[float] = None,
+    ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
+        yield sr_pb2.TaskExecStdioReadResponse(data=b"a")
+        yield sr_pb2.TaskExecStdioReadResponse(data=b"b")
+        yield sr_pb2.TaskExecStdioReadResponse(data=b"c")
+
 
 @pytest.mark.asyncio
 async def test_stream_writer_drain_calls_exec_stdin_with_eof_when_closed_and_no_data():
@@ -538,3 +550,21 @@ async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with
     assert call["offset"] == 0
     assert call["data"] == b"xyz"
     assert call["eof"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text, expected_out", [(False, b"abc"), (True, "abc")])
+async def test_stream_reader_command_router(text, expected_out):
+    router = _FakeCommandRouterClient()
+    reader = _StreamReader(
+        file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,  # type: ignore unused when command_router_client is provided
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+        text=text,
+    )
+
+    out = await reader.read()
+    assert out == expected_out

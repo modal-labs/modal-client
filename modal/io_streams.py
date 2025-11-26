@@ -439,6 +439,7 @@ class _TextStreamReaderThroughCommandRouter:
         return self._params.file_descriptor
 
     async def read(self) -> str:
+        assert False
         data_str = ""
         async for part in self:
             data_str += cast(str, part)
