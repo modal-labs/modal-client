@@ -76,8 +76,7 @@ def is_global_object(object_qual_name: str):
 
 
 def is_flash_object(experimental_options: Optional[dict[str, Any]], http_config: Optional[api_pb2.HTTPConfig]) -> bool:
-    return experimental_options.get("flash", False) if experimental_options else False or http_config is not None
-
+    return bool(experimental_options and experimental_options.get("flash", False)) or http_config is not None
 
 def is_method_fn(object_qual_name: str):
     # methods have names like Cls.foo.

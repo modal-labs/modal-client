@@ -31,8 +31,7 @@ class _FlashManager:
         port: int,
         process: Optional[subprocess.Popen] = None,  # to be deprecated
         health_check_url: Optional[str] = None,
-        startup_timeout: Optional[int] = None,
-        exit_grace_period: Optional[int] = None,
+        startup_timeout: int = 30,
         h2_enabled: bool = False,
     ):
         self.client = client
@@ -41,7 +40,6 @@ class _FlashManager:
         # Health check is not currently being used
         self.health_check_url = health_check_url
         self.startup_timeout = startup_timeout
-        self.exit_grace_period = exit_grace_period
         self.tunnel_manager = _forward_tunnel(port, h2_enabled=h2_enabled, client=client)
         self.stopped = False
         self.num_failures = 0
@@ -134,9 +132,7 @@ class _FlashManager:
                         )
                         first_registration = False
                 else:
-                    if first_registration and (
-                        self.startup_timeout is None or time.monotonic() - start_time < self.startup_timeout
-                    ):
+                    if first_registration and (time.monotonic() - start_time < self.startup_timeout):
                         continue
                     else:
                         logger.error(
@@ -188,8 +184,7 @@ async def flash_forward(
     port: int,
     process: Optional[subprocess.Popen] = None,
     health_check_url: Optional[str] = None,
-    startup_timeout: Optional[int] = None,
-    exit_grace_period: Optional[int] = None,
+    startup_timeout: int = 30,
     h2_enabled: bool = False,
 ) -> _FlashManager:
     """
@@ -205,7 +200,6 @@ async def flash_forward(
         process=process,
         health_check_url=health_check_url,
         startup_timeout=startup_timeout,
-        exit_grace_period=exit_grace_period,
         h2_enabled=h2_enabled,
     )
     await manager._start()
@@ -700,7 +694,6 @@ http_server = synchronize_api(_http_server, target_module=__name__)
 class _FlashContainerEntry:
     def __init__(self):
         self.flash_manager: Optional[FlashManager] = None  # type: ignore
-        self.exit_grace_period = 0
 
     def enter(self, http_config: Optional[api_pb2.HTTPConfig]):
         if http_config:
@@ -708,7 +701,6 @@ class _FlashContainerEntry:
             self.flash_manager = flash_forward(
                 http_config.port,
                 startup_timeout=http_config.startup_timeout,
-                exit_grace_period=http_config.exit_grace_period,
             )
 
     def stop(self):
