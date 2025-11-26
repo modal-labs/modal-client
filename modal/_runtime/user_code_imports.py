@@ -274,8 +274,10 @@ class ImportedFunction(Service):
             yield finalized_functions
             int_handler, usr1_handler = disable_signals()
 
-        volume_commit(container_io_manager, self.function_def)
-        enable_signals(int_handler, usr1_handler)
+        try:
+            volume_commit(container_io_manager, self.function_def)
+        finally:
+            enable_signals(int_handler, usr1_handler)
 
 
 @dataclass
@@ -363,10 +365,12 @@ class ImportedClass(Service):
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ):
-        yield
-        if not self.function_def.is_auto_snapshot:
-            exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
-            call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
+        try:
+            yield
+        finally:
+            if not self.function_def.is_auto_snapshot:
+                exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
+                call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
 
     @contextmanager
     def execution_context(
@@ -392,8 +396,10 @@ class ImportedClass(Service):
                         # 6. Yield Finalized Functions
                         yield finalized_functions
                         int_handler, usr1_handler = disable_signals()
-                volume_commit(container_io_manager, self.function_def)
-                enable_signals(int_handler, usr1_handler)
+                try:
+                    volume_commit(container_io_manager, self.function_def)
+                finally:
+                    enable_signals(int_handler, usr1_handler)
 
 
 def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs: dict[str, Any]) -> typing.Any:
