@@ -406,7 +406,7 @@ class _BytesStreamReaderThroughCommandRouter:
     async def read(self) -> bytes:
         buffer = io.BytesIO()
         async for part in self:
-            buffer.write(cast(bytes, part))
+            buffer.write(part)
         return buffer.getvalue()
 
     def __aiter__(self) -> AsyncGenerator[bytes, None]:
