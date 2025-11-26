@@ -439,11 +439,10 @@ class _TextStreamReaderThroughCommandRouter:
         return self._params.file_descriptor
 
     async def read(self) -> str:
-        assert False
-        data_str = ""
+        buffer = io.StringIO()
         async for part in self:
-            data_str += cast(str, part)
-        return data_str
+            buffer.write(part)
+        return buffer.getvalue()
 
     async def __aiter__(self) -> AsyncGenerator[str, None]:
         async with aclosing(_stdio_stream_from_command_router(self._params)) as bytes_stream:
