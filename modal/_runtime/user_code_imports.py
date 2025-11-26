@@ -270,14 +270,18 @@ class ImportedFunction(Service):
 
         with container_io_manager.handle_user_exception():
             finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
-        with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
-            yield finalized_functions
-            int_handler, usr1_handler = disable_signals()
-
         try:
-            volume_commit(container_io_manager, self.function_def)
+            with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
+                yield finalized_functions
         finally:
-            enable_signals(int_handler, usr1_handler)
+            # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
+            # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
+            # may have been sent to cancel inputs.
+            int_handler, usr1_handler = disable_signals()
+            try:
+                volume_commit(container_io_manager, self.function_def)
+            finally:
+                enable_signals(int_handler, usr1_handler)
 
 
 @dataclass
@@ -357,14 +361,6 @@ class ImportedClass(Service):
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
-        yield
-
-    @contextmanager
-    def lifecycle_exit(
-        self,
-        event_loop: UserCodeEventLoop,
-        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ):
         try:
             yield
         finally:
@@ -387,19 +383,23 @@ class ImportedClass(Service):
             create_breakpoint_wrapper(container_io_manager)
             # 4. Post-snapshot Enter
             with self.lifecycle_postsnapshot(event_loop, container_io_manager):
-                # 7. Register Exit
-                with self.lifecycle_exit(event_loop, container_io_manager):
-                    # 5. Get Functions & Start Lifespan
-                    with container_io_manager.handle_user_exception():
-                        finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
+                # 5. Get Functions & Start Lifespan
+                with container_io_manager.handle_user_exception():
+                    finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
+                try:
                     with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
                         # 6. Yield Finalized Functions
                         yield finalized_functions
-                        int_handler, usr1_handler = disable_signals()
-                try:
-                    volume_commit(container_io_manager, self.function_def)
                 finally:
-                    enable_signals(int_handler, usr1_handler)
+                    # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
+                    # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
+                    # may have been sent to cancel inputs.
+                    int_handler, usr1_handler = disable_signals()
+                    try:
+                        # 7. Volume commit
+                        volume_commit(container_io_manager, self.function_def)
+                    finally:
+                        enable_signals(int_handler, usr1_handler)
 
 
 def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs: dict[str, Any]) -> typing.Any:

@@ -779,3 +779,80 @@ class Foo:
 @app.function(serialized=True)
 def serialized_triple(x):
     return 3 * x
+
+
+# Global list to track lifecycle events in order for FullLifecycleCls
+full_lifecycle_events: list[str] = []
+
+
+@app.cls(
+    enable_memory_snapshot=True,
+    volumes={
+        "/var/test": modal.Volume.from_name("test-vol", create_if_missing=True),
+    },
+)
+class FullLifecycleCls:
+    """
+    Test class that tracks all lifecycle operations in order:
+    1. modal.enter(snap=True) - pre-snapshot enter
+    2. modal.enter(snap=False) - post-snapshot enter
+    3. ASGI lifespan startup
+    4. function call
+    5. signals disabled (checked in exit)
+    6. ASGI lifespan shutdown
+    7. modal.exit
+    8. volume commit (verified via servicer)
+    """
+
+    print_at_exit: int = modal.parameter(default=0)
+
+    def _print_at_exit(self):
+        import atexit
+
+        atexit.register(lambda: print("[lifecycle_events:" + ",".join(full_lifecycle_events) + "]"))
+
+    @enter(snap=True)
+    def enter_pre_snapshot(self):
+        full_lifecycle_events.append("enter_pre_snapshot")
+
+    @enter(snap=False)
+    def enter_post_snapshot(self):
+        full_lifecycle_events.append("enter_post_snapshot")
+
+    @asgi_app()
+    def web(self):
+        from fastapi import FastAPI
+
+        @contextlib.asynccontextmanager
+        async def lifespan(app):
+            full_lifecycle_events.append("asgi_startup")
+            yield
+            full_lifecycle_events.append("asgi_shutdown")
+
+        web_app = FastAPI(lifespan=lifespan)
+
+        @web_app.get("/")
+        async def root():
+            full_lifecycle_events.append("asgi_request")
+            return "ok"
+
+        return web_app
+
+    @method()
+    def run_method(self):
+        if self.print_at_exit:
+            self._print_at_exit()
+        full_lifecycle_events.append("method_call")
+        return full_lifecycle_events.copy()
+
+    @exit()
+    def exit_handler(self):
+        import signal
+
+        # Check if signals are disabled (SIGINT should be SIG_IGN during exit)
+        sigint_handler = signal.getsignal(signal.SIGINT)
+        if sigint_handler == signal.SIG_IGN:
+            full_lifecycle_events.append("exit_signals_disabled")
+        else:
+            full_lifecycle_events.append("exit_signals_enabled")
+        full_lifecycle_events.append("modal_exit")

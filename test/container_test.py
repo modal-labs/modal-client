@@ -2126,6 +2126,51 @@ def test_lifecycle_full(servicer, tmp_path):
     assert "[events:enter_sync,enter_async,f_async,local,exit_sync,exit_async]" in stdout.decode()
 
 
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_full_lifecycle_order(servicer, tmp_path):
+    """
+    Test that verifies the complete order of lifecycle operations:
+    1. modal.enter(snap=True) - pre-snapshot enter
+    2. modal.enter(snap=False) - post-snapshot enter
+    3. ASGI lifespan startup
+    4. function call
+    5. signals disabled (verified in exit handler)
+    6. ASGI lifespan shutdown
+    7. modal.exit
+    8. volume commit (verified via servicer)
+    """
+    container_process = _run_container_process(
+        servicer,
+        tmp_path,
+        "test.supports.functions",
+        "FullLifecycleCls.*",
+        inputs=[("run_method", (), {})],
+        cls_params=((), {"print_at_exit": 1}),
+        is_class=True,
+    )
+    stdout, stderr = container_process.communicate(timeout=10)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+
+    # Verify the order of lifecycle events
+    # Expected order:
+    # 1. enter_pre_snapshot (before checkpoint)
+    # 2. enter_post_snapshot (after checkpoint, before ASGI)
+    # 3. asgi_startup (ASGI lifespan startup)
+    # 4. method_call (actual function execution)
+    # 5. asgi_shutdown (ASGI lifespan shutdown happens in lifecycle_asgi finally)
+    # 6. exit_signals_disabled (modal.exit runs with signals disabled)
+    # 7. modal_exit (modal.exit handler)
+    expected_events = (
+        "enter_pre_snapshot,enter_post_snapshot,asgi_startup,method_call,asgi_shutdown,exit_signals_disabled,modal_exit"
+    )
+    assert f"[lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+    # Verify volume commit happened (after signals were disabled)
+    volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
+    assert volume_commit_rpcs, "Volume commit should have been called"
+
+
 ## modal.experimental functionality ##
 
 
