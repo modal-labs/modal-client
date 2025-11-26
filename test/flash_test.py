@@ -358,6 +358,7 @@ class TestFlashManagerStopping:
         """Test that flash startup heartbeat registers the container."""
         flash_manager.tunnel = MagicMock()
         flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
 
         async def side_effect(*args, **kwargs):
             if not hasattr(flash_manager, "_call_count"):
