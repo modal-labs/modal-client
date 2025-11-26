@@ -407,7 +407,7 @@ class _BytesStreamReaderThroughCommandRouter:
         buffer = io.BytesIO()
         async for part in self:
             buffer.write(cast(bytes, part))
-        return await asyncio.to_thread(buffer.read)
+        return buffer.getvalue()
 
     def __aiter__(self) -> AsyncGenerator[bytes, None]:
         return _stdio_stream_from_command_router(self._params)
