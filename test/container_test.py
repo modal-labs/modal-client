@@ -317,7 +317,7 @@ def _container_args(
     function_def = api_pb2.Function(
         module_name=module_name,
         function_name=function_name,
-        import_name=function_name,
+        implementation_name=function_name,
         function_type=function_type,
         volume_mounts=volume_mounts,
         webhook_config=webhook_config,
@@ -1358,7 +1358,7 @@ def test_cli(servicer, tmp_path, credentials):
     function_def = api_pb2.Function(
         module_name="test.supports.functions",
         function_name="square",
-        import_name="square",
+        implementation_name="square",
         function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
         definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
         object_dependencies=[api_pb2.ObjectDependency(object_id="im-123")],

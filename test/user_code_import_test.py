@@ -12,7 +12,7 @@ def test_import_function(supports_dir, monkeypatch):
     fun = api_pb2.Function(
         module_name="user_code_import_samples.func",
         function_name="f",
-        import_name="f",
+        implementation_name="f",
         supported_output_formats=[api_pb2.DATA_FORMAT_CBOR],
     )
     service = user_code_imports.import_single_function_service(
@@ -44,7 +44,7 @@ def test_import_function_undecorated(monkeypatch, supports_on_path):
     fun = api_pb2.Function(
         module_name="user_code_import_samples.func",
         function_name="undecorated_f",
-        import_name="undecorated_f",
+        implementation_name="undecorated_f",
         app_name="user_code_import_samples_func_app",
     )
     service = user_code_imports.import_single_function_service(
