@@ -449,7 +449,7 @@ class _FakeCommandRouterClient:
         self,
         task_id: str,
         exec_id: str,
-        file_descriptor: api_pb2.FileDescriptor.ValueType,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
         deadline: Optional[float] = None,
     ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
         yield sr_pb2.TaskExecStdioReadResponse(data=b"a")
@@ -560,7 +560,7 @@ async def test_stream_reader_command_router(text, expected_out):
         file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
         object_id="tp-123",
         object_type="container_process",
-        client=None,  # type: ignore unused when command_router_client is provided
+        client=None,  # type: ignore[arg-type]
         command_router_client=router,  # type: ignore[arg-type]
         task_id="task-1",
         text=text,
