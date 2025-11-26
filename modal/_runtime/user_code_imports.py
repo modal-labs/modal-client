@@ -30,7 +30,6 @@ from modal._utils.function_utils import (
 from modal.app import _App
 from modal.config import logger
 from modal.exception import ExecutionError, InvalidError
-from modal.experimental.flash import _FlashContainerEntry
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
@@ -346,7 +345,6 @@ class ImportedClass(Service):
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
-        flash_entry = _FlashContainerEntry()
         # 1. Pre-snapshot Enter
         # Identify all "enter" methods that need to run before we snapshot.
         if not self.function_def.is_auto_snapshot:
@@ -370,7 +368,6 @@ class ImportedClass(Service):
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
-            flash_entry.enter(self.function_def.http_config)
 
         # 5. Get Functions & Start Lifespan
         with container_io_manager.handle_user_exception():
@@ -378,10 +375,8 @@ class ImportedClass(Service):
 
         def exit_callback():
             if not self.function_def.is_auto_snapshot:
-                flash_entry.stop()
                 exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
                 call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
-                flash_entry.close()
 
         with _run_service_lifecycle(
             event_loop,
