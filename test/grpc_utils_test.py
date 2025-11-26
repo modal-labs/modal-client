@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import os
 import pytest
 import time
 
@@ -287,7 +288,7 @@ async def test_retry_transient_errors_grpc_retry(servicer, client, caplog, monke
     assert servicer.blob_create_metadata.get("x-throttle-retry-attempt") == "10"
 
     # With an interval of 0.3 sec and retrying for a 1.0 sec, warning message is shown at time 0.0, 0.3, 0.6, 0.9
-    assert caplog.text.count("Will retry in 0.10 seconds") == 4
+    assert caplog.text.count(f"foobar-message{os.linesep}Will retry in 0.10 seconds") == 4
 
 
 @synchronize_api
