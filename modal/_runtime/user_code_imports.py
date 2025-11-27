@@ -175,15 +175,12 @@ class Service(metaclass=ABCMeta):
                     with container_io_manager.handle_user_exception():
                         finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
                     # 5. Start ASGI lifespan
-                    try:
-                        with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
-                            # 6. Yield Finalized Functions
+                    with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
+                        # 6. Yield Finalized Functions
+                        try:
                             yield finalized_functions
-                    finally:
-                        # 8. Disable signals before exit/ASGI shutdown/lifecycle wind-down
-                        # From this point onward, ignore all SIGINT signals that come from
-                        # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals
-                        int_handler, usr1_handler = disable_signals()
+                        finally:
+                            int_handler, usr1_handler = disable_signals()
             finally:
                 # 9. Volume commit - runs OUTSIDE all lifecycle managers so exit handlers
                 # have a chance to write to disk before we commit volumes

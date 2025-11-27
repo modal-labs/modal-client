@@ -816,13 +816,20 @@ class FullLifecycleCls:
 
     @asgi_app()
     def web(self):
+        import signal as signal_module
+
         from fastapi import FastAPI
 
         @contextlib.asynccontextmanager
         async def lifespan(app):
             full_lifecycle_events.append("asgi_startup")
             yield
-            full_lifecycle_events.append("asgi_shutdown")
+            # Check signal state during ASGI shutdown - signals should be disabled
+            sigint_handler = signal_module.getsignal(signal_module.SIGINT)
+            if sigint_handler == signal_module.SIG_IGN:
+                full_lifecycle_events.append("asgi_shutdown_signals_disabled")
+            else:
+                full_lifecycle_events.append("asgi_shutdown_signals_enabled")
 
         web_app = FastAPI(lifespan=lifespan)
 

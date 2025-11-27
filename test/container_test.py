@@ -2128,18 +2128,21 @@ def test_lifecycle_full(servicer, tmp_path):
     assert "[events:enter_sync,enter_async,f_async,local,exit_sync,exit_async]" in stdout.decode()
 
 
+@skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_full_lifecycle_order(servicer, tmp_path):
+def test_full_lifecycle_order_signals_disabled_before_asgi_exit(servicer, tmp_path):
     """
-    Test that verifies the complete order of lifecycle operations:
+    Test that verifies signals are disabled BEFORE ASGI exit functions run.
+
+    This confirms the complete order of lifecycle operations:
     1. modal.enter(snap=True) - pre-snapshot enter
     2. modal.enter(snap=False) - post-snapshot enter
     3. ASGI lifespan startup
     4. function call
-    5. ASGI lifespan shutdown
-    6. signals disabled
+    5. signals disabled
+    6. ASGI lifespan shutdown (signals should be disabled here!)
     7. modal.exit (runs with signals disabled)
-    8. volume commit (verified via servicer)
+    8. volume commit
     9. signals re-enabled
     """
     volume_mounts = [
@@ -2158,23 +2161,27 @@ def test_full_lifecycle_order(servicer, tmp_path):
     stdout, stderr = container_process.communicate(timeout=10)
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
 
-    # Verify the order of lifecycle events
+    # Verify the order of lifecycle events - particularly that signals are disabled during ASGI shutdown
     # Expected order:
     # 1. enter_pre_snapshot (before checkpoint)
     # 2. enter_post_snapshot (after checkpoint, before ASGI)
     # 3. asgi_startup (ASGI lifespan startup)
     # 4. method_call (actual function execution)
-    # 5. asgi_shutdown (ASGI lifespan shutdown happens in lifecycle_asgi finally)
-    # 6. exit_signals_disabled (signals are disabled before exit methods run)
-    # 7. modal_exit (modal.exit handler runs with signals disabled)
-    # 8. volume commit (after exit methods, signals still disabled)
-    # 9. signals re-enabled
+    # 5. asgi_shutdown_signals_disabled (ASGI shutdown happens with signals DISABLED)
+    # 6. exit_signals_disabled (modal.exit runs with signals disabled)
+    # 7. modal_exit (modal.exit handler)
     expected_events = (
-        "enter_pre_snapshot,enter_post_snapshot,asgi_startup,method_call,asgi_shutdown,exit_signals_disabled,modal_exit"
+        "enter_pre_snapshot,"
+        "enter_post_snapshot,"
+        "asgi_startup,"
+        "method_call,"
+        "asgi_shutdown_signals_disabled,"  # KEY: Confirms signals are disabled during ASGI shutdown
+        "exit_signals_disabled,"
+        "modal_exit"
     )
     assert f"[lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
 
-    # Verify volume commit happened (after signals were disabled)
+    # Verify volume commit happened
     volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
     assert volume_commit_rpcs, "Volume commit should have been called"
     assert volume_commit_rpcs[0].volume_id == "vo-test"
