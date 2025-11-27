@@ -2137,8 +2137,10 @@ def test_full_lifecycle_order(servicer, tmp_path):
     3. ASGI lifespan startup
     4. function call
     5. ASGI lifespan shutdown
-    6. signals disabled + volume commit + signals enabled (verified via servicer)
-    7. modal.exit (signals are enabled at this point)
+    6. signals disabled
+    7. modal.exit (runs with signals disabled)
+    8. volume commit (verified via servicer)
+    9. signals re-enabled
     """
     volume_mounts = [
         api_pb2.VolumeMount(volume_id="vo-test", allow_background_commits=True),
@@ -2163,11 +2165,12 @@ def test_full_lifecycle_order(servicer, tmp_path):
     # 3. asgi_startup (ASGI lifespan startup)
     # 4. method_call (actual function execution)
     # 5. asgi_shutdown (ASGI lifespan shutdown happens in lifecycle_asgi finally)
-    # 6. (volume commit happens with signals disabled - not visible in events)
-    # 7. exit_signals_enabled (modal.exit runs after signals are re-enabled)
-    # 8. modal_exit (modal.exit handler)
+    # 6. exit_signals_disabled (signals are disabled before exit methods run)
+    # 7. modal_exit (modal.exit handler runs with signals disabled)
+    # 8. volume commit (after exit methods, signals still disabled)
+    # 9. signals re-enabled
     expected_events = (
-        "enter_pre_snapshot,enter_post_snapshot,asgi_startup,method_call,asgi_shutdown,exit_signals_enabled,modal_exit"
+        "enter_pre_snapshot,enter_post_snapshot,asgi_startup,method_call,asgi_shutdown,exit_signals_disabled,modal_exit"
     )
     assert f"[lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
 
