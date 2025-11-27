@@ -161,15 +161,15 @@ class Service(metaclass=ABCMeta):
         7. Handles cleanup (lifespan shutdown, 'exit' methods)
         """
         int_handler, usr1_handler = None, None
-        # 1. Pre-snapshot Enter
-        with self.lifecycle_presnapshot(event_loop, container_io_manager):
-            # 2. Snapshot -- If this container is being used to create a checkpoint, checkpoint the container after
-            # global imports and initialization. Checkpointed containers run from this point onwards.
-            maybe_snapshot(container_io_manager, self.function_def)
-            # 3. Breakpoint wrapper
-            create_breakpoint_wrapper(container_io_manager)
-            # 4. Post-snapshot Enter
-            try:
+        try:
+            # 1. Pre-snapshot Enter
+            with self.lifecycle_presnapshot(event_loop, container_io_manager):
+                # 2. Snapshot -- If this container is being used to create a checkpoint, checkpoint the container after
+                # global imports and initialization. Checkpointed containers run from this point onwards.
+                maybe_snapshot(container_io_manager, self.function_def)
+                # 3. Breakpoint wrapper
+                create_breakpoint_wrapper(container_io_manager)
+                # 4. Post-snapshot Enter
                 with self.lifecycle_postsnapshot(event_loop, container_io_manager):
                     # Get Functions
                     with container_io_manager.handle_user_exception():
@@ -181,13 +181,13 @@ class Service(metaclass=ABCMeta):
                             yield finalized_functions
                         finally:
                             int_handler, usr1_handler = disable_signals()
+        finally:
+            # 9. Volume commit - runs OUTSIDE all lifecycle managers so exit handlers
+            # have a chance to write to disk before we commit volumes
+            try:
+                volume_commit(container_io_manager, self.function_def)
             finally:
-                # 9. Volume commit - runs OUTSIDE all lifecycle managers so exit handlers
-                # have a chance to write to disk before we commit volumes
-                try:
-                    volume_commit(container_io_manager, self.function_def)
-                finally:
-                    try_enable_signals(int_handler, usr1_handler)
+                try_enable_signals(int_handler, usr1_handler)
 
 
 def construct_webhook_callable(
@@ -308,6 +308,7 @@ class ImportedFunction(Service):
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ):
+        # This is a no-op for imported functions since @enter methods are not supported
         yield
 
     @contextmanager
@@ -316,6 +317,7 @@ class ImportedFunction(Service):
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ):
+        # This is a no-op for imported functions since @enter methods are not supported
         yield
 
 
