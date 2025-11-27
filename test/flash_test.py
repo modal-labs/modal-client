@@ -31,7 +31,7 @@ def flash_manager(client, mock_tunnel_manager):
             return_value=mock_tunnel_manager,
         ),
     ):
-        manager = _FlashManager(client=client, port=8000)
+        manager = _FlashManager(client=client, port=8000, startup_timeout=0)
         return manager
 
 
@@ -181,19 +181,28 @@ class TestFlashManagerStopping:
 
         flash_manager.tunnel = MagicMock()
         flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.startup_timeout = 0  # Skip startup grace period
         flash_manager.client.stub.FlashContainerRegister = AsyncMock()
         flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
-        flash_manager.is_port_connection_healthy = AsyncMock(
-            return_value=(False, Exception("Persistent network error"))
-        )
 
-        heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
-        await asyncio.sleep(1)
-        try:
-            heartbeat_task.cancel()
-            await heartbeat_task
-        except asyncio.CancelledError:
-            pass  # Expected when task is cancelled
+        original_sleep = asyncio.sleep
+
+        async def mock_health_check(*args, **kwargs):
+            await original_sleep(0)  # Yield to event loop
+            return (False, Exception("Persistent network error"))
+
+        flash_manager.is_port_connection_healthy = mock_health_check
+
+        with patch("asyncio.sleep", return_value=None):
+            heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
+            await original_sleep(0)  # Let the task run a few iterations
+            await original_sleep(0)
+            await original_sleep(0)
+            try:
+                heartbeat_task.cancel()
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass  # Expected when task is cancelled
 
         # Check that failures were recorded
         assert flash_manager.num_failures > 0
@@ -385,10 +394,15 @@ class TestFlashManagerStopping:
         flash_manager.tunnel = MagicMock()
         flash_manager.tunnel.url = "https://test.modal.test"
         flash_manager.startup_timeout = 0.05
-        flash_manager.is_port_connection_healthy = AsyncMock(return_value=(False, None))
         flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
 
         original_sleep = asyncio.sleep
+
+        async def mock_health_check(*args, **kwargs):
+            await original_sleep(0)  # Yield to event loop to avoid tight spinning
+            return (False, None)
+
+        flash_manager.is_port_connection_healthy = mock_health_check
 
         async def mocked_sleep(delay, *args, **kwargs):
             if delay == 0.2:
