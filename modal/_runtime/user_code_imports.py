@@ -99,8 +99,9 @@ def disable_signals():
 
 
 def enable_signals(int_handler, usr1_handler):
-    signal.signal(signal.SIGINT, int_handler)
-    signal.signal(signal.SIGUSR1, usr1_handler)
+    if int_handler is not None and usr1_handler is not None:
+        signal.signal(signal.SIGINT, int_handler)
+        signal.signal(signal.SIGUSR1, usr1_handler)
 
 
 def volume_commit(
@@ -159,6 +160,7 @@ class Service(metaclass=ABCMeta):
         6. Yield finalized_functions for execution
         7. Handles cleanup (lifespan shutdown, 'exit' methods)
         """
+        int_handler, usr1_handler = None, None
         # 1. Pre-snapshot Enter
         with self.lifecycle_presnapshot(event_loop, container_io_manager):
             # 2. Snapshot -- If this container is being used to create a checkpoint, checkpoint the container after
@@ -167,26 +169,28 @@ class Service(metaclass=ABCMeta):
             # 3. Breakpoint wrapper
             create_breakpoint_wrapper(container_io_manager)
             # 4. Post-snapshot Enter
-            with self.lifecycle_postsnapshot(event_loop, container_io_manager):
-                # Get Functions
-                with container_io_manager.handle_user_exception():
-                    finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
-                # 5. Start ASGI lifespan
+            try:
+                with self.lifecycle_postsnapshot(event_loop, container_io_manager):
+                    # Get Functions
+                    with container_io_manager.handle_user_exception():
+                        finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
+                    # 5. Start ASGI lifespan
+                    try:
+                        with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
+                            # 6. Yield Finalized Functions
+                            yield finalized_functions
+                    finally:
+                        # 8. Disable signals before exit/ASGI shutdown/lifecycle wind-down
+                        # From this point onward, ignore all SIGINT signals that come from
+                        # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals
+                        int_handler, usr1_handler = disable_signals()
+            finally:
+                # 9. Volume commit - runs OUTSIDE all lifecycle managers so exit handlers
+                # have a chance to write to disk before we commit volumes
                 try:
-                    with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
-                        # 6. Yield Finalized Functions
-                        yield finalized_functions
+                    volume_commit(container_io_manager, self.function_def)
                 finally:
-                    # 8. Disable signals before exit/ASGI shutdown/lifecycle wind-down
-                    # From this point onward, ignore all SIGINT signals that come from
-                    # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals
-                    int_handler, usr1_handler = disable_signals()
-        # 9. Volume commit - runs OUTSIDE all lifecycle managers so exit handlers
-        # have a chance to write to disk before we commit volumes
-        try:
-            volume_commit(container_io_manager, self.function_def)
-        finally:
-            enable_signals(int_handler, usr1_handler)
+                    enable_signals(int_handler, usr1_handler)
 
 
 def construct_webhook_callable(
