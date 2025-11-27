@@ -2,6 +2,7 @@
 import asyncio
 import codecs
 import contextlib
+import io
 import sys
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -403,10 +404,10 @@ class _BytesStreamReaderThroughCommandRouter:
         return self._params.file_descriptor
 
     async def read(self) -> bytes:
-        data_bytes = b""
+        buffer = io.BytesIO()
         async for part in self:
-            data_bytes += cast(bytes, part)
-        return data_bytes
+            buffer.write(part)
+        return buffer.getvalue()
 
     def __aiter__(self) -> AsyncGenerator[bytes, None]:
         return _stdio_stream_from_command_router(self._params)
@@ -438,10 +439,10 @@ class _TextStreamReaderThroughCommandRouter:
         return self._params.file_descriptor
 
     async def read(self) -> str:
-        data_str = ""
+        buffer = io.StringIO()
         async for part in self:
-            data_str += cast(str, part)
-        return data_str
+            buffer.write(part)
+        return buffer.getvalue()
 
     async def __aiter__(self) -> AsyncGenerator[str, None]:
         async with aclosing(_stdio_stream_from_command_router(self._params)) as bytes_stream:
