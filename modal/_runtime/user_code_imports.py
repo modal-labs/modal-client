@@ -120,14 +120,30 @@ class Service(metaclass=ABCMeta):
     user_cls_instance: Any
     app: "modal.app._App"
     service_deps: Optional[Sequence["modal._object._Object"]]
+    function_def: api_pb2.Function
 
     @abstractmethod
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> dict[str, "FinalizedFunction"]: ...
 
-    @contextmanager
     @abstractmethod
+    @contextmanager
+    def lifecycle_presnapshot(
+        self,
+        event_loop: UserCodeEventLoop,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    ): ...
+
+    @abstractmethod
+    @contextmanager
+    def lifecycle_postsnapshot(
+        self,
+        event_loop: UserCodeEventLoop,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    ): ...
+
+    @contextmanager
     def execution_context(
         self,
         event_loop: UserCodeEventLoop,
@@ -143,6 +159,34 @@ class Service(metaclass=ABCMeta):
         6. Yield finalized_functions for execution
         7. Handles cleanup (lifespan shutdown, 'exit' methods)
         """
+        # 1. Pre-snapshot Enter
+        with self.lifecycle_presnapshot(event_loop, container_io_manager):
+            # 2. Snapshot -- If this container is being used to create a checkpoint, checkpoint the container after
+            # global imports and initialization. Checkpointed containers run from this point onwards.
+            maybe_snapshot(container_io_manager, self.function_def)
+            # 3. Breakpoint wrapper
+            create_breakpoint_wrapper(container_io_manager)
+            # 4. Post-snapshot Enter
+            with self.lifecycle_postsnapshot(event_loop, container_io_manager):
+                # Get Functions
+                with container_io_manager.handle_user_exception():
+                    finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
+                # 5. Start ASGI lifespan
+                with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
+                    # 6. Yield Finalized Functions
+                    try:
+                        yield finalized_functions
+                    finally:
+                        # 8. Disable signals before exit/ASGI shutdown/lifecycle wind-down
+                        # From this point onward, ignore all SIGINT signals that come from
+                        # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals
+                        int_handler, usr1_handler = disable_signals()
+        # 9. Volume commit - runs OUTSIDE all lifecycle managers so exit handlers
+        # have a chance to write to disk before we commit volumes
+        try:
+            volume_commit(container_io_manager, self.function_def)
+        finally:
+            enable_signals(int_handler, usr1_handler)
 
 
 def construct_webhook_callable(
@@ -258,30 +302,20 @@ class ImportedFunction(Service):
         }
 
     @contextmanager
-    def execution_context(
+    def lifecycle_presnapshot(
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
-        # If this container is being used to create a checkpoint, checkpoint the container after
-        # global imports and initialization. Checkpointed containers run from this point onwards.
-        maybe_snapshot(container_io_manager, self.function_def)
-        create_breakpoint_wrapper(container_io_manager)
+    ):
+        yield
 
-        with container_io_manager.handle_user_exception():
-            finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
-        try:
-            with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
-                yield finalized_functions
-        finally:
-            # Run exit handlers. From this point onward, ignore all SIGINT signals that come from
-            # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals that
-            # may have been sent to cancel inputs.
-            int_handler, usr1_handler = disable_signals()
-            try:
-                volume_commit(container_io_manager, self.function_def)
-            finally:
-                enable_signals(int_handler, usr1_handler)
+    @contextmanager
+    def lifecycle_postsnapshot(
+        self,
+        event_loop: UserCodeEventLoop,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    ):
+        yield
 
 
 @dataclass
@@ -361,54 +395,12 @@ class ImportedClass(Service):
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
-        yield
-
-    @contextmanager
-    def lifecycle_exit(
-        self,
-        event_loop: UserCodeEventLoop,
-        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ):
         try:
             yield
         finally:
             if not self.function_def.is_auto_snapshot:
                 exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
                 call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
-
-    @contextmanager
-    def execution_context(
-        self,
-        event_loop: UserCodeEventLoop,
-        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
-        # 1. Pre-snapshot Enter
-        with self.lifecycle_presnapshot(event_loop, container_io_manager):
-            # 2. Snapshot -- If this container is being used to create a checkpoint, checkpoint the container after
-            # global imports and initialization. Checkpointed containers run from this point onwards.
-            maybe_snapshot(container_io_manager, self.function_def)
-            # 3. Breakpoint wrapper
-            create_breakpoint_wrapper(container_io_manager)
-            # 4. Post-snapshot Enter
-            with self.lifecycle_postsnapshot(event_loop, container_io_manager):
-                # 5. Get Functions & Start Lifespan
-                with container_io_manager.handle_user_exception():
-                    finalized_functions = self.get_finalized_functions(self.function_def, container_io_manager)
-                # 6. Exit methods (nested so signals are disabled when they run)
-                with self.lifecycle_exit(event_loop, container_io_manager):
-                    with lifecycle_asgi(event_loop, container_io_manager, finalized_functions):
-                        # 7. Yield Finalized Functions
-                        yield finalized_functions
-                        # 8. Disable signals before exit/ASGI shutdown/lifecycle wind-down
-                        # From this point onward, ignore all SIGINT signals that come from
-                        # graceful shutdowns originating on the worker, as well as stray SIGUSR1 signals
-                        int_handler, usr1_handler = disable_signals()
-        # 9. Volume commit - runs OUTSIDE all lifecycle managers so exit handlers
-        # have a chance to write to disk before we commit volumes
-        try:
-            volume_commit(container_io_manager, self.function_def)
-        finally:
-            enable_signals(int_handler, usr1_handler)
 
 
 def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs: dict[str, Any]) -> typing.Any:
