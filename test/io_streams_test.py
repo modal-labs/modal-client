@@ -554,7 +554,7 @@ async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("text, expected_out", [(False, b"abc"), (True, "abc")])
-async def test_stream_reader_command_router(text, expected_out):
+async def test_stream_reader_read_concatenates_chunks(text, expected_out):
     router = _FakeCommandRouterClient()
     reader = _StreamReader(  # type: ignore
         file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
