@@ -642,7 +642,7 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
 
 
 def _http_server(
-    port: int,
+    port: Optional[int] = None,
     *,
     proxy_regions: list[str] = [],  # The regions to proxy the HTTP server to.
     startup_timeout: int = 30,  # Maximum number of seconds to wait for the HTTP server to start.
@@ -657,6 +657,10 @@ def _http_server(
         exit_grace_period: The time to wait for the HTTP server to exit gracefully.
 
     """
+    if port is None:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
+        )
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError("First argument of `@http_server` must be a local port, such as `@http_server(8000)`.")
     if startup_timeout <= 0:
