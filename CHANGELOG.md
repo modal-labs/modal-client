@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.5.dev7 (2025-11-27)
+
+- Improves asyncio sandbox usage by not blocking the event loop when reading from `stdout` or `stderr`.
+
+
 ### 1.2.4 (2025-11-21)
 
 - Fixed a bug in `modal.Sandbox.exec` when using `stderr=StreamType.STDOUT` (introduced in v1.2.3).
