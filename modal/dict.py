@@ -28,7 +28,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
-from .exception import AlreadyExistsError, InvalidError, NotFoundError, RequestSizeError
+from .exception import AlreadyExistsError, DeserializationError, InvalidError, NotFoundError, RequestSizeError
 
 
 class _NoDefaultSentinel:
@@ -41,6 +41,22 @@ _NO_DEFAULT = _NoDefaultSentinel()
 
 def _serialize_dict(data):
     return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
+
+
+def _deserialize_dict_key(dict: "_Dict", data: bytes) -> Any:
+    try:
+        return deserialize(data, dict._client)
+    except DeserializationError as exc:
+        dict_identifier = f"Dict '{dict.name}'" if dict.name else f"ephemeral Dict {dict.object_id}"
+        raise DeserializationError(f"Failed to deserialize a key from {dict_identifier}: {exc}")
+
+
+def _deserialize_dict_value(dict: "_Dict", key: Any, data: bytes) -> Any:
+    try:
+        return deserialize(data, dict._client)
+    except DeserializationError as exc:
+        dict_identifier = f"Dict '{dict.name}'" if dict.name else f"ephemeral Dict {dict.object_id}"
+        raise DeserializationError(f"Failed to deserialize value for {key!r} from {dict_identifier}: {exc}")
 
 
 @dataclass
@@ -439,7 +455,7 @@ class _Dict(_Object, type_prefix="di"):
         resp = await self._client.stub.DictGet(req)
         if not resp.found:
             return default
-        return deserialize(resp.value, self._client)
+        return _deserialize_dict_value(self, key, resp.value)
 
     @live_method
     async def contains(self, key: Any) -> bool:
@@ -530,7 +546,7 @@ class _Dict(_Object, type_prefix="di"):
             if default is not _NO_DEFAULT:
                 return default
             raise KeyError(f"{key} not in dict {self.object_id}")
-        return deserialize(resp.value, self._client)
+        return _deserialize_dict_value(self, key, resp.value)
 
     @live_method
     async def __delitem__(self, key: Any) -> Any:
@@ -557,7 +573,7 @@ class _Dict(_Object, type_prefix="di"):
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True)
         async for resp in self._client.stub.DictContents.unary_stream(req):
-            yield deserialize(resp.key, self._client)
+            yield _deserialize_dict_key(self, resp.key)
 
     @live_method_gen
     async def values(self) -> AsyncIterator[Any]:
@@ -568,7 +584,7 @@ class _Dict(_Object, type_prefix="di"):
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, values=True)
         async for resp in self._client.stub.DictContents.unary_stream(req):
-            yield deserialize(resp.value, self._client)
+            yield _deserialize_dict_value(self, resp.key, resp.value)
 
     @live_method_gen
     async def items(self) -> AsyncIterator[tuple[Any, Any]]:
@@ -579,7 +595,9 @@ class _Dict(_Object, type_prefix="di"):
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True, values=True)
         async for resp in self._client.stub.DictContents.unary_stream(req):
-            yield (deserialize(resp.key, self._client), deserialize(resp.value, self._client))
+            key_deser = _deserialize_dict_key(self, resp.key)
+            value_deser = _deserialize_dict_value(self, key_deser, resp.value)
+            yield (key_deser, value_deser)
 
 
 Dict = synchronize_api(_Dict)
