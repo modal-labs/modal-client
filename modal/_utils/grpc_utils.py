@@ -444,7 +444,7 @@ async def _retry_transient_errors(
                         exc, final_attempt, fn.name, n_retries, server_delay, idempotency_key
                     )
 
-                attempt_number = n_retries + 1
+                attempt_number = n_throttled_retries + 1
                 _emit_retry_event(
                     RetryEvent(
                         call_name=fn.name,
