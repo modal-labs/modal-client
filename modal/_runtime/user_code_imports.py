@@ -134,7 +134,7 @@ class Service(metaclass=ABCMeta):
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ): ...
+    ) -> Generator[None, None, None]: ...
 
     @abstractmethod
     @contextmanager
@@ -142,7 +142,7 @@ class Service(metaclass=ABCMeta):
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ): ...
+    ) -> Generator[None, None, None]: ...
 
     @contextmanager
     def execution_context(
