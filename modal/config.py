@@ -47,6 +47,8 @@ Other possible configuration options are:
 
 * `loglevel` (in the .toml file) / `MODAL_LOGLEVEL` (as an env var).
   Defaults to `WARNING`. Set this to `DEBUG` to see internal messages.
+* `retry_metrics_enabled` (in the .toml file) / `MODAL_RETRY_METRICS_ENABLED` (as an env var).
+  Defaults to False. When True, emits retry metric callbacks if registered.
 * `logs_timeout` (in the .toml file) / `MODAL_LOGS_TIMEOUT` (as an env var).
   Defaults to 10.
   Number of seconds to wait for logs to drain when closing the session,
@@ -263,6 +265,7 @@ _SETTINGS = {
     ),
     "dev_suffix": _Setting("", transform=_enforce_suffix_rules),
     "max_throttle_wait": _Setting(None, transform=lambda x: int(x) if x else None),
+    "retry_metrics_enabled": _Setting(False, transform=_to_boolean),
 }
 
 

@@ -10,7 +10,7 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from functools import cache
-from typing import Any, Optional, Sequence, TypeVar
+from typing import Any, Callable, Optional, Sequence, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -81,6 +81,25 @@ class RetryWarningMessage:
     message: str
     warning_interval: int
     errors_to_warn_for: typing.List[Status]
+
+
+@dataclass(frozen=True)
+class RetryEvent:
+    call_name: str
+    attempt: int
+    delay: float  # seconds
+    grpc_status: str
+    throttled: bool
+    idempotency_key: str
+
+
+_retry_metrics_callback: Optional[Callable[[RetryEvent], None]] = None
+
+
+def register_retry_metrics_callback(callback: Optional[Callable[[RetryEvent], None]]) -> None:
+    """Register a callback that receives RetryEvent objects for observability/metrics."""
+    global _retry_metrics_callback
+    _retry_metrics_callback = callback
 
 
 class ConnectionManager:
@@ -297,6 +316,40 @@ def process_exception_before_retry(
     logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})")
 
 
+def _grpc_status_label(exc: Exception) -> str:
+    if isinstance(exc, GRPCError):
+        return exc.status.name
+    return exc.__class__.__name__
+
+
+def _emit_retry_event(event: RetryEvent):
+    # Log a structured retry event and emit optional metrics callbacks.
+    delay_ms = event.delay * 1000
+    log_data = {
+        "call_name": event.call_name,
+        "attempt": event.attempt,
+        "grpc_status": event.grpc_status,
+        "delay_ms": delay_ms,
+        "throttled": event.throttled,
+        "idempotency_key": event.idempotency_key,
+        "event": "retry",
+    }
+    log_message = (
+        f"Retrying {event.call_name} (attempt {event.attempt}) "
+        f"after {delay_ms:0.0f}ms due to {event.grpc_status}"
+    )
+    if event.throttled:
+        log_message += " (server throttle)"
+    logger.info(log_message, extra=log_data)
+
+    if _retry_metrics_callback and config.get("retry_metrics_enabled"):
+        try:
+            _retry_metrics_callback(event)
+        except Exception:
+            # Metrics should not interfere with client retries.
+            logger.debug("Retry metrics callback raised; ignoring", exc_info=True)
+
+
 async def _retry_transient_errors(
     fn: typing.Union[
         "modal._grpc_client.UnaryUnaryWrapper[RequestType, ResponseType]",
@@ -390,6 +443,18 @@ async def _retry_transient_errors(
                         exc, final_attempt, fn.name, n_retries, server_delay, idempotency_key
                     )
 
+                attempt_number = n_retries + 1
+                _emit_retry_event(
+                    RetryEvent(
+                        call_name=fn.name,
+                        attempt=attempt_number,
+                        delay=server_delay,
+                        grpc_status=_grpc_status_label(exc),
+                        throttled=True,
+                        idempotency_key=idempotency_key,
+                    )
+                )
+
                 now = time.time()
                 if last_server_retry_warning_time is None or (
                     now - last_server_retry_warning_time >= SERVER_RETRY_WARNING_TIME_INTERVAL
@@ -419,6 +484,18 @@ async def _retry_transient_errors(
 
             with suppress_tb_frames(1):
                 process_exception_before_retry(exc, final_attempt, fn.name, n_retries, delay, idempotency_key)
+
+            attempt_number = n_retries + 1
+            _emit_retry_event(
+                RetryEvent(
+                    call_name=fn.name,
+                    attempt=attempt_number,
+                    delay=delay,
+                    grpc_status=_grpc_status_label(exc),
+                    throttled=False,
+                    idempotency_key=idempotency_key,
+                )
+            )
 
             n_retries += 1
 
