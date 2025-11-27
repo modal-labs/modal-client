@@ -785,12 +785,7 @@ def serialized_triple(x):
 full_lifecycle_events: list[str] = []
 
 
-@app.cls(
-    enable_memory_snapshot=True,
-    volumes={
-        "/var/test": modal.Volume.from_name("test-vol", create_if_missing=True),
-    },
-)
+@app.cls(enable_memory_snapshot=True)
 class FullLifecycleCls:
     """
     Test class that tracks all lifecycle operations in order:
@@ -849,7 +844,8 @@ class FullLifecycleCls:
     def exit_handler(self):
         import signal
 
-        # Check if signals are disabled (SIGINT should be SIG_IGN during exit)
+        # Check if signals are enabled during exit (they should be re-enabled after volume commit)
+        # Note: The signal disabling only covers the volume_commit operation, not exit methods
         sigint_handler = signal.getsignal(signal.SIGINT)
         if sigint_handler == signal.SIG_IGN:
             full_lifecycle_events.append("exit_signals_disabled")
