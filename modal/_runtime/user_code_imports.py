@@ -98,7 +98,7 @@ def disable_signals():
     return int_handler, usr1_handler
 
 
-def enable_signals(int_handler, usr1_handler):
+def try_enable_signals(int_handler, usr1_handler):
     if int_handler is not None and usr1_handler is not None:
         signal.signal(signal.SIGINT, int_handler)
         signal.signal(signal.SIGUSR1, usr1_handler)
@@ -190,7 +190,7 @@ class Service(metaclass=ABCMeta):
                 try:
                     volume_commit(container_io_manager, self.function_def)
                 finally:
-                    enable_signals(int_handler, usr1_handler)
+                    try_enable_signals(int_handler, usr1_handler)
 
 
 def construct_webhook_callable(
