@@ -7,9 +7,10 @@ import sys
 import time
 import traceback
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any, Callable, Optional, Union
 from urllib.parse import urlparse
 
+from modal._partial_function import _PartialFunctionFlags
 from modal.cls import _Cls
 from modal.dict import _Dict
 from modal_proto import api_pb2
@@ -28,15 +29,17 @@ class _FlashManager:
         self,
         client: _Client,
         port: int,
-        process: Optional[subprocess.Popen] = None,
+        process: Optional[subprocess.Popen] = None,  # to be deprecated
         health_check_url: Optional[str] = None,
+        startup_timeout: int = 30,
         h2_enabled: bool = False,
     ):
         self.client = client
         self.port = port
+        self.process = process
         # Health check is not currently being used
         self.health_check_url = health_check_url
-        self.process = process
+        self.startup_timeout = startup_timeout
         self.tunnel_manager = _forward_tunnel(port, h2_enabled=h2_enabled, client=client)
         self.stopped = False
         self.num_failures = 0
@@ -49,10 +52,15 @@ class _FlashManager:
 
         start_time = time.monotonic()
 
+        def check_process_is_running() -> Optional[Exception]:
+            if process is not None and process.poll() is not None:
+                return Exception(f"Process {process.pid} exited with code {process.returncode}")
+            return None
+
         while time.monotonic() - start_time < timeout:
             try:
-                if process is not None and process.poll() is not None:
-                    return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
+                if error := check_process_is_running():
+                    return False, error
                 with socket.create_connection(("localhost", self.port), timeout=0.5):
                     return True, None
             except (ConnectionRefusedError, OSError):
@@ -101,6 +109,7 @@ class _FlashManager:
 
     async def _run_heartbeat(self, host: str, port: int):
         first_registration = True
+        start_time = time.monotonic()
         while True:
             try:
                 port_check_resp, port_check_error = await self.is_port_connection_healthy(process=self.process)
@@ -122,12 +131,15 @@ class _FlashManager:
                         )
                         first_registration = False
                 else:
-                    logger.error(
-                        f"[Modal Flash] Deregistering container {self.task_id} on {self.tunnel.url} "
-                        f"due to error: {port_check_error}, num_failures: {self.num_failures}"
-                    )
-                    self.num_failures += 1
-                    await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
+                    if first_registration and (time.monotonic() - start_time < self.startup_timeout):
+                        continue
+                    else:
+                        logger.error(
+                            f"[Modal Flash] Deregistering container {self.task_id} on {self.tunnel.url} "
+                            f"due to error: {port_check_error}, num_failures: {self.num_failures}"
+                        )
+                        self.num_failures += 1
+                        await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
 
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
@@ -171,6 +183,7 @@ async def flash_forward(
     port: int,
     process: Optional[subprocess.Popen] = None,
     health_check_url: Optional[str] = None,
+    startup_timeout: int = 30,
     h2_enabled: bool = False,
 ) -> _FlashManager:
     """
@@ -180,7 +193,14 @@ async def flash_forward(
     """
     client = await _Client.from_env()
 
-    manager = _FlashManager(client, port, process=process, health_check_url=health_check_url, h2_enabled=h2_enabled)
+    manager = _FlashManager(
+        client,
+        port,
+        process=process,
+        health_check_url=health_check_url,
+        startup_timeout=startup_timeout,
+        h2_enabled=h2_enabled,
+    )
     await manager._start()
     return manager
 
@@ -618,3 +638,57 @@ async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, A
     req = api_pb2.FlashContainerListRequest(function_id=fn.object_id)
     resp = await client.stub.FlashContainerList(req)
     return resp.containers
+
+
+def _http_server(
+    port: Optional[int] = None,
+    *,
+    proxy_regions: list[str] = [],  # The regions to proxy the HTTP server to.
+    startup_timeout: int = 30,  # Maximum number of seconds to wait for the HTTP server to start.
+    exit_grace_period: Optional[int] = None,  # The time to wait for the HTTP server to exit gracefully.
+):
+    """Decorator for Flash-enabled HTTP servers on Modal classes.
+
+    Args:
+        port: The local port to forward to the HTTP server.
+        proxy_regions: The regions to proxy the HTTP server to.
+        startup_timeout: The maximum time to wait for the HTTP server to start.
+        exit_grace_period: The time to wait for the HTTP server to exit gracefully.
+
+    """
+    if port is None:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
+        )
+    if not isinstance(port, int) or port < 1 or port > 65535:
+        raise InvalidError("First argument of `@http_server` must be a local port, such as `@http_server(8000)`.")
+    if startup_timeout <= 0:
+        raise InvalidError("The `startup_timeout` argument of `@http_server` must be positive.")
+    if exit_grace_period is not None and exit_grace_period < 0:
+        raise InvalidError("The `exit_grace_period` argument of `@http_server` must be non-negative.")
+
+    from modal._partial_function import _PartialFunction, _PartialFunctionParams
+
+    params = _PartialFunctionParams(
+        http_config=api_pb2.HTTPConfig(
+            port=port,
+            proxy_regions=proxy_regions,
+            startup_timeout=startup_timeout or 0,
+            exit_grace_period=exit_grace_period or 0,
+        )
+    )
+
+    def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
+        flags = _PartialFunctionFlags.HTTP_WEB_INTERFACE
+
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        pf.validate_obj_compatibility("`http_server`")
+        return pf
+
+    return wrapper
+
+
+http_server = synchronize_api(_http_server, target_module=__name__)

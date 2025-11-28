@@ -827,7 +827,7 @@ class _App:
                 batch_max_size = f.params.batch_max_size
                 batch_wait_ms = f.params.batch_wait_ms
                 if f.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options))
+                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options, None))
                     max_concurrent_inputs = f.params.max_concurrent_inputs
                     target_concurrent_inputs = f.params.target_concurrent_inputs
                 else:
@@ -1025,11 +1025,17 @@ class _App:
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             local_state = self._local_state
             # Check if the decorated object is a class
+            http_config = None
             if isinstance(wrapped_cls, _PartialFunction):
                 wrapped_cls.registered = True
                 user_cls = wrapped_cls.user_cls
+                if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
+                    http_config = wrapped_cls.params.http_config
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options))
+                    verify_concurrent_params(
+                        params=wrapped_cls.params,
+                        is_flash=is_flash_object(experimental_options or {}, http_config=http_config),
+                    )
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
@@ -1039,6 +1045,7 @@ class _App:
                 if wrapped_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_cls.params.cluster_size
                     rdma = wrapped_cls.params.rdma
+
                 else:
                     cluster_size = None
                     rdma = None
@@ -1083,10 +1090,17 @@ class _App:
                     "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
                 )
 
+            for method in _find_partial_methods_for_user_cls(
+                user_cls, _PartialFunctionFlags.HTTP_WEB_INTERFACE
+            ).values():
+                method.registered = True  # Avoid warning about not registering the method (hacky!)
+                raise InvalidError(
+                    "The `@modal.http_server` decorator cannot be used on methods; decorate the class instead."
+                )
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
-
             cls_func = _Function.from_local(
                 info,
                 app=self,
@@ -1117,6 +1131,7 @@ class _App:
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
+                http_config=http_config,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
                 rdma=rdma,
@@ -1130,6 +1145,7 @@ class _App:
             self._add_function(cls_func, is_web_endpoint=False)
 
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
+
             for method_name, partial_function in cls._method_partials.items():
                 if partial_function.params.webhook_config is not None:
                     full_name = f"{user_cls.__name__}.{method_name}"
