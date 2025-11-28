@@ -52,15 +52,14 @@ class _FlashManager:
 
         start_time = time.monotonic()
 
-        def check_process_is_running():
+        def check_process_is_running() -> Optional[Exception]:
             if process is not None and process.poll() is not None:
-                return False, Exception(f"Process {process.pid} exited with code {process.returncode}")
-            return True, None
+                return Exception(f"Process {process.pid} exited with code {process.returncode}")
+            return None
 
         while time.monotonic() - start_time < timeout:
             try:
-                running, error = check_process_is_running()
-                if not running:
+                if error := check_process_is_running():
                     return False, error
                 with socket.create_connection(("localhost", self.port), timeout=0.5):
                     return True, None
