@@ -20,6 +20,7 @@ from ..exception import InvalidError
 from ..image import DockerfileSpec, ImageBuilderVersion, _Image, _ImageRegistryConfig
 from ..secret import _Secret
 from .flash import (  # noqa: F401
+    _FlashContainerEntry,
     flash_forward,
     flash_get_containers,
     flash_prometheus_autoscaler,
