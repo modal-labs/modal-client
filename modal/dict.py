@@ -2,7 +2,7 @@
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any, List, Optional, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -120,7 +120,7 @@ class _DictManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> list["_Dict"]:
+    ) -> List["_Dict"]:
         """Return a list of hydrated Dict objects.
 
         **Examples:**
