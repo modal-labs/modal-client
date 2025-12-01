@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.5.dev10 (2025-12-01)
+
+- Fixed a bug in `modal shell` that caused e.g. `vi` to fail with unicode decode errors.
+
+
 #### 1.2.5.dev7 (2025-11-27)
 
 - Improves asyncio sandbox usage by not blocking the event loop when reading from `stdout` or `stderr`.
