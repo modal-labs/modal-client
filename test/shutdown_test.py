@@ -72,7 +72,11 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer, credenti
         await t
 
     if sys.version_info >= (3, 14):
-        # Python 3.14 logs out the ClientClosed error
+        # Python 3.14 logs out the ClientClosed error:
+        # ERROR    asyncio:base_events.py:1875 ClientClosed exception in shielded future
+        # future: <Future finished exception=ClientClosed(...)>
+        # The fix should be in from synchronicity, they have a `test_shutdown_during_async_run` that checks similiar
+        # code.
         assert "ClientClosed" in caplog.records[0].message
         log_records = caplog.records[1:]
     else:
