@@ -1437,7 +1437,7 @@ async def test_prevent_cancellation_abortion():
         await t
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def simple_server():
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         writer.close()
@@ -1452,14 +1452,14 @@ async def simple_server():
 
 
 @pytest.mark.asyncio
-async def test_is_port_connection_open(simple_server):
+async def test_create_connection_open(simple_server):
     host, port = simple_server
     async with create_connection(host, port, timeout=0.1):
         pass
 
 
 @pytest.mark.asyncio
-async def test_is_port_connection_open_failure():
+async def test_create_connection_open_failure():
     with pytest.raises(OSError):
         async with create_connection("127.0.0.1", 58132, timeout=0.1):
             pass
