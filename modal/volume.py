@@ -646,7 +646,7 @@ class _Volume(_Object, type_prefix="vo"):
         return [entry async for entry in self.iterdir(path, recursive=recursive)]
 
     @live_method_gen
-    async def read_file(self, path: str) -> AsyncIterator[bytes]:
+    async def read_file(self, path: str) -> AsyncGenerator[bytes, None]:
         """
         Read a file from the modal.Volume.
 

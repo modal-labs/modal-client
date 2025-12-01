@@ -348,6 +348,10 @@ def live_method_gen(method):
 
 
 def live_method_contextmanager(method):
+    # make sure a wrapped function returning an async context manager
+    # will not require both an `await func.aio()` and `async with`
+    # which would have been the case if it was wrapped in live_method
+
     @wraps(method)
     @contextlib.asynccontextmanager
     async def wrapped(self, *args, **kwargs):

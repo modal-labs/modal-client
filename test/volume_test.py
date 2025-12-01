@@ -81,7 +81,8 @@ def test_volume_mount_read_only_error(client):
     read_only_vol_hydrated = read_only_vol.hydrate(client)
 
     with pytest.raises(InvalidError):
-        read_only_vol_hydrated.batch_upload()
+        with read_only_vol_hydrated.batch_upload():
+            pass
 
     with pytest.raises(InvalidError):
         read_only_vol_hydrated.remove_file("file1.txt")
@@ -121,7 +122,7 @@ def test_volume_commit(client, servicer, skip_reload):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("version", VERSIONS)
 @pytest.mark.parametrize("file_contents_size", [100, 8 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024 + 4711])
-async def test_volume_get(servicer, client, tmp_path, version, file_contents_size):
+async def test_volume_get(client, tmp_path, version, file_contents_size):
     await modal.Volume.objects.create.aio("my-vol", client=client, version=version)
     vol = await modal.Volume.from_name("my-vol").hydrate.aio(client=client)
 
@@ -134,7 +135,7 @@ async def test_volume_get(servicer, client, tmp_path, version, file_contents_siz
         batch.put_file(local_file_path, file_path)
 
     data = b""
-    async for chunk in vol.read_file(file_path):
+    async for chunk in vol.read_file.aio(file_path):  # TODO(elias): deprecate .aio syntax optional
         data += chunk
 
     # Faster assert to avoid huge error when there are large content differences:
@@ -149,7 +150,7 @@ async def test_volume_get(servicer, client, tmp_path, version, file_contents_siz
     assert output.getvalue() == file_contents
 
     with pytest.raises(FileNotFoundError):
-        for _ in vol.read_file("/abc/def/i-dont-exist-at-all"):
+        async for _ in vol.read_file.aio("/abc/def/i-dont-exist-at-all"):  # TODO(elias): deprecate .aio syntax optional
             ...
 
 
@@ -177,7 +178,7 @@ async def test_volume_batch_upload(servicer, client, tmp_path, version):
 
     async with modal.Volume.ephemeral(client=client, version=version) as vol:
         with open(local_file_path, "rb") as fp:
-            with vol.batch_upload() as batch:
+            async with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/some_file")
                 batch.put_directory(local_dir, "/some_dir")
                 batch.put_file(io.BytesIO(b"data from a file-like object"), "/filelike", mode=0o600)
@@ -207,7 +208,7 @@ async def test_volume_batch_upload(servicer, client, tmp_path, version):
 @pytest.mark.parametrize("version", VERSIONS)
 async def test_volume_batch_upload_bytesio(servicer, client, tmp_path, version):
     async with modal.Volume.ephemeral(client=client, version=version) as vol:
-        with vol.batch_upload() as batch:
+        async with vol.batch_upload() as batch:
             batch.put_file(io.BytesIO(b"data from a file-like object"), "/filelike", mode=0o600)
         object_id = vol.object_id
 
@@ -219,14 +220,24 @@ async def test_volume_batch_upload_bytesio(servicer, client, tmp_path, version):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="FIXME")
+async def test_volume_batch_upload_aio_legacy_support(client):
+    # tests that the soon-deprecated legacy syntax with both await and async with works
+    async with modal.Volume.ephemeral(client=client) as vol:
+        async with await vol.batch_upload.aio():
+            pass
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("version", VERSIONS)
 async def test_volume_batch_upload_opened_file(servicer, client, tmp_path, version):
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
     async with modal.Volume.ephemeral(client=client, version=version) as vol:
-        with open(local_file_path, "rb") as fp, vol.batch_upload() as batch:
-            batch.put_file(fp, "/filelike2", mode=0o600)
+        with open(local_file_path, "rb") as fp:
+            async with vol.batch_upload() as batch:
+                batch.put_file(fp, "/filelike2", mode=0o600)
         object_id = vol.object_id
 
     assert servicer.volumes[object_id].files.keys() == {
@@ -248,7 +259,7 @@ async def test_volume_batch_upload_force(servicer, client, tmp_path, version):
     async with modal.Volume.ephemeral(client=client, version=version) as vol:
         with servicer.intercept() as ctx:
             # Seed the volume
-            with vol.batch_upload() as batch:
+            async with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/some_file")
 
             if version == api_pb2.VOLUME_FS_VERSION_V2:
@@ -260,7 +271,7 @@ async def test_volume_batch_upload_force(servicer, client, tmp_path, version):
 
             # Attempting to overwrite the file with force=False should result in an error
             with pytest.raises(FileExistsError):
-                with vol.batch_upload(force=False) as batch:
+                async with vol.batch_upload(force=False) as batch:
                     batch.put_file(local_file_path, "/some_file")
 
             if version == api_pb2.VOLUME_FS_VERSION_V2:
@@ -272,7 +283,7 @@ async def test_volume_batch_upload_force(servicer, client, tmp_path, version):
             assert servicer.volumes[vol.object_id].files["/some_file"].data == b"hello world"
 
             # Overwriting should work with force=True
-            with vol.batch_upload(force=True) as batch:
+            async with vol.batch_upload(force=True) as batch:
                 batch.put_file(local_file_path2, "/some_file")
 
             if version == api_pb2.VOLUME_FS_VERSION_V2:
@@ -293,7 +304,7 @@ async def test_volume_upload_removed_file(servicer, client, tmp_path, version):
 
     async with modal.Volume.ephemeral(client=client, version=version) as vol:
         with pytest.raises(FileNotFoundError):
-            with vol.batch_upload() as batch:
+            async with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/dest")
                 local_file_path.unlink()
 
@@ -444,7 +455,7 @@ async def test_volume_copy_1(client, tmp_path, servicer, version):
         object_id = vol.object_id
 
         # copy file from src_path to dst_path
-        vol.copy_files([src_path], dst_path, False)
+        await vol.copy_files.aio([src_path], dst_path, False)
 
     assert servicer.volumes[object_id].files.keys() == {src_path, dst_path}
 
@@ -657,7 +668,7 @@ async def test_volume_read_file_http_500_error(monkeypatch, servicer, client, ve
 
         async with modal.Volume.ephemeral(client=client, version=version) as vol:
             with pytest.raises(aiohttp.ClientResponseError) as exc_info:
-                for _ in vol.read_file("foo.bin"):
+                async for _ in vol.read_file.aio("foo.bin"):  # TODO(elias): deprecate .aio syntax optional
                     ...
             assert exc_info.value.status == 500
 
