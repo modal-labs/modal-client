@@ -6,6 +6,7 @@ import sys
 
 import modal
 from modal.runner import interactive_shell
+from test.supports.skip import skip_windows
 
 
 @contextlib.contextmanager
@@ -18,6 +19,7 @@ def pty_stdin():
         os.close(parent_pty)
 
 
+@skip_windows("interactive_shell is not supported on Windows.")
 def test_shell_handles_non_unicode(monkeypatch):
     """Test that the modal shell handles non-unicode bytes.
 
