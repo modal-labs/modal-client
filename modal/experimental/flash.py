@@ -61,7 +61,7 @@ class _FlashManager:
                     return False, error
                 async with create_connection("localhost", self.port, timeout=0.5):
                     return True, None
-            except (OSError, asyncio.TimeoutError):
+            except (ConnectionRefusedError, OSError):
                 await asyncio.sleep(0.1)
 
         return False, Exception(f"Waited too long for port {self.port} to start accepting connections")
