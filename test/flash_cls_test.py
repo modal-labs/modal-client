@@ -17,16 +17,21 @@ flash_app_default = App("flash-app-default")
 #         self.process = subprocess.Popen(["python3", "-m", "http.server", "8080"])
 
 app = App("flash-app-2")
+
+
 @app.cls(
     min_containers=1,
     image=modal.Image.debian_slim().pip_install("fastapi", "uvicorn"),
 )
 @modal.concurrent(target_inputs=100)
-@modal.experimental.http_server(8080, proxy_regions=["us-east", "us-west", "ap-south"], startup_timeout=10, exit_grace_period=10)
+@modal.experimental.http_server(
+    8080, proxy_regions=["us-east", "us-west", "ap-south"], startup_timeout=10, exit_grace_period=10
+)
 class FlashClass:
     @modal.enter()
     def start(self):
         self.process = subprocess.Popen(["python3", "-m", "http.server", "8080"])
+
 
 # def test_flash_web_server_basic_functionality(client):
 #     """Test basic flash_web_server decorator functionality."""

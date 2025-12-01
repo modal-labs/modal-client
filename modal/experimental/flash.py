@@ -693,6 +693,7 @@ def _http_server(
 
 http_server = synchronize_api(_http_server, target_module=__name__)
 
+
 class _FlashContainerEntry:
     def __init__(self):
         self.flash_manager: Optional[FlashManager] = None  # type: ignore
