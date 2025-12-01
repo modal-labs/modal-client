@@ -1444,7 +1444,7 @@ async def simple_server():
         await writer.wait_closed()
 
     host = "127.0.0.1"
-    server = await asyncio.start_server(handle, "127.0.0.1")
+    server = await asyncio.start_server(handle, host)
     port = server.sockets[0].getsockname()[1]
     yield host, port
     server.close()
