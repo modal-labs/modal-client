@@ -1,19 +1,15 @@
 # Copyright Modal Labs 2024
-from modal import App, Sandbox, SchedulerPlacement
+from modal import App, Sandbox
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
 
-app = App()
+app = App(include_source=False)
 
 
 @app.function(
-    _experimental_scheduler_placement=SchedulerPlacement(
-        region="us-east-1",
-        zone="us-east-1a",
-        spot=False,
-        instance_type="g4dn.xlarge",
-    ),
+    region="us-east-1",
+    nonpreemptible=True,
 )
 def f1():
     pass
@@ -39,9 +35,7 @@ def test_fn_scheduler_placement(servicer, client):
         fn1 = servicer.app_functions["fu-1"]  # f1
         assert fn1.scheduler_placement == api_pb2.SchedulerPlacement(
             regions=["us-east-1"],
-            _zone="us-east-1a",
-            _lifecycle="on-demand",
-            _instance_types=["g4dn.xlarge"],
+            nonpreemptible=True,
         )
 
         fn2 = servicer.app_functions["fu-2"]  # f2

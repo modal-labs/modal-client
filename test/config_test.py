@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import json
 import os
 import pathlib
 import pytest
@@ -36,7 +37,7 @@ def _cli(args, env={}):
 
 def _get_config(env={}):
     stdout = _cli(["config", "show", "--no-redact"], env=env)
-    return eval(stdout)
+    return json.loads(stdout)
 
 
 def test_config():
@@ -189,3 +190,14 @@ def test_dev_suffix_rules(modal_config, suffix):
     with modal_config(modal_toml):
         with pytest.raises(InvalidError, match="alphanumeric string"):
             Config().get("dev_suffix")
+
+
+@pytest.mark.parametrize("wait, expected", [("0", 0), ("13", 13)])
+def test_max_throttle_wait(modal_config, wait, expected):
+    modal_toml = f"""
+    [default]
+    max_throttle_wait = '{wait}'
+    """
+    with modal_config(modal_toml):
+        result = Config().get("max_throttle_wait")
+        assert result == expected

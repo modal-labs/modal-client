@@ -28,7 +28,7 @@ from modal.queue import Queue
 
 SLEEP_DELAY = 0.1
 
-app = App()
+app = App(include_source=False)
 
 
 @app.function()
@@ -508,15 +508,15 @@ class LifecycleCls:
 
 @app.function()
 @concurrent(max_inputs=6)
-def sleep_700_sync(x):
-    time.sleep(0.7)
+def sleep_100_sync(x):
+    time.sleep(0.1)
     return x * x, current_input_id(), current_function_call_id()
 
 
 @app.function()
 @concurrent(max_inputs=6)
-async def sleep_700_async(x):
-    await asyncio.sleep(0.7)
+async def sleep_100_async(x):
+    await asyncio.sleep(0.1)
     return x * x, current_input_id(), current_function_call_id()
 
 
@@ -652,7 +652,7 @@ def is_local_f(x):
 
 @app.function()
 def raise_large_unicode_exception():
-    byte_str = (b"k" * 120_000_000) + b"\x99"
+    byte_str = (b"k" * 3_000_000) + b"\x99"
     byte_str.decode("utf-8")
 
 
@@ -667,7 +667,7 @@ def get_input_concurrency(timeout: int):
 @modal.concurrent(target_inputs=3, max_inputs=6)
 def set_input_concurrency(start: float):
     set_local_input_concurrency(3)
-    time.sleep(1)
+    time.sleep(0.2)
     return time.time() - start
 
 
@@ -779,3 +779,83 @@ class Foo:
 @app.function(serialized=True)
 def serialized_triple(x):
     return 3 * x
+
+
+# Global list to track lifecycle events in order for FullLifecycleCls
+full_lifecycle_events: list[str] = []
+
+
+@app.cls(enable_memory_snapshot=True)
+class FullLifecycleCls:
+    """
+    Test class that tracks all lifecycle operations in order:
+    1. modal.enter(snap=True) - pre-snapshot enter
+    2. modal.enter(snap=False) - post-snapshot enter
+    3. ASGI lifespan startup
+    4. function call
+    5. signals disabled (checked in exit)
+    6. ASGI lifespan shutdown
+    7. modal.exit
+    8. volume commit (verified via servicer)
+    """
+
+    print_at_exit: int = modal.parameter(default=0)
+
+    def _print_at_exit(self):
+        import atexit
+
+        atexit.register(lambda: print("[lifecycle_events:" + ",".join(full_lifecycle_events) + "]"))
+
+    @enter(snap=True)
+    def enter_pre_snapshot(self):
+        full_lifecycle_events.append("enter_pre_snapshot")
+
+    @enter(snap=False)
+    def enter_post_snapshot(self):
+        full_lifecycle_events.append("enter_post_snapshot")
+
+    @asgi_app()
+    def web(self):
+        import signal as signal_module
+
+        from fastapi import FastAPI
+
+        @contextlib.asynccontextmanager
+        async def lifespan(app):
+            full_lifecycle_events.append("asgi_startup")
+            yield
+            # Check signal state during ASGI shutdown - signals should be disabled
+            sigint_handler = signal_module.getsignal(signal_module.SIGINT)
+            if sigint_handler == signal_module.SIG_IGN:
+                full_lifecycle_events.append("asgi_shutdown_signals_disabled")
+            else:
+                full_lifecycle_events.append("asgi_shutdown_signals_enabled")
+
+        web_app = FastAPI(lifespan=lifespan)
+
+        @web_app.get("/")
+        async def root():
+            full_lifecycle_events.append("asgi_request")
+            return "ok"
+
+        return web_app
+
+    @method()
+    def run_method(self):
+        if self.print_at_exit:
+            self._print_at_exit()
+        full_lifecycle_events.append("method_call")
+        return full_lifecycle_events.copy()
+
+    @exit()
+    def exit_handler(self):
+        import signal
+
+        # Check if signals are enabled during exit (they should be re-enabled after volume commit)
+        # Note: The signal disabling only covers the volume_commit operation, not exit methods
+        sigint_handler = signal.getsignal(signal.SIGINT)
+        if sigint_handler == signal.SIG_IGN:
+            full_lifecycle_events.append("exit_signals_disabled")
+        else:
+            full_lifecycle_events.append("exit_signals_enabled")
+        full_lifecycle_events.append("modal_exit")

@@ -1,17 +1,20 @@
 # Copyright Modal Labs 2022
 import asyncio
 import concurrent.futures
+import contextlib
 import functools
 import inspect
 import itertools
 import sys
 import time
 import typing
+import warnings
 from collections.abc import AsyncGenerator, AsyncIterable, Awaitable, Iterable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import (
     Any,
+    AsyncIterator,
     Callable,
     Generic,
     Optional,
@@ -51,6 +54,10 @@ def synchronize_api(obj, target_module=None):
     return synchronizer.create_blocking(obj, blocking_name, target_module=target_module)
 
 
+# Used for testing to configure the `n_attempts` that `retry` will use.
+RETRY_N_ATTEMPTS_OVERRIDE: Optional[int] = None
+
+
 def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
     """Decorator that calls an async function multiple times, with a given timeout.
 
@@ -75,8 +82,13 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
     def decorator(fn):
         @functools.wraps(fn)
         async def f_wrapped(*args, **kwargs):
+            if RETRY_N_ATTEMPTS_OVERRIDE is not None:
+                local_n_attempts = RETRY_N_ATTEMPTS_OVERRIDE
+            else:
+                local_n_attempts = n_attempts
+
             delay = base_delay
-            for i in range(n_attempts):
+            for i in range(local_n_attempts):
                 t0 = time.time()
                 try:
                     return await asyncio.wait_for(fn(*args, **kwargs), timeout=timeout)
@@ -84,12 +96,12 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
                     logger.debug(f"Function {fn} was cancelled")
                     raise
                 except Exception as e:
-                    if i >= n_attempts - 1:
+                    if i >= local_n_attempts - 1:
                         raise
                     logger.debug(
                         f"Failed invoking function {fn}: {e}"
                         f" (took {time.time() - t0}s, sleeping {delay}s"
-                        f" and trying {n_attempts - i - 1} more times)"
+                        f" and trying {local_n_attempts - i - 1} more times)"
                     )
                 await asyncio.sleep(delay)
                 delay *= delay_factor
@@ -125,7 +137,8 @@ class TaskContext:
     _loops: set[asyncio.Task]
 
     def __init__(self, grace: Optional[float] = None):
-        self._grace = grace
+        self._grace = grace  # grace is the time we want for tasks to finish before cancelling them
+        self._cancellation_grace: float = 1.0  # extra graceperiod for the cancellation itself to "bubble up"
         self._loops = set()
 
     async def start(self):
@@ -157,22 +170,29 @@ class TaskContext:
             # still needs to be handled
             # (https://stackoverflow.com/a/63356323/2475114)
             if gather_future:
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await gather_future
-                except asyncio.CancelledError:
-                    pass
 
+            cancelled_tasks: list[asyncio.Task] = []
             for task in self._tasks:
                 if task.done() and not task.cancelled():
                     # Raise any exceptions if they happened.
                     # Only tasks without a done_callback will still be present in self._tasks
                     task.result()
 
-                if task.done() or task in self._loops:  # Note: Legacy code, we can probably cancel loops.
+                if task.done():
                     continue
 
                 # Cancel any remaining unfinished tasks.
                 task.cancel()
+                cancelled_tasks.append(task)
+
+            cancellation_gather = asyncio.gather(*cancelled_tasks, return_exceptions=True)
+            try:
+                await asyncio.wait_for(cancellation_gather, timeout=self._cancellation_grace)
+            except asyncio.TimeoutError:
+                warnings.warn(f"Internal warning: Tasks did not cancel in a timely manner: {cancelled_tasks}")
+
             await asyncio.sleep(0)  # wake up coroutines waiting for cancellations
 
     async def __aexit__(self, exc_type, value, tb):
@@ -880,12 +900,12 @@ async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
             raise first_exception
 
 
-async def is_port_connection_open(host: str, port: int, timeout: float) -> bool:
+@asynccontextmanager
+async def create_connection(host: str, port: int, timeout: float) -> AsyncIterator[asyncio.StreamWriter]:
     """Return True if the host + port is open."""
+    _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
     try:
-        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+        yield writer
+    finally:
         writer.close()
         await writer.wait_closed()
-        return True
-    except Exception:
-        return False

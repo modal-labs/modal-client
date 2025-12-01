@@ -24,7 +24,7 @@ from modal._utils.async_utils import (
     async_merge,
     async_zip,
     callable_to_agen,
-    is_port_connection_open,
+    create_connection,
     prevent_cancellation_abortion,
     queue_batch_iterator,
     retry,
@@ -1437,30 +1437,120 @@ async def test_prevent_cancellation_abortion():
         await t
 
 
-@pytest.mark.asyncio
-async def test_is_port_connection_open():
-    done = asyncio.Event()
-
+@pytest.fixture
+async def simple_server():
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        try:
-            writer.close()
-            await writer.wait_closed()
-        finally:
-            done.set()
+        writer.close()
+        await writer.wait_closed()
 
+    host = "127.0.0.1"
     server = await asyncio.start_server(handle, "127.0.0.1")
     port = server.sockets[0].getsockname()[1]
+    yield host, port
+    server.close()
+    await server.wait_closed()
 
-    try:
-        is_open = await is_port_connection_open("127.0.0.1", port, timeout=0.1)
-        assert is_open
-        await asyncio.wait_for(done.wait(), timeout=0.1)
-    finally:
-        server.close()
-        await server.wait_closed()
+
+@pytest.mark.asyncio
+async def test_is_port_connection_open(simple_server):
+    host, port = simple_server
+    async with create_connection(host, port, timeout=0.1):
+        pass
 
 
 @pytest.mark.asyncio
 async def test_is_port_connection_open_failure():
-    is_open = await is_port_connection_open("127.0.0.1", 58132, timeout=0.1)
-    assert not is_open
+    with pytest.raises(OSError):
+        async with create_connection("127.0.0.1", 58132, timeout=0.1):
+            pass
+
+
+def test_volume_ephemeral_global_scope_no_errors():
+    """
+    Test that Volume.ephemeral() in global scope doesn't emit errors on exit.
+
+    This test is expected to fail currently due to a bug in TaskContext where
+    loops aren't fully cancelled on task context exit, which causes ClientClosed
+    errors to be emitted.
+    """
+    import subprocess
+
+    script_path = os.path.join(os.path.dirname(__file__), "supports", "volume_ephemeral_global_scope.py")
+
+    result = subprocess.run(
+        [sys.executable, script_path],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    # There used to be a bug causing "unhandled exception during asyncio.run() shutdown"
+    # during shutdown due to TaskContext loops with rpcs not getting cleaned up immedately
+    # on context manager exit
+    assert "exception" not in result.stderr
+    assert "Traceback" not in result.stderr
+    print(result.stderr)
+
+
+@pytest.mark.asyncio
+async def test_task_context_waits_for_cancellations():
+    """Test that TaskContext waits for async finalization logic in cancelled tasks.
+
+    When a task is cancelled, it may have cleanup logic in an except asyncio.CancelledError
+    block. TaskContext should wait up to 1 second for this cleanup to complete before exiting.
+    """
+    cleanup_state = []
+
+    async def task_with_cleanup():
+        try:
+            await asyncio.sleep(60)  # Long sleep that will be cancelled
+        except asyncio.CancelledError:
+            # Simulate async cleanup that takes some time
+            await asyncio.sleep(0.1)
+            cleanup_state.append("cleaned_up")
+            raise  # Re-raise to properly complete cancellation
+
+    t0 = time.time()
+    async with TaskContext() as task_context:
+        task_context.create_task(task_with_cleanup())
+
+    # The context manager should have waited for cleanup
+    assert cleanup_state == ["cleaned_up"]
+    # Should have waited at least 0.1 seconds for cleanup
+    assert time.time() - t0 >= 0.1
+    # But should have exited well before 60 seconds
+    assert time.time() - t0 < 1.0
+
+
+@pytest.mark.asyncio
+async def test_task_context_cancellation_timeout():
+    """Test that TaskContext times out after 1 second if cancellation cleanup takes too long.
+
+    If a task's cancellation cleanup takes longer than 1 second, the context manager
+    should exit anyway to prevent freezes.
+    """
+    cleanup_started = []
+    cleanup_finished = []
+
+    async def task_with_slow_cleanup():
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            cleanup_started.append("started")
+            # This cleanup takes way too long (5 seconds)
+            await asyncio.sleep(5.0)
+            cleanup_finished.append("finished")
+            raise
+
+    t0 = time.time()
+    async with TaskContext() as task_context:
+        task_context.create_task(task_with_slow_cleanup())
+
+    elapsed = time.time() - t0
+
+    # Should have started cleanup
+    assert cleanup_started == ["started"]
+    # Should NOT have waited for the full cleanup
+    assert cleanup_finished == []
+    # Should have timed out around 1 second (the _cancellation_grace period)
+    # Allow some margin for timing variations
+    assert 0.9 < elapsed < 1.5

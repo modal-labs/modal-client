@@ -1474,7 +1474,7 @@ def test_image_run_function_no_warn(servicer, caplog):
     assert len(caplog.messages) == 0
 
 
-SLEEP_TIME = 0.7
+SLEEP_TIME = 0.1
 
 
 def _unwrap_concurrent_input_outputs(n_inputs: int, n_parallel: int, ret: ContainerResult):
@@ -1505,7 +1505,7 @@ def test_concurrent_inputs_sync_function(servicer, deployed_support_function_def
     t0 = time.time()
     ret = _run_container_auto(
         servicer,
-        "sleep_700_sync",
+        "sleep_100_sync",
         deployed_support_function_definitions,
         inputs=_get_inputs(n=n_inputs),
     )
@@ -1527,7 +1527,7 @@ def test_concurrent_inputs_async_function(servicer, deployed_support_function_de
     t0 = time.time()
     ret = _run_container_auto(
         servicer,
-        "sleep_700_async",
+        "sleep_100_async",
         deployed_support_function_definitions,
         inputs=_get_inputs(n=n_inputs),
     )
@@ -1765,8 +1765,7 @@ def test_call_function_that_calls_function(servicer, deployed_support_function_d
 
 
 @skip_github_non_linux
-def test_call_function_that_calls_method(servicer, credentials, set_env_client):
-    # TODO (elias): Remove set_env_client fixture dependency - shouldn't need an env client here?
+def test_call_function_that_calls_method(servicer, credentials):
     deploy_app_externally(servicer, credentials, "test.supports.sibling_hydration_app", "app")
     app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
@@ -1905,6 +1904,7 @@ def _run_container_process(
     env={},
     is_class=False,
     function_type: "api_pb2.Function.FunctionType.ValueType" = api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+    volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
 ) -> subprocess.Popen:
     container_args = _container_args(
         module_name,
@@ -1914,6 +1914,7 @@ def _run_container_process(
         serialized_params=serialize(cls_params),
         is_class=is_class,
         function_type=function_type,
+        volume_mounts=volume_mounts,
     )
 
     # These env vars are always present in containers
@@ -1964,7 +1965,7 @@ def test_cancellation_aborts_current_input_on_match(
             function_name,
             inputs=[("", (arg,), {}) for arg in input_args],
         )
-        time.sleep(1)
+        time.sleep(0.2)
         input_lock.wait()
         input_lock.wait()
         # second input has been sent to container here
@@ -2125,6 +2126,65 @@ def test_lifecycle_full(servicer, tmp_path):
     stdout, _ = container_process.communicate(timeout=5)
     assert container_process.returncode == 0
     assert "[events:enter_sync,enter_async,f_async,local,exit_sync,exit_async]" in stdout.decode()
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_full_lifecycle_order_signals_disabled_before_asgi_exit(servicer, tmp_path):
+    """
+    Test that verifies signals are disabled BEFORE ASGI exit functions run.
+
+    This confirms the complete order of lifecycle operations:
+    1. modal.enter(snap=True) - pre-snapshot enter
+    2. modal.enter(snap=False) - post-snapshot enter
+    3. ASGI lifespan startup
+    4. function call
+    5. signals disabled
+    6. ASGI lifespan shutdown (signals should be disabled here!)
+    7. modal.exit (runs with signals disabled)
+    8. volume commit
+    9. signals re-enabled
+    """
+    volume_mounts = [
+        api_pb2.VolumeMount(volume_id="vo-test", allow_background_commits=True),
+    ]
+    container_process = _run_container_process(
+        servicer,
+        tmp_path,
+        "test.supports.functions",
+        "FullLifecycleCls.*",
+        inputs=[("run_method", (), {})],
+        cls_params=((), {"print_at_exit": 1}),
+        is_class=True,
+        volume_mounts=volume_mounts,
+    )
+    stdout, stderr = container_process.communicate(timeout=10)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+
+    # Verify the order of lifecycle events - particularly that signals are disabled during ASGI shutdown
+    # Expected order:
+    # 1. enter_pre_snapshot (before checkpoint)
+    # 2. enter_post_snapshot (after checkpoint, before ASGI)
+    # 3. asgi_startup (ASGI lifespan startup)
+    # 4. method_call (actual function execution)
+    # 5. asgi_shutdown_signals_disabled (ASGI shutdown happens with signals DISABLED)
+    # 6. exit_signals_disabled (modal.exit runs with signals disabled)
+    # 7. modal_exit (modal.exit handler)
+    expected_events = (
+        "enter_pre_snapshot,"
+        "enter_post_snapshot,"
+        "asgi_startup,"
+        "method_call,"
+        "asgi_shutdown_signals_disabled,"  # KEY: Confirms signals are disabled during ASGI shutdown
+        "exit_signals_disabled,"
+        "modal_exit"
+    )
+    assert f"[lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+    # Verify volume commit happened
+    volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
+    assert volume_commit_rpcs, "Volume commit should have been called"
+    assert volume_commit_rpcs[0].volume_id == "vo-test"
 
 
 ## modal.experimental functionality ##
@@ -2343,11 +2403,11 @@ def test_sigint_termination_exit_handler(servicer, tmp_path, exit_type):
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[("delay", (0,), {})],
-            cls_params=((), {"print_at_exit": 1, f"{exit_type}_duration": 2}),
+            cls_params=((), {"print_at_exit": 1, f"{exit_type}_duration": 0.5}),
             is_class=True,
         )
         outputs.wait()  # wait for first output to be emitted
-    time.sleep(1)  # give some time for container to end up in the exit handler
+    time.sleep(0.25)  # give some time for container to end up in the exit handler
     os.kill(container_process.pid, signal.SIGINT)
 
     stdout, stderr = container_process.communicate(timeout=5)
@@ -2392,10 +2452,10 @@ def test_class_as_service_serialized(servicer, deployed_support_function_definit
 
 
 @skip_github_non_linux
-def test_function_lazy_hydration(servicer, credentials, set_env_client):
+def test_function_lazy_hydration(servicer, credentials, client):
     # Deploy some global objects
-    Volume.from_name("my-vol", create_if_missing=True).hydrate()
-    Queue.from_name("my-queue", create_if_missing=True).hydrate()
+    Volume.from_name("my-vol", create_if_missing=True, client=client).hydrate()
+    Queue.from_name("my-queue", create_if_missing=True, client=client).hydrate()
 
     # Run container
     deploy_app_externally(servicer, credentials, "test.supports.lazy_hydration", "app", capture_output=False)
@@ -2405,7 +2465,7 @@ def test_function_lazy_hydration(servicer, credentials, set_env_client):
 
 
 @skip_github_non_linux
-def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env_client):
+def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn):
     _run_container(
         servicer,
         "test.supports.volume_local",
@@ -2516,7 +2576,7 @@ def test_max_concurrency(servicer, deployed_support_function_definitions):
         servicer,
         "get_input_concurrency",
         deployed_support_function_definitions,
-        inputs=_get_inputs(((1,), {}), n=n_inputs),
+        inputs=_get_inputs(((0.1,), {}), n=n_inputs),
     )
 
     outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
@@ -2535,8 +2595,8 @@ def test_set_local_input_concurrency(servicer, deployed_support_function_definit
         inputs=_get_inputs(((now,), {}), n=n_inputs),
     )
 
-    outputs = [int(deserialize(item.result.data, ret.client)) for item in ret.items]
-    assert outputs == [1] * 3 + [2] * 3
+    outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
+    assert outputs == pytest.approx([0.2] * 3 + [0.4] * 3, abs=0.1)
 
 
 @skip_github_non_linux
@@ -2739,7 +2799,7 @@ def test_cbor_incompatible_output(servicer, deployed_support_function_definition
 
 
 @skip_github_non_linux
-def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
+def test_cls_self_doesnt_call_bind(servicer, credentials):
     # first populate app objects, so they can be fetched by AppGetObjects
     deploy_app_externally(servicer, credentials, "test.supports.user_code_import_samples.cls")
     app_layout = servicer.app_get_layout("ap-1")

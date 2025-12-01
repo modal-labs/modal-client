@@ -75,8 +75,8 @@ def is_global_object(object_qual_name: str):
     return "<locals>" not in object_qual_name.split(".")
 
 
-def is_flash_object(experimental_options: Optional[dict[str, Any]]) -> bool:
-    return experimental_options.get("flash", False) if experimental_options else False
+def is_flash_object(experimental_options: Optional[dict[str, Any]], http_config: Optional[api_pb2.HTTPConfig]) -> bool:
+    return bool(experimental_options and experimental_options.get("flash", False)) or http_config is not None
 
 
 def is_method_fn(object_qual_name: str):
@@ -645,14 +645,13 @@ class FunctionCreationStatus:
         if not self.response:
             self.status_row.finish(f"Unknown error when creating function {self.tag}")
 
-        elif self.response.function.web_url:
+        elif web_url := self.response.handle_metadata.web_url:
             url_info = self.response.function.web_url_info
             requires_proxy_auth = self.response.function.webhook_config.requires_proxy_auth
             proxy_auth_suffix = " 🔑" if requires_proxy_auth else ""
             # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
             suffix = _get_suffix_from_web_url_info(url_info)
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            web_url = self.response.handle_metadata.web_url
             for warning in self.response.server_warnings:
                 self.status_row.warning(warning)
             self.status_row.finish(

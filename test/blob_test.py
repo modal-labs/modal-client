@@ -3,6 +3,7 @@
 import pytest
 import random
 
+import modal
 from modal._utils.async_utils import synchronize_api
 from modal._utils.blob_utils import (
     blob_download as _blob_download,
@@ -29,13 +30,15 @@ async def test_blob_put_get(servicer, blob_server, client):
 
 
 @pytest.mark.asyncio
-async def test_blob_put_failure(servicer, blob_server, client):
+async def test_blob_put_failure(servicer, blob_server, client, monkeypatch):
+    monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
     with pytest.raises(ExecutionError):
         await blob_upload.aio(b"FAILURE", client.stub)
 
 
 @pytest.mark.asyncio
-async def test_blob_get_failure(servicer, blob_server, client):
+async def test_blob_get_failure(servicer, blob_server, client, monkeypatch):
+    monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
     with pytest.raises(ExecutionError):
         await blob_download.aio("bl-failure", client.stub)
 

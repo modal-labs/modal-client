@@ -2,14 +2,15 @@
 import asyncio
 import pytest
 import time
+from typing import AsyncGenerator, Optional
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter
-from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line, _StreamWriter
-from modal_proto import api_pb2
+from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line, _StreamReader, _StreamWriter
+from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
 def test_stream_reader(servicer, client):
@@ -299,7 +300,7 @@ async def test_stream_reader_timeout(servicer, client):
         # Send three messages, third one heavily delayed
         for i in range(3):
             if i == 2:
-                await asyncio.sleep(3)
+                await asyncio.sleep(1)
             await stream.send_message(
                 api_pb2.RuntimeOutputBatch(
                     batch_index=i,
@@ -319,7 +320,7 @@ async def test_stream_reader_timeout(servicer, client):
                 object_type="container_process",
                 client=client,
                 by_line=True,
-                deadline=time.monotonic() + 2,  # use a 2-second timeout
+                deadline=time.monotonic() + 0.5,  # use a 2-second timeout
             )
             output: list[str] = []
             async for line in stdout:
@@ -383,8 +384,9 @@ async def test_stream_by_line_raises_assertion_error_for_non_bytes_items():
         yield "not-bytes"  # type: ignore[misc]
 
     with pytest.raises(AssertionError):
-        async for _ in _stream_by_line(_bad_stream()):
-            pass
+        async with aclosing(_stream_by_line(_bad_stream())) as stream:
+            async for _ in stream:
+                pass
 
 
 @pytest.mark.asyncio
@@ -442,6 +444,17 @@ class _FakeCommandRouterClient:
                 "eof": eof,
             }
         )
+
+    async def exec_stdio_read(
+        self,
+        task_id: str,
+        exec_id: str,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        deadline: Optional[float] = None,
+    ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
+        yield sr_pb2.TaskExecStdioReadResponse(data=b"a")
+        yield sr_pb2.TaskExecStdioReadResponse(data=b"b")
+        yield sr_pb2.TaskExecStdioReadResponse(data=b"c")
 
 
 @pytest.mark.asyncio
@@ -537,3 +550,21 @@ async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with
     assert call["offset"] == 0
     assert call["data"] == b"xyz"
     assert call["eof"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text, expected_out", [(False, b"abc"), (True, "abc")])
+async def test_stream_reader_read_concatenates_chunks(text, expected_out):
+    router = _FakeCommandRouterClient()
+    reader = _StreamReader(  # type: ignore
+        file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,  # type: ignore[arg-type]
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+        text=text,
+    )
+
+    out = await reader.read()
+    assert out == expected_out

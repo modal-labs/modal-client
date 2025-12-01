@@ -13,14 +13,18 @@ from .._object import _get_environment_name
 from .._partial_function import _clustered
 from .._runtime.container_io_manager import _ContainerIOManager
 from .._utils.async_utils import synchronize_api, synchronizer
-from .._utils.grpc_utils import retry_transient_errors
 from ..app import _App
 from ..client import _Client
 from ..cls import _Cls
 from ..exception import InvalidError
 from ..image import DockerfileSpec, ImageBuilderVersion, _Image, _ImageRegistryConfig
 from ..secret import _Secret
-from .flash import flash_forward, flash_get_containers, flash_prometheus_autoscaler  # noqa: F401
+from .flash import (  # noqa: F401
+    flash_forward,
+    flash_get_containers,
+    flash_prometheus_autoscaler,
+    http_server,
+)
 
 
 def stop_fetching_inputs():
@@ -87,6 +91,19 @@ async def list_deployed_apps(environment_name: str = "", client: Optional[_Clien
 
 
 @synchronizer.create_blocking
+async def stop_app(name: str, *, environment_name: Optional[str] = None, client: Optional[_Client] = None) -> None:
+    """Stop a deployed App.
+
+    This interface is experimental and may change in the future,
+    although the functionality will continue to be supported.
+    """
+    client_ = client or await _Client.from_env()
+    app = await _App.lookup(name, environment_name=environment_name, client=client_)
+    req = api_pb2.AppStopRequest(app_id=app.app_id, source=api_pb2.APP_STOP_SOURCE_PYTHON_CLIENT)
+    await client_.stub.AppStop(req)
+
+
+@synchronizer.create_blocking
 async def get_app_objects(
     app_name: str, *, environment_name: Optional[str] = None, client: Optional[_Client] = None
 ) -> dict[str, Union[_Function, _Cls]]:
@@ -116,7 +133,7 @@ async def get_app_objects(
 
     app = await _App.lookup(app_name, environment_name=environment_name, client=client)
     req = api_pb2.AppGetLayoutRequest(app_id=app.app_id)
-    app_layout_resp = await retry_transient_errors(client.stub.AppGetLayout, req)
+    app_layout_resp = await client.stub.AppGetLayout(req)
 
     app_objects: dict[str, Union[_Function, _Cls]] = {}
 
@@ -361,4 +378,4 @@ async def image_delete(
         client = await _Client.from_env()
 
     req = api_pb2.ImageDeleteRequest(image_id=image_id)
-    await retry_transient_errors(client.stub.ImageDelete, req)
+    await client.stub.ImageDelete(req)

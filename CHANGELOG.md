@@ -6,16 +6,44 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.2.2.dev2 (2025-10-28)
+#### 1.2.5.dev10 (2025-12-01)
 
-- `Image.run_commands` supports `volumes` for mounting a volume for build caching
+- Fixed a bug in `modal shell` that caused e.g. `vi` to fail with unicode decode errors.
 
-```python
-cache_vol = modal.Volume.from_name("cache-mount")
-cmd_using_cache = "..."
-image = modal.Image.debian_slim().run_commands(cmd_using_cache, volumes={"/cache": cache_vol})
-```
 
+#### 1.2.5.dev7 (2025-11-27)
+
+- Improves asyncio sandbox usage by not blocking the event loop when reading from `stdout` or `stderr`.
+
+
+### 1.2.4 (2025-11-21)
+
+- Fixed a bug in `modal.Sandbox.exec` when using `stderr=StreamType.STDOUT` (introduced in v1.2.3).
+- Added a new `h2_enabled` option in `modal.forward`, which enables HTTP/2 advertisement in TLS establishment.
+
+### 1.2.3 (2025-11-20)
+
+- CPU Functions can now be configured to run on non-preemptible capacity by setting `nonpreemptible=True` in the `@app.function()` or `@app.cls()` decorator. This feature is not currently available when requesting a GPU. Note that non-preemptibility incurs a 3x multiplier on CPU and memory pricing. See the [Guide](https://modal.com/docs/guide/preemption) for more information on preemptions.
+- The Modal client can now respond more gracefully to server throttling (e.g., rate limiting) by backing off and automatically retrying. This behavior can be controlled with a new `MODAL_MAX_THROTTLE_WAIT` config variable. Setting the config to `0` will preserve the previous behavior and treat rate limits as an exception; setting it to a nonzero number (the unit is seconds) will allow a limited duration of retries.
+- The `modal.Sandbox.exec` implementation has been rewritten to be more reliable and efficient.
+- Added a new `--add-local` flag to `modal shell`, allowing local files and directories to be included in the shell's container.
+- Fixed a bug introduced in v1.2.2 where some Modal objects (e.g., `modal.FunctionCall`) were not usable after being captured in a Memory Snapshot. The bug would result in a `has no loader function` error when the object was used.
+
+### 1.2.2 (2025-11-10)
+
+- `modal.Image.run_commands` now supports `modal.Volume` mounts. This can be helpful for accelerating builds by keeping a package manager cache on the Volume:
+
+  ```python
+  cache_vol = modal.Volume.from_name("cache-mount")
+  cmd_using_cache = "..."
+  image = modal.Image.debian_slim().run_commands(cmd_using_cache, volumes={"/cache": cache_vol})
+  ```
+
+- All Modal objects now accept an optional `modal.Client` object in their constructor methods. Passing an explicit client can be helpful in cases where Modal credentials are retrieved from within the Python process that is making requests.
+- The `name=` passed to `modal.Sandbox.create` and `modal.Sandbox.from_name` is now required to follow other Modal object naming rules (must contain only alphanumeric characters, dashes, periods, or underscores and cannot exceed 64 characters). Passing an invalid name will now error.
+- `modal.CloudBucketMount` now supports `force_path_style=True` to disable virtual-host-style addressing. See [mountpoint-s3 endpoints docs](https://github.com/awslabs/mountpoint-s3/blob/main/doc/CONFIGURATION.md#endpoints-and-aws-privatelink) for details.
+- The output from `modal config show` is now valid JSON and can be parsed by CLI tools such as `jq`.
+- Fixed a bug where App tags were not attached to Image builds that occur when first deploying the App.
 
 ### 1.2.1 (2025-10-22)
 

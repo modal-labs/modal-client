@@ -12,6 +12,7 @@ import os
 import platform
 import pytest
 import random
+import re
 import shutil
 import sys
 import tempfile
@@ -25,8 +26,11 @@ from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
 from typing import Any, AsyncGenerator, Callable, Optional, Union, get_args
+from unittest import mock
 
 import aiohttp.web
+import click
+import click.testing
 import grpclib.server
 import jwt
 import pkg_resources
@@ -42,12 +46,13 @@ from modal._serialization import deserialize, deserialize_data_format, deseriali
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
-from modal._utils.grpc_utils import find_free_port
+from modal._utils.grpc_utils import custom_detail_codec, find_free_port
 from modal._utils.http_utils import run_temporary_http_server
 from modal._utils.jwt_utils import DecodedJwt
 from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal._vendor import cloudpickle
 from modal.app import _App
+from modal.cli.entry_point import entrypoint_cli
 from modal.client import Client
 from modal.cls import _Cls
 from modal.image import ImageBuilderVersion
@@ -66,6 +71,9 @@ class FakeTaskCommandRouterClient:
         self._stdin_offsets: dict[str, int] = {}
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
+        # Mimic task_command_router behavior - we should remove this proto variant though.
+        # TODO(saltzm): Remove the proto variant.
+        assert request.stderr_config != sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_STDOUT
         # Spawn the command locally.
         proc = await asyncio.subprocess.create_subprocess_exec(
             *list(request.command_args),
@@ -204,10 +212,10 @@ class GrpcErrorAndCount:
     count: int
 
 
-# TODO: Isolate all test config from the host
 @pytest.fixture(scope="function", autouse=True)
 def set_env(monkeypatch):
-    monkeypatch.setenv("MODAL_ENVIRONMENT", "main")
+    # We seem to be leaking this across tests, probably because of `ensure_env`?
+    monkeypatch.delenv("MODAL_ENVIRONMENT", raising=False)
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -454,6 +462,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_call_count = 0
         self.function_call_result: Any = None
 
+        self.flash_container_registrations = {}
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -620,7 +630,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         return res
 
     def get_environment(self, environment_name: Optional[str] = None) -> str:
-        if environment_name is None:
+        if not environment_name:
             return next(iter(self.environments))  # Use first environment as default
         return environment_name
 
@@ -765,6 +775,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             current_version = current_history[-1]["version"]
         else:
             current_version = 0
+
         self.app_deployment_history[request.app_id].append(
             {
                 "app_id": request.app_id,
@@ -872,8 +883,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # This is used to test retry_transient_errors, see grpc_utils_test.py
         self.blob_create_metadata = stream.metadata
         if len(self.fail_blob_create) > 0:
-            status_code = self.fail_blob_create.pop()
-            raise GRPCError(status_code, "foobar")
+            raise self.fail_blob_create.pop()
         elif req.content_length > self.blob_multipart_threshold:
             blob_id = await self.next_blob_id()
             num_parts = (req.content_length + self.blob_multipart_threshold - 1) // self.blob_multipart_threshold
@@ -1033,7 +1043,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def DictGetOrCreate(self, stream):
         request: api_pb2.DictGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.environment_name)
+        k = (request.deployment_name, self.get_environment(request.environment_name))
         if k in self.deployed_dicts:
             if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
                 raise GRPCError(Status.ALREADY_EXISTS, f"Dict {k[0]!r} already exists")
@@ -1082,9 +1092,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def DictList(self, stream):
         request: api_pb2.DictListRequest = await stream.recv_message()
         dicts = []
+        environment = self.get_environment(request.environment_name)
         for (name, environment_name), obj_id in self.deployed_dicts.items():
             timestamp = self.resource_creation_timestamps[obj_id]
-            if request.environment_name and environment_name != request.environment_name:
+            if environment_name != environment:
                 continue
             elif timestamp >= request.pagination.created_before:
                 continue
@@ -1655,9 +1666,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def MountPutFile(self, stream):
         request: api_pb2.MountPutFileRequest = await stream.recv_message()
         if request.WhichOneof("data_oneof") is not None:
-            if request.data.startswith(b"large"):
-                # Useful for simulating a slow upload, e.g. to test our checks for mid-deploy modifications
-                await asyncio.sleep(2)
             self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
             self.n_mount_files += 1
             await stream.send_message(api_pb2.MountPutFileResponse(exists=True))
@@ -1725,7 +1733,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def QueueGetOrCreate(self, stream):
         request: api_pb2.QueueGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.environment_name)
+        k = (request.deployment_name, self.get_environment(request.environment_name))
         if k in self.deployed_queues:
             if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
                 raise GRPCError(Status.ALREADY_EXISTS, f"Queue {k[0]!r} already exists")
@@ -1790,9 +1798,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
         request: api_pb2.QueueListRequest = await stream.recv_message()
         queues = []
+        environment = self.get_environment(request.environment_name)
         for (name, environment_name), obj_id in self.deployed_queues.items():
             timestamp = self.resource_creation_timestamps[obj_id]
-            if request.environment_name and environment_name != request.environment_name:
+            if environment_name != environment:
                 continue
             elif timestamp >= request.pagination.created_before:
                 continue
@@ -1975,7 +1984,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.environment_name)
+        k = (request.deployment_name, self.get_environment(request.environment_name))
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
@@ -2010,11 +2019,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SecretList(self, stream):
         req: api_pb2.SecretListRequest = await stream.recv_message()
-
+        environment = self.get_environment(req.environment_name)
         secrets = []
         for (name, environment_name), obj_id in self.deployed_secrets.items():
             timestamp = self.resource_creation_timestamps[obj_id]
-            if req.environment_name and environment_name != req.environment_name:
+            if environment_name != environment:
                 continue
             elif timestamp >= req.pagination.created_before:
                 continue
@@ -2044,7 +2053,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SharedVolumeGetOrCreate(self, stream):
         request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.environment_name)
+        k = (request.deployment_name, self.get_environment(request.environment_name))
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_nfss:
                 if k in self.deployed_volumes:
@@ -2079,8 +2088,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SharedVolumeList(self, stream):
         req = await stream.recv_message()
         items = []
+        environment = self.get_environment(req.environment_name)
         for (name, env_name), volume_id in self.deployed_nfss.items():
-            if env_name != req.environment_name:
+            if env_name != environment:
                 continue
             items.append(api_pb2.SharedVolumeListItem(label=name, shared_volume_id=volume_id, created_at=1))
         resp = api_pb2.SharedVolumeListResponse(items=items, environment_name=req.environment_name)
@@ -2168,7 +2178,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Volume
     async def VolumeGetOrCreate(self, stream):
         request: api_pb2.VolumeGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.environment_name)
+        k = (request.deployment_name, self.get_environment(request.environment_name))
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_volumes:
                 raise GRPCError(Status.NOT_FOUND, f"Volume {k} not found")
@@ -2202,9 +2212,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def VolumeList(self, stream):
         request: api_pb2.VolumeListRequest = await stream.recv_message()
         volumes = []
+        environment = self.get_environment(request.environment_name)
         for (name, environment_name), obj_id in self.deployed_volumes.items():
             timestamp = self.resource_creation_timestamps[obj_id]
-            if request.environment_name and environment_name != request.environment_name:
+            if environment_name != environment:
                 continue
             elif timestamp >= request.pagination.created_before:
                 continue
@@ -2690,6 +2701,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         await stream.send_message(api_pb2.MapCheckInputsResponse(lost=lost))
 
+    async def FlashContainerRegister(self, stream):
+        request: api_pb2.FlashContainerRegisterRequest = await stream.recv_message()
+        self.flash_container_registrations[request.service_name] = f"http://{request.host}:{request.port}"
+        await stream.send_message(api_pb2.FlashContainerRegisterResponse(url=f"http://{request.host}:{request.port}"))
+
+    async def FlashContainerDeregister(self, stream):
+        request: api_pb2.FlashContainerDeregisterRequest = await stream.recv_message()
+        self.flash_container_registrations.pop(request.service_name, None)
+        await stream.send_message(Empty())
+
 
 @contextlib.contextmanager
 def blob_server_factory():
@@ -2777,7 +2798,8 @@ def blob_server_factory():
             block_id, start, length = rest
             start = int(start)
             length = int(length)
-            body = blocks[block_id][start : start + length]
+            block = blocks[block_id][start : start + length]
+            body = block.ljust(length, b"\0")
         else:
             return aiohttp.web.Response(status=404)
 
@@ -2837,7 +2859,7 @@ async def run_server(servicer, host=None, port=None, path=None):
 
     async def _start_servicer():
         nonlocal server
-        server = grpclib.server.Server([servicer])
+        server = grpclib.server.Server([servicer], status_details_codec=custom_detail_codec)
         listen(server, RecvRequest, servicer.recv_request)
         await server.start(host=host, port=port, path=path)
 
@@ -3125,3 +3147,77 @@ def tmp_cwd(tmp_path, monkeypatch):
     with monkeypatch.context() as m:
         m.chdir(tmp_path)
         yield
+
+
+def run_cli_command(args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
+    if sys.version_info < (3, 10):
+        # mix_stderr was removed in Click 8.2 which also removed support for Python 3.9
+        # The desired behavior is the same across verisons, but we need to explicitly enable it on Python 3.9
+        runner = click.testing.CliRunner(mix_stderr=False)
+    else:
+        runner = click.testing.CliRunner()
+    # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
+    # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
+    with mock.patch.object(sys, "argv", args):
+        res = runner.invoke(entrypoint_cli, args)
+    if res.exit_code != expected_exit_code:
+        print("stdout:", repr(res.stdout))
+        print("stderr:", repr(res.stderr))
+        traceback.print_tb(res.exc_info[2])
+        print(res.exception, file=sys.stderr)
+        assert res.exit_code == expected_exit_code
+    if expected_stderr:
+        assert re.search(expected_stderr, res.stderr), "stderr does not match expected string"
+    if expected_error:
+        assert re.search(expected_error, str(res.exception)), "exception message does not match expected string"
+    return res
+
+
+@pytest.fixture
+def mock_shell_pty(servicer):
+    servicer.shell_prompt = b"TEST_PROMPT# "
+
+    def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
+        rows, cols = (64, 128)
+        return api_pb2.PTYInfo(
+            enabled=True,
+            winsz_rows=rows,
+            winsz_cols=cols,
+            env_term=os.environ.get("TERM"),
+            env_colorterm=os.environ.get("COLORTERM"),
+            env_term_program=os.environ.get("TERM_PROGRAM"),
+            pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL,
+        )
+
+    captured_out = []
+    fake_stdin = [b"echo foo\n", b"exit\n"]
+
+    async def write_to_fd(fd: int, data: bytes):
+        nonlocal captured_out
+        captured_out.append((fd, data))
+
+    @contextlib.asynccontextmanager
+    async def fake_stream_from_stdin(handle_input, use_raw_terminal=False):
+        async def _write():
+            message_index = 0
+            while True:
+                if message_index == len(fake_stdin):
+                    break
+                data = fake_stdin[message_index]
+                await handle_input(data, message_index)
+                message_index += 1
+
+        write_task = asyncio.create_task(_write())
+        yield
+        write_task.cancel()
+
+    with (
+        mock.patch("rich.console.Console.is_terminal", True),
+        mock.patch("modal.cli.container.get_pty_info", mock_get_pty_info),
+        mock.patch("modal._pty.get_pty_info", mock_get_pty_info),
+        mock.patch("modal.sandbox.get_pty_info", mock_get_pty_info),
+        mock.patch("modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin),
+        mock.patch("modal.container_process.stream_from_stdin", fake_stream_from_stdin),
+        mock.patch("modal.container_process.write_to_fd", write_to_fd),
+    ):
+        yield fake_stdin, captured_out

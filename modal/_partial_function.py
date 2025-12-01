@@ -46,6 +46,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     BATCHED = 64
     CONCURRENT = 128
     CLUSTERED = 256  # Experimental: Clustered functions
+    HTTP_WEB_INTERFACE = 512  # Experimental: HTTP server
 
     @staticmethod
     def all() -> int:
@@ -76,6 +77,7 @@ class _PartialFunctionParams:
     target_concurrent_inputs: Optional[int] = None
     build_timeout: Optional[int] = None
     rdma: Optional[bool] = None
+    http_config: Optional[api_pb2.HTTPConfig] = None
 
     def update(self, other: "_PartialFunctionParams") -> None:
         """Update self with params set in other."""
@@ -158,8 +160,9 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             raise InvalidError("Interface decorators cannot be combined with lifecycle decorators.")
 
         has_web_interface = self.flags & _PartialFunctionFlags.WEB_INTERFACE
+        has_http_web_interface = self.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE
         has_callable_interface = self.flags & _PartialFunctionFlags.CALLABLE_INTERFACE
-        if has_web_interface and has_callable_interface:
+        if (has_web_interface or has_http_web_interface) and has_callable_interface:
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
 
@@ -219,7 +222,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         # of the type PartialFunction and this descriptor would be triggered when accessing it,
         #
         # However, modal classes are *actually* Cls instances (which isn't reflected in type checkers
-        # due to Python's lack of type chekcing intersection types), so at runtime the Cls instance would
+        # due to Python's lack of type checking intersection types), so at runtime the Cls instance would
         # use its __getattr__ rather than this descriptor.
         assert self.raw_f is not None  # Should only be relevant in a method context
         k = self.raw_f.__name__

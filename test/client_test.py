@@ -8,7 +8,7 @@ import urllib.parse
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
-import modal._runtime
+import modal
 import modal._utils.grpc_utils
 from modal import Client
 from modal.exception import AuthError, ConnectionError, InvalidError, ServerWarning
@@ -144,7 +144,8 @@ def test_client_from_env_client(servicer, credentials):
     assert client_1 == client_2
 
 
-def test_client_from_env_failing(servicer, credentials):
+def test_client_from_env_failing(servicer, credentials, monkeypatch):
+    monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
     with pytest.raises(ConnectionError):
         client_from_env("https://foo.invalid", credentials)
 
@@ -252,7 +253,12 @@ def test_from_credentials_container(servicer, container_env):
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
-def test_client_verify(servicer, client):
+def test_client_verify(
+    servicer,
+    client,
+    monkeypatch,
+):
+    monkeypatch.setattr(modal._utils.async_utils, "RETRY_N_ATTEMPTS_OVERRIDE", 1)
     token_id = "ak-foo-2"
     token_secret = "as-bar"
     servicer.required_creds = {token_id: token_secret}

@@ -5,7 +5,7 @@ import json
 import ssl
 import time
 import urllib.parse
-from typing import AsyncIterator, Optional
+from typing import AsyncGenerator, Optional
 
 import grpclib.client
 import grpclib.config
@@ -18,7 +18,8 @@ from modal.exception import ExecTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
-from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel, retry_transient_errors
+from .async_utils import aclosing
+from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel
 
 
 def _b64url_decode(data: str) -> bytes:
@@ -99,8 +100,7 @@ async def call_with_retries_on_transient_errors(
 
 async def fetch_command_router_access(server_client, task_id: str) -> api_pb2.TaskGetCommandRouterAccessResponse:
     """Fetch direct command router access info from Modal server."""
-    return await retry_transient_errors(
-        server_client.stub.TaskGetCommandRouterAccess,
+    return await server_client.stub.TaskGetCommandRouterAccess(
         api_pb2.TaskGetCommandRouterAccessRequest(task_id=task_id),
     )
 
@@ -243,7 +243,7 @@ class TaskCommandRouterClient:
         # Quotes around the type required for protobuf 3.19.
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
         deadline: Optional[float] = None,
-    ) -> AsyncIterator[sr_pb2.TaskExecStdioReadResponse]:
+    ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
         """Stream stdout/stderr batches from the task, properly retrying on transient errors.
 
         Args:
@@ -254,7 +254,7 @@ class TaskCommandRouterClient:
               None, wait forever. If the deadline is exceeded, raises an
               ExecTimeoutError.
         Returns:
-            AsyncIterator[sr_pb2.TaskExecStdioReadResponse]: A stream of stdout/stderr batches.
+            AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]: A stream of stdout/stderr batches.
         Raises:
             ExecTimeoutError: If the deadline is exceeded.
             Other errors: If retries are exhausted on transient errors or if there's an error
@@ -269,8 +269,9 @@ class TaskCommandRouterClient:
         else:
             raise ValueError(f"Invalid file descriptor: {file_descriptor}")
 
-        async for item in self._stream_stdio(task_id, exec_id, sr_fd, deadline):
-            yield item
+        async with aclosing(self._stream_stdio(task_id, exec_id, sr_fd, deadline)) as stream:
+            async for item in stream:
+                yield item
 
     async def exec_stdin_write(
         self, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool
@@ -444,7 +445,7 @@ class TaskCommandRouterClient:
             except Exception as e:
                 # Exceptions here can stem from non-transient errors against the server sending
                 # the TaskGetCommandRouterAccess RPC, for instance, if the task has finished.
-                logger.warning(f"Background JWT refresh failed for exec with task ID {self._task_id}: {e}")
+                logger.debug(f"Background JWT refresh failed for exec with task ID {self._task_id}: {e}")
                 break
 
     async def _stream_stdio(
@@ -454,7 +455,7 @@ class TaskCommandRouterClient:
         # Quotes around the type required for protobuf 3.19.
         file_descriptor: "sr_pb2.TaskExecStdioFileDescriptor.ValueType",
         deadline: Optional[float] = None,
-    ) -> AsyncIterator[sr_pb2.TaskExecStdioReadResponse]:
+    ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
         """Stream stdio from the task, properly updating the offset and retrying on transient errors.
         Raises ExecTimeoutError if the deadline is exceeded.
         """
