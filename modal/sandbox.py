@@ -116,6 +116,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     _tunnels: Optional[dict[int, Tunnel]]
     _enable_snapshot: bool
     _command_router_client: Optional[TaskCommandRouterClient]
+    _direct_ssh: bool
+    _ssh_pubkey_contents: Optional[str]
 
     @staticmethod
     def _default_pty_info() -> api_pb2.PTYInfo:
@@ -241,8 +243,6 @@ class _Sandbox(_Object, type_prefix="sb"):
                 timeout_secs=timeout,
                 idle_timeout_secs=idle_timeout,
                 workdir=workdir,
-                direct_ssh_enabled=direct_ssh,
-                ssh_pubkey_contents=ssh_pubkey_contents,
                 resources=convert_fn_config_to_resources_config(
                     cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
                 ),
@@ -262,6 +262,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 verbose=verbose,
                 name=name,
                 experimental_options=experimental_options,
+                direct_ssh_enabled=direct_ssh,
+                ssh_pubkey_contents=ssh_pubkey_contents,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
@@ -274,6 +276,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, None)
+            self._direct_ssh = direct_ssh
+            self._ssh_pubkey_contents = ssh_pubkey_contents  # seems jank (aadit-juneja)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_context_overrides=LoadContext.empty())
 
@@ -710,11 +714,12 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def get_ssh_connection_command(self) -> str:
         """Get the SSH connection command for the sandbox."""
-        task_id = await self._get_task_id()
-        hostname = "todo"
-        if not self.direct_ssh:
+        if not self._direct_ssh:
             raise InvalidError("Direct SSH is not enabled for this sandbox.")
-        return f"ssh -i [your_private_key_path] {task_id}@{hostname}"
+        task_id = await self._get_task_id()
+        req = api_pb2.SandboxGetWorkerHostnameRequest(sandbox_id=self.object_id)
+        resp = await self._client.stub.SandboxGetWorkerHostname(req)
+        return f"ssh -i [your_private_key_path] {task_id}@{resp.hostname}"
 
     async def terminate(self) -> None:
         """Terminate Sandbox execution.

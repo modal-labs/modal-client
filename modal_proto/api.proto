@@ -2999,11 +2999,11 @@ message SandboxWaitResponse {
   GenericResult result = 1;
 }
 
-message SandboxGetHostnameRequest {
+message SandboxGetWorkerHostnameRequest {
   string sandbox_id = 1;
 }
 
-message SandboxGetHostnameResponse {
+message SandboxGetWorkerHostnameResponse {
   string hostname = 1;
 }
 
@@ -3807,7 +3807,7 @@ service ModalClient {
   rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
-  rpc SandboxGetHostname(SandboxGetHostnameRequest) returns (SandboxGetHostnameResponse);
+  rpc SandboxGetWorkerHostname(SandboxGetWorkerHostnameRequest) returns (SandboxGetWorkerHostnameResponse);
 
   // Secrets
   rpc SecretDelete(SecretDeleteRequest) returns (google.protobuf.Empty);
