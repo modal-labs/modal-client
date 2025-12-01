@@ -1461,7 +1461,7 @@ async def test_create_connection_open(simple_server):
 @pytest.mark.asyncio
 async def test_create_connection_open_failure():
     with pytest.raises(OSError):
-        async with create_connection("127.0.0.1", 58132, timeout=0.1):
+        async with create_connection("127.0.3.1", 58132, timeout=0.1):
             pass
 
 
