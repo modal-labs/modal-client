@@ -421,7 +421,13 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         assert len(servicer.function_call_inputs) == 0
 
     res = run_cli_command(["run", f"{app_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
-    assert "Parameter `i` has unparseable annotation: typing.Union[int, str]" in str(res.exception)
+
+    if sys.version_info >= (3, 14):
+        union_str = "int | str"
+    else:
+        union_str = "typing.Union[int, str]"
+
+    assert f"Parameter `i` has unparseable annotation: {union_str}" in str(res.exception)
 
     res = run_cli_command(["run", f"{app_file.as_posix()}::unevaluatable_annot", "--i=20"], expected_exit_code=1)
     assert "Unable to generate command line interface" in str(res.exception)
@@ -930,7 +936,10 @@ def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
     key = ("baz-dict", os.environ.get("MODAL_ENVIRONMENT", "main"))
     dict_id = "di-abc123"
     servicer.deployed_dicts[key] = dict_id
-    servicer.dicts[dict_id] = {dumps("a"): dumps(123), dumps("b"): dumps("blah")}
+    servicer.dicts[dict_id] = {
+        dumps("a", protocol=4): dumps(123, protocol=4),
+        dumps("b", protocol=4): dumps("blah", protocol=4),
+    }
 
     res = run_cli_command(["dict", "items", "baz-dict"])
     assert re.search(r" Key .+ Value", res.stdout)
