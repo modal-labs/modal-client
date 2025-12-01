@@ -423,6 +423,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
     res = run_cli_command(["run", f"{app_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
 
     if sys.version_info >= (3, 14):
+        # Python 3.14 normalizes the type to `int | str`.
         union_str = "int | str"
     else:
         union_str = "typing.Union[int, str]"

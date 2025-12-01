@@ -72,6 +72,7 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer, credenti
         await t
 
     if sys.version_info >= (3, 14):
+        # Python 3.14 logs out the ClientClosed error
         assert "ClientClosed" in caplog.records[0].message
         log_records = caplog.records[1:]
     else:
