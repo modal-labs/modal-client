@@ -48,16 +48,18 @@ def _deserialize_dict_key(dict: "_Dict", data: bytes) -> Any:
         return deserialize(data, dict._client)
     except DeserializationError as exc:
         dict_identifier = f"Dict '{dict.name}'" if dict.name else f"ephemeral Dict {dict.object_id}"
-        raise DeserializationError(f"Failed to deserialize a key from {dict_identifier}: {exc}")
+        raise DeserializationError(f"Failed to deserialize a key from {dict_identifier}: {exc}") from exc
 
 
-def _deserialize_dict_value(dict: "_Dict", data: bytes, key: Optional[Any]) -> Any:
+def _deserialize_dict_value(dict: "_Dict", data: bytes, key: Any = _NO_DEFAULT) -> Any:
     try:
         return deserialize(data, dict._client)
     except DeserializationError as exc:
+        key_identifier = "" if key is _NO_DEFAULT else f" for key {key!r}"
         dict_identifier = f"Dict '{dict.name}'" if dict.name else f"ephemeral Dict {dict.object_id}"
-        key_identifier = f" for key {key!r}" if key is not None else ""
-        raise DeserializationError(f"Failed to deserialize value{key_identifier} from {dict_identifier}: {exc}")
+        raise DeserializationError(
+            f"Failed to deserialize value{key_identifier} from {dict_identifier}: {exc}"
+        ) from exc
 
 
 @dataclass
@@ -588,7 +590,7 @@ class _Dict(_Object, type_prefix="di"):
             try:
                 key_deser = _deserialize_dict_key(self, resp.key)
             except DeserializationError:
-                key_deser = None
+                key_deser = _NO_DEFAULT
             yield _deserialize_dict_value(self, resp.value, key_deser)
 
     @live_method_gen
@@ -601,7 +603,7 @@ class _Dict(_Object, type_prefix="di"):
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True, values=True)
         async for resp in self._client.stub.DictContents.unary_stream(req):
             key_deser = _deserialize_dict_key(self, resp.key)
-            value_deser = _deserialize_dict_value(self, resp.value, key=key_deser)
+            value_deser = _deserialize_dict_value(self, resp.value, key_deser)
             yield (key_deser, value_deser)
 
 
