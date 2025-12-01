@@ -149,6 +149,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         experimental_options: Optional[dict[str, bool]] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
+        direct_ssh: bool = False,
+        ssh_pubkey_contents: Optional[str] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -239,6 +241,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 timeout_secs=timeout,
                 idle_timeout_secs=idle_timeout,
                 workdir=workdir,
+                direct_ssh_enabled=direct_ssh,
+                ssh_pubkey_contents=ssh_pubkey_contents,
                 resources=convert_fn_config_to_resources_config(
                     cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
                 ),
@@ -320,6 +324,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
+        direct_ssh: bool = False,
+        ssh_pubkey_path: Optional[Union[str, os.PathLike]] = None,
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
@@ -353,6 +359,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
+        if not direct_ssh and ssh_pubkey_path:
+            raise InvalidError("Explicitly set the `direct_ssh` parameter to True if you want to use direct ssh.")
+        if ssh_pubkey_path:
+            if not os.path.exists(ssh_pubkey_path):
+                raise InvalidError(f"SSH public key file {ssh_pubkey_path} does not exist.")
+            pubkey_contents: Optional[str] = os.path.expanduser(ssh_pubkey_path)
+
         return await _Sandbox._create(
             *args,
             app=app,
@@ -381,6 +394,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             client=client,
             verbose=verbose,
             pty_info=pty_info,
+            direct_ssh=direct_ssh,
+            ssh_pubkey_contents=pubkey_contents,
         )
 
     @staticmethod
@@ -414,6 +429,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         verbose: bool = False,
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        direct_ssh: bool = False,
+        ssh_pubkey_contents: Optional[str] = None,
     ):
         """Private method used internally.
 
@@ -462,6 +479,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             experimental_options=experimental_options,
             enable_snapshot=_experimental_enable_snapshot,
             verbose=verbose,
+            direct_ssh=direct_ssh,
+            ssh_pubkey_contents=ssh_pubkey_contents,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
@@ -688,6 +707,14 @@ class _Sandbox(_Object, type_prefix="sb"):
                 task_id=task_id,
             ),
         )
+
+    async def get_ssh_connection_command(self) -> str:
+        """Get the SSH connection command for the sandbox."""
+        task_id = await self._get_task_id()
+        hostname = "todo"
+        if not self.direct_ssh:
+            raise InvalidError("Direct SSH is not enabled for this sandbox.")
+        return f"ssh -i [your_private_key_path] {task_id}@{hostname}"
 
     async def terminate(self) -> None:
         """Terminate Sandbox execution.

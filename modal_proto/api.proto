@@ -2785,6 +2785,10 @@ message Sandbox {
   // Exec commands for the sandbox will be issued directly to the sandbox
   // command router running on the Modal worker.
   bool direct_sandbox_commands_enabled = 34;
+
+  // If set, clients will be able to directly SSH into the sandbox. 
+  optional bool direct_ssh_enabled = 35;
+  optional string ssh_pubkey_contents = 36;
 }
 
 message SandboxCreateConnectTokenRequest {
@@ -2993,6 +2997,14 @@ message SandboxWaitRequest {
 
 message SandboxWaitResponse {
   GenericResult result = 1;
+}
+
+message SandboxGetHostnameRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetHostnameResponse {
+  string hostname = 1;
 }
 
 message Schedule {
@@ -3795,6 +3807,7 @@ service ModalClient {
   rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
+  rpc SandboxGetHostname(SandboxGetHostnameRequest) returns (SandboxGetHostnameResponse);
 
   // Secrets
   rpc SecretDelete(SecretDeleteRequest) returns (google.protobuf.Empty);
