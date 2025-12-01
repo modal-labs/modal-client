@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import pytest
+import sys
 import threading
 import time
 
@@ -69,8 +70,15 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer, credenti
 
     with pytest.raises(grpclib.exceptions.StreamTerminatedError):
         await t
-    assert len(caplog.records) == 3  # open, send and recv called outside of task context
-    for rec in caplog.records:
+
+    if sys.version_info >= (3, 14):
+        assert "ClientClosed" in caplog.records[0].message
+        log_records = caplog.records[1:]
+    else:
+        log_records = caplog.records
+
+    assert len(log_records) == 3  # open, send and recv called outside of task context
+    for rec in log_records:
         assert "made outside of task context" in rec.message
 
 
