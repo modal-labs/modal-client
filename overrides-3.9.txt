@@ -1,0 +1,2 @@
+# TODO: temporary workaround to support Python 3.9, until the next version of grpclib is released
+grpclib==0.4.7
