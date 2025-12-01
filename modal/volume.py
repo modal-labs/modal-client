@@ -7,6 +7,7 @@ import multiprocessing
 import os
 import platform
 import re
+import sys
 import time
 import typing
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
@@ -820,7 +821,8 @@ class _Volume(_Object, type_prefix="vo"):
             await self._client.stub.VolumeCopyFiles2(request, retry=Retry(base_delay=1))
 
     @live_method_contextmanager
-    def batch_upload(self, force: bool = False) -> "_AbstractVolumeUploadContextManager":
+    @asynccontextmanager
+    async def batch_upload(self, force: bool = False) -> AsyncGenerator["_AbstractVolumeUploadContextManager", None]:
         """
         Initiate a batched upload to a volume.
 
@@ -841,9 +843,15 @@ class _Volume(_Object, type_prefix="vo"):
         if self._read_only:
             raise InvalidError("Read-only Volume can not be written to")
 
-        return _AbstractVolumeUploadContextManager.resolve(
+        version_context_manager = _AbstractVolumeUploadContextManager.resolve(
             self._metadata.version, self.object_id, self._client, force=force
         )
+        await version_context_manager.__aenter__()
+        try:
+            yield version_context_manager
+        finally:
+            exc_type, exc_value, traceback = sys.exc_info()
+            await version_context_manager.__aexit__(exc_type, exc_value, traceback)
 
     @live_method
     async def _instance_delete(self):
