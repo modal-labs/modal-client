@@ -622,7 +622,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
-        req = sr_pb2.TaskMountImageRequest(path=os.fsencode(path), image_id=image_id)
+        req = sr_pb2.TaskMountImageRequest(task_id=task_id, path=os.fsencode(path), image_id=image_id)
         await command_router_client.mount_image(req)
 
     # Live handle methods
