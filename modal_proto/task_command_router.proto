@@ -132,8 +132,9 @@ message TaskExecWaitResponse {
 }
 
 message TaskMountImageRequest {
-  bytes path = 1;
-  string image_id = 2;
+  string task_id = 1;
+  bytes path = 2;
+  string image_id = 3;
 }
 
 service TaskCommandRouter {
