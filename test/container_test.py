@@ -2187,6 +2187,34 @@ def test_full_lifecycle_order_signals_disabled_before_asgi_exit(servicer, tmp_pa
     assert volume_commit_rpcs[0].volume_id == "vo-test"
 
 
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_flash_cls_enter_lifecycle(servicer, tmp_path):
+    """
+    Test that @modal.enter methods are executed for Flash classes (http_server decorator).
+
+    Flash classes don't have methods - they just start an HTTP server.
+    This verifies the lifecycle order:
+    1. modal.enter(snap=True) - pre-snapshot enter (starts HTTP server)
+    2. modal.enter(snap=False) - post-snapshot enter
+    3. Container waits for HTTP requests (but we send kill_switch to exit)
+    """
+    container_process = _run_container_process(
+        servicer,
+        tmp_path,
+        "test.supports.functions",
+        "FlashClsWithEnter.*",
+        inputs=[],  # No method inputs - Flash classes just serve HTTP
+        is_class=True,
+    )
+    stdout, stderr = container_process.communicate(timeout=10)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+
+    # Verify the enter methods ran in the correct order
+    expected_events = "enter_pre_snapshot,enter_post_snapshot"
+    assert f"[flash_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+
 ## modal.experimental functionality ##
 
 
