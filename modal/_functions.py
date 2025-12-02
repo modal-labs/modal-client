@@ -53,6 +53,7 @@ from ._utils.function_utils import (
     _stream_function_call_data,
     get_function_type,
     is_async,
+    is_flash_object,
 )
 from ._utils.grpc_utils import Retry, RetryWarningMessage
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
@@ -777,6 +778,24 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
         if scaledown_window is not None and scaledown_window <= 0:
             raise InvalidError("`scaledown_window` must be > 0")
+
+        # For clustered flash functions, container settings must be multiples of cluster_size
+        if cluster_size is not None and cluster_size > 1 and is_flash_object(experimental_options, http_config):
+            if min_containers is not None and min_containers % cluster_size != 0:
+                raise InvalidError(
+                    f"`min_containers` ({min_containers}) must be a multiple of `cluster_size` ({cluster_size}) "
+                    f"for clustered flash functions"
+                )
+            if max_containers is not None and max_containers % cluster_size != 0:
+                raise InvalidError(
+                    f"`max_containers` ({max_containers}) must be a multiple of `cluster_size` ({cluster_size}) "
+                    f"for clustered flash functions"
+                )
+            if buffer_containers is not None and buffer_containers % cluster_size != 0:
+                raise InvalidError(
+                    f"`buffer_containers` ({buffer_containers}) must be a multiple of `cluster_size` ({cluster_size}) "
+                    f"for clustered flash functions"
+                )
 
         autoscaler_settings = api_pb2.AutoscalerSettings(
             min_containers=min_containers,
