@@ -587,7 +587,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         except GRPCError as exc:
             raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
-    async def snapshot_filesystem(self, timeout: int = 55, path: Optional[Path] = None) -> _Image:
+    async def snapshot_filesystem(self, timeout: int = 55, path: Optional[Path | str] = None) -> _Image:
         """Snapshot the filesystem of the Sandbox.
 
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
@@ -616,6 +616,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
 
         return image
+
+    async def mount_image(self, path: Path | str, image_id: str):
+        """Mount a directory snapshot (image) at a path in the sandbox filesystem."""
+
+        task_id = await self._get_task_id()
+        command_router_client = await self._get_command_router_client(task_id)
+        req = sr_pb2.TaskMountImageRequest(path=bytes(path), image_id=image_id)
+        await command_router_client.mount_image(req)
 
     # Live handle methods
 
