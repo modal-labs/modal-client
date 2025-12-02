@@ -32,6 +32,7 @@ class _FlashManager:
         process: Optional[subprocess.Popen] = None,  # to be deprecated
         health_check_url: Optional[str] = None,
         startup_timeout: int = 30,
+        exit_grace_period: int = 0,
         h2_enabled: bool = False,
     ):
         self.client = client
@@ -40,6 +41,7 @@ class _FlashManager:
         # Health check is not currently being used
         self.health_check_url = health_check_url
         self.startup_timeout = startup_timeout
+        self.exit_grace_period = exit_grace_period
         self.tunnel_manager = _forward_tunnel(port, h2_enabled=h2_enabled, client=client)
         self.stopped = False
         self.num_failures = 0
@@ -171,19 +173,22 @@ class _FlashManager:
         if not self.stopped:
             await self.stop()
 
+        await asyncio.sleep(self.exit_grace_period)
+
         logger.warning(f"[Modal Flash] Closing tunnel on {self.tunnel.url}.")
         await self.tunnel_manager.__aexit__(*sys.exc_info())
 
 
-FlashManager = synchronize_api(_FlashManager)
+FlashManager = synchronize_api(_FlashManager, target_module=__name__)
 
 
 @synchronizer.create_blocking
 async def flash_forward(
     port: int,
-    process: Optional[subprocess.Popen] = None,
+    process: Optional[subprocess.Popen] = None, # to be deprecated
     health_check_url: Optional[str] = None,
     startup_timeout: int = 30,
+    exit_grace_period: int = 0,
     h2_enabled: bool = False,
 ) -> _FlashManager:
     """
@@ -199,6 +204,7 @@ async def flash_forward(
         process=process,
         health_check_url=health_check_url,
         startup_timeout=startup_timeout,
+        exit_grace_period=exit_grace_period,
         h2_enabled=h2_enabled,
     )
     await manager._start()
@@ -695,23 +701,22 @@ http_server = synchronize_api(_http_server, target_module=__name__)
 
 
 class _FlashContainerEntry:
-    def __init__(self):
-        self.flash_manager: Optional[FlashManager] = None  # type: ignore
-        self.exit_grace_period = 0
+    def __init__(self, http_config: api_pb2.HTTPConfig):
+        self.http_config: api_pb2.HTTPConfig = http_config
+        self.flash_manager: Optional[FlashManager] = None # type: ignore
 
-    def enter(self, http_config: api_pb2.HTTPConfig):
-        if http_config != api_pb2.HTTPConfig():
-            self.exit_grace_period = http_config.exit_grace_period or 0
+    def enter(self):
+        if self.http_config != api_pb2.HTTPConfig():
             self.flash_manager = flash_forward(
-                http_config.port,
-                startup_timeout=http_config.startup_timeout,
+                self.http_config.port,
+                startup_timeout=self.http_config.startup_timeout,
+                exit_grace_period=self.http_config.exit_grace_period,
             )
 
     def stop(self):
         if self.flash_manager:
             self.flash_manager.stop()
 
-    async def close(self):
+    def close(self):
         if self.flash_manager:
-            await asyncio.sleep(self.exit_grace_period)
             self.flash_manager.close()

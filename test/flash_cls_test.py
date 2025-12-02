@@ -1,24 +1,22 @@
 # Copyright Modal Labs 2025
 import subprocess
+import threading
 
 import modal
 import modal.experimental
 from modal import App
+from modal.cls import Cls
 
 flash_app_default = App("flash-app-default")
-
-
-# @flash_app_default.cls()
-# @modal.concurrent(target_inputs=10)
-# @modal.experimental.http_server(8080, proxy_regions='True', exit_grace_period=10)
-# class FlashClassDefault:
-#     @modal.enter()
-#     def serve(self):
-#         self.process = subprocess.Popen(["python3", "-m", "http.server", "8080"])
+@flash_app_default.cls()
+@modal.concurrent(target_inputs=10)
+@modal.experimental.http_server(8080, proxy_regions=['us-east', 'us-west'], exit_grace_period=10)
+class FlashClassDefault:
+    @modal.enter()
+    def serve(self):
+        self.process = subprocess.Popen(["python3", "-m", "http.server", "8080"])
 
 app = App("flash-app-2")
-
-
 @app.cls(
     min_containers=1,
     image=modal.Image.debian_slim().pip_install("fastapi", "uvicorn"),
@@ -33,86 +31,124 @@ class FlashClass:
         self.process = subprocess.Popen(["python3", "-m", "http.server", "8080"])
 
 
-# def test_flash_web_server_basic_functionality(client):
-#     """Test basic flash_web_server decorator functionality."""
-#     with flash_app_default.run(client=client):
-#         http_config = get_http_config(FlashClass)  # type: ignore
-#         print(f"http_config: {http_config}")
-#         print(f"type(http_config): {type(http_config)}")
-#         print(f"http_config.get_attributes(): {http_config.__dict__}")
-#         assert http_config is not None
-#         assert http_config.port == 8080
-#         assert http_config.proxy_regions == 'True'
-#         assert http_config.exit_grace_period == 10
+def test_http_server_basic_functionality(client, servicer):
+    """Test basic http_server decorator functionality."""
+    with flash_app_default.run(client=client):
+        service_function = FlashClassDefault._get_class_service_function() #type: ignore
+        function_id = service_function.object_id
 
-# def test_run_class(client, servicer):
-#     """Test running flash class params are set correctly."""
-#     assert len(servicer.precreated_functions) == 0
-#     assert servicer.n_functions == 0
-#     with flash_app_default.run(client=client):
-#         method_handle_object_id = FlashClassDefault._get_class_service_function().object_id  # type: ignore
-#         assert isinstance(FlashClassDefault, Cls)
-#         class_id = FlashClassDefault.object_id
-#         app_id = flash_app_default.app_id
+        function_def = servicer.app_functions[function_id]
+        http_config = function_def.http_config
 
-#     assert len(servicer.classes) == 1 and set(servicer.classes) == {class_id}
-#     assert servicer.n_functions == 1
-#     objects = servicer.app_objects[app_id]
-#     class_function_id = objects["FlashClassDefault.*"]
-#     assert servicer.precreated_functions == {class_function_id}
-#     assert method_handle_object_id == class_function_id  # method handle object id will probably go away
-#     assert len(objects) == 2  # one class + one class service function
-#     assert objects["FlashClassDefault"] == class_id
-#     assert class_function_id.startswith("fu-")
-#     assert servicer.app_functions[class_function_id].is_class
+        assert http_config is not None
+        assert http_config.port == 8080
+        assert list(http_config.proxy_regions) == ["us-east", "us-west"]
+        assert http_config.exit_grace_period == 10
 
-#     assert servicer.app_functions[class_function_id].module_name == "test.flash_cls_test"
-#     assert servicer.app_functions[class_function_id].function_name == "FlashClassDefault.*"
-#     assert servicer.app_functions[class_function_id].target_concurrent_inputs == 10
-#     assert servicer.app_functions[class_function_id].experimental_options["flash"] == "True"
-#     assert servicer.app_functions[class_function_id].method_definitions_set == True
-#     assert servicer.app_functions[class_function_id].startup_timeout_secs == 300
-#     assert servicer.app_functions[class_function_id].app_name == "flash-app-default"
-#     assert servicer.app_functions[class_function_id]._experimental_concurrent_cancellations == True
+def test_run_class(client, servicer):
+    """Test running flash class params are set correctly."""
+    assert len(servicer.precreated_functions) == 0
+    assert servicer.n_functions == 0
+    with flash_app_default.run(client=client):
+        method_handle_object_id = FlashClassDefault._get_class_service_function().object_id  # type: ignore
+        assert isinstance(FlashClassDefault, Cls)
+        class_id = FlashClassDefault.object_id
+        app_id = flash_app_default.app_id
 
+    assert len(servicer.classes) == 1 and set(servicer.classes) == {class_id}
+    assert servicer.n_functions == 1
+    objects = servicer.app_objects[app_id]
+    class_function_id = objects["FlashClassDefault.*"]
+    assert servicer.precreated_functions == {class_function_id}
+    assert method_handle_object_id == class_function_id  # method handle object id will probably go away
+    assert len(objects) == 2  # one class + one class service function
+    assert objects["FlashClassDefault"] == class_id
+    assert class_function_id.startswith("fu-")
+    assert servicer.app_functions[class_function_id].is_class
 
-# flash_cls_with_enter_app = App("flash-cls-with-enter-app")
-
-
-# @flash_cls_with_enter_app.cls(
-#     enable_memory_snapshot=True,
-# )
-# class FlashClsWithEnter:
-#     local_thread_id: str = modal.parameter()
-#     post_snapshot_thread_id: str = modal.parameter()
-#     entered: bool = modal.parameter(default=False)
-#     entered_post_snapshot: bool = modal.parameter(default=False)
-
-#     @modal.enter(snap=True)
-#     @modal.experimental.flash_web_server(8001, region=True)
-#     def enter(self):
-#         self.entered = True
-#         assert threading.current_thread().name == self.local_thread_id
-#         self.process = modal.experimental.flash_process(["python3", "-m", "http.server", "8001"])
-
-#     @modal.enter(snap=False)
-#     def enter_post_snapshot(self):
-#         self.entered_post_snapshot = True
-#         assert threading.current_thread().name == self.local_thread_id
-
-#     @modal.method()
-#     def modal_method(self, y: int) -> int:
-#         return y**2
+    assert servicer.app_functions[class_function_id].module_name == "test.flash_cls_test"
+    assert servicer.app_functions[class_function_id].function_name == "FlashClassDefault.*"
+    assert servicer.app_functions[class_function_id].target_concurrent_inputs == 10
+    assert servicer.app_functions[class_function_id].experimental_options["flash"] == '' # empty
+    assert servicer.app_functions[class_function_id].method_definitions_set == True
+    assert servicer.app_functions[class_function_id].startup_timeout_secs == 300
+    assert servicer.app_functions[class_function_id].app_name == "flash-app-default"
+    assert servicer.app_functions[class_function_id]._experimental_concurrent_cancellations == True
 
 
-# def test_enter_on_modal_flash_is_executed():
-#     """Test enter on modal flash is executed."""
-#     obj = FlashClsWithEnter(
-#         local_thread_id=threading.current_thread().name, post_snapshot_thread_id=threading.current_thread().name
-#     )  # type: ignore
-#     assert obj.modal_method.local(7) == 49
-#     assert obj.local_thread_id == threading.current_thread().name
-#     assert obj.entered
+flash_cls_with_enter_app = App("flash-cls-with-enter-app")
+
+
+@flash_cls_with_enter_app.cls(
+    enable_memory_snapshot=True,
+    min_containers=1,
+)
+@modal.experimental.http_server(8001, proxy_regions=["us-east", "us-west", "ap-south"])
+class FlashClsWithEnter:
+    local_thread_id: str = modal.parameter()
+    post_snapshot_thread_id: str = modal.parameter()
+    entered: bool = modal.parameter(default=False)
+    entered_post_snapshot: bool = modal.parameter(default=False)
+
+    @modal.enter(snap=True)
+    def enter(self):
+        self.entered = True
+        assert threading.current_thread().name == self.local_thread_id
+        self.process = subprocess.Popen(["python3", "-m", "http.server", "8001"])
+
+    @modal.enter(snap=False)
+    def enter_post_snapshot(self):
+        self.entered_post_snapshot = True
+        assert threading.current_thread().name == self.local_thread_id
+
+
+def test_enter_on_modal_flash_is_executed():
+    """Test enter on modal flash is executed."""
+    obj = FlashClsWithEnter(
+        local_thread_id=threading.current_thread().name, post_snapshot_thread_id=threading.current_thread().name
+    )
+    assert obj.local_thread_id == threading.current_thread().name
+    assert obj.entered
+
+
+
+# def test_invalid_flash_class_decorator_on_method():
+#     """Test invalid flash class decorator on method."""
+#     with pytest.raises(InvalidError, match="`http_server` decorator cannot be combined with `@modal.method` decorator."):
+#         @flash_cls_with_enter_app.cls(
+#             enable_memory_snapshot=True,
+#         )
+#         class InvalidFlashClassDecoratorOnMethod:
+
+#             @modal.experimental.http_server(8001, proxy_regions=["us-east", "us-west", "ap-south"])
+#             @modal.enter(snap=True)
+#             def enter(self):
+#                 self.entered = True
+#                 self.process = subprocess.Popen(["python3", "-m", "http.server", "8001"])
+
+#             @modal.method()
+#             def modal_method(self, y: int) -> int:
+#                 return y**2
+
+
+
+# def test_invalid_flash_class_method():
+#     """Test invalid flash class method."""
+#     with pytest.raises(InvalidError, match="`@modal.method` decorator cannot be combined with `@modal.enter` decorator."):
+#         @flash_cls_with_enter_app.cls(
+#             enable_memory_snapshot=True,
+#         )
+#         @modal.experimental.http_server(8001, proxy_regions=["us-east", "us-west", "ap-south"])
+#         class InvalidFlashClassMethod:
+
+#             @modal.enter(snap=True)
+#             def enter(self):
+#                 self.entered = True
+#                 self.process = subprocess.Popen(["python3", "-m", "http.server", "8001"])
+
+#             @modal.method()
+#             def modal_method(self, y: int) -> int:
+#                 return y**2
 
 
 # flash_params_override_app = App("flash-params-override")
@@ -121,7 +157,7 @@ class FlashClass:
 # @flash_params_override_app.cls(experimental_options={"flash": "us-east"})
 # @modal.concurrent(target_inputs=11)
 # class FlashParamsOverrideClass:
-#     @modal.experimental.flash_web_server(8080, region="us-west")
+#     @modal.experimental.http_server(8080, proxy_regions=["us-west"])
 #     def serve(self):
 #         return "Flash with params override"
 
@@ -149,7 +185,7 @@ class FlashClass:
 
 #     @app.cls(serialized=True)
 #     class FlashOptionsClass:
-#         @modal.experimental.flash_web_server(8080)
+#         @modal.experimental.http_server(8080)
 #         def serve(self):
 #             return "Hello Flash"
 
@@ -178,7 +214,7 @@ class FlashClass:
 #     app = App("flash-inheritance")
 
 #     class BaseFlashClass:
-#         @modal.experimental.flash_web_server(8080)
+#         @modal.experimental.http_server(8080)
 #         def serve(self):
 #             return "Base flash"
 
@@ -192,19 +228,19 @@ class FlashClass:
 
 
 # def test_flash_no_port_parameter_error():
-#     """Test that flash_web_server requires a port parameter."""
+#     """Test that http_server requires a port parameter."""
 #     with pytest.raises(TypeError, match="missing 1 required positional argument: 'port'"):
 #         flash_compatibility_app = App("flash-compatibility")
 
 #         @flash_compatibility_app.cls()
 #         class FlashCompatClass:
-#             @modal.experimental.flash_web_server()  # type: ignore  # Missing required port parameter
+#             @modal.experimental.http_server()  # type: ignore  # Missing required port parameter
 #             def serve(self):
 #                 return "Compatible"
 
 
 # def test_flash_validate_obj_compatibility(caplog):
-#     """Test that flash_web_server validates object compatibility."""
+#     """Test that http_server validates object compatibility."""
 #     with pytest.raises(
 #         InvalidError,
 #         match="Multiple flash objects are not yet supported, please only specify a single flash object.",
@@ -217,6 +253,6 @@ class FlashClass:
 #             def serve(self):
 #                 return "Compatible"
 
-#             @modal.experimental.flash_web_server(8085, region=True)
+#             @modal.experimental.http_server(8085, region=True)
 #             def serve2(self):
 #                 return "Not Compatible"
