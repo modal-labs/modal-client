@@ -180,9 +180,9 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         if pty:
             pty_info = _Sandbox._default_pty_info()
-        print("hello _deps")
 
         def _deps() -> list[_Object]:
+            print("hello _deps")
             deps: list[_Object] = [image] + list(mounts) + list(secrets)
             for _, vol in validated_network_file_systems:
                 deps.append(vol)
@@ -195,12 +195,11 @@ class _Sandbox(_Object, type_prefix="sb"):
                 deps.append(proxy)
             return deps
 
-        print("hello _load")
-
         async def _load(
             self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
         ):
             # Relies on dicts being ordered (true as of Python 3.6).
+            print("hello _load")
             volume_mounts = [
                 api_pb2.VolumeMount(
                     mount_path=path,
@@ -281,8 +280,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, None)
-            self._direct_ssh_enabled = direct_ssh_enabled
-            self._client_ssh_public_key_contents = client_ssh_public_key_contents  # seems jank (aadit-juneja)
+            # self._direct_ssh_enabled = direct_ssh_enabled
+            # self._client_ssh_public_key_contents = client_ssh_public_key_contents  # seems jank (aadit-juneja)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_context_overrides=LoadContext.empty())
 
