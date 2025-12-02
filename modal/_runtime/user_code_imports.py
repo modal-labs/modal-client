@@ -400,8 +400,7 @@ class ImportedClass(Service):
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
-            if self.function_def.HasField("http_config"):
-                flash_entry.enter(self.function_def.http_config)
+            flash_entry.enter(self.function_def.http_config)
         try:
             yield
         finally:

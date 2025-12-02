@@ -699,8 +699,8 @@ class _FlashContainerEntry:
         self.flash_manager: Optional[FlashManager] = None  # type: ignore
         self.exit_grace_period = 0
 
-    def enter(self, http_config: Optional[api_pb2.HTTPConfig]):
-        if http_config:
+    def enter(self, http_config: api_pb2.HTTPConfig):
+        if http_config != api_pb2.HTTPConfig():
             self.exit_grace_period = http_config.exit_grace_period or 0
             self.flash_manager = flash_forward(
                 http_config.port,
