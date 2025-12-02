@@ -2793,6 +2793,9 @@ message Sandbox {
   // Exec commands for the sandbox will be issued directly to the sandbox
   // command router running on the Modal worker.
   bool direct_sandbox_commands_enabled = 34;
+
+  optional bool enable_sandbox_ssh = 35;
+  optional string sandbox_ssh_public_key = 36;
 }
 
 message SandboxCreateConnectTokenRequest {
