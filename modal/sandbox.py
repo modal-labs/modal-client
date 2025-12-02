@@ -149,6 +149,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         experimental_options: Optional[dict[str, bool]] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
+        enable_sandbox_ssh: bool = False,
+        sandbox_ssh_public_key: Optional[str] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -258,6 +260,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 verbose=verbose,
                 name=name,
                 experimental_options=experimental_options,
+                enable_sandbox_ssh=enable_sandbox_ssh,
+                sandbox_ssh_public_key=sandbox_ssh_public_key,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
@@ -320,6 +324,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
+        enable_sandbox_ssh: bool = False,
+        sandbox_ssh_public_key: Optional[str] = None,
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
@@ -353,6 +359,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
+        if enable_sandbox_ssh:
+            if sandbox_ssh_public_key is None:
+                raise InvalidError("`sandbox_ssh_public_key` is required when `enable_sandbox_ssh` is enabled")
+            else:
+                if not os.path.isabs(sandbox_ssh_public_key):
+                    sandbox_ssh_public_key = os.path.expanduser(sandbox_ssh_public_key)
+                public_key_content = open(sandbox_ssh_public_key, "r").read()
+        else:
+            public_key_content = None
+
         return await _Sandbox._create(
             *args,
             app=app,
@@ -381,6 +397,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             client=client,
             verbose=verbose,
             pty_info=pty_info,
+            enable_sandbox_ssh=enable_sandbox_ssh,
+            sandbox_ssh_public_key=public_key_content,
         )
 
     @staticmethod
@@ -414,6 +432,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         verbose: bool = False,
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        enable_sandbox_ssh: bool = False,
+        sandbox_ssh_public_key: Optional[str] = None,
     ):
         """Private method used internally.
 
@@ -462,6 +482,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             experimental_options=experimental_options,
             enable_snapshot=_experimental_enable_snapshot,
             verbose=verbose,
+            enable_sandbox_ssh=enable_sandbox_ssh,
+            sandbox_ssh_public_key=sandbox_ssh_public_key,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
