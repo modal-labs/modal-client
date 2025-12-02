@@ -116,8 +116,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     _tunnels: Optional[dict[int, Tunnel]]
     _enable_snapshot: bool
     _command_router_client: Optional[TaskCommandRouterClient]
-    _direct_ssh: bool
-    _ssh_pubkey_contents: Optional[str]
+    _direct_ssh_enabled: bool
+    _client_ssh_public_key_contents: Optional[str]
 
     @staticmethod
     def _default_pty_info() -> api_pb2.PTYInfo:
@@ -151,13 +151,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         experimental_options: Optional[dict[str, bool]] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
-        direct_ssh: bool = False,
-        ssh_pubkey_contents: Optional[str] = None,
+        direct_ssh_enabled: bool = False,
+        client_ssh_public_key_contents: Optional[str] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
         validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
+        print("entered _new")
         if isinstance(gpu, list):
             raise InvalidError(
                 "Sandboxes do not support configuring a list of GPUs. "
@@ -179,6 +180,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         if pty:
             pty_info = _Sandbox._default_pty_info()
+        print("hello _deps")
 
         def _deps() -> list[_Object]:
             deps: list[_Object] = [image] + list(mounts) + list(secrets)
@@ -192,6 +194,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             if proxy:
                 deps.append(proxy)
             return deps
+
+        print("hello _load")
 
         async def _load(
             self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
@@ -262,12 +266,13 @@ class _Sandbox(_Object, type_prefix="sb"):
                 verbose=verbose,
                 name=name,
                 experimental_options=experimental_options,
-                direct_ssh_enabled=direct_ssh,
-                ssh_pubkey_contents=ssh_pubkey_contents,
+                direct_ssh_enabled=direct_ssh_enabled,
+                client_ssh_public_key_contents=client_ssh_public_key_contents,
             )
-
+            print("making sandboxcreate rpc request")
             create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
             try:
+                print(f"sending rpc: SandboxCreate. Payload: {create_req}")
                 create_resp = await load_context.client.stub.SandboxCreate(create_req)
             except GRPCError as exc:
                 if exc.status == Status.ALREADY_EXISTS:
@@ -276,8 +281,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, None)
-            self._direct_ssh = direct_ssh
-            self._ssh_pubkey_contents = ssh_pubkey_contents  # seems jank (aadit-juneja)
+            self._direct_ssh_enabled = direct_ssh_enabled
+            self._client_ssh_public_key_contents = client_ssh_public_key_contents  # seems jank (aadit-juneja)
 
         return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_context_overrides=LoadContext.empty())
 
@@ -328,8 +333,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
-        direct_ssh: bool = False,
-        ssh_pubkey_path: Optional[Union[str, os.PathLike]] = None,
+        direct_ssh_enabled: bool = False,
+        client_ssh_public_key_path: Optional[Union[str, os.PathLike]] = None,
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
@@ -363,12 +368,20 @@ class _Sandbox(_Object, type_prefix="sb"):
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
-        if not direct_ssh and ssh_pubkey_path:
-            raise InvalidError("Explicitly set the `direct_ssh` parameter to True if you want to use direct ssh.")
-        if ssh_pubkey_path:
-            if not os.path.exists(ssh_pubkey_path):
-                raise InvalidError(f"SSH public key file {ssh_pubkey_path} does not exist.")
-            pubkey_contents: Optional[str] = os.path.expanduser(ssh_pubkey_path)
+        if not direct_ssh_enabled and client:
+            raise InvalidError(
+                "Explicitly set the `direct_ssh_enabled` parameter to True if you want to use direct ssh."
+            )
+        if client_ssh_public_key_path:
+            full_path = os.path.expanduser(client_ssh_public_key_path)
+            if not os.path.exists(full_path):
+                raise InvalidError(f"Client SSH public key file {full_path} does not exist.")
+            with open(full_path, "r") as f:
+                client_ssh_public_key_contents = f.read()
+        else:
+            client_ssh_public_key_contents = None
+
+        print(f"client_ssh_public_key_contents: {client_ssh_public_key_contents}")
 
         return await _Sandbox._create(
             *args,
@@ -398,8 +411,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             client=client,
             verbose=verbose,
             pty_info=pty_info,
-            direct_ssh=direct_ssh,
-            ssh_pubkey_contents=pubkey_contents,
+            direct_ssh_enabled=direct_ssh_enabled,
+            client_ssh_public_key_contents=client_ssh_public_key_contents,
         )
 
     @staticmethod
@@ -433,8 +446,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         verbose: bool = False,
         pty_info: Optional[api_pb2.PTYInfo] = None,
-        direct_ssh: bool = False,
-        ssh_pubkey_contents: Optional[str] = None,
+        direct_ssh_enabled: bool = False,
+        client_ssh_public_key_contents: Optional[str] = None,
     ):
         """Private method used internally.
 
@@ -444,6 +457,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         """
         from .app import _App
 
+        print("ENTERED _create")
         _validate_exec_args(args)
         if name is not None:
             check_object_name(name, "Sandbox")
@@ -483,8 +497,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             experimental_options=experimental_options,
             enable_snapshot=_experimental_enable_snapshot,
             verbose=verbose,
-            direct_ssh=direct_ssh,
-            ssh_pubkey_contents=ssh_pubkey_contents,
+            direct_ssh_enabled=direct_ssh_enabled,
+            client_ssh_public_key_contents=client_ssh_public_key_contents,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
@@ -714,7 +728,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def get_ssh_connection_command(self) -> str:
         """Get the SSH connection command for the sandbox."""
-        if not self._direct_ssh:
+        if not self._direct_ssh_enabled:
             raise InvalidError("Direct SSH is not enabled for this sandbox.")
         task_id = await self._get_task_id()
         req = api_pb2.SandboxGetWorkerHostnameRequest(sandbox_id=self.object_id)

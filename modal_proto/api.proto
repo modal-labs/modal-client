@@ -2788,7 +2788,7 @@ message Sandbox {
 
   // If set, clients will be able to directly SSH into the sandbox. 
   optional bool direct_ssh_enabled = 35;
-  optional string ssh_pubkey_contents = 36;
+  optional string client_ssh_public_key_contents = 36;
 }
 
 message SandboxCreateConnectTokenRequest {
