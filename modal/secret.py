@@ -2,7 +2,7 @@
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -105,7 +105,7 @@ class _SecretManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> list["_Secret"]:
+    ) -> List["_Secret"]:
         """Return a list of hydrated Secret objects.
 
         **Examples:**
