@@ -726,15 +726,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             ),
         )
 
-    async def get_ssh_connection_command(self) -> str:
-        """Get the SSH connection command for the sandbox."""
-        if not self._direct_ssh_enabled:
-            raise InvalidError("Direct SSH is not enabled for this sandbox.")
-        task_id = await self._get_task_id()
-        req = api_pb2.SandboxGetWorkerHostnameRequest(sandbox_id=self.object_id)
-        resp = await self._client.stub.SandboxGetWorkerHostname(req)
-        return f"ssh -i [your_private_key_path] {task_id}@{resp.hostname}"
-
     async def terminate(self) -> None:
         """Terminate Sandbox execution.
 
