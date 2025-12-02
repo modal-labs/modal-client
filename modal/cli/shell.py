@@ -186,6 +186,8 @@ def shell(
         else:
             raise ValueError("Referenced entity is not a Modal function or class")
 
+        print('setting experimental_options={"enable_docker_in_gvisor": True}')
+
         start_shell = partial(
             interactive_shell,
             image=function_spec.image,
@@ -200,6 +202,7 @@ def shell(
             region=function_spec.scheduler_placement.regions if function_spec.scheduler_placement else None,
             pty=pty,
             proxy=function_spec.proxy,
+            experimental_options={"enable_docker_in_gvisor": True},
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
@@ -218,6 +221,8 @@ def shell(
                     m = _Mount._from_local_file(local_path, remote_path=remote_path)
                 mounts.append(m)
 
+        print('setting experimental_options={"enable_docker_in_gvisor": True}')
+
         start_shell = partial(
             interactive_shell,
             image=modal_image,
@@ -230,6 +235,7 @@ def shell(
             secrets=secrets,
             region=region.split(",") if region else [],
             pty=pty,
+            experimental_options={"enable_docker_in_gvisor": True},
         )
 
     # NB: invoking under bash makes --cmd a lot more flexible.

@@ -6,6 +6,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
 
 from ._pty import get_pty_info
@@ -586,14 +587,17 @@ class _Sandbox(_Object, type_prefix="sb"):
         except GRPCError as exc:
             raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
-    async def snapshot_filesystem(self, timeout: int = 55) -> _Image:
+    async def snapshot_filesystem(self, timeout: int = 55, path: Optional[Path] = None) -> _Image:
         """Snapshot the filesystem of the Sandbox.
 
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
         can be used to spawn a new Sandbox with the same filesystem.
         """
         await self._get_task_id()  # Ensure the sandbox has started
-        req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout)
+        path_bytes = None
+        if path is not None:
+            path_bytes = os.fsencode(path)
+        req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout, path=path_bytes)
         resp = await self._client.stub.SandboxSnapshotFs(req)
 
         if resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
