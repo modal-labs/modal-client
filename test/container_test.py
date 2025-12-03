@@ -2186,8 +2186,6 @@ def test_full_lifecycle_order_signals_disabled_before_asgi_exit(servicer, tmp_pa
     assert volume_commit_rpcs, "Volume commit should have been called"
     assert volume_commit_rpcs[0].volume_id == "vo-test"
 
-
-@skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 def test_flash_cls_enter_lifecycle(servicer, tmp_path):
     """

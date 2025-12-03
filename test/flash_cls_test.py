@@ -83,19 +83,18 @@ def test_run_class(client, servicer):
     assert servicer.app_functions[class_function_id]._experimental_concurrent_cancellations == True
 
 
-
 def test_invalid_flash_class_decorator_on_method():
     """Test invalid flash class decorator on method."""
     with pytest.raises(
         InvalidError,
         match="The `@modal.http_server` decorator cannot be used on methods; decorate the class instead.",
     ):
+
         @app.cls(
             enable_memory_snapshot=True,
             serialized=True,
         )
         class InvalidFlashClassDecoratorOnMethod:
-
             @modal.experimental.http_server(8001, proxy_regions=["us-east", "us-west", "ap-south"])
             @modal.enter(snap=True)
             def enter(self):
@@ -105,7 +104,8 @@ def test_invalid_flash_class_decorator_on_method():
 
 # def test_invalid_flash_class_method():
 #     """Test invalid flash class method."""
-#     with pytest.raises(InvalidError, match="`@modal.method` decorator cannot be combined with `@modal.enter` decorator."):
+#     with pytest.raises(InvalidError, match="`@modal.method`
+#  decorator cannot be combined with `@modal.enter` decorator."):
 #         @app.cls(
 #             enable_memory_snapshot=True,
 #             serialized=True,
@@ -146,6 +146,7 @@ def test_flash_params_override_experimental_options(client, servicer):
         assert servicer.app_functions[class_function_id].target_concurrent_inputs == 11
         assert servicer.app_functions[class_function_id].experimental_options["flash"] == "us-east"
 
+
 def test_flash_class_with_options(client, servicer):
     """Test flash classes work with .with_options()."""
     app = App("flash-options")
@@ -185,7 +186,9 @@ def test_flash_no_port_parameter_error():
     """Test that http_server requires a port parameter."""
     with pytest.raises(
         modal.exception.InvalidError,
-        match=r"Positional arguments are not allowed. Did you forget parentheses\? Suggestion: `@modal\.http_server\(\)`\.",
+        match=(
+            r"Positional arguments are not allowed\. Did you forget parentheses\? Suggestion: `@modal\.http_server\(\)`\."
+        )
     ):
         flash_compatibility_app = App("flash-compatibility")
 
