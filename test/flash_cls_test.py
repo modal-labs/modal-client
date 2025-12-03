@@ -102,25 +102,26 @@ def test_invalid_flash_class_decorator_on_method():
                 self.process = subprocess.Popen(["python3", "-m", "http.server", "8001"])
 
 
-# def test_invalid_flash_class_method():
-#     """Test invalid flash class method."""
-#     with pytest.raises(InvalidError, match="`@modal.method`
-#  decorator cannot be combined with `@modal.enter` decorator."):
-#         @app.cls(
-#             enable_memory_snapshot=True,
-#             serialized=True,
-#         )
-#         @modal.experimental.http_server(8001, proxy_regions=["us-east", "us-west", "ap-south"])
-#         class InvalidFlashClassMethod:
+def test_invalid_flash_class_method():
+    """Test invalid flash class method."""
+    with pytest.raises(
+        InvalidError, match="`@modal.method` decorator cannot be combined with `@modal.enter` decorator."
+    ):
 
-#             @modal.enter(snap=True)
-#             def enter(self):
-#                 self.entered = True
-#                 self.process = subprocess.Popen(["python3", "-m", "http.server", "8001"])
+        @app.cls(
+            enable_memory_snapshot=True,
+            serialized=True,
+        )
+        @modal.experimental.http_server(8001, proxy_regions=["us-east", "us-west", "ap-south"])
+        class InvalidFlashClassMethod:
+            @modal.enter(snap=True)
+            def enter(self):
+                self.entered = True
+                self.process = subprocess.Popen(["python3", "-m", "http.server", "8001"])
 
-#             @modal.method()
-#             def modal_method(self, y: int) -> int:
-#                 return y**2
+            @modal.method()
+            def modal_method(self, y: int) -> int:
+                return y**2
 
 
 flash_params_override_app = App("flash-params-override")
