@@ -104,9 +104,7 @@ def test_invalid_flash_class_decorator_on_method():
 
 def test_invalid_flash_class_method():
     """Test invalid flash class method."""
-    with pytest.raises(
-        InvalidError, match="`@modal.method` decorator cannot be combined with `@modal.enter` decorator."
-    ):
+    with pytest.raises(InvalidError, match="Callable decorators cannot be combined with web interface decorators."):
 
         @app.cls(
             enable_memory_snapshot=True,
