@@ -2793,6 +2793,11 @@ message Sandbox {
   // Exec commands for the sandbox will be issued directly to the sandbox
   // command router running on the Modal worker.
   bool direct_sandbox_commands_enabled = 34;
+
+  // Internal: restricts sandbox to run on this specific instance type.
+  // Set by server during SandboxRestore to ensure the restored sandbox runs
+  // on the same instance type as the original snapshot.
+  string _restore_instance_type = 35;
 }
 
 message SandboxCreateConnectTokenRequest {
