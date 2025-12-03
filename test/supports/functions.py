@@ -206,7 +206,6 @@ def fastapi_app():
 @app.function()
 @web_server(8765, startup_timeout=1)
 def non_blocking_web_server():
-
     subprocess.Popen(["python", "-m", "http.server", "-b", "0.0.0.0", "8765"])
 
 
@@ -860,6 +859,7 @@ class FullLifecycleCls:
             full_lifecycle_events.append("exit_signals_enabled")
         full_lifecycle_events.append("modal_exit")
 
+
 flash_cls_lifecycle_events: list[str] = []
 
 
@@ -871,7 +871,13 @@ flash_cls_lifecycle_events: list[str] = []
 class FlashClsWithEnter:
     @modal.enter(snap=True)
     def enter(self):
-        self.process = subprocess.Popen(["python3", "-m", "http.server", "8001"])
+        # Redirect stdout/stderr to DEVNULL so communicate() doesn't hang waiting
+        # for the subprocess's inherited file descriptors to close
+        self.process = subprocess.Popen(
+            ["python3", "-m", "http.server", "8001"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         flash_cls_lifecycle_events.append("enter_pre_snapshot")
 
     @modal.enter(snap=False)

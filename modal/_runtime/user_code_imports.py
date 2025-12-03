@@ -396,7 +396,6 @@ class ImportedClass(Service):
         flash_entry = _FlashContainerEntry(self.function_def.http_config)
         # Identify the "enter" methods to run after resuming from a snapshot.
         if not self.function_def.is_auto_snapshot:
-
             post_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
