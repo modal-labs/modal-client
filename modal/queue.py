@@ -425,7 +425,9 @@ class _Queue(_Object, type_prefix="qu"):
             created_by=creation_info.created_by or None,
         )
 
-    async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> list[Any]:
+    async def _get_nonblocking(
+        self, partition: Optional[str], n_values: int, metadata: list[tuple[str, str]] | None = None
+    ) -> list[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
@@ -433,13 +435,19 @@ class _Queue(_Object, type_prefix="qu"):
             n_values=n_values,
         )
 
-        response = await self._client.stub.QueueGet(request)
+        response = await self._client.stub.QueueGet(request, metadata=metadata)
         if response.values:
             return [deserialize(value, self._client) for value in response.values]
         else:
             return []
 
-    async def _get_blocking(self, partition: Optional[str], timeout: Optional[float], n_values: int) -> list[Any]:
+    async def _get_blocking(
+        self,
+        partition: Optional[str],
+        timeout: Optional[float],
+        n_values: int,
+        metadata: list[tuple[str, str]] | None = None,
+    ) -> list[Any]:
         if timeout is not None:
             deadline = time.time() + timeout
         else:
@@ -458,7 +466,7 @@ class _Queue(_Object, type_prefix="qu"):
                 n_values=n_values,
             )
 
-            response = await self._client.stub.QueueGet(request)
+            response = await self._client.stub.QueueGet(request, metadata=metadata)
 
             if response.values:
                 return [deserialize(value, self._client) for value in response.values]
@@ -482,7 +490,12 @@ class _Queue(_Object, type_prefix="qu"):
 
     @live_method
     async def get(
-        self, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
+        self,
+        block: bool = True,
+        timeout: Optional[float] = None,
+        *,
+        partition: Optional[str] = None,
+        metadata: list[tuple[str, str]] | None = None,
     ) -> Optional[Any]:
         """Remove and return the next object in the queue.
 
@@ -495,11 +508,11 @@ class _Queue(_Object, type_prefix="qu"):
         """
 
         if block:
-            values = await self._get_blocking(partition, timeout, 1)
+            values = await self._get_blocking(partition, timeout, 1, metadata)
         else:
             if timeout is not None:
                 warnings.warn("Timeout is ignored for non-blocking get.")
-            values = await self._get_nonblocking(partition, 1)
+            values = await self._get_nonblocking(partition, 1, metadata)
 
         if values:
             return values[0]
@@ -508,7 +521,13 @@ class _Queue(_Object, type_prefix="qu"):
 
     @live_method
     async def get_many(
-        self, n_values: int, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
+        self,
+        n_values: int,
+        block: bool = True,
+        timeout: Optional[float] = None,
+        *,
+        partition: Optional[str] = None,
+        metadata: list[tuple[str, str]] | None = None,
     ) -> list[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
@@ -523,11 +542,11 @@ class _Queue(_Object, type_prefix="qu"):
         """
 
         if block:
-            return await self._get_blocking(partition, timeout, n_values)
+            return await self._get_blocking(partition, timeout, n_values, metadata)
         else:
             if timeout is not None:
                 warnings.warn("Timeout is ignored for non-blocking get.")
-            return await self._get_nonblocking(partition, n_values)
+            return await self._get_nonblocking(partition, n_values, metadata)
 
     @live_method
     async def put(
@@ -538,6 +557,7 @@ class _Queue(_Object, type_prefix="qu"):
         *,
         partition: Optional[str] = None,
         partition_ttl: int = 24 * 3600,  # After 24 hours of no activity, this partition will be deletd.
+        metadata: list[tuple[str, str]] | None = None,
     ) -> None:
         """Add an object to the end of the queue.
 
@@ -547,7 +567,7 @@ class _Queue(_Object, type_prefix="qu"):
 
         If `block` is `False`, this method raises `queue.Full` immediately if the queue is full. The `timeout` is
         ignored in this case."""
-        await self.put_many([v], block, timeout, partition=partition, partition_ttl=partition_ttl)
+        await self.put_many([v], block, timeout, partition=partition, partition_ttl=partition_ttl, metadata=metadata)
 
     @live_method
     async def put_many(
@@ -558,6 +578,7 @@ class _Queue(_Object, type_prefix="qu"):
         *,
         partition: Optional[str] = None,
         partition_ttl: int = 24 * 3600,  # After 24 hours of no activity, this partition will be deletd.
+        metadata: list[tuple[str, str]] | None = None,
     ) -> None:
         """Add several objects to the end of the queue.
 
@@ -569,14 +590,19 @@ class _Queue(_Object, type_prefix="qu"):
         ignored in this case.
         """
         if block:
-            await self._put_many_blocking(partition, partition_ttl, vs, timeout)
+            await self._put_many_blocking(partition, partition_ttl, vs, timeout, metadata)
         else:
             if timeout is not None:
                 warnings.warn("`timeout` argument is ignored for non-blocking put.")
-            await self._put_many_nonblocking(partition, partition_ttl, vs)
+            await self._put_many_nonblocking(partition, partition_ttl, vs, metadata)
 
     async def _put_many_blocking(
-        self, partition: Optional[str], partition_ttl: int, vs: list[Any], timeout: Optional[float] = None
+        self,
+        partition: Optional[str],
+        partition_ttl: int,
+        vs: list[Any],
+        timeout: Optional[float] = None,
+        metadata: list[tuple[str, str]] | None = None,
     ):
         vs_encoded = [serialize(v) for v in vs]
 
@@ -596,6 +622,7 @@ class _Queue(_Object, type_prefix="qu"):
                     max_retries=None,
                     total_timeout=timeout,
                 ),
+                metadata=metadata,
             )
         except GRPCError as exc:
             if exc.status == Status.RESOURCE_EXHAUSTED:
@@ -606,7 +633,9 @@ class _Queue(_Object, type_prefix="qu"):
             else:
                 raise exc
 
-    async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: list[Any]):
+    async def _put_many_nonblocking(
+        self, partition: Optional[str], partition_ttl: int, vs: list[Any], metadata: list[tuple[str, str]] | None = None
+    ):
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
@@ -615,7 +644,7 @@ class _Queue(_Object, type_prefix="qu"):
             partition_ttl_seconds=partition_ttl,
         )
         try:
-            await self._client.stub.QueuePut(request)
+            await self._client.stub.QueuePut(request, metadata=metadata)
         except GRPCError as exc:
             if exc.status == Status.RESOURCE_EXHAUSTED:
                 raise queue.Full(exc.message)
@@ -641,7 +670,11 @@ class _Queue(_Object, type_prefix="qu"):
     @warn_if_generator_is_not_consumed()
     @live_method_gen
     async def iterate(
-        self, *, partition: Optional[str] = None, item_poll_timeout: float = 0.0
+        self,
+        *,
+        partition: Optional[str] = None,
+        item_poll_timeout: float = 0.0,
+        metadata: list[tuple[str, str]] | None = None,
     ) -> AsyncGenerator[Any, None]:
         """(Beta feature) Iterate through items in the queue without mutation.
 
@@ -661,7 +694,9 @@ class _Queue(_Object, type_prefix="qu"):
                 item_poll_timeout=poll_duration,
             )
 
-            response: api_pb2.QueueNextItemsResponse = await self._client.stub.QueueNextItems(request)
+            response: api_pb2.QueueNextItemsResponse = await self._client.stub.QueueNextItems(
+                request, metadata=metadata
+            )
             if response.items:
                 for item in response.items:
                     yield deserialize(item.value, self._client)
