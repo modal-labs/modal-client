@@ -176,11 +176,6 @@ class _FlashManager:
         if not self.stopped:
             await self.stop()
 
-        try:
-            self.drain_task.cancel()
-        except Exception:
-            pass
-
         await asyncio.sleep(self.exit_grace_period)
 
         logger.warning(f"[Modal Flash] Closing tunnel on {self.tunnel.url}.")
