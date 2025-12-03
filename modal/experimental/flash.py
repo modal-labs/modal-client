@@ -160,9 +160,14 @@ class _FlashManager:
         return self.tunnel.url
 
     async def stop(self):
-        self.heartbeat_task.cancel()
-        self.drain_task.cancel()
-        await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
+        if self.stopped:
+            return
+        try:
+            self.heartbeat_task.cancel()
+            self.drain_task.cancel()
+            await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
+        except Exception as e:
+            logger.error(f"[Modal Flash] Error stopping: {e}")
 
         self.stopped = True
         logger.warning(f"[Modal Flash] No longer accepting new requests on {self.tunnel.url}.")
