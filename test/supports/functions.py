@@ -872,7 +872,8 @@ class FlashClsWithEnter:
     @modal.enter(snap=True)
     def enter(self):
         # Redirect stdout/stderr to DEVNULL so communicate() doesn't hang waiting
-        # for the subprocess's inherited file descriptors to close
+        # for the subprocess's inherited file descriptors to close. This fails on Github Actions
+        # if we don't pipe the subprocess stdout/stderr to DEVNULL.
         self.process = subprocess.Popen(
             ["python3", "-m", "http.server", "8001"],
             stdout=subprocess.DEVNULL,

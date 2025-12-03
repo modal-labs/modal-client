@@ -707,6 +707,14 @@ http_server = synchronize_api(_http_server, target_module=__name__)
 
 
 class _FlashContainerEntry:
+    """
+    A class that manages the lifecycle of Flash manager for Flash containers.
+
+    It is intentional that stop() runs before exit handlers and close().
+    This ensures the container is deregistered first, preventing new requests from being routed to it
+    while exit handlers execute and the exit grace period elapses, before finally closing the tunnel.
+    """
+
     def __init__(self, http_config: api_pb2.HTTPConfig):
         self.http_config: api_pb2.HTTPConfig = http_config
         self.flash_manager: Optional[FlashManager] = None  # type: ignore

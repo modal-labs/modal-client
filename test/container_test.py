@@ -283,6 +283,7 @@ def _container_args(
         api_pb2.DATA_FORMAT_CBOR,
     ],
     method_definitions: dict[str, api_pb2.MethodDefinition] = {},
+    http_config: Optional[api_pb2.HTTPConfig] = None,
 ):
     if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
         app_layout = api_pb2.AppLayout(
@@ -336,6 +337,7 @@ def _container_args(
         class_serialized=class_serialized,
         supported_output_formats=supported_output_formats,
         method_definitions=method_definitions,
+        http_config=http_config,
     )
 
     return api_pb2.ContainerArguments(
@@ -1905,6 +1907,7 @@ def _run_container_process(
     is_class=False,
     function_type: "api_pb2.Function.FunctionType.ValueType" = api_pb2.Function.FUNCTION_TYPE_FUNCTION,
     volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
+    http_config: Optional[api_pb2.HTTPConfig] = None,
 ) -> subprocess.Popen:
     container_args = _container_args(
         module_name,
@@ -1915,6 +1918,7 @@ def _run_container_process(
         is_class=is_class,
         function_type=function_type,
         volume_mounts=volume_mounts,
+        http_config=http_config,
     )
 
     # These env vars are always present in containers
@@ -2187,6 +2191,9 @@ def test_full_lifecycle_order_signals_disabled_before_asgi_exit(servicer, tmp_pa
     assert volume_commit_rpcs[0].volume_id == "vo-test"
 
 
+## modal.experimental functionality ##
+
+
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 def test_flash_cls_enter_lifecycle(servicer, tmp_path):
@@ -2215,7 +2222,62 @@ def test_flash_cls_enter_lifecycle(servicer, tmp_path):
     assert f"[flash_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
 
 
-## modal.experimental functionality ##
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_flash_container_entry_lifecycle(servicer, tmp_path):
+    """
+    Test that _FlashContainerEntry lifecycle methods (enter, stop, close) are called
+    in the correct order and that Flash RPCs (FlashContainerRegister, FlashContainerDeregister)
+    are invoked appropriately.
+
+    Lifecycle order:
+    1. _FlashContainerEntry.enter() - creates FlashManager, starts heartbeat which calls FlashContainerRegister
+    2. Container processes inputs (or gets kill_switch)
+    3. _FlashContainerEntry.stop() - cancels tasks, calls FlashContainerDeregister
+    4. _FlashContainerEntry.close() - closes tunnel
+    """
+    # Clear any previous Flash RPC calls
+    servicer.flash_rpc_calls = []
+
+    # Create http_config to enable Flash functionality
+    http_config = api_pb2.HTTPConfig(
+        port=8001,
+        startup_timeout=5,
+        exit_grace_period=0,
+    )
+
+    container_process = _run_container_process(
+        servicer,
+        tmp_path,
+        "test.supports.functions",
+        "FlashClsWithEnter.*",
+        inputs=[],  # No method inputs - Flash classes just serve HTTP
+        is_class=True,
+        http_config=http_config,
+    )
+    stdout, stderr = container_process.communicate(timeout=15)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+
+    # Verify the enter methods ran
+    expected_events = "enter_pre_snapshot,enter_post_snapshot"
+    assert f"[flash_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+    # Verify Flash RPCs were called in the correct order:
+    # - register: called during enter when heartbeat starts
+    # - deregister: called during stop
+    assert "register" in servicer.flash_rpc_calls, (
+        f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+    assert "deregister" in servicer.flash_rpc_calls, (
+        f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+
+    # Verify order: register should come before deregister
+    register_idx = servicer.flash_rpc_calls.index("register")
+    deregister_idx = servicer.flash_rpc_calls.index("deregister")
+    assert register_idx < deregister_idx, (
+        f"Flash RPCs called in wrong order. Expected register before deregister. RPC calls: {servicer.flash_rpc_calls}"
+    )
 
 
 @skip_github_non_linux
