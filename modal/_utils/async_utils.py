@@ -47,18 +47,19 @@ class BlockingInAsyncContextWarning(Warning):
     pass
 
 
-def rewrite_sync_to_async(code_line: str, func_name: str) -> tuple[bool, str]:
+def rewrite_sync_to_async(code_line: str, original_func: types.FunctionType) -> tuple[bool, str]:
     """
     Rewrite a blocking call to use async/await syntax.
 
-    Handles three patterns:
+    Handles four patterns:
     1. __aiter__: for x in obj -> async for x in obj
     2. __aenter__: with obj as x -> async with obj as x
-    3. Regular methods: obj.method() -> await obj.method.aio()
+    3. Async generators in for loops: for x in obj.method(...) -> async for x in obj.method(...)
+    4. Regular methods: obj.method() -> await obj.method.aio()
 
     Args:
         code_line: The line of code containing the blocking call
-        func_name: The name of the function being called (e.g., "method", "__aiter__", "__aenter__")
+        original_func: The original function object being called
 
     Returns:
         A tuple of (success, rewritten_code):
@@ -66,6 +67,11 @@ def rewrite_sync_to_async(code_line: str, func_name: str) -> tuple[bool, str]:
         - rewritten_code: The rewritten code or a generic suggestion
     """
     import re
+
+    func_name = getattr(original_func, "__name__", str(original_func))
+
+    # Check if this is an async generator function
+    is_async_gen = inspect.isasyncgenfunction(original_func)
 
     # Handle __aiter__ pattern: for x in obj -> async for x in obj
     if func_name == "__aiter__" and code_line.startswith("for "):
@@ -76,6 +82,17 @@ def rewrite_sync_to_async(code_line: str, func_name: str) -> tuple[bool, str]:
     if func_name == "__aenter__" and code_line.startswith("with "):
         suggestion = code_line.replace("with ", "async with ", 1)
         return (True, suggestion)
+
+    # Handle async generator methods in for loops: for x in obj.method(...) -> async for x in obj.method(...)
+    if is_async_gen and code_line.strip().startswith("for "):
+        # Pattern: for <var> in <expr>.<method>(<args>):
+        for_pattern = rf"(for\s+\w+\s+in\s+.*\.){re.escape(func_name)}(\s*\()"
+        for_match = re.search(for_pattern, code_line)
+
+        if for_match:
+            # Just replace "for" with "async for" - no .aio() needed for async generators
+            suggestion = code_line.replace("for ", "async for ", 1)
+            return (True, suggestion)
 
     # Handle regular method calls and property access
     # First check if it's a property access (no parentheses after the name)
@@ -203,11 +220,9 @@ def _blocking_in_async_warning(original_func: types.FunctionType):
     code_line = None
 
     if original_func and call_frame and call_frame.line:
-        func_name = getattr(original_func, "__name__", str(original_func))
         code_line = call_frame.line.strip()
-
         # Use the unified rewrite function for all patterns
-        _, suggestion = rewrite_sync_to_async(code_line, func_name)
+        _, suggestion = rewrite_sync_to_async(code_line, original_func)
 
     message_parts.append(
         "\n\nThis may cause performance issues or bugs. Consider using Modal's async interfaces for async contexts."
