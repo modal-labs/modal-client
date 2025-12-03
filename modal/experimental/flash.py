@@ -162,7 +162,6 @@ class _FlashManager:
     async def stop(self):
         try:
             self.heartbeat_task.cancel()
-            self.drain_task.cancel()
         except Exception as e:
             logger.error(f"[Modal Flash] Error stopping: {e}")
 
