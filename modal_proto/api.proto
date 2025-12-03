@@ -1552,6 +1552,10 @@ message Function {
   repeated DataFormat supported_input_formats = 87; // can be used as inputs
   repeated DataFormat supported_output_formats = 88;
   optional HTTPConfig http_config = 89;
+
+  // Attribute on the module with the implementation, which may differ from function_name
+  // when the user provided a custom name= for the Function inside the Application namespace
+  string implementation_name = 90;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1731,6 +1735,10 @@ message FunctionData {
   repeated DataFormat supported_input_formats = 37;
   repeated DataFormat supported_output_formats = 38;
   optional HTTPConfig http_config = 39;
+
+  // Attribute on the module with the implementation, which may differ from function_name
+  // when the user provided a custom name= for the Function inside the Application namespace
+  string implementation_name = 40;
 }
 
 message FunctionExtended {
