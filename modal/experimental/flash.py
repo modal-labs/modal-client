@@ -161,6 +161,7 @@ class _FlashManager:
 
     async def stop(self):
         self.heartbeat_task.cancel()
+        self.drain_task.cancel()
         await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
 
         self.stopped = True
@@ -185,7 +186,7 @@ FlashManager = synchronize_api(_FlashManager, target_module=__name__)
 @synchronizer.create_blocking
 async def flash_forward(
     port: int,
-    process: Optional[subprocess.Popen] = None, # to be deprecated
+    process: Optional[subprocess.Popen] = None,  # to be deprecated
     health_check_url: Optional[str] = None,
     startup_timeout: int = 30,
     exit_grace_period: int = 0,
@@ -703,7 +704,7 @@ http_server = synchronize_api(_http_server, target_module=__name__)
 class _FlashContainerEntry:
     def __init__(self, http_config: api_pb2.HTTPConfig):
         self.http_config: api_pb2.HTTPConfig = http_config
-        self.flash_manager: Optional[FlashManager] = None # type: ignore
+        self.flash_manager: Optional[FlashManager] = None  # type: ignore
 
     def enter(self):
         if self.http_config != api_pb2.HTTPConfig():

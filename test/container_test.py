@@ -2204,7 +2204,7 @@ def test_flash_cls_enter_lifecycle(servicer, tmp_path):
         tmp_path,
         "test.supports.functions",
         "FlashClsWithEnter.*",
-        inputs=[],  # No method inputs - Flash classes just serve HTTP
+        inputs=[],
         is_class=True,
     )
     stdout, stderr = container_process.communicate(timeout=10)
