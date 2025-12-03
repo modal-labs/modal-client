@@ -2273,11 +2273,22 @@ def test_flash_container_entry_lifecycle(servicer, tmp_path):
     )
 
     # Verify order: register should come before deregister
-    register_idx = servicer.flash_rpc_calls.index("register")
-    deregister_idx = servicer.flash_rpc_calls.index("deregister")
-    assert register_idx < deregister_idx, (
+    register_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "register"]
+    deregister_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "deregister"]
+    assert register_indices, f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    assert deregister_indices, f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
+
+    # Verify the *first* register is before the *first* deregister (for compatibility)
+    assert register_indices[0] < deregister_indices[0], (
         f"Flash RPCs called in wrong order. Expected register before deregister. RPC calls: {servicer.flash_rpc_calls}"
     )
+    # Ensure that *all* deregisters happen after the *last* register
+    last_register_idx = max(register_indices)
+    for d_idx in deregister_indices:
+        assert d_idx > last_register_idx, (
+            f"Found deregister at position {d_idx} before last register at position {last_register_idx}. "
+            f"Flash RPCs: {servicer.flash_rpc_calls}"
+        )
 
 
 @skip_github_non_linux
