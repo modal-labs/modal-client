@@ -509,6 +509,8 @@ class _App:
             if old_function is function:
                 return  # already added the same exact instance, ignore
 
+            # In notebooks, re-registering the same function with the same app will cause a named collision.
+            # This is common notebook coding behavior, so we hide the warning.
             if not is_notebook():
                 logger.warning(
                     f"Warning: function name '{function.tag}' collision!"
