@@ -650,7 +650,6 @@ async def async_later_gen():
     yield "foo"
 
 
-@pytest.mark.asyncio
 def test_generator(client, servicer):
     app = App(include_source=False)
 
