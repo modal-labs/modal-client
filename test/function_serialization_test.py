@@ -17,7 +17,7 @@ async def test_serialize_deserialize_function(servicer, client):
     with pytest.raises(Exception):
         foo.object_id  # noqa
 
-    with app.run(client=client):
+    async with app.run(client=client):
         object_id = foo.object_id
 
     assert object_id is not None
