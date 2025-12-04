@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.5.dev16 (2025-12-04)
+
+- It is now possible to set a custom `name=` for a Function without setting `serialized=True`. This can be useful when decorating a function multiple times, e.g. applying multiple Modal configurations to the same implementation.
+
+
 #### 1.2.5.dev10 (2025-12-01)
 
 - Fixed a bug in `modal shell` that caused e.g. `vi` to fail with unicode decode errors.
