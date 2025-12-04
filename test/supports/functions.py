@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import subprocess
 import threading
 import time
 from typing import Sequence
@@ -205,8 +206,6 @@ def fastapi_app():
 @app.function()
 @web_server(8765, startup_timeout=1)
 def non_blocking_web_server():
-    import subprocess
-
     subprocess.Popen(["python", "-m", "http.server", "-b", "0.0.0.0", "8765"])
 
 
@@ -859,3 +858,32 @@ class FullLifecycleCls:
         else:
             full_lifecycle_events.append("exit_signals_enabled")
         full_lifecycle_events.append("modal_exit")
+
+
+flash_cls_lifecycle_events: list[str] = []
+
+
+@app.cls(
+    enable_memory_snapshot=True,
+    min_containers=1,
+)
+@modal.experimental.http_server(8001, proxy_regions=["us-east", "us-west", "ap-south"])
+class FlashClsWithEnter:
+    @modal.enter(snap=True)
+    def enter(self):
+        # Redirect stdout/stderr to DEVNULL so communicate() doesn't hang waiting
+        # for the subprocess's inherited file descriptors to close. This fails on Github Actions
+        # if we don't pipe the subprocess stdout/stderr to DEVNULL.
+        self.process = subprocess.Popen(
+            ["python3", "-m", "http.server", "8001"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        flash_cls_lifecycle_events.append("enter_pre_snapshot")
+
+    @modal.enter(snap=False)
+    def enter_post_snapshot(self):
+        flash_cls_lifecycle_events.append("enter_post_snapshot")
+        # Print lifecycle events after all enter methods have run
+        # This will be captured by the test before the container exits
+        print(f"[flash_lifecycle_events:{','.join(flash_cls_lifecycle_events)}]")

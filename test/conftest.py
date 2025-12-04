@@ -463,6 +463,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_call_result: Any = None
 
         self.flash_container_registrations = {}
+        self.flash_rpc_calls: list[str] = []  # Track Flash RPC calls in order
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -2704,11 +2705,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FlashContainerRegister(self, stream):
         request: api_pb2.FlashContainerRegisterRequest = await stream.recv_message()
         self.flash_container_registrations[request.service_name] = f"http://{request.host}:{request.port}"
+        self.flash_rpc_calls.append("register")
         await stream.send_message(api_pb2.FlashContainerRegisterResponse(url=f"http://{request.host}:{request.port}"))
 
     async def FlashContainerDeregister(self, stream):
         request: api_pb2.FlashContainerDeregisterRequest = await stream.recv_message()
         self.flash_container_registrations.pop(request.service_name, None)
+        self.flash_rpc_calls.append("deregister")
         await stream.send_message(Empty())
 
 
