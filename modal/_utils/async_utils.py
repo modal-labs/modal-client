@@ -47,7 +47,7 @@ class BlockingInAsyncContextWarning(Warning):
     pass
 
 
-def rewrite_sync_to_async(code_line: str, original_func: types.FunctionType) -> tuple[bool, str]:
+def rewrite_sync_to_async(code_line: str, original_func: Callable) -> tuple[bool, str]:
     """
     Rewrite a blocking call to use async/await syntax.
 
@@ -68,7 +68,7 @@ def rewrite_sync_to_async(code_line: str, original_func: types.FunctionType) -> 
     """
     import re
 
-    func_name = original_func.__name__
+    func_name = original_func.__name__  # type: ignore
 
     # Check if this is an async generator function
     is_async_gen = inspect.isasyncgenfunction(original_func)
