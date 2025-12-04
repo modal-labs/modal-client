@@ -1098,6 +1098,13 @@ class _App:
                     "The `@modal.http_server` decorator cannot be used on methods; decorate the class instead."
                 )
 
+            if http_config is not None:
+                for method in _find_partial_methods_for_user_cls(
+                    user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE
+                ).values():
+                    method.registered = True  # Avoid warning about not registering the method (hacky!)
+                    raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
