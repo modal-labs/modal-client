@@ -68,7 +68,7 @@ def rewrite_sync_to_async(code_line: str, original_func: types.FunctionType) -> 
     """
     import re
 
-    func_name = getattr(original_func, "__name__", str(original_func))
+    func_name = original_func.__name__
 
     # Check if this is an async generator function
     is_async_gen = inspect.isasyncgenfunction(original_func)
