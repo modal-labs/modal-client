@@ -83,6 +83,32 @@ def rewrite_sync_to_async(code_line: str, original_func: types.FunctionType) -> 
         suggestion = code_line.replace("with ", "async with ", 1)
         return (True, suggestion)
 
+    # Handle __setitem__ pattern: dct['key'] = value -> suggest alternative
+    if func_name == "__setitem__":
+        # Try to extract the object and key from the bracket syntax
+        setitem_match = re.match(r"(\w+)\[([^\]]+)\]\s*=\s*(.+)", code_line.strip())
+        if setitem_match:
+            obj, key, value = setitem_match.groups()
+            suggestion = (
+                f"You can't use `{obj}[{key}] = {value}` syntax asynchronously - "
+                f"there may be an alternative api, e.g. {obj}.put.aio({key}, {value})"
+            )
+            return (False, suggestion)
+        return (False, f"await ...{func_name}.aio(...)")
+
+    # Handle __getitem__ pattern: dct['key'] -> suggest alternative
+    if func_name == "__getitem__":
+        # Try to extract the object and key from the bracket syntax
+        getitem_match = re.match(r"(\w+)\[([^\]]+)\]$", code_line.strip())
+        if getitem_match:
+            obj, key = getitem_match.groups()
+            suggestion = (
+                f"You can't use `{obj}[{key}]` syntax asynchronously - "
+                f"there may be an alternative api, e.g. {obj}.get.aio({key})"
+            )
+            return (False, suggestion)
+        return (False, f"await ...{func_name}.aio(...)")
+
     # Handle async generator methods in for loops: for x in obj.method(...) -> async for x in obj.method(...)
     if is_async_gen and code_line.strip().startswith("for "):
         # Pattern: for <var> in <expr>.<method>(<args>):

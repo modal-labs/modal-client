@@ -192,3 +192,25 @@ def test_rewrite_leading_arithmatics():
     print(result)
     assert success is True
     assert result == "2 * await foo.method.aio()"
+
+
+def test_rewrite_async_setitem():
+    code = "dct['foo'] = 'bar'"
+    success, suggestion = rewrite_sync_to_async(code, "__setitem__")
+    print(success, suggestion)
+    assert success is False
+    assert suggestion == (
+        "You can't use `dct['foo'] = 'bar'` syntax asynchronously - "
+        "there may be an alternative api, e.g. dct.put.aio('foo', 'bar')"
+    )
+
+
+def test_rewrite_async_gettitem():
+    code = "dct['foo']"
+    success, suggestion = rewrite_sync_to_async(code, "__getitem__")
+    print(success, suggestion)
+    assert success is False
+    assert (
+        suggestion
+        == "You can't use `dct['foo']` syntax asynchronously - there may be an alternative api, e.g. dct.get.aio('foo')"
+    )
