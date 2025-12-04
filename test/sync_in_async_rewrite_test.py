@@ -183,3 +183,12 @@ def test_rewrite_fallback_with_for_keyword():
     assert success is False
     # Should fall back due to 'for' keyword (handled separately as __aiter__)
     assert result == "await ...iterate.aio(...)"
+
+
+def test_rewrite_leading_arithmatics():
+    """Test rewriting a simple method call."""
+    code = "2 * foo.method()"
+    success, result = rewrite_sync_to_async(code, "method")
+    print(result)
+    assert success is True
+    assert result == "2 * await foo.method.aio()"

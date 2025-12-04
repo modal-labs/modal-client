@@ -131,21 +131,44 @@ def rewrite_sync_to_async(code_line: str, original_func: types.FunctionType) -> 
             # Fall back to generic suggestion for complex expressions
             return (False, f"await ...{func_name}.aio(...)")
 
-    # Find the start of the expression (skip statement keywords and assignments)
-    # Look for patterns like: "return ...", "x = ...", "yield ...", etc.
-    statement_start = 0
-    prefix_match = re.match(r"^(\s*(?:\w+\s*=|return|yield|raise)\s+)", code_line)
-    if prefix_match:
-        # Found a statement prefix, keep it
-        statement_start = len(prefix_match.group(1))
+    # Find the start of the object expression that leads to the method call
+    # We need to find where the object/chain starts, e.g., in "2 * foo.bar.method()" we want "foo"
+    # Work backwards from the method match to find the start of the identifier chain
+    method_start = method_match.start()
 
-    # Insert .aio before the opening parenthesis and await at the start of expression
-    before_expr = code_line[:statement_start]
-    after_prefix = code_line[statement_start:]
+    # Find the start of the identifier chain (the object being called)
+    # Walk backwards to find identifiers and dots that form the chain
+    expr_start = method_start
+    i = method_start - 1
+    while i >= 0:
+        c = code_line[i]
+        if c.isalnum() or c == "_" or c == ".":
+            expr_start = i
+            i -= 1
+        elif c.isspace():
+            # Skip whitespace within the chain (though unusual)
+            i -= 1
+        else:
+            # Found a non-identifier character, stop
+            break
 
-    # Add .aio() after the method name
-    rewritten_expr = re.sub(rf"(\.{re.escape(func_name)})\s*\(", r"\1.aio(", after_prefix, count=1)
-    suggestion = before_expr + "await " + rewritten_expr.lstrip()
+    # Now expr_start points to the start of the object chain (e.g., "foo" in "foo.method()")
+    # But we need to check if the identifier we found is actually a keyword like return/yield/raise
+    # In that case, skip over it and find the actual object
+    before_obj = code_line[:expr_start]
+    obj_and_rest = code_line[expr_start:]
+
+    # Check if what we found starts with a statement keyword
+    keyword_match = re.match(r"^(return|yield|raise)\s+", obj_and_rest)
+    if keyword_match:
+        # The "object" we found is actually a keyword, adjust to skip it
+        keyword_len = len(keyword_match.group(0))
+        before_obj = code_line[: expr_start + keyword_len]
+        obj_and_rest = code_line[expr_start + keyword_len :]
+
+    # Add .aio() after the method name and await before the object
+    rewritten_expr = re.sub(rf"(\.{re.escape(func_name)})\s*\(", r"\1.aio(", obj_and_rest, count=1)
+    suggestion = before_obj + "await " + rewritten_expr
 
     return (True, suggestion)
 
