@@ -465,7 +465,10 @@ def import_single_function_service(
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
-        qual_name: str = function_def.implementation_name
+
+        # Fall back to function_name just to be safe around the migration
+        # Going forward, implementation_name should always be set
+        qual_name: str = function_def.implementation_name or function_def.function_name
 
         if not is_global_object(qual_name):
             raise LocalFunctionError("Attempted to load a function defined in a function scope")
