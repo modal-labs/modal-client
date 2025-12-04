@@ -792,7 +792,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 if value and value % cluster_size != 0:
                     raise InvalidError(
                         f"`{field}` ({value}) must be a multiple of `cluster_size` ({cluster_size}) "
-                        f"for clustered functions"
+                        f"for clustered Functions"
                     )
 
         if _experimental_custom_scaling_factor is not None and (
