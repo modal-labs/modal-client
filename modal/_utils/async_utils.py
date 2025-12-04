@@ -902,7 +902,7 @@ async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
 
 @asynccontextmanager
 async def create_connection(host: str, port: int, timeout: float) -> AsyncIterator[asyncio.StreamWriter]:
-    """Return True if the host + port is open."""
+    """Async version of `socket.create_connection."""
     _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
     try:
         yield writer
