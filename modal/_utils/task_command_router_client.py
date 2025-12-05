@@ -536,3 +536,8 @@ class TaskCommandRouterClient:
                     await sleep_and_update_delay_and_num_retries_remaining(e)
                 else:
                     raise ConnectionError(str(e))
+
+    async def mount_image(self, request: sr_pb2.TaskMountImageRequest):
+        return await call_with_retries_on_transient_errors(
+            lambda: self._call_with_auth_retry(self._stub.TaskMountImage, request)
+        )
