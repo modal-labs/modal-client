@@ -1716,10 +1716,10 @@ def test_image_parallel_build(builder_version, servicer, client):
 
 
 @pytest.mark.asyncio
-async def test_logs(servicer, client):
+def test_logs(client):
     image = Image.debian_slim().pip_install("foobarbaz")
     build_image(image, client)
-    logs = [data async for data in image._logs.aio()]
+    logs = [data for data in image._logs()]
     assert logs == ["build starting\n", "build finished\n"]
 
 

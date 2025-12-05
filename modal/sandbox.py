@@ -41,7 +41,6 @@ from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .proxy import _Proxy
-from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .snapshot import _SandboxSnapshot
 from .stream_type import StreamType
@@ -148,19 +147,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         proxy: Optional[_Proxy] = None,
         experimental_options: Optional[dict[str, bool]] = None,
-        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
         validated_network_file_systems = validate_network_file_systems(network_file_systems)
-
-        scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
-        if region:
-            if scheduler_placement:
-                raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
-            scheduler_placement = SchedulerPlacement(region=region)
 
         if isinstance(gpu, list):
             raise InvalidError(
@@ -175,6 +167,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
+
+        scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+        if region:
+            regions = [region] if isinstance(region, str) else (list(region) if region else None)
+            scheduler_placement = api_pb2.SchedulerPlacement(regions=regions)
 
         if pty:
             pty_info = _Sandbox._default_pty_info()
@@ -252,7 +249,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
                 pty_info=pty_info,
-                scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
+                scheduler_placement=scheduler_placement,
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
@@ -320,9 +317,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         experimental_options: Optional[dict[str, bool]] = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
-        _experimental_scheduler_placement: Optional[
-            SchedulerPlacement
-        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
@@ -384,7 +378,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             proxy=proxy,
             experimental_options=experimental_options,
             _experimental_enable_snapshot=_experimental_enable_snapshot,
-            _experimental_scheduler_placement=_experimental_scheduler_placement,
             client=client,
             verbose=verbose,
             pty_info=pty_info,
@@ -418,7 +411,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         experimental_options: Optional[dict[str, bool]] = None,
         _experimental_enable_snapshot: bool = False,
-        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         client: Optional[_Client] = None,
         verbose: bool = False,
         pty_info: Optional[api_pb2.PTYInfo] = None,
@@ -468,7 +460,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
             experimental_options=experimental_options,
-            _experimental_scheduler_placement=_experimental_scheduler_placement,
             enable_snapshot=_experimental_enable_snapshot,
             verbose=verbose,
         )
@@ -937,12 +928,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         elif stdout == StreamType.DEVNULL:
             stdout_config = sr_pb2.TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_DEVNULL
         elif stdout == StreamType.STDOUT:
-            # TODO(saltzm): This is a behavior change from the old implementation. We should
-            # probably implement the old behavior of printing to stdout before moving out of beta.
-            raise NotImplementedError(
-                "Currently the STDOUT stream type is not supported when using exec "
-                "through a task command router, which is currently in beta."
-            )
+            # Stream stdout to the client so that it can be printed locally in the reader.
+            stdout_config = sr_pb2.TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_PIPE
         else:
             raise ValueError("Unsupported StreamType for stdout")
 
@@ -951,7 +938,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         elif stderr == StreamType.DEVNULL:
             stderr_config = sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_DEVNULL
         elif stderr == StreamType.STDOUT:
-            stderr_config = sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_STDOUT
+            # Stream stderr to the client so that it can be printed locally in the reader.
+            stderr_config = sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_PIPE
         else:
             raise ValueError("Unsupported StreamType for stderr")
 

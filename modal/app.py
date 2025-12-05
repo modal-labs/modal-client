@@ -509,6 +509,8 @@ class _App:
             if old_function is function:
                 return  # already added the same exact instance, ignore
 
+            # In notebooks, re-registering the same function with the same app will cause a named collision.
+            # This is common notebook coding behavior, so we hide the warning.
             if not is_interactive_ipython():
                 logger.warning(
                     f"Warning: function name '{function.tag}' collision!"
@@ -719,6 +721,7 @@ class _App:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
+        nonpreemptible: bool = False,  # Whether to run the function on a nonpreemptible instance.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this function access to other Modal resources
@@ -731,9 +734,6 @@ class _App:
         include_source: Optional[bool] = None,
         experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
-        _experimental_scheduler_placement: Optional[
-            SchedulerPlacement
-        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
         _experimental_restrict_output: bool = False,  # Don't use pickle for return values
@@ -743,6 +743,8 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Replaced in favor of
+        # using `region` and `nonpreemptible`
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal Function with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -762,6 +764,24 @@ class _App:
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
 
+        if _experimental_scheduler_placement is not None:
+            deprecation_warning(
+                (2025, 11, 17),
+                "The `_experimental_scheduler_placement` parameter is deprecated."
+                " Please use the `region` and `nonpreemptible` parameters instead.",
+            )
+            if region is not None or nonpreemptible:
+                raise InvalidError(
+                    "Cannot use `_experimental_scheduler_placement` together with "
+                    "`region` or `nonpreemptible` parameters."
+                )
+            # Extract regions and lifecycle from scheduler placement
+            if _experimental_scheduler_placement.proto.regions:
+                region = list(_experimental_scheduler_placement.proto.regions)
+            if _experimental_scheduler_placement.proto._lifecycle:
+                # Convert lifecycle to nonpreemptible: "on-demand" -> True, "spot" -> False
+                nonpreemptible = _experimental_scheduler_placement.proto._lifecycle == "on-demand"
+
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
@@ -771,7 +791,7 @@ class _App:
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
         ) -> _Function:
-            nonlocal is_generator, cloud, serialized
+            nonlocal is_generator, cloud, serialized, region, nonpreemptible
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
@@ -809,7 +829,7 @@ class _App:
                 batch_max_size = f.params.batch_max_size
                 batch_wait_ms = f.params.batch_wait_ms
                 if f.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options))
+                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options, None))
                     max_concurrent_inputs = f.params.max_concurrent_inputs
                     target_concurrent_inputs = f.params.target_concurrent_inputs
                 else:
@@ -860,12 +880,6 @@ class _App:
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
-            scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
-            if region:
-                if scheduler_placement:
-                    raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
-                scheduler_placement = SchedulerPlacement(region=region)
-
             function = _Function.from_local(
                 info,
                 app=self,
@@ -892,12 +906,13 @@ class _App:
                 timeout=timeout,
                 startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
+                region=region,
+                nonpreemptible=nonpreemptible,
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
-                scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
                 rdma=rdma,
@@ -950,6 +965,7 @@ class _App:
         startup_timeout: Optional[int] = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
+        nonpreemptible: bool = False,  # Whether to run the function on a non-preemptible instance.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this class access to other Modal resources
@@ -960,9 +976,6 @@ class _App:
         include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
         experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
-        _experimental_scheduler_placement: Optional[
-            SchedulerPlacement
-        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
         _experimental_restrict_output: bool = False,  # Don't use pickle for return values
@@ -972,18 +985,14 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Replaced in favor of
+        # using `region` and `nonpreemptible`
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](https://modal.com/docs/reference/modal.Cls) with this App.
         """
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
-
-        scheduler_placement = _experimental_scheduler_placement
-        if region:
-            if scheduler_placement:
-                raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
-            scheduler_placement = SchedulerPlacement(region=region)
 
         if allow_concurrent_inputs is not None:
             deprecation_warning(
@@ -993,6 +1002,24 @@ class _App:
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
 
+        if _experimental_scheduler_placement is not None:
+            deprecation_warning(
+                (2025, 11, 17),
+                "The `_experimental_scheduler_placement` parameter is deprecated."
+                " Please use the `region` and `nonpreemptible` parameters instead.",
+            )
+            if region is not None or nonpreemptible:
+                raise InvalidError(
+                    "Cannot use `_experimental_scheduler_placement` together with "
+                    "`region` or `nonpreemptible` parameters."
+                )
+            # Extract regions and lifecycle from scheduler placement
+            if _experimental_scheduler_placement.proto.regions:
+                region = list(_experimental_scheduler_placement.proto.regions)
+            if _experimental_scheduler_placement.proto._lifecycle:
+                # Convert lifecycle to nonpreemptible: "on-demand" -> True, "spot" -> False
+                nonpreemptible = _experimental_scheduler_placement.proto._lifecycle == "on-demand"
+
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
@@ -1000,11 +1027,17 @@ class _App:
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             local_state = self._local_state
             # Check if the decorated object is a class
+            http_config = None
             if isinstance(wrapped_cls, _PartialFunction):
                 wrapped_cls.registered = True
                 user_cls = wrapped_cls.user_cls
+                if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
+                    http_config = wrapped_cls.params.http_config
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options))
+                    verify_concurrent_params(
+                        params=wrapped_cls.params,
+                        is_flash=is_flash_object(experimental_options or {}, http_config=http_config),
+                    )
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
@@ -1014,6 +1047,7 @@ class _App:
                 if wrapped_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_cls.params.cluster_size
                     rdma = wrapped_cls.params.rdma
+
                 else:
                     cluster_size = None
                     rdma = None
@@ -1058,10 +1092,24 @@ class _App:
                     "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
                 )
 
+            for method in _find_partial_methods_for_user_cls(
+                user_cls, _PartialFunctionFlags.HTTP_WEB_INTERFACE
+            ).values():
+                method.registered = True  # Avoid warning about not registering the method (hacky!)
+                raise InvalidError(
+                    "The `@modal.http_server` decorator cannot be used on methods; decorate the class instead."
+                )
+
+            if http_config is not None:
+                for method in _find_partial_methods_for_user_cls(
+                    user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE
+                ).values():
+                    method.registered = True  # Avoid warning about not registering the method (hacky!)
+                    raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
-
             cls_func = _Function.from_local(
                 info,
                 app=self,
@@ -1086,11 +1134,13 @@ class _App:
                 timeout=timeout,
                 startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
+                region=region,
+                nonpreemptible=nonpreemptible,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
-                scheduler_placement=scheduler_placement,
+                http_config=http_config,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
                 rdma=rdma,
@@ -1104,6 +1154,7 @@ class _App:
             self._add_function(cls_func, is_web_endpoint=False)
 
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
+
             for method_name, partial_function in cls._method_partials.items():
                 if partial_function.params.webhook_config is not None:
                     full_name = f"{user_cls.__name__}.{method_name}"

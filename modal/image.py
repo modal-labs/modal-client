@@ -52,7 +52,6 @@ from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .output import _get_output_manager
-from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
 
@@ -2304,8 +2303,6 @@ class _Image(_Object, type_prefix="im"):
             # It may be possible to support lambdas eventually, but for now we don't handle them well, so reject quickly
             raise InvalidError("Image.run_function does not support lambda functions.")
 
-        scheduler_placement = SchedulerPlacement(region=region) if region else None
-
         info = FunctionInfo(raw_f)
 
         function = _Function.from_local(
@@ -2317,7 +2314,7 @@ class _Image(_Object, type_prefix="im"):
             volumes=volumes,
             network_file_systems=network_file_systems,
             cloud=cloud,
-            scheduler_placement=scheduler_placement,
+            region=region,
             memory=memory,
             timeout=timeout,
             cpu=cpu,

@@ -33,6 +33,10 @@ from modal._utils.async_utils import (
 )
 from test import helpers
 
+# Allow BlockingInAsyncContextWarning to be a warning (not error) in this test file
+# since we're specifically testing the warning behavior
+pytestmark = pytest.mark.filterwarnings("default::modal._utils.async_utils.BlockingInAsyncContextWarning")
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def no_dangling_tasks():
@@ -1533,6 +1537,7 @@ async def test_sync_in_async_warning(client):
     import warnings
 
     import modal
+    from modal._utils.async_utils import BlockingInAsyncContextWarning
 
     # Call the blocking interface from within an async context
     # This should trigger the sync_in_async_warning_callback
@@ -1542,7 +1547,7 @@ async def test_sync_in_async_warning(client):
 
         # Verify the warning was emitted
         assert len(w) == 1
-        assert issubclass(w[0].category, UserWarning)
+        assert issubclass(w[0].category, BlockingInAsyncContextWarning)
 
         warning_message = str(w[0].message)
         print(warning_message)
@@ -1556,6 +1561,7 @@ async def test_sync_in_async_property_warning(client):
     import warnings
 
     import modal
+    from modal._utils.async_utils import BlockingInAsyncContextWarning
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -1565,7 +1571,7 @@ async def test_sync_in_async_property_warning(client):
 
         # Verify the warning was emitted
         assert len(w) == 1
-        assert issubclass(w[0].category, UserWarning)
+        assert issubclass(w[0].category, BlockingInAsyncContextWarning)
 
         warning_message = str(w[0].message)
         print(warning_message)
@@ -1580,13 +1586,16 @@ async def test_sync_in_async_warning_iteration(servicer, client, set_env_client)
     import warnings
 
     import modal
+    from modal._utils.async_utils import BlockingInAsyncContextWarning
 
     async with modal.Queue.ephemeral(client=client) as q:
         with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
             for _ in q.iterate():  # this blocks!
                 pass
             # Verify the warning was emitted
             assert len(w) == 1
+            assert issubclass(w[0].category, BlockingInAsyncContextWarning)
             warning_message = str(w[0].message)
             print(warning_message)
 
@@ -1596,11 +1605,37 @@ async def test_sync_in_async_warning_iteration(servicer, client, set_env_client)
 
 
 @pytest.mark.asyncio
+async def test_sync_in_async_warning_iteration_volume(servicer, client, set_env_client):
+    """Test that using blocking Volume.read_file from async context emits a warning."""
+    import warnings
+
+    import modal
+    from modal._utils.async_utils import BlockingInAsyncContextWarning
+
+    async with modal.Volume.ephemeral(client=client) as vol:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            with pytest.raises(FileNotFoundError):
+                for chunk in vol.read_file("dummy"):
+                    pass
+            # Verify the warning was emitted
+            assert len(w) == 1
+            assert issubclass(w[0].category, BlockingInAsyncContextWarning)
+            warning_message = str(w[0].message)
+            print(warning_message)
+
+            # Verify the warning contains key information
+            assert "Blocking Modal interface used from within " in warning_message
+            assert 'async for chunk in vol.read_file("dummy"):' in warning_message
+
+
+@pytest.mark.asyncio
 async def test_sync_in_async_warning_context_manager(servicer, client):
     """Test that using blocking context manager from async context emits a warning."""
     import warnings
 
     import modal
+    from modal._utils.async_utils import BlockingInAsyncContextWarning
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -1613,6 +1648,7 @@ async def test_sync_in_async_warning_context_manager(servicer, client):
         # Verify the warning was emitted
         assert len(w) == 1
         warning_message = str(w[0].message)
+        assert issubclass(w[0].category, BlockingInAsyncContextWarning)
         print(warning_message)
 
         # Verify the warning contains key information

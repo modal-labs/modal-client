@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import contextlib
 import typing
 import uuid
 from collections.abc import Awaitable, Hashable, Sequence
@@ -43,7 +44,7 @@ class _Object:
     _prefix_to_type: ClassVar[dict[str, type]] = {}
 
     # For constructors
-    _load: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]]
+    _load: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None
     _preload: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]]
     _rep: str
     _is_another_app: bool
@@ -308,11 +309,17 @@ class _Object:
                 # memory snapshots capture references which must be rehydrated
                 # on restore to handle staleness.
                 logger.debug(f"rehydrating {self} after snapshot")
-                self._is_hydrated = False  # un-hydrate and re-resolve
-                # Set the client on LoadContext before loading
-                root_load_context = LoadContext(client=client)
-                resolver = Resolver()
-                await resolver.load(typing.cast(_Object, self), root_load_context)
+                if self._hydrate_lazily:
+                    logger.debug(f"reloading lazy {self} from server")
+                    self._is_hydrated = False  # un-hydrate and re-resolve
+                    # we don't set an explicit Client here, relying on the default
+                    # env client to be applied by LoadContext.apply_default
+                    root_load_context = LoadContext.empty()
+                    resolver = Resolver()
+                    await resolver.load(typing.cast(_Object, self), root_load_context)
+                else:
+                    logger.debug(f"reloading non-lazy {self} by replacing client")
+                    self._client = client or await _Client.from_env()
                 self._is_rehydrated = True
                 logger.debug(f"rehydrated {self} with client {id(self.client)}")
         elif not self._hydrate_lazily:
@@ -342,5 +349,20 @@ def live_method_gen(method):
         async with aclosing(method(self, *args, **kwargs)) as stream:
             async for item in stream:
                 yield item
+
+    return wrapped
+
+
+def live_method_contextmanager(method):
+    # make sure a wrapped function returning an async context manager
+    # will not require both an `await func.aio()` and `async with`
+    # which would have been the case if it was wrapped in live_method
+
+    @wraps(method)
+    @contextlib.asynccontextmanager
+    async def wrapped(self, *args, **kwargs):
+        await self.hydrate()
+        async with method(self, *args, **kwargs) as ctx:
+            yield ctx
 
     return wrapped

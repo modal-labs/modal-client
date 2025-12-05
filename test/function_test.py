@@ -270,9 +270,11 @@ async def test_call_function_locally(client, servicer):
     assert foo.local(22, 44) == 77  # call it locally
     assert await async_foo.local(22, 44) == 78
 
-    with app.run(client=client):
-        assert foo.remote(2, 4) == 20
-        assert async_foo.remote(2, 4) == 20
+    async with app.run(client=client):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            assert foo.remote(2, 4) == 20
+            assert async_foo.remote(2, 4) == 20
         assert await async_foo.remote.aio(2, 4) == 20
 
 
@@ -639,6 +641,8 @@ async def test_function_future_async(client, servicer):
         servicer.function_is_running = False
         assert await future.get.aio(0.01) == "hello"
         assert future.object_id not in servicer.cleared_function_calls  # keep results around a bit longer for futures
+        fc2 = modal.FunctionCall.from_id(future.object_id, client=client)
+        assert await fc2.get.aio() == "hello"
 
 
 def later_gen():
@@ -649,8 +653,7 @@ async def async_later_gen():
     yield "foo"
 
 
-@pytest.mark.asyncio
-async def test_generator(client, servicer):
+def test_generator(client, servicer):
     app = App(include_source=False)
 
     later_gen_modal = app.function()(later_gen)
@@ -665,7 +668,7 @@ async def test_generator(client, servicer):
     assert len(servicer.cleared_function_calls) == 0
     with app.run(client=client):
         assert later_gen_modal.is_generator
-        res: typing.Generator = later_gen_modal.remote_gen()  # type: ignore
+        res: typing.Generator = later_gen_modal.remote_gen()
         # Generators fulfil the *iterator protocol*, which requires both these methods.
         # https://docs.python.org/3/library/stdtypes.html#typeiter
         assert hasattr(res, "__iter__")  # strangely inspect.isgenerator returns false
@@ -730,7 +733,10 @@ async def test_generator_async(client, servicer):
 
     assert len(servicer.cleared_function_calls) == 0
     async with app.run(client=client):
-        assert later_gen_modal.is_generator
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # ignore that the following runs sync stuff in async code
+            assert later_gen_modal.is_generator
         res = later_gen_modal.remote_gen.aio()
         # Async generators fulfil the *asynchronous iterator protocol*, which requires both these methods.
         # https://peps.python.org/pep-0525/#support-for-asynchronous-iteration-protocol
@@ -743,14 +749,14 @@ async def test_generator_async(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_generator_future(client, servicer):
+async def test_generator_spawn(client, servicer):
     app = App(include_source=False)
 
     servicer.function_body(later_gen)
     later_modal = app.function()(later_gen)
-    with app.run(client=client):
+    async with app.run(client=client):
         with pytest.raises(InvalidError, match="Cannot `spawn` a generator function."):
-            later_modal.spawn()
+            await later_modal.spawn.aio()
 
 
 async def slo1(sleep_seconds):
@@ -882,7 +888,7 @@ async def test_async_map_wrapped_exception_warning(client, servicer):
     servicer.function_body(custom_exception_function)
     custom_function_modal = app.function()(custom_exception_function)
 
-    with app.run(client=client):
+    async with app.run(client=client):
         with pytest.warns(DeprecationError) as warnings:
             async for _ in custom_function_modal.map.aio(range(6), return_exceptions=True):
                 pass
@@ -900,7 +906,7 @@ async def test_async_map_wrapped_exception_warning_input_plane(client, servicer)
         custom_exception_function
     )
 
-    with app.run(client=client):
+    async with app.run(client=client):
         with pytest.warns(DeprecationError) as warnings:
             async for _ in custom_function_modal.map.aio(range(6), return_exceptions=True):
                 pass
@@ -967,11 +973,14 @@ def test_closure_valued_serialized_function(client, servicer):
     assert functions["ret_bar"]() == "bar"
 
 
-def test_custom_name_requires_serialized():
+def test_custom_function_name(client, servicer):
     app = App(include_source=False)
+    app.function(name="smarty")(dummy)
 
-    with pytest.raises(InvalidError, match="`serialized=True`"):
-        app.function(name="foo")(dummy)
+    with servicer.intercept() as ctx, app.run(client=client):
+        request = ctx.pop_request("FunctionCreate")
+        assert request.function.function_name == "smarty"
+        assert request.function.implementation_name == "dummy"
 
 
 def test_new_hydrated_internal(client, servicer):
@@ -1402,7 +1411,7 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
 async def test_non_aio_map_in_async_caller_error(client):
     dummy_function = app.function()(dummy)
 
-    with app.run(client=client):
+    async with app.run(client=client):
         with pytest.raises(InvalidError, match=".map.aio"):
             for _ in dummy_function.map([1, 2, 3]):
                 pass
@@ -1422,7 +1431,7 @@ async def test_non_aio_map_in_async_caller_error(client):
 async def test_non_aio_map_in_async_caller_error_input_plane(client):
     dummy_function = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
-    with app.run(client=client):
+    async with app.run(client=client):
         with pytest.raises(InvalidError, match=".map.aio"):
             for _ in dummy_function.map([1, 2, 3]):
                 pass
