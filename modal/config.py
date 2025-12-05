@@ -51,6 +51,10 @@ Other possible configuration options are:
   Defaults to 10.
   Number of seconds to wait for logs to drain when closing the session,
   before giving up.
+* `max_throttle_wait` (in the .toml file) / `MODAL_MAX_THROTTLE_WAIT` (as an env var).
+  Defaults to None (no limit).
+  Maximum number of seconds to wait when requests are being throttled (i.e., due
+  to rate limiting or other cases that can normally be resolved through backoff).
 * `force_build` (in the .toml file) / `MODAL_FORCE_BUILD` (as an env var).
   Defaults to False.
   When set, ignores the Image cache and builds all Image layers. Note that this
@@ -258,6 +262,7 @@ _SETTINGS = {
         transform=lambda s: _check_value(["pickle", "cbor"])(s.lower()),
     ),
     "dev_suffix": _Setting("", transform=_enforce_suffix_rules),
+    "max_throttle_wait": _Setting(None, transform=lambda x: int(x) if x else None),
 }
 
 

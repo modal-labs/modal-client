@@ -640,6 +640,8 @@ async def test_function_future_async(client, servicer):
         servicer.function_is_running = False
         assert await future.get.aio(0.01) == "hello"
         assert future.object_id not in servicer.cleared_function_calls  # keep results around a bit longer for futures
+        fc2 = modal.FunctionCall.from_id(future.object_id, client=client)
+        assert await fc2.get.aio() == "hello"
 
 
 def later_gen():
@@ -970,11 +972,14 @@ def test_closure_valued_serialized_function(client, servicer):
     assert functions["ret_bar"]() == "bar"
 
 
-def test_custom_name_requires_serialized():
+def test_custom_function_name(client, servicer):
     app = App(include_source=False)
+    app.function(name="smarty")(dummy)
 
-    with pytest.raises(InvalidError, match="`serialized=True`"):
-        app.function(name="foo")(dummy)
+    with servicer.intercept() as ctx, app.run(client=client):
+        request = ctx.pop_request("FunctionCreate")
+        assert request.function.function_name == "smarty"
+        assert request.function.implementation_name == "dummy"
 
 
 def test_new_hydrated_internal(client, servicer):

@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import subprocess
 import threading
 import time
 from typing import Sequence
@@ -205,8 +206,6 @@ def fastapi_app():
 @app.function()
 @web_server(8765, startup_timeout=1)
 def non_blocking_web_server():
-    import subprocess
-
     subprocess.Popen(["python", "-m", "http.server", "-b", "0.0.0.0", "8765"])
 
 
@@ -779,3 +778,117 @@ class Foo:
 @app.function(serialized=True)
 def serialized_triple(x):
     return 3 * x
+
+
+# Global list to track lifecycle events in order for FullLifecycleCls
+full_lifecycle_events: list[str] = []
+
+
+@app.cls(enable_memory_snapshot=True)
+class FullLifecycleCls:
+    """
+    Test class that tracks all lifecycle operations in order:
+    1. modal.enter(snap=True) - pre-snapshot enter
+    2. modal.enter(snap=False) - post-snapshot enter
+    3. ASGI lifespan startup
+    4. function call
+    5. signals disabled (checked in exit)
+    6. ASGI lifespan shutdown
+    7. modal.exit
+    8. volume commit (verified via servicer)
+    """
+
+    print_at_exit: int = modal.parameter(default=0)
+
+    def _print_at_exit(self):
+        import atexit
+
+        atexit.register(lambda: print("[lifecycle_events:" + ",".join(full_lifecycle_events) + "]"))
+
+    @enter(snap=True)
+    def enter_pre_snapshot(self):
+        full_lifecycle_events.append("enter_pre_snapshot")
+
+    @enter(snap=False)
+    def enter_post_snapshot(self):
+        full_lifecycle_events.append("enter_post_snapshot")
+
+    @asgi_app()
+    def web(self):
+        import signal as signal_module
+
+        from fastapi import FastAPI
+
+        @contextlib.asynccontextmanager
+        async def lifespan(app):
+            full_lifecycle_events.append("asgi_startup")
+            yield
+            # Check signal state during ASGI shutdown - signals should be disabled
+            sigint_handler = signal_module.getsignal(signal_module.SIGINT)
+            if sigint_handler == signal_module.SIG_IGN:
+                full_lifecycle_events.append("asgi_shutdown_signals_disabled")
+            else:
+                full_lifecycle_events.append("asgi_shutdown_signals_enabled")
+
+        web_app = FastAPI(lifespan=lifespan)
+
+        @web_app.get("/")
+        async def root():
+            full_lifecycle_events.append("asgi_request")
+            return "ok"
+
+        return web_app
+
+    @method()
+    def run_method(self):
+        if self.print_at_exit:
+            self._print_at_exit()
+        full_lifecycle_events.append("method_call")
+        return full_lifecycle_events.copy()
+
+    @exit()
+    def exit_handler(self):
+        import signal
+
+        # Check if signals are enabled during exit (they should be re-enabled after volume commit)
+        # Note: The signal disabling only covers the volume_commit operation, not exit methods
+        sigint_handler = signal.getsignal(signal.SIGINT)
+        if sigint_handler == signal.SIG_IGN:
+            full_lifecycle_events.append("exit_signals_disabled")
+        else:
+            full_lifecycle_events.append("exit_signals_enabled")
+        full_lifecycle_events.append("modal_exit")
+
+
+flash_cls_lifecycle_events: list[str] = []
+
+
+@app.cls(
+    enable_memory_snapshot=True,
+    min_containers=1,
+)
+@modal.experimental.http_server(8001, proxy_regions=["us-east", "us-west", "ap-south"])
+class FlashClsWithEnter:
+    @modal.enter(snap=True)
+    def enter(self):
+        # Redirect stdout/stderr to DEVNULL so communicate() doesn't hang waiting
+        # for the subprocess's inherited file descriptors to close. This fails on Github Actions
+        # if we don't pipe the subprocess stdout/stderr to DEVNULL.
+        self.process = subprocess.Popen(
+            ["python3", "-m", "http.server", "8001"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        flash_cls_lifecycle_events.append("enter_pre_snapshot")
+
+    @modal.enter(snap=False)
+    def enter_post_snapshot(self):
+        flash_cls_lifecycle_events.append("enter_post_snapshot")
+        # Print lifecycle events after all enter methods have run
+        # This will be captured by the test before the container exits
+        print(f"[flash_lifecycle_events:{','.join(flash_cls_lifecycle_events)}]")
+
+
+@app.function(name="custom_name")
+def impl_for_custom_name(x):
+    return x * x
