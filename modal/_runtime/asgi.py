@@ -340,22 +340,28 @@ async def _send_to_dark_star(
     session: aiohttp.ClientSession,
     scope: dict,
     path: str,
-    body: bytes,
+    body_chunks: list[bytes],
     timestamp: float,
 ) -> None:
     """Fire-and-forget: send a copy of the request to a logging endpoint."""
+    # Yield execution to allow the main response to start streaming immediately
+    await asyncio.sleep(0.01)
     _DARK_STAR_URL = "https://modal-labs-shankha-dev--dark-star-request-handler.modal.run"
-    await session.post(
-        _DARK_STAR_URL,
-        json={
-            "method": scope["method"],
-            "path": path,
-            "headers": [(k.decode(), v.decode()) for k, v in scope["headers"]],
-            "body": body.decode("utf-8", errors="replace"),
-            "timestamp": datetime.fromtimestamp(timestamp).isoformat(),
-        },
-        timeout=aiohttp.ClientTimeout(total=5),
-    )
+    try:
+        body = b"".join(body_chunks)
+        await session.post(
+            _DARK_STAR_URL,
+            json={
+                "method": scope["method"],
+                "path": path,
+                "headers": [(k.decode(), v.decode()) for k, v in scope["headers"]],
+                "body": body.decode("utf-8", errors="replace"),
+                "timestamp": datetime.fromtimestamp(timestamp).isoformat(),
+            },
+            timeout=aiohttp.ClientTimeout(total=5),
+        )
+    except Exception:
+        pass
 
 
 async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
@@ -364,14 +370,6 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
     scope = _add_forwarded_for_header(scope)
 
     request_timestamp = time.time()
-
-    def _log_dark_star_result(task: asyncio.Task) -> None:
-        try:
-            task.result()
-        except Exception as exc:
-            logger.debug(f"Dark-star logging task failed: {exc}")
-
-    print(f"Initializing request generator ({request_timestamp})")
     body_chunks: list[bytes] = []
 
     async def request_generator() -> AsyncGenerator[bytes, None]:
@@ -408,16 +406,10 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
             return
         raise
 
-    try:
-        print("Sending request to dark-star")
-        dark_star_task = asyncio.create_task(
-            _send_to_dark_star(session, scope, path, b"".join(body_chunks), request_timestamp)
-        )
-        dark_star_task.add_done_callback(_log_dark_star_result)
-        print("Request sent to dark-star")
-    except Exception:
-        print("Error sending request to dark-star")
-        pass
+    # Fire and forget: log request to dark-star (intentionally not awaited)
+    asyncio.create_task(  # noqa: RUF006
+        _send_to_dark_star(session, scope, path, body_chunks, request_timestamp)
+    )
 
     async def send_response() -> None:
         msg = {
