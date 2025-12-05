@@ -67,8 +67,8 @@ async def test_network_file_system_handle_dir(client, tmp_path, servicer):
     subdir.mkdir()
     (subdir / "other").write_text("####")
 
-    with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
-        nfs.add_local_dir(local_dir)
+    async with modal.NetworkFileSystem.ephemeral(client=client) as nfs:
+        await nfs.add_local_dir.aio(local_dir)
         object_id = nfs.object_id
 
     assert servicer.nfs_files[object_id].keys() == {

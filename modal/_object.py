@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import contextlib
 import typing
 import uuid
 from collections.abc import Awaitable, Hashable, Sequence
@@ -342,5 +343,20 @@ def live_method_gen(method):
         async with aclosing(method(self, *args, **kwargs)) as stream:
             async for item in stream:
                 yield item
+
+    return wrapped
+
+
+def live_method_contextmanager(method):
+    # make sure a wrapped function returning an async context manager
+    # will not require both an `await func.aio()` and `async with`
+    # which would have been the case if it was wrapped in live_method
+
+    @wraps(method)
+    @contextlib.asynccontextmanager
+    async def wrapped(self, *args, **kwargs):
+        await self.hydrate()
+        async with method(self, *args, **kwargs) as ctx:
+            yield ctx
 
     return wrapped
