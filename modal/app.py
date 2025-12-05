@@ -21,7 +21,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._functions import _Function
-from ._ipython import is_notebook
+from ._ipython import is_interactive_ipython
 from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
 from ._partial_function import (
@@ -511,7 +511,7 @@ class _App:
 
             # In notebooks, re-registering the same function with the same app will cause a named collision.
             # This is common notebook coding behavior, so we hide the warning.
-            if not is_notebook():
+            if not is_interactive_ipython():
                 logger.warning(
                     f"Warning: function name '{function.tag}' collision!"
                     " Overriding existing function "
