@@ -8,6 +8,7 @@ import time
 import typing
 import warnings
 from contextlib import contextmanager, nullcontext
+from unittest.mock import MagicMock
 
 from grpclib import Status
 from synchronicity.exceptions import UserCodeException
@@ -2276,3 +2277,25 @@ def test_startup_timeout_default_copies_timeout(client, servicer):
     assert len(function_creates_requests) == 1
     function_request = function_creates_requests[0]
     assert function_request.function.startup_timeout_secs == 23
+
+
+@pytest.mark.asyncio
+async def test_function_call_from_id_is_not_async(monkeypatch):
+    # assert that FunctionCall.from_id doesn't do any synchronicity stuff
+    forbidden_calls = MagicMock()
+
+    monkeypatch.setattr("modal._utils.async_utils.synchronizer._run_function_sync", forbidden_calls)
+    monkeypatch.setattr("modal._utils.async_utils.synchronizer._run_function_async", forbidden_calls)
+    # assert there is a deprecation warning emitted#
+    with pytest.warns(DeprecationError, match=r"Please use FunctionCall\.from_id\("):
+        fc = await FunctionCall.from_id.aio("fc-123")  # type: ignore
+    assert isinstance(fc, FunctionCall)  # should return wrapper type
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        fc2 = FunctionCall.from_id("fc-123")
+    assert isinstance(fc2, FunctionCall)  # should return wrapper type
+
+    forbidden_calls.assert_not_called()
+    # there should also be no warnings about sync usage in async contexts:
+    assert len(record) == 0
