@@ -91,7 +91,6 @@ from .parallel_map import (
 from .proxy import _Proxy
 from .retries import Retries, RetryManager
 from .schedule import Schedule
-from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
 
@@ -539,6 +538,7 @@ class _InputPlaneInvocation:
     async def _get_metadata(input_plane_region: str, client: _Client) -> list[tuple[str, str]]:
         if not input_plane_region:
             return []
+        assert client._auth_token_manager, "Client is not open"
         token = await client._auth_token_manager.get_token()
         return [("x-modal-input-plane-region", input_plane_region), ("x-modal-auth-token", token)]
 
@@ -591,7 +591,7 @@ class _FunctionSpec:
     cpu: Optional[Union[float, tuple[float, float]]]
     memory: Optional[Union[int, tuple[int, int]]]
     ephemeral_disk: Optional[int]
-    scheduler_placement: Optional[SchedulerPlacement]
+    scheduler_placement: Optional[api_pb2.SchedulerPlacement]
     proxy: Optional[_Proxy]
 
 
@@ -685,7 +685,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
         cloud: Optional[str] = None,
-        scheduler_placement: Optional[SchedulerPlacement] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,
+        nonpreemptible: bool = False,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
@@ -702,6 +703,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
         restrict_output: bool = False,
+        http_config: Optional[api_pb2.HTTPConfig] = None,
     ) -> "_Function":
         """mdmd:hidden
 
@@ -747,6 +749,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
+
+        scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+        if region or nonpreemptible:
+            regions = [region] if isinstance(region, str) else (list(region) if region else None)
+            scheduler_placement = api_pb2.SchedulerPlacement(regions=regions, nonpreemptible=nonpreemptible)
 
         function_spec = _FunctionSpec(
             mounts=all_mounts,
@@ -983,6 +990,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
                     function_name=info.function_name,
+                    implementation_name=info.implementation_name,
                     mount_ids=loaded_mount_ids,
                     secret_ids=[secret.object_id for secret in secrets],
                     image_id=(image.object_id if image else ""),
@@ -1020,7 +1028,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     untrusted=restrict_modal_access,
                     max_inputs=max_inputs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
-                    scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
+                    scheduler_placement=scheduler_placement,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=i6pn_enabled,
@@ -1042,12 +1050,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_schema=function_schema,
                     supported_input_formats=supported_input_formats,
                     supported_output_formats=supported_output_formats,
+                    http_config=http_config,
                 )
 
                 if isinstance(gpu, list):
                     function_data = api_pb2.FunctionData(
                         module_name=function_definition.module_name,
                         function_name=function_definition.function_name,
+                        implementation_name=function_definition.implementation_name,
                         function_type=function_definition.function_type,
                         warm_pool_size=function_definition.warm_pool_size,
                         concurrency_limit=function_definition.concurrency_limit,
@@ -1079,6 +1089,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         untrusted=function_definition.untrusted,
                         supported_input_formats=supported_input_formats,
                         supported_output_formats=supported_output_formats,
+                        http_config=http_config,
                     )
 
                     ranked_functions = []

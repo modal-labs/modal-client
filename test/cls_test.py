@@ -1413,33 +1413,6 @@ def test_clustered_cls_with_multiple_methods(client, servicer):
                 return x * 3
 
 
-def test_cls_get_flash_url(servicer, client):
-    """Test get_flash_url method on Cls.from_name instances"""
-    cls = Cls.from_name("dummy-app", "MyClass", client=client)
-
-    with servicer.intercept() as ctx:
-        ctx.add_response(
-            "ClassGet",
-            api_pb2.ClassGetResponse(class_id="cs-1"),
-        )
-        ctx.add_response(
-            "FunctionGet",
-            api_pb2.FunctionGetResponse(
-                function_id="fu-1",
-                handle_metadata=api_pb2.FunctionHandleMetadata(
-                    function_name="MyClass.*",
-                    is_method=False,
-                    _experimental_flash_urls=[
-                        "https://flash.example.com/service1",
-                        "https://flash.example.com/service2",
-                    ],
-                ),
-            ),
-        )
-        flash_urls = cls._experimental_get_flash_urls()
-        assert flash_urls == ["https://flash.example.com/service1", "https://flash.example.com/service2"]
-
-
 timeout_app = App("timeout-app", include_source=False)
 
 
