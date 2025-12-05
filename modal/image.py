@@ -21,6 +21,7 @@ from typing import (
     get_args,
 )
 
+import typing_extensions
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from typing_extensions import Self
@@ -32,7 +33,7 @@ from ._load_context import LoadContext
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import get_preferred_payload_format, serialize
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import deprecate_aio_usage, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
@@ -56,6 +57,7 @@ from .volume import _Volume
 
 if typing.TYPE_CHECKING:
     import modal._functions
+    import modal.client
 
 # This is used for both type checking and runtime validation
 ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVIEW"]
@@ -861,22 +863,25 @@ class _Image(_Object, type_prefix="im"):
         img._added_python_source_set |= set(modules)
         return img
 
-    @staticmethod
-    async def from_id(image_id: str, client: Optional[_Client] = None) -> "_Image":
+    @deprecate_aio_usage((2025, 11, 14), "Image.from_id")
+    @classmethod
+    def from_id(cls, image_id: str, client: Optional["modal.client.Client"] = None) -> typing_extensions.Self:
         """Construct an Image from an id and look up the Image result.
 
         The ID of an Image object can be accessed using `.object_id`.
         """
+        _client = typing.cast(_Client, synchronizer._translate_in(client))
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             resp = await load_context.client.stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, load_context.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
+
         obj = _Image._from_loader(_load, rep, load_context_overrides=LoadContext(client=client))
         obj._object_id = image_id
 
-        return obj
+        return typing.cast(typing_extensions.Self, synchronizer._translate_out(obj))
 
     async def build(self, app: "modal.app._App") -> "_Image":
         """Eagerly build an image.
