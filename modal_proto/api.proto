@@ -3028,12 +3028,13 @@ message Schedule {
   }
 }
 
+// Scheduling constraints for Functions and Sandboxes.
 message SchedulerPlacement {
   repeated string regions = 4;
-  optional string _zone = 2; // TODO: Deprecate
-  optional string _lifecycle = 3; // TODO: Deprecate
-  repeated string _instance_types = 5; // TODO: Deprecate
-  bool nonpreemptible = 6;
+  optional string _zone = 2 [deprecated = true];
+  optional string _lifecycle = 3 [deprecated = true];
+  repeated string _instance_types = 5 [deprecated = true];
+  bool nonpreemptible = 6;  // Functions only
 
   reserved 1;
 }
