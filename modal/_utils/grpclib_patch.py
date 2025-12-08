@@ -3,7 +3,7 @@
 # `patch_grpclib_server` to patch the dispatcher in place.
 import inspect
 import sys
-from functools import partial
+from types import MethodType
 from typing import Any, Collection, Optional, Tuple
 
 import grpclib
@@ -62,7 +62,7 @@ class PatchedSendTrailingMetadata(EventPatchMixin, grpclib.events.SendTrailingMe
     __grpclib_type__ = grpclib.events.SendTrailingMetadata
 
 
-async def custom_dispatch(self, event: EventPatchMixin) -> Any:
+async def patched_dispatch(self, event: EventPatchMixin) -> Any:
     # Use the __grpclib_type__ type for finding the listener
     for callback in self._listeners[event.__grpclib_type__]:
         await callback(event)
@@ -72,18 +72,16 @@ async def custom_dispatch(self, event: EventPatchMixin) -> Any:
 
 
 # Events common to client and server
-async def send_message(message: Any, self) -> Tuple[Any]:
-    return await custom_dispatch(
-        self,
+async def send_message(self, message: Any) -> Tuple[Any]:
+    return await self.__dispatch__(
         PatchedSendMessage(  # type: ignore
             message=message,
         ),
     )
 
 
-async def recv_message(message: Any, self) -> Tuple[Any]:
-    return await custom_dispatch(
-        self,
+async def recv_message(self, message: Any) -> Tuple[Any]:
+    return await self.__dispatch__(
         PatchedSendMessage(  # type: ignore
             message=message,
         ),
@@ -92,39 +90,36 @@ async def recv_message(message: Any, self) -> Tuple[Any]:
 
 # Client only events
 async def send_request(
+    self,
     metadata: Any,
     *,
     method_name: str,
     deadline: Any,
     content_type: str,
-    self,
 ) -> Tuple[Any]:
-    return await custom_dispatch(
-        self,
+    return await self.__dispatch__(
         PatchedSendRequest(metadata=metadata, method_name=method_name, deadline=deadline, content_type=content_type),
     )
 
 
 async def recv_initial_metadata(
-    metadata: Any,
     self,
+    metadata: Any,
 ) -> Tuple[Any]:
-    return await custom_dispatch(
-        self,
+    return await self.__dispatch__(
         PatchedRecvInitialMetadata(metadata=metadata),
     )
 
 
 async def recv_trailing_metadata(
+    self,
     metadata: Any,
     *,
     status: grpclib.const.Status,
     status_message: Optional[str],
     status_details: Any,
-    self,
 ) -> Tuple[Any]:
-    return await custom_dispatch(
-        self,
+    return await self.__dispatch__(
         PatchedRecvTrailingMetadata(
             metadata=metadata, status=status, status_message=status_message, status_details=status_details
         ),
@@ -133,6 +128,7 @@ async def recv_trailing_metadata(
 
 # Server events
 async def recv_request(
+    self,
     metadata: Any,
     method_func: Any,
     *,
@@ -141,10 +137,8 @@ async def recv_request(
     content_type: str,
     user_agent: Optional[str],
     peer: Any,
-    self,
 ) -> Tuple[Any, Any]:
-    return await custom_dispatch(
-        self,
+    return await self.__dispatch__(
         PatchedRecvRequest(
             metadata=metadata,
             method_func=method_func,
@@ -158,25 +152,23 @@ async def recv_request(
 
 
 async def send_initial_metadata(
-    metadata: Any,
     self,
+    metadata: Any,
 ) -> Tuple[Any]:
-    return await custom_dispatch(
-        self,
+    return await self.__dispatch__(
         PatchedSendInitialMetadata(metadata=metadata),
     )
 
 
 async def send_trailing_metadata(
+    self,
     metadata: Any,
     *,
     status: grpclib.const.Status,
     status_message: Optional[str],
     status_details: Any,
-    self,
 ) -> Tuple[Any]:
-    return await custom_dispatch(
-        self,
+    return await self.__dispatch__(
         PatchedSendTrailingMetadata(
             metadata=metadata, status=status, status_message=status_message, status_details=status_details
         ),
@@ -184,17 +176,18 @@ async def send_trailing_metadata(
 
 
 def patch_grpclib_common(dispatch):
-    dispatch.send_message = partial(send_message, self=dispatch)
-    dispatch.recv_message = partial(recv_message, self=dispatch)
+    dispatch.__dispatch__ = MethodType(patched_dispatch, dispatch)
+    dispatch.send_message = MethodType(send_message, dispatch)
+    dispatch.recv_message = MethodType(recv_message, dispatch)
 
 
 def patch_grpclib_client_channel(channel: grpclib.client.Channel):
     if PY314:
         dispatch = channel.__dispatch__
         patch_grpclib_common(dispatch)
-        dispatch.send_request = partial(send_request, self=dispatch)
-        dispatch.recv_initial_metadata = partial(recv_initial_metadata, self=dispatch)
-        dispatch.recv_trailing_metadata = partial(recv_trailing_metadata, self=dispatch)
+        dispatch.send_request = MethodType(send_request, dispatch)
+        dispatch.recv_initial_metadata = MethodType(recv_initial_metadata, dispatch)
+        dispatch.recv_trailing_metadata = MethodType(recv_trailing_metadata, dispatch)
 
 
 def patch_grpclib_server(server: grpclib.server.Server):
@@ -202,6 +195,6 @@ def patch_grpclib_server(server: grpclib.server.Server):
         dispatch = server.__dispatch__
         patch_grpclib_common(dispatch)
 
-        dispatch.recv_request = partial(recv_request, self=dispatch)
-        dispatch.send_initial_metadata = partial(send_initial_metadata, self=dispatch)
-        dispatch.send_trailing_metadata = partial(send_trailing_metadata, self=dispatch)
+        dispatch.recv_request = MethodType(recv_request, dispatch)
+        dispatch.send_initial_metadata = MethodType(send_initial_metadata, dispatch)
+        dispatch.send_trailing_metadata = MethodType(send_trailing_metadata, dispatch)
