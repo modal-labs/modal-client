@@ -47,6 +47,7 @@ from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import custom_detail_codec, find_free_port
+from modal._utils.grpclib_patch import patch_grpclib_server
 from modal._utils.http_utils import run_temporary_http_server
 from modal._utils.jwt_utils import DecodedJwt
 from modal._utils.task_command_router_client import TaskCommandRouterClient
@@ -2861,6 +2862,7 @@ async def run_server(servicer, host=None, port=None, path=None):
         nonlocal server
         server = grpclib.server.Server([servicer], status_details_codec=custom_detail_codec)
         listen(server, RecvRequest, servicer.recv_request)
+        patch_grpclib_server(server)
         await server.start(host=host, port=port, path=path)
 
     async def _stop_servicer():
