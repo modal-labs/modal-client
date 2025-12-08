@@ -2793,6 +2793,11 @@ message Sandbox {
   // Exec commands for the sandbox will be issued directly to the sandbox
   // command router running on the Modal worker.
   bool direct_sandbox_commands_enabled = 34;
+
+  // Internal: restricts sandbox to run on this specific instance type.
+  // Set by server during SandboxRestore to ensure the restored sandbox runs
+  // on the same instance type as the original snapshot.
+  string _restore_instance_type = 35;
 }
 
 message SandboxCreateConnectTokenRequest {
@@ -3024,12 +3029,13 @@ message Schedule {
   }
 }
 
+// Scheduling constraints for Functions and Sandboxes.
 message SchedulerPlacement {
   repeated string regions = 4;
-  optional string _zone = 2; // TODO: Deprecate
-  optional string _lifecycle = 3; // TODO: Deprecate
-  repeated string _instance_types = 5; // TODO: Deprecate
-  bool nonpreemptible = 6;
+  optional string _zone = 2 [deprecated = true];
+  optional string _lifecycle = 3 [deprecated = true];
+  repeated string _instance_types = 5 [deprecated = true];
+  bool nonpreemptible = 6;  // Functions only
 
   reserved 1;
 }
