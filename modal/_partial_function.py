@@ -160,8 +160,9 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             raise InvalidError("Interface decorators cannot be combined with lifecycle decorators.")
 
         has_web_interface = self.flags & _PartialFunctionFlags.WEB_INTERFACE
+        has_http_web_interface = self.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE
         has_callable_interface = self.flags & _PartialFunctionFlags.CALLABLE_INTERFACE
-        if has_web_interface and has_callable_interface:
+        if (has_web_interface or has_http_web_interface) and has_callable_interface:
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
 

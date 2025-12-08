@@ -32,6 +32,7 @@ from modal_version import __version__
 from .._traceback import suppress_tb_frames
 from ..config import config
 from .async_utils import retry
+from .grpclib_patch import patch_grpclib_client_channel
 from .logger import logger
 
 RequestType = TypeVar("RequestType", bound=Message)
@@ -205,6 +206,7 @@ def create_channel(
         logger.debug(f"Sending request to {event.method_name}")
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+    patch_grpclib_client_channel(channel)
 
     return channel
 

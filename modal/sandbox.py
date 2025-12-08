@@ -6,7 +6,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
+from typing import TYPE_CHECKING, Any, AsyncIterator, List, Literal, Optional, Union, overload
 
 from ._pty import get_pty_info
 from .config import config, logger
@@ -1080,7 +1080,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
 
-    async def ls(self, path: str) -> list[str]:
+    async def ls(self, path: str) -> List[str]:
         """[Alpha] List the contents of a directory in the Sandbox."""
         task_id = await self._get_task_id()
         return await _FileIO.ls(path, self._client, task_id)
@@ -1098,7 +1098,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def watch(
         self,
         path: str,
-        filter: Optional[list[FileWatchEventType]] = None,
+        filter: Optional[List[FileWatchEventType]] = None,
         recursive: Optional[bool] = None,
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:

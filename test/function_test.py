@@ -967,14 +967,11 @@ def test_closure_valued_serialized_function(client, servicer):
     assert functions["ret_bar"]() == "bar"
 
 
-def test_custom_function_name(client, servicer):
+def test_custom_name_requires_serialized():
     app = App(include_source=False)
-    app.function(name="smarty")(dummy)
 
-    with servicer.intercept() as ctx, app.run(client=client):
-        request = ctx.pop_request("FunctionCreate")
-        assert request.function.function_name == "smarty"
-        assert request.function.implementation_name == "dummy"
+    with pytest.raises(InvalidError, match="`serialized=True`"):
+        app.function(name="foo")(dummy)
 
 
 def test_new_hydrated_internal(client, servicer):

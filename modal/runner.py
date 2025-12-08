@@ -628,7 +628,7 @@ async def _interactive_shell(
         try:
             if pty:
                 container_process = await sandbox._exec(
-                    *sandbox_cmds, pty_info=get_pty_info(shell=True) if pty else None, text=False
+                    *sandbox_cmds, pty_info=get_pty_info(shell=True) if pty else None
                 )
                 await container_process.attach()
             else:

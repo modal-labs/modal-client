@@ -2,7 +2,7 @@
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any, List, Optional, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -28,7 +28,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
-from .exception import AlreadyExistsError, DeserializationError, InvalidError, NotFoundError, RequestSizeError
+from .exception import AlreadyExistsError, InvalidError, NotFoundError, RequestSizeError
 
 
 class _NoDefaultSentinel:
@@ -41,25 +41,6 @@ _NO_DEFAULT = _NoDefaultSentinel()
 
 def _serialize_dict(data):
     return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
-
-
-def _deserialize_dict_key(dict: "_Dict", data: bytes) -> Any:
-    try:
-        return deserialize(data, dict._client)
-    except DeserializationError as exc:
-        dict_identifier = f"Dict '{dict.name}'" if dict.name else f"ephemeral Dict {dict.object_id}"
-        raise DeserializationError(f"Failed to deserialize a key from {dict_identifier}: {exc}") from exc
-
-
-def _deserialize_dict_value(dict: "_Dict", data: bytes, key: Any = _NO_DEFAULT) -> Any:
-    try:
-        return deserialize(data, dict._client)
-    except DeserializationError as exc:
-        key_identifier = "" if key is _NO_DEFAULT else f" for key {key!r}"
-        dict_identifier = f"Dict '{dict.name}'" if dict.name else f"ephemeral Dict {dict.object_id}"
-        raise DeserializationError(
-            f"Failed to deserialize value{key_identifier} from {dict_identifier}: {exc}"
-        ) from exc
 
 
 @dataclass
@@ -139,7 +120,7 @@ class _DictManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> list["_Dict"]:
+    ) -> List["_Dict"]:
         """Return a list of hydrated Dict objects.
 
         **Examples:**
@@ -458,7 +439,7 @@ class _Dict(_Object, type_prefix="di"):
         resp = await self._client.stub.DictGet(req)
         if not resp.found:
             return default
-        return _deserialize_dict_value(self, resp.value, key)
+        return deserialize(resp.value, self._client)
 
     @live_method
     async def contains(self, key: Any) -> bool:
@@ -549,7 +530,7 @@ class _Dict(_Object, type_prefix="di"):
             if default is not _NO_DEFAULT:
                 return default
             raise KeyError(f"{key} not in dict {self.object_id}")
-        return _deserialize_dict_value(self, resp.value, key)
+        return deserialize(resp.value, self._client)
 
     @live_method
     async def __delitem__(self, key: Any) -> Any:
@@ -576,7 +557,7 @@ class _Dict(_Object, type_prefix="di"):
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True)
         async for resp in self._client.stub.DictContents.unary_stream(req):
-            yield _deserialize_dict_key(self, resp.key)
+            yield deserialize(resp.key, self._client)
 
     @live_method_gen
     async def values(self) -> AsyncIterator[Any]:
@@ -587,11 +568,7 @@ class _Dict(_Object, type_prefix="di"):
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, values=True)
         async for resp in self._client.stub.DictContents.unary_stream(req):
-            try:
-                key_deser = _deserialize_dict_key(self, resp.key)
-            except DeserializationError:
-                key_deser = _NO_DEFAULT
-            yield _deserialize_dict_value(self, resp.value, key_deser)
+            yield deserialize(resp.value, self._client)
 
     @live_method_gen
     async def items(self) -> AsyncIterator[tuple[Any, Any]]:
@@ -602,9 +579,7 @@ class _Dict(_Object, type_prefix="di"):
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True, values=True)
         async for resp in self._client.stub.DictContents.unary_stream(req):
-            key_deser = _deserialize_dict_key(self, resp.key)
-            value_deser = _deserialize_dict_value(self, resp.value, key_deser)
-            yield (key_deser, value_deser)
+            yield (deserialize(resp.key, self._client), deserialize(resp.value, self._client))
 
 
 Dict = synchronize_api(_Dict)

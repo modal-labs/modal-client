@@ -45,7 +45,14 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
         if field.containing_oneof is not None and field.name not in oneof_fields:
             continue
         is_message = field.type == FieldDescriptor.TYPE_MESSAGE
-        is_repeated = field.label == FieldDescriptor.LABEL_REPEATED
+
+        # In the C implemenation of protobuf for Python 3.14, it raises a depreation
+        # warning when labels is accessed, but it does not clean up the exception state,
+        # causing an SystemError.
+        if hasattr(field, "is_repeated"):
+            is_repeated = field.is_repeated
+        else:
+            is_repeated = field.label == FieldDescriptor.LABEL_REPEATED
         if is_message:
             msg_field = getattr(msg, field.name)
             if is_repeated:
