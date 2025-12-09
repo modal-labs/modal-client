@@ -1,12 +1,13 @@
 # Copyright Modal Labs 2025
 
 # This module is a minimum version of https://github.com/vmagamedov/grpclib/blob/master/grpclib/events.py
-# that creates patched versions of the events in `grpclib.events` and defines a `patch_grpclib_client_channel`
-# `patch_grpclib_server` to patch the dispatcher in place.
+# that creates patched versions of the events in `grpclib.events` and a `patch_grpclib_client_channel`
+# `patch_grpclib_server` to patch the dispatcher.
+
 import inspect
 import sys
-from types import MethodType
-from typing import Any, FrozenSet, Tuple
+from collections import defaultdict
+from typing import Any, Callable, Coroutine, Dict, FrozenSet, List, Tuple, Type
 
 import grpclib
 import grpclib.client
@@ -20,10 +21,10 @@ class EventPatchMixin:
     """Construct object with __slots__ based on the annotations of cls.__grpclib_type__"""
 
     __slots__: Tuple
-    __grpclib_type__: type
-    __interrupted__: bool
-    __readonly__: FrozenSet[str]
     __payload__: Any
+    __readonly__: FrozenSet[str]
+    __interrupted__: bool
+    __grpclib_type__: type
 
     def __init_subclass__(cls, **kwargs):
         grpclib_type = cls.__grpclib_type__
@@ -70,88 +71,61 @@ class PatchedSendTrailingMetadata(EventPatchMixin, grpclib.events.SendTrailingMe
     __grpclib_type__ = grpclib.events.SendTrailingMetadata
 
 
-async def patched_dispatch(self, event: EventPatchMixin) -> Any:
-    # Use the __grpclib_type__ type for finding the listener. This assumes the dispatcher
-    # will continue to use `self._listeners` to store all the listeners.
-    for callback in self._listeners[event.__grpclib_type__]:
-        await callback(event)
-        if event.__interrupted__:
-            break
-    return tuple(getattr(event, name) for name in event.__payload__)
+_Callback = Callable[[Any], Coroutine[Any, Any, None]]
 
 
-# Events common to client and server
-async def send_message(self, message: Any, **kwargs) -> Tuple[Any]:
-    return await self.__dispatch__(PatchedSendMessage(message=message, **kwargs))
+class Dispatcher:
+    def __init__(self) -> None:
+        self._listeners: Dict[Type, List[_Callback]] = defaultdict(list)
+
+    def add_listener(self, event_type: Type, callback: _Callback) -> None:
+        self._listeners[event_type].append(callback)
+
+    async def __dispatch__(self, event: EventPatchMixin) -> Any:
+        for callback in self._listeners[event.__grpclib_type__]:
+            await callback(event)
+            if event.__interrupted__:
+                break
+        return tuple(getattr(event, name) for name in event.__payload__)
 
 
-async def recv_message(self, message: Any, **kwargs) -> Tuple[Any]:
-    return await self.__dispatch__(PatchedSendMessage(message=message, **kwargs))
+class DispatchCommonEvents(Dispatcher):
+    async def send_message(self, message, **kwargs) -> Tuple[Any]:
+        return await self.__dispatch__(PatchedSendMessage(message=message, **kwargs))
+
+    async def recv_message(self, message, **kwargs) -> Tuple[Any]:
+        return await self.__dispatch__(PatchedRecvMessage(message=message, **kwargs))
 
 
-# Client events
-async def send_request(
-    self,
-    metadata: Any,
-    **kwargs,
-) -> Tuple[Any]:
-    return await self.__dispatch__(PatchedSendRequest(metadata=metadata, **kwargs))
+class DispatchServerEvents(DispatchCommonEvents):
+    async def recv_request(self, metadata, method_func, **kwargs) -> Tuple[Any, Any]:
+        return await self.__dispatch__(PatchedRecvRequest(metadata=metadata, method_func=method_func, **kwargs))
+
+    async def send_initial_metadata(self, metadata, **kwargs) -> Tuple[Any]:
+        return await self.__dispatch__(PatchedSendInitialMetadata(metadata=metadata, **kwargs))
+
+    async def send_trailing_metadata(self, metadata, **kwargs) -> Tuple[Any]:
+        return await self.__dispatch__(PatchedSendTrailingMetadata(metadata=metadata, **kwargs))
 
 
-async def recv_initial_metadata(self, metadata: Any, **kwargs) -> Tuple[Any]:
-    return await self.__dispatch__(PatchedRecvInitialMetadata(metadata=metadata, **kwargs))
+class DispatchChannelEvents(DispatchCommonEvents):
+    async def send_request(self, metadata, **kwargs) -> Tuple[Any]:
+        return await self.__dispatch__(PatchedSendRequest(metadata=metadata, **kwargs))
 
+    async def recv_initial_metadata(self, metadata, **kwargs) -> Tuple[Any]:
+        return await self.__dispatch__(PatchedRecvInitialMetadata(metadata=metadata, **kwargs))
 
-async def recv_trailing_metadata(
-    self,
-    metadata: Any,
-    **kwargs,
-) -> Tuple[Any]:
-    return await self.__dispatch__(PatchedRecvTrailingMetadata(metadata=metadata, **kwargs))
-
-
-# Server events
-async def recv_request(
-    self,
-    metadata: Any,
-    method_func: Any,
-    **kwargs,
-) -> Tuple[Any, Any]:
-    return await self.__dispatch__(PatchedRecvRequest(metadata=metadata, method_func=method_func, **kwargs))
-
-
-async def send_initial_metadata(self, metadata: Any, **kwargs) -> Tuple[Any]:
-    return await self.__dispatch__(PatchedSendInitialMetadata(metadata=metadata, **kwargs))
-
-
-async def send_trailing_metadata(
-    self,
-    metadata: Any,
-    **kwargs,
-) -> Tuple[Any]:
-    return await self.__dispatch__(PatchedSendTrailingMetadata(metadata=metadata, **kwargs))
-
-
-def patch_grpclib_common(dispatch):
-    dispatch.__dispatch__ = MethodType(patched_dispatch, dispatch)
-    dispatch.send_message = MethodType(send_message, dispatch)
-    dispatch.recv_message = MethodType(recv_message, dispatch)
+    async def recv_trailing_metadata(self, metadata, **kwargs) -> Tuple[Any]:
+        return await self.__dispatch__(PatchedRecvTrailingMetadata(metadata=metadata, **kwargs))
 
 
 def patch_grpclib_client_channel(channel: grpclib.client.Channel):
+    """Patches the channels dispatcher with a version that works with Python 3.14."""
     if PY314:
-        dispatch = channel.__dispatch__
-        patch_grpclib_common(dispatch)
-        dispatch.send_request = MethodType(send_request, dispatch)
-        dispatch.recv_initial_metadata = MethodType(recv_initial_metadata, dispatch)
-        dispatch.recv_trailing_metadata = MethodType(recv_trailing_metadata, dispatch)
+        channel.__dispatch__ = DispatchChannelEvents()  # type: ignore
 
 
 def patch_grpclib_server(server: grpclib.server.Server):
+    """Patches the server dispatcher with a version that works with Python 3.14."""
     if PY314:
-        dispatch = server.__dispatch__
-        patch_grpclib_common(dispatch)
-
-        dispatch.recv_request = MethodType(recv_request, dispatch)
-        dispatch.send_initial_metadata = MethodType(send_initial_metadata, dispatch)
-        dispatch.send_trailing_metadata = MethodType(send_trailing_metadata, dispatch)
+        server.__dispatch__ = DispatchServerEvents()  # type: ignore

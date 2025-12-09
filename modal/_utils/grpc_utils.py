@@ -205,8 +205,8 @@ def create_channel(
 
         logger.debug(f"Sending request to {event.method_name}")
 
-    grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
     patch_grpclib_client_channel(channel)
+    grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
 
     return channel
 
