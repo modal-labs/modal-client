@@ -3,6 +3,7 @@ import asyncio
 import enum
 import io
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, TypeVar, Union, cast
 
 if TYPE_CHECKING:
@@ -257,6 +258,14 @@ class _FileIO(Generic[T]):
         if not self._binary and isinstance(data, bytes):
             raise TypeError("Expected str when in text mode")
 
+    def _validate_path(self, path: Union[str, PurePosixPath]) -> str:
+        if isinstance(path, str):
+            return path
+        elif isinstance(path, PurePosixPath):
+            return path.as_posix()
+        else:
+            raise ValueError("path must be a str or PurePosixPath")
+
     async def _open_file(self, path: str, mode: str) -> None:
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
@@ -271,11 +280,16 @@ class _FileIO(Generic[T]):
 
     @classmethod
     async def create(
-        cls, path: str, mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"], client: _Client, task_id: str
+        cls,
+        path: Union[str, PurePosixPath],
+        mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"],
+        client: _Client,
+        task_id: str,
     ) -> "_FileIO":
         """Create a new FileIO handle."""
         self = _FileIO(client, task_id)
         self._validate_mode(mode)
+        path = self._validate_path(path)
         await self._open_file(path, mode)
         self._closed = False
         return self
@@ -398,9 +412,10 @@ class _FileIO(Generic[T]):
         await self._wait(resp.exec_id)
 
     @classmethod
-    async def ls(cls, path: str, client: _Client, task_id: str) -> list[str]:
+    async def ls(cls, path: Union[str, PurePosixPath], client: _Client, task_id: str) -> list[str]:
         """List the contents of the provided directory."""
         self = _FileIO(client, task_id)
+        path = self._validate_path(path)
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
@@ -414,9 +429,10 @@ class _FileIO(Generic[T]):
             raise FilesystemExecutionError("failed to parse list output")
 
     @classmethod
-    async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
+    async def mkdir(cls, path: Union[str, PurePosixPath], client: _Client, task_id: str, parents: bool = False) -> None:
         """Create a new directory."""
         self = _FileIO(client, task_id)
+        path = self._validate_path(path)
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, make_parents=parents),
@@ -426,9 +442,10 @@ class _FileIO(Generic[T]):
         await self._wait(resp.exec_id)
 
     @classmethod
-    async def rm(cls, path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
+    async def rm(cls, path: Union[str, PurePosixPath], client: _Client, task_id: str, recursive: bool = False) -> None:
         """Remove a file or directory in the Sandbox."""
         self = _FileIO(client, task_id)
+        path = self._validate_path(path)
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
@@ -440,7 +457,7 @@ class _FileIO(Generic[T]):
     @classmethod
     async def watch(
         cls,
-        path: str,
+        path: Union[str, PurePosixPath],
         client: _Client,
         task_id: str,
         filter: Optional[list[FileWatchEventType]] = None,
@@ -448,6 +465,7 @@ class _FileIO(Generic[T]):
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
         self = _FileIO(client, task_id)
+        path = self._validate_path(path)
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_watch_request=api_pb2.ContainerFileWatchRequest(
