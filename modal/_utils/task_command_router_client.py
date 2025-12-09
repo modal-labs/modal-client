@@ -156,9 +156,8 @@ class TaskCommandRouterClient:
                 http2_stream_window_size=64 * 1024 * 1024,  # 64 MiB
             ),
         )
-
-        await connect_channel(channel)
         patch_grpclib_client_channel(channel)
+        await connect_channel(channel)
 
         return cls(server_client, task_id, resp.url, resp.jwt, channel)
 
