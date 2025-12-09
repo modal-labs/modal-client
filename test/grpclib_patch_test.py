@@ -31,10 +31,11 @@ from modal._utils.grpclib_patch import (
     ),
 )
 def test_dunder_attributes_set_correctly(PatchedEvent, GrpclibEvent):
-    if not hasattr(inspect, "get_annotations"):
-        pytest.skip("inspect.get_annotations not defined")
+    if hasattr(inspect, "get_annotations"):
+        annotations = inspect.get_annotations(GrpclibEvent)
+    else:
+        annotations = GrpclibEvent.__annotations__
 
-    annotations = inspect.get_annotations(GrpclibEvent)
     expected_slots = set(name for name in annotations)
     assert PatchedEvent.__payload__ == GrpclibEvent.__payload__
 
