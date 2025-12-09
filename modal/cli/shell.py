@@ -76,7 +76,7 @@ def _is_running_container_ref(ref: Optional[str]) -> bool:
 
 
 def _start_shell_in_running_container(ref: str, cmd: str, pty: bool) -> None:
-    if ref.startswith("sb-") and len(ref[3:]) > 0 and ref[3:].isalnum():
+    if _is_valid_modal_id(ref, "sb-"):
         try:
             sandbox = Sandbox.from_id(ref)
             ref = sandbox._get_task_id()
