@@ -16,7 +16,7 @@ mypy-protobuf~=3.3.0  # TODO: can't use mypy-protobuf>=3.4 because of protobuf==
 pre-commit>=2.21,<4
 packaging>=24.2
 pytest~=8.4.0
-pytest-asyncio @ git+https://github.com/modal-labs/pytest-asyncio.git@f1a1a0e44c7e1b4f7924643549a64af5417a1031
+pytest-asyncio @ git+https://github.com/modal-labs/pytest-asyncio.git@af3f2d721b842309749cd26e5bbdd210e17d80c8
 pytest-env~=1.1.5
 pytest-markdown-docs==0.9.0
 pytest-timeout~=2.4.0
