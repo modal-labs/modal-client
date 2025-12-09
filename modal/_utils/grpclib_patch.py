@@ -23,6 +23,7 @@ class EventPatchMixin:
 
     def __init_subclass__(cls, **kwargs):
         grpclib_type = cls.__grpclib_type__
+        # Patch is only applied in Python 3.14 which has `inspect.get_annotations`
         annotations = inspect.get_annotations(grpclib_type)
         payload = grpclib_type.__payload__
         cls.__slots__ = tuple(name for name in annotations)
@@ -63,7 +64,8 @@ class PatchedSendTrailingMetadata(EventPatchMixin, grpclib.events.SendTrailingMe
 
 
 async def patched_dispatch(self, event: EventPatchMixin) -> Any:
-    # Use the __grpclib_type__ type for finding the listener
+    # Use the __grpclib_type__ type for finding the listener. This assumes the dispatcher
+    # will continue to use `self._listeners` to store all the listeners.
     for callback in self._listeners[event.__grpclib_type__]:
         await callback(event)
         if event.__interrupted__:
@@ -88,7 +90,7 @@ async def recv_message(self, message: Any) -> Tuple[Any]:
     )
 
 
-# Client only events
+# Client events
 async def send_request(
     self,
     metadata: Any,
