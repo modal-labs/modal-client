@@ -1,10 +1,12 @@
+# Copyright Modal Labs 2025
+
 # This module is a minimum version of https://github.com/vmagamedov/grpclib/blob/master/grpclib/events.py
 # that creates patched versions of the events in `grpclib.events` and defines a `patch_grpclib_client_channel`
 # `patch_grpclib_server` to patch the dispatcher in place.
 import inspect
 import sys
 from types import MethodType
-from typing import Any, Collection, Optional, Tuple
+from typing import Any, FrozenSet, Tuple
 
 import grpclib
 import grpclib.client
@@ -17,15 +19,20 @@ PY314 = sys.version_info >= (3, 14)
 class EventPatchMixin:
     """Construct object with __slots__ based on the annotations of cls.__grpclib_type__"""
 
+    __slots__: Tuple
     __grpclib_type__: type
     __interrupted__: bool
-    __payload__: Collection[str]
+    __readonly__: FrozenSet[str]
+    __payload__: Any
 
     def __init_subclass__(cls, **kwargs):
         grpclib_type = cls.__grpclib_type__
-        # Patch is only applied in Python 3.14 which has `inspect.get_annotations`
-        annotations = inspect.get_annotations(grpclib_type)
-        payload = grpclib_type.__payload__
+        if hasattr(inspect, "get_annotations"):
+            annotations = inspect.get_annotations(grpclib_type)
+        else:
+            annotations = grpclib_type.__annotations__
+
+        payload = grpclib_type.__payload__  # type: ignore
         cls.__slots__ = tuple(name for name in annotations)
         cls.__readonly__ = frozenset(name for name in annotations if name not in payload)
         super().__init_subclass__(**kwargs)
@@ -74,58 +81,33 @@ async def patched_dispatch(self, event: EventPatchMixin) -> Any:
 
 
 # Events common to client and server
-async def send_message(self, message: Any) -> Tuple[Any]:
-    return await self.__dispatch__(
-        PatchedSendMessage(  # type: ignore
-            message=message,
-        ),
-    )
+async def send_message(self, message: Any, **kwargs) -> Tuple[Any]:
+    return await self.__dispatch__(PatchedSendMessage(message=message, **kwargs))
 
 
-async def recv_message(self, message: Any) -> Tuple[Any]:
-    return await self.__dispatch__(
-        PatchedSendMessage(  # type: ignore
-            message=message,
-        ),
-    )
+async def recv_message(self, message: Any, **kwargs) -> Tuple[Any]:
+    return await self.__dispatch__(PatchedSendMessage(message=message, **kwargs))
 
 
 # Client events
 async def send_request(
     self,
     metadata: Any,
-    *,
-    method_name: str,
-    deadline: Any,
-    content_type: str,
+    **kwargs,
 ) -> Tuple[Any]:
-    return await self.__dispatch__(
-        PatchedSendRequest(metadata=metadata, method_name=method_name, deadline=deadline, content_type=content_type),
-    )
+    return await self.__dispatch__(PatchedSendRequest(metadata=metadata, **kwargs))
 
 
-async def recv_initial_metadata(
-    self,
-    metadata: Any,
-) -> Tuple[Any]:
-    return await self.__dispatch__(
-        PatchedRecvInitialMetadata(metadata=metadata),
-    )
+async def recv_initial_metadata(self, metadata: Any, **kwargs) -> Tuple[Any]:
+    return await self.__dispatch__(PatchedRecvInitialMetadata(metadata=metadata, **kwargs))
 
 
 async def recv_trailing_metadata(
     self,
     metadata: Any,
-    *,
-    status: grpclib.const.Status,
-    status_message: Optional[str],
-    status_details: Any,
+    **kwargs,
 ) -> Tuple[Any]:
-    return await self.__dispatch__(
-        PatchedRecvTrailingMetadata(
-            metadata=metadata, status=status, status_message=status_message, status_details=status_details
-        ),
-    )
+    return await self.__dispatch__(PatchedRecvTrailingMetadata(metadata=metadata, **kwargs))
 
 
 # Server events
@@ -133,48 +115,21 @@ async def recv_request(
     self,
     metadata: Any,
     method_func: Any,
-    *,
-    method_name: str,
-    deadline: Any,
-    content_type: str,
-    user_agent: Optional[str],
-    peer: Any,
+    **kwargs,
 ) -> Tuple[Any, Any]:
-    return await self.__dispatch__(
-        PatchedRecvRequest(
-            metadata=metadata,
-            method_func=method_func,
-            method_name=method_name,
-            deadline=deadline,
-            content_type=content_type,
-            user_agent=user_agent,
-            peer=peer,
-        ),
-    )
+    return await self.__dispatch__(PatchedRecvRequest(metadata=metadata, method_func=method_func, **kwargs))
 
 
-async def send_initial_metadata(
-    self,
-    metadata: Any,
-) -> Tuple[Any]:
-    return await self.__dispatch__(
-        PatchedSendInitialMetadata(metadata=metadata),
-    )
+async def send_initial_metadata(self, metadata: Any, **kwargs) -> Tuple[Any]:
+    return await self.__dispatch__(PatchedSendInitialMetadata(metadata=metadata, **kwargs))
 
 
 async def send_trailing_metadata(
     self,
     metadata: Any,
-    *,
-    status: grpclib.const.Status,
-    status_message: Optional[str],
-    status_details: Any,
+    **kwargs,
 ) -> Tuple[Any]:
-    return await self.__dispatch__(
-        PatchedSendTrailingMetadata(
-            metadata=metadata, status=status, status_message=status_message, status_details=status_details
-        ),
-    )
+    return await self.__dispatch__(PatchedSendTrailingMetadata(metadata=metadata, **kwargs))
 
 
 def patch_grpclib_common(dispatch):

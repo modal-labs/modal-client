@@ -1,5 +1,5 @@
+import inspect
 import pytest
-import sys
 
 import grpclib.events
 from grpclib import Status
@@ -13,11 +13,6 @@ from modal._utils.grpclib_patch import (
     PatchedSendMessage,
     PatchedSendRequest,
     PatchedSendTrailingMetadata,
-)
-
-pytestmark = pytest.mark.skipif(
-    sys.version_info < (3, 14),
-    reason="grpclib is patched only in Python 3.14+",
 )
 
 
@@ -35,9 +30,10 @@ pytestmark = pytest.mark.skipif(
     ),
 )
 def test_dunder_attributes_set_correctly(PatchedEvent, GrpclibEvent):
-    from inspect import get_annotations
+    if not hasattr(inspect, "get_annotations"):
+        pytest.skip("inspect.get_annotations not defined")
 
-    annotations = get_annotations(GrpclibEvent)
+    annotations = inspect.get_annotations(GrpclibEvent)
     expected_slots = set(name for name in annotations)
     assert PatchedEvent.__payload__ == GrpclibEvent.__payload__
 
