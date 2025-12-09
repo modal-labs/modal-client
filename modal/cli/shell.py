@@ -336,8 +336,6 @@ def shell(
 
     if ref is not None and not _is_valid_modal_id(ref, "im-"):
         # If ref it not a Modal Image ID, then it's a function reference, and we'll start a new container from its spec.
-        function_spec = _function_spec_from_ref(ref, use_module_mode)
-
         if passed_forbidden := _passed_forbidden_args(
             param_objs, locals(), allowed_params={"cmd", "env", "pty", "ref", "use_module_mode"}
         ):
@@ -346,6 +344,7 @@ def shell(
                 f"when starting a new container from a function reference ('{ref}')."
             )
 
+        function_spec = _function_spec_from_ref(ref, use_module_mode)
         _start_shell_from_function_spec(app, cmds, env, timeout, function_spec, pty)
         return
 
