@@ -2104,6 +2104,7 @@ message HTTPConfig {
   repeated string proxy_regions = 2;
   uint32 startup_timeout = 3;
   uint32 exit_grace_period = 4;
+  uint32 concurrent_requests = 5;
 }
 
 message Image {
