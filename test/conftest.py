@@ -37,7 +37,7 @@ import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 from grpclib.events import RecvRequest, listen
-from packaging.version import parse as parse_version
+from packaging.version import Version
 
 from modal import __version__, config
 from modal._functions import _Function
@@ -328,7 +328,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "app_id": "ap-x",
                 "deployed_at": datetime.datetime.now().timestamp(),
                 "version": 1,
-                "client_version": str(parse_version(__version__)),
+                "client_version": str(Version(__version__)),
                 "deployed_by": "foo-user",
                 "tag": "latest",
             }
@@ -505,7 +505,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await asyncio.sleep(60)
         elif client_version == "deprecated":
             pass  # dumb magic fixture constant
-        elif parse_version(client_version) < parse_version(__version__):
+        elif Version(client_version) < Version(__version__):
             raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
 
         if event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT):
@@ -782,7 +782,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "app_id": request.app_id,
                 "deployed_at": datetime.datetime.now().timestamp(),
                 "version": current_version + 1,
-                "client_version": str(parse_version(__version__)),
+                "client_version": str(Version(__version__)),
                 "deployed_by": "foo-user",
                 "tag": "latest",
                 "rollback_version": None,
