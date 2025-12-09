@@ -345,7 +345,7 @@ async def _send_to_dark_star(
 ) -> None:
     """Fire-and-forget: send a copy of the request to a logging endpoint."""
     # Yield execution to allow the main response to start streaming immediately
-    await asyncio.sleep(0.01)
+    await asyncio.sleep(0)
     _DARK_STAR_URL = "https://modal-labs-shankha-dev--dark-star-request-handler.modal.run"
     try:
         body = b"".join(body_chunks)
