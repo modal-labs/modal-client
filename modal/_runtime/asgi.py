@@ -357,6 +357,8 @@ async def _send_to_dark_star(
                 "headers": [(k.decode(), v.decode()) for k, v in scope["headers"]],
                 "body": body.decode("utf-8", errors="replace"),
                 "timestamp": datetime.fromtimestamp(timestamp).isoformat(),
+                "workspace": "dummy-workspace",
+                "app_name": "dummy-app-name",
             },
             timeout=aiohttp.ClientTimeout(total=5),
         )
