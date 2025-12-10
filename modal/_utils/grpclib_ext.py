@@ -1,13 +1,14 @@
 # Copyright Modal Labs 2025
+import gzip
 import struct
 import time
-from typing import Any, Collection, Generic, Mapping, NewType, Optional, Type, TypeVar, Union, cast
+from typing import Any, Collection, Generic, Mapping, Optional, Type, TypeVar, Union
 
 from grpclib.client import Channel as GRPCLibChannel, Stream as GRPCLibStream
 from grpclib.const import Cardinality
-from grpclib.encoding.base import CodecBase
+from grpclib.encoding.base import GRPC_CONTENT_TYPE, CodecBase
 from grpclib.exceptions import ProtocolError
-from grpclib.metadata import Deadline
+from grpclib.metadata import USER_AGENT, Deadline, encode_metadata, encode_timeout
 from grpclib.protocol import Stream as ProtocolStream
 from multidict import MultiDict
 
@@ -15,7 +16,6 @@ _Value = Union[str, bytes]
 _MetadataLike = Union[Mapping[str, _Value], Collection[tuple[str, _Value]]]
 _SendType = TypeVar("_SendType")
 _RecvType = TypeVar("_RecvType")
-_Metadata = NewType("_Metadata", "MultiDict[_Value]")
 
 
 async def send_message(
@@ -27,14 +27,12 @@ async def send_message(
     end: bool = False,
 ) -> None:
     reply_bin = codec.encode(message, message_type)
-    reply_data = struct.pack("?", False) + struct.pack(">I", len(reply_bin)) + reply_bin
+    payload = gzip.compress(reply_bin)
+    reply_data = struct.pack("?", True) + struct.pack(">I", len(payload)) + payload
     await stream.send_data(reply_data, end_stream=end)
 
 
 class Stream(GRPCLibStream, Generic[_SendType, _RecvType]):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     async def send_message(
         self,
         message: _SendType,
@@ -64,6 +62,59 @@ class Stream(GRPCLibStream, Generic[_SendType, _RecvType]):
             if end:
                 self._end_done = True
 
+    async def send_request(self, *, end: bool = False) -> None:
+        if self._send_request_done:
+            raise ProtocolError("Request is already sent")
+
+        if end and not self._cardinality.client_streaming:
+            raise ProtocolError("Unary request requires a message to be sent before ending outgoing stream")
+
+        with self._wrapper:
+            protocol = await self._channel.__connect__()
+            stream = protocol.processor.connection.create_stream(wrapper=self._wrapper)
+
+            headers = [
+                (":method", "POST"),
+                (":scheme", self._channel._scheme),
+                (":path", self._method_name),
+                (":authority", self._channel._authority),
+            ]
+            if self._deadline is not None:
+                timeout = self._deadline.time_remaining()
+                headers.append(("grpc-timeout", encode_timeout(timeout)))
+            # FIXME: remove this check after this issue gets resolved:
+            #   https://github.com/googleapis/googleapis.github.io/issues/27
+            if self._codec.__content_subtype__ == "proto":
+                content_type = GRPC_CONTENT_TYPE
+            else:
+                content_type = GRPC_CONTENT_TYPE + "+" + self._codec.__content_subtype__
+            headers.extend(
+                (
+                    ("te", "trailers"),
+                    ("content-type", content_type),
+                    ("user-agent", USER_AGENT),
+                    ("grpc-encoding", "gzip"),
+                )
+            )
+            (metadata,) = await self._dispatch.send_request(
+                self._metadata,
+                method_name=self._method_name,
+                deadline=self._deadline,
+                content_type=content_type,
+            )
+            headers.extend(encode_metadata(metadata))
+            release_stream = await stream.send_request(
+                headers,
+                end_stream=end,
+                _processor=protocol.processor,
+            )
+            self._stream = stream
+            self._release_stream = release_stream
+            self.peer = self._stream.connection.get_peer()
+            self._send_request_done = True
+            if end:
+                self._end_done = True
+
 
 class Channel(GRPCLibChannel):
     def request(
@@ -82,12 +133,12 @@ class Channel(GRPCLibChannel):
         elif timeout is not None and deadline is not None:
             deadline = min(Deadline.from_timeout(timeout), deadline)
 
-        metadata = cast(_Metadata, MultiDict(metadata or ()))
+        metadata = MultiDict(metadata or ())
 
         return Stream(
             self,
             name,
-            metadata,
+            metadata,  # type: ignore
             cardinality,
             request_type,
             reply_type,
