@@ -102,16 +102,16 @@ class AuthError(Error, _GRPCErrorWrapper):
     """Raised when a client has missing or invalid authentication."""
 
 
-class ConflictError(Error, _GRPCErrorWrapper):
-    """Raised when a resource conflict occurs between the request and current system state."""
-
-
 class InternalError(Error, _GRPCErrorWrapper):
     """Raised when an internal error occurs in the Modal system."""
 
 
 class InvalidError(Error, _GRPCErrorWrapper):
     """Raised when user does something invalid."""
+
+
+class ConflictError(InvalidError, _GRPCErrorWrapper):
+    """Raised when a resource conflict occurs between the request and current system state."""
 
 
 class NotFoundError(Error, _GRPCErrorWrapper):
