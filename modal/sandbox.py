@@ -617,12 +617,12 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return image
 
-    async def mount_image(self, path: Path | str, image_id: str):
-        """Mount a directory snapshot (image) at a path in the sandbox filesystem."""
+    async def mount_image(self, path: Path | str, image: _Image):
+        """Mount an image at a path in the sandbox filesystem."""
 
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
-        req = sr_pb2.TaskMountImageRequest(task_id=task_id, path=os.fsencode(path), image_id=image_id)
+        req = sr_pb2.TaskMountImageRequest(task_id=task_id, path=os.fsencode(path), image_id=image.object_id)
         await command_router_client.mount_image(req)
 
     # Live handle methods
