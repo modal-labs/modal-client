@@ -29,7 +29,11 @@ app = App("flash-app-2")
 )
 @modal.concurrent(target_inputs=100)
 @modal.experimental.http_server(
-    8080, proxy_regions=["us-east", "us-west", "ap-south"], startup_timeout=10, exit_grace_period=10
+    8080,
+    proxy_regions=["us-east", "us-west", "ap-south"],
+    startup_timeout=10,
+    exit_grace_period=10,
+    concurrent_requests=20,
 )
 class FlashClass:
     @modal.enter()
@@ -50,6 +54,16 @@ def test_http_server_basic_functionality(client, servicer):
         assert http_config.port == 8080
         assert list(http_config.proxy_regions) == ["us-east", "us-west"]
         assert http_config.exit_grace_period == 10
+        assert http_config.concurrent_requests == 0  # not configured
+
+    with app.run(client=client):
+        service_function = FlashClass._get_class_service_function()  # type: ignore
+        function_id = service_function.object_id
+
+        function_def = servicer.app_functions[function_id]
+        http_config = function_def.http_config
+
+        assert http_config.concurrent_requests == 20
 
 
 def test_run_class(client, servicer):

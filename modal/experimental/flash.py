@@ -655,6 +655,7 @@ def _http_server(
     proxy_regions: list[str] = [],  # The regions to proxy the HTTP server to.
     startup_timeout: int = 30,  # Maximum number of seconds to wait for the HTTP server to start.
     exit_grace_period: Optional[int] = None,  # The time to wait for the HTTP server to exit gracefully.
+    concurrent_requests: Optional[int] = None,  # The target concurrent requests per upstream container.
 ):
     """Decorator for Flash-enabled HTTP servers on Modal classes.
 
@@ -663,6 +664,7 @@ def _http_server(
         proxy_regions: The regions to proxy the HTTP server to.
         startup_timeout: The maximum time to wait for the HTTP server to start.
         exit_grace_period: The time to wait for the HTTP server to exit gracefully.
+        concurrent_requests: The target concurrent requests per upstream container.
 
     """
     if port is None:
@@ -675,6 +677,8 @@ def _http_server(
         raise InvalidError("The `startup_timeout` argument of `@http_server` must be positive.")
     if exit_grace_period is not None and exit_grace_period < 0:
         raise InvalidError("The `exit_grace_period` argument of `@http_server` must be non-negative.")
+    if concurrent_requests is not None and concurrent_requests <= 0:
+        raise InvalidError("The `concurrent requests` argument of `@http_server` must be positive.")
 
     from modal._partial_function import _PartialFunction, _PartialFunctionParams
 
@@ -684,6 +688,7 @@ def _http_server(
             proxy_regions=proxy_regions,
             startup_timeout=startup_timeout or 0,
             exit_grace_period=exit_grace_period or 0,
+            concurrent_requests=concurrent_requests or 0,
         )
     )
 
