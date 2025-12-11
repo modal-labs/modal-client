@@ -14,7 +14,7 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 
 from modal.config import config, logger
-from modal.exception import ExecTimeoutError
+from modal.exception import ConflictError, ExecTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
@@ -124,11 +124,9 @@ class TaskCommandRouterClient:
         """
         try:
             resp = await fetch_command_router_access(server_client, task_id)
-        except GRPCError as exc:
-            if exc.status == Status.FAILED_PRECONDITION:
-                logger.debug(f"Command router access is not enabled for task {task_id}")
-                return None
-            raise
+        except ConflictError:
+            logger.debug(f"Command router access is not enabled for task {task_id}")
+            return None
 
         logger.debug(f"Using command router access for task {task_id}")
 

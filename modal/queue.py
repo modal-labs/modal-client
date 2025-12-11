@@ -596,7 +596,7 @@ class _Queue(_Object, type_prefix="qu"):
                 ),
             )
         except ResourceExhaustedError as exc:
-            if "status = '413'" in exc.message:
+            if "status = '413'" in str(exc):
                 method = "put_many" if len(vs) > 1 else "put"
                 raise RequestSizeError(f"Queue.{method} request is too large") from exc
             raise queue.Full(str(exc))
@@ -612,7 +612,7 @@ class _Queue(_Object, type_prefix="qu"):
         try:
             await self._client.stub.QueuePut(request)
         except ResourceExhaustedError as exc:
-            if "status = '413'" in exc.message:
+            if "status = '413'" in str(exc):
                 method = "put_many" if len(vs) > 1 else "put"
                 raise RequestSizeError(f"Queue.{method} request is too large") from exc
             raise queue.Full(str(exc)) from exc

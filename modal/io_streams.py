@@ -18,7 +18,6 @@ from typing import (
     cast,
 )
 
-from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal.exception import ClientClosed, ExecTimeoutError, InvalidError
@@ -29,6 +28,7 @@ from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .config import logger
+from .exception import ConflictError
 from .stream_type import StreamType
 
 if TYPE_CHECKING:
@@ -697,11 +697,8 @@ class _StreamWriterThroughServer:
                         input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
                     ),
                 )
-        except GRPCError as exc:
-            if exc.status == Status.FAILED_PRECONDITION:
-                raise ValueError(exc.message)
-            else:
-                raise exc
+        except ConflictError as exc:
+            raise ValueError(str(exc))
 
 
 class _StreamWriterThroughCommandRouter:
