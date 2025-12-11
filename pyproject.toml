@@ -80,8 +80,6 @@ filterwarnings = [
     "error::DeprecationWarning",
     "ignore:Type google._upb.*MapContainer uses PyType_Spec.*Python 3.14:DeprecationWarning",
     "error::modal.exception.DeprecationError",
-    "ignore::DeprecationWarning:pytest.*:",
-    "ignore::DeprecationWarning:google.rpc.*:",
 ]
 
 [tool.ruff]
