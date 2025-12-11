@@ -24,6 +24,8 @@ CUDA_CHECKPOINT_TOGGLE_TIMEOUT: float = 5 * 60.0
 # Maximum total duration for each individual `cuda-checkpoint` invocation.
 CUDA_CHECKPOINT_TIMEOUT: float = 90
 
+CHECK_TIMEOUT: float = 10 * 60
+
 
 class CudaCheckpointState(Enum):
     """State representation from the CUDA API [1].
@@ -198,18 +200,24 @@ class CudaCheckpointSession:
         """Check if a specific PID has a CUDA session."""
         try:
             result = subprocess.run(
-                [CUDA_CHECKPOINT_PATH, "--get-state", "--pid", str(pid)],
+                [CUDA_CHECKPOINT_PATH, "--get-restore-tid", "--pid", str(pid)],
                 capture_output=True,
                 text=True,
                 # This should be quick since no checkpoint has taken place yet
-                timeout=5,
+                timeout=CHECK_TIMEOUT,
             )
 
             # If the command succeeds (return code 0), this PID has a CUDA session
             if result.returncode == 0:
-                state_str = result.stdout.strip().lower()
-                state = CudaCheckpointState(state_str)
-                return CudaCheckpointProcess(pid=pid, state=state)
+                cuda_tid = result.stdout.strip()
+                # ensure its an integer
+                try:
+                    cuda_tid = int(cuda_tid)
+                except ValueError:
+                    raise RuntimeError(f"PID {pid} has invalid CUDA TID: {cuda_tid}")
+                state = CudaCheckpointState.RUNNING  # TODO: Assert that this is true
+                print(f"PID {pid} has CUDA TID: {cuda_tid}")
+                return CudaCheckpointProcess(pid=cuda_tid, state=state)
 
         except subprocess.CalledProcessError:
             # Command failed, which is expected for PIDs without CUDA sessions
