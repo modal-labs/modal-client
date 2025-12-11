@@ -163,45 +163,6 @@ def test_shell_all_shell_command_params_have_explicit_param_decls():
 
 
 @pytest.mark.parametrize(
-    "forbidden_params,allowed_params,passed_args,expected",
-    [
-        (None, None, {"image": "debian:latest", "cpu": 2}, ["--image", "--cpu"]),
-        ({"image"}, None, {"image": "debian:latest", "cpu": 2}, ["--image"]),
-        ({"image", "cpu"}, None, {"image": "debian:latest", "cpu": 2, "memory": 1024}, ["--image", "--cpu"]),
-        ({"image", "cpu", "memory"}, None, {"cpu": 2}, ["--cpu"]),
-        (None, {"image"}, {"image": "debian:latest"}, []),
-        (None, {"image"}, {"image": "debian:latest", "cpu": 2}, ["--cpu"]),
-        (None, {"image", "cpu"}, {"image": "debian:latest", "cpu": 2}, []),
-        (None, {"image", "cpu"}, {"image": "debian:latest"}, []),
-        ({"image"}, {"cpu"}, {"image": "debian:latest", "cpu": 2}, ["--image"]),
-        (None, None, {"image": None, "cpu": None}, []),  # values match defaults
-        (None, None, {}, []),
-    ],
-)
-def test_passed_forbidden_args(forbidden_params, allowed_params, passed_args, expected):
-    def dummy_shell(
-        image: str = typer.Option(None, "--image"),
-        cpu: int = typer.Option(None, "--cpu"),
-        memory: int = typer.Option(None, "--memory"),
-    ):
-        pass
-
-    param_objs = _params_from_signature(dummy_shell)
-    result = _passed_forbidden_args(param_objs, passed_args, forbidden_params, allowed_params)
-    assert result == expected
-
-
-def test_forbidden_allowed_params_overlap_raises():
-    with pytest.raises(ValueError, match="Parameters cannot be both forbidden and allowed"):
-        _passed_forbidden_args(
-            {},
-            {"cpu": 2},
-            forbidden_params={"image", "cpu"},
-            allowed_params={"image"},
-        )
-
-
-@pytest.mark.parametrize(
     "passed_args,expected",
     [
         ({}, []),
@@ -211,8 +172,27 @@ def test_forbidden_allowed_params_overlap_raises():
 )
 def test_passed_forbidden_args_with_shell_function(passed_args, expected):
     param_objs = _params_from_signature(shell)
-    result = _passed_forbidden_args(param_objs, passed_args, allowed_params={"cmd", "pty", "ref", "use_module_mode"})
+    result = _passed_forbidden_args(
+        param_objs, passed_args, allowed=lambda p: p in {"cmd", "pty", "ref", "use_module_mode"}
+    )
     assert result == expected
+
+
+def test_passed_forbidden_args_with_predicate():
+    def dummy_shell(
+        image: str = typer.Option(None, "--image"),
+        cpu: int = typer.Option(None, "--cpu"),
+        memory: int = typer.Option(None, "--memory"),
+    ):
+        pass
+
+    param_objs = _params_from_signature(dummy_shell)
+
+    _pfa = _passed_forbidden_args
+    assert _pfa(param_objs, {"image": "debian:latest", "cpu": 2}, allowed=lambda p: p == "image") == ["--cpu"]
+    assert _pfa(param_objs, {"image": "debian:latest", "cpu": 2}, allowed=lambda _: True) == []
+    assert _pfa(param_objs, {"image": "debian:latest", "cpu": 2}, allowed=lambda _: False) == ["--image", "--cpu"]
+    assert _pfa(param_objs, {"image": None, "cpu": None}, allowed=lambda _: False) == []
 
 
 @pytest.fixture

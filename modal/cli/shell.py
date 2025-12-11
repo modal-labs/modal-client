@@ -37,25 +37,12 @@ def _params_from_signature(func: Callable[..., Any]) -> dict[str, Any]:
 def _passed_forbidden_args(
     param_objs: dict[str, Any],
     passed_args: dict[str, Any],
-    forbidden_params: Optional[set[str]] = None,
-    allowed_params: Optional[set[str]] = None,
+    allowed: Callable[[str], bool],
 ) -> list[str]:
-    """Check which forbidden arguments were passed with non-default values.
-
-    If forbidden_params is None, checks all params in param_objs except those in allowed_params.
-    If forbidden_params is specified, only checks those specific params (unless in allowed_params).
-    """
-    allowed_params = allowed_params or set()
-
-    if forbidden_params and (overlap := forbidden_params & allowed_params):
-        raise ValueError(f"Parameters cannot be both forbidden and allowed: {overlap}")
-
+    """Check which forbidden arguments were passed with non-default values."""
     passed_forbidden: list[str] = []
     for param_name, param_obj in param_objs.items():
-        if param_name in allowed_params:
-            continue
-
-        if forbidden_params and param_name not in forbidden_params:
+        if allowed(param_name):
             continue
 
         if passed_args.get(param_name) != param_obj.default:
@@ -317,7 +304,9 @@ def shell(
 
     if ref is not None and _is_running_container_ref(ref):
         # We're attaching to an already running container or Sandbox.
-        if passed_forbidden := _passed_forbidden_args(param_objs, locals(), allowed_params={"cmd", "pty", "ref"}):
+        if passed_forbidden := _passed_forbidden_args(
+            param_objs, locals(), allowed=lambda p: p in {"cmd", "pty", "ref"}
+        ):
             raise ClickException(
                 f"Cannot specify container configuration arguments ({', '.join(passed_forbidden)}) "
                 f"when attaching to an already running container or Sandbox ('{ref}')."
@@ -337,7 +326,7 @@ def shell(
     if ref is not None and not _is_valid_modal_id(ref, "im-"):
         # If ref it not a Modal Image ID, then it's a function reference, and we'll start a new container from its spec.
         if passed_forbidden := _passed_forbidden_args(
-            param_objs, locals(), allowed_params={"cmd", "env", "pty", "ref", "use_module_mode"}
+            param_objs, locals(), allowed=lambda p: p in {"cmd", "env", "pty", "ref", "use_module_mode"}
         ):
             raise ClickException(
                 f"Cannot specify container configuration arguments ({', '.join(passed_forbidden)}) "
@@ -349,7 +338,9 @@ def shell(
         return
 
     if ref is not None and _is_valid_modal_id(ref, "im-"):
-        if passed_forbidden := _passed_forbidden_args(param_objs, locals(), forbidden_params={"add_python", "image"}):
+        if passed_forbidden := _passed_forbidden_args(
+            param_objs, locals(), allowed=lambda p: p not in {"add_python", "image"}
+        ):
             raise ClickException(
                 f"Cannot specify {', '.join(passed_forbidden)} argument(s) "
                 f"when starting a new container from a Modal Image ID ('{ref}')."
