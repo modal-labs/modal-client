@@ -120,7 +120,8 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
                 raise exception.InvalidError("Retry must be None when timeout is set")
 
             if retry is None:
-                return await self.direct(req, timeout=timeout, metadata=metadata)
+                with grpc_error_converter():
+                    return await self.direct(req, timeout=timeout, metadata=metadata)
 
             # TODO do we need suppress_error_frames(1) here too?
             with grpc_error_converter():
