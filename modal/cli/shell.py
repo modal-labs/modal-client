@@ -29,13 +29,19 @@ from .run import _get_runnable_list
 from .utils import ENV_OPTION, is_tty
 
 
-def _params_from_signature(func: Callable[..., Any]) -> dict[str, Any]:
+def _params_from_signature(
+    func: Callable[..., Any],
+) -> dict[str, typer.models.ParameterInfo]:
     sig = inspect.signature(func)
-    return {param_name: param.default for param_name, param in sig.parameters.items()}
+    params = {param_name: param.default for param_name, param in sig.parameters.items()}
+    assert all(isinstance(param, typer.models.ParameterInfo) for param in params.values()), (
+        f"All params to {func.__name__} must be of type typer.models.ParameterInfo."
+    )
+    return params
 
 
 def _passed_forbidden_args(
-    param_objs: dict[str, Any],
+    param_objs: dict[str, typer.models.ParameterInfo],
     passed_args: dict[str, Any],
     allowed: Callable[[str], bool],
 ) -> list[str]:
@@ -44,6 +50,8 @@ def _passed_forbidden_args(
     for param_name, param_obj in param_objs.items():
         if allowed(param_name):
             continue
+
+        assert param_obj.param_decls is not None, "All params must be typer.models.ParameterInfo, and have param_decls."
 
         if passed_args.get(param_name) != param_obj.default:
             passed_forbidden.append("/".join(param_obj.param_decls))
