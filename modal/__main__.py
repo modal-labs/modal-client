@@ -35,37 +35,12 @@ def main():
         ):
             raise
 
-        from grpclib import GRPCError, Status
         from rich.panel import Panel
 
-        if isinstance(exc, GRPCError):
-            status_map = {
-                Status.ABORTED: "Aborted",
-                Status.ALREADY_EXISTS: "Already exists",
-                Status.CANCELLED: "Cancelled",
-                Status.DATA_LOSS: "Data loss",
-                Status.DEADLINE_EXCEEDED: "Deadline exceeded",
-                Status.FAILED_PRECONDITION: "Failed precondition",
-                Status.INTERNAL: "Internal",
-                Status.INVALID_ARGUMENT: "Invalid",
-                Status.NOT_FOUND: "Not found",
-                Status.OUT_OF_RANGE: "Out of range",
-                Status.PERMISSION_DENIED: "Permission denied",
-                Status.RESOURCE_EXHAUSTED: "Resource exhausted",
-                Status.UNAUTHENTICATED: "Unauthenticaed",
-                Status.UNAVAILABLE: "Unavailable",
-                Status.UNIMPLEMENTED: "Unimplemented",
-                Status.UNKNOWN: "Unknown",
-            }
-            title = f"Error: {status_map.get(exc.status, 'Unknown')}"
-            content = str(exc.message)
-            if exc.details:
-                content += f"\n\nDetails: {exc.details}"
-        else:
-            title = "Error"
-            content = str(exc)
-            if notes := getattr(exc, "__notes__", []):
-                content = f"{content}\n\nNote: {' '.join(notes)}"
+        title = "Error"
+        content = str(exc)
+        if notes := getattr(exc, "__notes__", []):
+            content = f"{content}\n\nNote: {' '.join(notes)}"
 
         console = make_console(stderr=True)
         panel = Panel(content, title=title, title_align="left", border_style="red")

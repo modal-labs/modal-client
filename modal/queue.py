@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, Optional, Union
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
+from grpclib import Status
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -30,7 +30,7 @@ from ._utils.grpc_utils import Retry
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
-from .exception import AlreadyExistsError, InvalidError, NotFoundError, RequestSizeError
+from .exception import AlreadyExistsError, InvalidError, NotFoundError, RequestSizeError, ResourceExhaustedError
 
 
 @dataclass
@@ -97,10 +97,8 @@ class _QueueManager:
         )
         try:
             await client.stub.QueueGetOrCreate(req)
-        except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
-                raise AlreadyExistsError(exc.message)
-            else:
+        except AlreadyExistsError:
+            if not allow_existing:
                 raise
 
     @staticmethod
@@ -597,14 +595,11 @@ class _Queue(_Object, type_prefix="qu"):
                     total_timeout=timeout,
                 ),
             )
-        except GRPCError as exc:
-            if exc.status == Status.RESOURCE_EXHAUSTED:
-                raise queue.Full(str(exc))
-            elif "status = '413'" in exc.message:
+        except ResourceExhaustedError as exc:
+            if "status = '413'" in exc.message:
                 method = "put_many" if len(vs) > 1 else "put"
                 raise RequestSizeError(f"Queue.{method} request is too large") from exc
-            else:
-                raise exc
+            raise queue.Full(str(exc))
 
     async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: list[Any]):
         vs_encoded = [serialize(v) for v in vs]
@@ -616,14 +611,11 @@ class _Queue(_Object, type_prefix="qu"):
         )
         try:
             await self._client.stub.QueuePut(request)
-        except GRPCError as exc:
-            if exc.status == Status.RESOURCE_EXHAUSTED:
-                raise queue.Full(exc.message)
-            elif "status = '413'" in exc.message:
+        except ResourceExhaustedError as exc:
+            if "status = '413'" in exc.message:
                 method = "put_many" if len(vs) > 1 else "put"
                 raise RequestSizeError(f"Queue.{method} request is too large") from exc
-            else:
-                raise exc
+            raise queue.Full(str(exc)) from exc
 
     @live_method
     async def len(self, *, partition: Optional[str] = None, total: bool = False) -> int:

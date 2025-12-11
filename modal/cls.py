@@ -7,7 +7,6 @@ from pathlib import PurePosixPath
 from typing import Any, Callable, Optional, Sequence, TypeVar, Union
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 
@@ -659,11 +658,6 @@ More information on class parameterization can be found here: https://modal.com/
                 raise NotFoundError(
                     f"Lookup failed for Cls '{name}' from the '{app_name}' app{env_context}: {exc}."
                 ) from None
-            except GRPCError as exc:
-                if exc.status == Status.FAILED_PRECONDITION:
-                    raise InvalidError(exc.message) from None
-                else:
-                    raise
 
             print_server_warnings(response.server_warnings)
             await resolver.load(self._class_service_function, load_context)

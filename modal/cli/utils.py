@@ -5,8 +5,6 @@ from json import dumps
 from typing import Optional, Union
 
 import typer
-from click import UsageError
-from grpclib import GRPCError, Status
 from rich.table import Column, Table
 from rich.text import Text
 
@@ -33,11 +31,6 @@ async def stream_app_logs(
             await get_app_logs_loop(client, output_mgr, app_id=app_id, task_id=task_id, app_logs_url=app_logs_url)
     except asyncio.CancelledError:
         pass
-    except GRPCError as exc:
-        if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
-            raise UsageError(exc.message)
-        else:
-            raise
     except KeyboardInterrupt:
         pass
 
@@ -48,12 +41,7 @@ async def get_app_id_from_name(name: str, env: Optional[str], client: Optional[_
         client = await _Client.from_env()
     env_name = ensure_env(env)
     request = api_pb2.AppGetByDeploymentNameRequest(name=name, environment_name=env_name)
-    try:
-        resp = await client.stub.AppGetByDeploymentName(request)
-    except GRPCError as exc:
-        if exc.status in (Status.INVALID_ARGUMENT, Status.NOT_FOUND):
-            raise UsageError(exc.message or "")
-        raise
+    resp = await client.stub.AppGetByDeploymentName(request)
     if not resp.app_id:
         env_comment = f" in the '{env_name}' environment" if env_name else ""
         raise NotFoundError(f"Could not find a deployed app named '{name}'{env_comment}.")

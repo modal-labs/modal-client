@@ -13,7 +13,6 @@ from contextlib import nullcontext
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
-from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal._runtime.execution_context
@@ -200,13 +199,7 @@ async def _publish_app(
         definition_ids=definition_ids,
     )
 
-    try:
-        response = await client.stub.AppPublish(request)
-    except GRPCError as exc:
-        if exc.status == Status.INVALID_ARGUMENT or exc.status == Status.FAILED_PRECONDITION:
-            raise InvalidError(exc.message)
-        raise
-
+    response = await client.stub.AppPublish(request)
     print_server_warnings(response.server_warnings)
     return response.url, response.server_warnings
 
