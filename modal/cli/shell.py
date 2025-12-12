@@ -165,16 +165,24 @@ def _start_shell_from_image(
     volumes = {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
     secrets = [Secret.from_name(s) for s in secret]
 
+    mount_points = list(volumes.keys())
     mounts = []
     for local_path_str in add_local:
         local_path = Path(local_path_str).expanduser().resolve()
         remote_path = PurePosixPath(f"/mnt/{local_path.name}")
+        mount_points.append(str(remote_path))
 
         if local_path.is_dir():
             m = _Mount._from_local_dir(local_path, remote_path=remote_path)
         else:
             m = _Mount._from_local_file(local_path, remote_path=remote_path)
         mounts.append(m)
+
+    if duplicates := [name for name in set(mount_points) if mount_points.count(name) > 1]:
+        raise ClickException(
+            f"Mount path conflict: the following would conflict: {', '.join(sorted(duplicates))}. "
+            "Ensure volume names and local path basenames are unique."
+        )
 
     interactive_shell(
         app,

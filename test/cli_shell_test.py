@@ -153,6 +153,21 @@ def test_shell_forbids_image_args_with_image_id(servicer, set_env_client, forbid
     )
 
 
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_mount_path_conflict(servicer, set_env_client):
+    run_cli_command(
+        ["shell", "--volume", "mydata", "--add-local", "/path/to/mydata"],
+        expected_exit_code=1,
+        expected_stderr="Mount path conflict",
+    )
+
+    run_cli_command(
+        ["shell", "--add-local", "/path/one/mydata", "--add-local", "/path/two/mydata"],
+        expected_exit_code=1,
+        expected_stderr="Mount path conflict",
+    )
+
+
 def test_shell_all_shell_command_params_have_explicit_param_decls():
     sig = inspect.signature(shell)
     for param_name, param in sig.parameters.items():
