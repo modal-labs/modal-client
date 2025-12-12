@@ -550,7 +550,7 @@ class _Mount(_Object, type_prefix="mo"):
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
                 # Read content lazily only when needed for upload
-                content = await asyncio.get_event_loop().run_in_executor(None, file_spec.get_content)
+                content = file_spec.content or await asyncio.to_thread(file_spec.read_content)
                 request2 = api_pb2.MountPutFileRequest(data=content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
