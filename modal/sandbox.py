@@ -633,6 +633,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskMountImageRequest(task_id=task_id, path=os.fsencode(path), image_id=image_id)
         await command_router_client.mount_image(req)
 
+    async def snapshot_image_mount(self, path: Path | str):
+        """Snapshot local changes to a previously mounted image into a new image."""
+
+        task_id = await self._get_task_id()
+        command_router_client = await self._get_command_router_client(task_id)
+        req = sr_pb2.TaskSnapshotImageMountRequest(task_id=task_id, path=os.fsencode(path))
+        await command_router_client.snapshot_image_mount(req)
+
     # Live handle methods
 
     async def wait(self, raise_on_termination: bool = True):

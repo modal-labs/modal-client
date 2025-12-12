@@ -137,6 +137,15 @@ message TaskMountImageRequest {
   string image_id = 3;
 }
 
+message TaskSnapshotImageMountRequest {
+  string task_id = 1;
+  bytes path = 2;
+}
+
+message TaskSnapshotImageMountResponse {
+  string image_id = 1;
+}
+
 service TaskCommandRouter {
   // Poll for the exit status of an exec'd command.
   rpc TaskExecPoll(TaskExecPollRequest) returns (TaskExecPollResponse);
@@ -150,4 +159,6 @@ service TaskCommandRouter {
   rpc TaskExecWait(TaskExecWaitRequest) returns (TaskExecWaitResponse);
   // Mount an "image" in the container.
   rpc TaskMountImage(TaskMountImageRequest) returns (google.protobuf.Empty);
+  // Snapshot changes to a mounted "image" into a new image
+  rpc TaskSnapshotImageMount(TaskSnapshotImageMountRequest) returns (TaskSnapshotImageMountResponse);
 }
