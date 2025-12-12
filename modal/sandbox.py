@@ -617,7 +617,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return image
 
-    async def mount_image(self, path: Path | str, image: Optional[_Image]):
+    async def _experimental_mount_image(self, path: Path | str, image: Optional[_Image]):
         """Mount an image at a path in the sandbox filesystem."""
 
         image_id = None
@@ -633,7 +633,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskMountImageRequest(task_id=task_id, path=os.fsencode(path), image_id=image_id)
         await command_router_client.mount_image(req)
 
-    async def snapshot_image_mount(self, path: Path | str) -> _Image:
+    async def _experimental_snapshot_image_mount(self, path: Path | str) -> _Image:
         """Snapshot local changes to a previously mounted image into a new image."""
 
         task_id = await self._get_task_id()
