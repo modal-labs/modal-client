@@ -244,7 +244,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 ),
                 cloud_provider_str=cloud if cloud else None,  # Supersedes cloud_provider
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems),
-                runtime=config.get("function_runtime"),
+                runtime=runtime if runtime is not None else config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
@@ -314,6 +314,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         # Enable verbose logging for sandbox operations.
         verbose: bool = False,
+        # Override the container runtime. Either "runc" or "gvisor".
+        runtime: Optional[str] = None,
         experimental_options: Optional[dict[str, bool]] = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
@@ -380,6 +382,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             _experimental_enable_snapshot=_experimental_enable_snapshot,
             client=client,
             verbose=verbose,
+            runtime=runtime,
             pty_info=pty_info,
         )
 
@@ -413,6 +416,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         _experimental_enable_snapshot: bool = False,
         client: Optional[_Client] = None,
         verbose: bool = False,
+        runtime: Optional[str] = None,
         pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
         """Private method used internally.
