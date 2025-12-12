@@ -33,12 +33,11 @@ async def test_get_files(servicer, client, tmpdir):
     assert "/large.py" in files
     assert "/fluff" not in files
     assert files["/small.py"].use_blob is False
-    assert files["/small.py"].content == small_content
+    assert files["/small.py"].get_content() == small_content
     assert files["/small.py"].sha256_hex == hashlib.sha256(small_content).hexdigest()
     assert files["/small.py"].mode == expected_mode, f"{oct(files['/small.py'].mode)} != {oct(expected_mode)}"
 
     assert files["/large.py"].use_blob is True
-    assert files["/large.py"].content is None
     assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
     assert files["/large.py"].mode == expected_mode, f"{oct(files['/large.py'].mode)} != {oct(expected_mode)}"
 
@@ -137,7 +136,7 @@ def test_chained_entries(test_dir):
     files.sort(key=lambda file: file.source_description)
     assert files[0].source_description.name == "a.txt"
     assert files[0].mount_filename.endswith("/a.txt")
-    assert files[0].content == b"A"
+    assert files[0].get_content() == b"A"
     m = hashlib.sha256()
     m.update(b"A")
     assert files[0].sha256_hex == m.hexdigest()

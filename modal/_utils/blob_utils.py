@@ -371,11 +371,20 @@ class FileUploadSpec:
     mount_filename: str
 
     use_blob: bool
-    content: Optional[bytes]  # typically None if using blob, required otherwise
     sha256_hex: str
     md5_hex: str
     mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
+    cached_content: Optional[bytes] = None  # Set for very small files to avoid double-read
+
+    def get_content(self) -> bytes:
+        """Get file content, using cache if available or reading from source."""
+        if self.cached_content is not None:
+            return self.cached_content
+
+        with self.source() as fp:
+            fp.seek(0)
+            return fp.read()
 
 
 def _get_file_upload_spec(
@@ -384,6 +393,7 @@ def _get_file_upload_spec(
     mount_filename: PurePosixPath,
     mode: int,
 ) -> FileUploadSpec:
+    cached_content = None
     with source() as fp:
         # Current position is ignored - we always upload from position 0
         fp.seek(0, os.SEEK_END)
@@ -394,12 +404,18 @@ def _get_file_upload_spec(
             # TODO(dano): remove the placeholder md5 once we stop requiring md5 for blobs
             md5_hex = "baadbaadbaadbaadbaadbaadbaadbaad" if size > MULTIPART_UPLOAD_THRESHOLD else None
             use_blob = True
-            content = None
             hashes = get_upload_hashes(fp, md5_hex=md5_hex)
         else:
             use_blob = False
-            content = fp.read()
-            hashes = get_upload_hashes(content)
+            # For very small files (< 256 KiB), read content once and cache it
+            # This avoids double-read penalty while limiting memory usage
+            if size < 256 * 1024:  # 256 KiB threshold
+                fp.seek(0)
+                cached_content = fp.read()
+                hashes = get_upload_hashes(cached_content)
+            else:
+                # For medium files (256 KiB - 4 MiB), compute hashes without caching content
+                hashes = get_upload_hashes(fp)
 
     return FileUploadSpec(
         source=source,
@@ -407,11 +423,11 @@ def _get_file_upload_spec(
         source_is_path=isinstance(source_description, Path),
         mount_filename=mount_filename.as_posix(),
         use_blob=use_blob,
-        content=content,
         sha256_hex=hashes.sha256_hex(),
         md5_hex=hashes.md5_hex(),
         mode=mode & 0o7777,
         size=size,
+        cached_content=cached_content,
     )
 
 

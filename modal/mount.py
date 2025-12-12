@@ -464,21 +464,36 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     async def _get_files(entries: list[_MountEntry]) -> AsyncGenerator[FileUploadSpec, None]:
         loop = asyncio.get_event_loop()
+        # Limit concurrent file spec creation to prevent memory accumulation
+        max_concurrent_specs = 128
+        semaphore = asyncio.Semaphore(max_concurrent_specs)
+
         with concurrent.futures.ThreadPoolExecutor() as exe:
             all_files = await loop.run_in_executor(exe, _select_files, entries)
+            logger.debug(f"Computing checksums for {len(all_files)} files using {exe._max_workers} worker threads")
 
-            futs = []
-            for local_filename, remote_filename in all_files:
-                logger.debug(f"Mounting {local_filename} as {remote_filename}")
-                futs.append(loop.run_in_executor(exe, get_file_upload_spec_from_path, local_filename, remote_filename))
+            async def _get_file_spec_with_semaphore(local_filename, remote_filename):
+                async with semaphore:
+                    try:
+                        logger.debug(f"Mounting {local_filename} as {remote_filename}")
+                        return await loop.run_in_executor(
+                            exe, get_file_upload_spec_from_path, local_filename, remote_filename
+                        )
+                    except FileNotFoundError as exc:
+                        # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
+                        logger.info(f"Ignoring file not found: {exc}")
+                        return None
 
-            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} worker threads")
-            for fut in asyncio.as_completed(futs):
-                try:
-                    yield await fut
-                except FileNotFoundError as exc:
-                    # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
-                    logger.info(f"Ignoring file not found: {exc}")
+            # Create tasks on-demand instead of all at once
+            tasks = [
+                _get_file_spec_with_semaphore(local_filename, remote_filename)
+                for local_filename, remote_filename in all_files
+            ]
+
+            for fut in asyncio.as_completed(tasks):
+                result = await fut
+                if result is not None:
+                    yield result
 
     async def _load_mount(
         self: "_Mount",
@@ -547,7 +562,9 @@ class _Mount(_Object, type_prefix="mo"):
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
-                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
+                # Read content lazily only when needed for upload
+                content = await asyncio.get_event_loop().run_in_executor(None, file_spec.get_content)
+                request2 = api_pb2.MountPutFileRequest(data=content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
