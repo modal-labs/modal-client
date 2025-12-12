@@ -617,16 +617,20 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return image
 
-    async def mount_image(self, path: Path | str, image: _Image):
+    async def mount_image(self, path: Path | str, image: Optional[_Image]):
         """Mount an image at a path in the sandbox filesystem."""
 
-        # FIXME
-        if not image._object_id:
-            raise InvalidError("currently only images created with from_id are supported")
+        image_id = None
+
+        if image:
+            if not image._object_id:
+                # FIXME
+                raise InvalidError("currently only images created with from_id are supported")
+            image_id = image._object_id
 
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
-        req = sr_pb2.TaskMountImageRequest(task_id=task_id, path=os.fsencode(path), image_id=image.object_id)
+        req = sr_pb2.TaskMountImageRequest(task_id=task_id, path=os.fsencode(path), image_id=image_id)
         await command_router_client.mount_image(req)
 
     # Live handle methods
