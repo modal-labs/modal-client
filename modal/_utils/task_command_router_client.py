@@ -112,6 +112,9 @@ class TaskCommandRouterClient:
     A new instance should be created per task.
     """
 
+    def __del__(self):
+        print("gc commandrouterclient", id(self), type(self))
+
     @classmethod
     async def try_init(
         cls,
@@ -203,18 +206,6 @@ class TaskCommandRouterClient:
         grpclib.events.listen(self._channel, grpclib.events.SendRequest, send_request)
 
         self._stub = TaskCommandRouterStub(self._channel)
-
-    def __del__(self) -> None:
-        """Clean up the client when it's garbage collected."""
-        if self._closed:
-            return
-
-        self._jwt_refresh_task.cancel()
-
-        try:
-            self._channel.close()
-        except Exception:
-            pass
 
     async def close(self) -> None:
         """Close the client and stop the background JWT refresh task."""
@@ -413,6 +404,7 @@ class TaskCommandRouterClient:
         Uses an event to wake early when a manual refresh happens or token changes.
         """
         while not self._closed:
+            print("jank")
             try:
                 exp = self._jwt_exp
                 now = time.time()

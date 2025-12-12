@@ -1188,5 +1188,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             # Fetch the next batch starting from the end of the current one.
             before_timestamp = resp.sandboxes[-1].created_at
 
+    async def cleanup(self):
+        await self.stdout.aclose()
+        await self.stderr.aclose()
+
 
 Sandbox = synchronize_api(_Sandbox)
