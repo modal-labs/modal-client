@@ -232,6 +232,15 @@ class _Sandbox(_Object, type_prefix="sb"):
                 )
 
             ephemeral_disk = None  # Ephemeral disk requests not supported on Sandboxes.
+
+            # Determine runtime: explicit parameter > enable_docker auto-runc > config default
+            if runtime is None:
+                if experimental_options and experimental_options.get("enable_docker"):
+                    # Docker support requires runc runtime
+                    runtime = "runc"
+                else:
+                    runtime = config.get("function_runtime")
+
             definition = api_pb2.Sandbox(
                 entrypoint_args=args,
                 image_id=image.object_id,
@@ -245,7 +254,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 ),
                 cloud_provider_str=cloud if cloud else None,  # Supersedes cloud_provider
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems),
-                runtime=runtime if runtime is not None else config.get("function_runtime"),
+                runtime=runtime,
                 runtime_debug=config.get("function_runtime_debug"),
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
