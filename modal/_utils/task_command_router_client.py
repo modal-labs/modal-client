@@ -541,3 +541,10 @@ class TaskCommandRouterClient:
         return await call_with_retries_on_transient_errors(
             lambda: self._call_with_auth_retry(self._stub.TaskMountImage, request)
         )
+
+    async def snapshot_image_mount(
+        self, request: sr_pb2.TaskSnapshotImageMountRequest
+    ) -> sr_pb2.TaskSnapshotImageMountResponse:
+        return await call_with_retries_on_transient_errors(
+            lambda: self._call_with_auth_retry(self._stub.TaskSnapshotImageMount, request)
+        )
