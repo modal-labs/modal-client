@@ -11,7 +11,7 @@ grpclib==0.4.7
 httpx~=0.23.0
 invoke~=2.2
 pyjwt==2.10.1
-mypy~=1.11.2
+mypy~=1.18.2
 mypy-protobuf~=3.3.0  # TODO: can't use mypy-protobuf>=3.4 because of protobuf==3.19 support
 pre-commit>=2.21,<4
 packaging>=24.2

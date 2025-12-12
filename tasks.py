@@ -571,16 +571,20 @@ def show_deprecations(ctx):
                     # Handle a few different ways that the message can get passed to the deprecation helper
                     # since it's not always a literal string (e.g. it's often a functions .__doc__ attribute)
                     if isinstance(message, ast.Name):
-                        message = self.assignments.get(message.id, "")
+                        assert message  # mypy apparently thinks message can be None here
+                        message_str = self.assignments.get(message.id, "")
                     if isinstance(message, ast.Attribute):
-                        message = self.assignments.get(message.attr, "")
+                        assert message  # mypy apparently thinks message can be None here
+                        message_str = self.assignments.get(message.attr, "")
                     if isinstance(message, ast.Constant):
-                        message = message.s
+                        assert message  # mypy apparently thinks message can be None here
+                        message_str = str(message.s)
                     elif isinstance(message, ast.JoinedStr):
-                        message = "".join(v.s for v in message.values if isinstance(v, ast.Constant))
+                        assert message  # mypy apparently thinks message can be None here
+                        message_str = "".join(str(v.s) for v in message.values if isinstance(v, ast.Constant))
                     else:
-                        message = str(message)
-                    message = message.replace("\n", " ")
+                        message_str = str(message)
+                    message = message_str.replace("\n", " ")
                     if len(message) > (max_length := 80):
                         message = message[:max_length] + "..."
 
