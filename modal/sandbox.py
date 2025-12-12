@@ -149,6 +149,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         experimental_options: Optional[dict[str, bool]] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
+        runtime: Optional[str] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -466,6 +467,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             experimental_options=experimental_options,
             enable_snapshot=_experimental_enable_snapshot,
             verbose=verbose,
+            runtime=runtime,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
