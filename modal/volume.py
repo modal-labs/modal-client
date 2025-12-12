@@ -1056,8 +1056,10 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
-                # Read content lazily only when needed for upload
-                content = file_spec.content or await asyncio.to_thread(file_spec.read_content)
+                if file_spec.content is None:
+                    content = await asyncio.to_thread(file_spec.read_content)
+                else:
+                    content = file_spec.content
                 request2 = api_pb2.MountPutFileRequest(data=content, sha256_hex=file_spec.sha256_hex)
                 self._progress_cb(task_id=progress_task_id, complete=True)
 
