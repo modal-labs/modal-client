@@ -364,7 +364,8 @@ async def image_delete(
 ) -> None:
     """Delete an Image by its ID.
 
-    Deletion is irreversible and will prevent Apps from using the Image.
+    Deletion is irreversible and will prevent Functions/Sandboxes from using
+    the Image.
 
     This is an experimental interface for a feature that we will be adding to
     the main Image class. The stable form of this interface may look different.
