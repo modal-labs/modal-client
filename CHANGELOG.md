@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.5.dev28 (2025-12-12)
+
+* Fixes a thread-safety issue in resource cleanup for sandboxes
+
+
 #### 1.2.5.dev27 (2025-12-12)
 
 - Improved performance when adding large local directories to an Image.
