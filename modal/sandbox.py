@@ -6,6 +6,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
 
 from ._pty import get_pty_info
@@ -1048,20 +1049,20 @@ class _Sandbox(_Object, type_prefix="sb"):
     @overload
     async def open(
         self,
-        path: str,
+        path: Union[str, PurePosixPath],
         mode: "_typeshed.OpenTextMode",
     ) -> _FileIO[str]: ...
 
     @overload
     async def open(
         self,
-        path: str,
+        path: Union[str, PurePosixPath],
         mode: "_typeshed.OpenBinaryMode",
     ) -> _FileIO[bytes]: ...
 
     async def open(
         self,
-        path: str,
+        path: Union[str, PurePosixPath],
         mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"] = "r",
     ):
         """[Alpha] Open a file in the Sandbox and return a FileIO handle.
@@ -1080,24 +1081,24 @@ class _Sandbox(_Object, type_prefix="sb"):
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
 
-    async def ls(self, path: str) -> list[str]:
+    async def ls(self, path: Union[str, PurePosixPath]) -> list[str]:
         """[Alpha] List the contents of a directory in the Sandbox."""
         task_id = await self._get_task_id()
         return await _FileIO.ls(path, self._client, task_id)
 
-    async def mkdir(self, path: str, parents: bool = False) -> None:
+    async def mkdir(self, path: Union[str, PurePosixPath], parents: bool = False) -> None:
         """[Alpha] Create a new directory in the Sandbox."""
         task_id = await self._get_task_id()
         return await _FileIO.mkdir(path, self._client, task_id, parents)
 
-    async def rm(self, path: str, recursive: bool = False) -> None:
+    async def rm(self, path: Union[str, PurePosixPath], recursive: bool = False) -> None:
         """[Alpha] Remove a file or directory in the Sandbox."""
         task_id = await self._get_task_id()
         return await _FileIO.rm(path, self._client, task_id, recursive)
 
     async def watch(
         self,
-        path: str,
+        path: Union[str, PurePosixPath],
         filter: Optional[list[FileWatchEventType]] = None,
         recursive: Optional[bool] = None,
         timeout: Optional[int] = None,

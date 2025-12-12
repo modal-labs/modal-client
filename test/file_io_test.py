@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2024
 import json
 import pytest
+from pathlib import PurePosixPath
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError
@@ -93,7 +94,12 @@ async def container_filesystem_exec(servicer, stream):
         await stream.send_message(api_pb2.ContainerFilesystemExecResponse(exec_id=RM_EXEC_ID))
 
 
-def test_file_read(servicer, client):
+@pytest.fixture(params=[PurePosixPath, str], ids=["PurePosixPath", "str"])
+def to_path(request):
+    return request.param
+
+
+def test_file_read(servicer, client, to_path):
     """Test file reading."""
     content = "foo\nbar\nbaz\n"
 
@@ -107,12 +113,12 @@ def test_file_read(servicer, client):
         ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
-        f = FileIO.create("/test.txt", "r", client, "task-123")
+        f = FileIO.create(to_path("/test.txt"), "r", client, "task-123")
         assert f.read() == content
         f.close()
 
 
-def test_file_write(servicer, client):
+def test_file_write(servicer, client, to_path):
     """Test file writing."""
     content = "foo\nbar\nbaz\n"
 
@@ -126,7 +132,7 @@ def test_file_write(servicer, client):
         ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
-        f = FileIO.create("/test.txt", "a+", client, "task-123")
+        f = FileIO.create(to_path("/test.txt"), "a+", client, "task-123")
         f.write(content)
         assert f.read() == content
         f.close()
@@ -409,7 +415,7 @@ def test_client_retry(servicer, client):
         f.close()
 
 
-def test_file_watch(servicer, client):
+def test_file_watch(servicer, client, to_path):
     """Test file watching."""
     expected_events = [
         FileWatchEvent(paths=["/foo.txt"], type=FileWatchEventType.Access),
@@ -434,7 +440,7 @@ def test_file_watch(servicer, client):
         ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
-        events = FileIO.watch("/test.txt", client, "task-123")
+        events = FileIO.watch(to_path("/test.txt"), client, "task-123")
         seen_events: list[FileWatchEvent] = []
         for event in events:
             seen_events.append(event)
@@ -554,7 +560,7 @@ def test_file_io_sync_context_manager(servicer, client):
             assert f.read() == content
 
 
-def test_ls(servicer, client):
+def test_ls(servicer, client, to_path):
     """Test ls."""
 
     async def container_filesystem_exec_get_output(servicer, stream):
@@ -571,11 +577,11 @@ def test_ls(servicer, client):
         ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
-        files = FileIO.ls("/test.txt", client, "task-123")
+        files = FileIO.ls(to_path("/test.txt"), client, "task-123")
         assert files == ["foo", "bar", "baz"]
 
 
-def test_mkdir(servicer, client):
+def test_mkdir(servicer, client, to_path):
     """Test mkdir."""
 
     async def container_filesystem_exec_get_output(servicer, stream):
@@ -589,10 +595,10 @@ def test_mkdir(servicer, client):
         ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
-        FileIO.mkdir("/test.txt", client, "task-123")
+        FileIO.mkdir(to_path("/test.txt"), client, "task-123")
 
 
-def test_rm(servicer, client):
+def test_rm(servicer, client, to_path):
     """Test rm."""
 
     async def container_filesystem_exec_get_output(servicer, stream):
@@ -606,4 +612,9 @@ def test_rm(servicer, client):
         ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
-        FileIO.rm("/test.txt", client, "task-123")
+        FileIO.rm(to_path("/test.txt"), client, "task-123")
+
+
+def test_invalid_path(servicer, client):
+    with pytest.raises(ValueError, match="path must be a str or PurePosixPath"):
+        FileIO.create(123, "r", client, "task-123")  # type: ignore
