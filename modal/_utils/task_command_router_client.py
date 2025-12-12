@@ -188,11 +188,8 @@ class TaskCommandRouterClient:
         # JWT refresh coordination
         self._jwt_exp: Optional[float] = _parse_jwt_expiration(jwt)
         self._jwt_refresh_lock = asyncio.Lock()
-        self._jwt_refresh_event = asyncio.Event()
-        self._closed = False
 
-        # Start background task to eagerly refresh JWT 30s before expiration.
-        self._jwt_refresh_task = asyncio.create_task(self._jwt_refresh_loop())
+        self._closed = False
 
         async def send_request(event: grpclib.events.SendRequest) -> None:
             # This will get the most recent JWT for every request. No need to
@@ -204,30 +201,12 @@ class TaskCommandRouterClient:
 
         self._stub = TaskCommandRouterStub(self._channel)
 
-    def __del__(self) -> None:
-        """Clean up the client when it's garbage collected."""
-        if self._closed:
-            return
-
-        self._jwt_refresh_task.cancel()
-
-        try:
-            self._channel.close()
-        except Exception:
-            pass
-
     async def close(self) -> None:
         """Close the client and stop the background JWT refresh task."""
         if self._closed:
             return
 
         self._closed = True
-        self._jwt_refresh_task.cancel()
-        try:
-            logger.debug(f"Waiting for JWT refresh task to complete for exec with task ID {self._task_id}")
-            await self._jwt_refresh_task
-        except asyncio.CancelledError:
-            pass
         self._channel.close()
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
@@ -370,10 +349,7 @@ class TaskCommandRouterClient:
             raise ExecTimeoutError(f"Deadline exceeded while waiting for exec {exec_id}")
 
     async def _refresh_jwt(self) -> None:
-        """Refresh JWT from the server and update internal state.
-
-        Concurrency-safe: only one refresh runs at a time.
-        """
+        """Refresh JWT from the server and update internal state."""
         async with self._jwt_refresh_lock:
             if self._closed:
                 return
@@ -394,8 +370,6 @@ class TaskCommandRouterClient:
             assert resp.url == self._server_url, "Task router URL changed during session"
             self._jwt = resp.jwt
             self._jwt_exp = _parse_jwt_expiration(resp.jwt)
-            # Wake up the background loop to recompute its next sleep.
-            self._jwt_refresh_event.set()
 
     async def _call_with_auth_retry(self, func, *args, **kwargs):
         try:
@@ -406,47 +380,6 @@ class TaskCommandRouterClient:
                 # Retry with the original arguments preserved
                 return await func(*args, **kwargs)
             raise
-
-    async def _jwt_refresh_loop(self) -> None:
-        """Background task that refreshes JWT 30 seconds before expiration.
-
-        Uses an event to wake early when a manual refresh happens or token changes.
-        """
-        while not self._closed:
-            try:
-                exp = self._jwt_exp
-                now = time.time()
-                if exp is None:
-                    # Unknown expiration: re-check periodically or until event wakes us.
-                    sleep_s = 60.0
-                else:
-                    refresh_at = exp - 30.0
-                    sleep_s = max(refresh_at - now, 0.0)
-
-                self._jwt_refresh_event.clear()
-                if sleep_s > 0:
-                    try:
-                        logger.debug(f"Waiting for JWT refresh for {sleep_s}s for exec with task ID {self._task_id}")
-                        # Wait until it's time to refresh, unless woken early.
-                        await asyncio.wait_for(self._jwt_refresh_event.wait(), timeout=sleep_s)
-                        logger.debug(f"Stopped waiting for JWT refresh for exec with task ID {self._task_id}")
-                        # Event fired (e.g., token changed) -> recompute timings.
-                        continue
-                    except asyncio.TimeoutError:
-                        logger.debug(f"Done waiting for JWT refresh for exec with task ID {self._task_id}")
-                        pass
-
-                # Time to refresh.
-                logger.debug(f"Refreshing JWT for exec with task ID {self._task_id}")
-                await self._refresh_jwt()
-            except asyncio.CancelledError:
-                logger.debug(f"Cancelled JWT refresh loop for exec with task ID {self._task_id}")
-                break
-            except Exception as e:
-                # Exceptions here can stem from non-transient errors against the server sending
-                # the TaskGetCommandRouterAccess RPC, for instance, if the task has finished.
-                logger.debug(f"Background JWT refresh failed for exec with task ID {self._task_id}: {e}")
-                break
 
     async def _stream_stdio(
         self,
