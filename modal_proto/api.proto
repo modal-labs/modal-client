@@ -2929,7 +2929,6 @@ message SandboxSnapshotFsAsyncResponse {
 message SandboxSnapshotFsRequest {
   string sandbox_id = 1;
   float timeout = 2;
-  optional bytes path = 3;
 }
 
 message SandboxSnapshotFsResponse {
