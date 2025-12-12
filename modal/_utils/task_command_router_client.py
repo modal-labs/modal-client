@@ -174,6 +174,10 @@ class TaskCommandRouterClient:
         stream_stdio_max_retries: int = 10,
     ) -> None:
         """Callers should not use this directly. Use TaskCommandRouterClient.try_init() instead."""
+        # Record the loop this instance is bound to so __del__ can safely schedule cleanup
+        # even if finalization happens from a different thread (e.g. via synchronicity).
+        self._loop = asyncio.get_running_loop()
+
         # Attach bearer token on all requests to the worker-side router service.
         self._server_client = server_client
         self._task_id = task_id
@@ -201,8 +205,35 @@ class TaskCommandRouterClient:
 
         self._stub = TaskCommandRouterStub(self._channel)
 
+    def __del__(self) -> None:
+        """Best-effort cleanup if the caller forgot to close().
+
+        This object is typically used through synchronicity wrappers, which means this finalizer
+        may run on a different thread than the event loop that owns the channel. Closing the
+        channel is therefore scheduled onto the owning loop using call_soon_threadsafe.
+
+        Use getattr in the event that attributes are not yet initialized or the
+        object is in a half-torn-down state.
+        """
+        try:
+            if getattr(self, "_closed", False):
+                return
+            self._closed = True
+
+            channel = getattr(self, "_channel", None)
+            if channel is None:
+                return
+
+            loop = getattr(self, "_loop", None)
+            if loop is not None and not loop.is_closed():
+                loop.call_soon_threadsafe(channel.close)
+        except Exception:
+            # During interpreter shutdown, the loop may already be torn down, which could raise an exception.
+            # This is safe to ignore, and we don't want to raise an exception from a destructor.
+            pass
+
     async def close(self) -> None:
-        """Close the client and stop the background JWT refresh task."""
+        """Close the client."""
         if self._closed:
             return
 
