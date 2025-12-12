@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import typer
 
-from modal.cli.shell import _params_from_signature, _passed_forbidden_args, shell
+from modal.cli.shell import _params_from_signature, _parse_mount, _passed_forbidden_args, shell
 
 from .conftest import run_cli_command
 from .supports.skip import skip_windows
@@ -167,6 +167,24 @@ def test_shell_mount_path_conflict(servicer, set_env_client):
         expected_stderr="Mount path conflict",
     )
 
+    run_cli_command(
+        ["shell", "--volume", "mydata:/mnt/x", "--add-local", "/path/to/mydata:/mnt/x"],
+        expected_exit_code=1,
+        expected_stderr="Mount path conflict",
+    )
+
+    run_cli_command(
+        ["shell", "--volume", "a:/mnt/x", "--volume", "b:/mnt/x"],
+        expected_exit_code=1,
+        expected_stderr="Mount path conflict",
+    )
+
+    run_cli_command(
+        ["shell", "--add-local", "/path/one:/tmp/file", "--add-local", "/path/two:/tmp/file"],
+        expected_exit_code=1,
+        expected_stderr="Mount path conflict",
+    )
+
 
 def test_shell_all_shell_command_params_have_explicit_param_decls():
     sig = inspect.signature(shell)
@@ -208,6 +226,20 @@ def test_passed_forbidden_args_with_predicate():
     assert _pfa(param_objs, {"image": "debian:latest", "cpu": 2}, allowed=lambda _: True) == []
     assert _pfa(param_objs, {"image": "debian:latest", "cpu": 2}, allowed=lambda _: False) == ["--image", "--cpu"]
     assert _pfa(param_objs, {"image": None, "cpu": None}, allowed=lambda _: False) == []
+
+
+@pytest.mark.parametrize(
+    "arg,expected",
+    [
+        ("vol", ("vol", None)),
+        ("vol:/custom", ("vol", "/custom")),
+        ("/path/file", ("/path/file", None)),
+        ("/path/file:/custom", ("/path/file", "/custom")),
+        ("C:\\path\\file:/tmp/remote", ("C:\\path\\file", "/tmp/remote")),
+    ],
+)
+def test_parse_mount(arg, expected):
+    assert _parse_mount(arg) == expected
 
 
 @pytest.fixture
