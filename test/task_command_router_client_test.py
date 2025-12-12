@@ -56,6 +56,8 @@ async def test_exec_stdio_read_streams_stdout_batches(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     class _Stream:
@@ -107,6 +109,8 @@ async def test_exec_stdio_read_auth_retry_resumes_from_correct_offset(monkeypatc
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     num_attempts_made = 0
@@ -182,6 +186,8 @@ async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     num_attempts_made = 0
@@ -240,6 +246,8 @@ async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     num_attempts_made = 0
@@ -299,6 +307,8 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch)
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
         stream_stdio_retry_delay_secs=0.001,
         stream_stdio_retry_delay_factor=1.0,
         stream_stdio_max_retries=5,
@@ -346,6 +356,8 @@ async def test_exec_stdio_read_open_raises_once_then_succeeds(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     raised = False
@@ -397,6 +409,8 @@ async def test_exec_stdio_read_deadline_exceeded_on_send_raises_exec_timeout_err
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     class _Stream:
@@ -440,6 +454,8 @@ async def test_exec_stdio_read_deadline_exceeded_on_first_item_raises_exec_timeo
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     class _Stream:
@@ -489,6 +505,8 @@ async def test_exec_stdio_read_deadline_respected_on_attribute_error(monkeypatch
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
         stream_stdio_retry_delay_secs=0.2,  # longer than remaining time
     )
 
@@ -533,6 +551,8 @@ async def test_exec_stdio_read_deadline_respected_on_stream_terminated_error(mon
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
         stream_stdio_retry_delay_secs=0.2,
     )
 
@@ -575,6 +595,8 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
         stream_stdio_retry_delay_secs=0.2,
     )
 
@@ -617,6 +639,8 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     class _Stream:
@@ -666,6 +690,8 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     calls: List[tuple[sr_pb2.TaskExecWaitRequest, Optional[float]]] = []
@@ -709,3 +735,35 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
     assert to1 == 60 and to2 == 60
     assert refreshes == 1
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_task_command_router_client_del_closes_channel(monkeypatch):
+    channel = create_dummy_channel()
+    closed = False
+
+    def _close():  # noqa: ANN001 - test helper
+        nonlocal closed
+        closed = True
+
+    monkeypatch.setattr(channel, "close", _close, raising=True)
+
+    client = TaskCommandRouterClient(
+        server_client=None,
+        task_id="sb-1",
+        server_url="https://router.test",
+        jwt="t",
+        channel=channel,
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
+    )
+
+    # __del__ schedules channel.close() on the loop - let the loop run so the callback is executed.
+    #
+    # Note: TaskCommandRouterClient registers a request hook with grpclib, which can create a reference
+    # cycle (client -> channel -> callback -> client). Rely on calling __del__ explicitly in the test
+    # rather than calling del and trying to force GC to finalize the cycle.
+    client.__del__()
+    await asyncio.sleep(0)
+
+    assert closed is True
