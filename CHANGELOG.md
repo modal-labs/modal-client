@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.5.dev27 (2025-12-12)
+
+- Improved performance when adding large local directories to an Image.
+
+
 #### 1.2.5.dev25 (2025-12-12)
 
 - Enabled starting a shell using a Modal Image ID with `modal shell im-abc123`. `modal shell` now also warns you if you pass invalid combinations of arguments (like `--cpu` together with the ID of an already running Sandbox, etc.).
