@@ -769,13 +769,13 @@ async def _create_single_client_dependency_mount(
     if check_if_exists:
         try:
             await Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate.aio(client)
-            print(f"➖ Found existing mount {mount_name} in global namespace.")
+            print(f"➖ Found existing mount {mount_name} in global namespace.")  # noqa: T201
             return
         except modal.exception.NotFoundError:
             pass
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpd:
-        print(f"📦 Building {mount_name}.")
+        print(f"📦 Building {mount_name}.")  # noqa: T201
         requirements = os.path.join(os.path.dirname(__file__), f"builder/{builder_version}.txt")
         cmd = " ".join(
             [
@@ -804,11 +804,11 @@ async def _create_single_client_dependency_mount(
         await proc.wait()
         if proc.returncode:
             stdout, stderr = await proc.communicate()
-            print(stdout.decode("utf-8"))
-            print(stderr.decode("utf-8"))
+            print(stdout.decode("utf-8"))  # noqa: T201
+            print(stderr.decode("utf-8"))  # noqa: T201
             raise RuntimeError(f"Subprocess failed with {proc.returncode}")
 
-        print(f"🌐 Downloaded and unpacked {mount_name} packages to {tmpd}.")
+        print(f"🌐 Downloaded and unpacked {mount_name} packages to {tmpd}.")  # noqa: T201
 
         python_mount = Mount._from_local_dir(tmpd, remote_path=REMOTE_PACKAGES_PATH)
 
@@ -832,11 +832,11 @@ async def _create_single_client_dependency_mount(
                         allow_overwrite=allow_overwrite,
                         client=client,
                     )
-                    print(f"✅ Deployed mount {mount_name} to global namespace.")
+                    print(f"✅ Deployed mount {mount_name} to global namespace.")  # noqa: T201
                 except GRPCError as e:
-                    print(f"⚠️ Mount creation failed with {e.status}: {e.message}")
+                    print(f"⚠️ Mount creation failed with {e.status}: {e.message}")  # noqa: T201
             else:
-                print(f"Dry run - skipping deployment of mount {mount_name}")
+                print(f"Dry run - skipping deployment of mount {mount_name}")  # noqa: T201
 
 
 async def _create_client_dependency_mounts(

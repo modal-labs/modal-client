@@ -292,7 +292,7 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
     @click.pass_context
     def f(ctx, *args, **kwargs):
         if ctx.obj["detach"]:
-            print(
+            print(  # noqa: T201
                 "Note that running a local entrypoint in detached mode only keeps the last "
                 "triggered Modal function alive after the parent process has been killed or disconnected."
             )
