@@ -19,7 +19,7 @@ from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
 from .async_utils import aclosing
-from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel
+from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel, patch_grpclib_client_channel
 
 
 def _b64url_decode(data: str) -> bytes:
@@ -156,7 +156,7 @@ class TaskCommandRouterClient:
                 http2_stream_window_size=64 * 1024 * 1024,  # 64 MiB
             ),
         )
-
+        patch_grpclib_client_channel(channel)
         await connect_channel(channel)
 
         return cls(server_client, task_id, resp.url, resp.jwt, channel)

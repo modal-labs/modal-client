@@ -5,7 +5,7 @@ import warnings
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any, List, Optional, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -110,7 +110,7 @@ class _QueueManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> list["_Queue"]:
+    ) -> List["_Queue"]:
         """Return a list of hydrated Queue objects.
 
         **Examples:**
