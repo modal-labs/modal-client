@@ -17,6 +17,7 @@ from modal.exception import ClientClosed
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
+from ._utils.deprecation import deprecation_error
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
 from .exception import FilesystemExecutionError, InvalidError
@@ -46,11 +47,13 @@ T = TypeVar("T", str, bytes)
 
 
 async def _delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optional[int] = None) -> None:
-    """Delete a range of bytes from the file.
+    """mdmd:hidden
+    Delete a range of bytes from the file.
 
     `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
     If either is None, the start or end of the file is used, respectively.
     """
+    deprecation_error((2025, 12, 3), "delete_bytes is deprecated and will be removed in a future release.")
     assert file._file_descriptor is not None
     file._check_closed()
     if start is not None and end is not None:
@@ -70,12 +73,14 @@ async def _delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optio
 
 
 async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = None, end: Optional[int] = None) -> None:
-    """Replace a range of bytes in the file with new data. The length of the data does not
+    """mdmd:hidden
+    Replace a range of bytes in the file with new data. The length of the data does not
     have to be the same as the length of the range being replaced.
 
     `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
     If either is None, the start or end of the file is used, respectively.
     """
+    deprecation_error((2025, 12, 3), "replace_bytes is deprecated and will be removed in a future release.")
     assert file._file_descriptor is not None
     file._check_closed()
     if start is not None and end is not None:
