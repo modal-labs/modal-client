@@ -2246,6 +2246,7 @@ def test_flash_container_entry_lifecycle(servicer, tmp_path):
         port=8001,
         startup_timeout=5,
         exit_grace_period=0,
+        h2_enabled=False,
     )
 
     container_process = _run_container_process(

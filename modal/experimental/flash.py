@@ -655,6 +655,7 @@ def _http_server(
     proxy_regions: list[str] = [],  # The regions to proxy the HTTP server to.
     startup_timeout: int = 30,  # Maximum number of seconds to wait for the HTTP server to start.
     exit_grace_period: Optional[int] = None,  # The time to wait for the HTTP server to exit gracefully.
+    h2_enabled: bool = False,  # Whether to enable HTTP/2 support.
 ):
     """Decorator for Flash-enabled HTTP servers on Modal classes.
 
@@ -684,6 +685,7 @@ def _http_server(
             proxy_regions=proxy_regions,
             startup_timeout=startup_timeout or 0,
             exit_grace_period=exit_grace_period or 0,
+            h2_enabled=h2_enabled,
         )
     )
 
@@ -722,6 +724,7 @@ class _FlashContainerEntry:
                 self.http_config.port,
                 startup_timeout=self.http_config.startup_timeout,
                 exit_grace_period=self.http_config.exit_grace_period,
+                h2_enabled=self.http_config.h2_enabled,
             )
 
     def stop(self):
