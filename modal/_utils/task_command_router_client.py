@@ -112,9 +112,6 @@ class TaskCommandRouterClient:
     A new instance should be created per task.
     """
 
-    def __del__(self):
-        print("gc commandrouterclient", id(self), type(self))
-
     @classmethod
     async def try_init(
         cls,
@@ -404,7 +401,6 @@ class TaskCommandRouterClient:
         Uses an event to wake early when a manual refresh happens or token changes.
         """
         while not self._closed:
-            print("jank")
             try:
                 exp = self._jwt_exp
                 now = time.time()
