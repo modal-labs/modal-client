@@ -146,6 +146,14 @@ def _start_shell_from_function_spec(
     )
 
 
+def _parse_mount(arg: str) -> tuple[str, Optional[str]]:
+    """Parse a mount arguments into (source, mount_path)."""
+    if ":" in arg:
+        source, mount_path = arg.rsplit(":", 1)
+        return source, mount_path
+    return arg, None
+
+
 def _start_shell_from_image(
     app: App,
     cmds: list[str],
@@ -162,23 +170,33 @@ def _start_shell_from_image(
     region: Optional[str],
     pty: bool,
 ) -> None:
-    volumes = {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
     secrets = [Secret.from_name(s) for s in secret]
 
-    mount_points = list(volumes.keys())
-    mounts = []
-    for local_path_str in add_local:
-        local_path = Path(local_path_str).expanduser().resolve()
-        remote_path = PurePosixPath(f"/mnt/{local_path.name}")
-        mount_points.append(str(remote_path))
+    mount_paths = []
+    volumes = {}
+    for vol_arg in volume:
+        vol_name, mount_path = _parse_mount(vol_arg)
+        if not mount_path:
+            mount_path = f"/mnt/{vol_name}"
+        mount_paths.append(mount_path)
+        volumes[mount_path] = Volume.from_name(vol_name)
 
+    mounts = []
+    for local_arg in add_local:
+        local_path_str, mount_path = _parse_mount(local_arg)
+        local_path = Path(local_path_str).expanduser().resolve()
+        if not mount_path:
+            mount_path = f"/mnt/{local_path.name}"
+
+        remote_path = PurePosixPath(mount_path)
+        mount_paths.append(str(remote_path))
         if local_path.is_dir():
             m = _Mount._from_local_dir(local_path, remote_path=remote_path)
         else:
             m = _Mount._from_local_file(local_path, remote_path=remote_path)
         mounts.append(m)
 
-    if duplicates := [name for name in set(mount_points) if mount_points.count(name) > 1]:
+    if duplicates := [name for name in set(mount_paths) if mount_paths.count(name) > 1]:
         raise ClickException(
             f"Mount path conflict: the following would conflict: {', '.join(sorted(duplicates))}. "
             "Ensure volume names and local path basenames are unique."
