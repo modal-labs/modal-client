@@ -131,18 +131,18 @@ message TaskExecWaitResponse {
   // and termination by Modal (due to task timeout, exec exceeded deadline, etc.)
 }
 
-message TaskMountImageRequest {
+message TaskMountDirectoryRequest {
   string task_id = 1;
   bytes path = 2;
   string image_id = 3;
 }
 
-message TaskSnapshotImageMountRequest {
+message TaskSnapshotDirectoryRequest {
   string task_id = 1;
   bytes path = 2;
 }
 
-message TaskSnapshotImageMountResponse {
+message TaskSnapshotDirectoryResponse {
   string image_id = 1;
 }
 
@@ -157,8 +157,8 @@ service TaskCommandRouter {
   rpc TaskExecStdioRead(TaskExecStdioReadRequest) returns (stream TaskExecStdioReadResponse);
   // Wait for an exec'd command to exit and return the exit code.
   rpc TaskExecWait(TaskExecWaitRequest) returns (TaskExecWaitResponse);
-  // Mount an "image" in the container.
-  rpc TaskMountImage(TaskMountImageRequest) returns (google.protobuf.Empty);
-  // Snapshot changes to a mounted "image" into a new image
-  rpc TaskSnapshotImageMount(TaskSnapshotImageMountRequest) returns (TaskSnapshotImageMountResponse);
+  // Mount an image at a directory in the container.
+  rpc TaskMountDirectory(TaskMountDirectoryRequest) returns (google.protobuf.Empty);
+  // Snapshot a directory with a mounted image, including any local changes, into a new image.
+  rpc TaskSnapshotDirectory(TaskSnapshotDirectoryRequest) returns (TaskSnapshotDirectoryResponse);
 }
