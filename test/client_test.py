@@ -6,12 +6,11 @@ import sys
 import urllib.parse
 
 from google.protobuf.empty_pb2 import Empty
-from grpclib import GRPCError, Status
 
 import modal
 import modal._utils.grpc_utils
 from modal import Client
-from modal.exception import AuthError, ConnectionError, InvalidError, ServerWarning
+from modal.exception import AuthError, ConflictError, ConnectionError, InvalidError, ServerWarning
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows, skip_windows_unix_socket
@@ -102,10 +101,8 @@ async def test_client_connection_failure_unix_socket(no_retry_connect_channel):
 @pytest.mark.asyncio
 async def test_client_old_version(servicer, credentials):
     async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="0.0.0") as client:
-        with pytest.raises(GRPCError) as excinfo:
+        with pytest.raises(ConflictError, match="Old client"):
             await client.hello.aio()
-        assert excinfo.value.status == Status.FAILED_PRECONDITION
-        assert excinfo.value.message == "Old client"
 
 
 @pytest.mark.asyncio

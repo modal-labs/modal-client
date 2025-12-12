@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Optional, Union
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
+from grpclib import GRPCError
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -126,10 +126,8 @@ class _DictManager:
         )
         try:
             await client.stub.DictGetOrCreate(req)
-        except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
-                raise AlreadyExistsError(exc.message)
-            else:
+        except AlreadyExistsError:
+            if not allow_existing:
                 raise
 
     @staticmethod

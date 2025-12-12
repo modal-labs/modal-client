@@ -3,14 +3,12 @@ from typing import Annotated, Optional, Union
 
 import typer
 from click import UsageError
-from grpclib import GRPCError, Status
 from rich.text import Text
 
 from modal import environments
 from modal._utils.name_utils import check_environment_name
 from modal.cli.utils import YES_OPTION, display_table
 from modal.config import config
-from modal.exception import InvalidError
 
 ENVIRONMENT_HELP_TEXT = """Create and interact with Environments
 
@@ -61,13 +59,7 @@ ENVIRONMENT_CREATE_HELP = """Create a new environment in the current workspace""
 @environment_cli.command(name="create", help=ENVIRONMENT_CREATE_HELP)
 def create(name: Annotated[str, typer.Argument(help="Name of the new environment. Must be unique. Case sensitive")]):
     check_environment_name(name)
-
-    try:
-        environments.create_environment(name)
-    except GRPCError as exc:
-        if exc.status == Status.INVALID_ARGUMENT:
-            raise InvalidError(exc.message)
-        raise
+    environments.create_environment(name)
     typer.echo(f"Environment created: {name}")
 
 
@@ -114,11 +106,5 @@ def update(
     if set_name:
         check_environment_name(set_name)
 
-    try:
-        environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
-    except GRPCError as exc:
-        if exc.status == Status.INVALID_ARGUMENT:
-            raise InvalidError(exc.message)
-        raise
-
+    environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
     typer.echo("Environment updated")

@@ -5,14 +5,13 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Optional
 
-from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
 from .client import _Client
-from .exception import InvalidError, RemoteError
+from .exception import AlreadyExistsError, InvalidError, RemoteError, ServiceError
 
 
 @dataclass(frozen=True)
@@ -186,13 +185,10 @@ async def _forward(
         response = await client.stub.TunnelStart(
             api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted, tunnel_type=tunnel_type)
         )
-    except GRPCError as exc:
-        if exc.status == Status.ALREADY_EXISTS:
-            raise InvalidError(f"Port {port} is already forwarded")
-        elif exc.status == Status.UNAVAILABLE:
-            raise RemoteError("Relay server is unavailable") from exc
-        else:
-            raise
+    except AlreadyExistsError as exc:
+        raise InvalidError(f"Port {port} is already forwarded")
+    except ServiceError as exc:
+        raise RemoteError("Relay server is unavailable") from exc
 
     try:
         yield Tunnel(response.host, response.port, response.unencrypted_host, response.unencrypted_port)
