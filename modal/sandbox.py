@@ -627,7 +627,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
-        req = sr_pb2.TaskMountImageRequest(task_id=task_id, path=os.fsencode(path), image_id=image_id)
+        req = sr_pb2.TaskMountDirectoryRequest(task_id=task_id, path=os.fsencode(path), image_id=image_id)
         await command_router_client.mount_directory(req)
 
     async def _experimental_snapshot_directory(self, path: Path | str) -> _Image:
@@ -635,7 +635,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
-        req = sr_pb2.TaskSnapshotImageMountRequest(task_id=task_id, path=os.fsencode(path))
+        req = sr_pb2.TaskSnapshotDirectoryRequest(task_id=task_id, path=os.fsencode(path))
         res = await command_router_client.snapshot_directory(req)
         return await _Image.from_id(res.image_id)
 
