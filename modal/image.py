@@ -874,6 +874,7 @@ class _Image(_Object, type_prefix="im"):
 
         rep = f"Image.from_id({image_id!r})"
         obj = _Image._from_loader(_load, rep, load_context_overrides=LoadContext(client=client))
+        obj._object_id = image_id
 
         return obj
 
