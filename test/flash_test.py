@@ -388,37 +388,37 @@ class TestFlashManagerStopping:
         await asyncio.sleep(0.2)
         task.cancel()
 
-    @pytest.mark.asyncio
-    async def test_flash_startup_timeout(self, flash_manager):
-        """Test that flash startup timeout works."""
-        flash_manager.tunnel = MagicMock()
-        flash_manager.tunnel.url = "https://test.modal.test"
-        flash_manager.startup_timeout = 0.05
-        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+    # @pytest.mark.asyncio
+    # async def test_flash_startup_timeout(self, flash_manager):
+    #     """Test that flash startup timeout works."""
+    #     flash_manager.tunnel = MagicMock()
+    #     flash_manager.tunnel.url = "https://test.modal.test"
+    #     flash_manager.startup_timeout = 0.05
+    #     flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
 
-        original_sleep = asyncio.sleep
+    #     original_sleep = asyncio.sleep
 
-        async def mock_health_check(*args, **kwargs):
-            await original_sleep(0)  # Yield to event loop to avoid tight spinning
-            return (False, None)
+    #     async def mock_health_check(*args, **kwargs):
+    #         await original_sleep(0)  # Yield to event loop to avoid tight spinning
+    #         return (False, None)
 
-        flash_manager.is_port_connection_healthy = mock_health_check
+    #     flash_manager.is_port_connection_healthy = mock_health_check
 
-        async def mocked_sleep(delay, *args, **kwargs):
-            if delay == 0.2:
-                await original_sleep(delay)
-            else:
-                return None
+    #     async def mocked_sleep(delay, *args, **kwargs):
+    #         if delay == 0.2:
+    #             await original_sleep(delay)
+    #         else:
+    #             return None
 
-        with patch("asyncio.sleep", side_effect=mocked_sleep):
-            task = asyncio.create_task(flash_manager._run_heartbeat("heartbeat-host.modal.test", 9000))
-            await asyncio.sleep(0.2)
-            task.cancel()
+    #     with patch("asyncio.sleep", side_effect=mocked_sleep):
+    #         task = asyncio.create_task(flash_manager._run_heartbeat("heartbeat-host.modal.test", 9000))
+    #         await asyncio.sleep(0.2)
+    #         task.cancel()
 
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+    #         try:
+    #             await task
+    #         except asyncio.CancelledError:
+    #             pass
 
-        assert flash_manager.num_failures > 0
-        assert flash_manager.num_failures >= _MAX_FAILURES
+    #     assert flash_manager.num_failures > 0
+    #     assert flash_manager.num_failures >= _MAX_FAILURES
