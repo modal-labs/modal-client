@@ -2,6 +2,7 @@ syntax = "proto3";
 
 option go_package = "github.com/modal-labs/modal/go/proto";
 
+import "google/protobuf/empty.proto";
 import "modal_proto/api.proto";
 
 package modal.task_command_router;
@@ -130,6 +131,21 @@ message TaskExecWaitResponse {
   // and termination by Modal (due to task timeout, exec exceeded deadline, etc.)
 }
 
+message TaskMountDirectoryRequest {
+  string task_id = 1;
+  bytes path = 2;
+  string image_id = 3;
+}
+
+message TaskSnapshotDirectoryRequest {
+  string task_id = 1;
+  bytes path = 2;
+}
+
+message TaskSnapshotDirectoryResponse {
+  string image_id = 1;
+}
+
 service TaskCommandRouter {
   // Poll for the exit status of an exec'd command.
   rpc TaskExecPoll(TaskExecPollRequest) returns (TaskExecPollResponse);
@@ -141,4 +157,8 @@ service TaskCommandRouter {
   rpc TaskExecStdioRead(TaskExecStdioReadRequest) returns (stream TaskExecStdioReadResponse);
   // Wait for an exec'd command to exit and return the exit code.
   rpc TaskExecWait(TaskExecWaitRequest) returns (TaskExecWaitResponse);
+  // Mount an image at a directory in the container.
+  rpc TaskMountDirectory(TaskMountDirectoryRequest) returns (google.protobuf.Empty);
+  // Snapshot a directory with a mounted image, including any local changes, into a new image.
+  rpc TaskSnapshotDirectory(TaskSnapshotDirectoryRequest) returns (TaskSnapshotDirectoryResponse);
 }
