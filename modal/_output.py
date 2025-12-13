@@ -556,7 +556,7 @@ async def get_app_logs_loop(
     async def stop_pty_shell():
         nonlocal pty_shell_finish_event, pty_shell_input_task
         if pty_shell_finish_event:
-            print("\r", end="")  # move cursor to beginning of line
+            print("\r", end="")  # move cursor to beginning of line # noqa: T201
             pty_shell_finish_event.set()
             pty_shell_finish_event = None
 
@@ -623,7 +623,7 @@ async def get_app_logs_loop(
                 # This corresponds to the `modal run -i` use case where a breakpoint
                 # triggers and the task drops into an interactive PTY mode
                 if pty_shell_finish_event:
-                    print("ERROR: concurrent PTY shells are not supported.")
+                    print("ERROR: concurrent PTY shells are not supported.")  # noqa: T201
                 else:
                     pty_shell_stdout = output_mgr._stdout
                     pty_shell_finish_event = asyncio.Event()

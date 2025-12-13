@@ -146,7 +146,7 @@ class _ContainerProcessThroughServer(Generic[T]):
     async def attach(self):
         """mdmd:hidden"""
         if platform.system() == "Windows":
-            print("interactive exec is not currently supported on Windows.")
+            print("interactive exec is not currently supported on Windows.")  # noqa: T201
             return
 
         from ._output import make_console
@@ -347,7 +347,7 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
 
     async def attach(self):
         if platform.system() == "Windows":
-            print("interactive exec is not currently supported on Windows.")
+            print("interactive exec is not currently supported on Windows.")  # noqa: T201
             return
 
         from ._output import make_console

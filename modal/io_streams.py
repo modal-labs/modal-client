@@ -183,7 +183,7 @@ class _StreamReaderThroughServer(Generic[T]):
                 async for message, batch_index in iterator:
                     if self._stream_type == StreamType.STDOUT and message:
                         # TODO: rearchitect this, since these bytes aren't necessarily decodable
-                        print(message.decode("utf-8"), end="")
+                        print(message.decode("utf-8"), end="")  # noqa: T201
                     elif self._stream_type == StreamType.PIPE:
                         self._container_process_buffer.append(message)
 

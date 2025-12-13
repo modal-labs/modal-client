@@ -243,7 +243,7 @@ def create_breakpoint_wrapper(container_io_manager: "modal._runtime.container_io
     def breakpoint_wrapper():
         # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
         container_io_manager.interact(from_breakpoint=True)
-        import pdb
+        import pdb  # noqa: T100
 
         current_frame = inspect.currentframe()
         if current_frame is not None:

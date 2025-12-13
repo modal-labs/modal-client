@@ -148,7 +148,7 @@ async def ls(
     if not json and not sys.stdout.isatty():
         # Legacy behavior -- I am not sure why exactly we did this originally but I don't want to break it
         for entry in entries:
-            print(entry.path)
+            print(entry.path)  # noqa: T201
     else:
         rows = []
         for entry in entries:

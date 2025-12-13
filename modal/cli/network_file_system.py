@@ -102,7 +102,7 @@ async def ls(
         console.print(table)
     else:
         for entry in entries:
-            print(entry.path)
+            print(entry.path)  # noqa: T201
 
 
 @nfs_cli.command(
