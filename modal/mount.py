@@ -466,16 +466,18 @@ class _Mount(_Object, type_prefix="mo"):
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
             all_files = await loop.run_in_executor(exe, _select_files, entries)
+            logger.debug(f"Computing checksums for {len(all_files)} files using {exe._max_workers} worker threads")
 
-            futs = []
+            # Yield FileUploadSpec objects lazily as they're consumed by async_map downstream.
+            # async_map's concurrency limit provides natural backpressure, so we don't need
+            # a separate semaphore here. This keeps memory bounded without creating all tasks upfront.
             for local_filename, remote_filename in all_files:
-                logger.debug(f"Mounting {local_filename} as {remote_filename}")
-                futs.append(loop.run_in_executor(exe, get_file_upload_spec_from_path, local_filename, remote_filename))
-
-            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} worker threads")
-            for fut in asyncio.as_completed(futs):
                 try:
-                    yield await fut
+                    logger.debug(f"Mounting {local_filename} as {remote_filename}")
+                    file_spec = await loop.run_in_executor(
+                        exe, get_file_upload_spec_from_path, local_filename, remote_filename
+                    )
+                    yield file_spec
                 except FileNotFoundError as exc:
                     # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                     logger.info(f"Ignoring file not found: {exc}")
@@ -547,7 +549,11 @@ class _Mount(_Object, type_prefix="mo"):
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
-                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
+                if file_spec.content is None:
+                    content = await asyncio.to_thread(file_spec.read_content)
+                else:
+                    content = file_spec.content
+                request2 = api_pb2.MountPutFileRequest(data=content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:

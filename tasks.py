@@ -56,14 +56,13 @@ def protoc(ctx):
     Generates Python stubs for api.proto."""
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
     client_proto_files = "modal_proto/api.proto"
-    sandbox_router_proto_file = "modal_proto/sandbox_router.proto"
     task_command_router_proto_file = "modal_proto/task_command_router.proto"
     py_protoc = (
         protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
     print(py_protoc)
     # generate grpcio and grpclib proto files:
-    ctx.run(f"{py_protoc} -I . {client_proto_files} {sandbox_router_proto_file} {task_command_router_proto_file}")
+    ctx.run(f"{py_protoc} -I . {client_proto_files} {task_command_router_proto_file}")
 
     # generate modal-specific wrapper around grpclib api stub using custom plugin:
     grpc_plugin_pyfile = Path("protoc_plugin/plugin.py")
@@ -137,7 +136,6 @@ def lint_protos(ctx):
     Ensures imports/enums/messages/services are ordered correctly and RPCs are alphabetized.
     """
     lint_protos_impl(ctx, "modal_proto/api.proto")
-    lint_protos_impl(ctx, "modal_proto/sandbox_router.proto")
     lint_protos_impl(ctx, "modal_proto/task_command_router.proto")
 
 

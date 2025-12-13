@@ -6,20 +6,14 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.2.5.dev16 (2025-12-04)
+### 1.2.5 (2025-12-12)
 
-- It is now possible to set a custom `name=` for a Function without setting `serialized=True`. This can be useful when decorating a function multiple times, e.g. applying multiple Modal configurations to the same implementation.
-
-
-#### 1.2.5.dev10 (2025-12-01)
-
+- It is now possible to set a custom `name=` for a Function without using `serialized=True`. This can be useful when decorating a function multiple times, e.g. applying multiple Modal configurations to the same implementation.
+- It is now possible to start `modal shell` with a Modal Image ID (`modal shell im-abc123`). Additionally, `modal shell` will now warn if you pass invalid combinations of arguments (like `--cpu` together with the ID of an already running Sandbox, etc.).
 - Fixed a bug in `modal shell` that caused e.g. `vi` to fail with unicode decode errors.
-
-
-#### 1.2.5.dev7 (2025-11-27)
-
-- Improves asyncio sandbox usage by not blocking the event loop when reading from `stdout` or `stderr`.
-
+- Fixed a thread-safety issue in `modal.Sandbox` resource cleanup.
+- Improved performance when adding large local directories to an Image.
+- Improved async Sandbox performance by not blocking the event loop while reading from `stdout` or `stderr`.
 
 ### 1.2.4 (2025-11-21)
 
