@@ -147,9 +147,12 @@ def _start_shell_from_function_spec(
 
 
 def _parse_mount(arg: str) -> tuple[str, Optional[str]]:
-    """Parse a mount arguments into (source, mount_path)."""
+    """Parse a mount argument into (source, mount_path)."""
     if ":" in arg:
         source, mount_path = arg.rsplit(":", 1)
+        # Avoid splitting Windows drive letters (e.g., C:\path)
+        if len(source) == 1 and mount_path.startswith("\\"):
+            return arg, None
         return source, mount_path
     return arg, None
 

@@ -233,9 +233,12 @@ def test_passed_forbidden_args_with_predicate():
     [
         ("vol", ("vol", None)),
         ("vol:/custom", ("vol", "/custom")),
+        ("vol:relative", ("vol", "relative")),
         ("/path/file", ("/path/file", None)),
         ("/path/file:/custom", ("/path/file", "/custom")),
+        ("/home/user/file:backup", ("/home/user/file", "backup")),
         ("C:\\path\\file:/tmp/remote", ("C:\\path\\file", "/tmp/remote")),
+        ("C:\\path\\file", ("C:\\path\\file", None)),
     ],
 )
 def test_parse_mount(arg, expected):
