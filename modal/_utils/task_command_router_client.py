@@ -468,6 +468,9 @@ class TaskCommandRouterClient:
                     try:
                         await s.send_message(req, end=True)
                         async for item in s:
+                            # We successfully authenticated after a JWT refresh, reset the auth retry flag.
+                            if did_auth_retry:
+                                did_auth_retry = False
                             # Reset retry backoff after any successful chunk.
                             delay_secs = self.stream_stdio_retry_delay_secs
                             offset += len(item.data)
@@ -480,9 +483,6 @@ class TaskCommandRouterClient:
                             did_auth_retry = True
                             continue
                         raise
-
-                    # We successfully authenticated, reset the auth retry flag.
-                    did_auth_retry = False
 
                 # We successfully streamed all output.
                 return
