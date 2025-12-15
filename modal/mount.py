@@ -46,7 +46,7 @@ PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
     "3.11": ("20230826", "3.11.5"),
     "3.12": ("20240107", "3.12.1"),
     "3.13": ("20241008", "3.13.0"),
-    "3.14": ("20251128", "3.14.0"),
+    "3.14": ("20251205", "3.14.2"),
 }
 
 MOUNT_DEPRECATION_MESSAGE_PATTERN = """modal.Mount usage will soon be deprecated.

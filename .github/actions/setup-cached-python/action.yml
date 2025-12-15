@@ -26,11 +26,4 @@ runs:
     - name: Install Python packages
       shell: bash
       run: |
-        # TODO: temporary workaround to support Python 3.9, until the next version of grpclib is released
-        if [[ "$PYTHON_VERSION" == 3.9 || "$PYTHON_VERSION" == 3.9.* ]]; then
-          uv pip install --system -r requirements.dev.txt --overrides overrides-3.9.txt
-        else
-          uv pip install --system -r requirements.dev.txt
-        fi
-      env:
-        PYTHON_VERSION: ${{ inputs.version }}
+        uv pip install --system -r requirements.dev.txt
