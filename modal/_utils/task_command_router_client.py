@@ -458,7 +458,9 @@ class TaskCommandRouterClient:
                         file_descriptor=file_descriptor,
                     )
 
-                    # Scope auth retry strictly to the initial send (where headers/auth are sent).
+                    # Auth retry is scoped to a single refresh per streaming attempt. While auth metadata is
+                    # sent on request start, UNAUTHENTICATED may sometimes surface during iteration,
+                    # so we handle it at both send and receive boundaries.
                     try:
                         await s.send_message(req, end=True)
                     except GRPCError as exc:
@@ -471,11 +473,23 @@ class TaskCommandRouterClient:
                     # We successfully authenticated, reset the auth retry count.
                     num_auth_retries = 0
 
-                    async for item in s:
-                        # Reset retry backoff after any successful chunk.
-                        delay_secs = self.stream_stdio_retry_delay_secs
-                        offset += len(item.data)
-                        yield item
+                    auth_retry = False
+                    try:
+                        async for item in s:
+                            # Reset retry backoff after any successful chunk.
+                            delay_secs = self.stream_stdio_retry_delay_secs
+                            offset += len(item.data)
+                            yield item
+                    except GRPCError as exc:
+                        if exc.status == Status.UNAUTHENTICATED and num_auth_retries < 1:
+                            await self._refresh_jwt()
+                            num_auth_retries += 1
+                            auth_retry = True
+                        else:
+                            raise
+
+                    if auth_retry:
+                        continue
 
                 # We successfully streamed all output.
                 return
