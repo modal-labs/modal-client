@@ -186,5 +186,6 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
-            yield response
+        with grpc_error_converter():
+            async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
+                yield response
