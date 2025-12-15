@@ -1007,7 +1007,7 @@ class _ContainerIOManager:
         # Start a debugger if the worker tells us to
         if int(restored_state.get("snapshot_debug", 0)):
             logger.debug("Entering snapshot debugger")
-            breakpoint()
+            breakpoint()  # noqa: T100
 
         # Local ContainerIOManager state.
         for key in ["task_id", "function_id"]:

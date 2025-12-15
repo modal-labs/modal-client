@@ -467,16 +467,18 @@ class _Mount(_Object, type_prefix="mo"):
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
             all_files = await loop.run_in_executor(exe, _select_files, entries)
+            logger.debug(f"Computing checksums for {len(all_files)} files using {exe._max_workers} worker threads")
 
-            futs = []
+            # Yield FileUploadSpec objects lazily as they're consumed by async_map downstream.
+            # async_map's concurrency limit provides natural backpressure, so we don't need
+            # a separate semaphore here. This keeps memory bounded without creating all tasks upfront.
             for local_filename, remote_filename in all_files:
-                logger.debug(f"Mounting {local_filename} as {remote_filename}")
-                futs.append(loop.run_in_executor(exe, get_file_upload_spec_from_path, local_filename, remote_filename))
-
-            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} worker threads")
-            for fut in asyncio.as_completed(futs):
                 try:
-                    yield await fut
+                    logger.debug(f"Mounting {local_filename} as {remote_filename}")
+                    file_spec = await loop.run_in_executor(
+                        exe, get_file_upload_spec_from_path, local_filename, remote_filename
+                    )
+                    yield file_spec
                 except FileNotFoundError as exc:
                     # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
                     logger.info(f"Ignoring file not found: {exc}")
@@ -548,7 +550,11 @@ class _Mount(_Object, type_prefix="mo"):
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
-                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
+                if file_spec.content is None:
+                    content = await asyncio.to_thread(file_spec.read_content)
+                else:
+                    content = file_spec.content
+                request2 = api_pb2.MountPutFileRequest(data=content, sha256_hex=file_spec.sha256_hex)
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
@@ -770,13 +776,13 @@ async def _create_single_client_dependency_mount(
     if check_if_exists:
         try:
             await Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate.aio(client)
-            print(f"➖ Found existing mount {mount_name} in global namespace.")
+            print(f"➖ Found existing mount {mount_name} in global namespace.")  # noqa: T201
             return
         except modal.exception.NotFoundError:
             pass
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpd:
-        print(f"📦 Building {mount_name}.")
+        print(f"📦 Building {mount_name}.")  # noqa: T201
         requirements = os.path.join(os.path.dirname(__file__), f"builder/{builder_version}.txt")
         cmd = " ".join(
             [
@@ -805,11 +811,11 @@ async def _create_single_client_dependency_mount(
         await proc.wait()
         if proc.returncode:
             stdout, stderr = await proc.communicate()
-            print(stdout.decode("utf-8"))
-            print(stderr.decode("utf-8"))
+            print(stdout.decode("utf-8"))  # noqa: T201
+            print(stderr.decode("utf-8"))  # noqa: T201
             raise RuntimeError(f"Subprocess failed with {proc.returncode}")
 
-        print(f"🌐 Downloaded and unpacked {mount_name} packages to {tmpd}.")
+        print(f"🌐 Downloaded and unpacked {mount_name} packages to {tmpd}.")  # noqa: T201
 
         python_mount = Mount._from_local_dir(tmpd, remote_path=REMOTE_PACKAGES_PATH)
 
@@ -833,11 +839,11 @@ async def _create_single_client_dependency_mount(
                         allow_overwrite=allow_overwrite,
                         client=client,
                     )
-                    print(f"✅ Deployed mount {mount_name} to global namespace.")
+                    print(f"✅ Deployed mount {mount_name} to global namespace.")  # noqa: T201
                 except GRPCError as e:
-                    print(f"⚠️ Mount creation failed with {e.status}: {e.message}")
+                    print(f"⚠️ Mount creation failed with {e.status}: {e.message}")  # noqa: T201
             else:
-                print(f"Dry run - skipping deployment of mount {mount_name}")
+                print(f"Dry run - skipping deployment of mount {mount_name}")  # noqa: T201
 
 
 async def _create_client_dependency_mounts(

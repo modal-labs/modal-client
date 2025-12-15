@@ -33,11 +33,11 @@ import click
 import click.testing
 import grpclib.server
 import jwt
-import pkg_resources
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 from grpclib.events import RecvRequest, listen
+from packaging.version import Version
 
 from modal import __version__, config
 from modal._functions import _Function
@@ -328,7 +328,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "app_id": "ap-x",
                 "deployed_at": datetime.datetime.now().timestamp(),
                 "version": 1,
-                "client_version": str(pkg_resources.parse_version(__version__)),
+                "client_version": str(Version(__version__)),
                 "deployed_by": "foo-user",
                 "tag": "latest",
             }
@@ -463,6 +463,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_call_result: Any = None
 
         self.flash_container_registrations = {}
+        self.flash_rpc_calls: list[str] = []  # Track Flash RPC calls in order
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -504,7 +505,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await asyncio.sleep(60)
         elif client_version == "deprecated":
             pass  # dumb magic fixture constant
-        elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
+        elif Version(client_version) < Version(__version__):
             raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
 
         if event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT):
@@ -781,7 +782,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "app_id": request.app_id,
                 "deployed_at": datetime.datetime.now().timestamp(),
                 "version": current_version + 1,
-                "client_version": str(pkg_resources.parse_version(__version__)),
+                "client_version": str(Version(__version__)),
                 "deployed_by": "foo-user",
                 "tag": "latest",
                 "rollback_version": None,
@@ -2704,11 +2705,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FlashContainerRegister(self, stream):
         request: api_pb2.FlashContainerRegisterRequest = await stream.recv_message()
         self.flash_container_registrations[request.service_name] = f"http://{request.host}:{request.port}"
+        self.flash_rpc_calls.append("register")
         await stream.send_message(api_pb2.FlashContainerRegisterResponse(url=f"http://{request.host}:{request.port}"))
 
     async def FlashContainerDeregister(self, stream):
         request: api_pb2.FlashContainerDeregisterRequest = await stream.recv_message()
         self.flash_container_registrations.pop(request.service_name, None)
+        self.flash_rpc_calls.append("deregister")
         await stream.send_message(Empty())
 
 
