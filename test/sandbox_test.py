@@ -584,8 +584,14 @@ def test_sandbox_snapshot(app, client, servicer):
     assert snapshot_id == "sn-123"
     sb.terminate()
 
-    sandbox_snapshot = SandboxSnapshot.from_id(snapshot_id, client=client)
-    assert sandbox_snapshot.object_id == snapshot_id
+    with servicer.intercept() as ctx:
+        sandbox_snapshot = SandboxSnapshot.from_id(snapshot_id, client=client)
+        assert sandbox_snapshot.object_id == snapshot_id  # snapshot id is immediately available
+        assert len(ctx.calls) == 0
+
+        ctx.add_response("SandboxSnapshotGet", api_pb2.SandboxSnapshotGetResponse(snapshot_id="sn-123"))
+        sandbox_snapshot.hydrate()
+        assert sandbox_snapshot.client == client
 
     sb = Sandbox._experimental_from_snapshot(sandbox_snapshot, client=client)
     sb.terminate()
