@@ -119,7 +119,7 @@ def print_exception(exc: Optional[type[BaseException]], value: Optional[BaseExce
     traceback.print_exception(exc, value, tb)
     if sys.version_info < (3, 11) and value is not None:  # type: ignore
         notes = getattr(value, "__notes__", [])
-        print(*notes, sep="\n", file=sys.stderr)
+        print(*notes, sep="\n", file=sys.stderr)  # noqa: T201
 
 
 def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
