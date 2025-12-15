@@ -185,6 +185,24 @@ def test_shell_mount_path_conflict(servicer, set_env_client):
         expected_stderr="Mount path conflict",
     )
 
+    run_cli_command(
+        ["shell", "--volume", "a:/mnt/x/", "--volume", "b:/mnt/x"],
+        expected_exit_code=1,
+        expected_stderr="Mount path conflict",
+    )
+
+    run_cli_command(
+        ["shell", "--volume", "a:/mnt/./x", "--volume", "b:/mnt/x"],
+        expected_exit_code=1,
+        expected_stderr="Mount path conflict",
+    )
+
+    run_cli_command(
+        ["shell", "--volume", "a:/mnt/foo/../x", "--volume", "b:/mnt/x"],
+        expected_exit_code=1,
+        expected_stderr="Mount path conflict",
+    )
+
 
 def test_shell_all_shell_command_params_have_explicit_param_decls():
     sig = inspect.signature(shell)

@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import inspect
 import platform
+import posixpath
 import shlex
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Optional
@@ -181,6 +182,7 @@ def _start_shell_from_image(
         vol_name, mount_path = _parse_mount(vol_arg)
         if not mount_path:
             mount_path = f"/mnt/{vol_name}"
+        mount_path = posixpath.normpath(mount_path)  # normalize e.g. /mnt/x/ -> /mnt/x, /mnt/../x -> /x
         mount_paths.append(mount_path)
         volumes[mount_path] = Volume.from_name(vol_name)
 
@@ -191,8 +193,9 @@ def _start_shell_from_image(
         if not mount_path:
             mount_path = f"/mnt/{local_path.name}"
 
+        mount_path = posixpath.normpath(mount_path)
         remote_path = PurePosixPath(mount_path)
-        mount_paths.append(str(remote_path))
+        mount_paths.append(mount_path)
         if local_path.is_dir():
             m = _Mount._from_local_dir(local_path, remote_path=remote_path)
         else:
