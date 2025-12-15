@@ -403,7 +403,10 @@ class TaskCommandRouterClient:
                 )
                 return
 
+            logger.debug(f"Refreshing JWT for exec with task ID {self._task_id}")
             resp = await fetch_command_router_access(self._server_client, self._task_id)
+            logger.debug(f"Finished refreshing JWT for exec with task ID {self._task_id}")
+
             # Ensure the server URL remains stable for the lifetime of this client.
             assert resp.url == self._server_url, "Task router URL changed during session"
             self._jwt = resp.jwt
@@ -434,7 +437,8 @@ class TaskCommandRouterClient:
         delay_secs = self.stream_stdio_retry_delay_secs
         delay_factor = self.stream_stdio_retry_delay_factor
         num_retries_remaining = self.stream_stdio_max_retries
-        num_auth_retries = 0
+        # Flag to track if we've already retried authentication during this streaming attempt.
+        did_auth_retry = False
 
         async def sleep_and_update_delay_and_num_retries_remaining(e: Exception):
             nonlocal delay_secs, num_retries_remaining
@@ -463,28 +467,22 @@ class TaskCommandRouterClient:
                     # so we handle it at both send and receive boundaries.
                     try:
                         await s.send_message(req, end=True)
-                    except GRPCError as exc:
-                        if exc.status == Status.UNAUTHENTICATED and num_auth_retries < 1:
-                            await self._refresh_jwt()
-                            num_auth_retries += 1
-                            continue
-                        raise
-
-                    # We successfully authenticated, reset the auth retry count.
-                    num_auth_retries = 0
-
-                    try:
                         async for item in s:
                             # Reset retry backoff after any successful chunk.
                             delay_secs = self.stream_stdio_retry_delay_secs
                             offset += len(item.data)
                             yield item
                     except GRPCError as exc:
-                        if exc.status == Status.UNAUTHENTICATED and num_auth_retries < 1:
+                        if exc.status == Status.UNAUTHENTICATED and not did_auth_retry:
                             await self._refresh_jwt()
-                            num_auth_retries += 1
+                            # Mark that we've retried authentication for this streaming attempt, to
+                            # prevent subsequent retries.
+                            did_auth_retry = True
                             continue
                         raise
+
+                    # We successfully authenticated, reset the auth retry flag.
+                    did_auth_retry = False
 
                 # We successfully streamed all output.
                 return
