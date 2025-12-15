@@ -8,7 +8,6 @@ import urllib.parse
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
-import modal
 import modal._utils.grpc_utils
 from modal import Client
 from modal.exception import AuthError, ConnectionError, InvalidError, ServerWarning

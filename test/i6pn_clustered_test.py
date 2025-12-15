@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2024
-import modal
 import modal.experimental
 from modal import App
 
