@@ -437,7 +437,8 @@ class TaskCommandRouterClient:
         delay_secs = self.stream_stdio_retry_delay_secs
         delay_factor = self.stream_stdio_retry_delay_factor
         num_retries_remaining = self.stream_stdio_max_retries
-        # Flag to track if we've already retried authentication during this streaming attempt.
+        # Flag to prevent infinite auth retries in the event that the JWT
+        # refresh yields an invalid JWT somehow or that the JWT is otherwise invalid.
         did_auth_retry = False
 
         async def sleep_and_update_delay_and_num_retries_remaining(e: Exception):
