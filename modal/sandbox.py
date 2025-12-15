@@ -647,7 +647,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         path_bytes = PurePosixPath(path).as_posix().encode("utf8")
         req = sr_pb2.TaskSnapshotDirectoryRequest(task_id=task_id, path=path_bytes)
         res = await command_router_client.snapshot_directory(req)
-        return await _Image.from_id(res.image_id)
+        return _Image._new_hydrated(res.image_id, self._client, None)
 
     # Live handle methods
 
