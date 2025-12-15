@@ -473,7 +473,6 @@ class TaskCommandRouterClient:
                     # We successfully authenticated, reset the auth retry count.
                     num_auth_retries = 0
 
-                    auth_retry = False
                     try:
                         async for item in s:
                             # Reset retry backoff after any successful chunk.
@@ -484,12 +483,8 @@ class TaskCommandRouterClient:
                         if exc.status == Status.UNAUTHENTICATED and num_auth_retries < 1:
                             await self._refresh_jwt()
                             num_auth_retries += 1
-                            auth_retry = True
-                        else:
-                            raise
-
-                    if auth_retry:
-                        continue
+                            continue
+                        raise
 
                 # We successfully streamed all output.
                 return
