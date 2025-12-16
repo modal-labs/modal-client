@@ -178,12 +178,6 @@ def test_python_version(builder_version, servicer, client, python_version):
     assert re.match(rf"FROM python:{expected_dockerhub_python}-slim-{expected_dockerhub_debian}", commands)
 
     image = Image.micromamba() if python_version is None else Image.micromamba(python_version)
-    if python_version is None and builder_version == "2023.12":
-        expected_python = "3.9"
-        with pytest.raises(InvalidError, match="Please specific a valid python_version"):
-            build_image(image, client)
-        return
-
     build_image(image, client)
     commands = get_all_dockerfile_commands(image.object_id, servicer)
     assert re.search(rf"install.* python={expected_python}", commands)
