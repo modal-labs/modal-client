@@ -87,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false # run all variants across python versions/os to completion
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
         os: ["ubuntu-24.04"]
         proto-version: ["latest"]
         include:
@@ -101,7 +101,7 @@ jobs:
             python-version: "3.10"
             proto-version: "latest"
           - os: "ubuntu-24.04"
-            python-version: "3.9"
+            python-version: "3.10"
             proto-version: "3.19"
 
     runs-on: ${{ matrix.os }}
@@ -141,15 +141,15 @@ jobs:
       matrix:
         include:
           - image-builder-version: "2024.04"
-            python-version: "3.9"
+            python-version: "3.10"
           - image-builder-version: "2024.04"
             python-version: "3.12"
           - image-builder-version: "2024.10"
-            python-version: "3.9"
+            python-version: "3.10"
           - image-builder-version: "2024.10"
             python-version: "3.13"
           - image-builder-version: "2025.06"
-            python-version: "3.9"
+            python-version: "3.10"
           - image-builder-version: "2025.06"
             python-version: "3.13"
 
