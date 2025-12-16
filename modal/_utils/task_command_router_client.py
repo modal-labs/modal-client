@@ -18,6 +18,7 @@ from modal.exception import ConflictError, ExecTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
+from .._grpc_client import grpc_error_converter
 from .async_utils import aclosing
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel
 
@@ -247,9 +248,10 @@ class TaskCommandRouterClient:
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
         """Start an exec'd command, properly retrying on transient errors."""
-        return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(self._stub.TaskExecStart, request)
-        )
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskExecStart, request)
+            )
 
     async def exec_stdio_read(
         self,
@@ -284,9 +286,10 @@ class TaskCommandRouterClient:
         else:
             raise ValueError(f"Invalid file descriptor: {file_descriptor}")
 
-        async with aclosing(self._stream_stdio(task_id, exec_id, sr_fd, deadline)) as stream:
-            async for item in stream:
-                yield item
+        with grpc_error_converter():
+            async with aclosing(self._stream_stdio(task_id, exec_id, sr_fd, deadline)) as stream:
+                async for item in stream:
+                    yield item
 
     async def exec_stdin_write(
         self, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool
@@ -304,9 +307,10 @@ class TaskCommandRouterClient:
               from the RPC itself.
         """
         request = sr_pb2.TaskExecStdinWriteRequest(task_id=task_id, exec_id=exec_id, offset=offset, data=data, eof=eof)
-        return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(self._stub.TaskExecStdinWrite, request)
-        )
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskExecStdinWrite, request)
+            )
 
     async def exec_poll(
         self, task_id: str, exec_id: str, deadline: Optional[float] = None
@@ -330,15 +334,17 @@ class TaskCommandRouterClient:
         timeout = deadline - time.monotonic() if deadline is not None else None
         if timeout is not None and timeout <= 0:
             raise ExecTimeoutError(f"Deadline exceeded while polling for exec {exec_id}")
-        try:
-            return await asyncio.wait_for(
-                call_with_retries_on_transient_errors(
-                    lambda: self._call_with_auth_retry(self._stub.TaskExecPoll, request)
-                ),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            raise ExecTimeoutError(f"Deadline exceeded while polling for exec {exec_id}")
+
+        with grpc_error_converter():
+            try:
+                return await asyncio.wait_for(
+                    call_with_retries_on_transient_errors(
+                        lambda: self._call_with_auth_retry(self._stub.TaskExecPoll, request)
+                    ),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                raise ExecTimeoutError(f"Deadline exceeded while polling for exec {exec_id}")
 
     async def exec_wait(
         self,
@@ -361,28 +367,30 @@ class TaskCommandRouterClient:
         timeout = deadline - time.monotonic() if deadline is not None else None
         if timeout is not None and timeout <= 0:
             raise ExecTimeoutError(f"Deadline exceeded while waiting for exec {exec_id}")
-        try:
-            return await asyncio.wait_for(
-                call_with_retries_on_transient_errors(
-                    # We set a 60s timeout here to avoid waiting forever if there's an unanticipated hang
-                    # due to a networking issue. call_with_retries_on_transient_errors will retry if the
-                    # timeout is exceeded, so we'll retry every 60s until the command exits.
-                    #
-                    # Safety:
-                    # * If just the task shuts down, the task command router will return a NOT_FOUND error,
-                    #   and we'll stop retrying.
-                    # * If the task shut down AND the worker shut down, this could
-                    #   infinitely retry. For callers without an exec deadline, this
-                    #   could hang indefinitely.
-                    lambda: self._call_with_auth_retry(self._stub.TaskExecWait, request, timeout=60),
-                    base_delay_secs=1,  # Retry after 1s since total time is expected to be long.
-                    delay_factor=1,  # Fixed delay.
-                    max_retries=None,  # Retry forever.
-                ),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            raise ExecTimeoutError(f"Deadline exceeded while waiting for exec {exec_id}")
+
+        with grpc_error_converter():
+            try:
+                return await asyncio.wait_for(
+                    call_with_retries_on_transient_errors(
+                        # We set a 60s timeout here to avoid waiting forever if there's an unanticipated hang
+                        # due to a networking issue. call_with_retries_on_transient_errors will retry if the
+                        # timeout is exceeded, so we'll retry every 60s until the command exits.
+                        #
+                        # Safety:
+                        # * If just the task shuts down, the task command router will return a NOT_FOUND error,
+                        #   and we'll stop retrying.
+                        # * If the task shut down AND the worker shut down, this could
+                        #   infinitely retry. For callers without an exec deadline, this
+                        #   could hang indefinitely.
+                        lambda: self._call_with_auth_retry(self._stub.TaskExecWait, request, timeout=60),
+                        base_delay_secs=1,  # Retry after 1s since total time is expected to be long.
+                        delay_factor=1,  # Fixed delay.
+                        max_retries=None,  # Retry forever.
+                    ),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                raise ExecTimeoutError(f"Deadline exceeded while waiting for exec {exec_id}")
 
     async def _refresh_jwt(self) -> None:
         """Refresh JWT from the server and update internal state."""
