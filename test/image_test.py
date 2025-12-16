@@ -1407,6 +1407,9 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         img = Image.debian_slim()
         assert get_hash(img) == "183b86356d9eb3bd3d78adf70f16b35b63ba9bf4e1816b0cacc549541718e555"
 
+        img = Image.micromamba()
+        assert get_hash(img) == "6135a0c58a6f7dc908372ccbbaedfcf80b0fdc8425a89af8a915f38eed9a4b01"
+
     img = Image.debian_slim(python_version="3.12")
     assert get_hash(img) == "53b6205e1dc2a0ca7ebed862e4f3a5887367587be13e81f65a4ac8f8a1e9be91"
 
@@ -1414,10 +1417,6 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         # Client dependencies on 3.12 are different
         img = Image.from_registry("ubuntu:22.04")
         assert get_hash(img) == "b5f1cc544a412d1b23a5ebf9a8859ea9a86975ecbc7325b83defc0ce3fe956d3"
-
-        img = Image.micromamba()
-        img_explicit = Image.micromamba(python_version="{}.{}".format(*sys.version_info))
-        assert get_hash(img) == get_hash(img_explicit)
 
         img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
         assert get_hash(img) == "0aec2f66f28ee7511c1b36604214ae7b40d9bc1fa3e6b8883001e933a966ff78"
