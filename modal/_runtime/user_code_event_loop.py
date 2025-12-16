@@ -2,7 +2,6 @@
 # ruff: noqa: E402
 import asyncio
 import signal
-import sys
 
 
 class UserCodeEventLoop:
@@ -26,8 +25,7 @@ class UserCodeEventLoop:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.loop.run_until_complete(self.loop.shutdown_asyncgens())
-        if sys.version_info[:2] >= (3, 9):
-            self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
+        self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
 
         for task in self.tasks:
             task.cancel()
@@ -64,10 +62,7 @@ class UserCodeEventLoop:
             self.loop.add_signal_handler(signal.SIGINT, _sigint_handler)
 
         # Before Python 3.9 there is no argument to Task.cancel
-        if sys.version_info[:2] >= (3, 9):
-            self.loop.add_signal_handler(signal.SIGUSR1, task.cancel, "Input was cancelled by user")
-        else:
-            self.loop.add_signal_handler(signal.SIGUSR1, task.cancel)
+        self.loop.add_signal_handler(signal.SIGUSR1, task.cancel, "Input was cancelled by user")
 
         try:
             return self.loop.run_until_complete(task)

@@ -22,8 +22,6 @@ from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError, InvalidError
 from modal_proto import api_pb2
 
-from .supports.skip import skip_old_py
-
 
 @pytest.mark.asyncio
 async def test_roundtrip(servicer, client):
@@ -43,7 +41,6 @@ async def test_roundtrip(servicer, client):
         assert q.object_id == q_roundtrip.object_id
 
 
-@skip_old_py("random.randbytes() was introduced in python 3.9", (3, 9))
 @pytest.mark.asyncio
 async def test_asgi_roundtrip():
     rand = random.Random(42)

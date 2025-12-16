@@ -121,16 +121,16 @@ def test_python_version_validation(builder_version):
 
 
 def test_dockerhub_python_version(builder_version):
-    assert _dockerhub_python_version(builder_version, "3.9.1") == "3.9.1"
+    assert _dockerhub_python_version(builder_version, "3.10.1") == "3.10.1"
 
     expected_39_full = {
-        "2023.12": "3.9.15",
-        "2024.04": "3.9.19",
-        "2024.10": "3.9.20",
-        "2025.06": "3.9.22",
-        "PREVIEW": "3.9.22",
+        "2023.12": "3.10.8",
+        "2024.04": "3.10.14",
+        "2024.10": "3.10.15",
+        "2025.06": "3.10.17",
+        "PREVIEW": "3.10.17",
     }[builder_version]
-    assert _dockerhub_python_version(builder_version, "3.9") == expected_39_full
+    assert _dockerhub_python_version(builder_version, "3.10") == expected_39_full
 
     v = _dockerhub_python_version(builder_version, None).split(".")
     assert len(v) == 3
@@ -180,6 +180,10 @@ def test_python_version(builder_version, servicer, client, python_version):
     image = Image.micromamba() if python_version is None else Image.micromamba(python_version)
     if python_version is None and builder_version == "2023.12":
         expected_python = "3.9"
+        with pytest.raises(InvalidError, match="Please specific a valid python_version"):
+            build_image(image, client)
+        return
+
     build_image(image, client)
     commands = get_all_dockerfile_commands(image.object_id, servicer)
     assert re.search(rf"install.* python={expected_python}", commands)
@@ -369,11 +373,11 @@ def test_debian_slim_apt_install(builder_version, servicer, client):
 
 
 def test_from_registry_add_python(builder_version, servicer, client):
-    image = Image.from_registry("ubuntu", add_python="3.9")
+    image = Image.from_registry("ubuntu", add_python="3.10")
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
     commands = layers[0].dockerfile_commands
-    assert layers[0].context_mount_id == "mo-py39"
+    assert layers[0].context_mount_id == "mo-py310"
     assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
     assert any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
 

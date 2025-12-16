@@ -65,11 +65,11 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVI
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
-    "PREVIEW": ["3.9", "3.10", "3.11", "3.12", "3.13"],
-    "2025.06": ["3.9", "3.10", "3.11", "3.12", "3.13"],
-    "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
-    "2024.04": ["3.9", "3.10", "3.11", "3.12"],
-    "2023.12": ["3.9", "3.10", "3.11", "3.12"],
+    "PREVIEW": ["3.10", "3.11", "3.12", "3.13"],
+    "2025.06": ["3.10", "3.11", "3.12", "3.13"],
+    "2024.10": ["3.10", "3.11", "3.12", "3.13"],
+    "2024.04": ["3.10", "3.11", "3.12"],
+    "2023.12": ["3.10", "3.11", "3.12"],
 }
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "builder"
@@ -1744,7 +1744,7 @@ class _Image(_Object, type_prefix="im"):
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             nonlocal python_version
             if version == "2023.12" and python_version is None:
-                python_version = "3.9"  # Backcompat for old hardcoded default param
+                raise InvalidError("Please specific a valid python_version")
             validated_python_version = _validate_python_version(python_version, version)
             micromamba_version = _base_image_config("micromamba", version)
             tag = f"mambaorg/micromamba:{micromamba_version}"
