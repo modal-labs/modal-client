@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
+import builtins
 import concurrent.futures
 import enum
 import functools
@@ -19,7 +20,6 @@ from typing import (
     Awaitable,
     BinaryIO,
     Callable,
-    List,
     Optional,
     Union,
 )
@@ -186,7 +186,7 @@ class _VolumeManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> List["_Volume"]:
+    ) -> builtins.list["_Volume"]:
         """Return a list of hydrated Volume objects.
 
         **Examples:**
