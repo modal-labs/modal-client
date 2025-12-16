@@ -133,9 +133,7 @@ class _FlashManager:
                         )
                         first_registration = False
                 else:
-                    if first_registration and (time.monotonic() - start_time < self.startup_timeout):
-                        continue
-                    else:
+                    if not (first_registration and (time.monotonic() - start_time < self.startup_timeout)):
                         logger.error(
                             f"[Modal Flash] Deregistering container {self.task_id} on {self.tunnel.url} "
                             f"due to error: {port_check_error}, num_failures: {self.num_failures}"
@@ -682,7 +680,7 @@ def _http_server(
         http_config=api_pb2.HTTPConfig(
             port=port,
             proxy_regions=proxy_regions,
-            startup_timeout=startup_timeout or 0,
+            startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period or 0,
         )
     )
