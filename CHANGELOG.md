@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.6.dev4 (2025-12-16)
+
+* Fixed bug where iterating on a Sandbox exec output stream could raise unauthenticated errors
+
+
 ### 1.2.5 (2025-12-12)
 
 - It is now possible to set a custom `name=` for a Function without using `serialized=True`. This can be useful when decorating a function multiple times, e.g. applying multiple Modal configurations to the same implementation.
