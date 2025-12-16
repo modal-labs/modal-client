@@ -1099,7 +1099,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def watch(
         self,
         path: str,
-        filter: Optional[list[FileWatchEventType]] = None,
+        filter: Optional[builtins.list[FileWatchEventType]] = None,
         recursive: Optional[bool] = None,
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
