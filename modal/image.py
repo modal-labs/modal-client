@@ -1742,9 +1742,6 @@ class _Image(_Object, type_prefix="im"):
         """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            nonlocal python_version
-            if version == "2023.12" and python_version is None:
-                raise InvalidError("Please specific a valid python_version")
             validated_python_version = _validate_python_version(python_version, version)
             micromamba_version = _base_image_config("micromamba", version)
             tag = f"mambaorg/micromamba:{micromamba_version}"
