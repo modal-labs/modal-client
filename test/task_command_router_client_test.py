@@ -176,6 +176,77 @@ async def test_exec_stdio_read_auth_retry_resumes_from_correct_offset(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_exec_stdio_read_auth_retry_on_receive(monkeypatch):
+    # send_message succeeds but the server rejects auth during iteration; we should refresh once and resume.
+    pieces = [b"hello", b"world"]
+
+    client = TaskCommandRouterClient(
+        server_client=None,
+        task_id="sb-1",
+        server_url="https://router.test",
+        jwt="t",
+        channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
+    )
+
+    num_attempts_made = 0
+
+    class _Stream:
+        def __init__(self, timeout: Optional[float]):
+            self._timeout = timeout
+            self._emitted = 0
+            self._last_req: Optional[sr_pb2.TaskExecStdioReadRequest] = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201 - test helper
+            return False
+
+        async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
+            self._last_req = req
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            assert self._last_req is not None
+            start_idx = _start_index_for_offset(pieces, int(self._last_req.offset))
+            # On first attempt, fail auth on receive before any items.
+            if num_attempts_made == 1 and self._emitted == 0:
+                raise GRPCError(Status.UNAUTHENTICATED, "auth required")
+            next_idx = start_idx + self._emitted
+            if next_idx >= len(pieces):
+                raise StopAsyncIteration
+            self._emitted += 1
+            return sr_pb2.TaskExecStdioReadResponse(data=pieces[next_idx])
+
+    def _open(timeout: Optional[float] = None):
+        nonlocal num_attempts_made
+        num_attempts_made += 1
+        return _Stream(timeout)
+
+    num_refreshes_made = 0
+
+    async def _refresh_jwt():
+        nonlocal num_refreshes_made
+        num_refreshes_made += 1
+        client._jwt = "t2"
+
+    client._refresh_jwt = _refresh_jwt  # type: ignore[assignment]
+    client._stub = _Stub(_open)  # type: ignore[assignment]
+
+    out: List[bytes] = []
+    async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
+        out.append(item.data)
+
+    assert out == pieces
+    assert num_refreshes_made == 1
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset(monkeypatch):
     # 2 pieces, then transient error; then resume with remaining pieces.
     pieces = [b"one", b"two", b"three"]
