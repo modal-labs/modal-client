@@ -694,7 +694,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Experimental: Clustered functions
         cluster_size: Optional[int] = None,
         rdma: Optional[bool] = None,
-        max_inputs: Optional[int] = None,
+        single_use: bool = False,
         ephemeral_disk: Optional[int] = None,
         include_source: bool = True,
         experimental_options: Optional[dict[str, str]] = None,
@@ -809,14 +809,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             for arg in inspect.signature(info.raw_f).parameters.values():
                 if arg.default is not inspect.Parameter.empty:
                     raise InvalidError(f"Modal batched function {func_name} does not accept default arguments.")
-
-        if max_inputs is not None:
-            if not isinstance(max_inputs, int):
-                raise InvalidError(f"`max_inputs` must be an int, not {type(max_inputs).__name__}")
-            if max_inputs <= 0:
-                raise InvalidError("`max_inputs` must be positive")
-            if max_inputs > 1:
-                raise InvalidError("Only `max_inputs=1` is currently supported")
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
@@ -1024,7 +1016,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     object_dependencies=object_dependencies,
                     block_network=block_network,
                     untrusted=restrict_modal_access,
-                    max_inputs=max_inputs or 0,
+                    single_use=single_use,
+                    max_inputs=int(single_use),  # TODO(michael) remove after worker rollover
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                     scheduler_placement=scheduler_placement,
                     is_class=info.is_service_class(),
