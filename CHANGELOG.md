@@ -6,6 +6,16 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.7.dev1 (2025-12-16)
+
+- The minimum supported Python version is now 3.10, because Python 3.9 has reached EOL.
+- Images built with `modal.Image.micromamba()` using the 2023.12 [Image Builder Version](https://modal.com/docs/guide/images#image-builder-updates) will now use a Python version that matches their local environment by default, rather than defaulting to Python 3.9.
+
+
+#### 1.2.6 (2025-12-16)
+
+- Fixed bug where iterating on a `modal.Sandbox.exec` output stream could raise unauthenticated errors.
+
 ### 1.2.5 (2025-12-12)
 
 - It is now possible to set a custom `name=` for a Function without using `serialized=True`. This can be useful when decorating a function multiple times, e.g. applying multiple Modal configurations to the same implementation.

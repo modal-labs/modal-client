@@ -87,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false # run all variants across python versions/os to completion
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         os: ["ubuntu-24.04"]
         proto-version: ["latest"]
         include:
@@ -101,8 +101,8 @@ jobs:
             python-version: "3.10"
             proto-version: "latest"
           - os: "ubuntu-24.04"
-            python-version: "3.9"
-            proto-version: "3.19"
+            python-version: "3.10"
+            proto-version: "3.20"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -141,15 +141,15 @@ jobs:
       matrix:
         include:
           - image-builder-version: "2024.04"
-            python-version: "3.9"
+            python-version: "3.10"
           - image-builder-version: "2024.04"
             python-version: "3.12"
           - image-builder-version: "2024.10"
-            python-version: "3.9"
+            python-version: "3.10"
           - image-builder-version: "2024.10"
             python-version: "3.13"
           - image-builder-version: "2025.06"
-            python-version: "3.9"
+            python-version: "3.10"
           - image-builder-version: "2025.06"
             python-version: "3.14"
 
@@ -169,7 +169,7 @@ jobs:
         run: |
           python -m venv venv
           source venv/bin/activate
-          if [ "${{ matrix.python-version }}" == "3.9" ]; then
+          if [ "${{ matrix.python-version }}" == "3.10" ]; then
             pip install grpcio-tools==1.48.2 grpclib==0.4.7;
           elif [ "${{ matrix.python-version }}" == "3.12" ]; then
             pip install grpcio-tools==1.59.2 grpclib==0.4.7;

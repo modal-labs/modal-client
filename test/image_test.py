@@ -121,16 +121,16 @@ def test_python_version_validation(builder_version):
 
 
 def test_dockerhub_python_version(builder_version):
-    assert _dockerhub_python_version(builder_version, "3.9.1") == "3.9.1"
+    assert _dockerhub_python_version(builder_version, "3.10.1") == "3.10.1"
 
     expected_39_full = {
-        "2023.12": "3.9.15",
-        "2024.04": "3.9.19",
-        "2024.10": "3.9.20",
-        "2025.06": "3.9.22",
-        "PREVIEW": "3.9.22",
+        "2023.12": "3.10.8",
+        "2024.04": "3.10.14",
+        "2024.10": "3.10.15",
+        "2025.06": "3.10.17",
+        "PREVIEW": "3.10.17",
     }[builder_version]
-    assert _dockerhub_python_version(builder_version, "3.9") == expected_39_full
+    assert _dockerhub_python_version(builder_version, "3.10") == expected_39_full
 
     v = _dockerhub_python_version(builder_version, None).split(".")
     assert len(v) == 3
@@ -178,8 +178,6 @@ def test_python_version(builder_version, servicer, client, python_version):
     assert re.match(rf"FROM python:{expected_dockerhub_python}-slim-{expected_dockerhub_debian}", commands)
 
     image = Image.micromamba() if python_version is None else Image.micromamba(python_version)
-    if python_version is None and builder_version == "2023.12":
-        expected_python = "3.9"
     build_image(image, client)
     commands = get_all_dockerfile_commands(image.object_id, servicer)
     assert re.search(rf"install.* python={expected_python}", commands)
@@ -369,11 +367,11 @@ def test_debian_slim_apt_install(builder_version, servicer, client):
 
 
 def test_from_registry_add_python(builder_version, servicer, client):
-    image = Image.from_registry("ubuntu", add_python="3.9")
+    image = Image.from_registry("ubuntu", add_python="3.10")
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
     commands = layers[0].dockerfile_commands
-    assert layers[0].context_mount_id == "mo-py39"
+    assert layers[0].context_mount_id == "mo-py310"
     assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
     assert any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
 
@@ -1409,6 +1407,9 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         img = Image.debian_slim()
         assert get_hash(img) == "183b86356d9eb3bd3d78adf70f16b35b63ba9bf4e1816b0cacc549541718e555"
 
+        img = Image.micromamba()
+        assert get_hash(img) == "6135a0c58a6f7dc908372ccbbaedfcf80b0fdc8425a89af8a915f38eed9a4b01"
+
     img = Image.debian_slim(python_version="3.12")
     assert get_hash(img) == "53b6205e1dc2a0ca7ebed862e4f3a5887367587be13e81f65a4ac8f8a1e9be91"
 
@@ -1416,9 +1417,6 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         # Client dependencies on 3.12 are different
         img = Image.from_registry("ubuntu:22.04")
         assert get_hash(img) == "b5f1cc544a412d1b23a5ebf9a8859ea9a86975ecbc7325b83defc0ce3fe956d3"
-
-        img = Image.micromamba()
-        assert get_hash(img) == "fa883741544ea191ecd197c8f83a1ffe9912575faa8c107c66b3dda761b2e401"
 
         img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
         assert get_hash(img) == "0aec2f66f28ee7511c1b36604214ae7b40d9bc1fa3e6b8883001e933a966ff78"

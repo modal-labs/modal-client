@@ -17,7 +17,7 @@ a [user guide](https://modal.com/docs/guide), and the detailed
 
 ## Installation
 
-**This library requires Python 3.9 – 3.14.**
+**This library requires Python 3.10 – 3.14.**
 
 Install the package with `uv` or `pip`:
 
