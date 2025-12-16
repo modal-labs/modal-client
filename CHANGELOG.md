@@ -6,10 +6,9 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.2.6.dev4 (2025-12-16)
+#### 1.2.6 (2025-12-16)
 
-* Fixed bug where iterating on a Sandbox exec output stream could raise unauthenticated errors
-
+- Fixed bug where iterating on a `modal.Sandbox.exec` output stream could raise unauthenticated errors.
 
 ### 1.2.5 (2025-12-12)
 
