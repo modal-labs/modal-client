@@ -46,6 +46,7 @@ PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
     "3.12": ("20240107", "3.12.1"),
     "3.13": ("20241008", "3.13.0"),
     "3.14": ("20251205", "3.14.2"),
+    "3.14t": ("20251209", "3.14.2t"),
 }
 
 MOUNT_DEPRECATION_MESSAGE_PATTERN = """modal.Mount usage will soon be deprecated.
@@ -798,7 +799,7 @@ async def _create_single_client_dependency_mount(
                 tmpd,
                 "--python-platform",
                 uv_python_platform,
-                "--python-version",
+                "--python",
                 python_version,
             ]
         )

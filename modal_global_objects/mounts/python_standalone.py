@@ -1,7 +1,10 @@
 # Copyright Modal Labs 2022
 import shutil
+import tarfile
 import tempfile
 import urllib.request
+
+import zstandard as zstd
 
 from modal.config import config
 from modal.exception import NotFoundError
@@ -18,10 +21,16 @@ def publish_python_standalone_mount(client, version: str) -> None:
 
     libc = "gnu"
     arch = "x86_64_v3"
-    url = (
-        "https://github.com/indygreg/python-build-standalone/releases/download"
-        + f"/{release}/cpython-{full_version}+{release}-{arch}-unknown-linux-gnu-install_only.tar.gz"
-    )
+
+    root_url = "https://github.com/astral-sh/python-build-standalone/releases/download"
+    if full_version.endswith("t"):
+        # free-threaded python
+        url = (
+            f"{root_url}/{release}/cpython-{full_version[:-1]}+{release}-{arch}-"
+            "unknown-linux-gnu-freethreaded+pgo+lto-full.tar.zst"
+        )
+    else:
+        url = f"{root_url}/{release}/cpython-{full_version}+{release}-{arch}-unknown-linux-gnu-install_only.tar.gz"
 
     profile_environment = config.get("environment")
     mount_name = python_standalone_mount_name(f"{version}-{libc}")
@@ -31,8 +40,17 @@ def publish_python_standalone_mount(client, version: str) -> None:
     except NotFoundError:
         print(f"📦 Unpacking python-build-standalone for {version}-{libc}.")
         with tempfile.TemporaryDirectory() as d:
-            urllib.request.urlretrieve(url, f"{d}/cpython.tar.gz")
-            shutil.unpack_archive(f"{d}/cpython.tar.gz", d)
+            if url.endswith("tar.zst"):
+                urllib.request.urlretrieve(url, f"{d}/cpython.tar.zst")
+                with open(f"{d}/cpython.tar.zst", "rb") as f:
+                    dctx = zstd.ZstdDecompressor()
+                    with dctx.stream_reader(f) as reader:
+                        with tarfile.open(fileobj=reader, mode="r|") as tar:
+                            tar.extractall(d)
+            else:
+                urllib.request.urlretrieve(url, f"{d}/cpython.tar.gz")
+                shutil.unpack_archive(f"{d}/cpython.tar.gz", d)
+
             print(f"🌐 Downloaded and unpacked archive to {d}.")
             python_mount = Mount._from_local_dir(f"{d}/python")
             python_mount._deploy(
