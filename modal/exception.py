@@ -1,4 +1,40 @@
 # Copyright Modal Labs 2022
+"""
+Modal-specific exception types.
+
+## Notes on `grpclib.GRPCError` migration
+
+Historically, the Modal SDK could propagate `grpclib.GRPCError` exceptions out
+to user code.  As of v1.3, we are in the process of gracefully migrating to
+always raising a Modal exception type in these cases. To avoid breaking user
+code that relies on catching `grpclib.GRPCError`, a subset of Modal exception
+types temporarily inherit from `grpclib.GRPCError`.
+
+We encourage users to migrate any code that currently catches `grpclib.GRPCError`
+to instead catch the appropriate Modal exception type. The following mapping
+between GRPCError status codes and Modal exception types is currently in use:
+
+```
+CANCELLED -> ServiceError
+UNKNOWN -> ServiceError
+INVALID_ARGUMENT -> InvalidError
+DEADLINE_EXCEEDED -> ServiceError
+NOT_FOUND -> NotFoundError
+ALREADY_EXISTS -> AlreadyExistsError
+PERMISSION_DENIED -> PermissionDeniedError
+RESOURCE_EXHAUSTED -> ResourceExhaustedError
+FAILED_PRECONDITION -> ConflictError
+ABORTED -> ConflictError
+OUT_OF_RANGE -> InvalidError
+UNIMPLEMENTED -> UnimplementedError
+INTERNAL -> InternalError
+UNAVAILABLE -> ServiceError
+DATA_LOSS -> ServiceError
+UNAUTHENTICATED -> AuthError
+```
+
+"""
+
 import random
 import signal
 from typing import Any, Optional
