@@ -421,14 +421,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         assert len(servicer.function_call_inputs) == 0
 
     res = run_cli_command(["run", f"{app_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
-
-    if sys.version_info >= (3, 14):
-        # Python 3.14 normalizes the type to `int | str`.
-        union_str = "int | str"
-    else:
-        union_str = "typing.Union[int, str]"
-
-    assert f"Parameter `i` has unparseable annotation: {union_str}" in str(res.exception)
+    assert "Parameter `i` has unparseable annotation: typing.Union[int, str]" in str(res.exception)
 
     res = run_cli_command(["run", f"{app_file.as_posix()}::unevaluatable_annot", "--i=20"], expected_exit_code=1)
     assert "Unable to generate command line interface" in str(res.exception)
