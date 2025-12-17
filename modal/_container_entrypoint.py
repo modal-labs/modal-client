@@ -103,7 +103,7 @@ def call_function(
 ):
     async def run_input_async(io_context: IOContext) -> None:
         reset_context = execution_context._set_current_context_ids(
-            io_context.input_ids, io_context.function_call_ids, io_context.attempt_tokens
+            io_context.input_ids, io_context.function_call_ids, io_context.attempt_tokens, io_context.retry_counts
         )
         started_at = time.time()
         async with container_io_manager.handle_input_exception.aio(io_context, started_at):
@@ -142,7 +142,7 @@ def call_function(
     def run_input_sync(io_context: IOContext) -> None:
         started_at = time.time()
         reset_context = execution_context._set_current_context_ids(
-            io_context.input_ids, io_context.function_call_ids, io_context.attempt_tokens
+            io_context.input_ids, io_context.function_call_ids, io_context.attempt_tokens, io_context.retry_counts
         )
         with container_io_manager.handle_input_exception(io_context, started_at):
             # TODO(erikbern): any exception below shouldn't be considered a user exception
