@@ -65,8 +65,8 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVI
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
-    "PREVIEW": ["3.10", "3.11", "3.12", "3.13", "3.14"],
-    "2025.06": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "PREVIEW": ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"],
+    "2025.06": ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"],
     "2024.10": ["3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.10", "3.11", "3.12"],
     "2023.12": ["3.10", "3.11", "3.12"],
@@ -102,7 +102,7 @@ def _validate_python_version(
         python_version = series_version = "{}.{}".format(*sys.version_info)
     elif not isinstance(python_version, str):
         raise InvalidError(f"Python version must be specified as a string, not {type(python_version).__name__}")
-    elif not re.match(r"^3(?:\.\d{1,2}){1,2}(rc\d*)?$", python_version):
+    elif not re.match(r"^3(?:\.\d{1,2}){1,2}(rc\d*)?t?$", python_version):
         raise InvalidError(f"Invalid Python version: {python_version!r}")
     else:
         components = python_version.split(".")
@@ -1828,6 +1828,8 @@ class _Image(_Object, type_prefix="im"):
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
             ]
             python_minor = add_python.split(".")[1]
+            if python_minor.endswith("t"):
+                python_minor = python_minor[:-1]
             if int(python_minor) < 13:
                 # Previous versions did not include the `python` binary, but later ones do.
                 # (The important factor is not the Python version itself, but the standalone dist version.)
