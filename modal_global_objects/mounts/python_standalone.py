@@ -26,8 +26,10 @@ def publish_python_standalone_mount(client, version: str) -> None:
     root_url = "https://github.com/astral-sh/python-build-standalone/releases/download"
     if full_version.endswith("t"):
         # free-threaded python
+        # "cpython-3.14.2+20251209-x86_64_v3-unknown-linux-gnu-freethreaded+debug-full.tar.zst"
+        #         "cpython-3.14.2+20251209-x86_64_v3-unknown-linux-musl-freethreaded+noopt-full.tar.zst"
         url = (
-            f"{root_url}/{release}/cpython-{full_version[:-1]}+{release}-{arch}-"
+            f"{root_url}/{release}/cpython-{full_version[:-1]}+{release}-x86_64_v2-"
             "unknown-linux-gnu-freethreaded+pgo+lto-full.tar.zst"
         )
     else:
@@ -42,6 +44,7 @@ def publish_python_standalone_mount(client, version: str) -> None:
         print(f"📦 Unpacking python-build-standalone for {version}-{libc}.")
         with tempfile.TemporaryDirectory() as d:
             if url.endswith("tar.zst"):
+                PREFIX = "python/install"
                 decompressed_dir = os.path.join(d, "decompressed")
                 os.mkdir(decompressed_dir)
                 urllib.request.urlretrieve(url, f"{d}/cpython.tar.zst")
@@ -49,18 +52,16 @@ def publish_python_standalone_mount(client, version: str) -> None:
                     dctx = zstd.ZstdDecompressor()
                     with dctx.stream_reader(f) as reader:
                         with tarfile.open(fileobj=reader, mode="r|") as tar:
-                            tar.extractall(decompressed_dir)
-
-                install_only = os.path.join(d, "install_only")
-
-                target_mount = f"{d}/python/install"
+                            members = (member for member in tar if member.name.startswith(PREFIX))
+                            for member in members:
+                                member.name = f"python/{member.name.removeprefix(PREFIX)}"
+                                tar.extract(member, path=d)
             else:
                 urllib.request.urlretrieve(url, f"{d}/cpython.tar.gz")
                 shutil.unpack_archive(f"{d}/cpython.tar.gz", d)
-                target_mount = f"{d}/python"
 
             print(f"🌐 Downloaded and unpacked archive to {d}.")
-            python_mount = Mount._from_local_dir(target_mount)
+            python_mount = Mount._from_local_dir(f"{d}/python")
             python_mount._deploy(
                 mount_name,
                 api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
