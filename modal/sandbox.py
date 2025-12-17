@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     import _typeshed
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 
 from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
@@ -34,7 +33,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .container_process import _ContainerProcess
-from .exception import AlreadyExistsError, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
+from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
 from .image import _Image
@@ -261,13 +260,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
-            try:
-                create_resp = await load_context.client.stub.SandboxCreate(create_req)
-            except GRPCError as exc:
-                if exc.status == Status.ALREADY_EXISTS:
-                    raise AlreadyExistsError(exc.message)
-                raise exc
-
+            create_resp = await load_context.client.stub.SandboxCreate(create_req)
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, None)
 
@@ -557,10 +550,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def get_tags(self) -> dict[str, str]:
         """Fetches any tags (key-value pairs) currently attached to this Sandbox from the server."""
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
-        try:
-            resp = await self._client.stub.SandboxTagsGet(req)
-        except GRPCError as exc:
-            raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+        resp = await self._client.stub.SandboxTagsGet(req)
 
         return {tag.tag_name: tag.tag_value for tag in resp.tags}
 
@@ -581,10 +571,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             sandbox_id=self.object_id,
             tags=tags_list,
         )
-        try:
-            await self._client.stub.SandboxTagsSet(req)
-        except GRPCError as exc:
-            raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+        await self._client.stub.SandboxTagsSet(req)
 
     async def snapshot_filesystem(self, timeout: int = 55) -> _Image:
         """Snapshot the filesystem of the Sandbox.
@@ -1025,12 +1012,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 sandbox_name_override=name,
                 sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING,
             )
-        try:
-            restore_resp: api_pb2.SandboxRestoreResponse = await client.stub.SandboxRestore(restore_req)
-        except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS:
-                raise AlreadyExistsError(exc.message)
-            raise exc
+        restore_resp: api_pb2.SandboxRestoreResponse = await client.stub.SandboxRestore(restore_req)
 
         sandbox = await _Sandbox.from_id(restore_resp.sandbox_id, client)
 
@@ -1171,10 +1153,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
             # Fetches a batch of sandboxes.
-            try:
-                resp = await client.stub.SandboxList(req)
-            except GRPCError as exc:
-                raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+            resp = await client.stub.SandboxList(req)
 
             if not resp.sandboxes:
                 return

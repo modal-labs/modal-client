@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Union
 
 import typing_extensions
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
+from grpclib import Status
 from synchronicity.combined_types import MethodWithAio
 
 from modal_proto import api_pb2
@@ -1126,12 +1126,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await load_context.client.stub.FunctionCreate(request)
-                except GRPCError as exc:
-                    if exc.status == Status.INVALID_ARGUMENT:
-                        raise InvalidError(exc.message)
-                    if exc.status == Status.FAILED_PRECONDITION:
-                        raise InvalidError(exc.message)
-                    if exc.message and "Received :status = '413'" in exc.message:
+                except Exception as exc:
+                    if "Received :status = '413'" in str(exc):
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
