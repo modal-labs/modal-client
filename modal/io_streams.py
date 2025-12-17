@@ -153,17 +153,17 @@ class _StreamReaderThroughServer(Generic[T]):
         """Fetch the entire contents of the stream until EOF."""
         logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read starting")
         if self._text:
-            data_str = ""
+            buffer = io.StringIO()
             async for message in _decode_bytes_stream_to_str(self._get_logs()):
-                data_str += message
+                buffer.write(message)
             logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
-            return cast(T, data_str)
+            return cast(T, buffer.getvalue())
         else:
-            data_bytes = b""
+            buffer = io.BytesIO()
             async for message in self._get_logs():
-                data_bytes += message
+                buffer.write(message)
             logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
-            return cast(T, data_bytes)
+            return cast(T, buffer.getvalue())
 
     async def _consume_container_process_stream(self):
         """Consume the container process stream and store messages in the buffer."""

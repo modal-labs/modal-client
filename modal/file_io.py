@@ -227,7 +227,7 @@ class _FileIO(Generic[T]):
 
     async def _wait(self, exec_id: str) -> bytes:
         # The logic here is similar to how output is read from `exec`
-        output = b""
+        output_buffer = io.BytesIO()
         completed = False
         retries_remaining = 10
         while not completed:
@@ -238,7 +238,7 @@ class _FileIO(Generic[T]):
                         break
                     if isinstance(data, Exception):
                         raise data
-                    output += data
+                    output_buffer.write(data)
             except (GRPCError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
@@ -249,7 +249,7 @@ class _FileIO(Generic[T]):
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                 raise
-        return output
+        return output_buffer.getvalue()
 
     def _validate_type(self, data: Union[bytes, str]) -> None:
         if self._binary and isinstance(data, str):
@@ -458,10 +458,23 @@ class _FileIO(Generic[T]):
                 task_id=self._task_id,
             ),
         )
+
+        def end_of_event(buffer: io.BytesIO, boundary: bytes = b"\n\n") -> bool:
+            # a single event may be split across multiple messages
+            # the end of an event is marked by two newlines
+            boundary_token_size = len(boundary)
+            if len(buffer) < boundary_token_size:
+                return False
+            buffer.seek(-boundary_token_size, io.SEEK_END)
+            if buffer.read(boundary_token_size) == boundary:
+                return True
+            buffer.seek(0, io.SEEK_END)
+            return False
+
         async with TaskContext() as tc:
             tc.create_task(self._consume_watch_output(resp.exec_id))
 
-            buffer = b""
+            buffer = io.BytesIO()
             while True:
                 if len(self._watch_output_buffer) > 0:
                     item = self._watch_output_buffer.pop(0)
@@ -469,12 +482,10 @@ class _FileIO(Generic[T]):
                         break
                     if isinstance(item, Exception):
                         raise item
-                    buffer += item
-                    # a single event may be split across multiple messages
-                    # the end of an event is marked by two newlines
-                    if buffer.endswith(b"\n\n"):
+                    buffer.write(item)
+                    if item.endswith(b"\n") and end_of_event(buffer):
                         try:
-                            event_json = json.loads(buffer.strip().decode())
+                            event_json = json.loads(buffer.getvalue().strip().decode())
                             event = FileWatchEvent(
                                 type=FileWatchEventType(event_json["event_type"]),
                                 paths=event_json["paths"],
@@ -484,7 +495,7 @@ class _FileIO(Generic[T]):
                         except (json.JSONDecodeError, KeyError, ValueError):
                             # skip invalid events
                             pass
-                        buffer = b""
+                        buffer = io.BytesIO()
                 else:
                     await asyncio.sleep(0.1)
 
