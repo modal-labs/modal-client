@@ -8,7 +8,6 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Literal, Optional
 
-from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
 
 import modal_proto
@@ -32,6 +31,7 @@ from ..exception import (
     InternalFailure,
     InvalidError,
     RemoteError,
+    ServiceError,
 )
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import (
@@ -39,7 +39,6 @@ from .blob_utils import (
     blob_download,
     blob_upload_with_r2_failure_info,
 )
-from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 
 if typing.TYPE_CHECKING:
     import modal._functions
@@ -437,15 +436,14 @@ async def _stream_function_call_data(
 
                 last_index = chunk.index
                 yield message
-        except (GRPCError, StreamTerminatedError) as exc:
+        except (ServiceError, StreamTerminatedError) as exc:
             if retries_remaining > 0:
                 retries_remaining -= 1
-                if isinstance(exc, GRPCError):
-                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                        logger.debug(f"{variant} stream retrying with delay {delay_ms}ms due to {exc}")
-                        await asyncio.sleep(delay_ms / 1000)
-                        delay_ms = min(1000, delay_ms * 10)
-                        continue
+                if isinstance(exc, ServiceError):
+                    logger.debug(f"{variant} stream retrying with delay {delay_ms}ms due to {exc}")
+                    await asyncio.sleep(delay_ms / 1000)
+                    delay_ms = min(1000, delay_ms * 10)
+                    continue
                 elif isinstance(exc, StreamTerminatedError):
                     continue
             raise

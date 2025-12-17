@@ -18,17 +18,16 @@ from typing import (
     cast,
 )
 
-from grpclib.exceptions import GRPCError, StreamTerminatedError
+from grpclib.exceptions import StreamTerminatedError
 
 from modal.exception import ClientClosed, ExecTimeoutError, InvalidError
 from modal_proto import api_pb2
 
 from ._utils.async_utils import aclosing, synchronize_api, synchronizer
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .config import logger
-from .exception import ConflictError
+from .exception import ConflictError, ServiceError
 from .stream_type import StreamType
 
 if TYPE_CHECKING:
@@ -193,13 +192,12 @@ class _StreamReaderThroughServer(Generic[T]):
                     else:
                         last_index = batch_index
 
-            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
+            except (ServiceError, StreamTerminatedError, ClientClosed) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
+                    if isinstance(exc, ServiceError):
+                        await asyncio.sleep(1.0)
+                        continue
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                     elif isinstance(exc, ClientClosed):
@@ -270,13 +268,12 @@ class _StreamReaderThroughServer(Generic[T]):
 
                     yield message
 
-            except (GRPCError, StreamTerminatedError) as exc:
+            except (ServiceError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
+                    if isinstance(exc, ServiceError):
+                        await asyncio.sleep(1.0)
+                        continue
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                 raise
