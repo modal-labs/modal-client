@@ -601,8 +601,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return image
 
-    async def _experimental_mount_directory(self, path: Union[PurePosixPath, str], image: Optional[_Image]):
-        """Mount an image at a path in the sandbox filesystem."""
+    async def _experimental_mount_image(self, path: Union[PurePosixPath, str], image: Optional[_Image]):
+        """Mount an Image at a path in the Sandbox filesystem."""
 
         image_id = None
 
@@ -616,7 +616,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         task_id = await self._get_task_id()
         if (command_router_client := await self._get_command_router_client(task_id)) is None:
-            raise InvalidError("Mounting directories requires direct sandbox control - please contact Modal support")
+            raise InvalidError("Mounting directories requires direct Sandbox control - please contact Modal support.")
 
         posix_path = PurePosixPath(path)
         if not posix_path.is_absolute():
@@ -624,15 +624,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         path_bytes = posix_path.as_posix().encode("utf8")
 
         req = sr_pb2.TaskMountDirectoryRequest(task_id=task_id, path=path_bytes, image_id=image_id)
-        await command_router_client.mount_directory(req)
+        await command_router_client.mount_image(req)
 
     async def _experimental_snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
-        """Snapshot local changes to a previously mounted image into a new image."""
+        """Snapshot local changes to a previously mounted Image, creating a new Image."""
 
         task_id = await self._get_task_id()
         if (command_router_client := await self._get_command_router_client(task_id)) is None:
             raise InvalidError(
-                "Snapshotting directories requires direct sandbox control - please contact Modal support"
+                "Snapshotting directories requires direct Sandbox control - please contact Modal support."
             )
 
         posix_path = PurePosixPath(path)

@@ -522,7 +522,7 @@ class TaskCommandRouterClient:
                 else:
                     raise ConnectionError(str(e))
 
-    async def mount_directory(self, request: sr_pb2.TaskMountDirectoryRequest):
+    async def mount_image(self, request: sr_pb2.TaskMountDirectoryRequest):
         with grpc_error_converter():
             return await call_with_retries_on_transient_errors(
                 lambda: self._call_with_auth_retry(self._stub.TaskMountDirectory, request)
