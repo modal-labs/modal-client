@@ -459,14 +459,14 @@ class _FileIO(Generic[T]):
             ),
         )
 
-        def end_of_event(buffer: io.BytesIO, boundary: bytes = b"\n\n") -> bool:
-            # a single event may be split across multiple messages
-            # the end of an event is marked by two newlines
-            boundary_token_size = len(boundary)
-            if len(buffer) < boundary_token_size:
+        def end_of_event(item: bytes, buffer: io.BytesIO, boundary_token: bytes = b"\n\n") -> bool:
+            if not item.endswith(b"\n"):
+                return False
+            boundary_token_size = len(boundary_token)
+            if buffer.tell() < boundary_token_size:
                 return False
             buffer.seek(-boundary_token_size, io.SEEK_END)
-            if buffer.read(boundary_token_size) == boundary:
+            if buffer.read(boundary_token_size) == boundary_token:
                 return True
             buffer.seek(0, io.SEEK_END)
             return False
@@ -474,7 +474,7 @@ class _FileIO(Generic[T]):
         async with TaskContext() as tc:
             tc.create_task(self._consume_watch_output(resp.exec_id))
 
-            buffer = io.BytesIO()
+            item_buffer = io.BytesIO()
             while True:
                 if len(self._watch_output_buffer) > 0:
                     item = self._watch_output_buffer.pop(0)
@@ -482,10 +482,11 @@ class _FileIO(Generic[T]):
                         break
                     if isinstance(item, Exception):
                         raise item
-                    buffer.write(item)
-                    if item.endswith(b"\n") and end_of_event(buffer):
+                    item_buffer.write(item)
+                    assert isinstance(item, bytes)
+                    if end_of_event(item, item_buffer):
                         try:
-                            event_json = json.loads(buffer.getvalue().strip().decode())
+                            event_json = json.loads(item_buffer.getvalue().strip().decode())
                             event = FileWatchEvent(
                                 type=FileWatchEventType(event_json["event_type"]),
                                 paths=event_json["paths"],
@@ -495,7 +496,7 @@ class _FileIO(Generic[T]):
                         except (json.JSONDecodeError, KeyError, ValueError):
                             # skip invalid events
                             pass
-                        buffer = io.BytesIO()
+                        item_buffer = io.BytesIO()
                 else:
                     await asyncio.sleep(0.1)
 
