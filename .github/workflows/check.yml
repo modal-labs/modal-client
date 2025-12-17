@@ -42,7 +42,7 @@ jobs:
 
       - run: pip install -e .  # gets all dependencies and the package itself into python env
 
-      - run: pip install "synchronicity[compile]==0.10.3"  # gets all dependencies and the package itself into python env
+      - run: pip install "synchronicity[compile]==0.11.0"  # gets all dependencies and the package itself into python env
 
       - name: Build type stubs
         run: inv type-stubs

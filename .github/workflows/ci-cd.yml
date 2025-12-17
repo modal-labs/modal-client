@@ -211,7 +211,7 @@ jobs:
         run: pip install -e .
 
       - name: Install synchronicity compile time deps
-        run: pip install "synchronicity[compile]==0.10.3"
+        run: pip install "synchronicity[compile]==0.11.0"
 
       - name: Build type stubs
         run: inv type-stubs
