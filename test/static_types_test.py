@@ -11,14 +11,14 @@ def generate_type_stubs():
     subprocess.check_call(["inv", "type-stubs"])
 
 
-@pytest.mark.skipif(sys.version_info[:2] == (3, 14), reason="type stub generation is broken in Python 3.14")
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 14), reason="type stub generation is broken in Python 3.14+")
 @skip_windows("Type tests fail on windows since they don't exclude non-windows features")
 @pytest.mark.usefixtures("generate_type_stubs")
 def test_remote_call_keeps_original_return_value():
     subprocess.check_call(["mypy", "test/supports/type_assertions.py"])
 
 
-@pytest.mark.skipif(sys.version_info[:2] == (3, 14), reason="type stub generation is broken in Python 3.14")
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 14), reason="type stub generation is broken in Python 3.14+")
 @skip_windows("Type tests fail on windows since they don't exclude non-windows features")
 @pytest.mark.usefixtures("generate_type_stubs")
 def test_negative_assertions():
