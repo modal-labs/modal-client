@@ -9,7 +9,13 @@ if sys.version_info[:2] >= (3, 14):
 from modal_version import __version__
 
 try:
-    from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
+    from ._runtime.execution_context import (
+        current_function_call_id,
+        current_input_id,
+        current_retry_count,
+        interact,
+        is_local,
+    )
     from ._tunnel import Tunnel, forward
     from .app import App
     from .client import Client
@@ -81,6 +87,7 @@ __all__ = [
     "batched",
     "concurrent",
     "current_function_call_id",
+    "current_retry_count",
     "current_input_id",
     "enable_output",
     "enter",

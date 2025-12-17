@@ -102,7 +102,7 @@ def current_attempt_token() -> Optional[str]:
 def _set_current_context_ids(
     input_ids: list[str], function_call_ids: list[str], attempt_tokens: list[str], retry_counts: list[int]
 ) -> Callable[[], None]:
-    assert len(input_ids) == len(function_call_ids) == len(attempt_tokens) and input_ids
+    assert len(input_ids) == len(function_call_ids) == len(attempt_tokens) == len(retry_counts) and input_ids
 
     input_id = input_ids[0]
     function_call_id = function_call_ids[0]
