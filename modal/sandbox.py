@@ -609,7 +609,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         if image:
             if not image._object_id:
                 # FIXME
-                raise InvalidError("currently only images created with from_id are supported")
+                raise InvalidError("Image has not been built.")
             image_id = image._object_id
         else:
             image_id = ""  # empty string indicates mount an empty dir
