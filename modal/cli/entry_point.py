@@ -85,6 +85,8 @@ def check_path():
 
 @synchronizer.create_blocking
 async def setup(profile: Optional[str] = None):
+    check_path()
+
     art = """
            #############        #############
           ####         ##      ####         ##
@@ -107,7 +109,6 @@ async def setup(profile: Optional[str] = None):
 
     console = make_console()
     console.print(art, style="green")
-    check_path()
 
     # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
     await _new_token(profile=profile, next_url="/home")
