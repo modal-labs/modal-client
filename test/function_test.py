@@ -24,6 +24,7 @@ from modal.exception import (
     InternalFailure,
     InvalidError,
     NotFoundError,
+    PendingDeprecationError,
     RemoteError,
 )
 from modal.functions import Function, FunctionCall
@@ -2104,6 +2105,45 @@ def test_restrict_modal_access(client, servicer):
             pass
 
     assert ctx.get_requests("FunctionCreate")[0].function.untrusted == False
+
+
+def test_single_use(client, servicer):
+    app = App(include_source=False)
+
+    @app.function(serialized=True, single_use=True)
+    def f():
+        pass
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    request = ctx.pop_request("FunctionCreate")
+    assert request.function.max_inputs == 1
+    assert request.function.single_use == True
+
+
+def test_max_inputs(client, servicer):
+    app = App(include_source=False)
+
+    with pytest.warns(PendingDeprecationError, match=r"`max_inputs`.+`single_use=True`"):
+        decorator = app.function(serialized=True, max_inputs=1)
+
+    @decorator
+    def f():
+        pass
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    request = ctx.pop_request("FunctionCreate")
+    assert request.function.max_inputs == 1
+    assert request.function.single_use == True
+
+    for decorator_function in [app.function, app.cls]:
+        with pytest.raises(InvalidError, match="`max_inputs=1`"):
+            decorator_function(max_inputs=2)
 
 
 def test_function_namespace_deprecated(servicer, client):
