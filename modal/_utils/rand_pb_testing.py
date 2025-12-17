@@ -50,7 +50,7 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
         # warning when labels is accessed, but it does not clean up the exception state,
         # causing an SystemError.
         if hasattr(field, "is_repeated"):
-            is_repeated = field.is_repeated
+            is_repeated = field.is_repeated  # type: ignore
         else:
             is_repeated = field.label == FieldDescriptor.LABEL_REPEATED
         if is_message:

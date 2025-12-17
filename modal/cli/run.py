@@ -200,9 +200,9 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
     return f
 
 
-def _get_signature(func) -> inspect.Signature:
+def _get_signature(func: typing.Any) -> inspect.Signature:
     """Returns signature with the original source annotations."""
-    kwargs = {}
+    kwargs: dict[str, typing.Any] = {}
     if sys.version_info[:2] >= (3, 14):
         import annotationlib
 
