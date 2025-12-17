@@ -618,7 +618,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         if (command_router_client := await self._get_command_router_client(task_id)) is None:
             raise InvalidError("Mounting directories requires direct sandbox control - please contact Modal support")
 
-        path_bytes = PurePosixPath(path).as_posix().encode("utf8")
+        posix_path = PurePosixPath(path)
+        if not posix_path.is_absolute():
+            raise InvalidError(f"Mount path must be absolute; got: {posix_path}")
+        path_bytes = posix_path.as_posix().encode("utf8")
+
         req = sr_pb2.TaskMountDirectoryRequest(task_id=task_id, path=path_bytes, image_id=image_id)
         await command_router_client.mount_directory(req)
 
@@ -630,8 +634,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError(
                 "Snapshotting directories requires direct sandbox control - please contact Modal support"
             )
-        # some notion of normalized byte sequence for the remote path
-        path_bytes = PurePosixPath(path).as_posix().encode("utf8")
+
+        posix_path = PurePosixPath(path)
+        if not posix_path.is_absolute():
+            raise InvalidError(f"Snapshot path must be absolute; got: {posix_path}")
+        path_bytes = posix_path.as_posix().encode("utf8")
+
         req = sr_pb2.TaskSnapshotDirectoryRequest(task_id=task_id, path=path_bytes)
         res = await command_router_client.snapshot_directory(req)
         return _Image._new_hydrated(res.image_id, self._client, None)
