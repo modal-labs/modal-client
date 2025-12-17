@@ -54,16 +54,18 @@ def protoc(ctx):
     """Compile protocol buffer files for gRPC and Modal-specific wrappers.
 
     Generates Python stubs for api.proto."""
+    # Suppress pkg_resources deprecation warning from grpcio-tools
+    # See: https://github.com/grpc/grpc/issues/33570
+    protoc_env = {"PYTHONWARNINGS": "ignore:pkg_resources is deprecated"}
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
     client_proto_files = "modal_proto/api.proto"
-    sandbox_router_proto_file = "modal_proto/sandbox_router.proto"
     task_command_router_proto_file = "modal_proto/task_command_router.proto"
     py_protoc = (
         protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
     print(py_protoc)
     # generate grpcio and grpclib proto files:
-    ctx.run(f"{py_protoc} -I . {client_proto_files} {sandbox_router_proto_file} {task_command_router_proto_file}")
+    ctx.run(f"{py_protoc} -I . {client_proto_files} {task_command_router_proto_file}", env=protoc_env)
 
     # generate modal-specific wrapper around grpclib api stub using custom plugin:
     grpc_plugin_pyfile = Path("protoc_plugin/plugin.py")
@@ -71,7 +73,8 @@ def protoc(ctx):
     with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
         ctx.run(
             f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
-            + f" --modal-grpclib-python_out=. -I . {client_proto_files}"
+            + f" --modal-grpclib-python_out=. -I . {client_proto_files}",
+            env=protoc_env,
         )
 
 
@@ -137,7 +140,6 @@ def lint_protos(ctx):
     Ensures imports/enums/messages/services are ordered correctly and RPCs are alphabetized.
     """
     lint_protos_impl(ctx, "modal_proto/api.proto")
-    lint_protos_impl(ctx, "modal_proto/sandbox_router.proto")
     lint_protos_impl(ctx, "modal_proto/task_command_router.proto")
 
 

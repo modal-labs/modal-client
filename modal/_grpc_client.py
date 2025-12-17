@@ -5,10 +5,10 @@ import grpclib.client
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
+from . import exception
 from ._traceback import suppress_tb_frames
 from ._utils.grpc_utils import Retry, _retry_transient_errors
 from .config import config, logger
-from .exception import InvalidError, NotFoundError
 
 if TYPE_CHECKING:
     from .client import _Client
@@ -20,6 +20,29 @@ RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
 
 
+class WrappedGRPCError(exception.Error, exception._GRPCErrorWrapper): ...
+
+
+_STATUS_TO_EXCEPTION: dict[Status, type[exception._GRPCErrorWrapper]] = {
+    Status.CANCELLED: exception.ServiceError,
+    Status.UNKNOWN: exception.ServiceError,
+    Status.INVALID_ARGUMENT: exception.InvalidError,
+    Status.DEADLINE_EXCEEDED: exception.ServiceError,
+    Status.NOT_FOUND: exception.NotFoundError,
+    Status.ALREADY_EXISTS: exception.AlreadyExistsError,
+    Status.PERMISSION_DENIED: exception.PermissionDeniedError,
+    Status.RESOURCE_EXHAUSTED: exception.ResourceExhaustedError,
+    Status.FAILED_PRECONDITION: exception.ConflictError,
+    Status.ABORTED: exception.ConflictError,
+    Status.OUT_OF_RANGE: exception.InvalidError,
+    Status.UNIMPLEMENTED: exception.UnimplementedError,
+    Status.INTERNAL: exception.InternalError,
+    Status.UNAVAILABLE: exception.ServiceError,
+    Status.DATA_LOSS: exception.ServiceError,
+    Status.UNAUTHENTICATED: exception.AuthError,
+}
+
+
 class grpc_error_converter:
     def __enter__(self):
         pass
@@ -29,20 +52,14 @@ class grpc_error_converter:
         use_full_traceback = config.get("traceback")
         with suppress_tb_frames(1):
             if isinstance(exc, GRPCError):
-                if exc.status == Status.NOT_FOUND:
-                    if use_full_traceback:
-                        raise NotFoundError(exc.message)
-                    else:
-                        raise NotFoundError(exc.message) from None  # from None to skip the grpc-internal cause
-
-                if not use_full_traceback:
-                    # just include the frame in grpclib that actually raises the GRPCError
-                    tb = exc.__traceback__
-                    while tb.tb_next:
-                        tb = tb.tb_next
-                    exc.with_traceback(tb)
-                    raise exc from None  # from None to skip the grpc-internal cause
-                raise exc
+                modal_exc = _STATUS_TO_EXCEPTION[exc.status](exc.message)
+                modal_exc._grpc_message = exc.message
+                modal_exc._grpc_status = exc.status
+                modal_exc._grpc_details = exc.details
+                if use_full_traceback:
+                    raise modal_exc
+                else:
+                    raise modal_exc from None  # from None to skip the grpc-internal cause
 
         return False
 
@@ -100,17 +117,20 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     ) -> ResponseType:
         with suppress_tb_frames(1):
             if timeout is not None and retry is not None:
-                raise InvalidError("Retry must be None when timeout is set")
+                raise exception.InvalidError("Retry must be None when timeout is set")
 
             if retry is None:
-                return await self.direct(req, timeout=timeout, metadata=metadata)
+                with grpc_error_converter():
+                    return await self.direct(req, timeout=timeout, metadata=metadata)
 
-            return await _retry_transient_errors(
-                self,  # type: ignore
-                req,
-                retry=retry,
-                metadata=metadata,
-            )
+            # TODO do we need suppress_error_frames(1) here too?
+            with grpc_error_converter():
+                return await _retry_transient_errors(
+                    self,  # type: ignore
+                    req,
+                    retry=retry,
+                    metadata=metadata,
+                )
 
     async def direct(
         self,
@@ -135,8 +155,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         #
         # [1]: https://github.com/vmagamedov/grpclib/blob/62f968a4c84e3f64e6966097574ff0a59969ea9b/grpclib/client.py#L844
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        with suppress_tb_frames(1), grpc_error_converter():
-            return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
+        return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
 
 
 class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
@@ -167,5 +186,6 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
-            yield response
+        with grpc_error_converter():
+            async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
+                yield response

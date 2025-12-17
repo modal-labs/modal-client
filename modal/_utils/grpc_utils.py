@@ -25,7 +25,7 @@ from grpclib.encoding.base import StatusDetailsCodecBase
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
-from modal.exception import AuthError, ConnectionError
+from modal.exception import ConnectionError
 from modal_proto import api_pb2
 from modal_version import __version__
 
@@ -408,10 +408,7 @@ async def _retry_transient_errors(
 
             # Client handles retry
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
-                if exc.status == Status.UNAUTHENTICATED:
-                    raise AuthError(exc.message)
-                else:
-                    raise exc
+                raise exc
             if retry.max_retries is not None and n_retries >= retry.max_retries:
                 final_attempt = True
             elif total_deadline is not None and time.time() + delay + retry.attempt_timeout_floor >= total_deadline:

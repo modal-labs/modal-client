@@ -24,13 +24,12 @@ from typing import (
 )
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal.exception
 import modal_proto.api_pb2
-from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import AlreadyExistsError, ConflictError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
 from ._load_context import LoadContext
@@ -172,10 +171,8 @@ class _VolumeManager:
         )
         try:
             await client.stub.VolumeGetOrCreate(req)
-        except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
-                raise AlreadyExistsError(exc.message)
-            else:
+        except AlreadyExistsError:
+            if not allow_existing:
                 raise
 
     @staticmethod
@@ -574,8 +571,8 @@ class _Volume(_Object, type_prefix="vo"):
                 if not resp.skip_reload:
                     # Reload changes on successful commit.
                     await self._do_reload(lock=False)
-            except GRPCError as exc:
-                raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
+            except (ConflictError, NotFoundError) as exc:
+                raise RuntimeError(str(exc))
 
     @live_method
     async def reload(self):
@@ -588,11 +585,12 @@ class _Volume(_Object, type_prefix="vo"):
         """
         try:
             await self._do_reload()
-        except GRPCError as exc:
+        except (NotFoundError, ConflictError) as exc:
             # TODO(staffan): This is brittle and janky, as it relies on specific paths and error messages which can
             #  change server-side at any time. Consider returning the open files directly in the error emitted from the
             #  server.
-            if exc.message == "there are open files preventing the operation":
+            message = str(exc)
+            if "there are open files preventing the operation" in message:
                 # Attempt to identify what open files are problematic and include information about the first (to avoid
                 # really verbose errors) open file in the error message to help troubleshooting.
                 # This is best-effort and not necessarily bulletproof, as the view of open files inside the container
@@ -600,9 +598,8 @@ class _Volume(_Object, type_prefix="vo"):
                 vol_path = f"/__modal/volumes/{self.object_id}"
                 annotation = _open_files_error_annotation(vol_path)
                 if annotation:
-                    raise RuntimeError(f"{exc.message}: {annotation}")
-
-            raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
+                    raise RuntimeError(f"{message}: {annotation}")
+            raise RuntimeError(message)
 
     @live_method_gen
     async def iterdir(self, path: str, *, recursive: bool = True) -> AsyncIterator[FileEntry]:
@@ -977,8 +974,8 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
             )
             try:
                 await self._client.stub.VolumePutFiles(request, retry=Retry(base_delay=1))
-            except GRPCError as exc:
-                raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
+            except AlreadyExistsError as exc:
+                raise FileExistsError(str(exc))
 
     def put_file(
         self,
@@ -1056,7 +1053,11 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
-                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
+                if file_spec.content is None:
+                    content = await asyncio.to_thread(file_spec.read_content)
+                else:
+                    content = file_spec.content
+                request2 = api_pb2.MountPutFileRequest(data=content, sha256_hex=file_spec.sha256_hex)
                 self._progress_cb(task_id=progress_task_id, complete=True)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
@@ -1221,8 +1222,8 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
 
             try:
                 response = await self._client.stub.VolumePutFiles2(request, retry=Retry(base_delay=1))
-            except GRPCError as exc:
-                raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
+            except AlreadyExistsError as exc:
+                raise FileExistsError(str(exc))
 
             if not response.missing_blocks:
                 break

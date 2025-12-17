@@ -509,6 +509,8 @@ class _App:
             if old_function is function:
                 return  # already added the same exact instance, ignore
 
+            # In notebooks, re-registering the same function with the same app will cause a named collision.
+            # This is common notebook coding behavior, so we hide the warning.
             if not is_notebook():
                 logger.warning(
                     f"Warning: function name '{function.tag}' collision!"
@@ -1097,6 +1099,13 @@ class _App:
                 raise InvalidError(
                     "The `@modal.http_server` decorator cannot be used on methods; decorate the class instead."
                 )
+
+            if http_config is not None:
+                for method in _find_partial_methods_for_user_cls(
+                    user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE
+                ).values():
+                    method.registered = True  # Avoid warning about not registering the method (hacky!)
+                    raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 

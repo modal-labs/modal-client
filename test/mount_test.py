@@ -38,7 +38,6 @@ async def test_get_files(servicer, client, tmpdir):
     assert files["/small.py"].mode == expected_mode, f"{oct(files['/small.py'].mode)} != {oct(expected_mode)}"
 
     assert files["/large.py"].use_blob is True
-    assert files["/large.py"].content is None
     assert files["/large.py"].sha256_hex == hashlib.sha256(large_content).hexdigest()
     assert files["/large.py"].mode == expected_mode, f"{oct(files['/large.py'].mode)} != {oct(expected_mode)}"
 

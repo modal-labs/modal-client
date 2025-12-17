@@ -991,12 +991,10 @@ class _ContainerIOManager:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
         # by the worker process with updates to the container config.
         restored_path = Path(config.get("restore_state_path"))
-        start = time.perf_counter()
+        logger.debug("Waiting for restore")
         while not restored_path.exists():
-            logger.debug(f"Waiting for restore (elapsed={time.perf_counter() - start:.3f}s)")
             await asyncio.sleep(0.01)
             continue
-
         logger.debug("Container: restored")
 
         # Look for state file and create new client with updated credentials.
@@ -1007,7 +1005,7 @@ class _ContainerIOManager:
         # Start a debugger if the worker tells us to
         if int(restored_state.get("snapshot_debug", 0)):
             logger.debug("Entering snapshot debugger")
-            breakpoint()
+            breakpoint()  # noqa: T100
 
         # Local ContainerIOManager state.
         for key in ["task_id", "function_id"]:
