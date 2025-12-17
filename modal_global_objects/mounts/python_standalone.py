@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import os
 import shutil
 import tarfile
 import tempfile
@@ -41,18 +42,25 @@ def publish_python_standalone_mount(client, version: str) -> None:
         print(f"📦 Unpacking python-build-standalone for {version}-{libc}.")
         with tempfile.TemporaryDirectory() as d:
             if url.endswith("tar.zst"):
+                decompressed_dir = os.path.join(d, "decompressed")
+                os.mkdir(decompressed_dir)
                 urllib.request.urlretrieve(url, f"{d}/cpython.tar.zst")
                 with open(f"{d}/cpython.tar.zst", "rb") as f:
                     dctx = zstd.ZstdDecompressor()
                     with dctx.stream_reader(f) as reader:
                         with tarfile.open(fileobj=reader, mode="r|") as tar:
-                            tar.extractall(d)
+                            tar.extractall(decompressed_dir)
+
+                install_only = os.path.join(d, "install_only")
+
+                target_mount = f"{d}/python/install"
             else:
                 urllib.request.urlretrieve(url, f"{d}/cpython.tar.gz")
                 shutil.unpack_archive(f"{d}/cpython.tar.gz", d)
+                target_mount = f"{d}/python"
 
             print(f"🌐 Downloaded and unpacked archive to {d}.")
-            python_mount = Mount._from_local_dir(f"{d}/python")
+            python_mount = Mount._from_local_dir(target_mount)
             python_mount._deploy(
                 mount_name,
                 api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
