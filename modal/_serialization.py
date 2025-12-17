@@ -421,7 +421,7 @@ def check_valid_cls_constructor_arg(key, obj):
         ClsConstructorPickler(buf).dump(obj)
         return True
     except (AttributeError, ValueError, pickle.PicklingError):
-        # Python 3.14+ now raises an PicklingError when `dump` fails
+        # Python 3.14+ now raises an PicklingError for certain types of `dump` failures
         raise ValueError(
             f"Only pickle-able types are allowed in remote class constructors: argument {key} of type {type(obj)}."
         )
