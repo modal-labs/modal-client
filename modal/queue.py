@@ -30,7 +30,7 @@ from ._utils.grpc_utils import Retry
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
-from .exception import AlreadyExistsError, Error, InvalidError, NotFoundError, RequestSizeError
+from .exception import AlreadyExistsError, Error, InvalidError, NotFoundError, RequestSizeError, ResourceExhaustedError
 
 
 @dataclass
@@ -599,7 +599,10 @@ class _Queue(_Object, type_prefix="qu"):
             if "status = '413'" in str(exc):
                 method = "put_many" if len(vs) > 1 else "put"
                 raise RequestSizeError(f"Queue.{method} request is too large") from exc
-            raise queue.Full(str(exc))
+            elif isinstance(exc, ResourceExhaustedError):
+                raise queue.Full(str(exc))
+            else:
+                raise exc
 
     async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: list[Any]):
         vs_encoded = [serialize(v) for v in vs]
@@ -615,7 +618,10 @@ class _Queue(_Object, type_prefix="qu"):
             if "status = '413'" in str(exc):
                 method = "put_many" if len(vs) > 1 else "put"
                 raise RequestSizeError(f"Queue.{method} request is too large") from exc
-            raise queue.Full(str(exc)) from exc
+            elif isinstance(exc, ResourceExhaustedError):
+                raise queue.Full(str(exc))
+            else:
+                raise exc
 
     @live_method
     async def len(self, *, partition: Optional[str] = None, total: bool = False) -> int:
