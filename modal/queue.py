@@ -30,7 +30,7 @@ from ._utils.grpc_utils import Retry
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
-from .exception import AlreadyExistsError, InvalidError, NotFoundError, RequestSizeError, ResourceExhaustedError
+from .exception import AlreadyExistsError, Error, InvalidError, NotFoundError, RequestSizeError
 
 
 @dataclass
@@ -595,7 +595,7 @@ class _Queue(_Object, type_prefix="qu"):
                     total_timeout=timeout,
                 ),
             )
-        except ResourceExhaustedError as exc:
+        except Error as exc:
             if "status = '413'" in str(exc):
                 method = "put_many" if len(vs) > 1 else "put"
                 raise RequestSizeError(f"Queue.{method} request is too large") from exc
@@ -611,7 +611,7 @@ class _Queue(_Object, type_prefix="qu"):
         )
         try:
             await self._client.stub.QueuePut(request)
-        except ResourceExhaustedError as exc:
+        except Error as exc:
             if "status = '413'" in str(exc):
                 method = "put_many" if len(vs) > 1 else "put"
                 raise RequestSizeError(f"Queue.{method} request is too large") from exc

@@ -30,10 +30,10 @@ from .config import logger
 from .exception import (
     AlreadyExistsError,
     DeserializationError,
+    Error,
     InvalidError,
     NotFoundError,
     RequestSizeError,
-    ResourceExhaustedError,
 )
 
 
@@ -508,7 +508,7 @@ class _Dict(_Object, type_prefix="di"):
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         try:
             await self._client.stub.DictUpdate(req)
-        except ResourceExhaustedError as exc:
+        except Error as exc:
             if "status = '413'" in str(exc):
                 raise RequestSizeError("Dict.update request is too large") from exc
             else:
@@ -527,7 +527,7 @@ class _Dict(_Object, type_prefix="di"):
         try:
             resp = await self._client.stub.DictUpdate(req)
             return resp.created
-        except ResourceExhaustedError as exc:
+        except Error as exc:
             if "status = '413'" in str(exc):
                 raise RequestSizeError("Dict.put request is too large") from exc
             else:
