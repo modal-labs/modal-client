@@ -86,7 +86,6 @@ def check_path():
 @synchronizer.create_blocking
 async def setup(profile: Optional[str] = None):
     art = """
-
            #############        #############
           ####         ##      ####         ##
          ##  ##         ##    ##  ##         ##
@@ -104,7 +103,6 @@ async def setup(profile: Optional[str] = None):
    ##  ##         ##                ##  ##         ##
     ####         ##                  ####         ##
      #############                    #############
-
 """
 
     console = make_console()
