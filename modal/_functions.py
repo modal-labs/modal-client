@@ -694,7 +694,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Experimental: Clustered functions
         cluster_size: Optional[int] = None,
         rdma: Optional[bool] = None,
-        single_use: bool = False,
+        single_use_containers: bool = False,
         ephemeral_disk: Optional[int] = None,
         include_source: bool = True,
         experimental_options: Optional[dict[str, str]] = None,
@@ -1016,8 +1016,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     object_dependencies=object_dependencies,
                     block_network=block_network,
                     untrusted=restrict_modal_access,
-                    single_use=single_use,
-                    max_inputs=int(single_use),  # TODO(michael) remove after worker rollover
+                    single_use_containers=single_use_containers,
+                    max_inputs=int(single_use_containers),  # TODO(michael) remove after worker rollover
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                     scheduler_placement=scheduler_placement,
                     is_class=info.is_service_class(),

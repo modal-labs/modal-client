@@ -846,8 +846,8 @@ class _ContainerIOManager:
                     yielded = True
 
                     # TODO(michael): Remove use of max_inputs after worker rollover
-                    single_use = self.function_def.single_use or self.function_def.max_inputs == 1
-                    if final_input_received or single_use:
+                    single_use_container = self.function_def.single_use_containers or self.function_def.max_inputs == 1
+                    if final_input_received or single_use_container:
                         return
             finally:
                 if not yielded:

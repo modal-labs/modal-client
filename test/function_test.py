@@ -2107,10 +2107,10 @@ def test_restrict_modal_access(client, servicer):
     assert ctx.get_requests("FunctionCreate")[0].function.untrusted == False
 
 
-def test_single_use(client, servicer):
+def test_single_use_containers(client, servicer):
     app = App(include_source=False)
 
-    @app.function(serialized=True, single_use=True)
+    @app.function(serialized=True, single_use_containers=True)
     def f():
         pass
 
@@ -2120,13 +2120,13 @@ def test_single_use(client, servicer):
 
     request = ctx.pop_request("FunctionCreate")
     assert request.function.max_inputs == 1
-    assert request.function.single_use == True
+    assert request.function.single_use_containers == True
 
 
 def test_max_inputs(client, servicer):
     app = App(include_source=False)
 
-    with pytest.warns(PendingDeprecationError, match=r"`max_inputs`.+`single_use=True`"):
+    with pytest.warns(PendingDeprecationError, match=r"`max_inputs`.+`single_use_containers=True`"):
         decorator = app.function(serialized=True, max_inputs=1)
 
     @decorator
@@ -2139,7 +2139,7 @@ def test_max_inputs(client, servicer):
 
     request = ctx.pop_request("FunctionCreate")
     assert request.function.max_inputs == 1
-    assert request.function.single_use == True
+    assert request.function.single_use_containers == True
 
     with pytest.raises(InvalidError, match="`max_inputs=1`"):
         app.function(max_inputs=2)

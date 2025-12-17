@@ -725,7 +725,7 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this function access to other Modal resources
-        single_use: bool = False,  # When True, containers will shut down after handling a single input
+        single_use_containers: bool = False,  # When True, containers will shut down after handling a single input
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
         # Whether the file or directory containing the Function's source should automatically be included
         # in the container. When unset, falls back to the App-level configuration, or is otherwise True by default.
@@ -740,7 +740,7 @@ class _App:
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
-        max_inputs: Optional[int] = None,  # Replaced with `single_use`
+        max_inputs: Optional[int] = None,  # Replaced with `single_use_containers`
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Replaced in favor of
         # using `region` and `nonpreemptible`
@@ -772,10 +772,10 @@ class _App:
                 raise InvalidError("Only `max_inputs=1` is currently supported")
             deprecation_warning(
                 (2025, 12, 16),
-                "The `max_inputs` parameter is deprecated. Please set `single_use=True` instead.",
+                "The `max_inputs` parameter is deprecated. Please set `single_use_containers=True` instead.",
                 pending=True,
             )
-            single_use = max_inputs == 1
+            single_use_containers = max_inputs == 1
 
         if _experimental_scheduler_placement is not None:
             deprecation_warning(
@@ -925,7 +925,7 @@ class _App:
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
-                single_use=single_use,
+                single_use_containers=single_use_containers,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
                 rdma=rdma,
@@ -982,7 +982,7 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this class access to other Modal resources
-        single_use: bool = False,  # When True, containers will shut down after handling a single input
+        single_use_containers: bool = False,  # When True, containers will shut down after handling a single input
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
         include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
         experimental_options: Optional[dict[str, Any]] = None,
@@ -995,7 +995,7 @@ class _App:
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
-        max_inputs: Optional[int] = None,  # Replaced with `single_use`
+        max_inputs: Optional[int] = None,  # Replaced with `single_use_containers`
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Replaced in favor of
         # using `region` and `nonpreemptible`
@@ -1023,10 +1023,10 @@ class _App:
                 raise InvalidError("Only `max_inputs=1` is currently supported")
             deprecation_warning(
                 (2025, 12, 16),
-                "The `max_inputs` parameter is deprecated. Please set `single_use=True` instead.",
+                "The `max_inputs` parameter is deprecated. Please set `single_use_containers=True` instead.",
                 pending=True,
             )
-            single_use = max_inputs == 1
+            single_use_containers = max_inputs == 1
 
         if _experimental_scheduler_placement is not None:
             deprecation_warning(
@@ -1165,7 +1165,7 @@ class _App:
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
-                single_use=single_use,
+                single_use_containers=single_use_containers,
                 http_config=http_config,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
