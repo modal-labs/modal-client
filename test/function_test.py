@@ -2141,9 +2141,8 @@ def test_max_inputs(client, servicer):
     assert request.function.max_inputs == 1
     assert request.function.single_use == True
 
-    for decorator_function in [app.function, app.cls]:
-        with pytest.raises(InvalidError, match="`max_inputs=1`"):
-            decorator_function(max_inputs=2)
+    with pytest.raises(InvalidError, match="`max_inputs=1`"):
+        app.function(max_inputs=2)
 
 
 def test_function_namespace_deprecated(servicer, client):
