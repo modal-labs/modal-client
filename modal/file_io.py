@@ -19,7 +19,7 @@ from modal_proto import api_pb2
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_error
 from .client import _Client
-from .exception import FilesystemExecutionError, ServiceError
+from .exception import FilesystemExecutionError, InternalError, ServiceError
 
 WRITE_CHUNK_SIZE = 16 * 1024 * 1024  # 16 MiB
 WRITE_FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1 GiB
@@ -165,10 +165,10 @@ class _FileIO(Generic[T]):
                         completed = True
                         break
 
-            except (ServiceError, StreamTerminatedError, ClientClosed) as exc:
+            except (ServiceError, InternalError, StreamTerminatedError, ClientClosed) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, ServiceError):
+                    if isinstance(exc, (ServiceError, InternalError)):
                         await asyncio.sleep(1.0)
                         continue
                     elif isinstance(exc, StreamTerminatedError):
@@ -200,10 +200,10 @@ class _FileIO(Generic[T]):
                     if isinstance(data, Exception):
                         raise data
                     output_buffer.write(data)
-            except (ServiceError, StreamTerminatedError) as exc:
+            except (ServiceError, InternalError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, ServiceError):
+                    if isinstance(exc, (ServiceError, InternalError)):
                         await asyncio.sleep(1.0)
                         continue
                     elif isinstance(exc, StreamTerminatedError):

@@ -38,7 +38,7 @@ from ._utils.grpc_utils import Retry
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .config import logger
-from .exception import ServiceError
+from .exception import InternalError, ServiceError
 
 if platform.system() == "Windows":
     default_spinner = "line"
@@ -645,8 +645,8 @@ async def get_app_logs_loop(
     while True:
         try:
             await _get_logs()
-        except (ServiceError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
-            if isinstance(exc, ServiceError):
+        except (ServiceError, InternalError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
+            if isinstance(exc, (ServiceError, InternalError)):
                 # Try again if we had a temporary connection drop, for example if computer went to sleep.
                 logger.debug("Log fetching timed out. Retrying ...")
                 continue

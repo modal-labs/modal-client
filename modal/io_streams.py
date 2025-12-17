@@ -27,7 +27,7 @@ from ._utils.async_utils import aclosing, synchronize_api, synchronizer
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .config import logger
-from .exception import ConflictError, ServiceError
+from .exception import ConflictError, InternalError, ServiceError
 from .stream_type import StreamType
 
 if TYPE_CHECKING:
@@ -192,10 +192,10 @@ class _StreamReaderThroughServer(Generic[T]):
                     else:
                         last_index = batch_index
 
-            except (ServiceError, StreamTerminatedError, ClientClosed) as exc:
+            except (ServiceError, InternalError, StreamTerminatedError, ClientClosed) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, ServiceError):
+                    if isinstance(exc, (ServiceError, InternalError)):
                         await asyncio.sleep(1.0)
                         continue
                     elif isinstance(exc, StreamTerminatedError):
@@ -268,10 +268,10 @@ class _StreamReaderThroughServer(Generic[T]):
 
                     yield message
 
-            except (ServiceError, StreamTerminatedError) as exc:
+            except (ServiceError, InternalError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, ServiceError):
+                    if isinstance(exc, (ServiceError, InternalError)):
                         await asyncio.sleep(1.0)
                         continue
                     elif isinstance(exc, StreamTerminatedError):

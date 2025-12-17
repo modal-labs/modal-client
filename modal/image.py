@@ -44,7 +44,15 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
-from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError, ServiceError, VersionError
+from .exception import (
+    ExecutionError,
+    InternalError,
+    InvalidError,
+    NotFoundError,
+    RemoteError,
+    ServiceError,
+    VersionError,
+)
 from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_fn
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
@@ -373,7 +381,7 @@ async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.I
     while result_response is None:
         try:
             await join()
-        except (ServiceError, StreamTerminatedError) as exc:
+        except (ServiceError, InternalError, StreamTerminatedError) as exc:
             retry_count += 1
             if retry_count >= 3:
                 raise exc

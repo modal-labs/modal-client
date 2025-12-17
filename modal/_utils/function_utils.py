@@ -28,6 +28,7 @@ from ..exception import (
     DeserializationError,
     ExecutionError,
     FunctionTimeoutError,
+    InternalError,
     InternalFailure,
     InvalidError,
     RemoteError,
@@ -436,10 +437,10 @@ async def _stream_function_call_data(
 
                 last_index = chunk.index
                 yield message
-        except (ServiceError, StreamTerminatedError) as exc:
+        except (ServiceError, InternalError, StreamTerminatedError) as exc:
             if retries_remaining > 0:
                 retries_remaining -= 1
-                if isinstance(exc, ServiceError):
+                if isinstance(exc, (ServiceError, InternalError)):
                     logger.debug(f"{variant} stream retrying with delay {delay_ms}ms due to {exc}")
                     await asyncio.sleep(delay_ms / 1000)
                     delay_ms = min(1000, delay_ms * 10)
