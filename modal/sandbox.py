@@ -6,6 +6,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
 
 from ._pty import get_pty_info
@@ -599,6 +600,41 @@ class _Sandbox(_Object, type_prefix="sb"):
         image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
 
         return image
+
+    async def _experimental_mount_directory(self, path: Union[PurePosixPath, str], image: Optional[_Image]):
+        """Mount an image at a path in the sandbox filesystem."""
+
+        image_id = None
+
+        if image:
+            if not image._object_id:
+                # FIXME
+                raise InvalidError("currently only images created with from_id are supported")
+            image_id = image._object_id
+        else:
+            image_id = ""  # empty string indicates mount an empty dir
+
+        task_id = await self._get_task_id()
+        if (command_router_client := await self._get_command_router_client(task_id)) is None:
+            raise InvalidError("Mounting directories requires direct sandbox control - please contact Modal support")
+
+        path_bytes = PurePosixPath(path).as_posix().encode("utf8")
+        req = sr_pb2.TaskMountDirectoryRequest(task_id=task_id, path=path_bytes, image_id=image_id)
+        await command_router_client.mount_directory(req)
+
+    async def _experimental_snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
+        """Snapshot local changes to a previously mounted image into a new image."""
+
+        task_id = await self._get_task_id()
+        if (command_router_client := await self._get_command_router_client(task_id)) is None:
+            raise InvalidError(
+                "Snapshotting directories requires direct sandbox control - please contact Modal support"
+            )
+        # some notion of normalized byte sequence for the remote path
+        path_bytes = PurePosixPath(path).as_posix().encode("utf8")
+        req = sr_pb2.TaskSnapshotDirectoryRequest(task_id=task_id, path=path_bytes)
+        res = await command_router_client.snapshot_directory(req)
+        return _Image._new_hydrated(res.image_id, self._client, None)
 
     # Live handle methods
 

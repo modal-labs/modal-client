@@ -29,7 +29,6 @@ from typing import Any, AsyncGenerator, Callable, Optional, Union, get_args
 from unittest import mock
 
 import aiohttp.web
-import click
 import click.testing
 import grpclib.server
 import jwt
