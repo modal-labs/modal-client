@@ -38,7 +38,7 @@ _STATUS_TO_EXCEPTION: dict[Status, type[exception._GRPCErrorWrapper]] = {
     Status.UNIMPLEMENTED: exception.UnimplementedError,
     Status.INTERNAL: exception.InternalError,
     Status.UNAVAILABLE: exception.ServiceError,
-    Status.DATA_LOSS: exception.ServiceError,
+    Status.DATA_LOSS: exception.DataLossError,
     Status.UNAUTHENTICATED: exception.AuthError,
 }
 
