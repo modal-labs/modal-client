@@ -837,7 +837,7 @@ async def _create_single_client_dependency_mount(
                         client=client,
                     )
                     print(f"✅ Deployed mount {mount_name} to global namespace.")  # noqa: T201
-                except Exception as e:
+                except modal.exception.Error as e:
                     print(f"⚠️ Mount creation failed with {type(e).__name__}: {e}")  # noqa: T201
             else:
                 print(f"Dry run - skipping deployment of mount {mount_name}")  # noqa: T201
