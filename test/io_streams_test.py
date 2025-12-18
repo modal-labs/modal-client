@@ -2,15 +2,30 @@
 import asyncio
 import pytest
 import time
-from typing import AsyncGenerator, Optional
+import typing
+from typing import AsyncGenerator, Callable, Optional
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
 from modal import enable_output
-from modal._utils.async_utils import aclosing, sync_or_async_iter
-from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line, _StreamReader, _StreamWriter
+from modal._utils.async_utils import aclosing, sync_or_async_iter, synchronizer
+from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line, _StreamWriter
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
+
+R = typing.TypeVar("R")
+
+
+@synchronizer.wrap
+async def _make_stream_reader(f: Callable[[], R]) -> R:
+    # helper to make sure stream readers are constructed in the synchronizer event loop
+    return f()
+
+
+def make_stream_reader(f: Callable[[], R]) -> R:
+    # stupid wrapper for type safety, otherwise the interpreter things the wrapper is async above
+    # and we need to type ignore everywhere
+    return typing.cast(R, _make_stream_reader(f))
 
 
 def test_stream_reader(servicer, client):
@@ -31,11 +46,13 @@ def test_stream_reader(servicer, client):
         ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
 
         with enable_output():
-            stdout: StreamReader[str] = StreamReader(
-                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                object_id="sb-123",
-                object_type="sandbox",
-                client=client,
+            stdout: StreamReader[str] = make_stream_reader(
+                lambda: StreamReader(
+                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                    object_id="sb-123",
+                    object_type="sandbox",
+                    client=client,
+                )
             )
 
             out = []
@@ -63,12 +80,14 @@ def test_stream_reader_processed(servicer, client):
         ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
 
         with enable_output():
-            stdout: StreamReader[str] = StreamReader(
-                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                object_id="sb-123",
-                object_type="sandbox",
-                client=client,
-                by_line=True,
+            stdout: StreamReader[str] = make_stream_reader(
+                lambda: StreamReader(
+                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                    object_id="sb-123",
+                    object_type="sandbox",
+                    client=client,
+                    by_line=True,
+                )
             )
 
             out = []
@@ -97,12 +116,14 @@ def test_stream_reader_processed_multiple(servicer, client):
         ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
 
         with enable_output():
-            stdout: StreamReader[str] = StreamReader(
-                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                object_id="sb-123",
-                object_type="sandbox",
-                client=client,
-                by_line=True,
+            stdout: StreamReader[str] = make_stream_reader(
+                lambda: StreamReader(
+                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                    object_id="sb-123",
+                    object_type="sandbox",
+                    client=client,
+                    by_line=True,
+                )
             )
 
             out = []
@@ -143,12 +164,14 @@ def test_stream_reader_processed_partial_lines(servicer, client):
         ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
 
         with enable_output():
-            stdout: StreamReader[str] = StreamReader(
-                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                object_id="sb-123",
-                object_type="sandbox",
-                client=client,
-                by_line=True,
+            stdout: StreamReader[str] = make_stream_reader(
+                lambda: StreamReader(
+                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                    object_id="sb-123",
+                    object_type="sandbox",
+                    client=client,
+                    by_line=True,
+                )
             )
 
             out = []
@@ -175,28 +198,33 @@ async def test_stream_reader_bytes_mode(servicer, client):
         ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
 
         with enable_output():
-            stdout: StreamReader[bytes] = StreamReader(
-                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                object_id="tp-123",
-                object_type="container_process",
-                client=client,
-                text=False,
+            stdout: StreamReader[bytes] = make_stream_reader(
+                lambda: StreamReader(
+                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                    object_id="tp-123",
+                    object_type="container_process",
+                    client=client,
+                    text=False,
+                )
             )
-
+            print("reading")
             assert await stdout.read.aio() == b"foo\n"
+            print("done")
 
 
 def test_stream_reader_line_buffered_bytes(servicer, client):
     """Test that using line-buffering with bytes mode fails."""
 
     with pytest.raises(ValueError):
-        StreamReader(
-            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-            object_id="tp-123",
-            object_type="container_process",
-            client=client,
-            by_line=True,
-            text=False,
+        make_stream_reader(
+            lambda: StreamReader(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="tp-123",
+                object_type="container_process",
+                client=client,
+                by_line=True,
+                text=False,
+            )
         )
 
 
@@ -227,12 +255,14 @@ async def test_stream_reader_async_iter(servicer, client):
 
         expected = "foobar"
 
-        stdout: StreamReader[str] = StreamReader(
-            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-            object_id="sb-123",
-            object_type="sandbox",
-            client=client,
-            by_line=True,
+        stdout: StreamReader[str] = make_stream_reader(
+            lambda: StreamReader(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="sb-123",
+                object_type="sandbox",
+                client=client,
+                by_line=True,
+            )
         )
 
         out = ""
@@ -272,12 +302,14 @@ async def test_stream_reader_container_process_retry(servicer, client):
         ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
 
         with enable_output():
-            stdout: StreamReader[str] = StreamReader(
-                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                object_id="tp-123",
-                object_type="container_process",
-                client=client,
-                by_line=True,
+            stdout: StreamReader[str] = make_stream_reader(
+                lambda: StreamReader(
+                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                    object_id="tp-123",
+                    object_type="container_process",
+                    client=client,
+                    by_line=True,
+                )
             )
 
             output = []
@@ -314,13 +346,15 @@ async def test_stream_reader_timeout(servicer, client):
     with servicer.intercept() as ctx:
         ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
         with enable_output():
-            stdout: StreamReader[str] = StreamReader(
-                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                object_id="tp-123",
-                object_type="container_process",
-                client=client,
-                by_line=True,
-                deadline=time.monotonic() + 0.5,  # use a 2-second timeout
+            stdout: StreamReader[str] = make_stream_reader(
+                lambda: StreamReader(
+                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                    object_id="tp-123",
+                    object_type="container_process",
+                    client=client,
+                    by_line=True,
+                    deadline=time.monotonic() + 0.5,  # use a 2-second timeout
+                )
             )
             output: list[str] = []
             async for line in stdout:
@@ -463,7 +497,7 @@ async def test_stream_writer_drain_calls_exec_stdin_with_eof_when_closed_and_no_
     writer = _StreamWriter(
         object_id="tp-123",
         object_type="container_process",
-        client=None,  # unused when command_router_client is provided
+        client=None,  # u´nused when command_router_client is provided
         command_router_client=router,  # type: ignore[arg-type]
         task_id="task-1",
     )
@@ -552,19 +586,20 @@ async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with
     assert call["eof"] is True
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("text, expected_out", [(False, b"abc"), (True, "abc")])
-async def test_stream_reader_read_concatenates_chunks(text, expected_out):
+def test_stream_reader_read_concatenates_chunks(text, expected_out):
     router = _FakeCommandRouterClient()
-    reader = _StreamReader(  # type: ignore
-        file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-        object_id="tp-123",
-        object_type="container_process",
-        client=None,  # type: ignore[arg-type]
-        command_router_client=router,  # type: ignore[arg-type]
-        task_id="task-1",
-        text=text,
+    reader = make_stream_reader(
+        lambda: StreamReader(
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+            object_id="tp-123",
+            object_type="container_process",
+            client=None,  # type: ignore[arg-type]
+            command_router_client=router,  # type: ignore[arg-type]
+            task_id="task-1",
+            text=text,
+        )
     )
 
-    out = await reader.read()
+    out = reader.read()
     assert out == expected_out
