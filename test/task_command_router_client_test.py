@@ -13,7 +13,7 @@ from grpclib.client import Channel
 from grpclib.exceptions import StreamTerminatedError
 
 from modal._utils.task_command_router_client import TaskCommandRouterClient
-from modal.exception import ExecTimeoutError
+from modal.exception import AuthError, ExecTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
@@ -360,10 +360,9 @@ async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(monkeypatch):
     client._refresh_jwt = _refresh_jwt  # type: ignore[assignment]
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
-    with pytest.raises(GRPCError) as exc_info:
+    with pytest.raises(AuthError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
             pass
-    assert exc_info.value.status == Status.UNAUTHENTICATED
     await client.close()
 
 
@@ -409,11 +408,9 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch)
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
-    with pytest.raises(GRPCError) as exc_info:
+    with pytest.raises(AuthError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
             pass
-
-    assert exc_info.value.status == Status.UNAVAILABLE
     await client.close()
 
 
