@@ -21,7 +21,7 @@ async def _make_stream_reader(**kwarg) -> StreamReader:
 
 
 def make_stream_reader(**kwargs) -> StreamReader:
-    # stupid wrapper for type safety, otherwise the interpreter things the wrapper is async above
+    # stupid wrapper for type safety, otherwise the interpreter thinks the wrapper is async above
     # and we need to type ignore everywhere
     return typing.cast(StreamReader, _make_stream_reader(**kwargs))
 
