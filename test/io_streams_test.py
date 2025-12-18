@@ -13,8 +13,6 @@ from modal._utils.async_utils import aclosing, sync_or_async_iter, synchronizer
 from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line, _StreamWriter
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
-R = typing.TypeVar("R")
-
 
 @synchronizer.wrap
 async def _make_stream_reader(**kwarg) -> StreamReader:
