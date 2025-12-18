@@ -497,7 +497,7 @@ async def test_stream_writer_drain_calls_exec_stdin_with_eof_when_closed_and_no_
     writer = _StreamWriter(
         object_id="tp-123",
         object_type="container_process",
-        client=None,  # u´nused when command_router_client is provided
+        client=None,  # unused when command_router_client is provided
         command_router_client=router,  # type: ignore[arg-type]
         task_id="task-1",
     )
