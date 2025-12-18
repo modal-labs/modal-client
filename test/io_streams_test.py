@@ -3,7 +3,7 @@ import asyncio
 import pytest
 import time
 import typing
-from typing import AsyncGenerator, Callable, Optional
+from typing import AsyncGenerator, Optional
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError
@@ -17,15 +17,15 @@ R = typing.TypeVar("R")
 
 
 @synchronizer.wrap
-async def _make_stream_reader(f: Callable[[], R]) -> R:
+async def _make_stream_reader(**kwarg) -> StreamReader:
     # helper to make sure stream readers are constructed in the synchronizer event loop
-    return f()
+    return StreamReader(**kwarg)
 
 
-def make_stream_reader(f: Callable[[], R]) -> R:
+def make_stream_reader(**kwargs) -> StreamReader:
     # stupid wrapper for type safety, otherwise the interpreter things the wrapper is async above
     # and we need to type ignore everywhere
-    return typing.cast(R, _make_stream_reader(f))
+    return typing.cast(StreamReader, _make_stream_reader(**kwargs))
 
 
 def test_stream_reader(servicer, client):
@@ -47,12 +47,10 @@ def test_stream_reader(servicer, client):
 
         with enable_output():
             stdout: StreamReader[str] = make_stream_reader(
-                lambda: StreamReader(
-                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                    object_id="sb-123",
-                    object_type="sandbox",
-                    client=client,
-                )
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="sb-123",
+                object_type="sandbox",
+                client=client,
             )
 
             out = []
@@ -81,13 +79,11 @@ def test_stream_reader_processed(servicer, client):
 
         with enable_output():
             stdout: StreamReader[str] = make_stream_reader(
-                lambda: StreamReader(
-                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                    object_id="sb-123",
-                    object_type="sandbox",
-                    client=client,
-                    by_line=True,
-                )
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="sb-123",
+                object_type="sandbox",
+                client=client,
+                by_line=True,
             )
 
             out = []
@@ -117,13 +113,11 @@ def test_stream_reader_processed_multiple(servicer, client):
 
         with enable_output():
             stdout: StreamReader[str] = make_stream_reader(
-                lambda: StreamReader(
-                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                    object_id="sb-123",
-                    object_type="sandbox",
-                    client=client,
-                    by_line=True,
-                )
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="sb-123",
+                object_type="sandbox",
+                client=client,
+                by_line=True,
             )
 
             out = []
@@ -165,13 +159,11 @@ def test_stream_reader_processed_partial_lines(servicer, client):
 
         with enable_output():
             stdout: StreamReader[str] = make_stream_reader(
-                lambda: StreamReader(
-                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                    object_id="sb-123",
-                    object_type="sandbox",
-                    client=client,
-                    by_line=True,
-                )
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="sb-123",
+                object_type="sandbox",
+                client=client,
+                by_line=True,
             )
 
             out = []
@@ -199,13 +191,11 @@ async def test_stream_reader_bytes_mode(servicer, client):
 
         with enable_output():
             stdout: StreamReader[bytes] = make_stream_reader(
-                lambda: StreamReader(
-                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                    object_id="tp-123",
-                    object_type="container_process",
-                    client=client,
-                    text=False,
-                )
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="tp-123",
+                object_type="container_process",
+                client=client,
+                text=False,
             )
             assert await stdout.read.aio() == b"foo\n"
 
@@ -215,14 +205,12 @@ def test_stream_reader_line_buffered_bytes(servicer, client):
 
     with pytest.raises(ValueError):
         make_stream_reader(
-            lambda: StreamReader(
-                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                object_id="tp-123",
-                object_type="container_process",
-                client=client,
-                by_line=True,
-                text=False,
-            )
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+            object_id="tp-123",
+            object_type="container_process",
+            client=client,
+            by_line=True,
+            text=False,
         )
 
 
@@ -254,13 +242,11 @@ async def test_stream_reader_async_iter(servicer, client):
         expected = "foobar"
 
         stdout: StreamReader[str] = make_stream_reader(
-            lambda: StreamReader(
-                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                object_id="sb-123",
-                object_type="sandbox",
-                client=client,
-                by_line=True,
-            )
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+            object_id="sb-123",
+            object_type="sandbox",
+            client=client,
+            by_line=True,
         )
 
         out = ""
@@ -301,13 +287,11 @@ async def test_stream_reader_container_process_retry(servicer, client):
 
         with enable_output():
             stdout: StreamReader[str] = make_stream_reader(
-                lambda: StreamReader(
-                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                    object_id="tp-123",
-                    object_type="container_process",
-                    client=client,
-                    by_line=True,
-                )
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="tp-123",
+                object_type="container_process",
+                client=client,
+                by_line=True,
             )
 
             output = []
@@ -345,14 +329,12 @@ async def test_stream_reader_timeout(servicer, client):
         ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
         with enable_output():
             stdout: StreamReader[str] = make_stream_reader(
-                lambda: StreamReader(
-                    file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                    object_id="tp-123",
-                    object_type="container_process",
-                    client=client,
-                    by_line=True,
-                    deadline=time.monotonic() + 0.5,  # use a 2-second timeout
-                )
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="tp-123",
+                object_type="container_process",
+                client=client,
+                by_line=True,
+                deadline=time.monotonic() + 0.5,  # use a 2-second timeout
             )
             output: list[str] = []
             async for line in stdout:
@@ -588,15 +570,13 @@ async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with
 def test_stream_reader_read_concatenates_chunks(text, expected_out):
     router = _FakeCommandRouterClient()
     reader: typing.Union[StreamReader[str], StreamReader[bytes]] = make_stream_reader(
-        lambda: StreamReader(
-            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-            object_id="tp-123",
-            object_type="container_process",
-            client=None,  # type: ignore[arg-type]
-            command_router_client=router,  # type: ignore[arg-type]
-            task_id="task-1",
-            text=text,
-        )
+        file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,  # type: ignore[arg-type]
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
+        text=text,
     )
 
     out = reader.read()
