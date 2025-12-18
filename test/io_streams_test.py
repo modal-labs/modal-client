@@ -207,9 +207,7 @@ async def test_stream_reader_bytes_mode(servicer, client):
                     text=False,
                 )
             )
-            print("reading")
             assert await stdout.read.aio() == b"foo\n"
-            print("done")
 
 
 def test_stream_reader_line_buffered_bytes(servicer, client):
@@ -589,7 +587,7 @@ async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with
 @pytest.mark.parametrize("text, expected_out", [(False, b"abc"), (True, "abc")])
 def test_stream_reader_read_concatenates_chunks(text, expected_out):
     router = _FakeCommandRouterClient()
-    reader = make_stream_reader(
+    reader: typing.Union[StreamReader[str], StreamReader[bytes]] = make_stream_reader(
         lambda: StreamReader(
             file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
             object_id="tp-123",
