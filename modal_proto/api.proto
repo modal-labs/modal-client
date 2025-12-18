@@ -1469,6 +1469,8 @@ message Function {
 
   bool block_network = 44;
 
+  // In the SDK, we've deprecated `max_inputs` (which only every implemented `max_inputs=1`)
+  // in favor of a boolean `single_use_containers` parameter.
   uint32 max_inputs = 46;
 
   repeated S3Mount s3_mounts = 47;
@@ -1556,6 +1558,9 @@ message Function {
   // Attribute on the module with the implementation, which may differ from function_name
   // when the user provided a custom name= for the Function inside the Application namespace
   string implementation_name = 90;
+
+  bool single_use_containers = 91; // When True, containers will shut down after handling a single input
+
 }
 
 message FunctionAsyncInvokeRequest {
