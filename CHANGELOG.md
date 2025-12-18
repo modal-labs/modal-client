@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.2.7.dev7 (2025-12-18)
+
+- The `max_inputs` parameter in the `@app.function()` and `@app.cls` decorators has been renamed to `single_use_containers` and now takes a boolean value rather than an integer. Note that only `max_inputs=1` had been supported, so this has no functional implications. This change is being made to reduce confusion with `@modal.concurrent(max_inputs=...)` and so that Modal's autoscaler can provide better performance for Functions with single-use containers.
+
+
 #### 1.2.7.dev6 (2025-12-17)
 
 * Removed `replace_bytes` and `delete_bytes` from Sandbox FileIO
