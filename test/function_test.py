@@ -14,6 +14,7 @@ from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
 import modal
+import modal.experimental
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._functions import MAX_INTERNAL_FAILURE_COUNT
 from modal._utils.async_utils import synchronize_api
@@ -589,6 +590,37 @@ def test_scaledown_window_must_be_positive():
     app = App(include_source=False)
     with pytest.raises(InvalidError, match="must be > 0"):
         app.function(scaledown_window=0)(dummy)
+
+
+def test_autoscaler_settings_are_multiples_of_cluster_size():
+    app = App(include_source=False)
+
+    with pytest.raises(InvalidError, match=r"`min_containers` \(7\) must be a multiple of `cluster_size` \(3\)"):
+
+        @app.function(serialized=True, min_containers=7)
+        @modal.experimental.clustered(size=3)
+        def f1():
+            pass
+
+    with pytest.raises(InvalidError, match=r"`max_containers` \(5\) must be a multiple of `cluster_size` \(2\)"):
+
+        @app.function(serialized=True, max_containers=5)
+        @modal.experimental.clustered(size=2)
+        def f2():
+            pass
+
+    with pytest.raises(InvalidError, match=r"`buffer_containers` \(6\) must be a multiple of `cluster_size` \(4\)"):
+
+        @app.function(serialized=True, buffer_containers=6)
+        @modal.experimental.clustered(size=4)
+        def f3():
+            pass
+
+    # all settings are multiples of cluster_size (no error)
+    @app.function(serialized=True, min_containers=4, max_containers=6, buffer_containers=0)
+    @modal.experimental.clustered(size=2)
+    def f4():
+        pass
 
 
 def later():
