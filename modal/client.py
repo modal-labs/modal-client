@@ -70,7 +70,7 @@ class _Client:
     _client_from_env: ClassVar[Optional["_Client"]] = None
     _client_from_env_lock: ClassVar[Optional[asyncio.Lock]] = None
     _cancellation_context: TaskContext
-    _cancellation_context_event_loop: Optional[Optional[asyncio.AbstractEventLoop]] = None
+    _cancellation_context_event_loop: Optional[asyncio.AbstractEventLoop] = None
     _stub: Optional[modal_api_grpc.ModalClientModal] = None
     _auth_token_manager: Optional[_AuthTokenManager] = None
     _snapshotted: bool = False
