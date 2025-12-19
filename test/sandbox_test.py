@@ -821,16 +821,33 @@ def test_sandbox_stdout_read_incremental_iter(servicer, client, by_line, text):
 
 @skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_experimental_mount_image(servicer, client, exec_backend, app):
+def test_experimental_mount_image(servicer, client, exec_backend, app, monkeypatch):
     """Test mounting an image at a path in the sandbox."""
+    captured_requests = []
+    original = FakeTaskCommandRouterClient.mount_image
+
+    async def _mount_image(self, request):
+        captured_requests.append(request)
+        return await original(self, request)
+
+    monkeypatch.setattr(FakeTaskCommandRouterClient, "mount_image", _mount_image, raising=True)
+
     image = Image.debian_slim()
     sb = Sandbox.create(image=image, app=app)
 
     # Test mounting an actual image
     sb._experimental_mount_image("/cache", image)
 
+    assert len(captured_requests) == 1
+    assert captured_requests[0].path == b"/cache"
+    assert captured_requests[0].image_id == image.object_id
+
     # Test mounting an empty directory (image=None)
     sb._experimental_mount_image("/empty", None)
+
+    assert len(captured_requests) == 2
+    assert captured_requests[1].path == b"/empty"
+    assert captured_requests[1].image_id == ""  # empty string for empty dir
 
     # Test validation: non-absolute path should raise
     with pytest.raises(InvalidError, match="must be absolute"):
