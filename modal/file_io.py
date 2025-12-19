@@ -459,7 +459,7 @@ class _FileIO(Generic[T]):
             ),
         )
 
-        def end_of_event(item: bytes, buffer: io.BytesIO, boundary_token: bytes = b"\n\n") -> bool:
+        def end_of_event(item: bytes, buffer: io.BytesIO, boundary_token: bytes) -> bool:
             if not item.endswith(b"\n"):
                 return False
             boundary_token_size = len(boundary_token)
@@ -468,7 +468,6 @@ class _FileIO(Generic[T]):
             buffer.seek(-boundary_token_size, io.SEEK_END)
             if buffer.read(boundary_token_size) == boundary_token:
                 return True
-            buffer.seek(0, io.SEEK_END)
             return False
 
         async with TaskContext() as tc:
@@ -484,7 +483,8 @@ class _FileIO(Generic[T]):
                         raise item
                     item_buffer.write(item)
                     assert isinstance(item, bytes)
-                    if end_of_event(item, item_buffer):
+                    # Single events may span multiple messages so we need to check for a special event boundary token
+                    if end_of_event(item, item_buffer, boundary_token=b"\n\n"):
                         try:
                             event_json = json.loads(item_buffer.getvalue().strip().decode())
                             event = FileWatchEvent(
