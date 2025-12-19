@@ -33,7 +33,7 @@ from typing_extensions import ParamSpec, assert_type
 from modal._ipython import is_interactive_ipython
 from modal._utils.deprecation import deprecation_warning
 
-from ..exception import InvalidError
+from ..exception import AsyncUsageWarning, InvalidError
 from .logger import logger
 
 T = TypeVar("T")
@@ -43,10 +43,6 @@ V = TypeVar("V")
 if sys.platform == "win32":
     # quick workaround for deadlocks on shutdown - need to investigate further
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-
-class AsyncUsageWarning(UserWarning):
-    pass
 
 
 def rewrite_sync_to_async(code_line: str, original_func: Callable) -> tuple[bool, str]:

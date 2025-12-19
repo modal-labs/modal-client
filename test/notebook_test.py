@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import pytest
-import sys
 from pathlib import Path
 
 
@@ -48,9 +47,6 @@ Inspect the output notebook: {output_notebook_path}
     return runner
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 10), reason="Python 3.9 causes some annoying deprecation warnings on jupytext import"
-)
 def test_notebook_outputs_status(notebook_runner, test_dir):
     input_notebook_path = test_dir / "supports" / "notebooks" / "simple.notebook.py"
     tagged_cells = notebook_runner(input_notebook_path)
@@ -60,9 +56,6 @@ def test_notebook_outputs_status(notebook_runner, test_dir):
     assert "App completed." in combined_output
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 10), reason="Python 3.9 causes some annoying deprecation warnings on jupytext import"
-)
 def test_is_interactive_ipython_in_real_notebook(notebook_runner, test_dir):
     """Integration test: Run actual notebook to verify is_interactive_ipython returns True."""
     notebook_path = test_dir / "supports" / "notebooks" / "ipython_detection.notebook.py"
