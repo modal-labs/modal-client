@@ -156,7 +156,7 @@ async def perform_multipart_upload(
     for part_number, etag in enumerate(part_etags, 1):
         completion_parts.append(f"""<Part>\n<PartNumber>{part_number}</PartNumber>\n<ETag>"{etag}"</ETag>\n</Part>""")
     completion_parts.append("</CompleteMultipartUpload>")
-    completion_body = "".join(completion_parts)
+    completion_body = "\n".join(completion_parts)
 
     # etag of combined object should be md5 hex of concatenated md5 *bytes* from parts + `-{num_parts}`
     bin_hash_parts = [bytes.fromhex(etag) for etag in part_etags]
