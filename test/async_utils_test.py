@@ -1552,7 +1552,7 @@ async def test_sync_in_async_warning(client):
         warning_message = str(w[0].message)
         print(warning_message)
         # Verify the warning contains key information
-        assert "Blocking Modal interface used from within " in warning_message
+        assert "A blocking Modal interface is being used in " in warning_message
         assert "await modal.Dict.objects.list.aio(client=client)" in warning_message
 
 
@@ -1576,7 +1576,7 @@ async def test_sync_in_async_property_warning(client):
         warning_message = str(w[0].message)
         print(warning_message)
         # Verify the warning contains key information
-        assert "Blocking Modal interface used from within " in warning_message
+        assert "A blocking Modal interface is being used in " in warning_message
         assert "await f.web_url" in warning_message
 
 
@@ -1600,7 +1600,7 @@ async def test_sync_in_async_warning_iteration(servicer, client, set_env_client)
             print(warning_message)
 
             # Verify the warning contains key information
-            assert "Blocking Modal interface used from within " in warning_message
+            assert "A blocking Modal interface is being used in " in warning_message
             assert "async for _ in q.iterate():" in warning_message
 
 
@@ -1625,7 +1625,7 @@ async def test_sync_in_async_warning_iteration_volume(servicer, client, set_env_
             print(warning_message)
 
             # Verify the warning contains key information
-            assert "Blocking Modal interface used from within " in warning_message
+            assert "A blocking Modal interface is being used in " in warning_message
             assert 'async for chunk in vol.read_file("dummy"):' in warning_message
 
 
@@ -1652,7 +1652,7 @@ async def test_sync_in_async_warning_context_manager(servicer, client):
         print(warning_message)
 
         # Verify the warning contains key information
-        assert "Blocking Modal interface used from within " in warning_message
+        assert "A blocking Modal interface is being used in " in warning_message
         assert "async with modal.Queue.ephemeral(client=client) as q:" in warning_message
 
 
