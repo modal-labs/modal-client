@@ -23,7 +23,7 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 from modal.exception import ClientClosed, ExecTimeoutError, InvalidError
 from modal_proto import api_pb2
 
-from ._utils.async_utils import aclosing, synchronize_api
+from ._utils.async_utils import aclosing, synchronize_api, synchronizer
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
@@ -566,6 +566,9 @@ class _StreamReader(Generic[T]):
         task_id: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
+        # we can remove this once we ensure no constructors use async code
+        assert asyncio.get_running_loop() == synchronizer._get_loop(start=False)
+
         if by_line and not text:
             raise ValueError("line-buffering is only supported when text=True")
 
