@@ -7,7 +7,6 @@ import urllib.parse
 
 from google.protobuf.empty_pb2 import Empty
 
-import modal
 import modal._utils.grpc_utils
 from modal import Client
 from modal.exception import AuthError, ConflictError, ConnectionError, InvalidError, ServerWarning

@@ -521,3 +521,17 @@ class TaskCommandRouterClient:
                     await sleep_and_update_delay_and_num_retries_remaining(e)
                 else:
                     raise ConnectionError(str(e))
+
+    async def mount_image(self, request: sr_pb2.TaskMountDirectoryRequest):
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskMountDirectory, request)
+            )
+
+    async def snapshot_directory(
+        self, request: sr_pb2.TaskSnapshotDirectoryRequest
+    ) -> sr_pb2.TaskSnapshotDirectoryResponse:
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskSnapshotDirectory, request)
+            )

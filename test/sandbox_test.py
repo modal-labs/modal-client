@@ -817,3 +817,58 @@ def test_sandbox_stdout_read_incremental_iter(servicer, client, by_line, text):
                 assert chunks == ["caf", "é"]  # buffer until decodable
         else:
             assert chunks == [b"caf\xc3", b"\xa9"]  # no buffering
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_experimental_mount_image(servicer, client, exec_backend, app, monkeypatch):
+    """Test mounting an image at a path in the sandbox."""
+    captured_requests = []
+    original = FakeTaskCommandRouterClient.mount_image
+
+    async def _mount_image(self, request):
+        captured_requests.append(request)
+        return await original(self, request)
+
+    monkeypatch.setattr(FakeTaskCommandRouterClient, "mount_image", _mount_image, raising=True)
+
+    image = Image.debian_slim()
+    sb = Sandbox.create(image=image, app=app)
+
+    # Test mounting an actual image
+    sb._experimental_mount_image("/cache", image)
+
+    assert len(captured_requests) == 1
+    assert captured_requests[0].path == b"/cache"
+    assert captured_requests[0].image_id == image.object_id
+
+    # Test mounting an empty directory (image=None)
+    sb._experimental_mount_image("/empty", None)
+
+    assert len(captured_requests) == 2
+    assert captured_requests[1].path == b"/empty"
+    assert captured_requests[1].image_id == ""  # empty string for empty dir
+
+    # Test validation: non-absolute path should raise
+    with pytest.raises(InvalidError, match="must be absolute"):
+        sb._experimental_mount_image("relative/path", None)
+
+    sb.terminate()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_experimental_snapshot_directory(servicer, client, exec_backend, app):
+    """Test snapshotting a directory to create a new image."""
+    sb = Sandbox.create(app=app)
+
+    # Create and snapshot a directory
+    image = sb._experimental_snapshot_directory("/tmp")
+
+    assert image.object_id == "im-snapshot-123"  # From mock
+
+    # Test validation: non-absolute path should raise
+    with pytest.raises(InvalidError, match="must be absolute"):
+        sb._experimental_snapshot_directory("relative/path")
+
+    sb.terminate()

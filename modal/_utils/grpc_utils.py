@@ -16,8 +16,6 @@ from typing import Any, Optional, Sequence, TypeVar
 import grpclib.client
 import grpclib.config
 import grpclib.events
-import grpclib.protocol
-import grpclib.stream
 from google.protobuf.message import Message
 from google.protobuf.symbol_database import SymbolDatabase
 from grpclib import GRPCError, Status

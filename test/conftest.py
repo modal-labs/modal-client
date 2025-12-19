@@ -29,7 +29,6 @@ from typing import Any, AsyncGenerator, Callable, Optional, Union, get_args
 from unittest import mock
 
 import aiohttp.web
-import click
 import click.testing
 import grpclib.server
 import jwt
@@ -158,6 +157,23 @@ class FakeTaskCommandRouterClient:
             raise ExecTimeoutError("deadline exceeded")
 
         return sr_pb2.TaskExecWaitResponse(code=proc.returncode)
+
+    async def mount_image(self, request: sr_pb2.TaskMountDirectoryRequest):
+        """Mock mount_image for testing - stores requests for verification."""
+        if not hasattr(self, "_mount_requests"):
+            self._mount_requests = []
+        self._mount_requests.append(request)
+        # Return empty response (no fields in the actual proto)
+        return None
+
+    async def snapshot_directory(
+        self, request: sr_pb2.TaskSnapshotDirectoryRequest
+    ) -> sr_pb2.TaskSnapshotDirectoryResponse:
+        """Mock snapshot_directory for testing - returns a fake image ID."""
+        if not hasattr(self, "_snapshot_requests"):
+            self._snapshot_requests = []
+        self._snapshot_requests.append(request)
+        return sr_pb2.TaskSnapshotDirectoryResponse(image_id="im-snapshot-123")
 
 
 @pytest.fixture
