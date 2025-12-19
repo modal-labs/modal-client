@@ -29,7 +29,7 @@ OUT_OF_RANGE -> InvalidError
 UNIMPLEMENTED -> UnimplementedError
 INTERNAL -> InternalError
 UNAVAILABLE -> ServiceError
-DATA_LOSS -> ServiceError
+DATA_LOSS -> DataLossError
 UNAUTHENTICATED -> AuthError
 ```
 
@@ -148,6 +148,10 @@ class InvalidError(Error, _GRPCErrorWrapper):
 
 class ConflictError(InvalidError, _GRPCErrorWrapper):
     """Raised when a resource conflict occurs between the request and current system state."""
+
+
+class DataLossError(Error, _GRPCErrorWrapper):
+    """Raised when data is lost or corrupted."""
 
 
 class NotFoundError(Error, _GRPCErrorWrapper):
