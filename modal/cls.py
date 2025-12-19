@@ -6,7 +6,6 @@ from collections.abc import Collection
 from pathlib import PurePosixPath
 from typing import Any, Callable, Optional, Sequence, TypeVar, Union
 
-import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
@@ -563,7 +562,7 @@ class {user_cls.__name__}:
 More information on class parameterization can be found here: https://modal.com/docs/guide/parametrized-functions
 """,
             )
-        annotations = typing_extensions.get_annotations(user_cls)
+        annotations = inspect.get_annotations(user_cls)
         missing_annotations = params.keys() - annotations.keys()
         if missing_annotations:
             raise InvalidError("All modal.parameter() specifications need to be type-annotated")
