@@ -252,6 +252,10 @@ class ServerWarning(UserWarning):
     """Warning originating from the Modal server and re-issued in client code."""
 
 
+class AsyncUsageWarning(UserWarning):
+    """Warning emitted when a blocking Modal interface is used in an async context."""
+
+
 class InternalFailure(Error):
     """Retriable internal error."""
 
