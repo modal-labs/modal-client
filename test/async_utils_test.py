@@ -33,9 +33,9 @@ from modal._utils.async_utils import (
 )
 from test import helpers
 
-# Allow BlockingInAsyncContextWarning to be a warning (not error) in this test file
+# Allow AsyncUsageWarning to be a warning (not error) in this test file
 # since we're specifically testing the warning behavior
-pytestmark = pytest.mark.filterwarnings("default::modal._utils.async_utils.BlockingInAsyncContextWarning")
+pytestmark = pytest.mark.filterwarnings("default::modal._utils.async_utils.AsyncUsageWarning")
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -1542,7 +1542,7 @@ async def test_sync_in_async_warning(client, enable_async_warnings):
     import warnings
 
     import modal
-    from modal._utils.async_utils import BlockingInAsyncContextWarning
+    from modal._utils.async_utils import AsyncUsageWarning
 
     # Call the blocking interface from within an async context
     # This should trigger the sync_in_async_warning_callback
@@ -1552,7 +1552,7 @@ async def test_sync_in_async_warning(client, enable_async_warnings):
 
         # Verify the warning was emitted
         assert len(w) == 1
-        assert issubclass(w[0].category, BlockingInAsyncContextWarning)
+        assert issubclass(w[0].category, AsyncUsageWarning)
 
         warning_message = str(w[0].message)
         print(warning_message)
@@ -1566,7 +1566,7 @@ async def test_sync_in_async_property_warning(client, enable_async_warnings):
     import warnings
 
     import modal
-    from modal._utils.async_utils import BlockingInAsyncContextWarning
+    from modal._utils.async_utils import AsyncUsageWarning
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -1576,7 +1576,7 @@ async def test_sync_in_async_property_warning(client, enable_async_warnings):
 
         # Verify the warning was emitted
         assert len(w) == 1
-        assert issubclass(w[0].category, BlockingInAsyncContextWarning)
+        assert issubclass(w[0].category, AsyncUsageWarning)
 
         warning_message = str(w[0].message)
         print(warning_message)
@@ -1591,7 +1591,7 @@ async def test_sync_in_async_warning_iteration(servicer, client, set_env_client,
     import warnings
 
     import modal
-    from modal._utils.async_utils import BlockingInAsyncContextWarning
+    from modal._utils.async_utils import AsyncUsageWarning
 
     async with modal.Queue.ephemeral(client=client) as q:
         with warnings.catch_warnings(record=True) as w:
@@ -1600,7 +1600,7 @@ async def test_sync_in_async_warning_iteration(servicer, client, set_env_client,
                 pass
             # Verify the warning was emitted
             assert len(w) == 1
-            assert issubclass(w[0].category, BlockingInAsyncContextWarning)
+            assert issubclass(w[0].category, AsyncUsageWarning)
             warning_message = str(w[0].message)
             print(warning_message)
 
@@ -1615,7 +1615,7 @@ async def test_sync_in_async_warning_iteration_volume(servicer, client, set_env_
     import warnings
 
     import modal
-    from modal._utils.async_utils import BlockingInAsyncContextWarning
+    from modal._utils.async_utils import AsyncUsageWarning
 
     async with modal.Volume.ephemeral(client=client) as vol:
         with warnings.catch_warnings(record=True) as w:
@@ -1625,7 +1625,7 @@ async def test_sync_in_async_warning_iteration_volume(servicer, client, set_env_
                     pass
             # Verify the warning was emitted
             assert len(w) == 1
-            assert issubclass(w[0].category, BlockingInAsyncContextWarning)
+            assert issubclass(w[0].category, AsyncUsageWarning)
             warning_message = str(w[0].message)
             print(warning_message)
 
@@ -1640,7 +1640,7 @@ async def test_sync_in_async_warning_context_manager(servicer, client, enable_as
     import warnings
 
     import modal
-    from modal._utils.async_utils import BlockingInAsyncContextWarning
+    from modal._utils.async_utils import AsyncUsageWarning
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -1653,7 +1653,7 @@ async def test_sync_in_async_warning_context_manager(servicer, client, enable_as
         # Verify the warning was emitted
         assert len(w) == 1
         warning_message = str(w[0].message)
-        assert issubclass(w[0].category, BlockingInAsyncContextWarning)
+        assert issubclass(w[0].category, AsyncUsageWarning)
         print(warning_message)
 
         # Verify the warning contains key information

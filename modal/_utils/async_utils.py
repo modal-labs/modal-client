@@ -45,7 +45,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
-class BlockingInAsyncContextWarning(UserWarning):
+class AsyncUsageWarning(UserWarning):
     pass
 
 
@@ -293,14 +293,14 @@ def _blocking_in_async_warning(original_func: types.FunctionType):
 
         warnings.warn_explicit(
             "".join(message_parts),
-            BlockingInAsyncContextWarning,
+            AsyncUsageWarning,
             filename=call_frame.filename,
             lineno=call_frame.lineno,
             module=module_name,
         )
     else:
         # Fallback to regular warn if no frame information available
-        warnings.warn("".join(message_parts), BlockingInAsyncContextWarning)
+        warnings.warn("".join(message_parts), AsyncUsageWarning)
 
 
 def _safe_blocking_in_async_warning(original_func: types.FunctionType):
@@ -317,7 +317,7 @@ def _safe_blocking_in_async_warning(original_func: types.FunctionType):
         return
     try:
         _blocking_in_async_warning(original_func)
-    except BlockingInAsyncContextWarning:
+    except AsyncUsageWarning:
         # Re-raise the warning if it's been configured as an error
         raise
     except Exception:
