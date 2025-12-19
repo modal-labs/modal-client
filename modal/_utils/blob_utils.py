@@ -152,12 +152,13 @@ async def perform_multipart_upload(
     part_etags = await TaskContext.gather(*upload_coros)
 
     # The body of the complete_multipart_upload command needs some data in xml format:
-    completion_body = "<CompleteMultipartUpload>\n"
+    completion_parts = ["<CompleteMultipartUpload>"]
     for part_number, etag in enumerate(part_etags, 1):
-        completion_body += f"""<Part>\n<PartNumber>{part_number}</PartNumber>\n<ETag>"{etag}"</ETag>\n</Part>\n"""
-    completion_body += "</CompleteMultipartUpload>"
+        completion_parts.append(f"""<Part>\n<PartNumber>{part_number}</PartNumber>\n<ETag>"{etag}"</ETag>\n</Part>""")
+    completion_parts.append("</CompleteMultipartUpload>")
+    completion_body = "\n".join(completion_parts)
 
-    # etag of combined object should be md5 hex of concatendated md5 *bytes* from parts + `-{num_parts}`
+    # etag of combined object should be md5 hex of concatenated md5 *bytes* from parts + `-{num_parts}`
     bin_hash_parts = [bytes.fromhex(etag) for etag in part_etags]
 
     expected_multipart_etag = hashlib.md5(b"".join(bin_hash_parts)).hexdigest() + f"-{len(part_etags)}"
