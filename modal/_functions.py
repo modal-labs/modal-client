@@ -787,6 +787,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             scaledown_window=scaledown_window,
         )
 
+        # For clustered functions, container settings must be multiples of cluster_size
+        if cluster_size is not None and cluster_size > 1:
+            for field in ["min_containers", "max_containers", "buffer_containers"]:
+                value = getattr(autoscaler_settings, field)
+                if value and value % cluster_size != 0:
+                    raise InvalidError(
+                        f"`{field}` ({value}) must be a multiple of `cluster_size` ({cluster_size}) "
+                        f"for clustered Functions"
+                    )
+
         if _experimental_custom_scaling_factor is not None and (
             _experimental_custom_scaling_factor < 0 or _experimental_custom_scaling_factor > 1
         ):
