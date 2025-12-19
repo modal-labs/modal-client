@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
+import builtins
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional, Union
 
 from google.protobuf.message import Message
-from grpclib import GRPCError
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -28,7 +28,14 @@ from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
-from .exception import AlreadyExistsError, DeserializationError, InvalidError, NotFoundError, RequestSizeError
+from .exception import (
+    AlreadyExistsError,
+    DeserializationError,
+    Error,
+    InvalidError,
+    NotFoundError,
+    RequestSizeError,
+)
 
 
 class _NoDefaultSentinel:
@@ -137,7 +144,7 @@ class _DictManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> list["_Dict"]:
+    ) -> builtins.list["_Dict"]:
         """Return a list of hydrated Dict objects.
 
         **Examples:**
@@ -502,8 +509,8 @@ class _Dict(_Object, type_prefix="di"):
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         try:
             await self._client.stub.DictUpdate(req)
-        except GRPCError as exc:
-            if "status = '413'" in exc.message:
+        except Error as exc:
+            if "status = '413'" in str(exc):
                 raise RequestSizeError("Dict.update request is too large") from exc
             else:
                 raise exc
@@ -521,8 +528,8 @@ class _Dict(_Object, type_prefix="di"):
         try:
             resp = await self._client.stub.DictUpdate(req)
             return resp.created
-        except GRPCError as exc:
-            if "status = '413'" in exc.message:
+        except Error as exc:
+            if "status = '413'" in str(exc):
                 raise RequestSizeError("Dict.put request is too large") from exc
             else:
                 raise exc

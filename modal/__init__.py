@@ -3,8 +3,8 @@ import sys
 
 if sys.version_info[:2] < (3, 10):
     raise RuntimeError("This version of Modal requires at least Python 3.10")
-if sys.version_info[:2] >= (3, 14):
-    raise RuntimeError("This version of Modal does not support Python 3.14+")
+if sys.version_info[:2] >= (3, 15):
+    raise RuntimeError("This version of Modal does not support Python 3.15+")
 
 from modal_version import __version__
 

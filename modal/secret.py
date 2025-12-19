@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import builtins
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -102,7 +103,7 @@ class _SecretManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> list["_Secret"]:
+    ) -> builtins.list["_Secret"]:
         """Return a list of hydrated Secret objects.
 
         **Examples:**

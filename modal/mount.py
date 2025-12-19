@@ -13,7 +13,6 @@ from pathlib import Path, PurePosixPath
 from typing import Callable, Optional, Sequence, Union
 
 from google.protobuf.message import Message
-from grpclib import GRPCError
 
 import modal.exception
 import modal.file_pattern_matcher
@@ -45,6 +44,7 @@ PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
     "3.11": ("20230826", "3.11.5"),
     "3.12": ("20240107", "3.12.1"),
     "3.13": ("20241008", "3.13.0"),
+    "3.14": ("20251205", "3.14.2"),
 }
 
 MOUNT_DEPRECATION_MESSAGE_PATTERN = """modal.Mount usage will soon be deprecated.
@@ -838,8 +838,8 @@ async def _create_single_client_dependency_mount(
                         client=client,
                     )
                     print(f"✅ Deployed mount {mount_name} to global namespace.")  # noqa: T201
-                except GRPCError as e:
-                    print(f"⚠️ Mount creation failed with {e.status}: {e.message}")  # noqa: T201
+                except modal.exception.Error as e:
+                    print(f"⚠️ Mount creation failed with {type(e).__name__}: {e}")  # noqa: T201
             else:
                 print(f"Dry run - skipping deployment of mount {mount_name}")  # noqa: T201
 

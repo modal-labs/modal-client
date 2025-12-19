@@ -23,7 +23,7 @@ from typing import (
 
 import typing_extensions
 from google.protobuf.message import Message
-from grpclib.exceptions import GRPCError, StreamTerminatedError
+from grpclib.exceptions import StreamTerminatedError
 from typing_extensions import Self
 
 from modal._serialization import serialize_data_format
@@ -40,13 +40,20 @@ from ._utils.docker_utils import (
     find_dockerignore_file,
 )
 from ._utils.function_utils import FunctionInfo
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from ._utils.mount_utils import validate_only_modal_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
-from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError, VersionError
+from .exception import (
+    ExecutionError,
+    InternalError,
+    InvalidError,
+    NotFoundError,
+    RemoteError,
+    ServiceError,
+    VersionError,
+)
 from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_fn
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
@@ -67,8 +74,8 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVI
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
-    "PREVIEW": ["3.10", "3.11", "3.12", "3.13"],
-    "2025.06": ["3.10", "3.11", "3.12", "3.13"],
+    "PREVIEW": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "2025.06": ["3.10", "3.11", "3.12", "3.13", "3.14"],
     "2024.10": ["3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.10", "3.11", "3.12"],
     "2023.12": ["3.10", "3.11", "3.12"],
@@ -376,9 +383,7 @@ async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.I
     while result_response is None:
         try:
             await join()
-        except (StreamTerminatedError, GRPCError) as exc:
-            if isinstance(exc, GRPCError) and exc.status not in RETRYABLE_GRPC_STATUS_CODES:
-                raise exc
+        except (ServiceError, InternalError, StreamTerminatedError) as exc:
             retry_count += 1
             if retry_count >= 3:
                 raise exc

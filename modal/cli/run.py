@@ -129,7 +129,7 @@ def _add_click_options(func, parameters: dict[str, ParameterMetadata]):
 
         parser = option_parsers.get(param_type_str)
         if parser is None:
-            msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']!r}"
+            msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']}"
             raise NoParserAvailable(msg)
         kwargs: Any = {
             "type": parser,
@@ -200,11 +200,21 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
     return f
 
 
+def _get_signature(func: typing.Any) -> inspect.Signature:
+    """Returns signature with the original source annotations."""
+    kwargs: dict[str, typing.Any] = {}
+    if sys.version_info[:2] >= (3, 14):
+        import annotationlib
+
+        kwargs["annotation_format"] = annotationlib.Format.STRING
+    return inspect.signature(func, **kwargs)
+
+
 def _get_click_command_for_function(app: App, function: Function, ctx: click.Context):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    sig: inspect.Signature = inspect.signature(function.info.raw_f)
+    sig: inspect.Signature = _get_signature(function.info.raw_f)
     type_hints = safe_get_type_hints(function.info.raw_f)
     signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
@@ -253,7 +263,7 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference, ctx: click
 
     partial_function = partial_functions[method_name]
     raw_f = partial_function._get_raw_f()
-    sig_without_self = inspect.signature(functools.partial(raw_f, None))
+    sig_without_self = _get_signature(functools.partial(raw_f, None))
     fun_signature = _get_cli_runnable_signature(sig_without_self, safe_get_type_hints(raw_f))
 
     # TODO(erikbern): assert there's no overlap?
@@ -287,7 +297,7 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
-    signature = _get_cli_runnable_signature(inspect.signature(func), safe_get_type_hints(func))
+    signature = _get_cli_runnable_signature(_get_signature(func), safe_get_type_hints(func))
 
     @click.pass_context
     def f(ctx, *args, **kwargs):

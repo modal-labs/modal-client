@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import builtins
 import json
 import os
 import time
@@ -1106,7 +1107,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
 
-    async def ls(self, path: str) -> list[str]:
+    async def ls(self, path: str) -> builtins.list[str]:
         """[Alpha] List the contents of a directory in the Sandbox."""
         task_id = await self._get_task_id()
         return await _FileIO.ls(path, self._client, task_id)
@@ -1124,7 +1125,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def watch(
         self,
         path: str,
-        filter: Optional[list[FileWatchEventType]] = None,
+        filter: Optional[builtins.list[FileWatchEventType]] = None,
         recursive: Optional[bool] = None,
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:

@@ -5,6 +5,7 @@ from grpclib import GRPCError, Status
 
 import modal
 from modal._grpc_client import _STATUS_TO_EXCEPTION
+from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 
 
 def test_exception_map():
@@ -22,3 +23,12 @@ def test_exception_message(exception_type):
     exc = exception_type("oh no!")
     assert repr(exc) == f"{exception_type.__name__}('oh no!')"
     assert str(exc) == "oh no!"
+
+
+def test_retryable_exceptions():
+    retryable_exceptions = {
+        exception_type
+        for status_code, exception_type in _STATUS_TO_EXCEPTION.items()
+        if status_code in RETRYABLE_GRPC_STATUS_CODES
+    }
+    assert retryable_exceptions == {modal.exception.ServiceError, modal.exception.InternalError}

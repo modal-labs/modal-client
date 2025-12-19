@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 import json
 
-from grpclib.exceptions import GRPCError, StreamTerminatedError
+from grpclib.exceptions import StreamTerminatedError
 
 from modal._utils.async_utils import TaskContext
 from modal.exception import ClientClosed
@@ -18,9 +18,8 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_error
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
-from .exception import FilesystemExecutionError
+from .exception import FilesystemExecutionError, InternalError, ServiceError
 
 WRITE_CHUNK_SIZE = 16 * 1024 * 1024  # 16 MiB
 WRITE_FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1 GiB
@@ -166,13 +165,12 @@ class _FileIO(Generic[T]):
                         completed = True
                         break
 
-            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
+            except (ServiceError, InternalError, StreamTerminatedError, ClientClosed) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
+                    if isinstance(exc, (ServiceError, InternalError)):
+                        await asyncio.sleep(1.0)
+                        continue
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                     elif isinstance(exc, ClientClosed):
@@ -202,13 +200,12 @@ class _FileIO(Generic[T]):
                     if isinstance(data, Exception):
                         raise data
                     output_buffer.write(data)
-            except (GRPCError, StreamTerminatedError) as exc:
+            except (ServiceError, InternalError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
+                    if isinstance(exc, (ServiceError, InternalError)):
+                        await asyncio.sleep(1.0)
+                        continue
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                 raise

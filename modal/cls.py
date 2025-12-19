@@ -561,7 +561,7 @@ class {user_cls.__name__}:
 More information on class parameterization can be found here: https://modal.com/docs/guide/parametrized-functions
 """,
             )
-        annotations = user_cls.__dict__.get("__annotations__", {})  # compatible with older pythons
+        annotations = inspect.get_annotations(user_cls)
         missing_annotations = params.keys() - annotations.keys()
         if missing_annotations:
             raise InvalidError("All modal.parameter() specifications need to be type-annotated")
