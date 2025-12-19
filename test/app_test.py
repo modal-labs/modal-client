@@ -11,7 +11,7 @@ from grpclib import GRPCError, Status
 from modal import App, Image, Secret, Volume, enable_output, fastapi_endpoint, web_endpoint
 from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
+from modal.exception import DeprecationError, ExecutionError, InternalError, InvalidError, NotFoundError
 from modal.runner import run_app
 from modal_proto import api_pb2
 
@@ -63,13 +63,12 @@ def test_create_object_internal_exception(servicer, client):
     app.function()(dummy)
 
     with servicer.intercept() as ctx:
-        with pytest.raises(GRPCError) as excinfo:
+        with pytest.raises(InternalError):
             with enable_output():  # this activates the log streaming loop, which could potentially hold up context exit
                 with app.run(client=client):
                     pass
 
     assert len(ctx.get_requests("FunctionCreate")) == 4  # some retries are applied to internal errors
-    assert excinfo.value.status == Status.INTERNAL
     assert len(ctx.get_requests("AppClientDisconnect")) == 1
 
 

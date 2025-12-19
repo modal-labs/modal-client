@@ -17,7 +17,7 @@ from modal._utils.grpc_utils import (
     get_server_retry_policy,
 )
 from modal.exception import InvalidError
-from modal_proto import api_grpc, api_pb2, sandbox_router_pb2
+from modal_proto import api_grpc, api_pb2, task_command_router_pb2
 
 from .supports.skip import skip_windows_unix_socket
 
@@ -154,7 +154,7 @@ async def test_retry_timeout_error(servicer, client):
 
 def test_CustomProtoStatusDetailsCodec_round_trip():
     blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
-    sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
+    sandbox_msg = task_command_router_pb2.TaskExecPollResponse(code=31)
     msgs = [blob_msg, sandbox_msg]
 
     codec = CustomProtoStatusDetailsCodec()
@@ -192,7 +192,7 @@ def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     from grpclib.encoding.proto import ProtoStatusDetailsCodec
 
     blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
-    sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
+    sandbox_msg = task_command_router_pb2.TaskExecPollResponse(code=31)
     msgs = [blob_msg, sandbox_msg]
 
     grpclib_codec = ProtoStatusDetailsCodec()
@@ -218,7 +218,7 @@ async def test_codec_with_channel(servicer, client):
     with servicer.intercept() as ctx:
         ctx.set_responder("BlobCreate", raise_error)
         with pytest.raises(GRPCError) as excinfo:
-            await client.stub.BlobCreate(req, retry=None, timeout=0.1)
+            await client.stub.BlobCreate.direct(req, timeout=0.1)
     assert excinfo.value.details == details
 
 

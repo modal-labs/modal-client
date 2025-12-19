@@ -1,7 +1,45 @@
 # Copyright Modal Labs 2022
+"""
+Modal-specific exception types.
+
+## Notes on `grpclib.GRPCError` migration
+
+Historically, the Modal SDK could propagate `grpclib.GRPCError` exceptions out
+to user code.  As of v1.3, we are in the process of gracefully migrating to
+always raising a Modal exception type in these cases. To avoid breaking user
+code that relies on catching `grpclib.GRPCError`, a subset of Modal exception
+types temporarily inherit from `grpclib.GRPCError`.
+
+We encourage users to migrate any code that currently catches `grpclib.GRPCError`
+to instead catch the appropriate Modal exception type. The following mapping
+between GRPCError status codes and Modal exception types is currently in use:
+
+```
+CANCELLED -> ServiceError
+UNKNOWN -> ServiceError
+INVALID_ARGUMENT -> InvalidError
+DEADLINE_EXCEEDED -> ServiceError
+NOT_FOUND -> NotFoundError
+ALREADY_EXISTS -> AlreadyExistsError
+PERMISSION_DENIED -> PermissionDeniedError
+RESOURCE_EXHAUSTED -> ResourceExhaustedError
+FAILED_PRECONDITION -> ConflictError
+ABORTED -> ConflictError
+OUT_OF_RANGE -> InvalidError
+UNIMPLEMENTED -> UnimplementedError
+INTERNAL -> InternalError
+UNAVAILABLE -> ServiceError
+DATA_LOSS -> DataLossError
+UNAUTHENTICATED -> AuthError
+```
+
+"""
+
 import random
 import signal
+from typing import Any, Optional
 
+import grpclib
 import synchronicity.exceptions
 
 UserCodeException = synchronicity.exceptions.UserCodeException  # Deprecated type used for return_exception wrapping
@@ -26,8 +64,114 @@ class Error(Exception):
     """
 
 
-class AlreadyExistsError(Error):
+class _GRPCErrorWrapper(grpclib.GRPCError):
+    """This transitional class helps us migrate away from propagating `grpclib.GRPCError` to users.
+
+    It serves two purposes:
+    - It avoids abruptly breaking user code that catches `grpclib.GRPCError`
+    - It actively warns when users access attributes defined by `grpclib.GRPCError`
+
+    This won't catch all cases (users might react indiscriminately to GRPCError without checking the status).
+
+    The mapping between GRPCError status codes and our error types is defined in `modal._grpc_client`.
+
+    """
+
+    # These will be set on the instance in our error handling middleware
+    _grpc_message: str
+    _grpc_status: grpclib.Status
+    _grpc_details: Any
+
+    def __init__(self, message: Optional[str] = None):
+        # Override GRPCError's init and repr to behave more like a regular Exception
+        # (We don't customize these anywhere in our custom error types currently).
+        self._message = message or ""
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._message!r})"
+
+    def _warn_on_grpc_error_attribute_access(self) -> None:
+        from ._utils.deprecation import deprecation_warning  # Avoid circular import
+
+        exc_type = type(self).__name__
+        deprecation_warning(
+            (2025, 12, 9),
+            "Modal will stop propagating the `grpclib.GRPCError` type in the future. "
+            f"Update your code so that it catches `modal.exception.{exc_type}` directly "
+            "to avoid changes to error handling behavior in the future.",
+            pending=True,
+        )
+
+    @property
+    def message(self) -> str:
+        self._warn_on_grpc_error_attribute_access()
+        return self._grpc_message
+
+    @message.setter
+    def message(self, value: str) -> None:
+        self._grpc_message = value
+
+    @property
+    def status(self) -> grpclib.Status:
+        self._warn_on_grpc_error_attribute_access()
+        return self._grpc_status
+
+    @status.setter
+    def status(self, value: grpclib.Status) -> None:
+        self._grpc_status = value
+
+    @property
+    def details(self) -> Any:
+        self._warn_on_grpc_error_attribute_access()
+        return self._grpc_details
+
+    @details.setter
+    def details(self, value: Any) -> None:
+        self._grpc_details = value
+
+
+class AlreadyExistsError(Error, _GRPCErrorWrapper):
     """Raised when a resource creation conflicts with an existing resource."""
+
+
+class AuthError(Error, _GRPCErrorWrapper):
+    """Raised when a client has missing or invalid authentication."""
+
+
+class InternalError(Error, _GRPCErrorWrapper):
+    """Raised when an internal error occurs in the Modal system."""
+
+
+class InvalidError(Error, _GRPCErrorWrapper):
+    """Raised when user does something invalid."""
+
+
+class ConflictError(InvalidError, _GRPCErrorWrapper):
+    """Raised when a resource conflict occurs between the request and current system state."""
+
+
+class DataLossError(Error, _GRPCErrorWrapper):
+    """Raised when data is lost or corrupted."""
+
+
+class NotFoundError(Error, _GRPCErrorWrapper):
+    """Raised when a requested resource was not found."""
+
+
+class PermissionDeniedError(Error, _GRPCErrorWrapper):
+    """Raised when a user does not have permission to perform the requested operation."""
+
+
+class ResourceExhaustedError(Error, _GRPCErrorWrapper):
+    """Raised when a server-side resource has been exhausted, e.g. a quota or rate limit."""
+
+
+class ServiceError(Error, _GRPCErrorWrapper):
+    """Raised when an error occurs in basic client<>server communication."""
+
+
+class UnimplementedError(Error, _GRPCErrorWrapper):
+    """Raised when a requested operation is not implemented or not supported."""
 
 
 class RemoteError(Error):
@@ -70,24 +214,12 @@ class OutputExpiredError(TimeoutError):
     """Raised when the Output exceeds expiration and times out."""
 
 
-class AuthError(Error):
-    """Raised when a client has missing or invalid authentication."""
-
-
 class ConnectionError(Error):
     """Raised when an issue occurs while connecting to the Modal servers."""
 
 
-class InvalidError(Error):
-    """Raised when user does something invalid."""
-
-
 class VersionError(Error):
     """Raised when the current client version of Modal is unsupported."""
-
-
-class NotFoundError(Error):
-    """Raised when a requested resource was not found."""
 
 
 class ExecutionError(Error):
@@ -120,10 +252,12 @@ class ServerWarning(UserWarning):
     """Warning originating from the Modal server and re-issued in client code."""
 
 
+class AsyncUsageWarning(UserWarning):
+    """Warning emitted when a blocking Modal interface is used in an async context."""
+
+
 class InternalFailure(Error):
-    """
-    Retriable internal error.
-    """
+    """Retriable internal error."""
 
 
 class _CliUserExecutionError(Exception):

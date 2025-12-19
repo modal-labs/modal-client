@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Union
 
 import typing_extensions
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
+from grpclib import Status
 from synchronicity.combined_types import MethodWithAio
 
 from modal_proto import api_pb2
@@ -38,6 +38,7 @@ from ._utils.async_utils import (
     aclosing,
     async_merge,
     callable_to_agen,
+    deprecate_aio_usage,
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
@@ -96,6 +97,7 @@ from .volume import _Volume
 if TYPE_CHECKING:
     import modal.app
     import modal.cls
+    import modal.functions
 
 MAX_INTERNAL_FAILURE_COUNT = 8
 TERMINAL_STATUSES = (
@@ -694,7 +696,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Experimental: Clustered functions
         cluster_size: Optional[int] = None,
         rdma: Optional[bool] = None,
-        max_inputs: Optional[int] = None,
+        single_use_containers: bool = False,
         ephemeral_disk: Optional[int] = None,
         include_source: bool = True,
         experimental_options: Optional[dict[str, str]] = None,
@@ -819,14 +821,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             for arg in inspect.signature(info.raw_f).parameters.values():
                 if arg.default is not inspect.Parameter.empty:
                     raise InvalidError(f"Modal batched function {func_name} does not accept default arguments.")
-
-        if max_inputs is not None:
-            if not isinstance(max_inputs, int):
-                raise InvalidError(f"`max_inputs` must be an int, not {type(max_inputs).__name__}")
-            if max_inputs <= 0:
-                raise InvalidError("`max_inputs` must be positive")
-            if max_inputs > 1:
-                raise InvalidError("Only `max_inputs=1` is currently supported")
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
@@ -998,6 +992,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
                     function_name=info.function_name,
+                    implementation_name=info.implementation_name,
                     mount_ids=loaded_mount_ids,
                     secret_ids=[secret.object_id for secret in secrets],
                     image_id=(image.object_id if image else ""),
@@ -1033,7 +1028,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     object_dependencies=object_dependencies,
                     block_network=block_network,
                     untrusted=restrict_modal_access,
-                    max_inputs=max_inputs or 0,
+                    single_use_containers=single_use_containers,
+                    max_inputs=int(single_use_containers),  # TODO(michael) remove after worker rollover
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                     scheduler_placement=scheduler_placement,
                     is_class=info.is_service_class(),
@@ -1064,6 +1060,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_data = api_pb2.FunctionData(
                         module_name=function_definition.module_name,
                         function_name=function_definition.function_name,
+                        implementation_name=function_definition.implementation_name,
                         function_type=function_definition.function_type,
                         warm_pool_size=function_definition.warm_pool_size,
                         concurrency_limit=function_definition.concurrency_limit,
@@ -1134,12 +1131,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await load_context.client.stub.FunctionCreate(request)
-                except GRPCError as exc:
-                    if exc.status == Status.INVALID_ARGUMENT:
-                        raise InvalidError(exc.message)
-                    if exc.status == Status.FAILED_PRECONDITION:
-                        raise InvalidError(exc.message)
-                    if exc.message and "Received :status = '413'" in exc.message:
+                except Exception as exc:
+                    if "Received :status = '413'" in str(exc):
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
@@ -2044,8 +2037,11 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         assert self._client and self._client.stub
         await self._client.stub.FunctionCallCancel(request)
 
-    @staticmethod
-    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall[Any]":
+    @deprecate_aio_usage((2025, 11, 14), "FunctionCall.from_id")
+    @classmethod
+    def from_id(
+        cls, function_call_id: str, client: Optional["modal.client.Client"] = None
+    ) -> "modal.functions.FunctionCall[Any]":
         """Instantiate a FunctionCall object from an existing ID.
 
         Examples:
@@ -2056,7 +2052,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         fc_id = fc.object_id
 
         # Later, use the ID to re-instantiate the FunctionCall object
-        fc = _FunctionCall.from_id(fc_id)
+        fc = FunctionCall.from_id(fc_id)
         result = fc.get()
         ```
 
@@ -2064,6 +2060,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         if you no longer have access to the original object returned from `Function.spawn`.
 
         """
+        _client = typing.cast(_Client, synchronizer._translate_in(client))
 
         async def _load(
             self: _FunctionCall, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
@@ -2072,10 +2069,10 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             self._hydrate(function_call_id, load_context.client, None)
 
         rep = f"FunctionCall.from_id({function_call_id!r})"
-
-        return _FunctionCall._from_loader(
-            _load, rep, hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
+        impl_instance = _FunctionCall._from_loader(
+            _load, rep, hydrate_lazily=True, load_context_overrides=LoadContext(client=_client)
         )
+        return typing.cast("modal.functions.FunctionCall[Any]", synchronizer._translate_out(impl_instance))
 
     @staticmethod
     async def gather(*function_calls: "_FunctionCall[T]") -> typing.Sequence[T]:

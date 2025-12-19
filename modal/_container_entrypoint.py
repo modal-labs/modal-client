@@ -43,7 +43,6 @@ from ._runtime.container_io_manager import (
 )
 
 if TYPE_CHECKING:
-    import modal._object
     import modal._runtime.container_io_manager
     import modal._runtime.user_code_imports
 

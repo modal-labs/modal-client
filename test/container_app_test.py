@@ -88,21 +88,20 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
 
     app.function()(square)
     app_name = "my-app"
-    app_id = deploy_app(app, app_name, client=container_client).app_id
-    f = Function.from_name(app_name, "square").hydrate(container_client)
-    assert f.object_id == "fu-1"
+    app_id = (await deploy_app.aio(app, app_name, client=container_client)).app_id
+    f = Function.from_name(app_name, "square", client=container_client)
     await f.remote.aio()
     assert f.object_id == "fu-1"
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
     with set_env_vars(restore_path, servicer.container_addr):
-        io_manager.memory_snapshot()
+        await io_manager.memory_snapshot.aio()
 
     # Stop the App, invalidating the fu- ID stored in `f`.
-    stop_app(client, app_id)
+    await stop_app.aio(client, app_id)
     # After snapshot-restore the previously looked-up Function should get refreshed and have the
     # new fu- ID. ie. the ID should not be stale and invalid.
-    new_app_id = deploy_app(app, app_name, client=client).app_id
+    new_app_id = (await deploy_app.aio(app, app_name, client=client)).app_id
     assert new_app_id != app_id
     await f.remote.aio()
     assert f.object_id == "fu-2"
@@ -145,23 +144,23 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     test_breakpoint = mock.Mock()
     with mock.patch("sys.breakpointhook", test_breakpoint):
         with set_env_vars(restore_path, servicer.container_addr):
-            io_manager.memory_snapshot()
+            await io_manager.memory_snapshot.aio()
             test_breakpoint.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_rpc_wrapping_restores(container_client, servicer, tmpdir):
+async def test_rpc_wrapping_restores(container_client, servicer, tmpdir, client):
     import modal
 
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
 
-    d = modal.Dict.from_name("my-amazing-dict", create_if_missing=True).hydrate(container_client)
-    d["xyz"] = 123
-    d["abc"] = 42
+    d = modal.Dict.from_name("my-amazing-dict", create_if_missing=True, client=client)
+    await d.put.aio("xyz", 123)
+    await d.put.aio("abc", 123)
 
     with set_env_vars(restore_path, servicer.container_addr):
-        io_manager.memory_snapshot()
+        await io_manager.memory_snapshot.aio()
 
     # TODO(Jonathon): These RPC wrappers are tested directly because I could not
     # find a way to construct in this test a UnaryStreamWrapper with a stale snapshotted client.

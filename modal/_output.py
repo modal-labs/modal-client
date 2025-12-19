@@ -12,7 +12,7 @@ from collections.abc import Generator
 from datetime import timedelta
 from typing import Callable, ClassVar
 
-from grpclib.exceptions import GRPCError, StreamTerminatedError
+from grpclib.exceptions import StreamTerminatedError
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.panel import Panel
@@ -34,10 +34,11 @@ from rich.text import Text
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal_proto import api_pb2
 
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, Retry
+from ._utils.grpc_utils import Retry
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .config import logger
+from .exception import InternalError, ServiceError
 
 if platform.system() == "Windows":
     default_spinner = "line"
@@ -556,7 +557,7 @@ async def get_app_logs_loop(
     async def stop_pty_shell():
         nonlocal pty_shell_finish_event, pty_shell_input_task
         if pty_shell_finish_event:
-            print("\r", end="")  # move cursor to beginning of line
+            print("\r", end="")  # move cursor to beginning of line # noqa: T201
             pty_shell_finish_event.set()
             pty_shell_finish_event = None
 
@@ -623,7 +624,7 @@ async def get_app_logs_loop(
                 # This corresponds to the `modal run -i` use case where a breakpoint
                 # triggers and the task drops into an interactive PTY mode
                 if pty_shell_finish_event:
-                    print("ERROR: concurrent PTY shells are not supported.")
+                    print("ERROR: concurrent PTY shells are not supported.")  # noqa: T201
                 else:
                     pty_shell_stdout = output_mgr._stdout
                     pty_shell_finish_event = asyncio.Event()
@@ -644,13 +645,11 @@ async def get_app_logs_loop(
     while True:
         try:
             await _get_logs()
-        except (GRPCError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
-            if isinstance(exc, GRPCError):
-                if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                    # Try again if we had a temporary connection drop,
-                    # for example if computer went to sleep.
-                    logger.debug("Log fetching timed out. Retrying ...")
-                    continue
+        except (ServiceError, InternalError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
+            if isinstance(exc, (ServiceError, InternalError)):
+                # Try again if we had a temporary connection drop, for example if computer went to sleep.
+                logger.debug("Log fetching timed out. Retrying ...")
+                continue
             elif isinstance(exc, StreamTerminatedError):
                 logger.debug("Stream closed. Retrying ...")
                 continue

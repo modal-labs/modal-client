@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2024
 import pytest
 import subprocess
+import sys
 
-from test.supports.skip import skip_old_py, skip_windows
+from test.supports.skip import skip_windows
 
 
 @pytest.fixture(scope="module")
@@ -10,15 +11,15 @@ def generate_type_stubs():
     subprocess.check_call(["inv", "type-stubs"])
 
 
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 14), reason="type stub generation is broken in Python 3.14+")
 @skip_windows("Type tests fail on windows since they don't exclude non-windows features")
-@skip_old_py("can't generate type stubs w/ Concatenate on <3.10", (3, 10))
 @pytest.mark.usefixtures("generate_type_stubs")
 def test_remote_call_keeps_original_return_value():
     subprocess.check_call(["mypy", "test/supports/type_assertions.py"])
 
 
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 14), reason="type stub generation is broken in Python 3.14+")
 @skip_windows("Type tests fail on windows since they don't exclude non-windows features")
-@skip_old_py("can't generate type stubs w/ Concatenate on <3.10", (3, 10))
 @pytest.mark.usefixtures("generate_type_stubs")
 def test_negative_assertions():
     p = subprocess.Popen(

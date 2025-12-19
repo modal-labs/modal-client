@@ -1469,6 +1469,8 @@ message Function {
 
   bool block_network = 44;
 
+  // In the SDK, we've deprecated `max_inputs` (which only every implemented `max_inputs=1`)
+  // in favor of a boolean `single_use_containers` parameter.
   uint32 max_inputs = 46;
 
   repeated S3Mount s3_mounts = 47;
@@ -1556,6 +1558,9 @@ message Function {
   // Attribute on the module with the implementation, which may differ from function_name
   // when the user provided a custom name= for the Function inside the Application namespace
   string implementation_name = 90;
+
+  bool single_use_containers = 91; // When True, containers will shut down after handling a single input
+
 }
 
 message FunctionAsyncInvokeRequest {
@@ -2104,6 +2109,7 @@ message HTTPConfig {
   repeated string proxy_regions = 2;
   uint32 startup_timeout = 3;
   uint32 exit_grace_period = 4;
+  bool h2_enabled = 5;
 }
 
 message Image {
@@ -2793,6 +2799,11 @@ message Sandbox {
   // Exec commands for the sandbox will be issued directly to the sandbox
   // command router running on the Modal worker.
   bool direct_sandbox_commands_enabled = 34;
+
+  // Internal: restricts sandbox to run on this specific instance type.
+  // Set by server during SandboxRestore to ensure the restored sandbox runs
+  // on the same instance type as the original snapshot.
+  string _restore_instance_type = 35;
 }
 
 message SandboxCreateConnectTokenRequest {
@@ -3023,12 +3034,13 @@ message Schedule {
   }
 }
 
+// Scheduling constraints for Functions and Sandboxes.
 message SchedulerPlacement {
   repeated string regions = 4;
-  optional string _zone = 2; // TODO: Deprecate
-  optional string _lifecycle = 3; // TODO: Deprecate
-  repeated string _instance_types = 5; // TODO: Deprecate
-  bool nonpreemptible = 6;
+  optional string _zone = 2 [deprecated = true];
+  optional string _lifecycle = 3 [deprecated = true];
+  repeated string _instance_types = 5 [deprecated = true];
+  bool nonpreemptible = 6;  // Functions only
 
   reserved 1;
 }

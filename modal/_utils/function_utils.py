@@ -8,7 +8,6 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Literal, Optional
 
-from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
 
 import modal_proto
@@ -29,9 +28,11 @@ from ..exception import (
     DeserializationError,
     ExecutionError,
     FunctionTimeoutError,
+    InternalError,
     InternalFailure,
     InvalidError,
     RemoteError,
+    ServiceError,
 )
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import (
@@ -39,7 +40,6 @@ from .blob_utils import (
     blob_download,
     blob_upload_with_r2_failure_info,
 )
-from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 
 if typing.TYPE_CHECKING:
     import modal._functions
@@ -129,6 +129,7 @@ class FunctionInfo:
 
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
+    implementation_name: str
     user_cls: Optional[type[Any]]
     module_name: Optional[str]
 
@@ -160,20 +161,16 @@ class FunctionInfo:
         self.raw_f = f
         self.user_cls = user_cls
 
-        if name_override is not None:
-            if not serialized:
-                # We may relax this constraint in the future, but currently we don't track the distinction between
-                # the Function's name inside modal and the name of the object that we need to import in a container.
-                raise InvalidError("Setting a custom `name=` also requires setting `serialized=True`")
-            self.function_name = name_override
-        elif f is None and user_cls:
+        if f is None and user_cls:
             # "service function" for running all methods of a class
-            self.function_name = f"{user_cls.__name__}.*"
+            self.implementation_name = f"{user_cls.__name__}.*"
         elif f and user_cls:
             # Method may be defined on superclass of the wrapped class
-            self.function_name = f"{user_cls.__name__}.{f.__name__}"
+            self.implementation_name = f"{user_cls.__name__}.{f.__name__}"
         else:
-            self.function_name = f.__qualname__
+            self.implementation_name = f.__qualname__
+
+        self.function_name = name_override or self.implementation_name
 
         # If it's a cls, the @method could be defined in a base class in a different file.
         if user_cls is not None:
@@ -440,15 +437,14 @@ async def _stream_function_call_data(
 
                 last_index = chunk.index
                 yield message
-        except (GRPCError, StreamTerminatedError) as exc:
+        except (ServiceError, InternalError, StreamTerminatedError) as exc:
             if retries_remaining > 0:
                 retries_remaining -= 1
-                if isinstance(exc, GRPCError):
-                    if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                        logger.debug(f"{variant} stream retrying with delay {delay_ms}ms due to {exc}")
-                        await asyncio.sleep(delay_ms / 1000)
-                        delay_ms = min(1000, delay_ms * 10)
-                        continue
+                if isinstance(exc, (ServiceError, InternalError)):
+                    logger.debug(f"{variant} stream retrying with delay {delay_ms}ms due to {exc}")
+                    await asyncio.sleep(delay_ms / 1000)
+                    delay_ms = min(1000, delay_ms * 10)
+                    continue
                 elif isinstance(exc, StreamTerminatedError):
                     continue
             raise

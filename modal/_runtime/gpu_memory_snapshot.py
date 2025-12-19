@@ -18,11 +18,14 @@ from modal.config import config, logger
 
 CUDA_CHECKPOINT_PATH: str = config.get("cuda_checkpoint_path")
 
-# Maximum total duration for an entire toggle operation.
-CUDA_CHECKPOINT_TOGGLE_TIMEOUT: float = 5 * 60.0
-
 # Maximum total duration for each individual `cuda-checkpoint` invocation.
-CUDA_CHECKPOINT_TIMEOUT: float = 90
+CUDA_CHECKPOINT_TIMEOUT: float = 3 * 60.0
+
+# Number of retries for each individual `cuda-checkpoint --toggle` invocation.
+CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES: int = 3
+
+# Maximum total duration for an entire toggle operation.
+CUDA_CHECKPOINT_TOGGLE_TIMEOUT: float = CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES * CUDA_CHECKPOINT_TIMEOUT
 
 
 class CudaCheckpointState(Enum):
@@ -58,7 +61,7 @@ class CudaCheckpointProcess:
 
         start_time = time.monotonic()
         retry_count = 0
-        max_retries = 3
+        max_retries = CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES
 
         attempts = 0
         while self._should_continue_toggle(
@@ -201,8 +204,7 @@ class CudaCheckpointSession:
                 [CUDA_CHECKPOINT_PATH, "--get-state", "--pid", str(pid)],
                 capture_output=True,
                 text=True,
-                # This should be quick since no checkpoint has taken place yet
-                timeout=5,
+                timeout=CUDA_CHECKPOINT_TIMEOUT,
             )
 
             # If the command succeeds (return code 0), this PID has a CUDA session
