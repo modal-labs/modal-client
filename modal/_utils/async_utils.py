@@ -311,6 +311,10 @@ def _safe_blocking_in_async_warning(original_func: types.FunctionType):
     However, if the warning has been configured to be treated as an error (via filterwarnings),
     we should let that propagate.
     """
+    from ..config import config
+
+    if not config.get("async_warnings"):
+        return
     try:
         _blocking_in_async_warning(original_func)
     except BlockingInAsyncContextWarning:
