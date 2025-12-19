@@ -71,12 +71,12 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer, credenti
     with pytest.raises(grpclib.exceptions.StreamTerminatedError):
         await t
 
-    if sys.version_info >= (3, 14):
+    if sys.version_info >= (3, 14) and sys.platform == "win32":
         # Python 3.14 logs out the ClientClosed error:
         # ERROR    asyncio:base_events.py:1875 ClientClosed exception in shielded future
         # future: <Future finished exception=ClientClosed(...)>
-        # The fix should be in from synchronicity, they have a `test_shutdown_during_async_run` that checks similiar
-        # code. Behavior in cPython changed in
+        # The fix should be in from synchronicity, they have a `test_shutdown_during_async_run` that checks
+        # similar code. Behavior in cPython changed in
         # https://github.com/python/cpython/commit/f695eca60cfc53cf3322323082652037d6d0cfef
         assert "ClientClosed" in caplog.records[0].message
         log_records = caplog.records[1:]
