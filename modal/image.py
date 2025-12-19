@@ -72,8 +72,8 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVI
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
-    "PREVIEW": ["3.10", "3.11", "3.12", "3.13"],
-    "2025.06": ["3.10", "3.11", "3.12", "3.13"],
+    "PREVIEW": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "2025.06": ["3.10", "3.11", "3.12", "3.13", "3.14"],
     "2024.10": ["3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.10", "3.11", "3.12"],
     "2023.12": ["3.10", "3.11", "3.12"],

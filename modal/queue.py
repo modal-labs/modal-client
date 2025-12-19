@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import builtins
 import queue  # The system library
 import time
 import warnings
@@ -108,7 +109,7 @@ class _QueueManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> list["_Queue"]:
+    ) -> builtins.list["_Queue"]:
         """Return a list of hydrated Queue objects.
 
         **Examples:**

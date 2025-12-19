@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import builtins
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -143,7 +144,7 @@ class _DictManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> list["_Dict"]:
+    ) -> builtins.list["_Dict"]:
         """Return a list of hydrated Dict objects.
 
         **Examples:**

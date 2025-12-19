@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 import toml
 
 from modal import App, Sandbox
-from modal._serialization import serialize
+from modal._serialization import PICKLE_PROTOCOL, serialize
 from modal._utils.grpc_testing import InterceptionContext
 from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
@@ -930,7 +930,10 @@ def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
     key = ("baz-dict", os.environ.get("MODAL_ENVIRONMENT", "main"))
     dict_id = "di-abc123"
     servicer.deployed_dicts[key] = dict_id
-    servicer.dicts[dict_id] = {dumps("a"): dumps(123), dumps("b"): dumps("blah")}
+    servicer.dicts[dict_id] = {
+        dumps("a", protocol=PICKLE_PROTOCOL): dumps(123, protocol=PICKLE_PROTOCOL),
+        dumps("b", protocol=PICKLE_PROTOCOL): dumps("blah", protocol=PICKLE_PROTOCOL),
+    }
 
     res = run_cli_command(["dict", "items", "baz-dict"])
     assert re.search(r" Key .+ Value", res.stdout)
