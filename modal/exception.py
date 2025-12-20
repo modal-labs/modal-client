@@ -167,7 +167,7 @@ class ResourceExhaustedError(Error, _GRPCErrorWrapper):
 
 
 class ServiceError(Error, _GRPCErrorWrapper):
-    """Raised when an error occurs in basic client<>server communication."""
+    """Raised when an error occurs in basic client/server communication."""
 
 
 class UnimplementedError(Error, _GRPCErrorWrapper):
