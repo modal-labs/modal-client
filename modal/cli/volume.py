@@ -310,3 +310,46 @@ async def rename(
         )
 
     await _Volume.rename(old_name, new_name, environment_name=env)
+
+
+@volume_cli.command(
+    name="browse",
+    help="Open an interactive Midnight Commander style file browser for a modal.Volume.",
+    rich_help_panel="File operations",
+)
+def browse(
+    volume_name: str = Argument(help="Name of the Volume to browse"),
+    local_path: str = Option(".", "-l", "--local-path", help="Initial local directory path"),
+    remote_path: str = Option("/", "-r", "--remote-path", help="Initial volume path"),
+    env: Optional[str] = ENV_OPTION,
+):
+    """Open an interactive TUI file browser.
+
+    This opens a Midnight Commander style dual-pane file browser where you can:
+
+    - Navigate local filesystem (left panel) and Volume (right panel)
+    - Use Tab to switch between panels
+    - Use Space to mark/unmark files
+    - Use F5 to copy files between panels
+    - Use F6 to move files between panels
+    - Use F7 to create directories (local only)
+    - Use F8 to delete files
+    - Use Enter to navigate into directories
+    - Use R to refresh both panels
+    - Use Q or F10 to quit
+
+    **Example**
+
+    ```
+    modal volume browse my-volume
+    modal volume browse my-volume --local-path /tmp --remote-path /data
+    ```
+    """
+    from modal.cli.programs.volume_browser import run_volume_browser
+
+    run_volume_browser(
+        volume_name=volume_name,
+        environment_name=env,
+        local_path=local_path,
+        volume_path=remote_path,
+    )
