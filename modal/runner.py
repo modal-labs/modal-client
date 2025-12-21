@@ -626,6 +626,12 @@ async def _interactive_shell(
         }
         secrets = kwargs.pop("secrets", []) + [_Secret.from_dict(sandbox_env)]
 
+        # If we have live mounts, we need to enable FUSE support in GVisor
+        if live_mounts:
+            experimental_options = kwargs.pop("experimental_options", None) or {}
+            experimental_options["enable_docker_in_gvisor"] = True
+            kwargs["experimental_options"] = experimental_options
+
         with enable_output():  # show any image build logs
             sandbox = await _Sandbox._create(
                 "sleep",
