@@ -251,6 +251,7 @@ class FuseMountManager:
         self._file_server: Optional[AsyncLocalFileServer] = None
         self._fuse_process: Optional[_ContainerProcess[Any]] = None
         self._bridge_task: Optional[asyncio.Task[None]] = None
+        self._stderr_task: Optional[asyncio.Task[None]] = None
         self._running = False
 
     async def start(self) -> None:
@@ -284,6 +285,9 @@ class FuseMountManager:
             str(self.remote_path),
             text=False,
         )
+
+        # Start the stderr logger task (for debugging)
+        self._stderr_task = asyncio.create_task(self._run_stderr_logger())
 
         # Start the bridge task
         self._bridge_task = asyncio.create_task(self._run_bridge())
@@ -328,47 +332,62 @@ class FuseMountManager:
 
         logger.debug(f"Injected FUSE daemon script at {script_path}")
 
+    async def _run_stderr_logger(self) -> None:
+        """Read and log stderr from the FUSE daemon for debugging."""
+        if self._fuse_process is None:
+            return
+
+        try:
+            async for chunk in self._fuse_process.stderr:
+                if chunk:
+                    # Log each line from stderr
+                    for line in chunk.strip().split(b"\n"):
+                        if line:
+                            logger.debug(f"[FUSE daemon] {line.decode('utf-8', errors='replace')}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug(f"Error reading FUSE daemon stderr: {e}")
+
     async def _run_bridge(self) -> None:
         """Bridge communication between the file server and FUSE daemon."""
         if self._file_server is None or self._fuse_process is None:
             return
 
+        # Buffer for incomplete lines
+        buffer = b""
+
         try:
-            while self._running:
-                # Read request from FUSE daemon stdout
-                try:
-                    # The FUSE daemon writes JSON requests to stdout
-                    line_bytes = await self._fuse_process.stdout.read()
-                    if not line_bytes:
-                        break
+            # Iterate over stdout chunks as they arrive
+            async for chunk in self._fuse_process.stdout:
+                if not chunk:
+                    continue
 
-                    # Parse the request
-                    for line in line_bytes.strip().split(b"\n"):
-                        if not line:
-                            continue
+                # Add chunk to buffer and process complete lines
+                buffer += chunk
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
+                    if not line.strip():
+                        continue
 
-                        try:
-                            request = FuseRequest.from_json(line.decode("utf-8"))
-                        except Exception as e:
-                            logger.warning(f"Failed to parse FUSE request: {e}")
-                            continue
+                    try:
+                        request = FuseRequest.from_json(line.decode("utf-8"))
+                    except Exception as e:
+                        logger.warning(f"Failed to parse FUSE request: {e}, line: {line[:100]}")
+                        continue
 
-                        # Handle the request
-                        response = await self._file_server.handle_request_async(request)
+                    # Handle the request
+                    response = await self._file_server.handle_request_async(request)
 
-                        # Send response to FUSE daemon stdin
-                        response_line = response.to_json() + "\n"
-                        self._fuse_process.stdin.write(response_line.encode("utf-8"))
-                        await self._fuse_process.stdin.drain()
-
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    logger.warning(f"Error in FUSE bridge: {e}")
-                    await asyncio.sleep(0.1)
+                    # Send response to FUSE daemon stdin
+                    response_line = response.to_json() + "\n"
+                    self._fuse_process.stdin.write(response_line.encode("utf-8"))
+                    await self._fuse_process.stdin.drain()
 
         except asyncio.CancelledError:
             pass
+        except Exception as e:
+            logger.warning(f"Error in FUSE bridge: {e}")
         finally:
             self._running = False
 
@@ -384,6 +403,14 @@ class FuseMountManager:
             self._bridge_task.cancel()
             try:
                 await self._bridge_task
+            except asyncio.CancelledError:
+                pass
+
+        # Cancel the stderr logger task
+        if self._stderr_task:
+            self._stderr_task.cancel()
+            try:
+                await self._stderr_task
             except asyncio.CancelledError:
                 pass
 
