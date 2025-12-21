@@ -412,7 +412,18 @@ class FilePanel(Static):
         if self.marked_items:
             return [item for item in self.items if item.path in self.marked_items]
         current = self.get_selected_item()
-        return [current] if current and current.name != ".." else []
+        if current and current.name != "..":
+            return [current]
+        return []
+
+    def get_selected_item_name(self) -> str:
+        """Get a description of selected items for error messages."""
+        current = self.get_selected_item()
+        if current is None:
+            return "nothing"
+        if current.name == "..":
+            return "parent directory (..)"
+        return current.name
 
     def clear_marks(self) -> None:
         """Clear all marks."""
@@ -591,6 +602,7 @@ class VolumeBrowserApp(App):
         self.query_one("#local-panel", FilePanel).load_directory()
         self.query_one("#volume-panel", FilePanel).load_directory()
 
+    @work(exclusive=True)
     async def action_copy(self) -> None:
         """Copy files between panels."""
         if not self.active_panel:
@@ -598,7 +610,11 @@ class VolumeBrowserApp(App):
 
         items = self.active_panel.get_marked_items()
         if not items:
-            self.notify("No files selected", severity="warning")
+            selected = self.active_panel.get_selected_item_name()
+            self.notify(
+                f"No files selected (cursor on {selected}). Use Space to mark files or navigate to a file.",
+                severity="warning",
+            )
             return
 
         source_panel = self.active_panel
@@ -626,10 +642,9 @@ class VolumeBrowserApp(App):
             return
 
         # Perform copy
-        self._do_copy(items, source_panel, target_panel)
+        await self._do_copy_impl(items, source_panel, target_panel)
 
-    @work(exclusive=True)
-    async def _do_copy(
+    async def _do_copy_impl(
         self,
         items: list[FileItem],
         source_panel: FilePanel,
@@ -692,6 +707,7 @@ class VolumeBrowserApp(App):
                     async for chunk in self.volume.read_file(item.path):
                         f.write(chunk)
 
+    @work(exclusive=True)
     async def action_mkdir(self) -> None:
         """Create a new directory."""
         if not self.active_panel:
@@ -714,6 +730,7 @@ class VolumeBrowserApp(App):
         except Exception as e:
             self.notify(f"Failed to create directory: {e}", severity="error")
 
+    @work(exclusive=True)
     async def action_delete(self) -> None:
         """Delete selected files."""
         if not self.active_panel:
@@ -721,7 +738,11 @@ class VolumeBrowserApp(App):
 
         items = self.active_panel.get_marked_items()
         if not items:
-            self.notify("No files selected", severity="warning")
+            selected = self.active_panel.get_selected_item_name()
+            self.notify(
+                f"No files selected (cursor on {selected}). Use Space to mark files or navigate to a file.",
+                severity="warning",
+            )
             return
 
         file_list = ", ".join(item.name for item in items[:3])
@@ -738,10 +759,9 @@ class VolumeBrowserApp(App):
         if not confirmed:
             return
 
-        self._do_delete(items)
+        await self._do_delete_impl(items)
 
-    @work(exclusive=True)
-    async def _do_delete(self, items: list[FileItem]) -> None:
+    async def _do_delete_impl(self, items: list[FileItem]) -> None:
         """Perform the delete operation."""
         if not self.active_panel:
             return
@@ -769,6 +789,7 @@ class VolumeBrowserApp(App):
         except Exception as e:
             self.notify(f"Delete failed: {e}", severity="error")
 
+    @work(exclusive=True)
     async def action_move(self) -> None:
         """Move files (copy + delete source)."""
         if not self.active_panel:
@@ -776,7 +797,11 @@ class VolumeBrowserApp(App):
 
         items = self.active_panel.get_marked_items()
         if not items:
-            self.notify("No files selected", severity="warning")
+            selected = self.active_panel.get_selected_item_name()
+            self.notify(
+                f"No files selected (cursor on {selected}). Use Space to mark files or navigate to a file.",
+                severity="warning",
+            )
             return
 
         source_panel = self.active_panel
@@ -802,10 +827,9 @@ class VolumeBrowserApp(App):
         if not confirmed:
             return
 
-        self._do_move(items, source_panel, target_panel)
+        await self._do_move_impl(items, source_panel, target_panel)
 
-    @work(exclusive=True)
-    async def _do_move(
+    async def _do_move_impl(
         self,
         items: list[FileItem],
         source_panel: FilePanel,
