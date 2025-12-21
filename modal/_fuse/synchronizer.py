@@ -32,6 +32,8 @@ import base64
 import errno
 import threading
 import argparse
+import fuse
+
 
 class FuseClient:
     def __init__(self, input_stream, output_stream):
@@ -138,6 +140,50 @@ class FuseOperations:
         return 0
 
 
+class ModalFuse(fuse.Operations):
+    def __init__(self, ops):
+        self.ops = ops
+
+    def getattr(self, path, fh=None):
+        try:
+            return self.ops.getattr(path)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
+
+    def readdir(self, path, fh):
+        try:
+            return self.ops.readdir(path, fh)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
+
+    def read(self, path, size, offset, fh):
+        try:
+            return self.ops.read(path, size, offset, fh)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
+
+    def readlink(self, path):
+        try:
+            return self.ops.readlink(path)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
+
+    def statfs(self, path):
+        try:
+            return self.ops.statfs(path)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
+
+    def open(self, path, flags):
+        try:
+            return self.ops.open(path, flags)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
+
+    def release(self, path, fh):
+        return self.ops.release(path, fh)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mount-point", required=True)
@@ -161,63 +207,15 @@ def main():
     print(f"[modal-fuse] Connected, starting FUSE at {mount_point}", file=sys.stderr)
     ops = FuseOperations(client)
 
-    try:
-        import fuse
-
-        class ModalFuse(fuse.Operations):
-            def __init__(self, ops):
-                self.ops = ops
-
-            def getattr(self, path, fh=None):
-                try:
-                    return self.ops.getattr(path)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
-
-            def readdir(self, path, fh):
-                try:
-                    return self.ops.readdir(path, fh)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
-
-            def read(self, path, size, offset, fh):
-                try:
-                    return self.ops.read(path, size, offset, fh)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
-
-            def readlink(self, path):
-                try:
-                    return self.ops.readlink(path)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
-
-            def statfs(self, path):
-                try:
-                    return self.ops.statfs(path)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
-
-            def open(self, path, flags):
-                try:
-                    return self.ops.open(path, flags)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
-
-            def release(self, path, fh):
-                return self.ops.release(path, fh)
-
-        fuse.FUSE(ModalFuse(ops), mount_point, foreground=True, ro=True, nothreads=False)
-    except ImportError:
-        print("[modal-fuse] fusepy not available", file=sys.stderr)
-        import time
-        while True:
-            time.sleep(1)
+    fuse.FUSE(ModalFuse(ops), mount_point, foreground=True, ro=True, nothreads=False)
 
 
 if __name__ == "__main__":
     main()
 """
+
+# Path to the virtual environment for FUSE dependencies
+FUSE_VENV_PATH = "/__modal_fuse_venv"
 
 
 class FuseMountManager:
@@ -259,9 +257,10 @@ class FuseMountManager:
         """Start the FUSE mount.
 
         This will:
-        1. Start the local file server
-        2. Inject and start the FUSE daemon in the container
-        3. Bridge communication between them
+        1. Install FUSE dependencies (fuse3 and fusepy)
+        2. Start the local file server
+        3. Inject and start the FUSE daemon in the container
+        4. Bridge communication between them
         """
         if self._running:
             return
@@ -271,12 +270,15 @@ class FuseMountManager:
         # Create file server
         self._file_server = AsyncLocalFileServer(self.local_path, read_only=self.read_only)
 
+        # Set up FUSE dependencies in the container
+        await self._setup_fuse_environment()
+
         # Inject the FUSE daemon script into the container
         await self._inject_fuse_daemon()
 
-        # Start the FUSE daemon process
+        # Start the FUSE daemon process using the venv Python
         self._fuse_process = await self.sandbox._exec(
-            "python3",
+            f"{FUSE_VENV_PATH}/bin/python",
             "/__modal_fuse_daemon.py",
             "--mount-point",
             str(self.remote_path),
@@ -291,6 +293,28 @@ class FuseMountManager:
         await asyncio.sleep(0.5)
 
         logger.debug(f"FUSE mount started: {self.local_path} -> {self.remote_path}")
+
+    async def _setup_fuse_environment(self) -> None:
+        """Install fuse3 and set up a venv with fusepy."""
+        logger.debug("Setting up FUSE environment in container...")
+
+        # Install fuse3 using apt-get
+        install_fuse = await self.sandbox._exec(
+            "/bin/bash",
+            "-c",
+            "apt-get update -qq && apt-get install -y -qq fuse3 > /dev/null 2>&1",
+        )
+        await install_fuse.wait()
+
+        # Create a virtual environment and install fusepy
+        setup_venv = await self.sandbox._exec(
+            "/bin/bash",
+            "-c",
+            f"python3 -m venv {FUSE_VENV_PATH} && {FUSE_VENV_PATH}/bin/pip install -q fusepy",
+        )
+        await setup_venv.wait()
+
+        logger.debug("FUSE environment setup complete")
 
     async def _inject_fuse_daemon(self) -> None:
         """Inject the FUSE daemon script into the container."""

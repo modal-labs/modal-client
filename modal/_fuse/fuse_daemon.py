@@ -4,19 +4,20 @@
 This script runs inside the Modal container and implements a FUSE filesystem
 that forwards all filesystem operations to the local file server via stdin/stdout.
 
-The daemon uses fusepy (embedded below) to interface with FUSE.
+The daemon requires fusepy to be installed in the container.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
-import ctypes.util
 import errno
 import json
 import os
 import sys
 import threading
+
+import fuse
 
 # Protocol constants matching protocol.py
 FUSE_OP_GETATTR = "getattr"
@@ -97,20 +98,6 @@ class FuseClient:
         return self._send_request(FUSE_OP_PING, "/")
 
 
-def find_fuse_library():
-    """Find the FUSE library on the system."""
-    # Try libfuse3 first, then libfuse
-    for name in ["fuse3", "fuse"]:
-        path = ctypes.util.find_library(name)
-        if path:
-            return path
-    # Try common paths
-    for path in ["/usr/lib/x86_64-linux-gnu/libfuse3.so.3", "/usr/lib/libfuse3.so.3", "/usr/lib/libfuse.so.2"]:
-        if os.path.exists(path):
-            return path
-    return None
-
-
 class FuseOperations:
     """FUSE operations that forward to the file server."""
 
@@ -172,88 +159,50 @@ class FuseOperations:
         return 0
 
 
-def run_fuse_loop_simple(mount_point: str, operations: FuseOperations):
-    """Run a simple FUSE loop using Python's os module for testing.
+class ModalFuse(fuse.Operations):
+    """FUSE filesystem implementation that wraps FuseOperations."""
 
-    This is a fallback when libfuse is not available. It creates a directory
-    structure that mimics the remote filesystem by polling periodically.
-    """
-    print("[modal-fuse] Warning: Running in polling mode (libfuse not available)", file=sys.stderr)  # noqa: T201
-    print(f"[modal-fuse] Mount point: {mount_point}", file=sys.stderr)  # noqa: T201
+    def __init__(self, ops: FuseOperations):
+        self.ops = ops
 
-    # For now, just keep the process alive and handle requests
-    import time
-
-    while True:
+    def getattr(self, path, fh=None):
         try:
-            time.sleep(1)
-        except KeyboardInterrupt:
-            break
+            return self.ops.getattr(path)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
 
+    def readdir(self, path, fh):
+        try:
+            return self.ops.readdir(path, fh)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
 
-def run_fuse_loop(mount_point: str, operations: FuseOperations, foreground: bool = True):
-    """Run the FUSE filesystem loop."""
-    try:
-        # Try to import fusepy if available
-        import fuse
+    def read(self, path, size, offset, fh):
+        try:
+            return self.ops.read(path, size, offset, fh)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
 
-        class ModalFuse(fuse.Operations):
-            def __init__(self, ops: FuseOperations):
-                self.ops = ops
+    def readlink(self, path):
+        try:
+            return self.ops.readlink(path)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
 
-            def getattr(self, path, fh=None):
-                try:
-                    attrs = self.ops.getattr(path)
-                    return attrs
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
+    def statfs(self, path):
+        try:
+            return self.ops.statfs(path)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
 
-            def readdir(self, path, fh):
-                try:
-                    return self.ops.readdir(path, fh)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
+    def open(self, path, flags):
+        try:
+            return self.ops.open(path, flags)
+        except OSError as e:
+            raise fuse.FuseOSError(e.errno)
 
-            def read(self, path, size, offset, fh):
-                try:
-                    return self.ops.read(path, size, offset, fh)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
-
-            def readlink(self, path):
-                try:
-                    return self.ops.readlink(path)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
-
-            def statfs(self, path):
-                try:
-                    return self.ops.statfs(path)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
-
-            def open(self, path, flags):
-                try:
-                    return self.ops.open(path, flags)
-                except OSError as e:
-                    raise fuse.FuseOSError(e.errno)
-
-            def release(self, path, fh):
-                return self.ops.release(path, fh)
-
-        print(f"[modal-fuse] Starting FUSE filesystem at {mount_point}", file=sys.stderr)  # noqa: T201
-        fuse.FUSE(
-            ModalFuse(operations),
-            mount_point,
-            foreground=foreground,
-            ro=True,
-            allow_other=False,
-            nothreads=False,
-        )
-
-    except ImportError:
-        print("[modal-fuse] fusepy not available, falling back to simple mode", file=sys.stderr)  # noqa: T201
-        run_fuse_loop_simple(mount_point, operations)
+    def release(self, path, fh):
+        return self.ops.release(path, fh)
 
 
 def main():
@@ -269,8 +218,6 @@ def main():
     os.makedirs(mount_point, exist_ok=True)
 
     # Set up communication with file server
-    # We use file descriptors 3 and 4 for communication to keep stdin/stdout free
-    # But for simplicity, we can also use stdin/stdout with a wrapper
     input_stream = sys.stdin
     output_stream = sys.stdout
 
@@ -292,8 +239,16 @@ def main():
     operations = FuseOperations(client)
 
     # Run FUSE loop
+    print(f"[modal-fuse] Starting FUSE filesystem at {mount_point}", file=sys.stderr)  # noqa: T201
     try:
-        run_fuse_loop(mount_point, operations, foreground=args.foreground)
+        fuse.FUSE(
+            ModalFuse(operations),
+            mount_point,
+            foreground=args.foreground,
+            ro=True,
+            allow_other=False,
+            nothreads=False,
+        )
     except Exception as e:
         print(f"[modal-fuse] Error: {e}", file=sys.stderr)  # noqa: T201
         sys.exit(1)
