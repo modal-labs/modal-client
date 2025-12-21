@@ -183,10 +183,10 @@ class MockBatchUpload:
                 self.volume.files[remote_path] = f.read()
 
         for local_dir, remote_dir in self._pending_dirs:
-            local_path = Path(local_dir)
-            for file_path in local_path.rglob("*"):
+            local_dir_path = Path(local_dir)
+            for file_path in local_dir_path.rglob("*"):
                 if file_path.is_file():
-                    rel_path = file_path.relative_to(local_path)
+                    rel_path = file_path.relative_to(local_dir_path)
                     remote_file = f"{remote_dir}/{rel_path}".replace("\\", "/")
                     with open(file_path, "rb") as f:
                         self.volume.files[remote_file] = f.read()
@@ -810,9 +810,17 @@ class TestKeyBindings:
 
     def test_app_bindings(self):
         """Test that VolumeBrowserApp has the expected bindings."""
+        from textual.binding import Binding
+
         from modal.cli.programs.volume_browser import VolumeBrowserApp
 
-        binding_keys = {b.key for b in VolumeBrowserApp.BINDINGS}
+        # Extract keys from bindings - handle both Binding objects and tuples
+        binding_keys: set[str] = set()
+        for b in VolumeBrowserApp.BINDINGS:
+            if isinstance(b, Binding):
+                binding_keys.add(b.key)
+            elif isinstance(b, tuple) and len(b) >= 1:
+                binding_keys.add(b[0])
 
         # Check essential keybindings exist
         assert "q" in binding_keys or "escape" in binding_keys  # Quit
@@ -875,7 +883,7 @@ class TestIntegration:
     @pytest.mark.asyncio
     async def test_full_workflow(self, mock_volume_with_data, local_project_dir):
         """Test a full workflow: browse, copy, view."""
-        from modal.cli.programs.volume_browser import VolumeBrowserApp
+        from modal.cli.programs.volume_browser import FilePanel, VolumeBrowserApp
 
         app = VolumeBrowserApp(
             volume_name="test-volume",
@@ -887,14 +895,14 @@ class TestIntegration:
         async with app.run_test() as pilot:
             # Inject mock volume
             app.volume = mock_volume_with_data
-            volume_panel = app.query_one("#volume-panel")
+            volume_panel = app.query_one("#volume-panel", FilePanel)
             volume_panel.volume = mock_volume_with_data
 
             # Wait for panels to load
             await pilot.pause()
 
             # Verify local panel loaded files
-            local_panel = app.query_one("#local-panel")
+            local_panel = app.query_one("#local-panel", FilePanel)
             local_names = {item.name for item in local_panel.items}
             assert "main.py" in local_names
             assert "config.yaml" in local_names
@@ -910,9 +918,6 @@ class TestIntegration:
             assert "README.md" in vol_names or "data" in vol_names or len(volume_panel.items) > 0
 
             # Test navigation - go to local data directory
-            from textual.widgets import DataTable
-
-            data_table = local_panel.query_one(DataTable)
             for i, item in enumerate(local_panel.items):
                 if item.name == "data":
                     # Navigate to it - move down to this item
