@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 # The FUSE daemon script that runs in the container
 # We embed it here so we can inject it without needing a mount
-FUSE_DAEMON_SCRIPT = '''
+FUSE_DAEMON_SCRIPT = """
 # Modal FUSE daemon - injected by Modal SDK
 import sys
 import os
@@ -217,7 +217,7 @@ def main():
 
 if __name__ == "__main__":
     main()
-'''
+"""
 
 
 class FuseMountManager:
