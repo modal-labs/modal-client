@@ -371,6 +371,10 @@ class FilePanel(Static, can_focus=False):
         """Forward focus to parent."""
         self.post_message(self.Focused(self))
 
+    def on_descendant_focus(self, event) -> None:
+        """Handle when any child widget (like DataTable) gets focus."""
+        self.post_message(self.Focused(self))
+
     def action_mark(self) -> None:
         """Toggle mark on current item."""
         table = self.query_one("#file-table", DataTable)
@@ -614,6 +618,8 @@ class VolumeBrowserApp(App):
         """Mark/unmark the current file in the active panel."""
         if self.active_panel:
             self.active_panel.action_mark()
+        else:
+            self.notify("No active panel", severity="error")
 
     @work(exclusive=True)
     async def action_copy(self) -> None:
