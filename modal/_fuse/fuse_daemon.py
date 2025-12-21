@@ -5,6 +5,10 @@ This script runs inside the Modal container and implements a FUSE filesystem
 that forwards all filesystem operations to the local file server via stdin/stdout.
 
 The daemon requires fusepy to be installed in the container.
+
+Note: This module is designed to be run as a script inside the container.
+The `fuse` import is done lazily in main() to avoid import errors during
+static analysis when fusepy is not installed.
 """
 
 from __future__ import annotations
@@ -16,8 +20,6 @@ import json
 import os
 import sys
 import threading
-
-import fuse
 
 # Protocol constants matching protocol.py
 FUSE_OP_GETATTR = "getattr"
@@ -159,53 +161,56 @@ class FuseOperations:
         return 0
 
 
-class ModalFuse(fuse.Operations):
-    """FUSE filesystem implementation that wraps FuseOperations."""
-
-    def __init__(self, ops: FuseOperations):
-        self.ops = ops
-
-    def getattr(self, path, fh=None):
-        try:
-            return self.ops.getattr(path)
-        except OSError as e:
-            raise fuse.FuseOSError(e.errno)
-
-    def readdir(self, path, fh):
-        try:
-            return self.ops.readdir(path, fh)
-        except OSError as e:
-            raise fuse.FuseOSError(e.errno)
-
-    def read(self, path, size, offset, fh):
-        try:
-            return self.ops.read(path, size, offset, fh)
-        except OSError as e:
-            raise fuse.FuseOSError(e.errno)
-
-    def readlink(self, path):
-        try:
-            return self.ops.readlink(path)
-        except OSError as e:
-            raise fuse.FuseOSError(e.errno)
-
-    def statfs(self, path):
-        try:
-            return self.ops.statfs(path)
-        except OSError as e:
-            raise fuse.FuseOSError(e.errno)
-
-    def open(self, path, flags):
-        try:
-            return self.ops.open(path, flags)
-        except OSError as e:
-            raise fuse.FuseOSError(e.errno)
-
-    def release(self, path, fh):
-        return self.ops.release(path, fh)
-
-
 def main():
+    # Import fuse here to avoid import errors during static analysis
+    # when fusepy is not installed (it's only available in the container)
+    import fuse
+
+    class ModalFuse(fuse.Operations):
+        """FUSE filesystem implementation that wraps FuseOperations."""
+
+        def __init__(self, ops: FuseOperations):
+            self.ops = ops
+
+        def getattr(self, path, fh=None):
+            try:
+                return self.ops.getattr(path)
+            except OSError as e:
+                raise fuse.FuseOSError(e.errno)
+
+        def readdir(self, path, fh):
+            try:
+                return self.ops.readdir(path, fh)
+            except OSError as e:
+                raise fuse.FuseOSError(e.errno)
+
+        def read(self, path, size, offset, fh):
+            try:
+                return self.ops.read(path, size, offset, fh)
+            except OSError as e:
+                raise fuse.FuseOSError(e.errno)
+
+        def readlink(self, path):
+            try:
+                return self.ops.readlink(path)
+            except OSError as e:
+                raise fuse.FuseOSError(e.errno)
+
+        def statfs(self, path):
+            try:
+                return self.ops.statfs(path)
+            except OSError as e:
+                raise fuse.FuseOSError(e.errno)
+
+        def open(self, path, flags):
+            try:
+                return self.ops.open(path, flags)
+            except OSError as e:
+                raise fuse.FuseOSError(e.errno)
+
+        def release(self, path, fh):
+            return self.ops.release(path, fh)
+
     parser = argparse.ArgumentParser(description="Modal FUSE daemon for local directory mounting")
     parser.add_argument("--mount-point", required=True, help="Path where the filesystem will be mounted")
     parser.add_argument("--foreground", action="store_true", default=True, help="Run in foreground")
