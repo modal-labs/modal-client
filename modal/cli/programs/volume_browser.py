@@ -20,7 +20,6 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, ProgressBar, Static
 
-from modal._utils.async_utils import synchronizer
 from modal.environments import ensure_env
 from modal.volume import FileEntry, FileEntryType, _Volume
 
@@ -845,8 +844,7 @@ class VolumeBrowserApp(App):
             self.notify(f"Move failed: {e}", severity="error")
 
 
-@synchronizer.create_blocking
-async def run_volume_browser(
+def run_volume_browser(
     volume_name: str,
     environment_name: Optional[str] = None,
     local_path: str = ".",
@@ -860,4 +858,4 @@ async def run_volume_browser(
         local_path=local_path,
         volume_path=volume_path,
     )
-    await app.run_async()
+    app.run()
