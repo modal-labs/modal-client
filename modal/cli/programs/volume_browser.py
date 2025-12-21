@@ -194,6 +194,74 @@ class ProgressDialog(ModalScreen[None]):
             bar.update(progress=progress)
 
 
+class FileViewerScreen(ModalScreen[None]):
+    """A modal screen for viewing file contents."""
+
+    BINDINGS = [
+        Binding("escape", "close", "Close"),
+        Binding("q", "close", "Close"),
+        Binding("f3", "close", "Close"),
+    ]
+
+    CSS = """
+    FileViewerScreen {
+        align: center middle;
+    }
+
+    #viewer-container {
+        width: 90%;
+        height: 90%;
+        border: thick $primary;
+        background: $surface;
+    }
+
+    #viewer-title {
+        text-align: center;
+        text-style: bold;
+        background: $primary;
+        color: $text;
+        padding: 0 1;
+        dock: top;
+        height: 1;
+    }
+
+    #viewer-content {
+        height: 1fr;
+        overflow-y: auto;
+        padding: 0 1;
+    }
+
+    #viewer-footer {
+        dock: bottom;
+        height: 1;
+        background: $surface-darken-1;
+        color: $text-muted;
+        text-align: center;
+    }
+    """
+
+    def __init__(self, filename: str, content: str):
+        super().__init__()
+        self.filename = filename
+        self.content = content
+
+    def compose(self) -> ComposeResult:
+        from textual.widgets import TextArea
+
+        yield Vertical(
+            Label(f" {self.filename} ", id="viewer-title"),
+            TextArea(self.content, read_only=True, id="viewer-content", show_line_numbers=True),
+            Label("Press ESC, Q, or F3 to close", id="viewer-footer"),
+            id="viewer-container",
+        )
+
+    def on_mount(self) -> None:
+        self.query_one("#viewer-content").focus()
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
 class FilePanel(Static, can_focus=False):
     """A file panel widget showing files in a directory."""
 
@@ -521,6 +589,7 @@ class VolumeBrowserApp(App):
     BINDINGS = [
         Binding("tab", "switch_panel", "Switch Panel"),
         Binding("space", "mark", "Mark", priority=True),
+        Binding("f3", "view", "View"),
         Binding("f5", "copy", "Copy"),
         Binding("f6", "move", "Move"),
         Binding("f7", "mkdir", "MkDir"),
@@ -617,6 +686,51 @@ class VolumeBrowserApp(App):
             self.active_panel.action_mark()
         else:
             self.notify("No active panel", severity="error")
+
+    @work(exclusive=True)
+    async def action_view(self) -> None:
+        """View the current file."""
+        if not self.active_panel:
+            return
+
+        item = self.active_panel.get_selected_item()
+        if not item:
+            self.notify("No file selected", severity="warning")
+            return
+
+        if item.name == "..":
+            self.notify("Cannot view parent directory", severity="warning")
+            return
+
+        if item.is_dir:
+            self.notify("Cannot view directory - press Enter to open it", severity="warning")
+            return
+
+        # Limit file size for viewing (10 MB max)
+        max_size = 10 * 1024 * 1024
+        if item.size > max_size:
+            self.notify(f"File too large to view ({humanize_filesize(item.size)})", severity="warning")
+            return
+
+        try:
+            if self.active_panel.panel_type == PanelType.LOCAL:
+                # Read local file
+                with open(item.path, "r", encoding="utf-8", errors="replace") as f:
+                    content = f.read()
+            else:
+                # Read volume file
+                if self.volume is None:
+                    self.notify("Volume not loaded", severity="error")
+                    return
+
+                chunks = []
+                async for chunk in self.volume.read_file(item.path):
+                    chunks.append(chunk)
+                content = b"".join(chunks).decode("utf-8", errors="replace")
+
+            await self.push_screen_wait(FileViewerScreen(item.name, content))
+        except Exception as e:
+            self.notify(f"Error reading file: {e}", severity="error")
 
     @work(exclusive=True)
     async def action_copy(self) -> None:
