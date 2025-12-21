@@ -254,48 +254,35 @@ class CopyProgressScreen(ModalScreen[None]):
             id="progress-container",
         )
 
-    def update_status(self, status: str) -> None:
-        """Update the status message."""
-        self.call_from_thread(self._update_status, status)
-
     def _update_status(self, status: str) -> None:
-        self.query_one("#progress-status", Label).update(status)
-
-    def set_total(self, total_files: int, total_bytes: int = 0) -> None:
-        """Set the total number of files to copy."""
-        self.total_files = total_files
-        self.total_bytes = total_bytes
-        self.call_from_thread(self._update_progress)
-
-    def update_file(self, filename: str, file_bytes: int = 0) -> None:
-        """Update current file being copied."""
-        self.current_file = filename
-        self.completed_files += 1
-        self.completed_bytes += file_bytes
-        self.call_from_thread(self._update_progress)
+        """Update the status message."""
+        try:
+            self.query_one("#progress-status", Label).update(status)
+        except Exception:
+            pass  # Screen might be dismissed
 
     def _update_progress(self) -> None:
-        # Update current file label
-        if self.current_file:
-            display_name = self.current_file
-            if len(display_name) > 50:
-                display_name = "..." + display_name[-47:]
-            self.query_one("#progress-current-file", Label).update(f"  {display_name}")
+        """Update progress display."""
+        try:
+            # Update current file label
+            if self.current_file:
+                display_name = self.current_file
+                if len(display_name) > 50:
+                    display_name = "..." + display_name[-47:]
+                self.query_one("#progress-current-file", Label).update(f"  {display_name}")
 
-        # Update progress bar
-        if self.total_files > 0:
-            progress = (self.completed_files / self.total_files) * 100
-            self.query_one("#progress-bar", ProgressBar).update(progress=progress)
+            # Update progress bar
+            if self.total_files > 0:
+                progress = (self.completed_files / self.total_files) * 100
+                self.query_one("#progress-bar", ProgressBar).update(progress=progress)
 
-        # Update stats
-        stats = f"{self.completed_files} / {self.total_files} files"
-        if self.total_bytes > 0:
-            stats += f" ({humanize_filesize(self.completed_bytes)} / {humanize_filesize(self.total_bytes)})"
-        self.query_one("#progress-stats", Label).update(stats)
-
-    def finish(self) -> None:
-        """Called when copy is complete."""
-        self.dismiss(None)
+            # Update stats
+            stats = f"{self.completed_files} / {self.total_files} files"
+            if self.total_bytes > 0:
+                stats += f" ({humanize_filesize(self.completed_bytes)} / {humanize_filesize(self.total_bytes)})"
+            self.query_one("#progress-stats", Label).update(stats)
+        except Exception:
+            pass  # Screen might be dismissed
 
 
 class FileViewerScreen(ModalScreen[None]):
@@ -905,9 +892,7 @@ class VolumeBrowserApp(App):
         finally:
             progress.dismiss(None)
 
-    async def _copy_to_volume(
-        self, items: list[FileItem], remote_path: str, progress: CopyProgressScreen
-    ) -> None:
+    async def _copy_to_volume(self, items: list[FileItem], remote_path: str, progress: CopyProgressScreen) -> None:
         """Copy local files to volume."""
         if self.volume is None:
             raise ValueError("Volume not loaded")
@@ -945,9 +930,7 @@ class VolumeBrowserApp(App):
                 progress.completed_bytes += size
                 progress._update_progress()
 
-    async def _copy_from_volume(
-        self, items: list[FileItem], local_path: str, progress: CopyProgressScreen
-    ) -> None:
+    async def _copy_from_volume(self, items: list[FileItem], local_path: str, progress: CopyProgressScreen) -> None:
         """Copy volume files to local filesystem."""
         if self.volume is None:
             raise ValueError("Volume not loaded")
