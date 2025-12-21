@@ -155,6 +155,7 @@ def _start_shell_from_image(
     volume: list[str],
     secret: list[str],
     add_local: list[str],
+    mount_local: list[str],
     cpu: Optional[int],
     memory: Optional[int],
     gpu: Optional[str],
@@ -176,6 +177,17 @@ def _start_shell_from_image(
             m = _Mount._from_local_file(local_path, remote_path=remote_path)
         mounts.append(m)
 
+    # Convert mount_local paths to (local_path, remote_path) tuples for FUSE mounts
+    live_mounts: list[tuple[Path, PurePosixPath]] = []
+    for local_path_str in mount_local:
+        local_path = Path(local_path_str).expanduser().resolve()
+        if not local_path.exists():
+            raise InvalidError(f"Local path does not exist: {local_path}")
+        if not local_path.is_dir():
+            raise InvalidError(f"--mount-local only supports directories, got file: {local_path}")
+        remote_path = PurePosixPath(f"/mnt/live/{local_path.name}")
+        live_mounts.append((local_path, remote_path))
+
     interactive_shell(
         app,
         cmds=cmds,
@@ -191,6 +203,7 @@ def _start_shell_from_image(
         secrets=secrets,
         region=region.split(",") if region else [],
         pty=pty,
+        live_mounts=live_mounts,
     )
 
 
@@ -222,6 +235,15 @@ def shell(
         help=(
             "Local file or directory to mount inside the shell at `/mnt/{basename}` (if not using REF)."
             " Can be used multiple times."
+        ),
+    ),
+    mount_local: Optional[list[str]] = typer.Option(
+        None,
+        "--mount-local",
+        help=(
+            "[Experimental] Local directory to mount live inside the shell at `/mnt/live/{basename}` using FUSE. "
+            "Unlike --add-local, changes to local files are immediately visible in the container (read-only). "
+            "Requires FUSE support in the container. Can be used multiple times."
         ),
     ),
     secret: Optional[list[str]] = typer.Option(
@@ -301,6 +323,12 @@ def shell(
     ```
     modal shell sb-abc123xyz
     ```
+
+    Mount a local directory live into the container (experimental, read-only):
+
+    ```
+    modal shell --mount-local ./src
+    ```
     """
     if pty is None:
         pty = is_tty()
@@ -366,6 +394,7 @@ def shell(
         volume or [],
         secret or [],
         add_local or [],
+        mount_local or [],
         cpu,
         memory,
         gpu,

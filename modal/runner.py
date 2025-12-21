@@ -7,6 +7,7 @@
 import asyncio
 import dataclasses
 import os
+import pathlib
 import time
 from collections.abc import AsyncGenerator
 from contextlib import nullcontext
@@ -574,7 +575,12 @@ async def _deploy_app(
 
 
 async def _interactive_shell(
-    _app: "modal.app._App", cmds: list[str], environment_name: str = "", pty: bool = True, **kwargs: Any
+    _app: "modal.app._App",
+    cmds: list[str],
+    environment_name: str = "",
+    pty: bool = True,
+    live_mounts: Optional[list[tuple["pathlib.Path", "pathlib.PurePosixPath"]]] = None,
+    **kwargs: Any,
 ) -> None:
     """Run an interactive shell (like `bash`) within the image for this app.
 
@@ -597,7 +603,18 @@ async def _interactive_shell(
     ```
 
     When calling programmatically, `kwargs` are passed to `Sandbox.create()`.
+
+    Args:
+        _app: The Modal app.
+        cmds: Commands to run in the shell.
+        environment_name: Modal environment name.
+        pty: Whether to use a PTY.
+        live_mounts: List of (local_path, remote_path) tuples for FUSE mounts.
+        **kwargs: Additional arguments passed to Sandbox.create().
     """
+    from modal._fuse import FuseMountManager
+
+    live_mounts = live_mounts or []
 
     client = await _Client.from_env()
     async with _run_app(_app, client=client, environment_name=environment_name):
@@ -618,7 +635,16 @@ async def _interactive_shell(
                 **kwargs,
             )
 
+        # Set up FUSE mounts if any
+        fuse_managers: list[FuseMountManager] = []
         try:
+            for local_path, remote_path in live_mounts:
+                logger.info(f"Setting up live mount: {local_path} -> {remote_path}")
+                manager = FuseMountManager(sandbox, local_path, remote_path)
+                await manager.start()
+                fuse_managers.append(manager)
+                logger.info(f"Live mount ready: {local_path} -> {remote_path}")
+
             if pty:
                 container_process = await sandbox._exec(
                     *sandbox_cmds, pty_info=get_pty_info(shell=True) if pty else None, text=False
@@ -637,6 +663,13 @@ async def _interactive_shell(
                 raise RemoteError(resp.result.exception)
             else:
                 raise
+        finally:
+            # Clean up FUSE mounts
+            for manager in fuse_managers:
+                try:
+                    await manager.stop()
+                except Exception as e:
+                    logger.warning(f"Error stopping FUSE mount: {e}")
 
 
 run_app = synchronize_api(_run_app)
