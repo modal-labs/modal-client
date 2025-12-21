@@ -194,13 +194,8 @@ class ProgressDialog(ModalScreen[None]):
             bar.update(progress=progress)
 
 
-class FilePanel(Static):
+class FilePanel(Static, can_focus=False):
     """A file panel widget showing files in a directory."""
-
-    BINDINGS = [
-        Binding("enter", "select", "Open/Select"),
-        Binding("space", "mark", "Mark"),
-    ]
 
     current_path: reactive[str] = reactive(".")
     is_active: reactive[bool] = reactive(False)
@@ -252,7 +247,7 @@ class FilePanel(Static):
 
     def on_mount(self) -> None:
         table = self.query_one("#file-table", DataTable)
-        table.add_columns("", "Name", "Size", "Modified", "Type")
+        table.add_columns("*", "Name", "Size", "Modified", "Type")
         table.cursor_type = "row"
         self.load_directory()
 
@@ -291,7 +286,7 @@ class FilePanel(Static):
         if path != path.parent:
             parent_item = FileItem.parent_dir(str(path))
             self.items.append(parent_item)
-            table.add_row("", "..", "", "", "dir", key="..")
+            table.add_row(" ", "..", "", "", "dir", key="..")
 
         # List directory contents
         try:
@@ -300,7 +295,7 @@ class FilePanel(Static):
                 try:
                     item = FileItem.from_local(entry_path)
                     self.items.append(item)
-                    mark = "●" if item.path in self.marked_items else ""
+                    mark = "►" if item.path in self.marked_items else " "
                     size = humanize_filesize(item.size) if not item.is_dir else "<DIR>"
                     mtime = item.mtime.strftime("%Y-%m-%d %H:%M")
                     table.add_row(mark, item.name, size, mtime, item.type, key=item.name)
@@ -330,7 +325,7 @@ class FilePanel(Static):
                 type="dir",
             )
             self.items.append(parent_item)
-            table.add_row("", "..", "", "", "dir", key="..")
+            table.add_row(" ", "..", "", "", "dir", key="..")
 
         if self.volume is None:
             return
@@ -345,7 +340,7 @@ class FilePanel(Static):
             for entry in entries:
                 item = FileItem.from_volume_entry(entry)
                 self.items.append(item)
-                mark = "●" if item.path in self.marked_items else ""
+                mark = "►" if item.path in self.marked_items else " "
                 size = humanize_filesize(item.size) if not item.is_dir else "<DIR>"
                 mtime = item.mtime.strftime("%Y-%m-%d %H:%M")
                 table.add_row(mark, item.name, size, mtime, item.type, key=item.name)
@@ -383,14 +378,15 @@ class FilePanel(Static):
         if 0 <= row_index < len(self.items):
             item = self.items[row_index]
             if item.name == "..":
+                self.notify("Cannot mark parent directory", severity="warning")
                 return
 
             if item.path in self.marked_items:
                 self.marked_items.discard(item.path)
-                mark = ""
+                mark = " "
             else:
                 self.marked_items.add(item.path)
-                mark = "●"
+                mark = "►"
 
             # Update the mark column
             table.update_cell_at(Coordinate(row_index, 0), mark)
@@ -512,6 +508,7 @@ class VolumeBrowserApp(App):
 
     BINDINGS = [
         Binding("tab", "switch_panel", "Switch Panel"),
+        Binding("space", "mark", "Mark", priority=True),
         Binding("f5", "copy", "Copy"),
         Binding("f6", "move", "Move"),
         Binding("f7", "mkdir", "MkDir"),
@@ -601,6 +598,11 @@ class VolumeBrowserApp(App):
         """Refresh both panels."""
         self.query_one("#local-panel", FilePanel).load_directory()
         self.query_one("#volume-panel", FilePanel).load_directory()
+
+    def action_mark(self) -> None:
+        """Mark/unmark the current file in the active panel."""
+        if self.active_panel:
+            self.active_panel.action_mark()
 
     @work(exclusive=True)
     async def action_copy(self) -> None:
