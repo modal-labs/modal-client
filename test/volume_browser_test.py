@@ -3,7 +3,7 @@
 
 import pytest
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest import mock
 
 from modal.volume import FileEntry, FileEntryType
@@ -24,20 +24,22 @@ class MockVolume:
     def add_file(self, path: str, content: bytes = b"test content") -> None:
         """Add a file to the mock volume."""
         self.files[path] = content
-        # Ensure parent directories exist
-        parent = str(Path(path).parent)
+        # Ensure parent directories exist (use PurePosixPath for Unix-style paths)
+        posix_path = PurePosixPath(path)
+        parent = str(posix_path.parent)
         while parent and parent != "/":
             self.dirs.add(parent)
-            parent = str(Path(parent).parent)
+            parent = str(PurePosixPath(parent).parent)
         self.dirs.add("/")
 
     def add_directory(self, path: str) -> None:
         """Add a directory to the mock volume."""
         self.dirs.add(path)
-        parent = str(Path(path).parent)
+        posix_path = PurePosixPath(path)
+        parent = str(posix_path.parent)
         while parent and parent != "/":
             self.dirs.add(parent)
-            parent = str(Path(parent).parent)
+            parent = str(PurePosixPath(parent).parent)
 
     async def listdir(self, path: str, recursive: bool = False) -> list[FileEntry]:
         """List files in a directory."""
