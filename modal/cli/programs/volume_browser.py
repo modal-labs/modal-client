@@ -931,7 +931,12 @@ class VolumeBrowserApp(App):
                 progress._update_progress()
 
     async def _copy_from_volume(self, items: list[FileItem], local_path: str, progress: CopyProgressScreen) -> None:
-        """Copy volume files to local filesystem."""
+        """Copy volume files to local filesystem with high concurrency."""
+        import asyncio
+        import multiprocessing
+
+        from modal._utils.async_utils import TaskContext
+
         if self.volume is None:
             raise ValueError("Volume not loaded")
 
@@ -959,21 +964,25 @@ class VolumeBrowserApp(App):
         progress._update_status(f"Downloading {len(files_to_copy)} files...")
         progress._update_progress()
 
-        # Now download files
-        for remote_path, file_dest, size in files_to_copy:
-            filename = PurePosixPath(remote_path).name
-            progress.current_file = filename
-            progress._update_progress()
+        # Use high concurrency like modal volume get
+        concurrency = max(128, 2 * multiprocessing.cpu_count())
+        semaphore = asyncio.Semaphore(concurrency)
 
-            file_dest.parent.mkdir(parents=True, exist_ok=True)
+        async def download_file(remote_path: str, file_dest: Path, size: int) -> None:
+            async with semaphore:
+                file_dest.parent.mkdir(parents=True, exist_ok=True)
+                with open(file_dest, "wb") as f:
+                    # Use the optimized _read_file_into_fileobj for parallel block downloads
+                    await self.volume._read_file_into_fileobj(remote_path, f, download_semaphore=semaphore)
 
-            with open(file_dest, "wb") as f:
-                async for chunk in self.volume.read_file(remote_path):
-                    f.write(chunk)
+                progress.completed_files += 1
+                progress.completed_bytes += size
+                progress.current_file = PurePosixPath(remote_path).name
+                progress._update_progress()
 
-            progress.completed_files += 1
-            progress.completed_bytes += size
-            progress._update_progress()
+        # Download all files concurrently
+        tasks = [download_file(rp, fp, sz) for rp, fp, sz in files_to_copy]
+        await TaskContext.gather(*tasks)
 
     @work(exclusive=True)
     async def action_mkdir(self) -> None:
