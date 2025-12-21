@@ -194,6 +194,110 @@ class ProgressDialog(ModalScreen[None]):
             bar.update(progress=progress)
 
 
+class CopyProgressScreen(ModalScreen[None]):
+    """A modal screen showing copy progress."""
+
+    CSS = """
+    CopyProgressScreen {
+        align: center middle;
+    }
+
+    #progress-container {
+        width: 70;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #progress-title {
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+
+    #progress-status {
+        margin-bottom: 1;
+    }
+
+    #progress-current-file {
+        margin-bottom: 1;
+        color: $text-muted;
+    }
+
+    #progress-bar {
+        margin-bottom: 1;
+    }
+
+    #progress-stats {
+        color: $text-muted;
+        text-align: center;
+    }
+    """
+
+    def __init__(self, title: str = "Copying Files"):
+        super().__init__()
+        self.title_text = title
+        self.total_files = 0
+        self.completed_files = 0
+        self.current_file = ""
+        self.total_bytes = 0
+        self.completed_bytes = 0
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Label(self.title_text, id="progress-title"),
+            Label("Preparing...", id="progress-status"),
+            Label("", id="progress-current-file"),
+            ProgressBar(id="progress-bar", total=100),
+            Label("", id="progress-stats"),
+            id="progress-container",
+        )
+
+    def update_status(self, status: str) -> None:
+        """Update the status message."""
+        self.call_from_thread(self._update_status, status)
+
+    def _update_status(self, status: str) -> None:
+        self.query_one("#progress-status", Label).update(status)
+
+    def set_total(self, total_files: int, total_bytes: int = 0) -> None:
+        """Set the total number of files to copy."""
+        self.total_files = total_files
+        self.total_bytes = total_bytes
+        self.call_from_thread(self._update_progress)
+
+    def update_file(self, filename: str, file_bytes: int = 0) -> None:
+        """Update current file being copied."""
+        self.current_file = filename
+        self.completed_files += 1
+        self.completed_bytes += file_bytes
+        self.call_from_thread(self._update_progress)
+
+    def _update_progress(self) -> None:
+        # Update current file label
+        if self.current_file:
+            display_name = self.current_file
+            if len(display_name) > 50:
+                display_name = "..." + display_name[-47:]
+            self.query_one("#progress-current-file", Label).update(f"  {display_name}")
+
+        # Update progress bar
+        if self.total_files > 0:
+            progress = (self.completed_files / self.total_files) * 100
+            self.query_one("#progress-bar", ProgressBar).update(progress=progress)
+
+        # Update stats
+        stats = f"{self.completed_files} / {self.total_files} files"
+        if self.total_bytes > 0:
+            stats += f" ({humanize_filesize(self.completed_bytes)} / {humanize_filesize(self.total_bytes)})"
+        self.query_one("#progress-stats", Label).update(stats)
+
+    def finish(self) -> None:
+        """Called when copy is complete."""
+        self.dismiss(None)
+
+
 class FileViewerScreen(ModalScreen[None]):
     """A modal screen for viewing file contents."""
 
@@ -781,61 +885,112 @@ class VolumeBrowserApp(App):
         target_panel: FilePanel,
     ) -> None:
         """Perform the copy operation."""
+        # Show progress screen
+        progress = CopyProgressScreen("Copying Files...")
+        self.app.push_screen(progress)
+
         try:
             if source_panel.panel_type == PanelType.LOCAL:
                 # Local → Volume
-                await self._copy_to_volume(items, target_panel.current_path)
+                await self._copy_to_volume(items, target_panel.current_path, progress)
             else:
                 # Volume → Local
-                await self._copy_from_volume(items, target_panel.current_path)
+                await self._copy_from_volume(items, target_panel.current_path, progress)
 
             source_panel.clear_marks()
             target_panel.load_directory()
             self.notify("Copy completed successfully", severity="information")
         except Exception as e:
             self.notify(f"Copy failed: {e}", severity="error")
+        finally:
+            progress.dismiss(None)
 
-    async def _copy_to_volume(self, items: list[FileItem], remote_path: str) -> None:
+    async def _copy_to_volume(
+        self, items: list[FileItem], remote_path: str, progress: CopyProgressScreen
+    ) -> None:
         """Copy local files to volume."""
         if self.volume is None:
             raise ValueError("Volume not loaded")
 
+        # First, count all files to copy
+        progress._update_status("Scanning files...")
+        files_to_copy: list[tuple[Path, str, int]] = []  # (local_path, remote_path, size)
+
+        for item in items:
+            local_path = Path(item.path)
+            remote_dest = str(PurePosixPath(remote_path) / item.name)
+
+            if item.is_dir:
+                for file_path in local_path.rglob("*"):
+                    if file_path.is_file():
+                        rel_path = file_path.relative_to(local_path)
+                        file_remote = str(PurePosixPath(remote_dest) / rel_path)
+                        files_to_copy.append((file_path, file_remote, file_path.stat().st_size))
+            else:
+                files_to_copy.append((local_path, remote_dest, item.size))
+
+        total_bytes = sum(size for _, _, size in files_to_copy)
+        progress.total_files = len(files_to_copy)
+        progress.total_bytes = total_bytes
+        progress._update_status(f"Copying {len(files_to_copy)} files...")
+        progress._update_progress()
+
+        # Now copy files
         async with self.volume.batch_upload(force=True) as batch:
-            for item in items:
-                local_path = Path(item.path)
-                remote_dest = str(PurePosixPath(remote_path) / item.name)
+            for local_path, remote_dest, size in files_to_copy:
+                progress.current_file = str(local_path.name)
+                progress._update_progress()
+                batch.put_file(str(local_path), remote_dest)
+                progress.completed_files += 1
+                progress.completed_bytes += size
+                progress._update_progress()
 
-                if item.is_dir:
-                    batch.put_directory(str(local_path), remote_dest)
-                else:
-                    batch.put_file(str(local_path), remote_dest)
-
-    async def _copy_from_volume(self, items: list[FileItem], local_path: str) -> None:
+    async def _copy_from_volume(
+        self, items: list[FileItem], local_path: str, progress: CopyProgressScreen
+    ) -> None:
         """Copy volume files to local filesystem."""
         if self.volume is None:
             raise ValueError("Volume not loaded")
 
         dest_path = Path(local_path)
 
+        # First, enumerate all files to copy
+        progress._update_status("Scanning files...")
+        files_to_copy: list[tuple[str, Path, int]] = []  # (remote_path, local_path, size)
+
         for item in items:
             if item.is_dir:
-                # For directories, download recursively
+                # For directories, list recursively
                 async for entry in self.volume.iterdir(item.path, recursive=True):
                     if entry.type == FileEntryType.FILE:
                         rel_path = PurePosixPath(entry.path).relative_to(PurePosixPath(item.path).parent)
                         file_dest = dest_path / rel_path
-                        file_dest.parent.mkdir(parents=True, exist_ok=True)
-
-                        with open(file_dest, "wb") as f:
-                            async for chunk in self.volume.read_file(entry.path):
-                                f.write(chunk)
+                        files_to_copy.append((entry.path, file_dest, entry.size))
             else:
                 file_dest = dest_path / item.name
-                file_dest.parent.mkdir(parents=True, exist_ok=True)
+                files_to_copy.append((item.path, file_dest, item.size))
 
-                with open(file_dest, "wb") as f:
-                    async for chunk in self.volume.read_file(item.path):
-                        f.write(chunk)
+        total_bytes = sum(size for _, _, size in files_to_copy)
+        progress.total_files = len(files_to_copy)
+        progress.total_bytes = total_bytes
+        progress._update_status(f"Downloading {len(files_to_copy)} files...")
+        progress._update_progress()
+
+        # Now download files
+        for remote_path, file_dest, size in files_to_copy:
+            filename = PurePosixPath(remote_path).name
+            progress.current_file = filename
+            progress._update_progress()
+
+            file_dest.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(file_dest, "wb") as f:
+                async for chunk in self.volume.read_file(remote_path):
+                    f.write(chunk)
+
+            progress.completed_files += 1
+            progress.completed_bytes += size
+            progress._update_progress()
 
     @work(exclusive=True)
     async def action_mkdir(self) -> None:
@@ -966,14 +1121,19 @@ class VolumeBrowserApp(App):
         target_panel: FilePanel,
     ) -> None:
         """Perform the move operation (copy + delete)."""
+        # Show progress screen
+        progress = CopyProgressScreen("Moving Files...")
+        self.app.push_screen(progress)
+
         try:
             # First copy
             if source_panel.panel_type == PanelType.LOCAL:
-                await self._copy_to_volume(items, target_panel.current_path)
+                await self._copy_to_volume(items, target_panel.current_path, progress)
             else:
-                await self._copy_from_volume(items, target_panel.current_path)
+                await self._copy_from_volume(items, target_panel.current_path, progress)
 
             # Then delete source
+            progress._update_status("Deleting source files...")
             if source_panel.panel_type == PanelType.LOCAL:
                 import shutil
 
@@ -996,6 +1156,8 @@ class VolumeBrowserApp(App):
             self.notify("Move completed successfully", severity="information")
         except Exception as e:
             self.notify(f"Move failed: {e}", severity="error")
+        finally:
+            progress.dismiss(None)
 
 
 def run_volume_browser(
