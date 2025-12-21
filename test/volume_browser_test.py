@@ -721,6 +721,7 @@ class TestCopyProgressScreen:
         assert screen.total_bytes == 0
         assert screen.completed_files == 0
         assert screen.completed_bytes == 0
+        assert screen.cancelled is False
 
     def test_progress_tracking(self):
         """Test tracking progress."""
@@ -737,6 +738,16 @@ class TestCopyProgressScreen:
 
         assert screen.completed_files == 2
         assert screen.completed_bytes == 2000
+
+    def test_cancellation(self):
+        """Test that cancellation flag can be set."""
+        from modal.cli.programs.volume_browser import CopyProgressScreen
+
+        screen = CopyProgressScreen("Copying...")
+        assert screen.cancelled is False
+
+        screen.cancelled = True
+        assert screen.cancelled is True
 
 
 class TestDeleteOperations:

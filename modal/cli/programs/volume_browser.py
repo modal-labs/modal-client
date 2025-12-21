@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import multiprocessing
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -197,6 +199,10 @@ class ProgressDialog(ModalScreen[None]):
 class CopyProgressScreen(ModalScreen[None]):
     """A modal screen showing copy progress."""
 
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
     CSS = """
     CopyProgressScreen {
         align: center middle;
@@ -233,6 +239,17 @@ class CopyProgressScreen(ModalScreen[None]):
         color: $text-muted;
         text-align: center;
     }
+
+    #cancel-hint {
+        text-align: center;
+        color: $text-muted;
+        margin-top: 1;
+    }
+
+    #cancel-button {
+        margin-top: 1;
+        width: 100%;
+    }
     """
 
     def __init__(self, title: str = "Copying Files"):
@@ -243,6 +260,7 @@ class CopyProgressScreen(ModalScreen[None]):
         self.current_file = ""
         self.total_bytes = 0
         self.completed_bytes = 0
+        self.cancelled = False
 
     def compose(self) -> ComposeResult:
         yield Vertical(
@@ -251,8 +269,20 @@ class CopyProgressScreen(ModalScreen[None]):
             Label("", id="progress-current-file"),
             ProgressBar(id="progress-bar", total=100),
             Label("", id="progress-stats"),
+            Label("Press ESC to cancel", id="cancel-hint"),
+            Button("Cancel", id="cancel-button", variant="error"),
             id="progress-container",
         )
+
+    def action_cancel(self) -> None:
+        """Cancel the operation."""
+        self.cancelled = True
+        self._update_status("Cancelling...")
+
+    @on(Button.Pressed, "#cancel-button")
+    def on_cancel_button(self) -> None:
+        """Handle cancel button press."""
+        self.action_cancel()
 
     def _update_status(self, status: str) -> None:
         """Update the status message."""
@@ -887,6 +917,8 @@ class VolumeBrowserApp(App):
             source_panel.clear_marks()
             target_panel.load_directory()
             self.notify("Copy completed successfully", severity="information")
+        except asyncio.CancelledError:
+            self.notify("Copy cancelled", severity="warning")
         except Exception as e:
             self.notify(f"Copy failed: {e}", severity="error")
         finally:
@@ -902,17 +934,25 @@ class VolumeBrowserApp(App):
         files_to_copy: list[tuple[Path, str, int]] = []  # (local_path, remote_path, size)
 
         for item in items:
+            if progress.cancelled:
+                raise asyncio.CancelledError("Operation cancelled by user")
+
             local_path = Path(item.path)
             remote_dest = str(PurePosixPath(remote_path) / item.name)
 
             if item.is_dir:
                 for file_path in local_path.rglob("*"):
+                    if progress.cancelled:
+                        raise asyncio.CancelledError("Operation cancelled by user")
                     if file_path.is_file():
                         rel_path = file_path.relative_to(local_path)
                         file_remote = str(PurePosixPath(remote_dest) / rel_path)
                         files_to_copy.append((file_path, file_remote, file_path.stat().st_size))
             else:
                 files_to_copy.append((local_path, remote_dest, item.size))
+
+        if progress.cancelled:
+            raise asyncio.CancelledError("Operation cancelled by user")
 
         total_bytes = sum(size for _, _, size in files_to_copy)
         progress.total_files = len(files_to_copy)
@@ -923,6 +963,8 @@ class VolumeBrowserApp(App):
         # Now copy files
         async with self.volume.batch_upload(force=True) as batch:
             for local_path, remote_dest, size in files_to_copy:
+                if progress.cancelled:
+                    raise asyncio.CancelledError("Operation cancelled by user")
                 progress.current_file = str(local_path.name)
                 progress._update_progress()
                 batch.put_file(str(local_path), remote_dest)
@@ -931,25 +973,29 @@ class VolumeBrowserApp(App):
                 progress._update_progress()
 
     async def _copy_from_volume(self, items: list[FileItem], local_path: str, progress: CopyProgressScreen) -> None:
-        """Copy volume files to local filesystem with high concurrency."""
-        import asyncio
-        import multiprocessing
+        """Copy volume files to local filesystem with high concurrency.
 
-        from modal._utils.async_utils import TaskContext
-
+        Uses a producer-consumer pattern like modal volume get for efficiency,
+        with support for cancellation via the progress screen.
+        """
         if self.volume is None:
             raise ValueError("Volume not loaded")
 
         dest_path = Path(local_path)
 
-        # First, enumerate all files to copy
+        # First, enumerate all files to copy (check for cancellation during scan)
         progress._update_status("Scanning files...")
         files_to_copy: list[tuple[str, Path, int]] = []  # (remote_path, local_path, size)
 
         for item in items:
+            if progress.cancelled:
+                raise asyncio.CancelledError("Operation cancelled by user")
+
             if item.is_dir:
                 # For directories, list recursively
                 async for entry in self.volume.iterdir(item.path, recursive=True):
+                    if progress.cancelled:
+                        raise asyncio.CancelledError("Operation cancelled by user")
                     if entry.type == FileEntryType.FILE:
                         rel_path = PurePosixPath(entry.path).relative_to(PurePosixPath(item.path).parent)
                         file_dest = dest_path / rel_path
@@ -958,31 +1004,79 @@ class VolumeBrowserApp(App):
                 file_dest = dest_path / item.name
                 files_to_copy.append((item.path, file_dest, item.size))
 
+        if progress.cancelled:
+            raise asyncio.CancelledError("Operation cancelled by user")
+
         total_bytes = sum(size for _, _, size in files_to_copy)
         progress.total_files = len(files_to_copy)
         progress.total_bytes = total_bytes
         progress._update_status(f"Downloading {len(files_to_copy)} files...")
         progress._update_progress()
 
-        # Use high concurrency like modal volume get
-        concurrency = max(128, 2 * multiprocessing.cpu_count())
-        semaphore = asyncio.Semaphore(concurrency)
+        # Use producer-consumer pattern with queue for better control
+        concurrency = min(64, max(16, 2 * multiprocessing.cpu_count()))
+        queue: asyncio.Queue[tuple[str, Path, int] | None] = asyncio.Queue()
+        download_semaphore = asyncio.Semaphore(concurrency)
 
-        async def download_file(remote_path: str, file_dest: Path, size: int) -> None:
-            async with semaphore:
-                file_dest.parent.mkdir(parents=True, exist_ok=True)
-                with open(file_dest, "wb") as f:
-                    # Use the optimized _read_file_into_fileobj for parallel block downloads
-                    await self.volume._read_file_into_fileobj(remote_path, f, download_semaphore=semaphore)
+        async def producer() -> None:
+            """Add files to the download queue."""
+            for file_info in files_to_copy:
+                if progress.cancelled:
+                    break
+                await queue.put(file_info)
+            # Signal consumers to stop
+            for _ in range(concurrency):
+                await queue.put(None)
 
-                progress.completed_files += 1
-                progress.completed_bytes += size
-                progress.current_file = PurePosixPath(remote_path).name
-                progress._update_progress()
+        async def consumer() -> None:
+            """Download files from the queue."""
+            while True:
+                if progress.cancelled:
+                    return
 
-        # Download all files concurrently
-        tasks = [download_file(rp, fp, sz) for rp, fp, sz in files_to_copy]
-        await TaskContext.gather(*tasks)
+                file_info = await queue.get()
+                if file_info is None:
+                    queue.task_done()
+                    return
+
+                remote_path, file_dest, size = file_info
+                try:
+                    async with download_semaphore:
+                        if progress.cancelled:
+                            queue.task_done()
+                            return
+
+                        file_dest.parent.mkdir(parents=True, exist_ok=True)
+                        with open(file_dest, "wb") as f:
+                            async for chunk in self.volume.read_file(remote_path):
+                                if progress.cancelled:
+                                    break
+                                f.write(chunk)
+
+                        if not progress.cancelled:
+                            progress.completed_files += 1
+                            progress.completed_bytes += size
+                            progress.current_file = PurePosixPath(remote_path).name
+                            progress._update_progress()
+                finally:
+                    queue.task_done()
+
+        # Run producer and consumers concurrently
+        consumers = [asyncio.create_task(consumer()) for _ in range(concurrency)]
+        producer_task = asyncio.create_task(producer())
+
+        try:
+            await producer_task
+            await queue.join()
+        finally:
+            # Cancel any remaining consumer tasks
+            for task in consumers:
+                task.cancel()
+            # Wait for consumers to finish
+            await asyncio.gather(*consumers, return_exceptions=True)
+
+        if progress.cancelled:
+            raise asyncio.CancelledError("Operation cancelled by user")
 
     @work(exclusive=True)
     async def action_mkdir(self) -> None:
@@ -1146,6 +1240,8 @@ class VolumeBrowserApp(App):
             source_panel.load_directory()
             target_panel.load_directory()
             self.notify("Move completed successfully", severity="information")
+        except asyncio.CancelledError:
+            self.notify("Move cancelled (files may have been partially copied)", severity="warning")
         except Exception as e:
             self.notify(f"Move failed: {e}", severity="error")
         finally:
