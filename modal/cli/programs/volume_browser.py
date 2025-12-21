@@ -386,22 +386,19 @@ class FilePanel(Static, can_focus=False):
             return
 
         if row_index < 0 or row_index >= len(self.items):
-            self.notify(f"Invalid row {row_index}, items: {len(self.items)}", severity="error")
             return
 
         item = self.items[row_index]
         if item.name == "..":
-            self.notify("Cannot mark parent directory - use arrow keys to navigate to a file", severity="warning")
+            # Silently skip parent directory
             return
 
         if item.path in self.marked_items:
             self.marked_items.discard(item.path)
             mark = " "
-            self.notify(f"Unmarked: {item.name}", severity="information")
         else:
             self.marked_items.add(item.path)
             mark = "►"
-            self.notify(f"Marked: {item.name}", severity="information")
 
         # Update the mark column
         table.update_cell_at(Coordinate(row_index, 0), mark)
