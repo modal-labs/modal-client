@@ -375,25 +375,36 @@ class FilePanel(Static, can_focus=False):
         """Toggle mark on current item."""
         table = self.query_one("#file-table", DataTable)
         row_index = table.cursor_row
-        if 0 <= row_index < len(self.items):
-            item = self.items[row_index]
-            if item.name == "..":
-                self.notify("Cannot mark parent directory", severity="warning")
-                return
 
-            if item.path in self.marked_items:
-                self.marked_items.discard(item.path)
-                mark = " "
-            else:
-                self.marked_items.add(item.path)
-                mark = "►"
+        # Check if items list is populated
+        if not self.items:
+            self.notify("Directory still loading...", severity="warning")
+            return
 
-            # Update the mark column
-            table.update_cell_at(Coordinate(row_index, 0), mark)
+        if row_index < 0 or row_index >= len(self.items):
+            self.notify(f"Invalid row {row_index}, items: {len(self.items)}", severity="error")
+            return
 
-            # Move cursor down
-            if row_index < len(self.items) - 1:
-                table.move_cursor(row=row_index + 1)
+        item = self.items[row_index]
+        if item.name == "..":
+            self.notify("Cannot mark parent directory - use arrow keys to navigate to a file", severity="warning")
+            return
+
+        if item.path in self.marked_items:
+            self.marked_items.discard(item.path)
+            mark = " "
+            self.notify(f"Unmarked: {item.name}", severity="information")
+        else:
+            self.marked_items.add(item.path)
+            mark = "►"
+            self.notify(f"Marked: {item.name}", severity="information")
+
+        # Update the mark column
+        table.update_cell_at(Coordinate(row_index, 0), mark)
+
+        # Move cursor down
+        if row_index < len(self.items) - 1:
+            table.move_cursor(row=row_index + 1)
 
     def get_selected_item(self) -> Optional[FileItem]:
         """Get the currently highlighted item."""
