@@ -849,7 +849,7 @@ async def _create_client_dependency_mounts(
     python_versions: list[str] = list(PYTHON_STANDALONE_VERSIONS),
     builder_versions: list[str] = ["2025.06"],  # Reenable "PREVIEW" during testing
     check_if_exists=True,
-    allow_overwrite=False,
+    allow_overwrite=False,  # To enable overrides, set check_if_exists=False and allow_overwrite=True
     dry_run=False,
 ):
     arch = "x86_64"
