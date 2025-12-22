@@ -849,6 +849,7 @@ async def _create_client_dependency_mounts(
     python_versions: list[str] = list(PYTHON_STANDALONE_VERSIONS),
     builder_versions: list[str] = ["2025.06"],  # Reenable "PREVIEW" during testing
     check_if_exists=True,
+    allow_overwrite=False,
     dry_run=False,
 ):
     arch = "x86_64"
@@ -872,7 +873,7 @@ async def _create_client_dependency_mounts(
                         # Also it doesn't provide a hook for overwriting a non-preview version, which
                         # in theory we may need to do at some point (hopefully not, but...)
                         check_if_exists=check_if_exists and builder_version != "PREVIEW",
-                        allow_overwrite=builder_version == "PREVIEW",
+                        allow_overwrite=allow_overwrite or builder_version == "PREVIEW",
                         dry_run=dry_run,
                     )
                 )
