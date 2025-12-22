@@ -860,6 +860,7 @@ async def _create_client_dependency_mounts(
     coros = []
     for python_version in python_versions:
         for builder_version in builder_versions:
+            builder_is_preview = builder_version == "PREVIEW"
             for platform, uv_python_platform in platform_tags:
                 coros.append(
                     _create_single_client_dependency_mount(
@@ -872,8 +873,8 @@ async def _create_client_dependency_mounts(
                         # This check_if_exists / allow_overwrite parameterization is very awkward
                         # Also it doesn't provide a hook for overwriting a non-preview version, which
                         # in theory we may need to do at some point (hopefully not, but...)
-                        check_if_exists=check_if_exists and builder_version != "PREVIEW",
-                        allow_overwrite=allow_overwrite or builder_version == "PREVIEW",
+                        check_if_exists=check_if_exists and not builder_is_preview,
+                        allow_overwrite=allow_overwrite or builder_is_preview,
                         dry_run=dry_run,
                     )
                 )
