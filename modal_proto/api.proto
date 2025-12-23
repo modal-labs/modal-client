@@ -2886,7 +2886,7 @@ message SandboxInfo {
   string app_id = 5;
   repeated SandboxTag tags = 6; // TODO: Not yet exposed in client library.
   string name = 7;
-
+  string image_id = 8;
   reserved 2; // modal.client.Sandbox definition
 }
 
