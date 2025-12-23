@@ -118,6 +118,9 @@ class _Sandbox(_Object, type_prefix="sb"):
     _enable_snapshot: bool
     _command_router_client: Optional[TaskCommandRouterClient]
 
+    def __del__(self):
+        print("sandbox __del__")
+
     @staticmethod
     def _default_pty_info() -> api_pb2.PTYInfo:
         return get_pty_info(shell=True, no_terminate_on_idle_stdin=True)

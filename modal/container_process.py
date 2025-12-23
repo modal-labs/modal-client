@@ -468,5 +468,8 @@ class _ContainerProcess(Generic[T]):
         """mdmd:hidden"""
         await self._impl.attach()
 
+    def __del__(self):
+        print("ContainerProcess __del__")
+
 
 ContainerProcess = synchronize_api(_ContainerProcess)
