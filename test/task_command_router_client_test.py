@@ -762,7 +762,7 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
         jwt_refresh_lock=asyncio.Lock(),
     )
 
-    calls: List[tuple[sr_pb2.TaskExecWaitRequest, Optional[float]]] = []
+    calls: List[tuple[sr_pb2.TaskExecWaitRequest, Optional[float], Optional[dict]]] = []
 
     class _WaitMethod:
         def __init__(self):
@@ -775,7 +775,7 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
             timeout: Optional[float] = None,
             metadata: Optional[dict] = None,
         ):
-            calls.append((request, timeout))
+            calls.append((request, timeout, metadata))
             if self._first:
                 self._first = False
                 raise GRPCError(Status.UNAUTHENTICATED, "auth required")
@@ -802,10 +802,11 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
 
     # Should have attempted twice: once failing with UNAUTHENTICATED, once succeeding.
     assert len(calls) == 2
-    req1, to1 = calls[0]
-    req2, to2 = calls[1]
+    req1, to1, metadata1 = calls[0]
+    req2, to2, metadata2 = calls[1]
     assert req1.task_id == "task-1" and req1.exec_id == "exec-1"
     assert req2.task_id == "task-1" and req2.exec_id == "exec-1"
+    assert metadata1 == metadata2 == {"authorization": "Bearer t"}
     assert to1 == 60 and to2 == 60
     assert refreshes == 1
     await client.close()
