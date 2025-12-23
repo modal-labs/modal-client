@@ -793,6 +793,7 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
 
     async def _refresh_jwt():
         nonlocal refreshes
+        client._jwt = "j"
         refreshes += 1
 
     client._refresh_jwt = _refresh_jwt  # type: ignore[assignment]
@@ -809,7 +810,8 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
     req2, to2, metadata2 = calls[1]
     assert req1.task_id == "task-1" and req1.exec_id == "exec-1"
     assert req2.task_id == "task-1" and req2.exec_id == "exec-1"
-    assert metadata1 == metadata2 == {"authorization": "Bearer t"}
+    assert metadata1 == {"authorization": "Bearer t"}
+    assert metadata2 == {"authorization": "Bearer j"}
     assert to1 == 60 and to2 == 60
     assert refreshes == 1
     await client.close()
