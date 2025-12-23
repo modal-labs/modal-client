@@ -33,7 +33,7 @@ class _UnaryStreamMethod:
     def __init__(self, open_fn):
         self._open_fn = open_fn
 
-    def open(self, timeout: Optional[float] = None):  # match grpclib signature
+    def open(self, timeout: Optional[float] = None, metadata: Optional[dict] = None):  # match grpclib signature
         return self._open_fn(timeout)
 
 
@@ -768,7 +768,13 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
         def __init__(self):
             self._first = True
 
-        async def __call__(self, request: sr_pb2.TaskExecWaitRequest, *, timeout: Optional[float] = None):
+        async def __call__(
+            self,
+            request: sr_pb2.TaskExecWaitRequest,
+            *,
+            timeout: Optional[float] = None,
+            metadata: Optional[dict] = None,
+        ):
             calls.append((request, timeout))
             if self._first:
                 self._first = False
@@ -806,7 +812,7 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_task_command_router_client_del_closes_channel(monkeypatch):
+async def test_task_command_router_client_closes_channel(monkeypatch):
     channel = create_dummy_channel()
     closed = False
 
@@ -831,7 +837,7 @@ async def test_task_command_router_client_del_closes_channel(monkeypatch):
     # Note: TaskCommandRouterClient registers a request hook with grpclib, which can create a reference
     # cycle (client -> channel -> callback -> client). Rely on calling __del__ explicitly in the test
     # rather than calling del and trying to force GC to finalize the cycle.
-    client.__del__()
+    await client.close()
     await asyncio.sleep(0)
 
     assert closed is True

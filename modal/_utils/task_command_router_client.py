@@ -212,21 +212,11 @@ class TaskCommandRouterClient:
             loop,
             channel,
         )
-        weakref_self = weakref.ref(self)
-
-        async def send_request(event: grpclib.events.SendRequest) -> None:
-            if re_self := weakref_self():
-                # This will get the most recent JWT for every request. No need to
-                # lock _jwt_refresh_lock: reads and writes happen on the
-                # single-threaded event loop and variable assignment is atomic.
-                event.metadata["authorization"] = f"Bearer {re_self._jwt}"
-
-        grpclib.events.listen(self._channel, grpclib.events.SendRequest, send_request)
 
         self._stub = TaskCommandRouterStub(self._channel)
 
-    def __del__(self) -> None:
-        print("TCRC __del__", id(self._channel))
+    def _get_metadata(self):
+        return {"authorization": f"Bearer {self._jwt}"}
 
     async def close(self) -> None:
         """Close the client."""
@@ -413,7 +403,7 @@ class TaskCommandRouterClient:
 
     async def _call_with_auth_retry(self, func, *args, **kwargs):
         try:
-            return await func(*args, **kwargs)
+            return await func(*args, **kwargs, metadata=self._get_metadata())
         except GRPCError as exc:
             if exc.status == Status.UNAUTHENTICATED:
                 await self._refresh_jwt()
@@ -453,7 +443,7 @@ class TaskCommandRouterClient:
         while True:
             timeout = max(0, deadline - time.monotonic()) if deadline is not None else None
             try:
-                stream = self._stub.TaskExecStdioRead.open(timeout=timeout)
+                stream = self._stub.TaskExecStdioRead.open(timeout=timeout, metadata=self._get_metadata())
                 async with stream as s:
                     req = sr_pb2.TaskExecStdioReadRequest(
                         task_id=task_id,
