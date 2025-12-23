@@ -160,7 +160,7 @@ class TaskCommandRouterClient:
         loop = asyncio.get_running_loop()
         jwt_refresh_lock = asyncio.Lock()
 
-        return cls(server_client, task_id, resp.url, resp.jwt, channel, loop, jwt_refresh_lock)
+        return cls(server_client, task_id, resp.url, resp.jwt, channel, jwt_refresh_lock)
 
     def __init__(
         self,
@@ -169,7 +169,6 @@ class TaskCommandRouterClient:
         server_url: str,
         jwt: str,
         channel: grpclib.client.Channel,
-        loop: asyncio.AbstractEventLoop,
         jwt_refresh_lock: asyncio.Lock,
         *,
         stream_stdio_retry_delay_secs: float = 0.01,
@@ -177,9 +176,6 @@ class TaskCommandRouterClient:
         stream_stdio_max_retries: int = 10,
     ) -> None:
         """Callers should not use this directly. Use TaskCommandRouterClient.try_init() instead."""
-        # Record the loop this instance is bound to so __del__ can safely schedule cleanup
-        # even if finalization happens from a different thread (e.g. via synchronicity).
-        self._loop = loop
 
         # Attach bearer token on all requests to the worker-side router service.
         self._server_client = server_client
@@ -208,35 +204,6 @@ class TaskCommandRouterClient:
         grpclib.events.listen(self._channel, grpclib.events.SendRequest, send_request)
 
         self._stub = TaskCommandRouterStub(self._channel)
-
-    def __del__(self) -> None:
-        """Best-effort cleanup if the caller forgot to close().
-
-        This object is typically used through synchronicity wrappers, which means this finalizer
-        may run on a different thread than the event loop that owns the channel. Closing the
-        channel is therefore scheduled onto the owning loop using call_soon_threadsafe.
-
-        Use getattr in the event that attributes are not yet initialized or the
-        object is in a half-torn-down state.
-        """
-        if getattr(self, "_closed", False):
-            return
-        self._closed = True
-
-        channel = getattr(self, "_channel", None)
-        if channel is None:
-            return
-
-        loop = getattr(self, "_loop", None)
-
-        if loop is not None and not loop.is_closed():
-            try:
-                loop.call_soon_threadsafe(channel.close)
-            except Exception:
-                # call_soon_threadsafe could throw if the loop is torn down
-                # after calling is_closed. This is safe to ignore, and we don't
-                # want to raise an exception from a destructor.
-                pass
 
     async def close(self) -> None:
         """Close the client."""
