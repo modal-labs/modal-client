@@ -32,8 +32,10 @@ def _start_index_for_offset(pieces: List[bytes], offset: int) -> int:
 class _UnaryStreamMethod:
     def __init__(self, open_fn):
         self._open_fn = open_fn
+        self._metadata = None
 
     def open(self, timeout: Optional[float] = None, metadata: Optional[dict] = None):  # match grpclib signature
+        self._metadata = metadata
         return self._open_fn(timeout)
 
 
@@ -95,6 +97,7 @@ async def test_exec_stdio_read_streams_stdout_batches(monkeypatch):
         out.append(item.data)
 
     assert out == pieces
+    assert fake_stub.TaskExecStdioRead._metadata == {"authorization": "Bearer t"}
     await client.close()
 
 
