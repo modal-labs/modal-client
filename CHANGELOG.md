@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.3.1.dev2 (2025-12-23)
+
+- Improves client resource management when running `Sandbox.exec`.
+
+
 ### 1.3.0 (2025-12-19)
 
 Modal now supports Python 3.14. Support for Python 3.14t (the free-threading build) is still experimental; please report any issues you encounter using Modal with free-threading Python. Additionally, Modal no longer supports Python 3.9, which has reached [end-of-life](https://devguide.python.org/versions).
