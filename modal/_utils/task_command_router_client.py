@@ -5,6 +5,8 @@ import json
 import ssl
 import time
 import urllib.parse
+import weakref
+from contextlib import suppress
 from typing import AsyncGenerator, Optional
 
 import grpclib.client
@@ -106,6 +108,15 @@ async def fetch_command_router_access(server_client, task_id: str) -> api_pb2.Ta
     )
 
 
+def _finalize_channel(loop, channel):
+    if not loop.is_closed():
+        # only run if loop has not shut down
+        # call_soon_threadsafe could throw if the loop is torn down after calling
+        # is_closed. This is safe to ignore.
+        with suppress(Exception):
+            loop.call_soon_threadsafe(channel.close)
+
+
 class TaskCommandRouterClient:
     """
     Client used to talk directly to TaskCommandRouter service on worker hosts.
@@ -199,44 +210,17 @@ class TaskCommandRouterClient:
 
         self._closed = False
 
-        async def send_request(event: grpclib.events.SendRequest) -> None:
-            # This will get the most recent JWT for every request. No need to
-            # lock _jwt_refresh_lock: reads and writes happen on the
-            # single-threaded event loop and variable assignment is atomic.
-            event.metadata["authorization"] = f"Bearer {self._jwt}"
-
-        grpclib.events.listen(self._channel, grpclib.events.SendRequest, send_request)
+        self._channel_finalizer = weakref.finalize(
+            self,
+            _finalize_channel,
+            loop,
+            channel,
+        )
 
         self._stub = TaskCommandRouterStub(self._channel)
 
-    def __del__(self) -> None:
-        """Best-effort cleanup if the caller forgot to close().
-
-        This object is typically used through synchronicity wrappers, which means this finalizer
-        may run on a different thread than the event loop that owns the channel. Closing the
-        channel is therefore scheduled onto the owning loop using call_soon_threadsafe.
-
-        Use getattr in the event that attributes are not yet initialized or the
-        object is in a half-torn-down state.
-        """
-        if getattr(self, "_closed", False):
-            return
-        self._closed = True
-
-        channel = getattr(self, "_channel", None)
-        if channel is None:
-            return
-
-        loop = getattr(self, "_loop", None)
-
-        if loop is not None and not loop.is_closed():
-            try:
-                loop.call_soon_threadsafe(channel.close)
-            except Exception:
-                # call_soon_threadsafe could throw if the loop is torn down
-                # after calling is_closed. This is safe to ignore, and we don't
-                # want to raise an exception from a destructor.
-                pass
+    def _get_metadata(self):
+        return {"authorization": f"Bearer {self._jwt}"}
 
     async def close(self) -> None:
         """Close the client."""
@@ -245,6 +229,9 @@ class TaskCommandRouterClient:
 
         self._closed = True
         self._channel.close()
+        if self._channel_finalizer.alive:
+            # skip the finalizer if we've closed the channel anyway
+            self._channel_finalizer.detach()
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
         """Start an exec'd command, properly retrying on transient errors."""
@@ -420,12 +407,12 @@ class TaskCommandRouterClient:
 
     async def _call_with_auth_retry(self, func, *args, **kwargs):
         try:
-            return await func(*args, **kwargs)
+            return await func(*args, **kwargs, metadata=self._get_metadata())
         except GRPCError as exc:
             if exc.status == Status.UNAUTHENTICATED:
                 await self._refresh_jwt()
                 # Retry with the original arguments preserved
-                return await func(*args, **kwargs)
+                return await func(*args, **kwargs, metadata=self._get_metadata())
             raise
 
     async def _stream_stdio(
@@ -460,7 +447,7 @@ class TaskCommandRouterClient:
         while True:
             timeout = max(0, deadline - time.monotonic()) if deadline is not None else None
             try:
-                stream = self._stub.TaskExecStdioRead.open(timeout=timeout)
+                stream = self._stub.TaskExecStdioRead.open(timeout=timeout, metadata=self._get_metadata())
                 async with stream as s:
                     req = sr_pb2.TaskExecStdioReadRequest(
                         task_id=task_id,
