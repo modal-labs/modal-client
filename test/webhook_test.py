@@ -26,7 +26,7 @@ async def f(x):
 @pytest.mark.asyncio
 async def test_webhook(servicer, client, reset_container_app):
     async with app.run(client=client):
-        assert f.get_web_url()
+        assert await f.get_web_url.aio()
 
         assert servicer.app_functions["fu-1"].webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
         assert servicer.app_functions["fu-1"].webhook_config.method == "PATCH"
@@ -40,7 +40,7 @@ async def test_webhook(servicer, client, reset_container_app):
         container_app = RunningApp(app.app_id)
         app._init_container(client, container_app)
         assert isinstance(f, Function)
-        assert f.get_web_url()
+        assert await f.get_web_url.aio()
 
 
 def test_webhook_cors():

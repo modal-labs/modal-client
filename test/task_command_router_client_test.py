@@ -13,7 +13,7 @@ from grpclib.client import Channel
 from grpclib.exceptions import StreamTerminatedError
 
 from modal._utils.task_command_router_client import TaskCommandRouterClient
-from modal.exception import ExecTimeoutError
+from modal.exception import AuthError, ExecTimeoutError, ServiceError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
@@ -56,6 +56,8 @@ async def test_exec_stdio_read_streams_stdout_batches(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     class _Stream:
@@ -107,6 +109,8 @@ async def test_exec_stdio_read_auth_retry_resumes_from_correct_offset(monkeypatc
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     num_attempts_made = 0
@@ -172,6 +176,77 @@ async def test_exec_stdio_read_auth_retry_resumes_from_correct_offset(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_exec_stdio_read_auth_retry_on_receive(monkeypatch):
+    # send_message succeeds but the server rejects auth during iteration; we should refresh once and resume.
+    pieces = [b"hello", b"world"]
+
+    client = TaskCommandRouterClient(
+        server_client=None,
+        task_id="sb-1",
+        server_url="https://router.test",
+        jwt="t",
+        channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
+    )
+
+    num_attempts_made = 0
+
+    class _Stream:
+        def __init__(self, timeout: Optional[float]):
+            self._timeout = timeout
+            self._emitted = 0
+            self._last_req: Optional[sr_pb2.TaskExecStdioReadRequest] = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201 - test helper
+            return False
+
+        async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
+            self._last_req = req
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            assert self._last_req is not None
+            start_idx = _start_index_for_offset(pieces, int(self._last_req.offset))
+            # On first attempt, fail auth on receive before any items.
+            if num_attempts_made == 1 and self._emitted == 0:
+                raise GRPCError(Status.UNAUTHENTICATED, "auth required")
+            next_idx = start_idx + self._emitted
+            if next_idx >= len(pieces):
+                raise StopAsyncIteration
+            self._emitted += 1
+            return sr_pb2.TaskExecStdioReadResponse(data=pieces[next_idx])
+
+    def _open(timeout: Optional[float] = None):
+        nonlocal num_attempts_made
+        num_attempts_made += 1
+        return _Stream(timeout)
+
+    num_refreshes_made = 0
+
+    async def _refresh_jwt():
+        nonlocal num_refreshes_made
+        num_refreshes_made += 1
+        client._jwt = "t2"
+
+    client._refresh_jwt = _refresh_jwt  # type: ignore[assignment]
+    client._stub = _Stub(_open)  # type: ignore[assignment]
+
+    out: List[bytes] = []
+    async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
+        out.append(item.data)
+
+    assert out == pieces
+    assert num_refreshes_made == 1
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset(monkeypatch):
     # 2 pieces, then transient error; then resume with remaining pieces.
     pieces = [b"one", b"two", b"three"]
@@ -182,6 +257,8 @@ async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     num_attempts_made = 0
@@ -240,6 +317,8 @@ async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     num_attempts_made = 0
@@ -281,10 +360,9 @@ async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(monkeypatch):
     client._refresh_jwt = _refresh_jwt  # type: ignore[assignment]
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
-    with pytest.raises(GRPCError) as exc_info:
+    with pytest.raises(AuthError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
             pass
-    assert exc_info.value.status == Status.UNAUTHENTICATED
     await client.close()
 
 
@@ -299,6 +377,8 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch)
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
         stream_stdio_retry_delay_secs=0.001,
         stream_stdio_retry_delay_factor=1.0,
         stream_stdio_max_retries=5,
@@ -328,11 +408,9 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch)
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
-    with pytest.raises(GRPCError) as exc_info:
+    with pytest.raises(ServiceError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
             pass
-
-    assert exc_info.value.status == Status.UNAVAILABLE
     await client.close()
 
 
@@ -346,6 +424,8 @@ async def test_exec_stdio_read_open_raises_once_then_succeeds(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     raised = False
@@ -397,6 +477,8 @@ async def test_exec_stdio_read_deadline_exceeded_on_send_raises_exec_timeout_err
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     class _Stream:
@@ -440,6 +522,8 @@ async def test_exec_stdio_read_deadline_exceeded_on_first_item_raises_exec_timeo
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     class _Stream:
@@ -489,6 +573,8 @@ async def test_exec_stdio_read_deadline_respected_on_attribute_error(monkeypatch
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
         stream_stdio_retry_delay_secs=0.2,  # longer than remaining time
     )
 
@@ -533,6 +619,8 @@ async def test_exec_stdio_read_deadline_respected_on_stream_terminated_error(mon
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
         stream_stdio_retry_delay_secs=0.2,
     )
 
@@ -575,6 +663,8 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
         stream_stdio_retry_delay_secs=0.2,
     )
 
@@ -617,6 +707,8 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     class _Stream:
@@ -666,6 +758,8 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
         server_url="https://router.test",
         jwt="t",
         channel=create_dummy_channel(),
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
     )
 
     calls: List[tuple[sr_pb2.TaskExecWaitRequest, Optional[float]]] = []
@@ -709,3 +803,35 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
     assert to1 == 60 and to2 == 60
     assert refreshes == 1
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_task_command_router_client_del_closes_channel(monkeypatch):
+    channel = create_dummy_channel()
+    closed = False
+
+    def _close():  # noqa: ANN001 - test helper
+        nonlocal closed
+        closed = True
+
+    monkeypatch.setattr(channel, "close", _close, raising=True)
+
+    client = TaskCommandRouterClient(
+        server_client=None,
+        task_id="sb-1",
+        server_url="https://router.test",
+        jwt="t",
+        channel=channel,
+        loop=asyncio.get_running_loop(),
+        jwt_refresh_lock=asyncio.Lock(),
+    )
+
+    # __del__ schedules channel.close() on the loop - let the loop run so the callback is executed.
+    #
+    # Note: TaskCommandRouterClient registers a request hook with grpclib, which can create a reference
+    # cycle (client -> channel -> callback -> client). Rely on calling __del__ explicitly in the test
+    # rather than calling del and trying to force GC to finalize the cycle.
+    client.__del__()
+    await asyncio.sleep(0)
+
+    assert closed is True

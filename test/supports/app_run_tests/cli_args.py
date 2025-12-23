@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
+import typing
 from datetime import datetime
-from typing import Optional, Union
+from typing import Optional
 
 from modal import App, method
 
@@ -69,7 +70,7 @@ def optional_arg_fn(i: Optional[int] = None):
 
 
 @app.local_entrypoint()
-def unparseable_annot(i: Union[int, str]):
+def unparseable_annot(i: typing.Union[int, str]):
     pass
 
 

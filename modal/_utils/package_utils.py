@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import importlib
 import importlib.util
 import typing
 from importlib.metadata import PackageNotFoundError, files

@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 import uuid
+import warnings
 from typing import Any, Optional, Sequence
 from unittest import mock
 from unittest.mock import MagicMock
@@ -1087,7 +1088,10 @@ def test_app_with_slow_lifespan_wind_down(servicer, caplog, deployed_support_fun
         assert first_message["status"] == 200
         # Check body
         assert json.loads(second_message["body"]) == {"some_result": "foo"}
-        gc.collect()  # trigger potential "Task was destroyed but it is pending"
+        # Python 3.14+ issues a resource warning when calling gc.collect
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ResourceWarning)
+            gc.collect()  # trigger potential "Task was destroyed but it is pending"
 
     for m in caplog.messages:
         assert "Task was destroyed" not in m
@@ -2246,6 +2250,7 @@ def test_flash_container_entry_lifecycle(servicer, tmp_path):
         port=8001,
         startup_timeout=5,
         exit_grace_period=0,
+        h2_enabled=False,
     )
 
     container_process = _run_container_process(

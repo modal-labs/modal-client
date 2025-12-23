@@ -18,25 +18,13 @@ token_id = None
 token_secret = None
 # -
 
-from modal.client import Client
-from modal_proto import api_pb2
+# + tags=["test_ipython_detection"]
+from modal._ipython import is_interactive_ipython
 
-client = Client(server_addr, api_pb2.CLIENT_TYPE_CLIENT, (token_id, token_secret))
+# This should return True when running in a notebook
+result = is_interactive_ipython()
+print(f"is_interactive_ipython returned: {result}")
 
-# +
-import modal
-
-app = modal.App()
-
-
-@app.function()
-def hello():
-    print("running")
-
-
-# + tags=["main"]
-with client:
-    with modal.enable_output():
-        with app.run(client=client):
-            hello.remote()
+# Assert the main test condition
+assert result is True
 # -

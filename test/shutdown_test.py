@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import pytest
+import sys
 import threading
 import time
 
@@ -56,29 +57,42 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer, credenti
 
     sync_log_loop = synchronize_api(_mocked_logs_loop)
 
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
         t = asyncio.create_task(sync_log_loop.aio(client, "ap-1"))
         await asyncio.sleep(0.1)  # in loop
 
     with pytest.raises(ClientClosed):
         await t
 
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
         t = asyncio.create_task(_mocked_logs_loop(client, "ap-1"))
         await asyncio.sleep(0.1)  # in loop
 
     with pytest.raises(grpclib.exceptions.StreamTerminatedError):
         await t
-    assert len(caplog.records) == 3  # open, send and recv called outside of task context
-    for rec in caplog.records:
+
+    if sys.version_info >= (3, 14) and sys.platform == "win32":
+        # Python 3.14 logs out the ClientClosed error:
+        # ERROR    asyncio:base_events.py:1875 ClientClosed exception in shielded future
+        # future: <Future finished exception=ClientClosed(...)>
+        # The fix should be in from synchronicity, they have a `test_shutdown_during_async_run` that checks
+        # similar code. Behavior in cPython changed in
+        # https://github.com/python/cpython/commit/f695eca60cfc53cf3322323082652037d6d0cfef
+        assert "ClientClosed" in caplog.records[0].message
+        log_records = caplog.records[1:]
+    else:
+        log_records = caplog.records
+
+    assert len(log_records) == 3  # open, send and recv called outside of task context
+    for rec in log_records:
         assert "made outside of task context" in rec.message
 
 
 @pytest.mark.timeout(5)
 @pytest.mark.asyncio
 async def test_client_close_cancellation_context_only_used_in_correct_event_loop(servicer, credentials, caplog):
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
-        with modal.Queue.ephemeral(client=client) as q:
+    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+        async with modal.Queue.ephemeral(client=client) as q:
             request = api_pb2.QueueGetRequest(
                 queue_id=q.object_id,
                 partition_key=b"",

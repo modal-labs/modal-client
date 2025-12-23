@@ -7,7 +7,7 @@ name = "modal"
 description = "Python client library for Modal"
 readme = "README.md"
 dynamic = ["version"]
-requires-python = ">=3.9,<3.14"
+requires-python = ">=3.10,<3.15"
 license = {text = "Apache-2.0"}
 
 authors = [
@@ -18,10 +18,10 @@ dependencies = [
     "cbor2",
     "certifi",
     "click~=8.1",
-    "grpclib>=0.4.7,<0.4.9",
+    "grpclib>=0.4.7,<0.4.10",
     "protobuf>=3.19,<7.0,!=4.24.0",
     "rich>=12.0.0",
-    "synchronicity~=0.10.2",
+    "synchronicity~=0.11.1",
     "toml",
     "typer>=0.9",
     "types-certifi",
@@ -80,8 +80,10 @@ filterwarnings = [
     "error::DeprecationWarning",
     "ignore:Type google._upb.*MapContainer uses PyType_Spec.*Python 3.14:DeprecationWarning",
     "error::modal.exception.DeprecationError",
-    "ignore::DeprecationWarning:pytest.*:",
-    "ignore::DeprecationWarning:google.rpc.*:",
+    "error::modal.exception.AsyncUsageWarning",
+    "ignore:There is no current event loop:DeprecationWarning",  # pytest-asyncio internals
+    "ignore:distutils Version classes are deprecated:DeprecationWarning",  # pytest-freezegun internals
+    "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",  # pytest-asyncio internals
 ]
 
 [tool.ruff]
@@ -105,14 +107,23 @@ select = [
     'W',
     'I',
     'RUF006', # asyncio-dangling-task
+    'T10',  # flake8-debugger
+    'T20',  # flake8-print
 ]
 preview = true
 explicit-preview-rules = true
 extend-select = ['PLR1702']
 
 [tool.ruff.lint.per-file-ignores]
-"*_test.py" = ['E712']
+"*_test.py" = ['E712', 'T201']
+"test/**" = ['T201']
 "test/supports/notebooks/*.py" = ['E402']
+"modal/cli/programs/*" = ['T201']
+"modal_docs/**" = ['T201']
+"modal_global_objects/**" = ['T201']
+"tasks.py" = ['T201']
+"modal/__init__.py" = ['T201']
+"modal/experimental/ipython.py" = ['T201']
 
 [tool.ruff.lint.isort]
 combine-as-imports = true

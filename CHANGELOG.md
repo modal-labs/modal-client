@@ -6,20 +6,34 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.2.5.dev16 (2025-12-04)
+### 1.3.0 (2025-12-19)
 
-- It is now possible to set a custom `name=` for a Function without setting `serialized=True`. This can be useful when decorating a function multiple times, e.g. applying multiple Modal configurations to the same implementation.
+Modal now supports Python 3.14. Support for Python 3.14t (the free-threading build) is still experimental; please report any issues you encounter using Modal with free-threading Python. Additionally, Modal no longer supports Python 3.9, which has reached [end-of-life](https://devguide.python.org/versions).
 
+We are adding experimental support for detecting cases where Modal's blocking APIs are used in async contexts (which can be a source of bugs or performance issues). You can opt into runtime warnings by setting `MODAL_ASYNC_WARNINGS=1` as an environment variable or `async_warnings = true` as a config field. We will enable these warnings by default in the future; please report any apparent false positives or other issues while support is experimental.
 
-#### 1.2.5.dev10 (2025-12-01)
+This release also includes a small number of deprecations and behavioral changes:
 
+- The Modal SDK will no longer propagate `grpclib.GRPCError` types out to the user; our own `modal.Error` subtypes will be used instead. To avoid disrupting user code that has relied on `GRPCError` exceptions for control flow, we are temporarily making some exception types inherit from `GRPCError` so that they will also be caught by `except grpclib.GRPCError` statements. Accessing the `.status` attribute of the exception will issue a deprecation warning, but warnings cannot be issued if the exception object is only caught and there is no other interaction with it. We advise proactively migrating any exception handling to use Modal types, as we will remove the dependency on `grpclib` types entirely in the future. See the [`modal.exception`](https://modal.com/docs/reference/modal.exception) docs for the mapping from gRPC status codes to Modal exception types.
+- The `max_inputs` parameter in the `@app.function()` and `@app.cls` decorators has been renamed to `single_use_containers` and now takes a boolean value rather than an integer. Note that only `max_inputs=1` has been supported, so this has no functional implications. This change is being made to reduce confusion with `@modal.concurrent(max_inputs=...)` and so that Modal's autoscaler can provide better performance for Functions with single-use containers.
+- The async (`.aio`) interface has been deprecated from `modal.FunctionCall.from_id`, `modal.Image.from_id`, and `modal.SandboxSnapshot.from_id`, because these methods do not perform I/O.
+- The `replace_bytes` and `delete_bytes` methods have been removed from the `modal.file_io` filesystem interface.
+- Images built with `modal.Image.micromamba()` using the 2023.12 [Image Builder Version](https://modal.com/docs/guide/images#image-builder-updates) will now use a Python version that matches their local environment by default, rather than defaulting to Python 3.9.
+
+## 1.2
+
+### 1.2.6 (2025-12-16)
+
+- Fixed bug where iterating on a `modal.Sandbox.exec` output stream could raise unauthenticated errors.
+
+### 1.2.5 (2025-12-12)
+
+- It is now possible to set a custom `name=` for a Function without using `serialized=True`. This can be useful when decorating a function multiple times, e.g. applying multiple Modal configurations to the same implementation.
+- It is now possible to start `modal shell` with a Modal Image ID (`modal shell im-abc123`). Additionally, `modal shell` will now warn if you pass invalid combinations of arguments (like `--cpu` together with the ID of an already running Sandbox, etc.).
 - Fixed a bug in `modal shell` that caused e.g. `vi` to fail with unicode decode errors.
-
-
-#### 1.2.5.dev7 (2025-11-27)
-
-- Improves asyncio sandbox usage by not blocking the event loop when reading from `stdout` or `stderr`.
-
+- Fixed a thread-safety issue in `modal.Sandbox` resource cleanup.
+- Improved performance when adding large local directories to an Image.
+- Improved async Sandbox performance by not blocking the event loop while reading from `stdout` or `stderr`.
 
 ### 1.2.4 (2025-11-21)
 
