@@ -412,7 +412,7 @@ class TaskCommandRouterClient:
             if exc.status == Status.UNAUTHENTICATED:
                 await self._refresh_jwt()
                 # Retry with the original arguments preserved
-                return await func(*args, **kwargs)
+                return await func(*args, **kwargs, metadata=self._get_metadata())
             raise
 
     async def _stream_stdio(
