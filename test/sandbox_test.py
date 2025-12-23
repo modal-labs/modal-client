@@ -212,6 +212,27 @@ def test_sandbox_stdout(app, servicer):
 
 
 @skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_cleanup(app, servicer, exec_backend):
+    """Test sandbox cleanup stops streams."""
+
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    cp = sb.exec("echo", "foo")
+
+    cp_iter = iter(cp.stdout)
+
+    cp.cleanup()
+    with pytest.raises(StopIteration):
+        next(cp_iter)
+
+    cp_orig = synchronizer._translate_in(cp)
+    assert cp_orig._impl._stdout._read_gen is None
+
+    if exec_backend == "router":
+        assert cp_orig._impl._command_router_client._closed
+
+
+@skip_non_subprocess
 def test_sandbox_stdout_next(app, servicer):
     """Test that we can iterate on a StreamReader directly, without a call to __aiter__()."""
 

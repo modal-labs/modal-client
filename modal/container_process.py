@@ -200,6 +200,10 @@ class _ContainerProcessThroughServer(Generic[T]):
                 stderr_task.cancel()
                 raise InteractiveTimeoutError("Failed to establish connection to container. Please try again.")
 
+    async def cleanup(self):
+        await self.stdout.aclose()
+        await self.stderr.aclose()
+
 
 async def _iter_stream_as_bytes(stream: _StreamReader[T]):
     """Yield raw bytes from a StreamReader regardless of text mode/backend."""
@@ -391,6 +395,11 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
                 stderr_task.cancel()
                 raise InteractiveTimeoutError("Failed to establish connection to container. Please try again.")
 
+    async def cleanup(self):
+        await self.stdout.aclose()
+        await self.stderr.aclose()
+        await self._command_router_client.close()
+
 
 class _ContainerProcess(Generic[T]):
     """Represents a running process in a container."""
@@ -467,6 +476,15 @@ class _ContainerProcess(Generic[T]):
     async def attach(self):
         """mdmd:hidden"""
         await self._impl.attach()
+
+    async def cleanup(self):
+        """Clean up all client resources associated with the ContainerProcess.
+
+        Client resources include stdout/stderr streams and connections to the backend.
+        Stdout and stderr can no longer be consumed after calling `cleanup`. Note
+        that `cleanup` does *not* terminate the underlying process.
+        """
+        await self._impl.cleanup()
 
 
 ContainerProcess = synchronize_api(_ContainerProcess)

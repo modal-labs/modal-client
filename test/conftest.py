@@ -68,6 +68,7 @@ class FakeTaskCommandRouterClient:
     def __init__(self, server_client):
         self._procs: dict[str, asyncio.subprocess.Process] = {}
         self._stdin_offsets: dict[str, int] = {}
+        self._closed: bool = False
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
         # Mimic task_command_router behavior - we should remove this proto variant though.
@@ -174,6 +175,17 @@ class FakeTaskCommandRouterClient:
             self._snapshot_requests = []
         self._snapshot_requests.append(request)
         return sr_pb2.TaskSnapshotDirectoryResponse(image_id="im-snapshot-123")
+
+    async def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        for proc in self._procs.values():
+            if proc.returncode is None:
+                try:
+                    proc.terminate()
+                except ProcessLookupError:
+                    pass
 
 
 @pytest.fixture
