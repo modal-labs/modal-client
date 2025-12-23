@@ -812,7 +812,7 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_task_command_router_client_closes_channel(monkeypatch):
+async def test_task_command_router_client_closes_and_finalizes(monkeypatch):
     channel = create_dummy_channel()
     closed = False
 
@@ -832,12 +832,8 @@ async def test_task_command_router_client_closes_channel(monkeypatch):
         jwt_refresh_lock=asyncio.Lock(),
     )
 
-    # __del__ schedules channel.close() on the loop - let the loop run so the callback is executed.
-    #
-    # Note: TaskCommandRouterClient registers a request hook with grpclib, which can create a reference
-    # cycle (client -> channel -> callback -> client). Rely on calling __del__ explicitly in the test
-    # rather than calling del and trying to force GC to finalize the cycle.
     await client.close()
     await asyncio.sleep(0)
 
     assert closed is True
+    assert not client._channel_finalizer.alive

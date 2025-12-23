@@ -6,6 +6,7 @@ import ssl
 import time
 import urllib.parse
 import weakref
+from contextlib import suppress
 from typing import AsyncGenerator, Optional
 
 import grpclib.client
@@ -110,7 +111,10 @@ async def fetch_command_router_access(server_client, task_id: str) -> api_pb2.Ta
 def _finalize_channel(loop, channel):
     if not loop.is_closed():
         # only run if loop has not shut down
-        loop.call_soon_threadsafe(channel.close)
+        # call_soon_threadsafe could throw if the loop is torn down after calling
+        # is_closed. This is safe to ignore.
+        with suppress(Exception):
+            loop.call_soon_threadsafe(channel.close)
 
 
 class TaskCommandRouterClient:
