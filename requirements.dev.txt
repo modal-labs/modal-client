@@ -3,7 +3,7 @@
 black==23.11.0
 cbor2==5.7.0
 fastapi~=0.115
-flaky~=3.7
+flaky~=3.8.1
 grpcio-tools==1.48.0;python_version<'3.11'  # TODO: remove when we drop client support for Protobuf 3.19
 grpcio-tools==1.59.2;python_version>='3.11' and python_version<'3.13'
 grpcio-tools==1.66.2;python_version>='3.13' and python_version<'3.14'
