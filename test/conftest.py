@@ -3240,3 +3240,17 @@ def mock_shell_pty(servicer):
         mock.patch("modal.container_process.write_to_fd", write_to_fd),
     ):
         yield fake_stdin, captured_out
+
+
+def pytest_collection_modifyitems(config, items):
+    enable_pyleak = os.getenv("_MODAL_DEV_ENABLE_PYLEAK", "false") == "true"
+    if enable_pyleak:
+        try:
+            import importlib
+
+            importlib.import_module("pyleak")
+        except ImportError as exc:
+            raise ImportError("To use _MODAL_DEV_ENABLE_PYLEAK=true, please install `pyleak`") from exc
+
+        for item in items:
+            item.add_marker(pytest.mark.no_leaks)

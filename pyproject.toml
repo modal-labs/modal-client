@@ -85,6 +85,9 @@ filterwarnings = [
     "ignore:distutils Version classes are deprecated:DeprecationWarning",  # pytest-freezegun internals
     "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",  # pytest-asyncio internals
 ]
+markers = [
+    "no_leaks: detect asyncio task leaks, thread leaks, and event loop blocking"
+]
 
 [tool.ruff]
 extend-include = ["*.pyi"]
