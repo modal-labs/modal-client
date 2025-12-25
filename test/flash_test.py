@@ -7,7 +7,9 @@ from types import MethodType
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
 
-from modal.experimental.flash import _FlashManager, _FlashPrometheusAutoscaler
+from modal._clustered_functions import ClusterInfo
+from modal.experimental.flash import _FlashContainerEntry, _FlashManager, _FlashPrometheusAutoscaler
+from modal_proto import api_pb2
 
 
 @pytest.fixture
@@ -422,3 +424,51 @@ class TestFlashManagerStopping:
 
         assert flash_manager.num_failures > 0
         assert flash_manager.num_failures >= _MAX_FAILURES
+
+
+class TestFlashClusteredEntry:
+    @pytest.fixture
+    def http_config(self):
+        return api_pb2.HTTPConfig(port=1234, startup_timeout=1, exit_grace_period=0)
+
+    def test_only_rank_zero_exposes_flash_handle(self, monkeypatch, http_config):
+        flash_forward_mock = MagicMock(return_value="flash-manager")
+        monkeypatch.setattr("modal.experimental.flash.flash_forward", flash_forward_mock)
+
+        container_ips = ["2001:db8::1", "2001:db8::2"]
+        container_ipv4_ips = ["10.0.0.1", "10.0.0.2"]
+
+        cluster_zero = ClusterInfo(
+            rank=0,
+            cluster_id="cluster",
+            container_ips=container_ips,
+            container_ipv4_ips=container_ipv4_ips,
+        )
+        monkeypatch.setattr("modal._clustered_functions.cluster_info", cluster_zero)
+
+        entry = _FlashContainerEntry(http_config)
+        entry.enter()
+
+        assert entry.flash_manager == "flash-manager"
+        flash_forward_mock.assert_called_once_with(
+            http_config.port,
+            startup_timeout=http_config.startup_timeout,
+            exit_grace_period=http_config.exit_grace_period,
+            h2_enabled=http_config.h2_enabled,
+        )
+
+        flash_forward_mock.reset_mock()
+
+        cluster_non_zero = ClusterInfo(
+            rank=1,
+            cluster_id="cluster",
+            container_ips=container_ips,
+            container_ipv4_ips=container_ipv4_ips,
+        )
+        monkeypatch.setattr("modal._clustered_functions.cluster_info", cluster_non_zero)
+
+        entry_non_zero = _FlashContainerEntry(http_config)
+        entry_non_zero.enter()
+
+        assert entry_non_zero.flash_manager is None
+        flash_forward_mock.assert_not_called()

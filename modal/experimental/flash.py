@@ -10,6 +10,7 @@ from collections import defaultdict
 from typing import Any, Callable, Optional, Union
 from urllib.parse import urlparse
 
+from modal._clustered_functions import get_cluster_info
 from modal._partial_function import _PartialFunctionFlags
 from modal.cls import _Cls
 from modal.dict import _Dict
@@ -720,12 +721,17 @@ class _FlashContainerEntry:
 
     def enter(self):
         if self.http_config != api_pb2.HTTPConfig():
-            self.flash_manager = flash_forward(
-                self.http_config.port,
-                startup_timeout=self.http_config.startup_timeout,
-                exit_grace_period=self.http_config.exit_grace_period,
-                h2_enabled=self.http_config.h2_enabled,
-            )
+            try:
+                rank = get_cluster_info().rank
+            except InvalidError:
+                rank = 0
+            if rank == 0:
+                self.flash_manager = flash_forward(
+                    self.http_config.port,
+                    startup_timeout=self.http_config.startup_timeout,
+                    exit_grace_period=self.http_config.exit_grace_period,
+                    h2_enabled=self.http_config.h2_enabled,
+                )
 
     def stop(self):
         if self.flash_manager:
