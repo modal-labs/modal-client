@@ -131,6 +131,7 @@ class FunctionInfo:
     function_name: str
     implementation_name: str
     user_cls: Optional[type[Any]]
+    user_server: Optional[type[Any]]
     module_name: Optional[str]
 
     _type: FunctionInfoType
@@ -157,10 +158,11 @@ class FunctionInfo:
         serialized: bool = False,
         name_override: Optional[str] = None,
         user_cls: Optional[type] = None,
+        user_server: Optional[type] = None,
     ):
         self.raw_f = f
         self.user_cls = user_cls
-
+        self.user_server = user_server
         if f is None and user_cls:
             # "service function" for running all methods of a class
             self.implementation_name = f"{user_cls.__name__}.*"
