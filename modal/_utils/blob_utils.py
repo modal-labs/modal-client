@@ -58,7 +58,7 @@ MULTIPART_UPLOAD_THRESHOLD = 1024**3
 BLOCK_SIZE: int = 8 * 1024 * 1024
 
 
-@retry(n_attempts=5, base_delay=0.5, timeout=None)
+@retry(n_attempts=3, base_delay=0.3, timeout=None)
 async def _upload_to_s3_url(
     upload_url,
     payload: "BytesIOSegmentPayload",
