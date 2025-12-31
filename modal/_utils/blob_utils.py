@@ -4,7 +4,6 @@ import dataclasses
 import hashlib
 import os
 import platform
-import random
 import time
 from collections.abc import AsyncIterator
 from contextlib import AbstractContextManager, contextmanager
@@ -57,8 +56,6 @@ MULTIPART_UPLOAD_THRESHOLD = 1024**3
 
 # For block based storage like volumefs2: the size of a block
 BLOCK_SIZE: int = 8 * 1024 * 1024
-
-HEALTHY_R2_UPLOAD_PERCENTAGE = 0.95
 
 
 @retry(n_attempts=5, base_delay=0.5, timeout=None)
@@ -191,13 +188,14 @@ def get_content_length(data: BinaryIO) -> int:
 async def _blob_upload_with_fallback(
     items, blob_ids: list[str], callback, content_length: int
 ) -> tuple[str, bool, int]:
+    """Try uploading to each provider in order, with fallback on failure.
+
+    The server determines the order of providers based on health status.
+    The client simply tries them in order.
+    """
     r2_throughput_bytes_s = 0
     r2_failed = False
     for idx, (item, blob_id) in enumerate(zip(items, blob_ids)):
-        # We want to default to R2 95% of the time and S3 5% of the time.
-        # To ensure the failure path is continuously exercised.
-        if idx == 0 and len(items) > 1 and random.random() > HEALTHY_R2_UPLOAD_PERCENTAGE:
-            continue
         try:
             if blob_id.endswith(":r2"):
                 t0 = time.monotonic_ns()
@@ -207,7 +205,7 @@ async def _blob_upload_with_fallback(
             else:
                 await callback(item)
             return blob_id, r2_failed, r2_throughput_bytes_s
-        except Exception as _:
+        except Exception:
             if blob_id.endswith(":r2"):
                 r2_failed = True
             # Ignore all errors except the last one, since we're out of fallback options.
