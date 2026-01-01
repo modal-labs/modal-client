@@ -188,11 +188,7 @@ def get_content_length(data: BinaryIO) -> int:
 async def _blob_upload_with_fallback(
     items, blob_ids: list[str], callback, content_length: int
 ) -> tuple[str, bool, int]:
-    """Try uploading to each provider in order, with fallback on failure.
-
-    The server determines the order of providers based on health status.
-    The client simply tries them in order.
-    """
+    """Try uploading to each provider in order, with fallback on failure."""
     r2_throughput_bytes_s = 0
     r2_failed = False
     for idx, (item, blob_id) in enumerate(zip(items, blob_ids)):
