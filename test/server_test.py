@@ -42,7 +42,7 @@ def test_server_with_gpu(client, servicer):
             pass
 
     with app.run(client=client):
-        service_function = GPUServer._get_service_function()
+        service_function = GPUServer._get_service_function()  # type: ignore[attr-defined]
         function_id = service_function.object_id
         function_def = servicer.app_functions[function_id]
 
@@ -60,7 +60,7 @@ def test_server_with_min_containers(client, servicer):
             pass
 
     with app.run(client=client):
-        service_function = ScalingServer._get_service_function()
+        service_function = ScalingServer._get_service_function()  # type: ignore[attr-defined]
         function_id = service_function.object_id
         function_def = servicer.app_functions[function_id]
 
@@ -213,7 +213,7 @@ def test_server_http_config_parameters(client, servicer):
             pass
 
     with app.run(client=client):
-        service_function = HTTPConfigServer._get_service_function()
+        service_function = HTTPConfigServer._get_service_function()  # type: ignore[attr-defined]
         function_id = service_function.object_id
         function_def = servicer.app_functions[function_id]
 
@@ -255,7 +255,7 @@ def test_server_http_config_set(client, servicer):
             pass
 
     with app.run(client=client):
-        service_function = HTTPServer._get_service_function()
+        service_function = HTTPServer._get_service_function()  # type: ignore[attr-defined]
         function_id = service_function.object_id
         function_def = servicer.app_functions[function_id]
 
@@ -279,10 +279,10 @@ def test_server_has_user_server_with_mro():
             pass
 
     # The decorated class is now a Server object
-    assert isinstance(ServerWithLifecycle, _Server)
+    assert isinstance(ServerWithLifecycle, Server)
 
     # But we can get the original user class
-    user_cls = ServerWithLifecycle._get_user_server()
+    user_cls = ServerWithLifecycle._get_user_server()  # type: ignore[attr-defined]
 
     # The user class should have mro() (it's an actual class)
     assert hasattr(user_cls, "mro")
@@ -305,9 +305,9 @@ def test_server_user_class_instantiation():
         def start(self):
             self.started = True
 
-    assert isinstance(SimpleServer, _Server)
+    assert isinstance(SimpleServer, Server)
 
-    user_cls = SimpleServer._get_user_server()
+    user_cls = SimpleServer._get_user_server()  # type: ignore[attr-defined]
 
     # Can instantiate the user class
     instance = user_cls()
@@ -327,7 +327,7 @@ def test_server_get_method_names_returns_empty():
 
     # Servers should return empty list for _get_method_names
     # This is used by CLI/import code that iterates registered classes
-    assert list(MethodlessServer._get_method_names()) == []
+    assert list(MethodlessServer._get_method_names()) == []  # type: ignore[attr-defined]
 
 
 def test_server_has_name_attribute():
