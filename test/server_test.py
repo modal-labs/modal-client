@@ -246,7 +246,7 @@ def test_server_http_config_set(client, servicer):
     """Test that servers have http_config set correctly."""
     app = modal.App("server-http-test", include_source=False)
 
-    @app.server(port=8000, proxy_regions=["us-east"], proxy_regions=["us-east"], serialized=True)
+    @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
     class HTTPServer:
         @modal.enter()
         def start(self):
