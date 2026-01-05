@@ -13,7 +13,7 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ### 1.3.0 (2025-12-19)
 
-Modal now supports Python 3.14. Support for Python 3.14t (the free-threading build) is still experimental; please report any issues you encounter using Modal with free-threading Python. Additionally, Modal no longer supports Python 3.9, which has reached [end-of-life](https://devguide.python.org/versions).
+Modal now supports Python 3.14. Python 3.14t (the free-threading build) is **not** supported, because we are waiting for dependencies to be updated with free-threaded support. Additionally, Modal no longer supports Python 3.9, which has reached [end-of-life](https://devguide.python.org/versions).
 
 We are adding experimental support for detecting cases where Modal's blocking APIs are used in async contexts (which can be a source of bugs or performance issues). You can opt into runtime warnings by setting `MODAL_ASYNC_WARNINGS=1` as an environment variable or `async_warnings = true` as a config field. We will enable these warnings by default in the future; please report any apparent false positives or other issues while support is experimental.
 
