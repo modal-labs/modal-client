@@ -54,6 +54,7 @@ from .running_app import RunningApp
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
+from .server import _Server
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
@@ -1194,136 +1195,173 @@ class _App:
 
         return wrapper
 
-    @typing_extensions.dataclass_transform(field_specifiers=(parameter,), kw_only_default=True)
     @warn_on_renamed_autoscaler_settings
     def server(
         self,
         _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
-        image: Optional[_Image] = None,  # The image to run as the container for the function
+        port: int,  # Required: The port the HTTP server listens on
+        image: Optional[_Image] = None,  # The image to run as the container for the server
         env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
         secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
         gpu: Union[
             GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
-        serialized: bool = False,  # Whether to send the function over using cloudpickle.
+        serialized: bool = False,  # Whether to send the server class over using cloudpickle.
         network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
         volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
-        # Specify, in fractional CPU cores, how many CPU cores to request.
-        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
-        # CPU throttling will prevent a container from exceeding its specified limit.
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
-        # Specify, in MiB, a memory request which is the minimum memory required.
-        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, tuple[int, int]]] = None,
-        ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
-        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
-        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
-        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
-        scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
-        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        timeout: int = 300,  # Maximum execution time for inputs and startup time in seconds.
-        startup_timeout: Optional[int] = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
-        nonpreemptible: bool = False,  # Whether to run the function on a non-preemptible instance.
-        enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
+        cpu: Optional[Union[float, tuple[float, float]]] = None,  # CPU cores to request
+        memory: Optional[Union[int, tuple[int, int]]] = None,  # Memory in MiB to request
+        ephemeral_disk: Optional[int] = None,  # Ephemeral disk size in MiB
+        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm
+        max_containers: Optional[int] = None,  # Maximum number of containers
+        buffer_containers: Optional[int] = None,  # Additional idle containers under active load
+        scaledown_window: Optional[int] = None,  # Max idle time before scaling down (seconds)
+        proxy: Optional[_Proxy] = None,  # Modal Proxy to use in front of this server
+        timeout: int = 300,  # Maximum execution time in seconds
+        startup_timeout: Optional[int] = None,  # Maximum startup time in seconds
+        exit_grace_period: Optional[int] = None,  # Grace period for in-flight requests on shutdown
+        proxy_regions: Sequence[str] = ["us-east"],  # Regions to deploy proxy endpoints
+        h2_enabled: bool = False,  # Enable HTTP/2
+        cloud: Optional[str] = None,  # Cloud provider (aws, gcp, oci, auto)
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region(s) to run on
+        nonpreemptible: bool = False,  # Whether to use non-preemptible instances
+        enable_memory_snapshot: bool = False,  # Enable memory checkpointing
         block_network: bool = False,  # Whether to block network access
-        restrict_modal_access: bool = False,  # Whether to allow this class access to other Modal resources
-        single_use_containers: bool = False,  # When True, containers will shut down after handling a single input
-        i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
-        include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
+        restrict_modal_access: bool = False,  # Whether to restrict access to other Modal resources
+        i6pn: Optional[bool] = None,  # Enable IPv6 container networking
+        include_source: Optional[bool] = None,  # Whether to add source to container
+        # Experimental options
         experimental_options: Optional[dict[str, Any]] = None,
-        # Parameters below here are experimental. Use with caution!
-        _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
-        _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
-        _experimental_restrict_output: bool = False,  # Don't use pickle for return values
-        # Parameters below here are deprecated. Please update your code as suggested
-        keep_warm: Optional[int] = None,  # Replaced with `min_containers`
-        concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
-        container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
-        allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
-        max_inputs: Optional[int] = None,  # Replaced with `single_use_containers`
-        _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
-        _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Replaced in favor of
-        # using `region` and `nonpreemptible`
-    ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
+        _experimental_proxy_ip: Optional[str] = None,
+        _experimental_custom_scaling_factor: Optional[float] = None,
+        # Deprecated parameters
+        keep_warm: Optional[int] = None,  # Use min_containers
+        concurrency_limit: Optional[int] = None,  # Use max_containers
+        container_idle_timeout: Optional[int] = None,  # Use scaledown_window
+    ) -> Callable[[type], type]:
         """
-        Decorator to register a new Modal [Server](https://modal.com/docs/reference/modal.Server) with this App.
+        Decorator to register a new Modal Server with this App.
+
+        Servers run HTTP servers that are started in an `@enter` method.
+        Unlike `@app.cls()`, servers only expose HTTP endpoints and do not
+        support `.remote()` method calls.
+
+        Example:
+
+        ```python
+        @app.server(port=8000, gpu="A10G")
+        class MyServer:
+            @modal.enter()
+            def start(self):
+                import threading
+                import uvicorn
+                from fastapi import FastAPI
+
+                app = FastAPI()
+
+                @app.get("/")
+                def hello():
+                    return "Hello!"
+
+                # Must be non-blocking
+                threading.Thread(
+                    target=uvicorn.run,
+                    args=(app,),
+                    kwargs={"host": "0.0.0.0", "port": 8000},
+                    daemon=True
+                ).start()
+        ```
         """
         if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@app.server()`.")
+            raise InvalidError("Did you forget parentheses? Suggestion: `@app.server(port=8000)`.")
 
-        secrets = secrets or []
+        # Validate port
+        if not isinstance(port, int) or port < 1 or port > 65535:
+            raise InvalidError(f"Invalid port: {port}. Must be an integer between 1 and 65535.")
+
+        # Handle deprecated parameters
+        if keep_warm is not None:
+            deprecation_warning(
+                (2025, 5, 5),
+                "The `keep_warm` parameter is deprecated. Use `min_containers` instead.",
+            )
+            if min_containers is None:
+                min_containers = keep_warm
+
+        if concurrency_limit is not None:
+            deprecation_warning(
+                (2025, 5, 5),
+                "The `concurrency_limit` parameter is deprecated. Use `max_containers` instead.",
+            )
+            if max_containers is None:
+                max_containers = concurrency_limit
+
+        if container_idle_timeout is not None:
+            deprecation_warning(
+                (2025, 5, 5),
+                "The `container_idle_timeout` parameter is deprecated. Use `scaledown_window` instead.",
+            )
+            if scaledown_window is None:
+                scaledown_window = container_idle_timeout
+
+        # Build secrets list
+        secrets_list: list[_Secret] = list(secrets) if secrets else []
         if env:
-            secrets = [*secrets, _Secret.from_dict(env)]
+            secrets_list.append(_Secret.from_dict(env))
 
-        def wrapper(wrapped_server: Union[CLS_T, _PartialFunction]) -> CLS_T:
+        # Build HTTP config
+        http_config = api_pb2.HTTPConfig(
+            port=port,
+            proxy_regions=proxy_regions or [],
+            startup_timeout=startup_timeout or 0,
+            exit_grace_period=exit_grace_period or 0,
+            h2_enabled=h2_enabled,
+        )
+
+        def wrapper(user_cls: type) -> type:
+            if not inspect.isclass(user_cls):
+                raise TypeError("The @app.server() decorator must be used on a class.")
+
             local_state = self._local_state
-            # Check if the decorated object is a class
-            if isinstance(wrapped_server, _PartialFunction):
-                wrapped_server.registered = True
-                user_server = wrapped_server.user_server
-                max_concurrent_inputs=None
-                target_concurrent_inputs=None
-                http_config=wrapped_server.params.http_config
-                if wrapped_server.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(
-                        params=wrapped_server.params,
-                        is_flash=is_flash_object(experimental_options or {}, http_config=http_config),
-                    )
-                    max_concurrent_inputs = wrapped_server.params.max_concurrent_inputs
-                    target_concurrent_inputs = wrapped_server.params.target_concurrent_inputs
-                cluster_size = wrapped_server.params.cluster_size
-                rdma = wrapped_server.params.rdma
-            else:
-                raise InvalidError(f"Unknown partial function: {wrapped_server}")
-            if not inspect.isclass(user_server):
-                raise TypeError("The @app.server decorator must be used on a class.")
 
-            interface_methods = _find_partial_methods_for_user_server(user_server, _PartialFunctionFlags.interface_flags())
-            if len(interface_methods) > 1:
-                raise InvalidError(f"Modal class {user_server.__name__} cannot have multiple methods when clustered.")
+            # Validate the server class
+            _Server.validate_construction_mechanism(user_cls)
 
+            # Check for disallowed decorators
+            callable_methods = _find_partial_methods_for_user_cls(
+                user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE
+            )
+            if callable_methods:
+                for method in callable_methods.values():
+                    method.registered = True
+                raise InvalidError(
+                    f"Server class {user_cls.__name__} cannot have @method() decorated functions. "
+                    "Servers only expose HTTP endpoints."
+                )
+
+            # Check for @enter with snap=True without enable_memory_snapshot
             if (
-                _find_partial_methods_for_user_server(user_server, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+                _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
                 and not enable_memory_snapshot
             ):
-                raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
-
-            for method in _find_partial_methods_for_user_server(user_server, _PartialFunctionFlags.CONCURRENT).values():
-                method.registered = True  # Avoid warning about not registering the method (hacky!)
                 raise InvalidError(
-                    "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
+                    "Server must have `enable_memory_snapshot=True` to use `snap=True` on @enter methods."
                 )
 
-            for method in _find_partial_methods_for_user_server(
-                user_server, _PartialFunctionFlags.HTTP_WEB_INTERFACE
-            ).values():
-                method.registered = True  # Avoid warning about not registering the method (hacky!)
-                raise InvalidError(
-                    "The `@modal.http_server` decorator cannot be used on methods; decorate the class instead."
-                )
+            # Create the FunctionInfo for the server
+            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
-            for method in _find_partial_methods_for_user_server(
-                    user_server, _PartialFunctionFlags.CALLABLE_INTERFACE
-                ).values():
-                    method.registered = True  # Avoid warning about not registering the method (hacky!)
-                    raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
-
-            info = FunctionInfo(None, serialized=serialized, user_server=user_server)
-
-            i6pn_enabled = i6pn or cluster_size is not None
-            cls_func = _Function.from_local(
+            # Create the service function
+            service_function = _Function.from_local(
                 info,
                 app=self,
                 image=image or self._get_default_image(),
-                secrets=[*local_state.secrets_default, *secrets],
+                secrets=[*local_state.secrets_default, *secrets_list],
                 gpu=gpu,
                 network_file_systems=network_file_systems,
                 volumes={**local_state.volumes_default, **volumes},
@@ -1335,9 +1373,9 @@ class _App:
                 buffer_containers=buffer_containers,
                 scaledown_window=scaledown_window,
                 proxy=proxy,
-                retries=retries,
-                max_concurrent_inputs=max_concurrent_inputs,
-                target_concurrent_inputs=target_concurrent_inputs,
+                retries=None,  # Servers don't retry
+                max_concurrent_inputs=None,
+                target_concurrent_inputs=None,
                 batch_max_size=None,
                 batch_wait_ms=None,
                 timeout=timeout,
@@ -1348,31 +1386,37 @@ class _App:
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
-                single_use_containers=single_use_containers,
+                single_use_containers=False,  # Servers are long-running
                 http_config=http_config,
-                i6pn_enabled=i6pn_enabled,
-                cluster_size=cluster_size,
-                rdma=rdma,
+                i6pn_enabled=i6pn or False,
+                cluster_size=None,
+                rdma=None,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
-                restrict_output=_experimental_restrict_output,
+                restrict_output=False,
             )
 
-            self._add_function(cls_func, is_web_endpoint=False)
+            self._add_function(service_function, is_web_endpoint=True)
 
-            cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
+            # Create the Server object
+            server: _Server = _Server.from_local(user_cls, self, service_function)
 
-            for method_name, partial_function in cls._method_partials.items():
-                if partial_function.params.webhook_config is not None:
-                    full_name = f"{user_cls.__name__}.{method_name}"
-                    local_state.web_endpoints.append(full_name)
-                partial_function.registered = True
+            # Mark lifecycle methods as registered
+            for flag in (~_PartialFunctionFlags.interface_flags(),):
+                for partial in _find_partial_methods_for_user_cls(user_cls, flag).values():
+                    partial.registered = True
 
+            # Register the server with the app
             tag: str = user_cls.__name__
-            self._add_class(tag, cls)
-            return cls  # type: ignore  # a _Cls instance "simulates" being the user provided class
+            self._add_class(tag, server)
+
+            # Add to web_endpoints so the CLI shows the URL
+            local_state.web_endpoints.append(f"{user_cls.__name__}.*")
+
+            return server  # type: ignore
+
         return wrapper
 
     def include(self, /, other_app: "_App", inherit_tags: bool = True) -> typing_extensions.Self:
