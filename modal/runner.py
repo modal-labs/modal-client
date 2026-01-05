@@ -167,10 +167,9 @@ async def _create_all_objects(
             await resolver.load(obj, load_context, existing_object_id=existing_object_id)
             if _Function._is_id_type(obj.object_id):
                 running_app.function_ids[tag] = obj.object_id
-            elif _Cls._is_id_type(obj.object_id):
+            elif isinstance(obj, _Server):
                 running_app.class_ids[tag] = obj.object_id
-            elif _Server._is_id_type(obj.object_id):
-                # TODO(claudia): verify this
+            elif _Cls._is_id_type(obj.object_id):
                 running_app.class_ids[tag] = obj.object_id
             else:
                 raise RuntimeError(f"Unexpected object {obj.object_id}")

@@ -149,7 +149,7 @@ class _ServerObj:
 ServerObj = synchronize_api(_ServerObj)
 
 
-class _Server(_Object, type_prefix="cs"):
+class _Server(_Object):
     """Server runs an HTTP server started in an @enter method.
 
     See [lifecycle hooks](https://modal.com/docs/guide/lifecycle-functions) for more information.
