@@ -152,7 +152,6 @@ class Resolver:
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
         with suppress_tb_frames(1):
-            # skip current frame + `loader()` closure frame from above
             return await cached_future
 
     def objects(self) -> list["modal._object._Object"]:
