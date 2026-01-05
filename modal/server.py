@@ -160,27 +160,16 @@ class _Server(_Object, type_prefix="cs"):
     Example:
 
     ```python
-    @app.server(port=8000, gpu="A10G")
-    class MyServer:
-        @modal.enter()
-        def start(self):
-            import threading
-            import uvicorn
-            from fastapi import FastAPI
+        @app.server(port=8000, proxy_regions=["us-east"], min_containers=1)
+        class SimpleServer:
+            @modal.enter()
+            def start(self):
+                import subprocess
+                self.proc = subprocess.Popen(["python3", "-m", "http.server", "8000"])
 
-            app = FastAPI()
-
-            @app.get("/")
-            def hello():
-                return "Hello!"
-
-            # Must be non-blocking
-            threading.Thread(
-                target=uvicorn.run,
-                args=(app,),
-                kwargs={"host": "0.0.0.0", "port": 8000},
-                daemon=True
-            ).start()
+            @modal.exit()
+            def stop(self):
+                self.proc.terminate()
     ```
     """
 

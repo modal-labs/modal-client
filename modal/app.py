@@ -1239,10 +1239,6 @@ class _App:
         experimental_options: Optional[dict[str, Any]] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
-        # Deprecated parameters
-        keep_warm: Optional[int] = None,  # Use min_containers
-        concurrency_limit: Optional[int] = None,  # Use max_containers
-        container_idle_timeout: Optional[int] = None,  # Use scaledown_window
     ) -> Callable[[type], type]:
         """
         Decorator to register a new Modal Server with this App.
@@ -1283,31 +1279,6 @@ class _App:
         # Validate port
         if not isinstance(port, int) or port < 1 or port > 65535:
             raise InvalidError(f"Invalid port: {port}. Must be an integer between 1 and 65535.")
-
-        # Handle deprecated parameters
-        if keep_warm is not None:
-            deprecation_warning(
-                (2025, 5, 5),
-                "The `keep_warm` parameter is deprecated. Use `min_containers` instead.",
-            )
-            if min_containers is None:
-                min_containers = keep_warm
-
-        if concurrency_limit is not None:
-            deprecation_warning(
-                (2025, 5, 5),
-                "The `concurrency_limit` parameter is deprecated. Use `max_containers` instead.",
-            )
-            if max_containers is None:
-                max_containers = concurrency_limit
-
-        if container_idle_timeout is not None:
-            deprecation_warning(
-                (2025, 5, 5),
-                "The `container_idle_timeout` parameter is deprecated. Use `scaledown_window` instead.",
-            )
-            if scaledown_window is None:
-                scaledown_window = container_idle_timeout
 
         # Build secrets list
         secrets_list: list[_Secret] = list(secrets) if secrets else []

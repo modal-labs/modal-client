@@ -7,7 +7,7 @@ from modal.server import Server, _Server
 
 # ============ Basic Server Registration ============
 
-server_app = modal.App("server-test-app", proxy_regions=["us-east"],  include_source=False)
+server_app = modal.App("server-test-app", include_source=False)
 
 
 @server_app.server(port=8000, serialized=True)
@@ -33,9 +33,9 @@ def test_basic_server_registration(client, servicer):
 
 def test_server_with_gpu(client, servicer):
     """Test that @app.server() accepts GPU configuration."""
-    app = modal.App("server-gpu-test", proxy_regions=["us-east"],  include_source=False)
+    app = modal.App("server-gpu-test", include_source=False)
 
-    @app.server(port=8000, gpu="A10G", serialized=True)
+    @app.server(port=8000, proxy_regions=["us-east"], gpu="A10G", serialized=True)
     class GPUServer:
         @modal.enter()
         def start(self):
@@ -51,9 +51,9 @@ def test_server_with_gpu(client, servicer):
 
 def test_server_with_min_containers(client, servicer):
     """Test that @app.server() accepts autoscaling configuration."""
-    app = modal.App("server-scaling-test", proxy_regions=["us-east"],  include_source=False)
+    app = modal.App("server-scaling-test", include_source=False)
 
-    @app.server(port=8000, min_containers=2, max_containers=10, serialized=True)
+    @app.server(port=8000, proxy_regions=["us-east"], min_containers=2, max_containers=10, serialized=True)
     class ScalingServer:
         @modal.enter()
         def start(self):
@@ -98,9 +98,9 @@ class ServerWithDefaultInit:
 def test_server_rejects_method_decorator():
     """Test that @modal.method() cannot be used on server classes."""
     with pytest.raises(InvalidError, match="cannot have"):
-        app = modal.App("server-method-test", proxy_regions=["us-east"],  include_source=False)
+        app = modal.App("server-method-test", include_source=False)
 
-        @app.server(port=8000, serialized=True)
+        @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
         class ServerWithMethod:
             @modal.method()
             def some_method(self):
@@ -110,7 +110,7 @@ def test_server_rejects_method_decorator():
 def test_server_requires_port():
     """Test that @app.server() requires a port parameter."""
     with pytest.raises(TypeError):
-        app = modal.App("server-no-port", proxy_regions=["us-east"],  include_source=False)
+        app = modal.App("server-no-port", include_source=False)
 
         @app.server()  # type: ignore  # Missing port
         class NoPortServer:
@@ -199,7 +199,7 @@ def test_server_callable_returns_server_obj():
 
 def test_server_http_config_parameters(client, servicer):
     """Test that HTTP config parameters are passed correctly."""
-    app = modal.App("server-http-config-test", proxy_regions=["us-east"],  include_source=False)
+    app = modal.App("server-http-config-test", include_source=False)
 
     @app.server(
         port=9000,
@@ -223,9 +223,9 @@ def test_server_http_config_parameters(client, servicer):
 
 def test_server_creates_class_object(client, servicer):
     """Test that deploying a server creates the expected objects."""
-    app = modal.App("server-objects-test", proxy_regions=["us-east"],  include_source=False)
+    app = modal.App("server-objects-test", include_source=False)
 
-    @app.server(port=8000, serialized=True)
+    @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
     class ObjectsServer:
         @modal.enter()
         def start(self):
@@ -244,9 +244,9 @@ def test_server_creates_class_object(client, servicer):
 
 def test_server_http_config_set(client, servicer):
     """Test that servers have http_config set correctly."""
-    app = modal.App("server-http-test", proxy_regions=["us-east"],  include_source=False)
+    app = modal.App("server-http-test", include_source=False)
 
-    @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
+    @app.server(port=8000, proxy_regions=["us-east"], proxy_regions=["us-east"], serialized=True)
     class HTTPServer:
         @modal.enter()
         def start(self):
@@ -268,9 +268,9 @@ def test_server_has_user_server_with_mro():
     # Test servers have correct mro
     from modal._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
-    app = modal.App("server-mro-test", proxy_regions=["us-east"], include_source=False)
+    app = modal.App("server-mro-test", include_source=False)
 
-    @app.server(port=8000, serialized=True)
+    @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
     class ServerWithLifecycle:
         @modal.enter()
         def on_start(self):
@@ -295,9 +295,9 @@ def test_server_has_user_server_with_mro():
 
 
 def test_server_user_class_instantiation():
-    app = modal.App("server-instance-test", proxy_regions=["us-east"], include_source=False)
+    app = modal.App("server-instance-test", include_source=False)
 
-    @app.server(port=8000, serialized=True)
+    @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
     class SimpleServer:
         @modal.enter()
         def start(self):
@@ -315,9 +315,9 @@ def test_server_user_class_instantiation():
 
 
 def test_server_get_method_names_returns_empty():
-    app = modal.App("server-methods-test", proxy_regions=["us-east"], include_source=False)
+    app = modal.App("server-methods-test", include_source=False)
 
-    @app.server(port=8000, serialized=True)
+    @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
     class MethodlessServer:
         @modal.enter()
         def start(self):
@@ -333,9 +333,9 @@ def test_server_has_name_attribute():
     
     Regression test for: AttributeError: 'Server' object has no attribute '__name__'
     """
-    app = modal.App("server-name-test", proxy_regions=["us-east"], include_source=False)
+    app = modal.App("server-name-test", include_source=False)
 
-    @app.server(port=8000, serialized=True)
+    @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
     class NamedServer:
         @modal.enter()
         def start(self):
