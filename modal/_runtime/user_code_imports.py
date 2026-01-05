@@ -13,6 +13,7 @@ from typing import Any, Callable, Generator, Optional, Sequence
 import modal._object
 import modal._runtime.container_io_manager
 import modal.cls
+import modal.server
 from modal import Function
 from modal._functions import _Function
 from modal._partial_function import (
@@ -543,6 +544,19 @@ def import_class_service(
         class_service_function: _Function = _cls._get_class_service_function()
         service_deps = class_service_function.deps(only_explicit_mounts=True)
         active_app = class_service_function.app
+        method_partials: dict[str, "modal._partial_function._PartialFunction"] = _cls._get_partial_functions()
+        user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
+    elif isinstance(cls_or_user_cls, modal.server.Server):
+        # Server object from @app.server() decorator
+        _server = typing.cast(modal.server._Server, synchronizer._translate_in(cls_or_user_cls))
+        server_service_function: _Function = _server._get_service_function()
+        service_deps = server_service_function.deps(only_explicit_mounts=True)
+        active_app = _server._get_app()
+        # Servers have no methods, just lifecycle hooks
+        method_partials = {}
+        # Create instance of the user's server class
+        user_server_cls = _server._get_user_server()
+        user_cls_instance = user_server_cls()
     else:
         # Undecorated user class (serialized or local scope-decoration).
         service_deps = None  # we can't infer service deps for now
@@ -558,9 +572,8 @@ def import_class_service(
         # hydration of the class itself - just sets the id and triggers some side effects
         # that transfers metadata from the service function to the class. TODO: cleanup!
         _cls._hydrate(class_id, _client, api_pb2.ClassHandleMetadata())
-
-    method_partials: dict[str, "modal._partial_function._PartialFunction"] = _cls._get_partial_functions()
-    user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
+        method_partials = _cls._get_partial_functions()
+        user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
 
     return ImportedClass(
         user_cls_instance=user_cls_instance,

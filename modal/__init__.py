@@ -41,7 +41,7 @@ try:
     from .schedule import Cron, Period
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
-    from .server import Server, parameter
+    from .server import Server
     from .snapshot import SandboxSnapshot
     from .volume import Volume
 except Exception:
@@ -94,7 +94,8 @@ __all__ = [
     "parameter",
     "web_endpoint",
     "web_server",
-    "wsgi_app", "Server",
+    "wsgi_app",
+    "Server",
 ]
 
 
