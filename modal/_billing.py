@@ -52,11 +52,15 @@ async def _workspace_billing_report(
     if end is None:
         end = datetime.now(timezone.utc)
 
-    for dt in (start, end):
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        elif dt.tzinfo != timezone.utc:
-            raise InvalidError("Timezone-aware start/end limits must be in UTC.")
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    elif start.tzinfo != timezone.utc:
+        raise InvalidError("Timezone-aware 'start' parameter must be in UTC.")
+
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    elif end.tzinfo != timezone.utc:
+        raise InvalidError("Timezone-aware 'end' parameter must be in UTC.")
 
     request = api_pb2.WorkspaceBillingReportRequest(
         resolution=resolution,
