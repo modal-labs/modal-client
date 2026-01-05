@@ -167,12 +167,14 @@ def test_server_obj_enter_runs_once():
 
 # ============ from_name Tests ============
 
+
 def test_server_from_name(client, servicer):
     """Test Server.from_name() lookup."""
     my_server = Server.from_name("my-app", "MyServer")
 
     # Should be lazy - not hydrated yet
     assert not my_server.is_hydrated
+
 
 # ============ ServerObj API Tests ============
 
@@ -330,7 +332,7 @@ def test_server_get_method_names_returns_empty():
 
 def test_server_has_name_attribute():
     """Test that Server.__name__ returns the server name.
-    
+
     Regression test for: AttributeError: 'Server' object has no attribute '__name__'
     """
     app = modal.App("server-name-test", include_source=False)
@@ -344,4 +346,3 @@ def test_server_has_name_attribute():
     # Server should have __name__ for compatibility
     assert hasattr(NamedServer, "__name__")
     assert NamedServer.__name__ == "NamedServer"
-

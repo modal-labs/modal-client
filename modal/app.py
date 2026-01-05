@@ -1304,9 +1304,7 @@ class _App:
             _Server.validate_construction_mechanism(user_cls)
 
             # Check for disallowed decorators
-            callable_methods = _find_partial_methods_for_user_cls(
-                user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE
-            )
+            callable_methods = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE)
             if callable_methods:
                 for method in callable_methods.values():
                     method.registered = True

@@ -325,9 +325,7 @@ class _Server(_Object, type_prefix="cs"):
                 response = await load_context.client.stub.ClassGet(request)
             except NotFoundError as exc:
                 env_context = (
-                    f" (in the '{load_context.environment_name}' environment)"
-                    if load_context.environment_name
-                    else ""
+                    f" (in the '{load_context.environment_name}' environment)" if load_context.environment_name else ""
                 )
                 raise NotFoundError(
                     f"Lookup failed for Server '{name}' from the '{app_name}' app{env_context}: {exc}."

@@ -11,9 +11,9 @@ class SimpleServer:
     @modal.enter()
     def start(self):
         import subprocess
+
         self.proc = subprocess.Popen(["python3", "-m", "http.server", "8000"])
 
     @modal.exit()
     def stop(self):
         self.proc.terminate()
-
