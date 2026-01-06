@@ -137,7 +137,7 @@ traceback_suppression_note = (
 )
 
 
-class suppress_tb_frames:
+class suppress_tb_frame:
     def __enter__(self):
         pass
 

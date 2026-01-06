@@ -6,7 +6,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
 from . import exception
-from ._traceback import suppress_tb_frames
+from ._traceback import suppress_tb_frame
 from ._utils.grpc_utils import Retry, _retry_transient_errors
 from .config import config, logger
 
@@ -50,7 +50,7 @@ class grpc_error_converter:
     def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
         # skip all internal frames from grpclib
         use_full_traceback = config.get("traceback")
-        with suppress_tb_frames():
+        with suppress_tb_frame():
             if isinstance(exc, GRPCError):
                 modal_exc = _STATUS_TO_EXCEPTION[exc.status](exc.message)
                 modal_exc._grpc_message = exc.message
@@ -115,7 +115,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         timeout: Optional[float] = None,
         metadata: Optional[list[tuple[str, str]]] = None,
     ) -> ResponseType:
-        with suppress_tb_frames():
+        with suppress_tb_frame():
             if timeout is not None and retry is not None:
                 raise exception.InvalidError("Retry must be None when timeout is set")
 
