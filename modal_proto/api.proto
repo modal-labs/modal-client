@@ -164,6 +164,13 @@ enum GPUType {
   GPU_TYPE_H200 = 12;
 }
 
+enum MemberRole {
+  MEMBER_ROLE_UNSPECIFIED = 0;
+  MEMBER_ROLE_USER = 1;
+  MEMBER_ROLE_MANAGER = 2;
+  MEMBER_ROLE_OWNER = 3;
+}
+
 enum ObjectCreationType {
   OBJECT_CREATION_TYPE_UNSPECIFIED = 0;  // just lookup
   OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
@@ -3357,6 +3364,7 @@ message TokenInfoGetResponse {
   // Token metadata
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp expires_at = 7;
+
 }
 
 message TunnelData {
