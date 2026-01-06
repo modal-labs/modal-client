@@ -155,9 +155,11 @@ class suppress_tb_frames:
 
         # modify traceback on exception object
         try:
+            removed = 0
             final_tb = tb
-            for _ in range(self.n):
+            while final_tb is not None and removed < self.n:
                 final_tb = final_tb.tb_next
+                removed += 1
         except AttributeError:
             logger.debug(f"Failed to suppress {self.n} traceback frames from {str(exc_type)} {str(exc)}")
             raise
