@@ -109,9 +109,9 @@ async def identity():
         )
 
     if resp.HasField("created_at"):
-        created_dt = datetime.fromtimestamp(resp.created_at.seconds)
-        console.print(f"[bold]Created at:[/bold] [white]{created_dt.strftime('%Y-%m-%d %H:%M:%S UTC')}[/white]")
+        created_dt = datetime.fromtimestamp(resp.created_at.seconds).astimezone()
+        console.print(f"[bold]Created at:[/bold] [white]{created_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}[/white]")
 
     if resp.HasField("expires_at") and resp.expires_at.seconds > 0:
-        expires_dt = datetime.fromtimestamp(resp.expires_at.seconds)
-        console.print(f"[bold]Expires at:[/bold] [white]{expires_dt.strftime('%Y-%m-%d %H:%M:%S UTC')}[/white]")
+        expires_dt = datetime.fromtimestamp(resp.expires_at.seconds).astimezone()
+        console.print(f"[bold]Expires at:[/bold] [white]{expires_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}[/white]")
