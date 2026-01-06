@@ -104,9 +104,10 @@ async def identity():
     elif resp.HasField("service_user_identity"):
         service = resp.service_user_identity
         console.print(f"[bold]Service User:[/bold] {service.service_user_name} [dim]({service.service_user_id})[/dim]")
-        console.print(
-            f"[bold]Created By:[/bold] {service.created_by.username} [dim]({service.created_by.user_id})[/dim]"
-        )
+        if service.created_by:
+            console.print(
+                f"[bold]Created By:[/bold] {service.created_by.username} [dim]({service.created_by.user_id})[/dim]"
+            )
 
     if resp.HasField("created_at"):
         created_dt = datetime.fromtimestamp(resp.created_at.seconds).astimezone()
