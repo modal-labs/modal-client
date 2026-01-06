@@ -579,12 +579,9 @@ More information on class parameterization can be found here: https://modal.com/
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        # Disable the warning that lifecycle methods are not wrapped
         lifecycle_method_partials = _find_partial_methods_for_user_cls(
             user_cls, ~_PartialFunctionFlags.interface_flags()
         )
-        for partial_function in lifecycle_method_partials.values():
-            partial_function.registered = True
 
         method_partials = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.interface_flags())
 

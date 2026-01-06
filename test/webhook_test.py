@@ -1,8 +1,5 @@
 # Copyright Modal Labs 2022
-import pathlib
 import pytest
-import subprocess
-import sys
 
 from fastapi.testclient import TestClient
 
@@ -103,16 +100,6 @@ def test_webhook_generator():
             yield None
 
     assert "streaming" in str(excinfo.value).lower()
-
-
-@pytest.mark.asyncio
-async def test_webhook_forgot_function(servicer, client):
-    lib_dir = pathlib.Path(__file__).parent.parent
-    args = [sys.executable, "-m", "test.supports.webhook_forgot_function"]
-    ret = subprocess.run(args, cwd=lib_dir, stderr=subprocess.PIPE)
-    stderr = ret.stderr.decode()
-    assert "absent_minded_function" in stderr
-    assert "@app.function" in stderr
 
 
 @pytest.mark.asyncio
