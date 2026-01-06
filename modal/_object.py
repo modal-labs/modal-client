@@ -328,7 +328,7 @@ class _Object:
             # Set the client on LoadContext before loading
             root_load_context = LoadContext(client=client)
             resolver = Resolver()
-            with suppress_tb_frames(1):  # skip this frame by default
+            with suppress_tb_frames():  # skip this frame by default
                 await resolver.load(self, root_load_context)
         return self
 

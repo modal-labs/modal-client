@@ -120,7 +120,7 @@ class Resolver:
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
-                with suppress_tb_frames(1):
+                with suppress_tb_frames():
                     load_context = await obj._load_context_overrides.merged_with(parent_load_context).apply_defaults()
 
                     # TODO(erikbern): do we need existing_object_id for those?
@@ -151,7 +151,7 @@ class Resolver:
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
-        with suppress_tb_frames(1):
+        with suppress_tb_frames():
             return await cached_future
 
     def objects(self) -> list["modal._object._Object"]:

@@ -50,7 +50,7 @@ class grpc_error_converter:
     def __exit__(self, exc_type, exc, traceback) -> Literal[False]:
         # skip all internal frames from grpclib
         use_full_traceback = config.get("traceback")
-        with suppress_tb_frames(1):
+        with suppress_tb_frames():
             if isinstance(exc, GRPCError):
                 modal_exc = _STATUS_TO_EXCEPTION[exc.status](exc.message)
                 modal_exc._grpc_message = exc.message
@@ -115,7 +115,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         timeout: Optional[float] = None,
         metadata: Optional[list[tuple[str, str]]] = None,
     ) -> ResponseType:
-        with suppress_tb_frames(1):
+        with suppress_tb_frames():
             if timeout is not None and retry is not None:
                 raise exception.InvalidError("Retry must be None when timeout is set")
 

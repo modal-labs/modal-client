@@ -273,7 +273,7 @@ def process_exception_before_retry(
     idempotency_key: str,
 ):
     """Process exception before retry, used by `_retry_transient_errors`."""
-    with suppress_tb_frames(1):
+    with suppress_tb_frames():
         if final_attempt:
             logger.debug(
                 f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})"
@@ -357,7 +357,7 @@ async def _retry_transient_errors(
             timeout = None
 
         try:
-            with suppress_tb_frames(1):
+            with suppress_tb_frames():
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             # Note that we only catch AttributeError to handle a specific case that works around a bug
@@ -384,7 +384,7 @@ async def _retry_transient_errors(
                 )
                 final_attempt = total_timeout_will_be_reached or max_throttle_will_be_reached
 
-                with suppress_tb_frames(1):
+                with suppress_tb_frames():
                     process_exception_before_retry(
                         exc, final_attempt, fn.name, n_retries, server_delay, idempotency_key
                     )
@@ -414,7 +414,7 @@ async def _retry_transient_errors(
             else:
                 final_attempt = False
 
-            with suppress_tb_frames(1):
+            with suppress_tb_frames():
                 process_exception_before_retry(exc, final_attempt, fn.name, n_retries, delay, idempotency_key)
 
             n_retries += 1
