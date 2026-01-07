@@ -110,9 +110,7 @@ def test_server_rejects_method_decorator():
 
 def test_server_requires_port():
     """Test that @app.server() requires a port parameter."""
-    with pytest.raises(
-        InvalidError, match="Port argument must be specified as a positive integer between 1 and 65535."
-    ):
+    with pytest.raises(InvalidError, match="The `proxy_regions` argument must be non-empty."):
         app = modal.App("server-no-port", include_source=False)
 
         @app.server()  # type: ignore  # Missing port

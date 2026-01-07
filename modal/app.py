@@ -1219,7 +1219,7 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max idle time before scaling down (seconds)
         proxy: Optional[_Proxy] = None,  # Modal Proxy to use in front of this server
         # server specific parameters
-        port: int = 0,  # Required parameter: Port the HTTP server listens on
+        port: int = 8000,  # Port the HTTP server listens on
         startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: Optional[int] = None,  # Grace period for in-flight requests on shutdown
         proxy_regions: Optional[Sequence[str]] = None,  # Required: Regions to deploy proxy endpoints

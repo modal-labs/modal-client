@@ -89,16 +89,14 @@ def validate_http_server_config(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
         )
-    if port == 0:
-        raise InvalidError("Port argument must be specified as a positive integer between 1 and 65535. Suggestion:.")
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError("Port must be a positive integer between 1 and 65535.")
     if startup_timeout <= 0:
-        raise InvalidError("The `startup_timeout` argument of `@http_server` must be positive.")
+        raise InvalidError("The `startup_timeout` argument must be positive.")
     if exit_grace_period is not None and exit_grace_period < 0:
-        raise InvalidError("The `exit_grace_period` argument of `@http_server` must be non-negative.")
+        raise InvalidError("The `exit_grace_period` argument must be non-negative.")
     if not proxy_regions:
-        raise InvalidError("The `proxy_regions` argument of `@http_server` must be non-empty.")
+        raise InvalidError("The `proxy_regions` argument must be non-empty.")
 
 
 def is_method_fn(object_qual_name: str):
