@@ -1207,9 +1207,6 @@ class _App:
         secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
         gpu: Union[GPU_T, list[GPU_T]] = None,  # GPU request; either a single GPU type or a list of types
         serialized: bool = False,  # Whether to send the server class over using cloudpickle.
-        network_file_systems: dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
-        ] = {},  # Mountpoints for Modal NetworkFileSystems
         volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
@@ -1322,7 +1319,7 @@ class _App:
                 image=image or self._get_default_image(),
                 secrets=[*local_state.secrets_default, *secrets_list],
                 gpu=gpu,
-                network_file_systems=network_file_systems,
+                network_file_systems={},  # Deprecated: No support for Server level network file systems
                 volumes={**local_state.volumes_default, **volumes},
                 cpu=cpu,
                 memory=memory,
