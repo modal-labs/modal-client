@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2025
 import pytest
+import re
 
 import modal
 from modal.exception import InvalidError
@@ -10,7 +11,7 @@ from modal.server import Server, _Server
 server_app = modal.App("server-test-app", include_source=False)
 
 
-@server_app.server(port=8000, serialized=True)
+@server_app.server(port=8000, proxy_regions=["us-east"], serialized=True)
 class BasicServer:
     @modal.enter()
     def start(self):
@@ -97,7 +98,7 @@ class ServerWithDefaultInit:
 
 def test_server_rejects_method_decorator():
     """Test that @modal.method() cannot be used on server classes."""
-    with pytest.raises(InvalidError, match="cannot have"):
+    with pytest.raises(InvalidError, match=re.escape("Server class must have an @modal.enter() to setup the server.")):
         app = modal.App("server-method-test", include_source=False)
 
         @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
@@ -109,7 +110,9 @@ def test_server_rejects_method_decorator():
 
 def test_server_requires_port():
     """Test that @app.server() requires a port parameter."""
-    with pytest.raises(TypeError):
+    with pytest.raises(
+        InvalidError, match="Port argument must be specified as a positive integer between 1 and 65535."
+    ):
         app = modal.App("server-no-port", include_source=False)
 
         @app.server()  # type: ignore  # Missing port
@@ -195,6 +198,7 @@ def test_server_http_config_parameters(client, servicer):
 
     @app.server(
         port=9000,
+        proxy_regions=["us-east"],
         serialized=True,
     )
     class HTTPConfigServer:

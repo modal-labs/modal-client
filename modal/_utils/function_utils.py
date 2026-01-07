@@ -89,8 +89,10 @@ def validate_http_server_config(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
         )
+    if port == 0:
+        raise InvalidError("Port argument must be specified as a positive integer between 1 and 65535.")
     if not isinstance(port, int) or port < 1 or port > 65535:
-        raise InvalidError("First argument of `@http_server` must be a local port, such as `@http_server(8000)`.")
+        raise InvalidError("Port must be a positive integer between 1 and 65535.")
     if startup_timeout <= 0:
         raise InvalidError("The `startup_timeout` argument of `@http_server` must be positive.")
     if exit_grace_period is not None and exit_grace_period < 0:
