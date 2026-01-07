@@ -12,7 +12,7 @@ from grpclib import GRPCError, Status
 from grpclib.client import Channel
 from grpclib.exceptions import StreamTerminatedError
 
-from modal._utils.task_command_router_client import TaskCommandRouterClient
+from modal._utils.task_command_router_client import TaskCommandRouterClient, _is_local_server_url
 from modal.exception import AuthError, ExecTimeoutError, ServiceError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
@@ -46,6 +46,18 @@ class _Stub:
 
 def create_dummy_channel() -> Channel:
     return Channel("https://router.test", ssl=False)
+
+
+def test_is_local_server_url_uses_hostname_not_substring():
+    assert _is_local_server_url("https://localhost:1234") is True
+    assert _is_local_server_url("http://localhost:1234") is True
+    assert _is_local_server_url("localhost:1234") is True
+    assert _is_local_server_url("https://127.0.0.1:1234") is True
+    assert _is_local_server_url("https://[::1]:1234") is True
+
+    # Must not match substrings in path or in attacker-controlled hostnames.
+    assert _is_local_server_url("https://api.modal.com/path/localhost/") is False
+    assert _is_local_server_url("https://localhost.attacker.com") is False
 
 
 @pytest.mark.asyncio

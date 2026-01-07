@@ -25,6 +25,21 @@ from .async_utils import aclosing
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel
 
 
+def _is_local_server_url(server_url: str) -> bool:
+    """Return True iff server_url's *hostname* is a loopback/local dev host.
+
+    We intentionally avoid substring matching on the full URL because that can be
+    fooled by paths (e.g. https://api.modal.com/path/localhost/) or malicious
+    domains (e.g. https://localhost.attacker.com).
+    """
+    parsed = urllib.parse.urlparse(server_url)
+    hostname = parsed.hostname
+    if hostname is None and "://" not in server_url:
+        # Support common local-dev env var values like "localhost:5000".
+        hostname = urllib.parse.urlparse(f"https://{server_url}").hostname
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
 def _b64url_decode(data: str) -> bytes:
     """Decode a base64url string with missing padding tolerated."""
     padding = "=" * (-len(data) % 4)
@@ -153,8 +168,8 @@ class TaskCommandRouterClient:
 
         # Allow insecure TLS automatically when running against a local server.
         # This is primarily for local dev/testing setups where the worker-side router uses a self-signed cert.
-        if "localhost" in config["server_url"]:
-            logger.warning("Using insecure TLS for task command router because MODAL_SERVER_URL contains localhost")
+        if _is_local_server_url(config["server_url"]):
+            logger.warning("Using insecure TLS for task command router because MODAL_SERVER_URL targets localhost")
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
 
