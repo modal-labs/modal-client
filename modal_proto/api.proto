@@ -2901,7 +2901,7 @@ message SandboxInfo {
   string name = 7;
   string image_id = 8;
   ResourceInfo resource_info = 9;
-  string region = 10;
+  repeated string regions = 10;
   reserved 2; // modal.client.Sandbox definition
 }
 
