@@ -2879,6 +2879,19 @@ message SandboxHandleMetadata {
   GenericResult result = 1;
 }
 
+message ResourceInfo {
+    message ResourceValue {
+      uint32 value = 1;
+      bool is_default = 2;
+    }
+    ResourceValue memory_mb = 1; // MiB
+    ResourceValue milli_cpu = 2; // milli CPU cores
+    string gpu_type = 3;
+    uint32 memory_mb_max = 4  ; // MiB
+    uint32 ephemeral_disk_mb = 5;  // MiBgit 
+    uint32 milli_cpu_max = 6; // milli CPU cores
+}
+
 message SandboxInfo {
   string id = 1;
   double created_at = 3;
@@ -2887,18 +2900,6 @@ message SandboxInfo {
   repeated SandboxTag tags = 6; // TODO: Not yet exposed in client library.
   string name = 7;
   string image_id = 8;
-  message ResourceInfo {
-    message ResourceValue {
-      uint32 value = 1;
-      bool is_default = 2;
-    }
-    ResourceValue memory_mb = 1; // MiB
-    ResourceValue milli_cpu = 2; // milli CPU cores
-    string gpu_type = 3;
-    ResourceValue memory_mb_max = 4  ; // MiB
-    ResourceValue ephemeral_disk_mb = 5;  // MiB
-    ResourceValue milli_cpu_max = 6; // milli CPU cores
-  }
   ResourceInfo resource_info = 9;
   string region = 10;
   reserved 2; // modal.client.Sandbox definition
