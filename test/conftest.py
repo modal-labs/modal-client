@@ -2175,8 +2175,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     user_id="us-test789",
                     username="test-user",
                 ),
-                member_role=api_pb2.MEMBER_ROLE_OWNER,
-                is_admin=False,
             )
         )
 

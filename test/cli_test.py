@@ -169,8 +169,6 @@ def test_token_identity(servicer, set_env_client):
     assert "ak-test123" in res.stdout
     assert "test-workspace" in res.stdout
     assert "test-user" in res.stdout
-    assert "Owner" in res.stdout
-    assert "Platform Admin" not in res.stdout
 
 
 def test_token_identity_from_env(servicer, set_env_client, monkeypatch):

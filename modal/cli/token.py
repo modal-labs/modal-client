@@ -91,16 +91,6 @@ async def identity():
 
     if resp.HasField("user_identity"):
         console.print(f"[bold]User:[/bold] {resp.user_identity.username} [dim]({resp.user_identity.user_id})[/dim]")
-
-        role_map = {
-            api_pb2.MEMBER_ROLE_USER: "User",
-            api_pb2.MEMBER_ROLE_MANAGER: "Manager",
-            api_pb2.MEMBER_ROLE_OWNER: "Owner",
-        }
-        if role_display := role_map.get(resp.member_role):
-            if resp.is_admin:
-                role_display += " / Platform Admin"
-            console.print(f"[bold]Role:[/bold] {role_display}")
     elif resp.HasField("service_user_identity"):
         service = resp.service_user_identity
         console.print(f"[bold]Service User:[/bold] {service.service_user_name} [dim]({service.service_user_id})[/dim]")
