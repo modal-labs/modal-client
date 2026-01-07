@@ -23,7 +23,11 @@ from ._load_context import LoadContext
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, synchronize_api
-from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
+from ._utils.blob_utils import (
+    FileUploadSpec,
+    blob_upload_file,
+    get_file_upload_spec_from_path,
+)
 from ._utils.grpc_utils import Retry
 from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
@@ -45,6 +49,7 @@ PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
     "3.12": ("20240107", "3.12.1"),
     "3.13": ("20241008", "3.13.0"),
     "3.14": ("20251205", "3.14.2"),
+    "3.14t": ("20251209", "3.14.2t"),
 }
 
 MOUNT_DEPRECATION_MESSAGE_PATTERN = """modal.Mount usage will soon be deprecated.
@@ -797,7 +802,7 @@ async def _create_single_client_dependency_mount(
                 tmpd,
                 "--python-platform",
                 uv_python_platform,
-                "--python-version",
+                "--python",
                 python_version,
             ]
         )
