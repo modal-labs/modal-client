@@ -2,11 +2,12 @@
 """Test deployment of @app.server() decorator."""
 
 import modal
+import modal.experimental
 
 app = modal.App("test-server-deploy")
 
 
-@app.server(port=8000, min_containers=1, block_network=True)
+@app.server(port=8000, min_containers=1, proxy_regions=["us-east"])
 class SimpleServer:
     @modal.enter()
     def start(self):

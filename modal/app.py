@@ -35,7 +35,13 @@ from ._utils.deprecation import (
     deprecation_warning,
     warn_on_renamed_autoscaler_settings,
 )
-from ._utils.function_utils import FunctionInfo, is_flash_object, is_global_object, is_method_fn
+from ._utils.function_utils import (
+    FunctionInfo,
+    is_flash_object,
+    is_global_object,
+    is_method_fn,
+    validate_http_server_config,
+)
 from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name, check_tag_dict
 from .client import _Client
@@ -1196,13 +1202,10 @@ class _App:
         self,
         _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
-        port: int,  # Required: The port the HTTP server listens on
         image: Optional[_Image] = None,  # The image to run as the container for the server
         env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
         secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Union[
-            GPU_T, list[GPU_T]
-        ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
+        gpu: Union[GPU_T, list[GPU_T]] = None,  # GPU request; either a single GPU type or a list of types
         serialized: bool = False,  # Whether to send the server class over using cloudpickle.
         network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
@@ -1218,8 +1221,9 @@ class _App:
         buffer_containers: Optional[int] = None,  # Additional idle containers under active load
         scaledown_window: Optional[int] = None,  # Max idle time before scaling down (seconds)
         proxy: Optional[_Proxy] = None,  # Modal Proxy to use in front of this server
+        port: int = 8000,  # Required: The port the HTTP server listens on
         timeout: int = 300,  # Maximum execution time in seconds
-        startup_timeout: Optional[int] = None,  # Maximum startup time in seconds
+        startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: Optional[int] = None,  # Grace period for in-flight requests on shutdown
         proxy_regions: Optional[Sequence[str]] = None,  # Required: Regions to deploy proxy endpoints
         h2_enabled: bool = False,  # Enable HTTP/2
@@ -1227,13 +1231,11 @@ class _App:
         region: Optional[Union[str, Sequence[str]]] = None,  # Region(s) to run on
         nonpreemptible: bool = False,  # Whether to use non-preemptible instances
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing
-        block_network: bool = False,  # Whether to block network access
-        restrict_modal_access: bool = False,  # Whether to restrict access to other Modal resources
         i6pn: Optional[bool] = None,  # Enable IPv6 container networking
         include_source: Optional[bool] = None,  # Whether to add source to container
+        target_concurrency: Optional[int] = None,  # Target concurrency for the server
         # Experimental options
         experimental_options: Optional[dict[str, Any]] = None,
-        _experimental_custom_scaling_factor: Optional[float] = None,
     ) -> Callable[[type], type]:
         """
         Decorator to register a new Modal Server with this App.
@@ -1281,44 +1283,37 @@ class _App:
             secrets_list.append(_Secret.from_dict(env))
 
         # Build HTTP config
+        validate_http_server_config(
+            port=port, proxy_regions=proxy_regions, startup_timeout=startup_timeout, exit_grace_period=exit_grace_period
+        )
         http_config = api_pb2.HTTPConfig(
             port=port,
-            proxy_regions=proxy_regions or [],
-            startup_timeout=startup_timeout or 0,
-            exit_grace_period=exit_grace_period or 0,
+            proxy_regions=proxy_regions,
+            startup_timeout=startup_timeout,
+            exit_grace_period=exit_grace_period,
             h2_enabled=h2_enabled,
+            # target_concurrency=target_concurrency,
         )
 
-        def wrapper(user_cls: type) -> type:
-            if not inspect.isclass(user_cls):
-                raise TypeError("The @app.server() decorator must be used on a class.")
+        def wrapper(wrapped_cls: type) -> type:
+            _Server.validate_wrapped_cls_decorators(wrapped_cls, enable_memory_snapshot)
+
+            cluster_size = None
+            rdma = None
+            if isinstance(wrapped_cls, _PartialFunction):
+                if wrapped_cls.flags & _PartialFunctionFlags.CLUSTERED:
+                    cluster_size = wrapped_cls.params.cluster_size
+                    rdma = wrapped_cls.params.rdma
 
             local_state = self._local_state
 
             # Validate the server class
-            _Server.validate_construction_mechanism(user_cls)
+            _Server.validate_construction_mechanism(wrapped_cls)
 
-            # Check for disallowed decorators
-            callable_methods = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE)
-            if callable_methods:
-                for method in callable_methods.values():
-                    method.registered = True
-                raise InvalidError(
-                    f"Server class {user_cls.__name__} cannot have @method() decorated functions. "
-                    "Servers only expose HTTP endpoints."
-                )
-
-            # Check for @enter with snap=True without enable_memory_snapshot
-            if (
-                _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
-                and not enable_memory_snapshot
-            ):
-                raise InvalidError(
-                    "Server must have `enable_memory_snapshot=True` to use `snap=True` on @enter methods."
-                )
+            # TODO(claudia): check if startup_timeout < timeout
 
             # Create the FunctionInfo for the server
-            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
+            info = FunctionInfo(None, serialized=serialized, user_cls=wrapped_cls)
 
             # Create the service function
             service_function = _Function.from_local(
@@ -1337,46 +1332,43 @@ class _App:
                 buffer_containers=buffer_containers,
                 scaledown_window=scaledown_window,
                 proxy=proxy,
-                retries=None,  # Servers don't retry
-                max_concurrent_inputs=None,
-                target_concurrent_inputs=None,
-                batch_max_size=None,
-                batch_wait_ms=None,
+                retries=None,  # No support for Server level retries
+                max_concurrent_inputs=None,  # No support for Server level concurrent inputs
+                target_concurrent_inputs=None,  # No support for Server level concurrent inputs
+                batch_max_size=None,  # No support for Server level batching
+                batch_wait_ms=None,  # No support for Server level batching
                 timeout=timeout,
                 startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
                 region=region,
                 nonpreemptible=nonpreemptible,
                 enable_memory_snapshot=enable_memory_snapshot,
-                block_network=block_network,
-                restrict_modal_access=restrict_modal_access,
-                single_use_containers=False,  # Servers are long-running
+                single_use_containers=False,  # No support for single-use server containers
                 http_config=http_config,
-                i6pn_enabled=i6pn or False,
-                cluster_size=None,
-                rdma=None,
+                i6pn_enabled=i6pn or (cluster_size is not None),
+                cluster_size=cluster_size,
+                rdma=rdma,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
-                _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 restrict_output=False,
             )
 
-            self._add_function(service_function, is_web_endpoint=True)
+            self._add_function(service_function, is_web_endpoint=False)
 
             # Create the Server object
-            server: _Server = _Server.from_local(user_cls, self, service_function)
+            server: _Server = _Server.from_local(wrapped_cls, self, service_function)
 
             # Mark lifecycle methods as registered
             for flag in (~_PartialFunctionFlags.interface_flags(),):
-                for partial in _find_partial_methods_for_user_cls(user_cls, flag).values():
+                for partial in _find_partial_methods_for_user_cls(wrapped_cls, flag).values():
                     partial.registered = True
 
             # Register the server with the app
-            tag: str = user_cls.__name__
+            tag: str = wrapped_cls.__name__
             self._add_class(tag, server)
 
             # Add to web_endpoints so the CLI shows the URL
-            local_state.web_endpoints.append(f"{user_cls.__name__}.*")
+            local_state.web_endpoints.append(f"{wrapped_cls.__name__}.*")
 
             return server  # type: ignore
 

@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2025
+import inspect
 import typing
 from collections.abc import Collection
 from typing import Any, Optional
@@ -13,6 +14,7 @@ from ._object import _Object, live_method
 from ._partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
+    _PartialFunction,
     _PartialFunctionFlags,
 )
 from ._resolver import Resolver
@@ -49,6 +51,10 @@ class _Server(_Object):
                 self.proc.terminate()
     ```
     """
+
+    # Set _type_prefix directly without registering in _prefix_to_type
+    # (to avoid overwriting _Cls which also uses "cs")
+    _type_prefix = "cs"
 
     _app: Optional["modal.app._App"] = None
     _name: Optional[str] = None
@@ -216,6 +222,42 @@ class _Server(_Object):
         assert service_function.is_hydrated
 
     # ============ Construction ============
+
+    @staticmethod
+    def validate_wrapped_cls_decorators(wrapped_cls: type, enable_memory_snapshot: bool):
+        if not inspect.isclass(wrapped_cls):
+            raise TypeError("The @app.server() decorator must be used on a class.")
+        if not _find_partial_methods_for_user_cls(
+            wrapped_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
+        ) and not _find_partial_methods_for_user_cls(wrapped_cls, _PartialFunctionFlags.ENTER_POST_SNAPSHOT):
+            raise InvalidError("Server class must have an @modal.enter() decorated method to setup the server.")
+
+        # Check for disallowed decorators
+        if _find_partial_methods_for_user_cls(wrapped_cls, _PartialFunctionFlags.CALLABLE_INTERFACE).values():
+            raise InvalidError(
+                f"Server class {wrapped_cls.__name__} cannot have @method() decorated functions. "
+                "Servers only expose HTTP endpoints."
+            )
+
+        # Check for @enter with snap=True without enable_memory_snapshot
+        if (
+            _find_partial_methods_for_user_cls(wrapped_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+            and not enable_memory_snapshot
+        ):
+            raise InvalidError("Server must have `enable_memory_snapshot=True` to use `snap=True` on @enter methods.")
+
+        # Check for usage of concurrent decorators
+        if isinstance(wrapped_cls, _PartialFunction):
+            if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
+                raise InvalidError(
+                    f"Server class {wrapped_cls.__name__} cannot have @concurrent() decorated functions. "
+                    "Please use `target_concurrency` param instead."
+                )
+            if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
+                raise InvalidError(
+                    f"Server class {wrapped_cls.__name__} cannot have @modal.experimental.http_server() decorator. "
+                    "Servers already expose HTTP endpoints."
+                )
 
     @staticmethod
     def validate_construction_mechanism(user_server: type):
