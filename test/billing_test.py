@@ -1,8 +1,11 @@
 # Copyright Modal Labs 2025
+import pytest
 from datetime import datetime, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import modal.billing
+from modal.exception import InvalidError
 
 
 def test_workspace_billing_report(servicer, client):
@@ -23,3 +26,16 @@ def test_workspace_billing_report(servicer, client):
     assert isinstance(item["interval_start"], datetime)
     assert item["interval_start"].tzinfo == timezone.utc
     assert isinstance(item["cost"], Decimal)
+
+    with pytest.raises(InvalidError, match="'start' parameter must be in UTC"):
+        modal.billing.workspace_billing_report(
+            start=datetime(2025, 1, 1, 0, 0, 0, tzinfo=ZoneInfo("America/New_York")),
+            client=client,
+        )
+
+    with pytest.raises(InvalidError, match="'end' parameter must be in UTC"):
+        modal.billing.workspace_billing_report(
+            start=datetime(2025, 1, 1, 0, 0, 0),
+            end=datetime(2025, 1, 2, 0, 0, 0, tzinfo=ZoneInfo("America/New_York")),
+            client=client,
+        )

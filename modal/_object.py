@@ -9,7 +9,7 @@ from typing import Callable, ClassVar, Optional
 from google.protobuf.message import Message
 from typing_extensions import Self
 
-from modal._traceback import suppress_tb_frames
+from modal._traceback import suppress_tb_frame
 
 from ._load_context import LoadContext
 from ._resolver import Resolver
@@ -328,7 +328,7 @@ class _Object:
             # Set the client on LoadContext before loading
             root_load_context = LoadContext(client=client)
             resolver = Resolver()
-            with suppress_tb_frames(1):  # skip this frame by default
+            with suppress_tb_frame():  # skip this frame by default
                 await resolver.load(self, root_load_context)
         return self
 
