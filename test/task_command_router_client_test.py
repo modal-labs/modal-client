@@ -13,7 +13,7 @@ from grpclib.client import Channel
 from grpclib.exceptions import StreamTerminatedError
 
 from modal._utils.task_command_router_client import TaskCommandRouterClient
-from modal.exception import ExecTimeoutError
+from modal.exception import AuthError, ExecTimeoutError, ServiceError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
@@ -32,8 +32,10 @@ def _start_index_for_offset(pieces: List[bytes], offset: int) -> int:
 class _UnaryStreamMethod:
     def __init__(self, open_fn):
         self._open_fn = open_fn
+        self._metadata = None
 
-    def open(self, timeout: Optional[float] = None):  # match grpclib signature
+    def open(self, timeout: Optional[float] = None, metadata: Optional[dict] = None):  # match grpclib signature
+        self._metadata = metadata
         return self._open_fn(timeout)
 
 
@@ -95,6 +97,7 @@ async def test_exec_stdio_read_streams_stdout_batches(monkeypatch):
         out.append(item.data)
 
     assert out == pieces
+    assert fake_stub.TaskExecStdioRead._metadata == {"authorization": "Bearer t"}
     await client.close()
 
 
@@ -360,10 +363,9 @@ async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(monkeypatch):
     client._refresh_jwt = _refresh_jwt  # type: ignore[assignment]
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
-    with pytest.raises(GRPCError) as exc_info:
+    with pytest.raises(AuthError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
             pass
-    assert exc_info.value.status == Status.UNAUTHENTICATED
     await client.close()
 
 
@@ -409,11 +411,9 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(monkeypatch)
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
-    with pytest.raises(GRPCError) as exc_info:
+    with pytest.raises(ServiceError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
             pass
-
-    assert exc_info.value.status == Status.UNAVAILABLE
     await client.close()
 
 
@@ -765,14 +765,20 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
         jwt_refresh_lock=asyncio.Lock(),
     )
 
-    calls: List[tuple[sr_pb2.TaskExecWaitRequest, Optional[float]]] = []
+    calls: List[tuple[sr_pb2.TaskExecWaitRequest, Optional[float], Optional[dict]]] = []
 
     class _WaitMethod:
         def __init__(self):
             self._first = True
 
-        async def __call__(self, request: sr_pb2.TaskExecWaitRequest, *, timeout: Optional[float] = None):
-            calls.append((request, timeout))
+        async def __call__(
+            self,
+            request: sr_pb2.TaskExecWaitRequest,
+            *,
+            timeout: Optional[float] = None,
+            metadata: Optional[dict] = None,
+        ):
+            calls.append((request, timeout, metadata))
             if self._first:
                 self._first = False
                 raise GRPCError(Status.UNAUTHENTICATED, "auth required")
@@ -787,6 +793,7 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
 
     async def _refresh_jwt():
         nonlocal refreshes
+        client._jwt = "j"
         refreshes += 1
 
     client._refresh_jwt = _refresh_jwt  # type: ignore[assignment]
@@ -799,17 +806,19 @@ async def test_exec_wait_succeeds_after_auth_retry(monkeypatch):
 
     # Should have attempted twice: once failing with UNAUTHENTICATED, once succeeding.
     assert len(calls) == 2
-    req1, to1 = calls[0]
-    req2, to2 = calls[1]
+    req1, to1, metadata1 = calls[0]
+    req2, to2, metadata2 = calls[1]
     assert req1.task_id == "task-1" and req1.exec_id == "exec-1"
     assert req2.task_id == "task-1" and req2.exec_id == "exec-1"
+    assert metadata1 == {"authorization": "Bearer t"}
+    assert metadata2 == {"authorization": "Bearer j"}
     assert to1 == 60 and to2 == 60
     assert refreshes == 1
     await client.close()
 
 
 @pytest.mark.asyncio
-async def test_task_command_router_client_del_closes_channel(monkeypatch):
+async def test_task_command_router_client_closes_and_finalizes(monkeypatch):
     channel = create_dummy_channel()
     closed = False
 
@@ -829,12 +838,8 @@ async def test_task_command_router_client_del_closes_channel(monkeypatch):
         jwt_refresh_lock=asyncio.Lock(),
     )
 
-    # __del__ schedules channel.close() on the loop - let the loop run so the callback is executed.
-    #
-    # Note: TaskCommandRouterClient registers a request hook with grpclib, which can create a reference
-    # cycle (client -> channel -> callback -> client). Rely on calling __del__ explicitly in the test
-    # rather than calling del and trying to force GC to finalize the cycle.
-    client.__del__()
+    await client.close()
     await asyncio.sleep(0)
 
     assert closed is True
+    assert not client._channel_finalizer.alive

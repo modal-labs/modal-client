@@ -18,7 +18,8 @@ dependencies = [
     "cbor2",
     "certifi",
     "click~=8.1",
-    "grpclib>=0.4.7,<0.4.10",
+    "grpclib>=0.4.7,<0.4.10 ; python_version < '3.14'",
+    "grpclib>=0.4.9,<0.4.10 ; python_version >= '3.14'",
     "protobuf>=3.19,<7.0,!=4.24.0",
     "rich>=12.0.0",
     "synchronicity~=0.11.1",
@@ -80,6 +81,7 @@ filterwarnings = [
     "error::DeprecationWarning",
     "ignore:Type google._upb.*MapContainer uses PyType_Spec.*Python 3.14:DeprecationWarning",
     "error::modal.exception.DeprecationError",
+    "error::modal.exception.AsyncUsageWarning",
     "ignore:There is no current event loop:DeprecationWarning",  # pytest-asyncio internals
     "ignore:distutils Version classes are deprecated:DeprecationWarning",  # pytest-freezegun internals
     "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",  # pytest-asyncio internals

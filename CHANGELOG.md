@@ -6,13 +6,33 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.2.7.dev1 (2025-12-16)
+#### 1.3.1.dev8 (2026-01-06)
 
-- The minimum supported Python version is now 3.10, because Python 3.9 has reached EOL.
+- Correctly specify the minimum version for `grpclib` with Python 3.14.
+
+
+#### 1.3.1.dev2 (2025-12-23)
+
+- Improves client resource management when running `Sandbox.exec`.
+
+
+### 1.3.0 (2025-12-19)
+
+Modal now supports Python 3.14. Python 3.14t (the free-threading build) is **not** supported, because we are waiting for dependencies to be updated with free-threaded support. Additionally, Modal no longer supports Python 3.9, which has reached [end-of-life](https://devguide.python.org/versions).
+
+We are adding experimental support for detecting cases where Modal's blocking APIs are used in async contexts (which can be a source of bugs or performance issues). You can opt into runtime warnings by setting `MODAL_ASYNC_WARNINGS=1` as an environment variable or `async_warnings = true` as a config field. We will enable these warnings by default in the future; please report any apparent false positives or other issues while support is experimental.
+
+This release also includes a small number of deprecations and behavioral changes:
+
+- The Modal SDK will no longer propagate `grpclib.GRPCError` types out to the user; our own `modal.Error` subtypes will be used instead. To avoid disrupting user code that has relied on `GRPCError` exceptions for control flow, we are temporarily making some exception types inherit from `GRPCError` so that they will also be caught by `except grpclib.GRPCError` statements. Accessing the `.status` attribute of the exception will issue a deprecation warning, but warnings cannot be issued if the exception object is only caught and there is no other interaction with it. We advise proactively migrating any exception handling to use Modal types, as we will remove the dependency on `grpclib` types entirely in the future. See the [`modal.exception`](https://modal.com/docs/reference/modal.exception) docs for the mapping from gRPC status codes to Modal exception types.
+- The `max_inputs` parameter in the `@app.function()` and `@app.cls` decorators has been renamed to `single_use_containers` and now takes a boolean value rather than an integer. Note that only `max_inputs=1` has been supported, so this has no functional implications. This change is being made to reduce confusion with `@modal.concurrent(max_inputs=...)` and so that Modal's autoscaler can provide better performance for Functions with single-use containers.
+- The async (`.aio`) interface has been deprecated from `modal.FunctionCall.from_id`, `modal.Image.from_id`, and `modal.SandboxSnapshot.from_id`, because these methods do not perform I/O.
+- The `replace_bytes` and `delete_bytes` methods have been removed from the `modal.file_io` filesystem interface.
 - Images built with `modal.Image.micromamba()` using the 2023.12 [Image Builder Version](https://modal.com/docs/guide/images#image-builder-updates) will now use a Python version that matches their local environment by default, rather than defaulting to Python 3.9.
 
+## 1.2
 
-#### 1.2.6 (2025-12-16)
+### 1.2.6 (2025-12-16)
 
 - Fixed bug where iterating on a `modal.Sandbox.exec` output stream could raise unauthenticated errors.
 

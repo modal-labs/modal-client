@@ -5,6 +5,8 @@ import json
 import ssl
 import time
 import urllib.parse
+import weakref
+from contextlib import suppress
 from typing import AsyncGenerator, Optional
 
 import grpclib.client
@@ -14,10 +16,11 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 
 from modal.config import config, logger
-from modal.exception import ExecTimeoutError
+from modal.exception import ConflictError, ExecTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
+from .._grpc_client import grpc_error_converter
 from .async_utils import aclosing
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel
 
@@ -105,6 +108,15 @@ async def fetch_command_router_access(server_client, task_id: str) -> api_pb2.Ta
     )
 
 
+def _finalize_channel(loop, channel):
+    if not loop.is_closed():
+        # only run if loop has not shut down
+        # call_soon_threadsafe could throw if the loop is torn down after calling
+        # is_closed. This is safe to ignore.
+        with suppress(Exception):
+            loop.call_soon_threadsafe(channel.close)
+
+
 class TaskCommandRouterClient:
     """
     Client used to talk directly to TaskCommandRouter service on worker hosts.
@@ -124,11 +136,9 @@ class TaskCommandRouterClient:
         """
         try:
             resp = await fetch_command_router_access(server_client, task_id)
-        except GRPCError as exc:
-            if exc.status == Status.FAILED_PRECONDITION:
-                logger.debug(f"Command router access is not enabled for task {task_id}")
-                return None
-            raise
+        except ConflictError:
+            logger.debug(f"Command router access is not enabled for task {task_id}")
+            return None
 
         logger.debug(f"Using command router access for task {task_id}")
 
@@ -200,44 +210,17 @@ class TaskCommandRouterClient:
 
         self._closed = False
 
-        async def send_request(event: grpclib.events.SendRequest) -> None:
-            # This will get the most recent JWT for every request. No need to
-            # lock _jwt_refresh_lock: reads and writes happen on the
-            # single-threaded event loop and variable assignment is atomic.
-            event.metadata["authorization"] = f"Bearer {self._jwt}"
-
-        grpclib.events.listen(self._channel, grpclib.events.SendRequest, send_request)
+        self._channel_finalizer = weakref.finalize(
+            self,
+            _finalize_channel,
+            loop,
+            channel,
+        )
 
         self._stub = TaskCommandRouterStub(self._channel)
 
-    def __del__(self) -> None:
-        """Best-effort cleanup if the caller forgot to close().
-
-        This object is typically used through synchronicity wrappers, which means this finalizer
-        may run on a different thread than the event loop that owns the channel. Closing the
-        channel is therefore scheduled onto the owning loop using call_soon_threadsafe.
-
-        Use getattr in the event that attributes are not yet initialized or the
-        object is in a half-torn-down state.
-        """
-        if getattr(self, "_closed", False):
-            return
-        self._closed = True
-
-        channel = getattr(self, "_channel", None)
-        if channel is None:
-            return
-
-        loop = getattr(self, "_loop", None)
-
-        if loop is not None and not loop.is_closed():
-            try:
-                loop.call_soon_threadsafe(channel.close)
-            except Exception:
-                # call_soon_threadsafe could throw if the loop is torn down
-                # after calling is_closed. This is safe to ignore, and we don't
-                # want to raise an exception from a destructor.
-                pass
+    def _get_metadata(self):
+        return {"authorization": f"Bearer {self._jwt}"}
 
     async def close(self) -> None:
         """Close the client."""
@@ -246,12 +229,16 @@ class TaskCommandRouterClient:
 
         self._closed = True
         self._channel.close()
+        if self._channel_finalizer.alive:
+            # skip the finalizer if we've closed the channel anyway
+            self._channel_finalizer.detach()
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
         """Start an exec'd command, properly retrying on transient errors."""
-        return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(self._stub.TaskExecStart, request)
-        )
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskExecStart, request)
+            )
 
     async def exec_stdio_read(
         self,
@@ -286,9 +273,10 @@ class TaskCommandRouterClient:
         else:
             raise ValueError(f"Invalid file descriptor: {file_descriptor}")
 
-        async with aclosing(self._stream_stdio(task_id, exec_id, sr_fd, deadline)) as stream:
-            async for item in stream:
-                yield item
+        with grpc_error_converter():
+            async with aclosing(self._stream_stdio(task_id, exec_id, sr_fd, deadline)) as stream:
+                async for item in stream:
+                    yield item
 
     async def exec_stdin_write(
         self, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool
@@ -306,9 +294,10 @@ class TaskCommandRouterClient:
               from the RPC itself.
         """
         request = sr_pb2.TaskExecStdinWriteRequest(task_id=task_id, exec_id=exec_id, offset=offset, data=data, eof=eof)
-        return await call_with_retries_on_transient_errors(
-            lambda: self._call_with_auth_retry(self._stub.TaskExecStdinWrite, request)
-        )
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskExecStdinWrite, request)
+            )
 
     async def exec_poll(
         self, task_id: str, exec_id: str, deadline: Optional[float] = None
@@ -332,15 +321,17 @@ class TaskCommandRouterClient:
         timeout = deadline - time.monotonic() if deadline is not None else None
         if timeout is not None and timeout <= 0:
             raise ExecTimeoutError(f"Deadline exceeded while polling for exec {exec_id}")
-        try:
-            return await asyncio.wait_for(
-                call_with_retries_on_transient_errors(
-                    lambda: self._call_with_auth_retry(self._stub.TaskExecPoll, request)
-                ),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            raise ExecTimeoutError(f"Deadline exceeded while polling for exec {exec_id}")
+
+        with grpc_error_converter():
+            try:
+                return await asyncio.wait_for(
+                    call_with_retries_on_transient_errors(
+                        lambda: self._call_with_auth_retry(self._stub.TaskExecPoll, request)
+                    ),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                raise ExecTimeoutError(f"Deadline exceeded while polling for exec {exec_id}")
 
     async def exec_wait(
         self,
@@ -363,28 +354,30 @@ class TaskCommandRouterClient:
         timeout = deadline - time.monotonic() if deadline is not None else None
         if timeout is not None and timeout <= 0:
             raise ExecTimeoutError(f"Deadline exceeded while waiting for exec {exec_id}")
-        try:
-            return await asyncio.wait_for(
-                call_with_retries_on_transient_errors(
-                    # We set a 60s timeout here to avoid waiting forever if there's an unanticipated hang
-                    # due to a networking issue. call_with_retries_on_transient_errors will retry if the
-                    # timeout is exceeded, so we'll retry every 60s until the command exits.
-                    #
-                    # Safety:
-                    # * If just the task shuts down, the task command router will return a NOT_FOUND error,
-                    #   and we'll stop retrying.
-                    # * If the task shut down AND the worker shut down, this could
-                    #   infinitely retry. For callers without an exec deadline, this
-                    #   could hang indefinitely.
-                    lambda: self._call_with_auth_retry(self._stub.TaskExecWait, request, timeout=60),
-                    base_delay_secs=1,  # Retry after 1s since total time is expected to be long.
-                    delay_factor=1,  # Fixed delay.
-                    max_retries=None,  # Retry forever.
-                ),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            raise ExecTimeoutError(f"Deadline exceeded while waiting for exec {exec_id}")
+
+        with grpc_error_converter():
+            try:
+                return await asyncio.wait_for(
+                    call_with_retries_on_transient_errors(
+                        # We set a 60s timeout here to avoid waiting forever if there's an unanticipated hang
+                        # due to a networking issue. call_with_retries_on_transient_errors will retry if the
+                        # timeout is exceeded, so we'll retry every 60s until the command exits.
+                        #
+                        # Safety:
+                        # * If just the task shuts down, the task command router will return a NOT_FOUND error,
+                        #   and we'll stop retrying.
+                        # * If the task shut down AND the worker shut down, this could
+                        #   infinitely retry. For callers without an exec deadline, this
+                        #   could hang indefinitely.
+                        lambda: self._call_with_auth_retry(self._stub.TaskExecWait, request, timeout=60),
+                        base_delay_secs=1,  # Retry after 1s since total time is expected to be long.
+                        delay_factor=1,  # Fixed delay.
+                        max_retries=None,  # Retry forever.
+                    ),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                raise ExecTimeoutError(f"Deadline exceeded while waiting for exec {exec_id}")
 
     async def _refresh_jwt(self) -> None:
         """Refresh JWT from the server and update internal state."""
@@ -414,12 +407,12 @@ class TaskCommandRouterClient:
 
     async def _call_with_auth_retry(self, func, *args, **kwargs):
         try:
-            return await func(*args, **kwargs)
+            return await func(*args, **kwargs, metadata=self._get_metadata())
         except GRPCError as exc:
             if exc.status == Status.UNAUTHENTICATED:
                 await self._refresh_jwt()
                 # Retry with the original arguments preserved
-                return await func(*args, **kwargs)
+                return await func(*args, **kwargs, metadata=self._get_metadata())
             raise
 
     async def _stream_stdio(
@@ -454,7 +447,7 @@ class TaskCommandRouterClient:
         while True:
             timeout = max(0, deadline - time.monotonic()) if deadline is not None else None
             try:
-                stream = self._stub.TaskExecStdioRead.open(timeout=timeout)
+                stream = self._stub.TaskExecStdioRead.open(timeout=timeout, metadata=self._get_metadata())
                 async with stream as s:
                     req = sr_pb2.TaskExecStdioReadRequest(
                         task_id=task_id,
@@ -515,3 +508,17 @@ class TaskCommandRouterClient:
                     await sleep_and_update_delay_and_num_retries_remaining(e)
                 else:
                     raise ConnectionError(str(e))
+
+    async def mount_image(self, request: sr_pb2.TaskMountDirectoryRequest):
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskMountDirectory, request)
+            )
+
+    async def snapshot_directory(
+        self, request: sr_pb2.TaskSnapshotDirectoryRequest
+    ) -> sr_pb2.TaskSnapshotDirectoryResponse:
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskSnapshotDirectory, request)
+            )

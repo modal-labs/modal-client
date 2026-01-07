@@ -7,6 +7,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
 
 from ._pty import get_pty_info
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
     import _typeshed
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 
 from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
@@ -35,7 +35,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .container_process import _ContainerProcess
-from .exception import AlreadyExistsError, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
+from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
 from .image import _Image
@@ -262,13 +262,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
-            try:
-                create_resp = await load_context.client.stub.SandboxCreate(create_req)
-            except GRPCError as exc:
-                if exc.status == Status.ALREADY_EXISTS:
-                    raise AlreadyExistsError(exc.message)
-                raise exc
-
+            create_resp = await load_context.client.stub.SandboxCreate(create_req)
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, None)
 
@@ -558,10 +552,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def get_tags(self) -> dict[str, str]:
         """Fetches any tags (key-value pairs) currently attached to this Sandbox from the server."""
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
-        try:
-            resp = await self._client.stub.SandboxTagsGet(req)
-        except GRPCError as exc:
-            raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+        resp = await self._client.stub.SandboxTagsGet(req)
 
         return {tag.tag_name: tag.tag_value for tag in resp.tags}
 
@@ -582,10 +573,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             sandbox_id=self.object_id,
             tags=tags_list,
         )
-        try:
-            await self._client.stub.SandboxTagsSet(req)
-        except GRPCError as exc:
-            raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+        await self._client.stub.SandboxTagsSet(req)
 
     async def snapshot_filesystem(self, timeout: int = 55) -> _Image:
         """Snapshot the filesystem of the Sandbox.
@@ -613,6 +601,49 @@ class _Sandbox(_Object, type_prefix="sb"):
         image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
 
         return image
+
+    async def _experimental_mount_image(self, path: Union[PurePosixPath, str], image: Optional[_Image]):
+        """Mount an Image at a path in the Sandbox filesystem."""
+
+        image_id = None
+
+        if image:
+            if not image._object_id:
+                # FIXME
+                raise InvalidError("Image has not been built.")
+            image_id = image._object_id
+        else:
+            image_id = ""  # empty string indicates mount an empty dir
+
+        task_id = await self._get_task_id()
+        if (command_router_client := await self._get_command_router_client(task_id)) is None:
+            raise InvalidError("Mounting directories requires direct Sandbox control - please contact Modal support.")
+
+        posix_path = PurePosixPath(path)
+        if not posix_path.is_absolute():
+            raise InvalidError(f"Mount path must be absolute; got: {posix_path}")
+        path_bytes = posix_path.as_posix().encode("utf8")
+
+        req = sr_pb2.TaskMountDirectoryRequest(task_id=task_id, path=path_bytes, image_id=image_id)
+        await command_router_client.mount_image(req)
+
+    async def _experimental_snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
+        """Snapshot local changes to a previously mounted Image, creating a new Image."""
+
+        task_id = await self._get_task_id()
+        if (command_router_client := await self._get_command_router_client(task_id)) is None:
+            raise InvalidError(
+                "Snapshotting directories requires direct Sandbox control - please contact Modal support."
+            )
+
+        posix_path = PurePosixPath(path)
+        if not posix_path.is_absolute():
+            raise InvalidError(f"Snapshot path must be absolute; got: {posix_path}")
+        path_bytes = posix_path.as_posix().encode("utf8")
+
+        req = sr_pb2.TaskSnapshotDirectoryRequest(task_id=task_id, path=path_bytes)
+        res = await command_router_client.snapshot_directory(req)
+        return _Image._new_hydrated(res.image_id, self._client, None)
 
     # Live handle methods
 
@@ -1026,12 +1057,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 sandbox_name_override=name,
                 sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING,
             )
-        try:
-            restore_resp: api_pb2.SandboxRestoreResponse = await client.stub.SandboxRestore(restore_req)
-        except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS:
-                raise AlreadyExistsError(exc.message)
-            raise exc
+        restore_resp: api_pb2.SandboxRestoreResponse = await client.stub.SandboxRestore(restore_req)
 
         sandbox = await _Sandbox.from_id(restore_resp.sandbox_id, client)
 
@@ -1172,10 +1198,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
             # Fetches a batch of sandboxes.
-            try:
-                resp = await client.stub.SandboxList(req)
-            except GRPCError as exc:
-                raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+            resp = await client.stub.SandboxList(req)
 
             if not resp.sandboxes:
                 return

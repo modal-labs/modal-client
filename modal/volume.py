@@ -8,6 +8,7 @@ import multiprocessing
 import os
 import platform
 import re
+import sys
 import time
 import typing
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
@@ -25,13 +26,12 @@ from typing import (
 )
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal.exception
 import modal_proto.api_pb2
-from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import AlreadyExistsError, ConflictError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
 from ._load_context import LoadContext
@@ -40,6 +40,7 @@ from ._object import (
     _get_environment_name,
     _Object,
     live_method,
+    live_method_contextmanager,
     live_method_gen,
 )
 from ._resolver import Resolver
@@ -173,10 +174,8 @@ class _VolumeManager:
         )
         try:
             await client.stub.VolumeGetOrCreate(req)
-        except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
-                raise AlreadyExistsError(exc.message)
-            else:
+        except AlreadyExistsError:
+            if not allow_existing:
                 raise
 
     @staticmethod
@@ -575,8 +574,8 @@ class _Volume(_Object, type_prefix="vo"):
                 if not resp.skip_reload:
                     # Reload changes on successful commit.
                     await self._do_reload(lock=False)
-            except GRPCError as exc:
-                raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
+            except (ConflictError, NotFoundError) as exc:
+                raise RuntimeError(str(exc))
 
     @live_method
     async def reload(self):
@@ -589,11 +588,12 @@ class _Volume(_Object, type_prefix="vo"):
         """
         try:
             await self._do_reload()
-        except GRPCError as exc:
+        except (NotFoundError, ConflictError) as exc:
             # TODO(staffan): This is brittle and janky, as it relies on specific paths and error messages which can
             #  change server-side at any time. Consider returning the open files directly in the error emitted from the
             #  server.
-            if exc.message == "there are open files preventing the operation":
+            message = str(exc)
+            if "there are open files preventing the operation" in message:
                 # Attempt to identify what open files are problematic and include information about the first (to avoid
                 # really verbose errors) open file in the error message to help troubleshooting.
                 # This is best-effort and not necessarily bulletproof, as the view of open files inside the container
@@ -601,9 +601,8 @@ class _Volume(_Object, type_prefix="vo"):
                 vol_path = f"/__modal/volumes/{self.object_id}"
                 annotation = _open_files_error_annotation(vol_path)
                 if annotation:
-                    raise RuntimeError(f"{exc.message}: {annotation}")
-
-            raise RuntimeError(exc.message) if exc.status in (Status.FAILED_PRECONDITION, Status.NOT_FOUND) else exc
+                    raise RuntimeError(f"{message}: {annotation}")
+            raise RuntimeError(message)
 
     @live_method_gen
     async def iterdir(self, path: str, *, recursive: bool = True) -> AsyncIterator[FileEntry]:
@@ -646,7 +645,7 @@ class _Volume(_Object, type_prefix="vo"):
         return [entry async for entry in self.iterdir(path, recursive=recursive)]
 
     @live_method_gen
-    async def read_file(self, path: str) -> AsyncIterator[bytes]:
+    async def read_file(self, path: str) -> AsyncGenerator[bytes, None]:
         """
         Read a file from the modal.Volume.
 
@@ -819,8 +818,9 @@ class _Volume(_Object, type_prefix="vo"):
             )
             await self._client.stub.VolumeCopyFiles2(request, retry=Retry(base_delay=1))
 
-    @live_method
-    async def batch_upload(self, force: bool = False) -> "_AbstractVolumeUploadContextManager":
+    @live_method_contextmanager
+    @asynccontextmanager
+    async def batch_upload(self, force: bool = False) -> AsyncGenerator["_AbstractVolumeUploadContextManager", None]:
         """
         Initiate a batched upload to a volume.
 
@@ -841,9 +841,15 @@ class _Volume(_Object, type_prefix="vo"):
         if self._read_only:
             raise InvalidError("Read-only Volume can not be written to")
 
-        return _AbstractVolumeUploadContextManager.resolve(
+        version_context_manager = _AbstractVolumeUploadContextManager.resolve(
             self._metadata.version, self.object_id, self._client, force=force
         )
+        await version_context_manager.__aenter__()
+        try:
+            yield version_context_manager
+        finally:
+            exc_type, exc_value, traceback = sys.exc_info()
+            await version_context_manager.__aexit__(exc_type, exc_value, traceback)
 
     @live_method
     async def _instance_delete(self):
@@ -978,8 +984,8 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
             )
             try:
                 await self._client.stub.VolumePutFiles(request, retry=Retry(base_delay=1))
-            except GRPCError as exc:
-                raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
+            except AlreadyExistsError as exc:
+                raise FileExistsError(str(exc))
 
     def put_file(
         self,
@@ -1226,8 +1232,8 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
 
             try:
                 response = await self._client.stub.VolumePutFiles2(request, retry=Retry(base_delay=1))
-            except GRPCError as exc:
-                raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
+            except AlreadyExistsError as exc:
+                raise FileExistsError(str(exc))
 
             if not response.missing_blocks:
                 break

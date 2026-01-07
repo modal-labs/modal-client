@@ -21,8 +21,9 @@ from typing import (
     get_args,
 )
 
+import typing_extensions
 from google.protobuf.message import Message
-from grpclib.exceptions import GRPCError, StreamTerminatedError
+from grpclib.exceptions import StreamTerminatedError
 from typing_extensions import Self
 
 from modal._serialization import serialize_data_format
@@ -32,20 +33,27 @@ from ._load_context import LoadContext
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import get_preferred_payload_format, serialize
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import deprecate_aio_usage, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
 )
 from ._utils.function_utils import FunctionInfo
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from ._utils.mount_utils import validate_only_modal_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
-from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError, VersionError
+from .exception import (
+    ExecutionError,
+    InternalError,
+    InvalidError,
+    NotFoundError,
+    RemoteError,
+    ServiceError,
+    VersionError,
+)
 from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_fn
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
@@ -56,6 +64,7 @@ from .volume import _Volume
 
 if typing.TYPE_CHECKING:
     import modal._functions
+    import modal.client
 
 # This is used for both type checking and runtime validation
 ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVIEW"]
@@ -374,9 +383,7 @@ async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.I
     while result_response is None:
         try:
             await join()
-        except (StreamTerminatedError, GRPCError) as exc:
-            if isinstance(exc, GRPCError) and exc.status not in RETRYABLE_GRPC_STATUS_CODES:
-                raise exc
+        except (ServiceError, InternalError, StreamTerminatedError) as exc:
             retry_count += 1
             if retry_count >= 3:
                 raise exc
@@ -861,21 +868,25 @@ class _Image(_Object, type_prefix="im"):
         img._added_python_source_set |= set(modules)
         return img
 
-    @staticmethod
-    async def from_id(image_id: str, client: Optional[_Client] = None) -> "_Image":
+    @deprecate_aio_usage((2025, 11, 14), "Image.from_id")
+    @classmethod
+    def from_id(cls, image_id: str, client: Optional["modal.client.Client"] = None) -> typing_extensions.Self:
         """Construct an Image from an id and look up the Image result.
 
         The ID of an Image object can be accessed using `.object_id`.
         """
+        _client = typing.cast(_Client, synchronizer._translate_in(client))
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             resp = await load_context.client.stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, load_context.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
-        obj = _Image._from_loader(_load, rep, load_context_overrides=LoadContext(client=client))
 
-        return obj
+        obj = _Image._from_loader(_load, rep, load_context_overrides=LoadContext(client=_client))
+        obj._object_id = image_id
+
+        return typing.cast(typing_extensions.Self, synchronizer._translate_out(obj))
 
     async def build(self, app: "modal.app._App") -> "_Image":
         """Eagerly build an image.
