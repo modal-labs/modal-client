@@ -151,9 +151,10 @@ class TaskCommandRouterClient:
         port = int(port_str) if port_str else 443
         ssl_context = ssl.create_default_context()
 
-        # Allow insecure TLS when explicitly enabled via config.
-        if config["task_command_router_insecure"]:
-            logger.warning("Using insecure TLS for task command router due to MODAL_TASK_COMMAND_ROUTER_INSECURE")
+        # Allow insecure TLS automatically when running against a local server.
+        # This is primarily for local dev/testing setups where the worker-side router uses a self-signed cert.
+        if "localhost" in config["server_url"]:
+            logger.warning("Using insecure TLS for task command router because MODAL_SERVER_URL contains localhost")
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
 
