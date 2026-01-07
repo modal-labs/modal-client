@@ -164,8 +164,8 @@ def test_token_env_var_warning(servicer, set_env_client, server_url_env, modal_c
         assert "MODAL_TOKEN_ID / MODAL_TOKEN_SECRET environment variables are" in res.stdout
 
 
-def test_token_identity(servicer, set_env_client):
-    res = run_cli_command(["token", "identity"])
+def test_token_info(servicer, set_env_client):
+    res = run_cli_command(["token", "info"])
     assert "ak-test123" in res.stdout
     assert "test-workspace" in res.stdout
     assert "test-user" in res.stdout
@@ -176,7 +176,7 @@ def test_token_identity_from_env(servicer, set_env_client, monkeypatch):
     monkeypatch.setenv("MODAL_TOKEN_ID", "ak-from-env")
     monkeypatch.setenv("MODAL_TOKEN_SECRET", "as-from-env")
 
-    res = run_cli_command(["token", "identity"])
+    res = run_cli_command(["token", "info"])
     # Check for key parts of the message (may have line wrapping, so check individual words)
     assert "Using" in res.stdout
     assert "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET" in res.stdout

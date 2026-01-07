@@ -65,10 +65,10 @@ async def new(
     await _new_token(profile=profile, activate=activate, verify=verify, source=source)
 
 
-@token_cli.command(name="identity")
+@token_cli.command(name="info")
 @synchronizer.create_blocking
-async def identity():
-    """Display identity information about the current token."""
+async def info():
+    """Display information about the token that is currently in use."""
     console = make_console()
 
     client = await _Client.from_env()
