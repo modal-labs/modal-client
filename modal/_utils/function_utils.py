@@ -90,7 +90,7 @@ def validate_http_server_config(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
         )
     if port == 0:
-        raise InvalidError("Port argument must be specified as a positive integer between 1 and 65535.")
+        raise InvalidError("Port argument must be specified as a positive integer between 1 and 65535. Suggestion:.")
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError("Port must be a positive integer between 1 and 65535.")
     if startup_timeout <= 0:
@@ -153,7 +153,6 @@ class FunctionInfo:
     function_name: str
     implementation_name: str
     user_cls: Optional[type[Any]]
-    user_server: Optional[type[Any]]
     module_name: Optional[str]
 
     _type: FunctionInfoType
@@ -180,11 +179,9 @@ class FunctionInfo:
         serialized: bool = False,
         name_override: Optional[str] = None,
         user_cls: Optional[type] = None,
-        user_server: Optional[type] = None,
     ):
         self.raw_f = f
         self.user_cls = user_cls
-        self.user_server = user_server
         if f is None and user_cls:
             # "service function" for running all methods of a class
             self.implementation_name = f"{user_cls.__name__}.*"
