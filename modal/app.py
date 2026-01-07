@@ -1233,7 +1233,7 @@ class _App:
         include_source: Optional[bool] = None,  # Whether to add source to container
         # Experimental options
         experimental_options: Optional[dict[str, Any]] = None,
-    ) -> Callable[[type], type]:
+    ) -> Callable[[Union[_Server, _PartialFunction]], _Server]:
         """
         Decorator to register a new Modal Server with this App.
 
@@ -1277,7 +1277,7 @@ class _App:
         if env:
             secrets_list.append(_Secret.from_dict(env))
 
-        def wrapper(wrapped_server: type) -> type:
+        def wrapper(wrapped_server: _Server) -> _Server:
             _Server.validate_wrapped_server_decorators(wrapped_server, enable_memory_snapshot)
 
             cluster_size = None
@@ -1291,7 +1291,7 @@ class _App:
 
             # Validate the server class
             _Server.validate_construction_mechanism(wrapped_server)
-            # Create the FunctionInfo for the server
+            # Create the FunctionInfo for the server, note we treat FunctionInfo as a class for servers
             info = FunctionInfo(None, serialized=serialized, user_cls=wrapped_server)
             # Create the service function
             service_function = _Function.from_local(

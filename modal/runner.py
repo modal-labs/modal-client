@@ -39,7 +39,6 @@ from .output import _get_output_manager, enable_output
 from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
 from .secret import _Secret
-from .server import _Server
 from .stream_type import StreamType
 
 if TYPE_CHECKING:
@@ -167,9 +166,8 @@ async def _create_all_objects(
             await resolver.load(obj, load_context, existing_object_id=existing_object_id)
             if _Function._is_id_type(obj.object_id):
                 running_app.function_ids[tag] = obj.object_id
-            elif isinstance(obj, _Server):
-                running_app.class_ids[tag] = obj.object_id
             elif _Cls._is_id_type(obj.object_id):
+                # Server classes are included in _Cls ids
                 running_app.class_ids[tag] = obj.object_id
             else:
                 raise RuntimeError(f"Unexpected object {obj.object_id}")
