@@ -2679,6 +2679,19 @@ message RateLimit {
   RateLimitInterval interval = 2;
 }
 
+message ResourceInfo {
+    message ResourceValue {
+      uint32 value = 1;
+      bool is_default = 2;
+    }
+    ResourceValue memory_mb = 1; // MiB
+    ResourceValue milli_cpu = 2; // milli CPU cores
+    string gpu_type = 3;
+    uint32 memory_mb_max = 4  ; // MiB
+    uint32 ephemeral_disk_mb = 5;  // MiB
+    uint32 milli_cpu_max = 6; // milli CPU cores
+}
+
 message Resources {
   uint32 memory_mb = 2; // MiB
   uint32 milli_cpu = 3; // milli CPU cores
@@ -2877,19 +2890,6 @@ message SandboxGetTunnelsResponse {
 
 message SandboxHandleMetadata {
   GenericResult result = 1;
-}
-
-message ResourceInfo {
-    message ResourceValue {
-      uint32 value = 1;
-      bool is_default = 2;
-    }
-    ResourceValue memory_mb = 1; // MiB
-    ResourceValue milli_cpu = 2; // milli CPU cores
-    string gpu_type = 3;
-    uint32 memory_mb_max = 4  ; // MiB
-    uint32 ephemeral_disk_mb = 5;  // MiB
-    uint32 milli_cpu_max = 6; // milli CPU cores
 }
 
 message SandboxInfo {
