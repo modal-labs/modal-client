@@ -1225,7 +1225,7 @@ class _App:
         timeout: int = 300,  # Maximum execution time in seconds
         startup_timeout: Optional[int] = None,  # Maximum startup time in seconds
         exit_grace_period: Optional[int] = None,  # Grace period for in-flight requests on shutdown
-        proxy_regions: Sequence[str] = ["us-east"],  # Regions to deploy proxy endpoints
+        proxy_regions: Optional[Sequence[str]] = None,  # Required: Regions to deploy proxy endpoints
         h2_enabled: bool = False,  # Enable HTTP/2
         cloud: Optional[str] = None,  # Cloud provider (aws, gcp, oci, auto)
         region: Optional[Union[str, Sequence[str]]] = None,  # Region(s) to run on

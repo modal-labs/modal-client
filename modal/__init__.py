@@ -76,6 +76,7 @@ __all__ = [
     "SandboxSnapshot",
     "SchedulerPlacement",
     "Secret",
+    "Server",
     "Tunnel",
     "Volume",
     "asgi_app",
@@ -95,7 +96,6 @@ __all__ = [
     "web_endpoint",
     "web_server",
     "wsgi_app",
-    "Server",
 ]
 
 

@@ -26,129 +26,6 @@ if typing.TYPE_CHECKING:
     import modal.app
 
 
-class _ServerObj:
-    """Runtime instance of a Server - handles lifecycle only.
-
-    Created when you "call" a Server: `MyServer()` returns a `ServerObj`.
-    """
-
-    _server: "_Server"
-    _has_entered: bool
-    _user_server_instance: Optional[Any] = None
-
-    def __init__(
-        self,
-        server: "_Server",
-        user_server: Optional[type],
-    ):
-        self._server = server
-        self._user_server = user_server
-        self._has_entered = False
-
-    def _cached_service_function(self) -> _Function:
-        """Returns the service function backing this server."""
-        assert self._server._user_server_function is not None
-        return self._server._user_server_function
-
-    def _cached_user_server_instance(self) -> Any:
-        """Get or construct the local server instance."""
-        if self._user_server_instance is None:
-            assert self._user_server is not None
-            self._user_server_instance = object.__new__(self._user_server)
-        return self._user_server_instance
-
-    def _enter(self):
-        """Run @enter lifecycle hooks (sync version)."""
-        assert self._user_server is not None
-        if self._has_entered:
-            return
-
-        user_server_instance = self._cached_user_server_instance()
-
-        # Support __enter__ context manager protocol
-        enter_method = getattr(user_server_instance, "__enter__", None)
-        if enter_method is not None:
-            enter_method()
-
-        # Run @modal.enter() decorated methods
-        for method_flag in (
-            _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
-            _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
-        ):
-            for enter_method in _find_callables_for_obj(user_server_instance, method_flag).values():
-                enter_method()
-
-        self._has_entered = True
-
-    @property
-    def _entered(self) -> bool:
-        return self._has_entered
-
-    @_entered.setter
-    def _entered(self, val: bool):
-        self._has_entered = val
-
-    @synchronizer.nowrap
-    async def _aenter(self):
-        """Run @enter lifecycle hooks (async version)."""
-        if self._entered:
-            return
-
-        user_server_instance = self._cached_user_server_instance()
-
-        aenter_method = getattr(user_server_instance, "__aenter__", None)
-        enter_method = getattr(user_server_instance, "__enter__", None)
-        if aenter_method is not None:
-            await aenter_method()
-        elif enter_method is not None:
-            enter_method()
-
-        # Run @modal.enter() decorated methods
-        for method_flag in (
-            _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
-            _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
-        ):
-            for enter_method in _find_callables_for_obj(user_server_instance, method_flag).values():
-                enter_method()
-
-        self._has_entered = True
-
-    async def update_autoscaler(
-        self,
-        *,
-        min_containers: Optional[int] = None,
-        max_containers: Optional[int] = None,
-        scaledown_window: Optional[int] = None,
-        buffer_containers: Optional[int] = None,
-    ) -> None:
-        """Override the current autoscaler behavior for this Server.
-
-        Unspecified parameters will retain their current value.
-
-        Examples:
-
-        ```python notest
-        MyServer = modal.Server.from_name("my-app", "MyServer")
-        server = MyServer()
-
-        # Always have at least 2 containers running
-        server.update_autoscaler(min_containers=2, buffer_containers=1)
-
-        # Limit to avoid spinning up more than 5 containers
-        server.update_autoscaler(max_containers=5)
-        ```
-        """
-        return await self._cached_service_function().update_autoscaler(
-            min_containers=min_containers,
-            max_containers=max_containers,
-            scaledown_window=scaledown_window,
-            buffer_containers=buffer_containers,
-        )
-
-
-ServerObj = synchronize_api(_ServerObj)
-
-
 class _Server(_Object):
     """Server runs an HTTP server started in an @enter method.
 
@@ -177,12 +54,17 @@ class _Server(_Object):
     _name: Optional[str] = None
     _user_server: Optional[type] = None
     _user_server_function: Optional[_Function] = None
+    # Runtime state for lifecycle management
+    _user_server_instance: Optional[Any] = None
+    _has_entered: bool = False
 
     def _initialize_from_empty(self):
         self._user_server = None
         self._user_server_function = None
         self._name = None
         self._app = None
+        self._user_server_instance = None
+        self._has_entered = False
 
     def _initialize_from_other(self, other: "_Server"):
         super()._initialize_from_other(other)
@@ -191,6 +73,8 @@ class _Server(_Object):
         self._user_server_function = other._user_server_function
         self._name = other._name
         self._load_context_overrides = other._load_context_overrides
+        self._user_server_instance = other._user_server_instance
+        self._has_entered = other._has_entered
 
     def _get_app(self) -> "modal.app._App":
         assert self._app is not None
@@ -217,10 +101,111 @@ class _Server(_Object):
         assert self._user_server_function is not None
         return self._user_server_function
 
+    # ============ Lifecycle Management ============
+
+    def _get_or_create_instance(self) -> Any:
+        """Get or construct the local server instance."""
+        if self._user_server_instance is None:
+            assert self._user_server is not None
+            self._user_server_instance = object.__new__(self._user_server)
+        return self._user_server_instance
+
+    def _enter(self):
+        """Run @enter lifecycle hooks (sync version)."""
+        assert self._user_server is not None
+        if self._has_entered:
+            return
+
+        user_server_instance = self._get_or_create_instance()
+
+        # Support __enter__ context manager protocol
+        enter_method = getattr(user_server_instance, "__enter__", None)
+        if enter_method is not None:
+            enter_method()
+
+        # Run @modal.enter() decorated methods
+        for method_flag in (
+            _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
+            _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
+        ):
+            for enter_method in _find_callables_for_obj(user_server_instance, method_flag).values():
+                enter_method()
+
+        self._has_entered = True
+
+    @synchronizer.nowrap
+    async def _aenter(self):
+        """Run @enter lifecycle hooks (async version)."""
+        if self._has_entered:
+            return
+
+        user_server_instance = self._get_or_create_instance()
+
+        aenter_method = getattr(user_server_instance, "__aenter__", None)
+        enter_method = getattr(user_server_instance, "__enter__", None)
+        if aenter_method is not None:
+            await aenter_method()
+        elif enter_method is not None:
+            enter_method()
+
+        # Run @modal.enter() decorated methods
+        for method_flag in (
+            _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
+            _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
+        ):
+            for enter_method in _find_callables_for_obj(user_server_instance, method_flag).values():
+                enter_method()
+
+        self._has_entered = True
+
+    @property
+    def _entered(self) -> bool:
+        return self._has_entered
+
+    @_entered.setter
+    def _entered(self, val: bool):
+        self._has_entered = val
+
+    # ============ Live Methods ============
+
     @live_method
     async def get_urls(self) -> Optional[list[str]]:
         """Get the URL(s) of this server."""
         return await self._get_service_function()._experimental_get_flash_urls()
+
+    @live_method
+    async def update_autoscaler(
+        self,
+        *,
+        min_containers: Optional[int] = None,
+        max_containers: Optional[int] = None,
+        scaledown_window: Optional[int] = None,
+        buffer_containers: Optional[int] = None,
+    ) -> None:
+        """Override the current autoscaler behavior for this Server.
+
+        Unspecified parameters will retain their current value.
+
+        Examples:
+
+        ```python notest
+        MyServer = modal.Server.from_name("my-app", "MyServer")
+
+        # Always have at least 2 containers running
+        MyServer.update_autoscaler(min_containers=2, buffer_containers=1)
+
+        # Limit to avoid spinning up more than 5 containers
+        MyServer.update_autoscaler(max_containers=5)
+        ```
+        """
+        return await self._get_service_function().update_autoscaler(
+            min_containers=min_containers,
+            max_containers=max_containers,
+            scaledown_window=scaledown_window,
+            buffer_containers=buffer_containers,
+        )
+
+    # ============ Hydration ============
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Servers don't have method metadata like Cls does
@@ -229,6 +214,8 @@ class _Server(_Object):
         # Just verify the service function is hydrated
         service_function = self._get_service_function()
         assert service_function.is_hydrated
+
+    # ============ Construction ============
 
     @staticmethod
     def validate_construction_mechanism(user_server: type):
@@ -305,6 +292,7 @@ class _Server(_Object):
         ```python
         MyServer = modal.Server.from_name("my-app", "MyServer")
         urls = MyServer.get_urls()
+        MyServer.update_autoscaler(min_containers=2)
         ```
         """
         warn_if_passing_namespace(namespace, "modal.Server.from_name")
@@ -357,11 +345,6 @@ class _Server(_Object):
         )
         server._name = name
         return server
-
-    @synchronizer.no_input_translation
-    def __call__(self) -> _ServerObj:
-        """Create a ServerObj instance for lifecycle management."""
-        return _ServerObj(self, self._user_server)
 
     def _is_local(self) -> bool:
         """Returns True if this Server has local source code available."""

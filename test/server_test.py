@@ -120,9 +120,9 @@ def test_server_requires_port():
 # ============ Lifecycle Tests ============
 
 
-def test_server_obj_enter_lifecycle():
-    """Test that _ServerObj correctly runs @modal.enter methods."""
-    from modal.server import _ServerObj
+def test_server_enter_lifecycle():
+    """Test that _Server correctly runs @modal.enter methods."""
+    from modal.server import _Server
 
     class TestServer:
         def __init__(self):
@@ -132,19 +132,24 @@ def test_server_obj_enter_lifecycle():
         def on_enter(self):
             self.entered = True
 
-    mock_server = type("MockServer", (), {"_user_server_function": None})()
-    server_obj = _ServerObj(mock_server, TestServer)
+    # Create a minimal server for testing lifecycle
+    server = _Server._from_loader(
+        lambda *args: None,
+        rep="TestServer",
+        deps=lambda: [],
+        load_context_overrides=None,
+    )
+    server._user_server = TestServer
+    server._user_server_instance = TestServer()
 
-    server_obj._user_server_instance = TestServer()
+    server._enter()
 
-    server_obj._enter()
-
-    assert server_obj._has_entered is True
+    assert server._has_entered is True
 
 
-def test_server_obj_enter_runs_once():
+def test_server_enter_runs_once():
     """Test that @modal.enter methods only run once."""
-    from modal.server import _ServerObj
+    from modal.server import _Server
 
     call_count = 0
 
@@ -154,13 +159,18 @@ def test_server_obj_enter_runs_once():
             nonlocal call_count
             call_count += 1
 
-    mock_server = type("MockServer", (), {"_user_server_function": None})()
-    server_obj = _ServerObj(mock_server, TestServer)
-    server_obj._user_server_instance = TestServer()
+    server = _Server._from_loader(
+        lambda *args: None,
+        rep="TestServer",
+        deps=lambda: [],
+        load_context_overrides=None,
+    )
+    server._user_server = TestServer
+    server._user_server_instance = TestServer()
 
-    server_obj._enter()
-    server_obj._enter()
-    server_obj._enter()
+    server._enter()
+    server._enter()
+    server._enter()
 
     assert call_count == 1
 
@@ -174,26 +184,6 @@ def test_server_from_name(client, servicer):
 
     # Should be lazy - not hydrated yet
     assert not my_server.is_hydrated
-
-
-# ============ ServerObj API Tests ============
-
-
-def test_server_callable_returns_server_obj():
-    """Test that calling a Server returns a ServerObj."""
-    from modal.server import _Server, _ServerObj
-
-    server = _Server._from_loader(
-        lambda *args: None,
-        rep="TestServer",
-        deps=lambda: [],
-        load_context_overrides=None,
-    )
-    server._user_server = type("TestClass", (), {})
-
-    obj = server()
-
-    assert isinstance(obj, _ServerObj)
 
 
 # ============ HTTP Config Tests ============
