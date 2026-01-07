@@ -2679,6 +2679,19 @@ message RateLimit {
   RateLimitInterval interval = 2;
 }
 
+message ResourceInfo {
+    message ResourceValue {
+      uint32 value = 1;
+      bool is_default = 2;
+    }
+    ResourceValue memory_mb = 1; // MiB
+    ResourceValue milli_cpu = 2; // milli CPU cores
+    string gpu_type = 3;
+    uint32 memory_mb_max = 4  ; // MiB
+    uint32 ephemeral_disk_mb = 5;  // MiB
+    uint32 milli_cpu_max = 6; // milli CPU cores
+}
+
 message Resources {
   uint32 memory_mb = 2; // MiB
   uint32 milli_cpu = 3; // milli CPU cores
@@ -2887,8 +2900,11 @@ message SandboxInfo {
   repeated SandboxTag tags = 6; // TODO: Not yet exposed in client library.
   string name = 7;
   string image_id = 8;
+  ResourceInfo resource_info = 9;
+  repeated string regions = 10;
   reserved 2; // modal.client.Sandbox definition
 }
+
 
 message SandboxListRequest {
   string app_id = 1;
