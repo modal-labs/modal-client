@@ -52,8 +52,8 @@ class _Server(_Object):
     ```
     """
 
-    # Set _type_prefix directly without registering in _prefix_to_type
-    # (to avoid overwriting _Cls which also uses "cs")
+    # Backend returns "cs-" IDs for servers (since it is defined on classes).
+    # Set directly to avoid overwriting _Cls's registration in _Object._prefix_to_type.
     _type_prefix = "cs"
 
     _app: Optional["modal.app._App"] = None
@@ -187,6 +187,7 @@ class _Server(_Object):
         max_containers: Optional[int] = None,
         scaledown_window: Optional[int] = None,
         buffer_containers: Optional[int] = None,
+        # target_concurrency: Optional[int] = None,
     ) -> None:
         """Override the current autoscaler behavior for this Server.
 
@@ -204,6 +205,8 @@ class _Server(_Object):
         MyServer.update_autoscaler(max_containers=5)
         ```
         """
+        # if target_concurrency is not None:
+        #     await self._get_service_function().update_autoscaler(target_concurrency=target_concurrency)
         return await self._get_service_function().update_autoscaler(
             min_containers=min_containers,
             max_containers=max_containers,
@@ -224,38 +227,39 @@ class _Server(_Object):
     # ============ Construction ============
 
     @staticmethod
-    def validate_wrapped_cls_decorators(wrapped_cls: type, enable_memory_snapshot: bool):
-        if not inspect.isclass(wrapped_cls):
+    def validate_wrapped_server_decorators(wrapped_server: type, enable_memory_snapshot: bool):
+        if not inspect.isclass(wrapped_server):
             raise TypeError("The @app.server() decorator must be used on a class.")
         if not _find_partial_methods_for_user_cls(
-            wrapped_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
-        ) and not _find_partial_methods_for_user_cls(wrapped_cls, _PartialFunctionFlags.ENTER_POST_SNAPSHOT):
-            raise InvalidError("Server class must have an @modal.enter() decorated method to setup the server.")
+            wrapped_server, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
+        ) and not _find_partial_methods_for_user_cls(wrapped_server, _PartialFunctionFlags.ENTER_POST_SNAPSHOT):
+            raise InvalidError("Server class must have an @modal.enter() to setup the server.")
 
         # Check for disallowed decorators
-        if _find_partial_methods_for_user_cls(wrapped_cls, _PartialFunctionFlags.CALLABLE_INTERFACE).values():
+        # @modal.method() not allowed
+        if _find_partial_methods_for_user_cls(wrapped_server, _PartialFunctionFlags.CALLABLE_INTERFACE).values():
             raise InvalidError(
-                f"Server class {wrapped_cls.__name__} cannot have @method() decorated functions. "
+                f"Server class {wrapped_server.__name__} cannot have @method() decorated functions. "
                 "Servers only expose HTTP endpoints."
             )
-
-        # Check for @enter with snap=True without enable_memory_snapshot
+        # @enter with snap=True without enable_memory_snapshot
         if (
-            _find_partial_methods_for_user_cls(wrapped_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+            _find_partial_methods_for_user_cls(wrapped_server, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
             and not enable_memory_snapshot
         ):
             raise InvalidError("Server must have `enable_memory_snapshot=True` to use `snap=True` on @enter methods.")
 
-        # Check for usage of concurrent decorators
-        if isinstance(wrapped_cls, _PartialFunction):
-            if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
+        if isinstance(wrapped_server, _PartialFunction):
+            # @modal.concurrent not allowed on server classes
+            if wrapped_server.flags & _PartialFunctionFlags.CONCURRENT:
                 raise InvalidError(
-                    f"Server class {wrapped_cls.__name__} cannot have @concurrent() decorated functions. "
+                    f"Server class {wrapped_server.__name__} cannot have @concurrent() decorated functions. "
                     "Please use `target_concurrency` param instead."
                 )
-            if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
+            # @modal.http_server not allowed on server classes
+            if wrapped_server.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
                 raise InvalidError(
-                    f"Server class {wrapped_cls.__name__} cannot have @modal.experimental.http_server() decorator. "
+                    f"Server class {wrapped_server.__name__} cannot have @modal.experimental.http_server() decorator. "
                     "Servers already expose HTTP endpoints."
                 )
 
@@ -275,6 +279,7 @@ class _Server(_Object):
         service_function: _Function,
     ) -> "_Server":
         """Create a Server from a local class definition."""
+        _Server.validate_wrapped_server_decorators(user_server, enable_memory_snapshot=False)
         # Validate - no custom constructors allowed
         _Server.validate_construction_mechanism(user_server)
 

@@ -1218,19 +1218,19 @@ class _App:
         buffer_containers: Optional[int] = None,  # Additional idle containers under active load
         scaledown_window: Optional[int] = None,  # Max idle time before scaling down (seconds)
         proxy: Optional[_Proxy] = None,  # Modal Proxy to use in front of this server
-        port: int = 8000,  # Required: The port the HTTP server listens on
-        timeout: int = 300,  # Maximum execution time in seconds
+        # server specific parameters
+        port: int = 0,  # Required parameter: Port the HTTP server listens on
         startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: Optional[int] = None,  # Grace period for in-flight requests on shutdown
         proxy_regions: Optional[Sequence[str]] = None,  # Required: Regions to deploy proxy endpoints
         h2_enabled: bool = False,  # Enable HTTP/2
+        target_concurrency: Optional[int] = None,  # Target concurrency for the server
         cloud: Optional[str] = None,  # Cloud provider (aws, gcp, oci, auto)
         region: Optional[Union[str, Sequence[str]]] = None,  # Region(s) to run on
         nonpreemptible: bool = False,  # Whether to use non-preemptible instances
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing
         i6pn: Optional[bool] = None,  # Enable IPv6 container networking
         include_source: Optional[bool] = None,  # Whether to add source to container
-        target_concurrency: Optional[int] = None,  # Target concurrency for the server
         # Experimental options
         experimental_options: Optional[dict[str, Any]] = None,
     ) -> Callable[[type], type]:
@@ -1244,74 +1244,55 @@ class _App:
         Example:
 
         ```python
-        @app.server(port=8000, gpu="A10G")
+        @app.server(port=8000, proxy_regions=["us-east"])
         class MyServer:
             @modal.enter()
             def start(self):
-                import threading
-                import uvicorn
-                from fastapi import FastAPI
+                self.proc = subprocess.Popen(["python3", "-m", "http.server", "8000"])
 
-                app = FastAPI()
-
-                @app.get("/")
-                def hello():
-                    return "Hello!"
-
-                # Must be non-blocking
-                threading.Thread(
-                    target=uvicorn.run,
-                    args=(app,),
-                    kwargs={"host": "0.0.0.0", "port": 8000},
-                    daemon=True
-                ).start()
+            @modal.exit()
+            def stop(self):
+                self.proc.terminate()
         ```
         """
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.server(port=8000)`.")
 
-        # Validate port
-        if not isinstance(port, int) or port < 1 or port > 65535:
-            raise InvalidError(f"Invalid port: {port}. Must be an integer between 1 and 65535.")
-
-        # Build secrets list
-        secrets_list: list[_Secret] = list(secrets) if secrets else []
-        if env:
-            secrets_list.append(_Secret.from_dict(env))
-
-        # Build HTTP config
+        # Validate HTTP server config
         validate_http_server_config(
             port=port, proxy_regions=proxy_regions, startup_timeout=startup_timeout, exit_grace_period=exit_grace_period
         )
+
         http_config = api_pb2.HTTPConfig(
             port=port,
             proxy_regions=proxy_regions,
             startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
             h2_enabled=h2_enabled,
-            # target_concurrency=target_concurrency,
+            target_concurrency=target_concurrency,
         )
 
-        def wrapper(wrapped_cls: type) -> type:
-            _Server.validate_wrapped_cls_decorators(wrapped_cls, enable_memory_snapshot)
+        # Build secrets list
+        secrets_list: list[_Secret] = list(secrets) if secrets else []
+        if env:
+            secrets_list.append(_Secret.from_dict(env))
+
+        def wrapper(wrapped_server: type) -> type:
+            _Server.validate_wrapped_server_decorators(wrapped_server, enable_memory_snapshot)
 
             cluster_size = None
             rdma = None
-            if isinstance(wrapped_cls, _PartialFunction):
-                if wrapped_cls.flags & _PartialFunctionFlags.CLUSTERED:
-                    cluster_size = wrapped_cls.params.cluster_size
-                    rdma = wrapped_cls.params.rdma
+            if isinstance(wrapped_server, _PartialFunction):
+                if wrapped_server.flags & _PartialFunctionFlags.CLUSTERED:
+                    cluster_size = wrapped_server.params.cluster_size
+                    rdma = wrapped_server.params.rdma
 
             local_state = self._local_state
 
             # Validate the server class
-            _Server.validate_construction_mechanism(wrapped_cls)
-
-            # TODO(claudia): check if startup_timeout < timeout
-
+            _Server.validate_construction_mechanism(wrapped_server)
             # Create the FunctionInfo for the server
-            info = FunctionInfo(None, serialized=serialized, user_cls=wrapped_cls)
-
+            info = FunctionInfo(None, serialized=serialized, user_cls=wrapped_server)
             # Create the service function
             service_function = _Function.from_local(
                 info,
@@ -1334,8 +1315,7 @@ class _App:
                 target_concurrent_inputs=None,  # No support for Server level concurrent inputs
                 batch_max_size=None,  # No support for Server level batching
                 batch_wait_ms=None,  # No support for Server level batching
-                timeout=timeout,
-                startup_timeout=startup_timeout or timeout,
+                startup_timeout=startup_timeout,
                 cloud=cloud,
                 region=region,
                 nonpreemptible=nonpreemptible,
@@ -1353,19 +1333,16 @@ class _App:
             self._add_function(service_function, is_web_endpoint=False)
 
             # Create the Server object
-            server: _Server = _Server.from_local(wrapped_cls, self, service_function)
+            server: _Server = _Server.from_local(wrapped_server, self, service_function)
 
             # Mark lifecycle methods as registered
             for flag in (~_PartialFunctionFlags.interface_flags(),):
-                for partial in _find_partial_methods_for_user_cls(wrapped_cls, flag).values():
+                for partial in _find_partial_methods_for_user_cls(wrapped_server, flag).values():
                     partial.registered = True
 
             # Register the server with the app
-            tag: str = wrapped_cls.__name__
+            tag: str = wrapped_server.__name__
             self._add_class(tag, server)
-
-            # Add to web_endpoints so the CLI shows the URL
-            local_state.web_endpoints.append(f"{wrapped_cls.__name__}.*")
 
             return server  # type: ignore
 
