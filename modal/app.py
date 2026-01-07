@@ -1237,7 +1237,6 @@ class _App:
         include_source: Optional[bool] = None,  # Whether to add source to container
         # Experimental options
         experimental_options: Optional[dict[str, Any]] = None,
-        _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
     ) -> Callable[[type], type]:
         """
@@ -1362,7 +1361,6 @@ class _App:
                 rdma=None,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
-                _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 restrict_output=False,
             )

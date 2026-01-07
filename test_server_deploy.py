@@ -6,7 +6,7 @@ import modal
 app = modal.App("test-server-deploy")
 
 
-@app.server(port=8000, min_containers=1)
+@app.server(port=8000, min_containers=1, block_network=True)
 class SimpleServer:
     @modal.enter()
     def start(self):
