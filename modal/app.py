@@ -427,6 +427,7 @@ class _App:
         name: Optional[str] = None,  # Name for the deployment, overriding any set on the App
         environment_name: Optional[str] = None,  # Environment to deploy the App in
         tag: str = "",  # Optional metadata that is specific to this deployment
+        force_latest_version: bool = False,
         client: Optional[_Client] = None,  # Alternate client to use for communication with the server
     ) -> typing_extensions.Self:
         """Deploy the App so that it is available persistently.
@@ -482,7 +483,14 @@ class _App:
                 "or\n"
                 'app = modal.App("some-name")'
             )
-        result = await _deploy_app(self, name=name, environment_name=environment_name, tag=tag, client=client)
+        result = await _deploy_app(
+            self,
+            name=name,
+            environment_name=environment_name,
+            tag=tag,
+            client=client,
+            force_latest_version=force_latest_version,
+        )
         self._app_id = result.app_id
         return self
 

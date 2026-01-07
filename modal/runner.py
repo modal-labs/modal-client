@@ -182,6 +182,7 @@ async def _publish_app(
     name: str = "",
     deployment_tag: str = "",  # Only relevant for deployments
     commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
+    force_latest_version: bool = False,
 ) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
     functions = app_local_state.functions
@@ -197,6 +198,7 @@ async def _publish_app(
         function_ids=running_app.function_ids,
         class_ids=running_app.class_ids,
         definition_ids=definition_ids,
+        force_latest_version=force_latest_version,
     )
 
     response = await client.stub.AppPublish(request)
@@ -480,6 +482,7 @@ async def _deploy_app(
     client: Optional[_Client] = None,
     environment_name: Optional[str] = None,
     tag: str = "",
+    force_latest_version: bool = False,
 ) -> DeployResult:
     """Internal function for deploying an App.
 
@@ -555,6 +558,7 @@ async def _deploy_app(
                 name=name,
                 deployment_tag=tag,
                 commit_info=commit_info,
+                force_latest_version=force_latest_version,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
