@@ -434,10 +434,7 @@ class _Mount(_Object, type_prefix="mo"):
         recursive: bool = True,
     ) -> "_Mount":
         return _Mount._new().add_local_dir(
-            local_path,
-            remote_path=remote_path,
-            condition=condition,
-            recursive=recursive,
+            local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
 
     def add_local_file(
@@ -460,10 +457,7 @@ class _Mount(_Object, type_prefix="mo"):
         )
 
     @staticmethod
-    def _from_local_file(
-        local_path: Union[str, Path],
-        remote_path: Union[str, PurePosixPath, None] = None,
-    ) -> "_Mount":
+    def _from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
         return _Mount._new().add_local_file(local_path, remote_path=remote_path)
 
     @staticmethod
@@ -472,9 +466,7 @@ class _Mount(_Object, type_prefix="mo"):
         return ", ".join(local_contents)
 
     @staticmethod
-    async def _get_files(
-        entries: list[_MountEntry],
-    ) -> AsyncGenerator[FileUploadSpec, None]:
+    async def _get_files(entries: list[_MountEntry]) -> AsyncGenerator[FileUploadSpec, None]:
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
             all_files = await loop.run_in_executor(exe, _select_files, entries)
@@ -487,10 +479,7 @@ class _Mount(_Object, type_prefix="mo"):
                 try:
                     logger.debug(f"Mounting {local_filename} as {remote_filename}")
                     file_spec = await loop.run_in_executor(
-                        exe,
-                        get_file_upload_spec_from_path,
-                        local_filename,
-                        remote_filename,
+                        exe, get_file_upload_spec_from_path, local_filename, remote_filename
                     )
                     yield file_spec
                 except FileNotFoundError as exc:
@@ -556,10 +545,7 @@ class _Mount(_Object, type_prefix="mo"):
                 async with blob_upload_concurrency:
                     with file_spec.source() as fp:
                         blob_id = await blob_upload_file(
-                            fp,
-                            load_context.client.stub,
-                            sha256_hex=file_spec.sha256_hex,
-                            md5_hex=file_spec.md5_hex,
+                            fp, load_context.client.stub, sha256_hex=file_spec.sha256_hex, md5_hex=file_spec.md5_hex
                         )
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
@@ -586,11 +572,7 @@ class _Mount(_Object, type_prefix="mo"):
         n_concurrent_uploads = 64
         files: list[api_pb2.MountFile] = []
         async with aclosing(
-            async_map(
-                _Mount._get_files(self._entries),
-                _put_file,
-                concurrency=n_concurrent_uploads,
-            )
+            async_map(_Mount._get_files(self._entries), _put_file, concurrency=n_concurrent_uploads)
         ) as stream:
             async for file in stream:
                 files.append(file)
@@ -667,12 +649,7 @@ class _Mount(_Object, type_prefix="mo"):
     ) -> "_Mount":
         """mdmd:hidden"""
 
-        async def _load(
-            provider: _Mount,
-            resolver: Resolver,
-            load_context,
-            existing_object_id: Optional[str],
-        ):
+        async def _load(provider: _Mount, resolver: Resolver, load_context, existing_object_id: Optional[str]):
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=name,
                 namespace=namespace,

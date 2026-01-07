@@ -25,9 +25,9 @@ def publish_python_standalone_mount(client, version: str) -> None:
 
     root_url = "https://github.com/astral-sh/python-build-standalone/releases/download"
     if full_version.endswith("t"):
-        # free-threaded python
-        # "cpython-3.14.2+20251209-x86_64_v3-unknown-linux-gnu-freethreaded+debug-full.tar.zst"
-        #         "cpython-3.14.2+20251209-x86_64_v3-unknown-linux-musl-freethreaded+noopt-full.tar.zst"
+        # free-threaded python does not have an install_only artifact:
+        # https://github.com/astral-sh/python-build-standalone/issues/536
+        # An only uses .tar.zst for compression.
         url = (
             f"{root_url}/{release}/cpython-{full_version[:-1]}+{release}-x86_64_v2-"
             "unknown-linux-gnu-freethreaded+pgo+lto-full.tar.zst"
@@ -44,6 +44,9 @@ def publish_python_standalone_mount(client, version: str) -> None:
         print(f"📦 Unpacking python-build-standalone for {version}-{libc}.")
         with tempfile.TemporaryDirectory() as d:
             if url.endswith("tar.zst"):
+                # The free-threaded standalone build does not have an install_only artifact. Here we
+                # decompress the file and only extract the files in the install directory and
+                # match the directory structure fron the `install_only` builds
                 PREFIX = "python/install"
                 decompressed_dir = os.path.join(d, "decompressed")
                 os.mkdir(decompressed_dir)
