@@ -2888,7 +2888,7 @@ message ResourceInfo {
     ResourceValue milli_cpu = 2; // milli CPU cores
     string gpu_type = 3;
     uint32 memory_mb_max = 4  ; // MiB
-    uint32 ephemeral_disk_mb = 5;  // MiBgit 
+    uint32 ephemeral_disk_mb = 5;  // MiB
     uint32 milli_cpu_max = 6; // milli CPU cores
 }
 
