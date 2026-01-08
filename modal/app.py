@@ -469,6 +469,8 @@ class _App:
 
         ```shell
         python app_module.py
+        ```
+
         """
         from .runner import _deploy_app  # Defer import of runner.py, which imports a lot from Rich
 
