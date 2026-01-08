@@ -45,7 +45,7 @@ def publish_python_standalone_mount(client, version: str) -> None:
             if url.endswith("tar.zst"):
                 # The free-threaded standalone build does not have an install_only artifact. Here we
                 # decompress the file and only extract the files in the install directory and
-                # match the directory structure fron the `install_only` builds
+                # match the directory structure from the `install_only` builds
                 PREFIX = "python/install"
                 urllib.request.urlretrieve(url, f"{d}/cpython.tar.zst")
                 with open(f"{d}/cpython.tar.zst", "rb") as f:
