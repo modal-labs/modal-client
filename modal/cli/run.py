@@ -453,6 +453,7 @@ def deploy(
     use_module_mode: bool = typer.Option(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
+    force_latest_version: bool = typer.Option(False, help="Force containers with an older version to shutdown"),
 ):
     """Deploy a Modal application.
 
@@ -478,7 +479,7 @@ def deploy(
         )
 
     with enable_output():
-        res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
+        res = deploy_app(app, name=name, environment_name=env or "", tag=tag, force_latest_version=force_latest_version)
 
     if stream_logs:
         stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url)

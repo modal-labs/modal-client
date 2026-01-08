@@ -427,7 +427,7 @@ class _App:
         name: Optional[str] = None,  # Name for the deployment, overriding any set on the App
         environment_name: Optional[str] = None,  # Environment to deploy the App in
         tag: str = "",  # Optional metadata that is specific to this deployment
-        force_latest_version: bool = False,
+        force_latest_version: bool = False,  # Force containers with an older version to shutdown
         client: Optional[_Client] = None,  # Alternate client to use for communication with the server
     ) -> typing_extensions.Self:
         """Deploy the App so that it is available persistently.
@@ -469,8 +469,6 @@ class _App:
 
         ```shell
         python app_module.py
-        ```
-
         """
         from .runner import _deploy_app  # Defer import of runner.py, which imports a lot from Rich
 
