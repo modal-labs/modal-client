@@ -104,7 +104,10 @@ See https://modal.com/docs/guide/modal-1-0-migration for more details.
 
 
 def _validate_python_version(
-    python_version: Optional[str], builder_version: ImageBuilderVersion, allow_micro_granularity: bool = True
+    python_version: Optional[str],
+    builder_version: ImageBuilderVersion,
+    allow_micro_granularity: bool = True,
+    allow_free_threading: bool = False,
 ) -> str:
     if python_version is None:
         # If Python version is unspecified, match the local version, up to the minor component
@@ -113,6 +116,8 @@ def _validate_python_version(
         raise InvalidError(f"Python version must be specified as a string, not {type(python_version).__name__}")
     elif not re.match(r"^3(?:\.\d{1,2}){1,2}(rc\d*)?t?$", python_version):
         raise InvalidError(f"Invalid Python version: {python_version!r}")
+    elif not allow_free_threading and python_version.endswith("t"):
+        raise InvalidError("Free threading Python is not supported")
     else:
         components = python_version.split(".")
         if len(components) == 3 and not allow_micro_granularity:
@@ -132,8 +137,12 @@ def _validate_python_version(
     return python_version
 
 
-def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
-    python_version = _validate_python_version(python_version, builder_version)
+def _dockerhub_python_version(
+    builder_version: ImageBuilderVersion, python_version: Optional[str] = None, allow_free_threading: bool = False
+) -> str:
+    python_version = _validate_python_version(
+        python_version, builder_version, allow_free_threading=allow_free_threading
+    )
     version_components = python_version.split(".")
 
     # When user specifies a full Python version, use that
@@ -1833,7 +1842,9 @@ class _Image(_Object, type_prefix="im"):
     ) -> list[str]:
         add_python_commands: list[str] = []
         if add_python:
-            _validate_python_version(add_python, builder_version, allow_micro_granularity=False)
+            _validate_python_version(
+                add_python, builder_version, allow_micro_granularity=False, allow_free_threading=True
+            )
             add_python_commands = [
                 "COPY /python/. /usr/local",
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
@@ -2162,7 +2173,7 @@ class _Image(_Object, type_prefix="im"):
             if version <= "2024.10":
                 requirements_path = _get_modal_requirements_path(version, python_version)
                 context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
-            full_python_version = _dockerhub_python_version(version, python_version)
+            full_python_version = _dockerhub_python_version(version, python_version, allow_free_threading=False)
             debian_codename = _base_image_config("debian", version)
 
             commands = [
