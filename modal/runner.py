@@ -256,6 +256,7 @@ async def _run_app(
     detach: bool = False,
     environment_name: Optional[str] = None,
     interactive: bool = False,
+    force_latest_version: bool = False,
 ) -> AsyncGenerator["modal.app._App", None]:
     """mdmd:hidden"""
     load_context = await app._root_load_context.reset().in_place_upgrade(
@@ -337,7 +338,9 @@ async def _run_app(
             await _create_all_objects(running_app, local_app_state, load_context)
 
             # Publish the app
-            await _publish_app(load_context.client, running_app, app_state, local_app_state)
+            await _publish_app(
+                load_context.client, running_app, app_state, local_app_state, force_latest_version=force_latest_version
+            )
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():

@@ -104,7 +104,7 @@ async def _serve_app(
 
     client = await _Client.from_env()
 
-    async with _run_app(app, client=client, environment_name=environment_name):
+    async with _run_app(app, client=client, environment_name=environment_name, force_latest_version=True):
         if _watcher is not None:
             watcher = _watcher  # Only used by tests
         else:

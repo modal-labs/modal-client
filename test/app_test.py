@@ -516,3 +516,14 @@ def test_app_set_tags(servicer, client):
 
     request = ctx.pop_request("AppSetTags")
     assert request.tags == tags
+
+
+def test_app_deploy_sends_force_latest_version(servicer, client):
+    app = App(include_source=False)
+    app.function()(square)
+
+    with servicer.intercept() as ctx:
+        app.deploy(name="my-app", force_latest_version=True, client=client)
+
+    request = ctx.pop_request("AppPublish")
+    assert request.force_latest_version
