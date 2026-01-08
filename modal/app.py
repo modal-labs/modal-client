@@ -813,7 +813,6 @@ class _App:
 
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
-                f.registered = True
 
                 # but we don't support @app.function wrapping a method.
                 if is_method_fn(f.raw_f.__qualname__):
@@ -1052,7 +1051,6 @@ class _App:
             # Check if the decorated object is a class
             http_config = None
             if isinstance(wrapped_cls, _PartialFunction):
-                wrapped_cls.registered = True
                 user_cls = wrapped_cls.user_cls
                 if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
                     http_config = wrapped_cls.params.http_config
@@ -1110,7 +1108,6 @@ class _App:
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
             for method in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CONCURRENT).values():
-                method.registered = True  # Avoid warning about not registering the method (hacky!)
                 raise InvalidError(
                     "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
                 )
@@ -1118,7 +1115,6 @@ class _App:
             for method in _find_partial_methods_for_user_cls(
                 user_cls, _PartialFunctionFlags.HTTP_WEB_INTERFACE
             ).values():
-                method.registered = True  # Avoid warning about not registering the method (hacky!)
                 raise InvalidError(
                     "The `@modal.http_server` decorator cannot be used on methods; decorate the class instead."
                 )
@@ -1127,7 +1123,6 @@ class _App:
                 for method in _find_partial_methods_for_user_cls(
                     user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE
                 ).values():
-                    method.registered = True  # Avoid warning about not registering the method (hacky!)
                     raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
@@ -1182,7 +1177,6 @@ class _App:
                 if partial_function.params.webhook_config is not None:
                     full_name = f"{user_cls.__name__}.{method_name}"
                     local_state.web_endpoints.append(full_name)
-                partial_function.registered = True
 
             tag: str = user_cls.__name__
             self._add_class(tag, cls)
