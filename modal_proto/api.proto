@@ -457,6 +457,7 @@ message AppPublishRequest {
   string client_version = 9;  // Unused by client, but used internally
   CommitInfo commit_info = 10;  // Git information for deployment tracking
   map<string, string> tags = 11;  // Additional metadata to attach to the App
+  bool force_latest_version = 12;
 }
 
 message AppPublishResponse {
