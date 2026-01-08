@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import os
 import shutil
 import tarfile
 import tempfile
@@ -48,8 +47,6 @@ def publish_python_standalone_mount(client, version: str) -> None:
                 # decompress the file and only extract the files in the install directory and
                 # match the directory structure fron the `install_only` builds
                 PREFIX = "python/install"
-                decompressed_dir = os.path.join(d, "decompressed")
-                os.mkdir(decompressed_dir)
                 urllib.request.urlretrieve(url, f"{d}/cpython.tar.zst")
                 with open(f"{d}/cpython.tar.zst", "rb") as f:
                     dctx = zstd.ZstdDecompressor()
@@ -57,7 +54,7 @@ def publish_python_standalone_mount(client, version: str) -> None:
                         with tarfile.open(fileobj=reader, mode="r|") as tar:
                             members = (member for member in tar if member.name.startswith(PREFIX))
                             for member in members:
-                                member.name = f"python/{member.name.removeprefix(PREFIX)}"
+                                member.name = f"python{member.name.removeprefix(PREFIX)}"
                                 tar.extract(member, path=d)
             else:
                 urllib.request.urlretrieve(url, f"{d}/cpython.tar.gz")
