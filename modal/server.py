@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2025
 import inspect
 import typing
-from collections.abc import Collection
 from typing import Any, Optional
 
 from google.protobuf.message import Message
@@ -52,43 +51,44 @@ class _Server(_Object):
     ```
     """
 
-    # Backend returns "cs-" IDs for servers (since it is defined on classes).
-    # Set directly to avoid overwriting _Cls's registration in _Object._prefix_to_type.
+    # Maps 1-1 w function
     _type_prefix = "cs"
 
     _app: Optional["modal.app._App"] = None
     _name: Optional[str] = None
-    _user_server: Optional[type] = None
-    _user_server_function: Optional[_Function] = None
-    # Runtime state for lifecycle management
-    _user_server_instance: Optional[Any] = None
+    # Raw user defined class
+    _user_cls: Optional[type] = None
+    # Instantiated raw user class
+    _user_cls_instance: Optional[Any] = None
+    # Function interface with server backend
+    _service_function: Optional[_Function] = None
     _has_entered: bool = False
 
     def _initialize_from_empty(self):
-        self._user_server = None
-        self._user_server_function = None
+        self._user_cls = None
         self._name = None
         self._app = None
-        self._user_server_instance = None
+        self._user_cls_instance = None
+        self._service_function = None
         self._has_entered = False
 
     def _initialize_from_other(self, other: "_Server"):
         super()._initialize_from_other(other)
         self._app = other._app
-        self._user_server = other._user_server
-        self._user_server_function = other._user_server_function
+        self._user_cls = other._user_cls
+        self._user_cls_instance = other._user_cls_instance
+        self._service_function = other._service_function
         self._name = other._name
         self._load_context_overrides = other._load_context_overrides
-        self._user_server_instance = other._user_server_instance
         self._has_entered = other._has_entered
 
     def _get_app(self) -> "modal.app._App":
         assert self._app is not None
         return self._app
 
-    def _get_user_server(self) -> type:
-        assert self._user_server is not None
-        return self._user_server
+    def _get_user_cls(self) -> type:
+        assert self._user_cls is not None
+        return self._user_cls
 
     def _get_name(self) -> str:
         assert self._name is not None
@@ -99,33 +99,29 @@ class _Server(_Object):
         """Return the name of the server class for compatibility with code expecting class-like objects."""
         return self._name or ""
 
-    def _get_method_names(self) -> Collection[str]:
-        """Servers don't have methods - return empty collection for compatibility."""
-        return []
-
     def _get_service_function(self) -> _Function:
-        assert self._user_server_function is not None
-        return self._user_server_function
+        assert self._service_function is not None
+        return self._service_function
 
     # ============ Lifecycle Management ============
 
-    def _get_or_create_instance(self) -> Any:
+    def _get_or_create_user_cls_instance(self) -> Any:
         """Get or construct the local server instance."""
-        if self._user_server_instance is None:
-            assert self._user_server is not None
-            self._user_server_instance = object.__new__(self._user_server)
-        return self._user_server_instance
+        if self._user_cls_instance is None:
+            assert self._user_cls is not None
+            self._user_cls_instance = object.__new__(self._user_cls)
+        return self._user_cls_instance
 
     def _enter(self):
         """Run @enter lifecycle hooks (sync version)."""
-        assert self._user_server is not None
+        assert self._user_cls is not None
         if self._has_entered:
             return
 
-        user_server_instance = self._get_or_create_instance()
+        user_cls_instance = self._get_or_create_user_cls_instance()
 
         # Support __enter__ context manager protocol
-        enter_method = getattr(user_server_instance, "__enter__", None)
+        enter_method = getattr(user_cls_instance, "__enter__", None)
         if enter_method is not None:
             enter_method()
 
@@ -134,7 +130,7 @@ class _Server(_Object):
             _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
             _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
         ):
-            for enter_method in _find_callables_for_obj(user_server_instance, method_flag).values():
+            for enter_method in _find_callables_for_obj(user_cls_instance, method_flag).values():
                 enter_method()
 
         self._has_entered = True
@@ -145,10 +141,10 @@ class _Server(_Object):
         if self._has_entered:
             return
 
-        user_server_instance = self._get_or_create_instance()
+        user_cls_instance = self._get_or_create_user_cls_instance()
 
-        aenter_method = getattr(user_server_instance, "__aenter__", None)
-        enter_method = getattr(user_server_instance, "__enter__", None)
+        aenter_method = getattr(user_cls_instance, "__aenter__", None)
+        enter_method = getattr(user_cls_instance, "__enter__", None)
         if aenter_method is not None:
             await aenter_method()
         elif enter_method is not None:
@@ -159,7 +155,7 @@ class _Server(_Object):
             _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
             _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
         ):
-            for enter_method in _find_callables_for_obj(user_server_instance, method_flag).values():
+            for enter_method in _find_callables_for_obj(user_cls_instance, method_flag).values():
                 enter_method()
 
         self._has_entered = True
@@ -196,8 +192,6 @@ class _Server(_Object):
         TODO(claudia): Add examples
 
         """
-        # if target_concurrency is not None:
-        #     await self._get_service_function().update_autoscaler(target_concurrency=target_concurrency)
         return await self._get_service_function().update_autoscaler(
             min_containers=min_containers,
             max_containers=max_containers,
@@ -208,75 +202,72 @@ class _Server(_Object):
     # ============ Hydration ============
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
-        # Servers don't have method metadata like Cls does
-        if metadata is not None:
-            assert isinstance(metadata, api_pb2.ClassHandleMetadata)
-        # Just verify the service function is hydrated
         service_function = self._get_service_function()
         assert service_function.is_hydrated
 
     # ============ Construction ============
 
     @staticmethod
-    def validate_wrapped_server_decorators(wrapped_server: type, enable_memory_snapshot: bool):
-        if not inspect.isclass(wrapped_server):
+    def validate_wrapped_user_cls_decorators(wrapped_user_cls: type, enable_memory_snapshot: bool):
+        # TODO(claudia): Add tests for this, ensure that parametrization is not allowed.
+        if not inspect.isclass(wrapped_user_cls):
             raise TypeError("The @app.server() decorator must be used on a class.")
         if not _find_partial_methods_for_user_cls(
-            wrapped_server, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
-        ) and not _find_partial_methods_for_user_cls(wrapped_server, _PartialFunctionFlags.ENTER_POST_SNAPSHOT):
+            wrapped_user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
+        ) and not _find_partial_methods_for_user_cls(wrapped_user_cls, _PartialFunctionFlags.ENTER_POST_SNAPSHOT):
             raise InvalidError("Server class must have an @modal.enter() to setup the server.")
 
         # Check for disallowed decorators
         # @modal.method() not allowed
-        if _find_partial_methods_for_user_cls(wrapped_server, _PartialFunctionFlags.CALLABLE_INTERFACE).values():
+        if _find_partial_methods_for_user_cls(wrapped_user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE).values():
             raise InvalidError(
-                f"Server class {wrapped_server.__name__} cannot have @method() decorated functions. "
+                f"Server class {wrapped_user_cls.__name__} cannot have @method() decorated functions. "
                 "Servers only expose HTTP endpoints."
             )
         # @enter with snap=True without enable_memory_snapshot
         if (
-            _find_partial_methods_for_user_cls(wrapped_server, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+            _find_partial_methods_for_user_cls(wrapped_user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
             and not enable_memory_snapshot
         ):
             raise InvalidError("Server must have `enable_memory_snapshot=True` to use `snap=True` on @enter methods.")
 
-        if isinstance(wrapped_server, _PartialFunction):
+        if isinstance(wrapped_user_cls, _PartialFunction):
             # @modal.concurrent not allowed on server classes
-            if wrapped_server.flags & _PartialFunctionFlags.CONCURRENT:
+            if wrapped_user_cls.flags & _PartialFunctionFlags.CONCURRENT:
                 raise InvalidError(
-                    f"Server class {wrapped_server.__name__} cannot have @concurrent() decorated functions. "
+                    f"Server class {wrapped_user_cls.__name__} cannot have @concurrent() decorated functions. "
                     "Please use `target_concurrency` param instead."
                 )
             # @modal.http_server not allowed on server classes
-            if wrapped_server.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
+            if wrapped_user_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
                 raise InvalidError(
-                    f"Server class {wrapped_server.__name__} cannot have @modal.experimental.http_server() decorator. "
+                    f"Server class {wrapped_user_cls.__name__} cannot have @modal.http_server() decorator. "
                     "Servers already expose HTTP endpoints."
                 )
 
     @staticmethod
-    def validate_construction_mechanism(user_server: type):
+    def validate_construction_mechanism(user_cls: type):
         """Validate that the server class doesn't have a custom constructor."""
-        if user_server.__init__ != object.__init__:
+        if user_cls.__init__ != object.__init__:
             raise InvalidError(
-                f"Server class {user_server.__name__} cannot have a custom __init__ method. "
+                f"Server class {user_cls.__name__} cannot have a custom __init__ method. "
                 "Use @modal.enter() for initialization logic instead."
             )
 
     @staticmethod
     def from_local(
-        user_server: type,
+        user_cls: type,
         app: "modal.app._App",
         service_function: _Function,
     ) -> "_Server":
         """Create a Server from a local class definition."""
-        _Server.validate_wrapped_server_decorators(user_server, enable_memory_snapshot=False)
+        _Server.validate_wrapped_user_cls_decorators(user_cls, enable_memory_snapshot=False)
         # Validate - no custom constructors allowed
-        _Server.validate_construction_mechanism(user_server)
+        _Server.validate_construction_mechanism(user_cls)
 
         # Mark lifecycle methods as registered to avoid warnings
         lifecycle_flags = ~_PartialFunctionFlags.interface_flags()
-        lifecycle_partials = _find_partial_methods_for_user_cls(user_server, lifecycle_flags)
+        lifecycle_partials = _find_partial_methods_for_user_cls(user_cls, lifecycle_flags)
         for partial_function in lifecycle_partials.values():
             partial_function.registered = True
 
@@ -298,7 +289,7 @@ class _Server(_Object):
             resp = await load_context.client.stub.ClassCreate(req)
             self._hydrate(resp.class_id, load_context.client, resp.handle_metadata)
 
-        rep = f"Server({user_server.__name__})"
+        rep = f"Server({user_cls.__name__})"
         server: _Server = _Server._from_loader(
             _load,
             rep,
@@ -306,9 +297,9 @@ class _Server(_Object):
             load_context_overrides=app._root_load_context,
         )
         server._app = app
-        server._user_server = user_server
-        server._user_server_function = service_function
-        server._name = user_server.__name__
+        server._user_cls = user_cls
+        server._service_function = service_function
+        server._name = user_cls.__name__
         return server
 
     @classmethod

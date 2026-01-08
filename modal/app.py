@@ -1280,22 +1280,22 @@ class _App:
         if env:
             secrets_list.append(_Secret.from_dict(env))
 
-        def wrapper(wrapped_server: _Server) -> _Server:
-            _Server.validate_wrapped_server_decorators(wrapped_server, enable_memory_snapshot)
+        def wrapper(wrapped_user_cls: _Server) -> _Server:
+            _Server.validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
 
             cluster_size = None
             rdma = None
-            if isinstance(wrapped_server, _PartialFunction):
-                if wrapped_server.flags & _PartialFunctionFlags.CLUSTERED:
-                    cluster_size = wrapped_server.params.cluster_size
-                    rdma = wrapped_server.params.rdma
+            if isinstance(wrapped_user_cls, _PartialFunction):
+                if wrapped_user_cls.flags & _PartialFunctionFlags.CLUSTERED:
+                    cluster_size = wrapped_user_cls.params.cluster_size
+                    rdma = wrapped_user_cls.params.rdma
 
             local_state = self._local_state
 
             # Validate the server class
-            _Server.validate_construction_mechanism(wrapped_server)
+            _Server.validate_construction_mechanism(wrapped_user_cls)
             # Create the FunctionInfo for the server, note we treat FunctionInfo as a class for servers
-            info = FunctionInfo(None, serialized=serialized, user_cls=wrapped_server)
+            info = FunctionInfo(None, serialized=serialized, user_cls=wrapped_user_cls)
             # Create the service function
             service_function = _Function.from_local(
                 info,
@@ -1336,15 +1336,15 @@ class _App:
             self._add_function(service_function, is_web_endpoint=False)
 
             # Create the Server object
-            server: _Server = _Server.from_local(wrapped_server, self, service_function)
+            server: _Server = _Server.from_local(wrapped_user_cls, self, service_function)
 
             # Mark lifecycle methods as registered
             for flag in (~_PartialFunctionFlags.interface_flags(),):
-                for partial in _find_partial_methods_for_user_cls(wrapped_server, flag).values():
+                for partial in _find_partial_methods_for_user_cls(wrapped_user_cls, flag).values():
                     partial.registered = True
 
             # Register the server with the app
-            tag: str = wrapped_server.__name__
+            tag: str = wrapped_user_cls.__name__
             self._add_class(tag, server)
 
             return server  # type: ignore
