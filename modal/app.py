@@ -1263,13 +1263,16 @@ class _App:
             port=port, proxy_regions=proxy_regions, startup_timeout=startup_timeout, exit_grace_period=exit_grace_period
         )
 
+        if target_concurrency is not None:
+            if not isinstance(target_concurrency, int) or target_concurrency < 1:
+                raise InvalidError("The `target_concurrency` argument must be a positive integer.")
+
         http_config = api_pb2.HTTPConfig(
             port=port,
             proxy_regions=proxy_regions,
             startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
             h2_enabled=h2_enabled,
-            target_concurrency=target_concurrency,
         )
 
         # Build secrets list
@@ -1312,7 +1315,7 @@ class _App:
                 proxy=proxy,
                 retries=None,  # No support for Server level retries
                 max_concurrent_inputs=None,  # No support for Server level concurrent inputs
-                target_concurrent_inputs=None,  # No support for Server level concurrent inputs
+                target_concurrent_inputs=target_concurrency,  # No support for Server level concurrent inputs
                 batch_max_size=None,  # No support for Server level batching
                 batch_wait_ms=None,  # No support for Server level batching
                 startup_timeout=startup_timeout,

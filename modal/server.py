@@ -187,23 +187,14 @@ class _Server(_Object):
         max_containers: Optional[int] = None,
         scaledown_window: Optional[int] = None,
         buffer_containers: Optional[int] = None,
-        # target_concurrency: Optional[int] = None,
     ) -> None:
         """Override the current autoscaler behavior for this Server.
 
         Unspecified parameters will retain their current value.
 
         Examples:
+        TODO(claudia): Add examples
 
-        ```python notest
-        MyServer = modal.Server.from_name("my-app", "MyServer")
-
-        # Always have at least 2 containers running
-        MyServer.update_autoscaler(min_containers=2, buffer_containers=1)
-
-        # Limit to avoid spinning up more than 5 containers
-        MyServer.update_autoscaler(max_containers=5)
-        ```
         """
         # if target_concurrency is not None:
         #     await self._get_service_function().update_autoscaler(target_concurrency=target_concurrency)
@@ -337,9 +328,7 @@ class _Server(_Object):
         time it is actually used.
 
         ```python
-        MyServer = modal.Server.from_name("my-app", "MyServer")
-        urls = MyServer.get_urls()
-        MyServer.update_autoscaler(min_containers=2)
+        TODO(claudia): Add examples
         ```
         """
         warn_if_passing_namespace(namespace, "modal.Server.from_name")

@@ -129,13 +129,13 @@ class _FlashManager:
                         retry=None,
                     )
                     self.num_failures = 0
-                    if first_registration:
+                    if first_registration and (time.monotonic() - start_time < self.startup_timeout):
                         logger.warning(
                             f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
                         )
                         first_registration = False
                 else:
-                    if first_registration and (time.monotonic() - start_time < self.startup_timeout):
+                    if first_registration:
                         continue
                     else:
                         logger.error(
@@ -144,7 +144,6 @@ class _FlashManager:
                         )
                         self.num_failures += 1
                         await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
-
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
