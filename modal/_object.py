@@ -137,7 +137,7 @@ class _Object:
         self._is_hydrated = True
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
-        # override this is subclasses that need additional data (other than an object_id) for a functioning Handle
+        # override this if it's a subclass that needs additional data (other than an object_id) for a functioning Handle
         pass
 
     def _get_metadata(self) -> Optional[Message]:
