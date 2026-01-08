@@ -94,12 +94,12 @@ async def info():
     elif resp.HasField("service_user_identity"):
         service = resp.service_user_identity
         console.print(f"[bold]Service User:[/bold] {service.service_user_name} [dim]({service.service_user_id})[/dim]")
-        if service.created_by:
+        if service.HasField("created_by"):
             console.print(
                 f"[bold]Created By:[/bold] {service.created_by.username} [dim]({service.created_by.user_id})[/dim]"
             )
 
-    if resp.HasField("created_at"):
+    if resp.HasField("created_at") and resp.created_at.seconds > 0:
         created_dt = datetime.fromtimestamp(resp.created_at.seconds).astimezone()
         console.print(f"[bold]Created at:[/bold] [white]{created_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}[/white]")
 
