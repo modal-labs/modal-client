@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2025
 #
 # This module provides a simple interface for creating GPU memory snapshots,
 # providing a convenient interface to `cuda-checkpoint` [1]. This is intended
@@ -21,11 +21,9 @@ CUDA_CHECKPOINT_PATH: str = config.get("cuda_checkpoint_path")
 # Maximum total duration for each individual `cuda-checkpoint` invocation.
 CUDA_CHECKPOINT_TIMEOUT: float = 3 * 60.0
 
-# Number of retries for each individual `cuda-checkpoint --toggle` invocation.
-CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES: int = 3
-
-# Maximum total duration for an entire toggle operation.
-CUDA_CHECKPOINT_TOGGLE_TIMEOUT: float = CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES * CUDA_CHECKPOINT_TIMEOUT
+# Default timeout for the lock operation in milliseconds.
+# The lock action waits internally for CUDA work to complete.
+CUDA_CHECKPOINT_LOCK_TIMEOUT_MS: int = int(CUDA_CHECKPOINT_TIMEOUT * 1000)
 
 
 class CudaCheckpointState(Enum):
@@ -53,77 +51,96 @@ class CudaCheckpointProcess:
     pid: int
     state: CudaCheckpointState
 
-    def toggle(self, target_state: CudaCheckpointState, skip_first_refresh: bool = False) -> None:
-        """Toggle CUDA checkpoint state for current process, moving GPU memory to the
-        CPU and back depending on the current process state when called.
+    def checkpoint(self) -> None:
+        """Checkpoint CUDA state for this process using direct action commands.
+
+        This moves GPU memory to CPU by executing:
+        1. lock (with timeout) - blocks CUDA API calls and waits for pending work
+        2. checkpoint - copies device memory to host and releases GPU resources
+
+        The process transitions: RUNNING -> LOCKED -> CHECKPOINTED
         """
-        logger.debug(f"PID: {self.pid} Toggling CUDA checkpoint state to {target_state.value}")
+        logger.debug(f"PID: {self.pid} Starting checkpoint operation")
+        start_time = time.perf_counter()
 
-        start_time = time.monotonic()
-        retry_count = 0
-        max_retries = CUDA_CHECKPOINT_TOGGLE_NUM_RETRIES
-
-        attempts = 0
-        while self._should_continue_toggle(
-            target_state, start_time, refresh=not (skip_first_refresh and attempts == 0)
-        ):
-            attempts += 1
-            try:
-                self._execute_toggle_command()
-                # Use exponential backoff for retries
-                sleep_time = min(0.1 * (2**retry_count), 1.0)
-                time.sleep(sleep_time)
-                retry_count = 0
-            except CudaCheckpointException as e:
-                retry_count += 1
-                if retry_count >= max_retries:
-                    raise CudaCheckpointException(
-                        f"PID: {self.pid} Failed to toggle state after {max_retries} retries: {e}"
-                    )
-                logger.debug(f"PID: {self.pid} Retry {retry_count}/{max_retries} after error: {e}")
-                time.sleep(0.5 * retry_count)
-
-        logger.debug(f"PID: {self.pid} Target state {target_state.value} reached")
-
-    def _should_continue_toggle(
-        self, target_state: CudaCheckpointState, start_time: float, refresh: bool = True
-    ) -> bool:
-        """Check if toggle operation should continue based on current state and timeout."""
-        if refresh:
-            self.refresh_state()
-
-        if self.state == target_state:
-            return False
-
-        if self.state == CudaCheckpointState.FAILED:
-            raise CudaCheckpointException(f"PID: {self.pid} CUDA process state is {self.state}")
-
-        elapsed = time.monotonic() - start_time
-        if elapsed >= CUDA_CHECKPOINT_TOGGLE_TIMEOUT:
-            raise CudaCheckpointException(
-                f"PID: {self.pid} Timeout after {elapsed:.2f}s waiting for state {target_state.value}. "
-                f"Current state: {self.state}"
-            )
-
-        return True
-
-    def _execute_toggle_command(self) -> None:
-        """Execute the cuda-checkpoint toggle command."""
         try:
-            _ = subprocess.run(
-                [CUDA_CHECKPOINT_PATH, "--toggle", "--pid", str(self.pid)],
+            # Step 1: Lock the process (waits for CUDA work to complete)
+            self._execute_action("lock", timeout_ms=CUDA_CHECKPOINT_LOCK_TIMEOUT_MS)
+
+            # Step 2: Checkpoint (copy GPU memory to CPU)
+            self._execute_action("checkpoint")
+
+            self.state = CudaCheckpointState.CHECKPOINTED
+            elapsed = time.perf_counter() - start_time
+            logger.debug(f"PID: {self.pid} Checkpoint completed in {elapsed:.3f}s")
+
+        except CudaCheckpointException:
+            # Try to get current state for better error reporting
+            try:
+                self.refresh_state()
+            except CudaCheckpointException:
+                pass
+            raise
+
+    def restore(self) -> None:
+        """Restore CUDA state for this process using direct action commands.
+
+        This moves memory back from CPU to GPU by executing:
+        1. restore - re-acquires GPUs and copies memory back to device
+        2. unlock - allows CUDA API calls to proceed
+
+        The process transitions: CHECKPOINTED -> LOCKED -> RUNNING
+        """
+        logger.debug(f"PID: {self.pid} Starting restore operation")
+        start_time = time.perf_counter()
+
+        try:
+            # Step 1: Restore (copy CPU memory back to GPU)
+            self._execute_action("restore")
+
+            # Step 2: Unlock (allow CUDA API calls)
+            self._execute_action("unlock")
+
+            self.state = CudaCheckpointState.RUNNING
+            elapsed = time.perf_counter() - start_time
+            logger.debug(f"PID: {self.pid} Restore completed in {elapsed:.3f}s")
+
+        except CudaCheckpointException:
+            # Try to get current state for better error reporting
+            try:
+                self.refresh_state()
+            except CudaCheckpointException:
+                pass
+            raise
+
+    def _execute_action(self, action: str, timeout_ms: Optional[int] = None) -> None:
+        """Execute a cuda-checkpoint action command."""
+        cmd = [CUDA_CHECKPOINT_PATH, "--action", action, "--pid", str(self.pid)]
+
+        if timeout_ms is not None:
+            if action != "lock":
+                raise ValueError(f"timeout_ms is only valid for 'lock' action, not '{action}'")
+            cmd.extend(["--timeout", str(timeout_ms)])
+
+        try:
+            result = subprocess.run(
+                cmd,
                 check=True,
                 capture_output=True,
                 text=True,
                 timeout=CUDA_CHECKPOINT_TIMEOUT,
             )
-            logger.debug(f"PID: {self.pid} Successfully toggled CUDA checkpoint state")
+            logger.debug(f"PID: {self.pid} Action '{action}' succeeded")
+            if result.stdout.strip():
+                logger.debug(f"PID: {self.pid} stdout: {result.stdout.strip()}")
+
         except subprocess.CalledProcessError as e:
-            error_msg = f"PID: {self.pid} Failed to toggle CUDA checkpoint state: {e.stderr}"
+            error_msg = f"PID: {self.pid} Action '{action}' failed: {e.stderr.strip()}"
             logger.debug(error_msg)
             raise CudaCheckpointException(error_msg)
+
         except subprocess.TimeoutExpired:
-            error_msg = f"PID: {self.pid} Toggle command timed out"
+            error_msg = f"PID: {self.pid} Action '{action}' timed out after {CUDA_CHECKPOINT_TIMEOUT}s"
             logger.debug(error_msg)
             raise CudaCheckpointException(error_msg)
 
@@ -231,22 +248,18 @@ class CudaCheckpointSession:
 
         # Validate all states first
         for proc in self.cuda_processes:
-            proc.refresh_state()  # Refresh state before validation
+            proc.refresh_state()
             if proc.state != CudaCheckpointState.RUNNING:
                 raise CudaCheckpointException(
                     f"PID {proc.pid}: CUDA session not in {CudaCheckpointState.RUNNING.value} state. "
                     f"Current state: {proc.state.value}"
                 )
 
-        # Moving state from GPU to CPU can take several seconds per CUDA session.
-        # Make a parallel call per CUDA session.
+        # Checkpoint all processes in parallel
         start = time.perf_counter()
 
-        def checkpoint_impl(proc: CudaCheckpointProcess) -> None:
-            proc.toggle(CudaCheckpointState.CHECKPOINTED)
-
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(checkpoint_impl, proc) for proc in self.cuda_processes]
+            futures = [executor.submit(proc.checkpoint) for proc in self.cuda_processes]
 
             # Wait for all futures and collect any exceptions
             exceptions = []
@@ -270,14 +283,11 @@ class CudaCheckpointSession:
             logger.debug("No CUDA sessions to restore.")
             return
 
-        # See checkpoint() for rationale about parallelism.
+        # Restore all processes in parallel
         start = time.perf_counter()
 
-        def restore_process(proc: CudaCheckpointProcess) -> None:
-            proc.toggle(CudaCheckpointState.RUNNING, skip_first_refresh=True)
-
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(restore_process, proc) for proc in self.cuda_processes]
+            futures = [executor.submit(proc.restore) for proc in self.cuda_processes]
 
             # Wait for all futures and collect any exceptions
             exceptions = []
