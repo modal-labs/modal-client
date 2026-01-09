@@ -125,7 +125,7 @@ def _validate_python_version(
                 "Python version must be specified as 'major.minor' for this interface;"
                 f" micro-level specification ({python_version!r}) is not valid."
             )
-        suffix = "t" if python_version.endswith("t") else ""
+        suffix = "t" if len(components) == 3 and python_version.endswith("t") else ""
         series_version = f"{components[0]}.{components[1]}{suffix}"
 
     supported_series = SUPPORTED_PYTHON_SERIES[builder_version]
