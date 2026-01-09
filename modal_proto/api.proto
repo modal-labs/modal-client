@@ -2894,6 +2894,7 @@ message SandboxHandleMetadata {
 
 message SandboxInfo {
   string id = 1;
+  reserved 2; // modal.client.Sandbox definition
   double created_at = 3;
   TaskInfo task_info = 4;
   string app_id = 5;
@@ -2902,7 +2903,6 @@ message SandboxInfo {
   string image_id = 8;
   ResourceInfo resource_info = 9;
   repeated string regions = 10;
-  reserved 2; // modal.client.Sandbox definition
 }
 
 
@@ -3113,6 +3113,12 @@ message SecretListResponse {
 message SecretMetadata {
   string name = 1;
   CreationInfo creation_info = 2;
+}
+
+message ServiceUserIdentity {
+  string service_user_id = 1;
+  string service_user_name = 2;
+  UserIdentity created_by = 3;
 }
 
 // SharedVolume in the backend corresponds to NetworkFileSystem in the current API
@@ -3336,6 +3342,23 @@ message TokenFlowWaitResponse {
   string workspace_username = 4;
 }
 
+message TokenInfoGetRequest {}
+
+message TokenInfoGetResponse {
+  string token_id = 1;
+  string workspace_id = 2;
+  string workspace_name = 3;
+
+  oneof identity {
+    UserIdentity user_identity = 4;
+    ServiceUserIdentity service_user_identity = 5;
+  }
+
+  // Token metadata
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp expires_at = 7;
+}
+
 message TunnelData {
   string host = 1;
   uint32 port = 2;
@@ -3373,6 +3396,11 @@ message UploadUrlList {
 message UserActionInfo {
   string user_id = 1;
   double timestamp = 2;
+}
+
+message UserIdentity {
+  string user_id = 1;
+  string username = 2;
 }
 
 message VolumeCommitRequest {
@@ -3858,6 +3886,7 @@ service ModalClient {
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
   rpc TokenFlowWait(TokenFlowWaitRequest) returns (TokenFlowWaitResponse);
+  rpc TokenInfoGet(TokenInfoGetRequest) returns (TokenInfoGetResponse);
 
   // Tunnels
   rpc TunnelStart(TunnelStartRequest) returns (TunnelStartResponse);
