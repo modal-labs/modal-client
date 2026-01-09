@@ -72,8 +72,8 @@ async def info():
     console = make_console()
 
     client = await _Client.from_env()
-    req = api_pb2.TokenIdentityGetRequest()
-    resp = await client.stub.TokenIdentityGet(req)
+    req = api_pb2.TokenInfoGetRequest()
+    resp = await client.stub.TokenInfoGet(req)
 
     env_vars = []
     if os.environ.get("MODAL_TOKEN_ID"):

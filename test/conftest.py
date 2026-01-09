@@ -2164,10 +2164,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
         )
 
-    async def TokenIdentityGet(self, stream):
+    async def TokenInfoGet(self, stream):
         await stream.recv_message()
         await stream.send_message(
-            api_pb2.TokenIdentityGetResponse(
+            api_pb2.TokenInfoGetResponse(
                 token_id="ak-test123",
                 workspace_id="ws-test456",
                 workspace_name="test-workspace",
