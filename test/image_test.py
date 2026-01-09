@@ -122,6 +122,16 @@ def test_python_version_validation(builder_version):
     with pytest.raises(InvalidError, match="Free threading Python is not supported"):
         _validate_python_version("3.14t", builder_version, allow_free_threading=False)
 
+    with pytest.raises(InvalidError, match="Free threading Python is not supported"):
+        _validate_python_version("3.14.2t", builder_version, allow_free_threading=False, allow_micro_granularity=True)
+
+
+def test_python_version_validation_free_threading():
+    assert (
+        _validate_python_version("3.14.2t", "PREVIEW", allow_free_threading=True, allow_micro_granularity=True)
+        == "3.14.2t"
+    )
+
 
 def test_dockerhub_python_version(builder_version):
     assert _dockerhub_python_version(builder_version, "3.10.1") == "3.10.1"
