@@ -75,7 +75,7 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVI
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
     "PREVIEW": ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"],
-    "2025.06": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "2025.06": ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"],
     "2024.10": ["3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.10", "3.11", "3.12"],
     "2023.12": ["3.10", "3.11", "3.12"],
@@ -1763,7 +1763,7 @@ class _Image(_Object, type_prefix="im"):
         """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            validated_python_version = _validate_python_version(python_version, version)
+            validated_python_version = _validate_python_version(python_version, version, allow_free_threading=False)
             micromamba_version = _base_image_config("micromamba", version)
             tag = f"mambaorg/micromamba:{micromamba_version}"
             setup_commands = [
