@@ -50,15 +50,14 @@ def publish_python_standalone_mount(client, version: str) -> None:
                 urllib.request.urlretrieve(url, f"{d}/cpython.tar.zst")
                 with open(f"{d}/cpython.tar.zst", "rb") as f:
                     dctx = zstd.ZstdDecompressor()
-                    with dctx.stream_reader(f) as reader:
-                        with tarfile.open(fileobj=reader, mode="r|") as tar:
-                            members = (member for member in tar if member.name.startswith(PREFIX))
-                            for member in members:
-                                member.name = f"python{member.name.removeprefix(PREFIX)}"
-                                tar.extract(member, path=d)
+                    with dctx.stream_reader(f) as reader, tarfile.open(fileobj=reader, mode="r|") as tar:
+                        members = (member for member in tar if member.name.startswith(PREFIX))
+                        for member in members:
+                            member.name = f"python{member.name.removeprefix(PREFIX)}"
+                            tar.extract(member, path=d, filter="fully_trusted")
             else:
                 urllib.request.urlretrieve(url, f"{d}/cpython.tar.gz")
-                shutil.unpack_archive(f"{d}/cpython.tar.gz", d)
+                shutil.unpack_archive(f"{d}/cpython.tar.gz", d, filter="fully_trusted")
 
             print(f"🌐 Downloaded and unpacked archive to {d}.")
             python_mount = Mount._from_local_dir(f"{d}/python")
