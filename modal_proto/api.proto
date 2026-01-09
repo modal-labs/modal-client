@@ -2110,6 +2110,7 @@ message HTTPConfig {
   uint32 startup_timeout = 3;
   uint32 exit_grace_period = 4;
   bool h2_enabled = 5;
+  uint32 target_concurrency = 6;
 }
 
 message Image {
