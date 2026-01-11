@@ -182,6 +182,7 @@ async def _publish_app(
     name: str = "",
     deployment_tag: str = "",  # Only relevant for deployments
     commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
+    force_latest_version: bool = False,
 ) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
     functions = app_local_state.functions
@@ -197,6 +198,7 @@ async def _publish_app(
         function_ids=running_app.function_ids,
         class_ids=running_app.class_ids,
         definition_ids=definition_ids,
+        force_latest_version=force_latest_version,
     )
 
     response = await client.stub.AppPublish(request)
@@ -254,6 +256,7 @@ async def _run_app(
     detach: bool = False,
     environment_name: Optional[str] = None,
     interactive: bool = False,
+    force_latest_version: bool = False,
 ) -> AsyncGenerator["modal.app._App", None]:
     """mdmd:hidden"""
     load_context = await app._root_load_context.reset().in_place_upgrade(
@@ -335,7 +338,9 @@ async def _run_app(
             await _create_all_objects(running_app, local_app_state, load_context)
 
             # Publish the app
-            await _publish_app(load_context.client, running_app, app_state, local_app_state)
+            await _publish_app(
+                load_context.client, running_app, app_state, local_app_state, force_latest_version=force_latest_version
+            )
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
@@ -480,6 +485,7 @@ async def _deploy_app(
     client: Optional[_Client] = None,
     environment_name: Optional[str] = None,
     tag: str = "",
+    force_latest_version: bool = False,
 ) -> DeployResult:
     """Internal function for deploying an App.
 
@@ -555,6 +561,7 @@ async def _deploy_app(
                 name=name,
                 deployment_tag=tag,
                 commit_info=commit_info,
+                force_latest_version=force_latest_version,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.

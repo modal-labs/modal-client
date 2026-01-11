@@ -26,6 +26,16 @@ def test_run_app(servicer, client):
     ctx.pop_request("AppClientDisconnect")
 
 
+def test_run_app_force_latest_version(servicer, client):
+    dummy_app = modal.App()
+    with servicer.intercept() as ctx:
+        with run_app(dummy_app, client=client, force_latest_version=True):
+            pass
+
+    req = ctx.pop_request("AppPublish")
+    assert req.force_latest_version
+
+
 def test_run_app_shutdown_cleanliness(servicer, client, caplog):
     dummy_app = modal.App()
 
