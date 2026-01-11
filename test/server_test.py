@@ -134,14 +134,9 @@ def test_server_enter_lifecycle():
             self.entered = True
 
     # Create a minimal server for testing lifecycle
-    server = _Server._from_loader(
-        lambda *args: None,
-        rep="TestServer",
-        deps=lambda: [],
-        load_context_overrides=None,
-    )
-    server._user_server = TestServer
-    server._user_server_instance = TestServer()
+    server = _Server()
+    server._user_cls = TestServer
+    server._user_cls_instance = TestServer()
 
     server._enter()
 
@@ -160,14 +155,9 @@ def test_server_enter_runs_once():
             nonlocal call_count
             call_count += 1
 
-    server = _Server._from_loader(
-        lambda *args: None,
-        rep="TestServer",
-        deps=lambda: [],
-        load_context_overrides=None,
-    )
-    server._user_server = TestServer
-    server._user_server_instance = TestServer()
+    server = _Server()
+    server._user_cls = TestServer
+    server._user_cls_instance = TestServer()
 
     server._enter()
     server._enter()
@@ -184,7 +174,7 @@ def test_server_from_name(client, servicer):
     my_server = Server.from_name("my-app", "MyServer")
 
     # Should be lazy - not hydrated yet
-    assert not my_server.is_hydrated
+    assert not my_server._get_service_function().is_hydrated
 
 
 # ============ HTTP Config Tests ============

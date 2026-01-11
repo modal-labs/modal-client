@@ -1233,7 +1233,7 @@ class _App:
         include_source: Optional[bool] = None,  # Whether to add source to container
         # Experimental options
         experimental_options: Optional[dict[str, Any]] = None,
-    ) -> Callable[[Union[_Server, _PartialFunction]], _Server]:
+    ) -> Callable[[Union[CLS_T, _PartialFunction]], _Server]:
         """
         Decorator to register a new Modal Server with this App.
 
@@ -1280,7 +1280,7 @@ class _App:
         if env:
             secrets_list.append(_Secret.from_dict(env))
 
-        def wrapper(wrapped_user_cls: _Server) -> _Server:
+        def wrapper(wrapped_user_cls: Union[CLS_T, _PartialFunction]) -> _Server:
             _Server.validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
 
             cluster_size = None
