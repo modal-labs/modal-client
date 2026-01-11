@@ -13,6 +13,7 @@ from typing import Any, Callable, Generator, Optional, Sequence
 import modal._object
 import modal._runtime.container_io_manager
 import modal.cls
+import modal.server
 from modal import Function
 from modal._functions import _Function
 from modal._partial_function import (
@@ -229,6 +230,46 @@ def construct_webhook_callable(
         return asgi.asgi_app_wrapper(asgi.web_server_proxy(host, port), container_io_manager)
     else:
         raise InvalidError(f"Unrecognized web endpoint type {webhook_config.type}")
+
+
+# def construct_webhook_callable(
+#     user_defined_callable: Callable,
+#     webhook_config: api_pb2.WebhookConfig,
+#     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+# ):
+#     # Note: aiohttp is a significant dependency of the `asgi` module, so we import it locally
+#     from modal._runtime import asgi
+
+#     # For webhooks, the user function is used to construct an asgi app:
+#     if webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
+#         # Function returns an asgi_app, which we can use as a callable.
+#         return asgi.asgi_app_wrapper(user_defined_callable(), container_io_manager)
+
+#     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
+#         # Function returns an wsgi_app, which we can use as a callable
+#         return asgi.wsgi_app_wrapper(user_defined_callable(), container_io_manager)
+
+#     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
+#         # Function is a webhook without an ASGI app. Create one for it.
+#         return asgi.asgi_app_wrapper(
+#             asgi.magic_fastapi_app(user_defined_callable, webhook_config.method, webhook_config.web_endpoint_docs),
+#             container_io_manager,
+#         )
+
+#     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_WEB_SERVER:
+#         # Function spawns an HTTP web server listening at a port.
+#         user_defined_callable()
+
+#         # We intentionally try to connect to the external interface instead of the loopback
+#         # interface here so users are forced to expose the server. This allows us to potentially
+#         # change the implementation to use an external bridge in the future.
+#         host = asgi.get_ip_address(b"eth0")
+#         port = webhook_config.web_server_port
+#         startup_timeout = webhook_config.web_server_startup_timeout
+#         asgi.wait_for_web_server(host, port, timeout=startup_timeout)
+#         return asgi.asgi_app_wrapper(asgi.web_server_proxy(host, port), container_io_manager)
+#     else:
+#         raise InvalidError(f"Unrecognized web endpoint type {webhook_config.type}")
 
 
 def maybe_snapshot(
@@ -543,6 +584,18 @@ def import_class_service(
         class_service_function: _Function = _cls._get_class_service_function()
         service_deps = class_service_function.deps(only_explicit_mounts=True)
         active_app = class_service_function.app
+        method_partials: dict[str, "modal._partial_function._PartialFunction"] = _cls._get_partial_functions()
+        user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
+    elif isinstance(cls_or_user_cls, modal.server.Server):
+        # Server object from @app.server() decorator
+        _server = typing.cast(modal.server._Server, synchronizer._translate_in(cls_or_user_cls))
+        server_service_function: _Function = _server._get_service_function()
+        service_deps = server_service_function.deps(only_explicit_mounts=True)
+        active_app = _server._get_app()
+        # Servers have no methods, just lifecycle hooks
+        method_partials = {}
+        # Get or create instance of the user's server class
+        user_cls_instance = _server._get_or_create_user_cls_instance()
     else:
         # Undecorated user class (serialized or local scope-decoration).
         service_deps = None  # we can't infer service deps for now
@@ -558,9 +611,8 @@ def import_class_service(
         # hydration of the class itself - just sets the id and triggers some side effects
         # that transfers metadata from the service function to the class. TODO: cleanup!
         _cls._hydrate(class_id, _client, api_pb2.ClassHandleMetadata())
-
-    method_partials: dict[str, "modal._partial_function._PartialFunction"] = _cls._get_partial_functions()
-    user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
+        method_partials = _cls._get_partial_functions()
+        user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
 
     return ImportedClass(
         user_cls_instance=user_cls_instance,

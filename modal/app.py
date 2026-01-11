@@ -35,7 +35,13 @@ from ._utils.deprecation import (
     deprecation_warning,
     warn_on_renamed_autoscaler_settings,
 )
-from ._utils.function_utils import FunctionInfo, is_flash_object, is_global_object, is_method_fn
+from ._utils.function_utils import (
+    FunctionInfo,
+    is_flash_object,
+    is_global_object,
+    is_method_fn,
+    validate_http_server_config,
+)
 from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name, check_tag_dict
 from .client import _Client
@@ -54,6 +60,7 @@ from .running_app import RunningApp
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
+from .server import _Server
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
@@ -1181,6 +1188,160 @@ class _App:
             tag: str = user_cls.__name__
             self._add_class(tag, cls)
             return cls  # type: ignore  # a _Cls instance "simulates" being the user provided class
+
+        return wrapper
+
+    @warn_on_renamed_autoscaler_settings
+    def server(
+        self,
+        _warn_parentheses_missing=None,  # mdmd:line-hidden
+        *,
+        image: Optional[_Image] = None,  # The image to run as the container for the server
+        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
+        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
+        gpu: Union[GPU_T, list[GPU_T]] = None,  # GPU request; either a single GPU type or a list of types
+        serialized: bool = False,  # Whether to send the server class over using cloudpickle.
+        volumes: dict[
+            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
+        cpu: Optional[Union[float, tuple[float, float]]] = None,  # CPU cores to request
+        memory: Optional[Union[int, tuple[int, int]]] = None,  # Memory in MiB to request
+        ephemeral_disk: Optional[int] = None,  # Ephemeral disk size in MiB
+        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm
+        max_containers: Optional[int] = None,  # Maximum number of containers
+        buffer_containers: Optional[int] = None,  # Additional idle containers under active load
+        scaledown_window: Optional[int] = None,  # Max idle time before scaling down (seconds)
+        proxy: Optional[_Proxy] = None,  # Modal Proxy to use in front of this server
+        # server specific parameters
+        port: int = 8000,  # Port the HTTP server listens on
+        startup_timeout: int = 30,  # Maximum startup time in seconds
+        exit_grace_period: Optional[int] = None,  # Grace period for in-flight requests on shutdown
+        proxy_regions: Optional[Sequence[str]] = None,  # Required: Regions to deploy proxy endpoints
+        h2_enabled: bool = False,  # Enable HTTP/2
+        target_concurrency: Optional[int] = None,  # Target concurrency for the server
+        cloud: Optional[str] = None,  # Cloud provider (aws, gcp, oci, auto)
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region(s) to run on
+        nonpreemptible: bool = False,  # Whether to use non-preemptible instances
+        enable_memory_snapshot: bool = False,  # Enable memory checkpointing
+        i6pn: Optional[bool] = None,  # Enable IPv6 container networking
+        include_source: Optional[bool] = None,  # Whether to add source to container
+        # Experimental options
+        experimental_options: Optional[dict[str, Any]] = None,
+    ) -> Callable[[Union[CLS_T, _PartialFunction]], _Server]:
+        """
+        Decorator to register a new Modal Server with this App.
+
+        Servers run HTTP servers that are started in an `@enter` method.
+        Unlike `@app.cls()`, servers only expose HTTP endpoints and do not
+        support `.remote()` method calls.
+
+        Example:
+
+        ```python
+        @app.server(port=8000, proxy_regions=["us-east"])
+        class MyServer:
+            @modal.enter()
+            def start(self):
+                self.proc = subprocess.Popen(["python3", "-m", "http.server", "8000"])
+
+            @modal.exit()
+            def stop(self):
+                self.proc.terminate()
+        ```
+        """
+        if _warn_parentheses_missing:
+            raise InvalidError("Did you forget parentheses? Suggestion: `@app.server(port=8000)`.")
+
+        # Validate HTTP server config
+        validate_http_server_config(
+            port=port, proxy_regions=proxy_regions, startup_timeout=startup_timeout, exit_grace_period=exit_grace_period
+        )
+
+        if target_concurrency is not None:
+            if not isinstance(target_concurrency, int) or target_concurrency < 1:
+                raise InvalidError("The `target_concurrency` argument must be a positive integer.")
+
+        http_config = api_pb2.HTTPConfig(
+            port=port,
+            proxy_regions=proxy_regions,
+            startup_timeout=startup_timeout,
+            exit_grace_period=exit_grace_period,
+            h2_enabled=h2_enabled,
+        )
+
+        # Build secrets list
+        secrets_list: list[_Secret] = list(secrets) if secrets else []
+        if env:
+            secrets_list.append(_Secret.from_dict(env))
+
+        def wrapper(wrapped_user_cls: Union[CLS_T, _PartialFunction]) -> _Server:
+            _Server.validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
+
+            cluster_size = None
+            rdma = None
+            if isinstance(wrapped_user_cls, _PartialFunction):
+                if wrapped_user_cls.flags & _PartialFunctionFlags.CLUSTERED:
+                    cluster_size = wrapped_user_cls.params.cluster_size
+                    rdma = wrapped_user_cls.params.rdma
+
+            local_state = self._local_state
+
+            # Validate the server class
+            _Server.validate_construction_mechanism(wrapped_user_cls)
+            # Create the FunctionInfo for the server, note we treat FunctionInfo as a class for servers
+            info = FunctionInfo(None, serialized=serialized, user_cls=wrapped_user_cls)
+            # Create the service function
+            service_function = _Function.from_local(
+                info,
+                app=self,
+                image=image or self._get_default_image(),
+                secrets=[*local_state.secrets_default, *secrets_list],
+                gpu=gpu,
+                network_file_systems={},  # Deprecated: No support for Server level network file systems
+                volumes={**local_state.volumes_default, **volumes},
+                cpu=cpu,
+                memory=memory,
+                ephemeral_disk=ephemeral_disk,
+                min_containers=min_containers,
+                max_containers=max_containers,
+                buffer_containers=buffer_containers,
+                scaledown_window=scaledown_window,
+                proxy=proxy,
+                retries=None,  # No support for Server level retries
+                max_concurrent_inputs=None,  # No support for Server level concurrent inputs
+                target_concurrent_inputs=target_concurrency,  # No support for Server level concurrent inputs
+                batch_max_size=None,  # No support for Server level batching
+                batch_wait_ms=None,  # No support for Server level batching
+                startup_timeout=startup_timeout,
+                cloud=cloud,
+                region=region,
+                nonpreemptible=nonpreemptible,
+                enable_memory_snapshot=enable_memory_snapshot,
+                single_use_containers=False,  # No support for single-use server containers
+                http_config=http_config,
+                i6pn_enabled=i6pn or (cluster_size is not None),
+                cluster_size=cluster_size,
+                rdma=rdma,
+                include_source=include_source if include_source is not None else local_state.include_source_default,
+                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                restrict_output=False,
+            )
+
+            self._add_function(service_function, is_web_endpoint=False)
+
+            # Create the Server object
+            server: _Server = _Server.from_local(wrapped_user_cls, self, service_function)
+
+            # Mark lifecycle methods as registered
+            for flag in (~_PartialFunctionFlags.interface_flags(),):
+                for partial in _find_partial_methods_for_user_cls(wrapped_user_cls, flag).values():
+                    partial.registered = True
+
+            # Note: We don't register the Server in classes - only the service_function is registered.
+            # The Server is just a local wrapper. The container side identifies servers via
+            # function_def.is_class and the function_ids.
+
+            return server  # type: ignore
 
         return wrapper
 

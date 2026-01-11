@@ -79,6 +79,26 @@ def is_flash_object(experimental_options: Optional[dict[str, Any]], http_config:
     return bool(experimental_options and experimental_options.get("flash", False)) or http_config is not None
 
 
+def validate_http_server_config(
+    port: Optional[int] = None,
+    proxy_regions: list[str] = [],  # The regions to proxy the HTTP server to.
+    startup_timeout: int = 30,  # Maximum number of seconds to wait for the HTTP server to start.
+    exit_grace_period: Optional[int] = None,  # The time to wait for the HTTP server to exit gracefully.
+):
+    if port is None:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
+        )
+    if not isinstance(port, int) or port < 1 or port > 65535:
+        raise InvalidError("Port must be a positive integer between 1 and 65535.")
+    if startup_timeout <= 0:
+        raise InvalidError("The `startup_timeout` argument must be positive.")
+    if exit_grace_period is not None and exit_grace_period < 0:
+        raise InvalidError("The `exit_grace_period` argument must be non-negative.")
+    if not proxy_regions:
+        raise InvalidError("The `proxy_regions` argument must be non-empty.")
+
+
 def is_method_fn(object_qual_name: str):
     # methods have names like Cls.foo.
     if "<locals>" in object_qual_name:
@@ -160,7 +180,6 @@ class FunctionInfo:
     ):
         self.raw_f = f
         self.user_cls = user_cls
-
         if f is None and user_cls:
             # "service function" for running all methods of a class
             self.implementation_name = f"{user_cls.__name__}.*"
@@ -247,24 +266,25 @@ class FunctionInfo:
             logger.debug(f"Serializing function for class service function {self.user_cls.__qualname__} as empty")
             return b""
 
-    def get_cls_vars(self) -> dict[str, Any]:
-        if self.user_cls is not None:
-            cls_vars = {
-                attr: getattr(self.user_cls, attr)
-                for attr in dir(self.user_cls)
-                if not callable(getattr(self.user_cls, attr)) and not attr.startswith("__")
+    @staticmethod
+    def get_class_vars(class_obj) -> dict[str, Any]:
+        if class_obj is not None:
+            class_vars = {
+                attr: getattr(class_obj, attr)
+                for attr in dir(class_obj)
+                if not callable(getattr(class_obj, attr)) and not attr.startswith("__")
             }
-            return cls_vars
+            return class_vars
         return {}
 
-    def get_cls_var_attrs(self) -> dict[str, Any]:
+    @staticmethod
+    def get_class_var_attrs(class_obj, func: Optional[Callable[..., Any]]) -> dict[str, Any]:
         import dis
         import opcode
 
         LOAD_ATTR = opcode.opmap["LOAD_ATTR"]
         STORE_ATTR = opcode.opmap["STORE_ATTR"]
 
-        func = self.raw_f
         code = func.__code__
         f_attr_ops = set()
         for instr in dis.get_instructions(code):
@@ -273,9 +293,15 @@ class FunctionInfo:
             elif instr.opcode == STORE_ATTR:
                 f_attr_ops.add(instr.argval)
 
-        cls_vars = self.get_cls_vars()
+        cls_vars = FunctionInfo.get_class_vars(class_obj)
         f_attrs = {k: cls_vars[k] for k in cls_vars if k in f_attr_ops}
         return f_attrs
+
+    def get_cls_vars(self) -> dict[str, Any]:
+        return FunctionInfo.get_class_vars(self.user_cls)
+
+    def get_cls_var_attrs(self) -> dict[str, Any]:
+        return FunctionInfo.get_class_var_attrs(self.user_cls, self.raw_f)
 
     def get_globals(self) -> dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
