@@ -5,29 +5,25 @@ from typing import Any, Optional
 
 from google.protobuf.message import Message
 
-from modal_proto import api_pb2
-
 from ._functions import _Function
 from ._load_context import LoadContext
-from ._object import _Object, live_method
+from ._object import live_method
 from ._partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
-from ._resolver import Resolver
-from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.deprecation import warn_if_passing_namespace
 from .client import _Client
-from .exception import InvalidError, NotFoundError
+from .exception import InvalidError
 
 if typing.TYPE_CHECKING:
     import modal.app
 
 
-class _Server(_Object):
+class _Server():
     """Server runs an HTTP server started in an @enter method.
 
     See [lifecycle hooks](https://modal.com/docs/guide/lifecycle-functions) for more information.
@@ -73,7 +69,6 @@ class _Server(_Object):
         self._has_entered = False
 
     def _initialize_from_other(self, other: "_Server"):
-        super()._initialize_from_other(other)
         self._app = other._app
         self._user_cls = other._user_cls
         self._user_cls_instance = other._user_cls_instance
@@ -271,31 +266,7 @@ class _Server(_Object):
         for partial_function in lifecycle_partials.values():
             partial_function.registered = True
 
-        def _deps() -> list[_Function]:
-            return [service_function]
-
-        async def _load(
-            self: "_Server",
-            resolver: Resolver,
-            load_context: LoadContext,
-            existing_object_id: Optional[str],
-        ):
-            assert load_context.app_id is not None
-            req = api_pb2.ClassCreateRequest(
-                app_id=load_context.app_id,
-                existing_class_id=existing_object_id or "",
-                only_class_function=True,
-            )
-            resp = await load_context.client.stub.ClassCreate(req)
-            self._hydrate(resp.class_id, load_context.client, resp.handle_metadata)
-
-        rep = f"Server({user_cls.__name__})"
-        server: _Server = _Server._from_loader(
-            _load,
-            rep,
-            deps=_deps,
-            load_context_overrides=app._root_load_context,
-        )
+        server = _Server()
         server._app = app
         server._user_cls = user_cls
         server._service_function = service_function
@@ -324,48 +295,13 @@ class _Server(_Object):
         """
         warn_if_passing_namespace(namespace, "modal.Server.from_name")
 
-        async def _load_remote(
-            self: _Server,
-            resolver: Resolver,
-            load_context: LoadContext,
-            existing_object_id: Optional[str],
-        ):
-            request = api_pb2.ClassGetRequest(
-                app_name=app_name,
-                object_tag=name,
-                environment_name=load_context.environment_name,
-                only_class_function=True,
-            )
-            try:
-                response = await load_context.client.stub.ClassGet(request)
-            except NotFoundError as exc:
-                env_context = (
-                    f" (in the '{load_context.environment_name}' environment)" if load_context.environment_name else ""
-                )
-                raise NotFoundError(
-                    f"Lookup failed for Server '{name}' from the '{app_name}' app{env_context}: {exc}."
-                ) from None
-
-            print_server_warnings(response.server_warnings)
-            assert self._user_server_function is not None
-            await resolver.load(self._user_server_function, load_context)
-            self._hydrate(response.class_id, load_context.client, response.handle_metadata)
-
-        environment_rep = f", environment_name={environment_name!r}" if environment_name else ""
-        rep = f"Server.from_name({app_name!r}, {name!r}{environment_rep})"
-
         load_context_overrides = LoadContext(client=client, environment_name=environment_name)
-        server = _Server._from_loader(
-            _load_remote,
-            rep,
-            is_another_app=True,
-            hydrate_lazily=True,
-            load_context_overrides=load_context_overrides,
-        )
 
         # The service function uses a special naming convention
         service_function_name = f"{name}.*"
-        server._user_server_function = _Function._from_name(
+
+        server = _Server()
+        server._service_function = _Function._from_name(
             app_name,
             service_function_name,
             load_context_overrides=load_context_overrides,
@@ -375,7 +311,7 @@ class _Server(_Object):
 
     def _is_local(self) -> bool:
         """Returns True if this Server has local source code available."""
-        return self._user_server is not None
+        return self._user_cls is not None
 
 
 Server = synchronize_api(_Server)
