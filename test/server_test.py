@@ -223,7 +223,7 @@ def test_server_creates_class_object(client, servicer):
         assert "ObjectsServer.*" in objects
 
         server_id = objects["ObjectsServer"]
-        assert server_id.startswith("cs-") or server_id.startswith("sv-")
+        assert server_id.startswith("fu-")
 
 
 def test_server_http_config_set(client, servicer):

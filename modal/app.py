@@ -1343,9 +1343,9 @@ class _App:
                 for partial in _find_partial_methods_for_user_cls(wrapped_user_cls, flag).values():
                     partial.registered = True
 
-            # Register the server with the app
-            tag: str = wrapped_user_cls.__name__
-            self._add_class(tag, server)
+            # Note: We don't register the Server in classes - only the service_function is registered.
+            # The Server is just a local wrapper. The container side identifies servers via
+            # function_def.is_class and the function_ids.
 
             return server  # type: ignore
 

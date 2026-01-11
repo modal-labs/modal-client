@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2025
 import inspect
 import typing
+import uuid
 from typing import Any, Optional
 
 from google.protobuf.message import Message
@@ -23,7 +24,7 @@ if typing.TYPE_CHECKING:
     import modal.app
 
 
-class _Server():
+class _Server:
     """Server runs an HTTP server started in an @enter method.
 
     See [lifecycle hooks](https://modal.com/docs/guide/lifecycle-functions) for more information.
@@ -48,7 +49,7 @@ class _Server():
     """
 
     # Maps 1-1 w function
-    _type_prefix = "cs"
+    _type_prefix = "fu"
 
     _app: Optional["modal.app._App"] = None
     _name: Optional[str] = None
@@ -60,7 +61,16 @@ class _Server():
     _service_function: Optional[_Function] = None
     _has_entered: bool = False
 
+    def __init__(self):
+        self._initialize_from_empty()
+
+    @property
+    def local_uuid(self) -> str:
+        """mdmd:hidden"""
+        return self._local_uuid
+
     def _initialize_from_empty(self):
+        self._local_uuid = str(uuid.uuid4())
         self._user_cls = None
         self._name = None
         self._app = None
