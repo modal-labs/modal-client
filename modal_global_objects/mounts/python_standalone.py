@@ -28,7 +28,7 @@ def publish_python_standalone_mount(client, version: str) -> None:
         # https://github.com/astral-sh/python-build-standalone/issues/536
         # and only uses .tar.zst for compression.
         url = (
-            f"{root_url}/{release}/cpython-{full_version[:-1]}+{release}-x86_64_v2-"
+            f"{root_url}/{release}/cpython-{full_version[:-1]}+{release}-{arch}-"
             "unknown-linux-gnu-freethreaded+pgo+lto-full.tar.zst"
         )
     else:
