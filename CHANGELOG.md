@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.3.1.dev16 (2026-01-12)
+
+- Added a `--timestamps` option to the `modal container logs` CLI.
+
+
 #### 1.3.1.dev14 (2026-01-12)
 
 - Adds experimental support for Python 3.14t. You can test Python 3.14t with the following image definition:
