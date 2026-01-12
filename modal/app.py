@@ -1281,6 +1281,9 @@ class _App:
             secrets_list.append(_Secret.from_dict(env))
 
         def wrapper(wrapped_user_cls: Union[CLS_T, _PartialFunction]) -> _Server:
+            # Inject the port into the class so decorators like @asgi_app_on_flash can access it
+            wrapped_user_cls._flash_port = port  # type: ignore
+
             _Server.validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
 
             cluster_size = None
