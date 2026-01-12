@@ -54,10 +54,18 @@ def publish_python_standalone_mount(client, version: str) -> None:
                         members = (member for member in tar if member.name.startswith(PREFIX))
                         for member in members:
                             member.name = f"python{member.name.removeprefix(PREFIX)}"
-                            tar.extract(member, path=d, filter="fully_trusted")
+                            try:
+                                tar.extract(member, path=d, filter="fully_trusted")
+                            except TypeError:
+                                # filter parameter not supported in older Python versions
+                                tar.extract(member, path=d)
             else:
                 urllib.request.urlretrieve(url, f"{d}/cpython.tar.gz")
-                shutil.unpack_archive(f"{d}/cpython.tar.gz", d, filter="fully_trusted")
+                try:
+                    shutil.unpack_archive(f"{d}/cpython.tar.gz", d, filter="fully_trusted")
+                except TypeError:
+                    # filter parameter not supported in older Python versions
+                    shutil.unpack_archive(f"{d}/cpython.tar.gz", d)
 
             print(f"🌐 Downloaded and unpacked archive to {d}.")
             python_mount = Mount._from_local_dir(f"{d}/python")
