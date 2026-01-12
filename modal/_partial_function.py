@@ -125,6 +125,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     user_cls: Optional[type] = None  # class
     flags: _PartialFunctionFlags
     params: _PartialFunctionParams
+    registered: bool = False  # Set to True when registered with an App to avoid warnings
 
     def __init__(
         self,
@@ -243,10 +244,15 @@ def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[
     for parent_cls in reversed(user_cls.mro()):
         if parent_cls is not object:
             for k, v in parent_cls.__dict__.items():
+                # Check for synchronized PartialFunction (from user decorators)
                 if isinstance(v, PartialFunction):  # type: ignore[reportArgumentType]   # synchronicity wrapper types
                     _partial_function: _PartialFunction = typing.cast(_PartialFunction, synchronizer._translate_in(v))
                     if _partial_function.flags & flags:
                         partial_functions[k] = _partial_function
+                # Also check for internal _PartialFunction (from programmatic creation)
+                elif isinstance(v, _PartialFunction):
+                    if v.flags & flags:
+                        partial_functions[k] = v
 
     return partial_functions
 

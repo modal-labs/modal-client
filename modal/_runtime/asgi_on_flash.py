@@ -1,22 +1,4 @@
 # Copyright Modal Labs 2025
-"""ASGI app wrapper for Modal servers (Flash architecture).
-
-This module provides markers for ASGI/WSGI app factory functions that can be
-used with `@app.server()`. The server decorator handles the actual class generation.
-
-Example:
-    @app.server(port=8000, proxy_regions=["us-east"], image=image)
-    @modal.experimental.asgi_app_on_flash()
-    def create_app():
-        from fastapi import FastAPI
-        app = FastAPI()
-
-        @app.get("/")
-        def root():
-            return {"message": "Hello World"}
-
-        return app
-"""
 
 from typing import Any, Callable, TypeVar
 
@@ -31,38 +13,6 @@ def asgi_app_on_flash(
     *,
     startup_timeout: float = 30.0,
 ) -> Callable[[F], F]:
-    """Decorator that marks a function as an ASGI app factory for use with `@app.server()`.
-
-    This decorator marks the function so that `@app.server()` knows to wrap it
-    with uvicorn startup logic automatically.
-
-    Args:
-        startup_timeout: Maximum time to wait for the server to start accepting
-            connections. Defaults to 30 seconds.
-
-    Returns:
-        The marked function (to be processed by `@app.server()`).
-
-    Example:
-        ```python
-        @app.server(port=8000, proxy_regions=["us-east"], image=image)
-        @modal.experimental.asgi_app_on_flash()
-        def my_fastapi_app():
-            from fastapi import FastAPI
-            app = FastAPI()
-
-            @app.get("/")
-            def root():
-                return {"hello": "world"}
-
-            return app
-        ```
-
-    Note:
-        The port is specified in the `@app.server()` decorator. The ASGI
-        server will be bound to 0.0.0.0 on that port.
-    """
-
     def decorator(asgi_app_factory: F) -> F:
         # Mark the function as an ASGI app factory
         setattr(asgi_app_factory, ASGI_APP_MARKER, True)
@@ -76,34 +26,6 @@ def wsgi_app_on_flash(
     *,
     startup_timeout: float = 30.0,
 ) -> Callable[[F], F]:
-    """Decorator that marks a function as a WSGI app factory for use with `@app.server()`.
-
-    Similar to `asgi_app_on_flash`, but for WSGI applications (like Flask, Django).
-    The WSGI app is wrapped with an ASGI adapter before being served.
-
-    Args:
-        startup_timeout: Maximum time to wait for the server to start accepting
-            connections. Defaults to 30 seconds.
-
-    Returns:
-        The marked function (to be processed by `@app.server()`).
-
-    Example:
-        ```python
-        @app.server(port=8000, proxy_regions=["us-east"], image=image)
-        @modal.experimental.wsgi_app_on_flash()
-        def my_flask_app():
-            from flask import Flask
-            app = Flask(__name__)
-
-            @app.route("/")
-            def root():
-                return {"hello": "world"}
-
-            return app
-        ```
-    """
-
     def decorator(wsgi_app_factory: F) -> F:
         # Mark the function as a WSGI app factory
         setattr(wsgi_app_factory, WSGI_APP_MARKER, True)
@@ -123,6 +45,7 @@ def create_asgi_server_class(asgi_app_factory: Callable, port: int) -> type:
     from .._partial_function import _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
 
     class_name = asgi_app_factory.__name__
+    module_name = getattr(asgi_app_factory, "__module__", __name__)
 
     def _start_asgi_server(self):
         """Start the ASGI server in a background thread."""
@@ -152,8 +75,6 @@ def create_asgi_server_class(asgi_app_factory: Callable, port: int) -> type:
     def _stop_asgi_server(self):
         """Clean up when the container shuts down."""
         pass
-
-    # Create PartialFunction objects for the lifecycle methods
     enter_pf = _PartialFunction(
         _start_asgi_server,
         _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
@@ -165,12 +86,13 @@ def create_asgi_server_class(asgi_app_factory: Callable, port: int) -> type:
         _PartialFunctionParams(),
     )
 
-    # Create the class
     server_class = type(
         class_name,
         (),
         {
             "__doc__": asgi_app_factory.__doc__ or f"Auto-generated server class for {class_name}.",
+            "__module__": module_name,
+            "__qualname__": class_name,
             "_asgi_app_factory": asgi_app_factory,
             "_server_thread": None,
             "_asgi_app": None,
@@ -192,6 +114,7 @@ def create_wsgi_server_class(wsgi_app_factory: Callable, port: int) -> type:
     from .._partial_function import _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
 
     class_name = wsgi_app_factory.__name__
+    module_name = getattr(wsgi_app_factory, "__module__", __name__)
 
     def _start_wsgi_server(self):
         """Start the WSGI server in a background thread."""
@@ -239,6 +162,8 @@ def create_wsgi_server_class(wsgi_app_factory: Callable, port: int) -> type:
         (),
         {
             "__doc__": wsgi_app_factory.__doc__ or f"Auto-generated server class for {class_name}.",
+            "__module__": module_name,
+            "__qualname__": class_name,
             "_wsgi_app_factory": wsgi_app_factory,
             "_server_thread": None,
             "_start_wsgi_server": enter_pf,
