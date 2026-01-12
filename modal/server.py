@@ -88,6 +88,10 @@ class _Server:
         assert self._name is not None
         return self._name
 
+    def _get_app(self) -> "modal.app._App":
+        assert self._app is not None
+        return self._app
+
     @property
     def __name__(self) -> str:
         """Return the name of the server class for compatibility with code expecting class-like objects."""
