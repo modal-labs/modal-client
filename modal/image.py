@@ -108,6 +108,7 @@ def _validate_python_version(
     builder_version: ImageBuilderVersion,
     allow_micro_granularity: bool = True,
     allow_free_threading: bool = False,
+    caller_name: str = "",
 ) -> str:
     if python_version is None:
         # If Python version is unspecified, match the local version, up to the minor component
@@ -117,7 +118,8 @@ def _validate_python_version(
     elif not re.match(r"^3(?:\.\d{1,2}){1,2}(rc\d*)?t?$", python_version):
         raise InvalidError(f"Invalid Python version: {python_version!r}")
     elif not allow_free_threading and python_version.endswith("t"):
-        raise InvalidError("Free threading Python is not supported")
+        context = f"with {caller_name}" if caller_name else ""
+        raise InvalidError(f"Free threaded Python is not supported {context}")
     else:
         components = python_version.split(".")
         if len(components) == 3 and not allow_micro_granularity:
@@ -139,10 +141,13 @@ def _validate_python_version(
 
 
 def _dockerhub_python_version(
-    builder_version: ImageBuilderVersion, python_version: Optional[str] = None, allow_free_threading: bool = False
+    builder_version: ImageBuilderVersion,
+    python_version: Optional[str] = None,
+    allow_free_threading: bool = False,
+    caller_name: str = "",
 ) -> str:
     python_version = _validate_python_version(
-        python_version, builder_version, allow_free_threading=allow_free_threading
+        python_version, builder_version, allow_free_threading=allow_free_threading, caller_name=caller_name
     )
     version_components = python_version.split(".")
 
@@ -1763,7 +1768,9 @@ class _Image(_Object, type_prefix="im"):
         """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            validated_python_version = _validate_python_version(python_version, version, allow_free_threading=False)
+            validated_python_version = _validate_python_version(
+                python_version, version, allow_free_threading=False, caller_name="Image.micromamba"
+            )
             micromamba_version = _base_image_config("micromamba", version)
             tag = f"mambaorg/micromamba:{micromamba_version}"
             setup_commands = [
@@ -2174,7 +2181,9 @@ class _Image(_Object, type_prefix="im"):
             if version <= "2024.10":
                 requirements_path = _get_modal_requirements_path(version, python_version)
                 context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
-            full_python_version = _dockerhub_python_version(version, python_version, allow_free_threading=False)
+            full_python_version = _dockerhub_python_version(
+                version, python_version, allow_free_threading=False, caller_name="Image.debian_slim"
+            )
             debian_codename = _base_image_config("debian", version)
 
             commands = [

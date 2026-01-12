@@ -119,10 +119,10 @@ def test_python_version_validation(builder_version):
     with pytest.raises(InvalidError, match="Python version must be specified as 'major.minor'"):
         _validate_python_version("3.10.5", builder_version, allow_micro_granularity=False)
 
-    with pytest.raises(InvalidError, match="Free threading Python is not supported"):
-        _validate_python_version("3.14t", builder_version, allow_free_threading=False)
+    with pytest.raises(InvalidError, match="Free threaded Python is not supported with Image.debian_slim"):
+        _validate_python_version("3.14t", builder_version, allow_free_threading=False, caller_name="Image.debian_slim")
 
-    with pytest.raises(InvalidError, match="Free threading Python is not supported"):
+    with pytest.raises(InvalidError, match="Free threaded Python is not supported"):
         _validate_python_version("3.14.2t", builder_version, allow_free_threading=False, allow_micro_granularity=True)
 
 
@@ -2097,7 +2097,7 @@ def test_debian_slim_free_threading_not_supported(servicer, client):
     image = modal.Image.debian_slim(python_version="3.14t")
 
     app = App()
-    msg = "Free threading Python is not supported"
+    msg = "Free threaded Python is not supported with Image.debian_slim"
     with pytest.raises(InvalidError, match=msg):
         with servicer.intercept():
             with app.run(client=client):
