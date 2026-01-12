@@ -288,7 +288,8 @@ jobs:
         run: pip install uv
 
       - name: Publish mounts
-        run: python -m modal_global_objects.mounts.modal_client_dependencies --dry-run
+        run: which uv
+        # run: python -m modal_global_objects.mounts.modal_client_dependencies --dry-run
 
   # publish-base-images:
   #   name: |
