@@ -2349,6 +2349,8 @@ message MountPutFileRequest {
     bytes data = 3;
     string data_blob_id = 5;
   }
+
+  optional int64 size = 6;
 }
 
 message MountPutFileResponse {

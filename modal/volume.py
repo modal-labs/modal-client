@@ -1042,7 +1042,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
     async def _upload_file(self, file_spec: FileUploadSpec) -> api_pb2.MountFile:
         remote_filename = file_spec.mount_filename
         progress_task_id = self._progress_cb(name=remote_filename, size=file_spec.size)
-        request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
+        request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex, size=file_spec.size)
         response = await self._client.stub.MountPutFile(request, retry=Retry(base_delay=1))
 
         start_time = time.monotonic()
@@ -1058,7 +1058,9 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                         md5_hex=file_spec.md5_hex,
                     )
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
-                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
+                request2 = api_pb2.MountPutFileRequest(
+                    data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex, size=file_spec.size
+                )
             else:
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
@@ -1067,7 +1069,9 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                     content = await asyncio.to_thread(file_spec.read_content)
                 else:
                     content = file_spec.content
-                request2 = api_pb2.MountPutFileRequest(data=content, sha256_hex=file_spec.sha256_hex)
+                request2 = api_pb2.MountPutFileRequest(
+                    data=content, sha256_hex=file_spec.sha256_hex, size=file_spec.size
+                )
                 self._progress_cb(task_id=progress_task_id, complete=True)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:

@@ -524,7 +524,7 @@ class _Mount(_Object, type_prefix="mo"):
                     elif config.get("build_validation") == "warn":
                         warnings.warn(msg)
 
-            request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
+            request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex, size=file_spec.size)
             accounted_hashes.add(file_spec.sha256_hex)
             response = await load_context.client.stub.MountPutFile(request, retry=Retry(base_delay=1))
 
@@ -543,7 +543,9 @@ class _Mount(_Object, type_prefix="mo"):
                             fp, load_context.client.stub, sha256_hex=file_spec.sha256_hex, md5_hex=file_spec.md5_hex
                         )
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
-                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
+                request2 = api_pb2.MountPutFileRequest(
+                    data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex, size=file_spec.size
+                )
             else:
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
@@ -552,7 +554,9 @@ class _Mount(_Object, type_prefix="mo"):
                     content = await asyncio.to_thread(file_spec.read_content)
                 else:
                     content = file_spec.content
-                request2 = api_pb2.MountPutFileRequest(data=content, sha256_hex=file_spec.sha256_hex)
+                request2 = api_pb2.MountPutFileRequest(
+                    data=content, sha256_hex=file_spec.sha256_hex, size=file_spec.size
+                )
 
             start_time = time.monotonic()
             while time.monotonic() - start_time < MOUNT_PUT_FILE_CLIENT_TIMEOUT:
