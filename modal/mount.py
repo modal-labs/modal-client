@@ -806,6 +806,7 @@ async def _create_single_client_dependency_mount(
                 python_version,
             ]
         )
+        print(cmd)  # noqa: T201
         proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
