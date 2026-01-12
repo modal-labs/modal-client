@@ -820,33 +820,34 @@ async def _create_single_client_dependency_mount(
 
         print(f"🌐 Downloaded and unpacked {mount_name} packages to {tmpd}.")  # noqa: T201
 
-        python_mount = Mount._from_local_dir(tmpd, remote_path=REMOTE_PACKAGES_PATH)
+        # For the off chance that dry-run does not work
+        # python_mount = Mount._from_local_dir(tmpd, remote_path=REMOTE_PACKAGES_PATH)
 
-        with tempfile.NamedTemporaryFile() as sitecustomize:
-            sitecustomize.write(
-                SITECUSTOMIZE_CONTENT.encode("utf-8"),
-            )
-            sitecustomize.flush()
+        # with tempfile.NamedTemporaryFile() as sitecustomize:
+        #     sitecustomize.write(
+        #         SITECUSTOMIZE_CONTENT.encode("utf-8"),
+        #     )
+        #     sitecustomize.flush()
 
-            python_mount = python_mount.add_local_file(
-                sitecustomize.name,
-                remote_path=REMOTE_SITECUSTOMIZE_PATH,
-            )
+        #     python_mount = python_mount.add_local_file(
+        #         sitecustomize.name,
+        #         remote_path=REMOTE_SITECUSTOMIZE_PATH,
+        #     )
 
-            if not dry_run:
-                try:
-                    await python_mount._deploy.aio(
-                        mount_name,
-                        api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
-                        environment_name=profile_environment,
-                        allow_overwrite=allow_overwrite,
-                        client=client,
-                    )
-                    print(f"✅ Deployed mount {mount_name} to global namespace.")  # noqa: T201
-                except modal.exception.Error as e:
-                    print(f"⚠️ Mount creation failed with {type(e).__name__}: {e}")  # noqa: T201
-            else:
-                print(f"Dry run - skipping deployment of mount {mount_name}")  # noqa: T201
+        #     if not dry_run:
+        #         try:
+        #             await python_mount._deploy.aio(
+        #                 mount_name,
+        #                 api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+        #                 environment_name=profile_environment,
+        #                 allow_overwrite=allow_overwrite,
+        #                 client=client,
+        #             )
+        #             print(f"✅ Deployed mount {mount_name} to global namespace.")  # noqa: T201
+        #         except modal.exception.Error as e:
+        #             print(f"⚠️ Mount creation failed with {type(e).__name__}: {e}")  # noqa: T201
+        #     else:
+        #         print(f"Dry run - skipping deployment of mount {mount_name}")  # noqa: T201
 
 
 async def _create_client_dependency_mounts(
