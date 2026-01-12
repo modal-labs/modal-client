@@ -284,9 +284,6 @@ jobs:
       - name: Build client package (installs all dependencies)
         run: pip install -e .
 
-      - name: Install uv
-        run: pip install uv
-
       - name: Publish mounts
         run: |
           which uv
