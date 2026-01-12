@@ -442,6 +442,13 @@ class TaskContext:
         await asyncio.sleep(0)  # Causes any just-created tasks to get started
         unfinished_tasks = [t for t in self._tasks if not t.done()]
         gather_future = None
+
+        # Track the first non-CancelledError exception we encounter
+        # This will be re-raised after cleanup to prevent CancelledError from masking real exceptions
+        # If we only see CancelledError, we still need to raise it
+        first_exception: Optional[BaseException] = None
+        first_cancelled_error: Optional[asyncio.CancelledError] = None
+
         try:
             if self._grace is not None and unfinished_tasks:
                 gather_future = asyncio.gather(*unfinished_tasks, return_exceptions=True)
@@ -458,17 +465,24 @@ class TaskContext:
 
             cancelled_tasks: list[asyncio.Task] = []
             for task in self._tasks:
-                if task.done() and not task.cancelled():
-                    # Raise any exceptions if they happened.
-                    # Only tasks without a done_callback will still be present in self._tasks
-                    task.result()
-
                 if task.done():
-                    continue
-
-                # Cancel any remaining unfinished tasks.
-                task.cancel()
-                cancelled_tasks.append(task)
+                    # Check for exceptions and capture the first non-CancelledError
+                    # Only tasks without a done_callback will still be present in self._tasks
+                    try:
+                        task.result()
+                    except asyncio.CancelledError as exc:
+                        # Track CancelledError in case there's no other exception
+                        if first_cancelled_error is None:
+                            first_cancelled_error = exc
+                    except BaseException as exc:
+                        # Capture the first real exception we encounter
+                        if first_exception is None:
+                            first_exception = exc
+                        # Don't re-raise yet - we need to cancel other tasks first
+                else:
+                    # Cancel any remaining unfinished tasks.
+                    task.cancel()
+                    cancelled_tasks.append(task)
 
             cancellation_gather = asyncio.gather(*cancelled_tasks, return_exceptions=True)
             try:
@@ -477,6 +491,13 @@ class TaskContext:
                 warnings.warn(f"Internal warning: Tasks did not cancel in a timely manner: {cancelled_tasks}")
 
             await asyncio.sleep(0)  # wake up coroutines waiting for cancellations
+
+            # Re-raise the first exception we captured
+            # Prefer real exceptions over CancelledError to avoid masking the root cause
+            if first_exception is not None:
+                raise first_exception
+            elif first_cancelled_error is not None:
+                raise first_cancelled_error
 
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()

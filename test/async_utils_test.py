@@ -196,6 +196,71 @@ async def test_task_context_gather():
     assert state == "t1"
 
 
+@pytest.mark.asyncio
+async def test_task_context_gather_exception_priority():
+    """
+    Test that real exceptions take priority over CancelledError in TaskContext.gather.
+
+    This test mimics the Resolver pattern where multiple objects load a shared
+    dependency by awaiting the same cached future. When one coroutine has a failing
+    dependency, TaskContext should propagate the real exception, not CancelledError.
+    """
+
+    async def raises_soon():
+        await asyncio.sleep(0.01)
+        raise ValueError("original error")
+
+    async def await_shared(shared_task):
+        """Simulates resolver.load() which awaits a cached future"""
+        await shared_task
+
+    async def raises_with_shared(shared_task):
+        """Simulates loading deps where one succeeds and one fails"""
+        # TaskContext.gather will cancel the await_shared coroutine when raises_soon fails
+        await TaskContext.gather(await_shared(shared_task), raises_soon())
+
+    async def sibling_with_shared(shared_task):
+        """Simulates another object loading the same shared dependency"""
+        await TaskContext.gather(await_shared(shared_task))
+
+    async def long_running():
+        await asyncio.sleep(10)
+
+    # Shared task simulates the cached future in Resolver
+    shared_task = asyncio.create_task(long_running())
+
+    # Load two objects that share a dependency
+    with pytest.raises(ValueError) as exc_info:
+        await asyncio.gather(sibling_with_shared(shared_task), raises_with_shared(shared_task))
+
+    # Verify the correct exception was raised (not CancelledError)
+    assert isinstance(exc_info.value, ValueError)
+    assert "original error" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_task_context_gather_cancelled_only():
+    """
+    Test that CancelledError is still raised when it's the only exception.
+
+    This ensures we preserve existing behavior where CancelledError
+    should propagate when there's no other "real" exception.
+    """
+
+    async def gets_cancelled():
+        await asyncio.sleep(10)
+
+    async def cancels_sibling(task):
+        await asyncio.sleep(0.01)
+        task.cancel()
+
+    task = asyncio.create_task(gets_cancelled())
+
+    # When a task is cancelled and there's no other exception, CancelledError should propagate
+    with pytest.raises(asyncio.CancelledError):
+        await TaskContext.gather(task, cancels_sibling(task))
+
+
 DEBOUNCE_TIME = 0.1
 
 
