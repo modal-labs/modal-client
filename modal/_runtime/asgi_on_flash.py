@@ -75,6 +75,7 @@ def create_asgi_server_class(asgi_app_factory: Callable, port: int) -> type:
     def _stop_asgi_server(self):
         """Clean up when the container shuts down."""
         pass
+
     enter_pf = _PartialFunction(
         _start_asgi_server,
         _PartialFunctionFlags.ENTER_POST_SNAPSHOT,

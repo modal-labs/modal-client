@@ -1254,7 +1254,10 @@ class _App:
 
         # Validate HTTP server config
         validate_http_server_config(
-            port=port, proxy_regions=list(proxy_regions), startup_timeout=startup_timeout, exit_grace_period=exit_grace_period
+            port=port,
+            proxy_regions=list(proxy_regions),
+            startup_timeout=startup_timeout,
+            exit_grace_period=exit_grace_period,
         )
 
         if target_concurrency is not None:

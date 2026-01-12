@@ -87,9 +87,7 @@ def validate_http_server_config(
 ):
     if port is None:
         # TODO(claudia): Fix this error to be correct
-        raise InvalidError(
-            "Port argument is required. Suggestion: `@modal.experimental.http_server(port=...)`."
-        )
+        raise InvalidError("Port argument is required. Suggestion: `@modal.experimental.http_server(port=...)`.")
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError("Port must be a positive integer between 1 and 65535.")
     if startup_timeout <= 0:
