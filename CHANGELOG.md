@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.3.1.dev12 (2026-01-09)
+
+- Added a new `modal token info` CLI command to retrieve information about the credentials that are currently in use
+
+
 #### 1.3.1.dev8 (2026-01-06)
 
 - Correctly specify the minimum version for `grpclib` with Python 3.14.
