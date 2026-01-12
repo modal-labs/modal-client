@@ -5,7 +5,6 @@ import concurrent.futures
 import dataclasses
 import os
 import re
-import sys
 import time
 import typing
 import warnings
@@ -790,7 +789,7 @@ async def _create_single_client_dependency_mount(
         requirements = os.path.join(os.path.dirname(__file__), f"builder/{builder_version}.txt")
         cmd = " ".join(
             [
-                f"{sys.prefix}/bin/uv",
+                "uv",
                 "pip",
                 "install",
                 "--strict",
