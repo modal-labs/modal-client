@@ -86,8 +86,9 @@ def validate_http_server_config(
     exit_grace_period: Optional[int] = None,  # The time to wait for the HTTP server to exit gracefully.
 ):
     if port is None:
+        # TODO(claudia): Fix this error to be correct
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
+            "Port argument is required. Suggestion: `@modal.experimental.http_server(port=...)`."
         )
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError("Port must be a positive integer between 1 and 65535.")
