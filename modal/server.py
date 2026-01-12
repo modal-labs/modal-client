@@ -31,20 +31,7 @@ class _Server:
     Generally, you will not construct a Server directly.
     Instead, use the [`@app.server()`](https://modal.com/docs/reference/modal.App#server) decorator.
 
-    Example:
-
-    ```python
-        @app.server(port=8000, proxy_regions=["us-east"], min_containers=1)
-        class SimpleServer:
-            @modal.enter()
-            def start(self):
-                import subprocess
-                self.proc = subprocess.Popen(["python3", "-m", "http.server", "8000"])
-
-            @modal.exit()
-            def stop(self):
-                self.proc.terminate()
-    ```
+    Example: TODO(claudia): Add examples
     """
 
     # Maps 1-1 w function
@@ -292,9 +279,7 @@ class _Server:
         object with metadata from Modal servers until the first
         time it is actually used.
 
-        ```python
         TODO(claudia): Add examples
-        ```
         """
         warn_if_passing_namespace(namespace, "modal.Server.from_name")
 

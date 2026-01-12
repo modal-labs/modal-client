@@ -296,6 +296,7 @@ def test_server_user_class_instantiation():
     # It's an instance of the original class
     assert type(instance).__name__ == "SimpleServer"
 
+
 def test_server_has_name_attribute():
     """Test that Server.__name__ returns the server name.
 
