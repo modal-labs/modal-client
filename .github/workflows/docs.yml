@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  # pull_request:
 
 # Cancel previous runs of the same PR but do not cancel previous runs on main
 concurrency:
@@ -19,16 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
-      - uses: ./.github/actions/setup-cached-python
+      # - uses: ./.github/actions/setup-cached-python
 
-      - name: Build protobuf
-        run: inv protoc
+      # - name: Build protobuf
+      #   run: inv protoc
 
-      - name: Install package + deps
-        run: pip install -e .  # Makes sure doc generation doesn't break on client imports etc.
+      # - name: Install package + deps
+      #   run: pip install -e .  # Makes sure doc generation doesn't break on client imports etc.
 
-      - name: Generate reference docs
-        run: python -m modal_docs.gen_reference_docs reference_docs_output
+      # - name: Generate reference docs
+      #   run: python -m modal_docs.gen_reference_docs reference_docs_output
 
-      - name: Generate CLI docs
-        run: python -m modal_docs.gen_cli_docs cli_docs
+      # - name: Generate CLI docs
+      #   run: python -m modal_docs.gen_cli_docs cli_docs

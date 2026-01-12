@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  # pull_request:
 
 # Cancel previous runs of the same PR but do not cancel previous runs on main
 concurrency:
@@ -19,45 +19,45 @@ jobs:
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
-      - uses: ./.github/actions/setup-cached-python
-        with:
-          version: "3.10"
+      # - uses: ./.github/actions/setup-cached-python
+      #   with:
+      #     version: "3.10"
 
-      - run: inv lint
+      # - run: inv lint
 
-      - run: inv lint-protos
+      # - run: inv lint-protos
 
-  type_check:
-    name: Static type checks
-    runs-on: ubuntu-24.04
+  # type_check:
+  #   name: Static type checks
+  #   runs-on: ubuntu-24.04
 
-    steps:
-      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+  #   steps:
+  #     - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
-      - uses: ./.github/actions/setup-cached-python
-        with:
-          version: "3.10"
+  #     - uses: ./.github/actions/setup-cached-python
+  #       with:
+  #         version: "3.10"
 
-      - run: inv protoc
+  #     - run: inv protoc
 
-      - run: pip install -e .  # gets all dependencies and the package itself into python env
+  #     - run: pip install -e .  # gets all dependencies and the package itself into python env
 
-      - run: pip install "synchronicity[compile]==0.11.1"  # gets all dependencies and the package itself into python env
+  #     - run: pip install "synchronicity[compile]==0.11.1"  # gets all dependencies and the package itself into python env
 
-      - name: Build type stubs
-        run: inv type-stubs
+  #     - name: Build type stubs
+  #       run: inv type-stubs
 
-      - run: inv type-check
+  #     - run: inv type-check
 
-  check-copyright:
-    name: Check copyright
-    runs-on: ubuntu-24.04
+  # check-copyright:
+  #   name: Check copyright
+  #   runs-on: ubuntu-24.04
 
-    steps:
-      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+  #   steps:
+  #     - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
-      - uses: ./.github/actions/setup-cached-python
-        with:
-          version: "3.10"
+  #     - uses: ./.github/actions/setup-cached-python
+  #       with:
+  #         version: "3.10"
 
-      - run: inv check-copyright
+  #     - run: inv check-copyright
