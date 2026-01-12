@@ -445,9 +445,7 @@ class TaskContext:
 
         # Track the first non-CancelledError exception we encounter
         # This will be re-raised after cleanup to prevent CancelledError from masking real exceptions
-        # If we only see CancelledError, we still need to raise it
         first_exception: Optional[BaseException] = None
-        first_cancelled_error: Optional[asyncio.CancelledError] = None
 
         try:
             if self._grace is not None and unfinished_tasks:
@@ -470,10 +468,9 @@ class TaskContext:
                     # Only tasks without a done_callback will still be present in self._tasks
                     try:
                         task.result()
-                    except asyncio.CancelledError as exc:
-                        # Track CancelledError in case there's no other exception
-                        if first_cancelled_error is None:
-                            first_cancelled_error = exc
+                    except asyncio.CancelledError:
+                        # CancelledError is expected when tasks are cancelled - ignore it
+                        pass
                     except BaseException as exc:
                         # Capture the first real exception we encounter
                         if first_exception is None:
@@ -492,12 +489,10 @@ class TaskContext:
 
             await asyncio.sleep(0)  # wake up coroutines waiting for cancellations
 
-            # Re-raise the first exception we captured
-            # Prefer real exceptions over CancelledError to avoid masking the root cause
+            # Re-raise the first exception we captured (if any)
+            # CancelledError is expected and should not be re-raised
             if first_exception is not None:
                 raise first_exception
-            elif first_cancelled_error is not None:
-                raise first_cancelled_error
 
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()

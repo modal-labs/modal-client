@@ -238,29 +238,6 @@ async def test_task_context_gather_exception_priority():
     assert "original error" in str(exc_info.value)
 
 
-@pytest.mark.asyncio
-async def test_task_context_gather_cancelled_only():
-    """
-    Test that CancelledError is still raised when it's the only exception.
-
-    This ensures we preserve existing behavior where CancelledError
-    should propagate when there's no other "real" exception.
-    """
-
-    async def gets_cancelled():
-        await asyncio.sleep(10)
-
-    async def cancels_sibling(task):
-        await asyncio.sleep(0.01)
-        task.cancel()
-
-    task = asyncio.create_task(gets_cancelled())
-
-    # When a task is cancelled and there's no other exception, CancelledError should propagate
-    with pytest.raises(asyncio.CancelledError):
-        await TaskContext.gather(task, cancels_sibling(task))
-
-
 DEBOUNCE_TIME = 0.1
 
 
