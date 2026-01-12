@@ -167,7 +167,6 @@ async def _create_all_objects(
             if _Function._is_id_type(obj.object_id):
                 running_app.function_ids[tag] = obj.object_id
             elif _Cls._is_id_type(obj.object_id):
-                # Server classes are included in _Cls ids
                 running_app.class_ids[tag] = obj.object_id
             else:
                 raise RuntimeError(f"Unexpected object {obj.object_id}")
