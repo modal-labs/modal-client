@@ -129,13 +129,13 @@ class _FlashManager:
                         retry=None,
                     )
                     self.num_failures = 0
-                    if first_registration and (time.monotonic() - start_time < self.startup_timeout):
+                    if first_registration:
                         logger.warning(
                             f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
                         )
                         first_registration = False
                 else:
-                    if first_registration:
+                    if first_registration and (time.monotonic() - start_time < self.startup_timeout):
                         continue
                     else:
                         logger.error(
