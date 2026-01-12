@@ -26,7 +26,7 @@ def publish_python_standalone_mount(client, version: str) -> None:
     if full_version.endswith("t"):
         # free-threaded python does not have an install_only artifact:
         # https://github.com/astral-sh/python-build-standalone/issues/536
-        # An only uses .tar.zst for compression.
+        # and only uses .tar.zst for compression.
         url = (
             f"{root_url}/{release}/cpython-{full_version[:-1]}+{release}-x86_64_v2-"
             "unknown-linux-gnu-freethreaded+pgo+lto-full.tar.zst"
