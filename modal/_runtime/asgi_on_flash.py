@@ -22,7 +22,6 @@ import threading
 from typing import Any, Callable, Optional, TypeVar
 
 from .._partial_function import _enter, _exit
-from .asgi import wait_for_web_server
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -115,9 +114,6 @@ def asgi_app_on_flash(
                 )
                 self._server_thread.start()
 
-                # Wait for the server to be ready
-                wait_for_web_server(host, port, timeout=self._startup_timeout)
-
             @_exit()
             def _stop_asgi_server(self):
                 """Clean up when the container shuts down."""
@@ -208,8 +204,6 @@ def wsgi_app_on_flash(
                     daemon=True,
                 )
                 self._server_thread.start()
-
-                wait_for_web_server(host, port, timeout=self._startup_timeout)
 
             @_exit()
             def _stop_wsgi_server(self):
