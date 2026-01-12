@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2025
 import inspect
 import typing
-import uuid
 from typing import Any, Optional
 
 from google.protobuf.message import Message
@@ -64,32 +63,22 @@ class _Server:
     def __init__(self):
         self._initialize_from_empty()
 
-    @property
-    def local_uuid(self) -> str:
-        """mdmd:hidden"""
-        return self._local_uuid
-
     def _initialize_from_empty(self):
-        self._local_uuid = str(uuid.uuid4())
-        self._user_cls = None
-        self._name = None
         self._app = None
+        self._name = None
+        self._user_cls = None
         self._user_cls_instance = None
         self._service_function = None
         self._has_entered = False
 
     def _initialize_from_other(self, other: "_Server"):
         self._app = other._app
+        self._name = other._name
         self._user_cls = other._user_cls
         self._user_cls_instance = other._user_cls_instance
         self._service_function = other._service_function
-        self._name = other._name
         self._load_context_overrides = other._load_context_overrides
         self._has_entered = other._has_entered
-
-    def _get_app(self) -> "modal.app._App":
-        assert self._app is not None
-        return self._app
 
     def _get_user_cls(self) -> type:
         assert self._user_cls is not None
