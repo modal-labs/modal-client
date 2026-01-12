@@ -231,6 +231,7 @@ def construct_webhook_callable(
     else:
         raise InvalidError(f"Unrecognized web endpoint type {webhook_config.type}")
 
+
 def maybe_snapshot(
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager", function_def: api_pb2.Function
 ):
