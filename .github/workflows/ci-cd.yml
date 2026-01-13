@@ -1,10 +1,11 @@
 name: CI/CD
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      working_directory:
+        required: true
+        type: string
 
 # Cancel previous runs of the same PR but do not cancel previous runs on main
 concurrency:
@@ -17,6 +18,11 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
+  docs-test:
+    uses: ./.github/workflows/tests.yml
+    with:
+      working_directory: "."
+
   client-versioning:
     if: github.ref == 'refs/heads/main'
     name: Update changelog and client version

@@ -1,10 +1,15 @@
 name: Docs
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_call:
+    inputs:
+      working_directory:
+        required: true
+        type: string
+      python_version:
+        required: true
+        type: string
+        default: "3.10"
 
 # Cancel previous runs of the same PR but do not cancel previous runs on main
 concurrency:
@@ -16,10 +21,31 @@ jobs:
     name: Doc generation tests
     timeout-minutes: 5
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
-      - uses: ./.github/actions/setup-cached-python
+      - name: Install Python
+        uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Setup uv with caching
+        uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.1.2
+        with:
+          enable-cache: true
+          version: "0.9.24"
+          cache-dependency-glob: |
+            ${{ inputs.working_directory }}/requirements.dev.txt
+            ${{ inputs.working_directory }}/pyproject.toml
+
+      - name: Install Python packages
+        shell: bash
+        run: |
+          uv pip install --system -r requirements.dev.txt
 
       - name: Build protobuf
         run: inv protoc
