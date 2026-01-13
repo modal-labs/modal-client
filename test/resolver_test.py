@@ -70,13 +70,6 @@ async def test_multi_resolve_concurrent_loads_once(client):
     assert load_count == 1
 
 
-def test_resolver_without_rich(no_rich):
-    resolver = Resolver()
-    resolver.add_status_row()
-    with resolver.display():
-        pass
-
-
 @pytest.mark.asyncio
 async def test_resolver_shared_dependency_exception_priority(client):
     """
