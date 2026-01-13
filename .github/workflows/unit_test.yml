@@ -42,6 +42,9 @@ concurrency:
             proto-version: "3.20"
 
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
@@ -55,15 +58,12 @@ concurrency:
 
       - name: Build protobuf
         run: inv protoc
-        working-directory: ${{ inputs.working_directory }}
 
       - name: Build client package (installs all dependencies)
         run: uv pip install -e .
-        working-directory: ${{ inputs.working_directory }}
 
       - name: Run client tests
         run: inv test
-        working-directory: ${{ inputs.working_directory }}
 
       - name: Run docstring tests
         if: github.event.pull_request.head.repo.fork == false
@@ -72,4 +72,3 @@ concurrency:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: pytest -v --markdown-docs -m markdown-docs modal
-        working-directory: ${{ inputs.working_directory }}
