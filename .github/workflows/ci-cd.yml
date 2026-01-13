@@ -81,7 +81,7 @@ jobs:
         run: python -m modal_global_objects.mounts.modal_client_package
 
   client-test:
-    uses: ./github/workflows/unit_test.yml
+    uses: ./.github/workflows/unit_test.yml
     with:
       working_directory: "."
     secrets:
