@@ -1636,10 +1636,7 @@ Use the `Function.get_web_url()` method instead.
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        if output_mgr := _get_output_manager():
-            count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
-        else:
-            count_update_callback = None
+        count_update_callback = _get_output_manager().function_progress_callback(self._function_name, total=None)
 
         if self._input_plane_url:
             async with aclosing(

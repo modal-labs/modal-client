@@ -35,7 +35,7 @@ from .cls import _Cls
 from .config import config, logger
 from .environments import _get_environment_cached
 from .exception import ConnectionError, InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
-from .output import _get_output_manager, enable_output
+from .output import _get_output_manager, _is_output_enabled, enable_output
 from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
 from .secret import _Secret
@@ -135,8 +135,7 @@ async def _create_all_objects(
 
     resolver = Resolver()
     output_mgr = _get_output_manager()
-    display_ctx = output_mgr.display_object_tree() if output_mgr else nullcontext()
-    with display_ctx:
+    with output_mgr.display_object_tree():
         # Get current objects, and reset all objects
         tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
         running_app.function_ids = {}
@@ -285,8 +284,7 @@ async def _run_app(
 
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
 
-    output_mgr = _get_output_manager()
-    if interactive and output_mgr is None:
+    if interactive and not _is_output_enabled():
         msg = "Interactive mode requires output to be enabled. (Use the the `modal.enable_output()` context manager.)"
         raise InvalidError(msg)
 
@@ -313,7 +311,8 @@ async def _run_app(
         heartbeat_loop = tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
         logs_loop: Optional[asyncio.Task] = None
 
-        if output_mgr is not None:
+        output_mgr = _get_output_manager()
+        if _is_output_enabled():
             # Defer import so this module is rich-safe
             # TODO(michael): The get_app_logs_loop function is itself rich-safe aside from accepting an OutputManager
             # as an argument, so with some refactoring we could avoid the need for this deferred import.
@@ -342,9 +341,7 @@ async def _run_app(
             await _publish_app(load_context.client, running_app, app_state, local_app_state)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
-            if output_mgr := _get_output_manager():
-                output_mgr.print("Aborting app initialization...\n")
-
+            _get_output_manager().print("Aborting app initialization...\n")
             await _status_based_disconnect(load_context.client, running_app.app_id, e)
             raise
         except BaseException as e:
@@ -363,16 +360,12 @@ async def _run_app(
         try:
             # Show logs from dynamically created images.
             # TODO: better way to do this
-            if output_mgr := _get_output_manager():
-                output_mgr.enable_image_logs()
+            output_mgr.enable_image_logs()
 
             # Yield to context
-            if output_mgr := _get_output_manager():
-                # Don't show status spinner in interactive mode to avoid interfering with breakpoints
-                spinner_ctx = nullcontext() if interactive else output_mgr.show_status_spinner()
-                with spinner_ctx:
-                    yield app
-            else:
+            # Don't show status spinner in interactive mode to avoid interfering with breakpoints
+            spinner_ctx = nullcontext() if interactive else output_mgr.show_status_spinner()
+            with spinner_ctx:
                 yield app
             # successful completion!
             heartbeat_loop.cancel()
@@ -380,17 +373,13 @@ async def _run_app(
         except KeyboardInterrupt as e:
             # this happens only if sigint comes in during the yield block above
             if detach:
-                if output_mgr := _get_output_manager():
-                    output_mgr.print(output_mgr.step_completed("Shutting down Modal client."))
-                    output_mgr.print(detached_disconnect_msg)
+                output_mgr.print(output_mgr.step_completed("Shutting down Modal client."))
+                output_mgr.print(detached_disconnect_msg)
                 if logs_loop:
                     logs_loop.cancel()
                 await _status_based_disconnect(load_context.client, running_app.app_id, e)
             else:
-                if output_mgr := _get_output_manager():
-                    output_mgr.print(
-                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
-                    )
+                output_mgr.print("Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n")
                 await _status_based_disconnect(load_context.client, running_app.app_id, e)
                 if logs_loop:
                     try:
@@ -398,18 +387,16 @@ async def _run_app(
                     except asyncio.TimeoutError:
                         logger.warning("Timed out waiting for final app logs.")
 
-                if output_mgr:
-                    output_mgr.print(
-                        output_mgr.step_completed(
-                            "App aborted. "
-                            f"[grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
-                        )
+                output_mgr.print(
+                    output_mgr.step_completed(
+                        f"App aborted. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
                     )
+                )
             return
         except ConnectionError as e:
             # If we lose connection to the server after a detached App has started running, it will continue
             # I think we can only exit "nicely" if we are able to print output though, otherwise we should raise
-            if detach and (output_mgr := _get_output_manager()):
+            if detach and _is_output_enabled():
                 output_mgr.print(":white_exclamation_mark: Connection lost!")
                 output_mgr.print(detached_disconnect_msg)
                 return
@@ -428,12 +415,11 @@ async def _run_app(
             except asyncio.TimeoutError:
                 logger.warning("Timed out waiting for final app logs.")
 
-    if output_mgr := _get_output_manager():
-        output_mgr.print(
-            output_mgr.step_completed(
-                f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
-            )
+    output_mgr.print(
+        output_mgr.step_completed(
+            f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
         )
+    )
 
 
 async def _serve_update(
@@ -565,10 +551,10 @@ async def _deploy_app(
             await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
-    if output_mgr := _get_output_manager():
-        t = time.time() - t0
-        output_mgr.print(output_mgr.step_completed(f"App deployed in {t:.3f}s! 🎉"))
-        output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
+    output_mgr = _get_output_manager()
+    t = time.time() - t0
+    output_mgr.print(output_mgr.step_completed(f"App deployed in {t:.3f}s! 🎉"))
+    output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(
         app_id=running_app.app_id,
         app_page_url=running_app.app_page_url,

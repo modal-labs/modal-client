@@ -9,8 +9,9 @@ import re
 import socket
 import sys
 from collections.abc import Generator
+from contextlib import AbstractContextManager, nullcontext
 from datetime import timedelta
-from typing import Callable, ClassVar
+from typing import Any, Callable, ClassVar, Protocol, runtime_checkable
 
 from grpclib.exceptions import StreamTerminatedError
 from rich.console import Console, Group, RenderableType
@@ -120,13 +121,17 @@ class LineBufferedOutput:
 
 
 class StatusRow:
-    """A row in the object creation status tree."""
+    """A row in the object creation status tree.
+
+    This class handles both enabled and disabled output modes.
+    When the tree is None (disabled), all methods become no-ops.
+    """
 
     def __init__(self, progress: "Tree | None"):
         self._spinner: Spinner | None = None
         self._step_node = None
         if progress is not None:
-            self._spinner = OutputManager.step_progress()
+            self._spinner = RichOutputManager.step_progress()
             self._step_node = progress.add(self._spinner)
 
     def message(self, message: str) -> None:
@@ -140,11 +145,194 @@ class StatusRow:
     def finish(self, message: str) -> None:
         if self._step_node is not None and self._spinner is not None:
             self._spinner.update(text=message)
-            self._step_node.label = OutputManager.substep_completed(message)
+            self._step_node.label = RichOutputManager.substep_completed(message)
 
 
-class OutputManager:
-    _instance: ClassVar[OutputManager | None] = None
+@runtime_checkable
+class OutputManager(Protocol):
+    """Protocol defining the interface for output management.
+
+    This protocol allows for different implementations:
+    - RichOutputManager: Full rich-based terminal output with progress spinners, trees, etc.
+    - DisabledOutputManager: No-op implementation for when output is disabled.
+
+    Using a protocol allows code to work with any output manager without checking for None.
+    """
+
+    @property
+    def _stdout(self) -> Any:
+        """The stdout stream for PTY shell output."""
+        ...
+
+    @property
+    def _show_image_logs(self) -> bool:
+        """Whether to show image logs."""
+        ...
+
+    def disable(self) -> None:
+        """Disable output and clean up resources."""
+        ...
+
+    @contextlib.contextmanager
+    def display_object_tree(self) -> Generator[None, None, None]:
+        """Context manager that displays a tree of objects being created."""
+        ...
+
+    def add_status_row(self) -> StatusRow:
+        """Add a status row to the current object tree."""
+        ...
+
+    def print(self, renderable: Any) -> None:
+        """Print a renderable to the console."""
+        ...
+
+    def make_live(self, renderable: Any) -> AbstractContextManager[Any]:
+        """Create a Live context manager for the given renderable."""
+        ...
+
+    def enable_image_logs(self) -> None:
+        """Enable showing image logs."""
+        ...
+
+    def show_status_spinner(self) -> AbstractContextManager[None]:
+        """Context manager that shows a status spinner."""
+        ...
+
+    def update_app_page_url(self, app_page_url: str) -> None:
+        """Update the app page URL for display."""
+        ...
+
+    def function_progress_callback(self, tag: str, total: int | None) -> Callable[[int, int], None]:
+        """Get a callback for updating function progress."""
+        ...
+
+    def update_task_state(self, task_id: str, state: int) -> None:
+        """Update the state of a task."""
+        ...
+
+    def update_snapshot_progress(self, image_id: str, task_progress: api_pb2.TaskProgress) -> None:
+        """Update snapshot upload progress."""
+        ...
+
+    def update_queueing_progress(
+        self, *, function_id: str, completed: int, total: int | None, description: str | None
+    ) -> None:
+        """Update function queueing progress."""
+        ...
+
+    async def put_log_content(self, log: api_pb2.TaskLogs) -> None:
+        """Process and display log content."""
+        ...
+
+    def flush_lines(self) -> None:
+        """Flush any buffered output."""
+        ...
+
+    @staticmethod
+    def step_progress(text: str = "") -> Any:
+        """Returns the element to be rendered when a step is in progress."""
+        ...
+
+    @staticmethod
+    def step_completed(message: str) -> Any:
+        """Returns the element to be rendered when a step is completed."""
+        ...
+
+    @staticmethod
+    def substep_completed(message: str) -> Any:
+        """Returns the element to be rendered when a substep is completed."""
+        ...
+
+
+class DisabledOutputManager:
+    """No-op implementation of OutputManager for when output is disabled.
+
+    All methods are no-ops that do nothing, allowing code to call output methods
+    without checking if the output manager exists.
+    """
+
+    @property
+    def _stdout(self) -> Any:
+        return sys.stdout
+
+    @property
+    def _show_image_logs(self) -> bool:
+        return True  # Always "show" logs when disabled (don't filter them)
+
+    def disable(self) -> None:
+        pass
+
+    @contextlib.contextmanager
+    def display_object_tree(self) -> Generator[None, None, None]:
+        yield
+
+    def add_status_row(self) -> StatusRow:
+        return StatusRow(None)
+
+    def print(self, renderable: Any) -> None:
+        pass
+
+    def make_live(self, renderable: Any) -> AbstractContextManager[Any]:
+        return nullcontext()
+
+    def enable_image_logs(self) -> None:
+        pass
+
+    @contextlib.contextmanager
+    def show_status_spinner(self) -> Generator[None, None, None]:
+        yield
+
+    def update_app_page_url(self, app_page_url: str) -> None:
+        pass
+
+    def function_progress_callback(self, tag: str, total: int | None) -> Callable[[int, int], None]:
+        def noop(completed: int, total: int) -> None:
+            pass
+
+        return noop
+
+    def update_task_state(self, task_id: str, state: int) -> None:
+        pass
+
+    def update_snapshot_progress(self, image_id: str, task_progress: api_pb2.TaskProgress) -> None:
+        pass
+
+    def update_queueing_progress(
+        self, *, function_id: str, completed: int, total: int | None, description: str | None
+    ) -> None:
+        pass
+
+    async def put_log_content(self, log: api_pb2.TaskLogs) -> None:
+        pass
+
+    def flush_lines(self) -> None:
+        pass
+
+    @staticmethod
+    def step_progress(text: str = "") -> str:
+        return text
+
+    @staticmethod
+    def step_completed(message: str) -> str:
+        return message
+
+    @staticmethod
+    def substep_completed(message: str) -> str:
+        return message
+
+
+# Singleton instance of the disabled output manager
+_DISABLED_OUTPUT_MANAGER = DisabledOutputManager()
+
+
+class RichOutputManager:
+    """Rich-based implementation of OutputManager.
+
+    Provides full terminal output with progress spinners, trees, and colored output
+    using the Rich library.
+    """
+
+    _instance: ClassVar[RichOutputManager | None] = None
 
     _console: Console
     _task_states: dict[str, int]
@@ -176,31 +364,33 @@ class OutputManager:
         self._function_queueing_progress = None
         self._snapshot_progress = None
         self._line_buffers = {}
-        self._status_spinner = OutputManager.step_progress(status_spinner_text)
+        self._status_spinner = RichOutputManager.step_progress(status_spinner_text)
         self._app_page_url = None
         self._show_image_logs = False
         self._status_spinner_live = None
         self._show_timestamps = show_timestamps
         self._object_tree = None
 
-    @classmethod
-    def disable(cls):
-        cls._instance.flush_lines()
-        if cls._instance._status_spinner_live:
-            cls._instance._status_spinner_live.stop()
-        cls._instance = None
+    def disable(self) -> None:
+        """Disable this output manager and clean up resources."""
+        self.flush_lines()
+        if self._status_spinner_live:
+            self._status_spinner_live.stop()
+        RichOutputManager._instance = None
 
     @classmethod
-    def get(cls) -> OutputManager | None:
+    def get(cls) -> RichOutputManager | None:
         return cls._instance
 
     @classmethod
     @contextlib.contextmanager
-    def enable_output(cls, show_progress: bool = True) -> Generator[None]:
+    def enable_output(
+        cls, show_progress: bool = True, show_timestamps: bool = False
+    ) -> Generator[RichOutputManager | None, None, None]:
         if show_progress:
-            cls._instance = OutputManager()
+            cls._instance = RichOutputManager(show_timestamps=show_timestamps)
         try:
-            yield
+            yield cls._instance
         finally:
             cls._instance = None
 
@@ -231,7 +421,7 @@ class OutputManager:
         """Add a status row to the current object tree."""
         return StatusRow(self._object_tree)
 
-    def print(self, renderable) -> None:
+    def print(self, renderable: Any) -> None:
         self._console.print(renderable)
 
     def make_live(self, renderable: RenderableType) -> Live:
@@ -241,7 +431,7 @@ class OutputManager:
         self._current_render_group = Group(renderable)
         return Live(self._current_render_group, console=self._console, transient=True, refresh_per_second=4)
 
-    def enable_image_logs(self):
+    def enable_image_logs(self) -> None:
         self._show_image_logs = True
 
     @property
@@ -319,7 +509,7 @@ class OutputManager:
     def update_app_page_url(self, app_page_url: str) -> None:
         self._app_page_url = app_page_url
 
-    def update_task_state(self, task_id: str, state: int):
+    def update_task_state(self, task_id: str, state: int) -> None:
         """Updates the state of a task, sets the new task status string."""
         self._task_states[task_id] = state
 
@@ -392,22 +582,26 @@ class OutputManager:
             progress_task_id = self.function_queueing_progress.add_task(task_desc, start=True, total=None)
             self._task_progress_items[task_key] = progress_task_id
 
-    async def put_log_content(self, log: api_pb2.TaskLogs):
+    async def put_log_content(self, log: api_pb2.TaskLogs) -> None:
         stream = self._line_buffers.get(log.file_descriptor)
         if stream is None:
             stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor), self._show_timestamps)
             self._line_buffers[log.file_descriptor] = stream
         stream.write(log)
 
-    def flush_lines(self):
+    def flush_lines(self) -> None:
         for stream in self._line_buffers.values():
             stream.finalize()
 
     @contextlib.contextmanager
-    def show_status_spinner(self):
+    def show_status_spinner(self) -> Generator[None, None, None]:
         self._status_spinner_live = self.make_live(self._status_spinner)
         with self._status_spinner_live:
             yield
+
+
+# Type alias for backward compatibility and type hints
+# Code can use OutputManager as a type hint for any output manager implementation
 
 
 class ProgressHandler:
@@ -430,7 +624,7 @@ class ProgressHandler:
         else:
             raise NotImplementedError(f"Progress handler of type: `{type}` not yet implemented")
 
-        self._spinner = OutputManager.step_progress(title)
+        self._spinner = RichOutputManager.step_progress(title)
 
         self._overall_progress = Progress(
             TextColumn(f"[bold white]{title}", justify="right"),
