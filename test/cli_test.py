@@ -558,6 +558,43 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
     )
 
 
+def test_run_timestamps(servicer, server_url_env, set_env_client, test_dir, monkeypatch):
+    from datetime import timezone
+
+    # Use a known timestamp (2025-01-15 12:00:45 UTC)
+    known_timestamp = 1736942445.0
+
+    # Mock locale_tz to return UTC for predictable timestamp formatting
+    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: timezone.utc)
+
+    async def app_logs_with_timestamp(self, stream):
+        await stream.recv_message()
+        log = api_pb2.TaskLogs(
+            data="test log message\n",
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+            timestamp=known_timestamp,
+        )
+        await stream.send_message(api_pb2.TaskLogsBatch(entry_id="1", items=[log]))
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppGetLogs", app_logs_with_timestamp)
+
+        app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
+
+        # Test without --timestamps flag - should not include timestamp
+        res = run_cli_command(["run", app_file.as_posix()])
+        assert "test log message" in res.stdout
+        # The timestamp string format is "YYYY-MM-DD HH:MM:SS+TZ" - check that it's NOT there
+        assert "2025-01-15 12:00:45" not in res.stdout
+
+        # Test with --timestamps flag - should include timestamp prefix
+        res = run_cli_command(["run", "--timestamps", app_file.as_posix()])
+        # Check for the full formatted line: "YYYY-MM-DD HH:MM:SS+00:00 <message>"
+        expected_line = "2025-01-15 12:00:45+00:00 test log message"
+        assert expected_line in res.stdout
+
+
 def test_app_stop(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         # Deploy as a module
