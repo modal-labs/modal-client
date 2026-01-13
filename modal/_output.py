@@ -30,6 +30,7 @@ from rich.progress import (
 )
 from rich.spinner import Spinner
 from rich.text import Text
+from rich.tree import Tree
 
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal_proto import api_pb2
@@ -118,6 +119,30 @@ class LineBufferedOutput:
             self._buf = ""
 
 
+class StatusRow:
+    """A row in the object creation status tree."""
+
+    def __init__(self, progress: "Tree | None"):
+        self._spinner: Spinner | None = None
+        self._step_node = None
+        if progress is not None:
+            self._spinner = OutputManager.step_progress()
+            self._step_node = progress.add(self._spinner)
+
+    def message(self, message: str) -> None:
+        if self._spinner is not None:
+            self._spinner.update(text=message)
+
+    def warning(self, warning: api_pb2.Warning) -> None:
+        if self._step_node is not None:
+            self._step_node.add(f"[yellow]:warning:[/yellow] {warning.message}")
+
+    def finish(self, message: str) -> None:
+        if self._step_node is not None and self._spinner is not None:
+            self._spinner.update(text=message)
+            self._step_node.label = OutputManager.substep_completed(message)
+
+
 class OutputManager:
     _instance: ClassVar[OutputManager | None] = None
 
@@ -134,6 +159,7 @@ class OutputManager:
     _show_image_logs: bool
     _status_spinner_live: Live | None
     _show_timestamps: bool
+    _object_tree: Tree | None
 
     def __init__(
         self,
@@ -155,6 +181,7 @@ class OutputManager:
         self._show_image_logs = False
         self._status_spinner_live = None
         self._show_timestamps = show_timestamps
+        self._object_tree = None
 
     @classmethod
     def disable(cls):
@@ -189,6 +216,20 @@ class OutputManager:
     @staticmethod
     def substep_completed(message: str) -> RenderableType:
         return f"🔨 {message}"
+
+    @contextlib.contextmanager
+    def display_object_tree(self) -> Generator[None, None, None]:
+        """Context manager that displays a tree of objects being created."""
+        self._object_tree = Tree(self.step_progress("Creating objects..."), guide_style="gray50")
+        with self.make_live(self._object_tree):
+            yield
+        self._object_tree.label = self.step_completed("Created objects.")
+        self.print(self._object_tree)
+        self._object_tree = None
+
+    def add_status_row(self) -> StatusRow:
+        """Add a status row to the current object tree."""
+        return StatusRow(self._object_tree)
 
     def print(self, renderable) -> None:
         self._console.print(renderable)

@@ -12,7 +12,7 @@ from collections.abc import Generator
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from ._output import OutputManager
+    from ._output import OutputManager, StatusRow
 
 
 OUTPUT_ENABLED = False
@@ -62,3 +62,16 @@ def _get_output_manager() -> Optional["OutputManager"]:
         return OutputManager.get()
     else:
         return None
+
+
+def get_status_row() -> "StatusRow":
+    """Get a StatusRow for displaying object creation status.
+
+    Returns a no-op StatusRow if output is disabled.
+    """
+    from ._output import StatusRow
+
+    output_mgr = _get_output_manager()
+    if output_mgr:
+        return output_mgr.add_status_row()
+    return StatusRow(None)
