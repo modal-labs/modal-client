@@ -3686,11 +3686,11 @@ message WorkspaceGetBillingBreakdownRequest {
 }
 
 message WorkspaceGetBillingBreakdownResponse {
-  repeated WorkspaceBillingReportItem items = 1;
+  repeated WorkspaceGetBillingBreakdownItem items = 1;
 }
 
 message WorkspaceGetBillingBreakdownItem {
-  google.protobuf.Timestamp date = 1;
+  string date = 1;
   string app_name = 2;
   string function_name = 3;
   string environment_name = 4;
