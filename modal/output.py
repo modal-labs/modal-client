@@ -9,17 +9,19 @@ us to avoid importing Rich for client code that runs in the container environmen
 
 import contextlib
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    from ._output import OutputManager
+    from ._output import DisabledOutputManager, RichOutputManager
 
 
 OUTPUT_ENABLED = False
 
 
 @contextlib.contextmanager
-def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
+def enable_output(
+    show_progress: bool = True, show_timestamps: bool = False
+) -> Generator["RichOutputManager | None", None, None]:
     """Context manager that enable output when using the Python SDK.
 
     This will print to stdout and stderr things such as
@@ -35,7 +37,7 @@ def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
             ...
     ```
     """
-    from ._output import OutputManager
+    from ._output import RichOutputManager
 
     # Toggle the output flag from within this function so that we can
     # call _get_output_manager from within the library and only import
@@ -47,18 +49,39 @@ def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
     global OUTPUT_ENABLED
 
     try:
-        with OutputManager.enable_output(show_progress):
+        with RichOutputManager.enable_output(show_progress, show_timestamps=show_timestamps) as mgr:
             OUTPUT_ENABLED = True
-            yield
+            yield mgr
     finally:
         OUTPUT_ENABLED = False
 
 
-def _get_output_manager() -> Optional["OutputManager"]:
-    """Interface to the OutputManager that returns None when output is not enabled."""
-    if OUTPUT_ENABLED:
-        from ._output import OutputManager
+def _get_output_manager() -> "Union[RichOutputManager, DisabledOutputManager]":
+    """Get the current output manager.
 
-        return OutputManager.get()
-    else:
-        return None
+    Returns a RichOutputManager when output is enabled, otherwise returns
+    a DisabledOutputManager that provides no-op implementations of all methods.
+
+    This allows code to call output methods without checking if output is enabled,
+    simplifying the calling code.
+    """
+    if OUTPUT_ENABLED:
+        from ._output import RichOutputManager
+
+        mgr = RichOutputManager.get()
+        if mgr is not None:
+            return mgr
+
+    # Return the singleton disabled output manager
+    from ._output import _DISABLED_OUTPUT_MANAGER
+
+    return _DISABLED_OUTPUT_MANAGER
+
+
+def _is_output_enabled() -> bool:
+    """Check if rich output is enabled.
+
+    This is useful for code that needs to conditionally perform operations
+    based on whether output is truly enabled (e.g., starting a logs loop).
+    """
+    return OUTPUT_ENABLED

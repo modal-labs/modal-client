@@ -642,10 +642,7 @@ class FunctionCreationStatus:
         self._output_mgr = _get_output_manager()
 
     def _add_status_row(self):
-        if self._output_mgr:
-            return self._output_mgr.add_status_row()
-        # No-op status row when output is disabled
-        return _NoOpStatusRow()
+        return self._output_mgr.add_status_row()
 
     def __enter__(self):
         self.status_row = self._add_status_row()

@@ -58,7 +58,7 @@ from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .output import _get_output_manager
+from .output import _get_output_manager, _is_output_enabled
 from .secret import _Secret
 from .volume import _Volume
 
@@ -382,16 +382,14 @@ async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.I
             if response.result.status:
                 result_response = response
                 # can't return yet, since there may still be logs streaming back in subsequent responses
+            output_mgr = _get_output_manager()
             for task_log in response.task_logs:
                 if task_log.task_progress.pos or task_log.task_progress.len:
                     assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
-                    if output_mgr := _get_output_manager():
-                        output_mgr.update_snapshot_progress(image_id, task_log.task_progress)
+                    output_mgr.update_snapshot_progress(image_id, task_log.task_progress)
                 elif task_log.data:
-                    if output_mgr := _get_output_manager():
-                        await output_mgr.put_log_content(task_log)
-        if output_mgr := _get_output_manager():
-            output_mgr.flush_lines()
+                    await output_mgr.put_log_content(task_log)
+        _get_output_manager().flush_lines()
 
     # Handle up to n exceptions while fetching logs
     retry_count = 0
@@ -687,7 +685,7 @@ class _Image(_Object, type_prefix="im"):
                     raise RemoteError(f"Image build for {image_id} failed with the exception:\n{result.exception}")
                 else:
                     msg = f"Image build for {image_id} failed. See build logs for more details."
-                    if not _get_output_manager():
+                    if not _is_output_enabled():
                         msg += " (Hint: Use `modal.enable_output()` to see logs from the process building the Image.)"
                     raise RemoteError(msg)
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
