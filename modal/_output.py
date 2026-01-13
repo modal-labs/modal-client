@@ -231,6 +231,16 @@ class OutputManager:
         """Add a status row to the current object tree."""
         return StatusRow(self._object_tree)
 
+    @classmethod
+    def get_status_row(cls) -> StatusRow:
+        """Get a StatusRow for displaying object creation status.
+
+        Returns a no-op StatusRow if output is disabled or no OutputManager is active.
+        """
+        if cls._instance is not None:
+            return cls._instance.add_status_row()
+        return StatusRow(None)
+
     def print(self, renderable) -> None:
         self._console.print(renderable)
 

@@ -69,9 +69,6 @@ def get_status_row() -> "StatusRow":
 
     Returns a no-op StatusRow if output is disabled.
     """
-    from ._output import StatusRow
+    from ._output import OutputManager
 
-    output_mgr = _get_output_manager()
-    if output_mgr:
-        return output_mgr.add_status_row()
-    return StatusRow(None)
+    return OutputManager.get_status_row()
