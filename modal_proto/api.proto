@@ -3679,22 +3679,23 @@ message WorkspaceBillingReportRequest {
   repeated string tag_names = 4;
 }
 
-message WorkspaceGetBillingBreakdownRequest {
-  string workspace_name = 1;
-  google.protobuf.Timestamp start_timestamp = 2;
-  google.protobuf.Timestamp end_timestamp = 3;
-}
-
-message WorkspaceGetBillingBreakdownResponse {
-  repeated WorkspaceGetBillingBreakdownItem items = 1;
-}
-
 message WorkspaceGetBillingBreakdownItem {
   string date = 1;
   string app_name = 2;
   string function_name = 3;
   string environment_name = 4;
   float cost_dollars = 5;
+}
+
+message WorkspaceGetBillingBreakdownRequest {
+  string workspace_name = 1;
+  google.protobuf.Timestamp start_timestamp = 2;
+  google.protobuf.Timestamp end_timestamp = 3;
+}
+
+
+message WorkspaceGetBillingBreakdownResponse {
+  repeated WorkspaceGetBillingBreakdownItem items = 1;
 }
 
 message WorkspaceNameLookupResponse {
