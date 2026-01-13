@@ -621,12 +621,20 @@ class FunctionCreationStatus:
     response: Optional[api_pb2.FunctionCreateResponse] = None
 
     def __init__(self, tag: str):
+        from modal.output import _get_output_manager
+
         self.tag = tag
+        self._output_mgr = _get_output_manager()
+
+    def _add_status_row(self):
+        from modal._output import StatusRow
+
+        if self._output_mgr:
+            return self._output_mgr.add_status_row()
+        return StatusRow(None)
 
     def __enter__(self):
-        from modal.output import get_status_row
-
-        self.status_row = get_status_row()
+        self.status_row = self._add_status_row()
         self.status_row.message(f"Creating function {self.tag}...")
         return self
 
@@ -634,8 +642,6 @@ class FunctionCreationStatus:
         self.response = resp
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        from modal.output import get_status_row
-
         if exc_type:
             raise exc_val
 
@@ -658,7 +664,7 @@ class FunctionCreationStatus:
 
             # Print custom domain in terminal
             for custom_domain in self.response.function.custom_domain_info:
-                custom_domain_status_row = get_status_row()
+                custom_domain_status_row = self._add_status_row()
                 custom_domain_status_row.finish(
                     f"Custom domain for {self.tag} => [magenta underline]{custom_domain.url}[/magenta underline]"
                 )
@@ -666,7 +672,7 @@ class FunctionCreationStatus:
         elif self.response.function.flash_service_urls:
             self.status_row.finish(f"Created function {self.tag}.")
             for flash_service_url in self.response.function.flash_service_urls:
-                flash_service_url_status_row = get_status_row()
+                flash_service_url_status_row = self._add_status_row()
                 flash_service_url_status_row.finish(
                     f"Created server endpoints for {self.tag} => "
                     f"[magenta underline]{flash_service_url}[/magenta underline]"
@@ -681,13 +687,13 @@ class FunctionCreationStatus:
                     if method_definition.web_url:
                         url_info = method_definition.web_url_info
                         suffix = _get_suffix_from_web_url_info(url_info)
-                        class_web_endpoint_method_status_row = get_status_row()
+                        class_web_endpoint_method_status_row = self._add_status_row()
                         class_web_endpoint_method_status_row.finish(
                             f"Created web endpoint for {method_definition.function_name} => [magenta underline]"
                             f"{method_definition.web_url}[/magenta underline]{suffix}"
                         )
                         for custom_domain in method_definition.custom_domain_info:
-                            custom_domain_status_row = get_status_row()
+                            custom_domain_status_row = self._add_status_row()
                             custom_domain_status_row.finish(
                                 f"Custom domain for {method_definition.function_name} => [magenta underline]"
                                 f"{custom_domain.url}[/magenta underline]"
