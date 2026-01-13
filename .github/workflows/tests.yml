@@ -11,6 +11,10 @@ on:
       MODAL_TOKEN_SECRET:
         required: true
 
+env:
+  TERM: linux
+  TERMINFO: /etc/terminfo
+  PYTHONIOENCODING: utf-8
 
 jobs:
   client-test:
