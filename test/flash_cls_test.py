@@ -146,12 +146,12 @@ def test_flash_params_override_experimental_options(client, servicer):
         assert servicer.app_functions[class_function_id].experimental_options["flash"] == "us-east"
 
 
-def test_flash_class_with_options(client, servicer):
-    """Test flash classes work with .with_options()."""
+def test_flash_class_http_config_is_set(client, servicer):
+    """Test flash classes have http-config set correctly."""
     app = App("flash-options")
 
     @app.cls(serialized=True)
-    @modal.experimental.http_server(8080)
+    @modal.experimental.http_server(8080, proxy_regions=["us-east"])
     class FlashOptionsClass:
         def serve(self):
             return "Hello Flash"
