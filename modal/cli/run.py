@@ -457,6 +457,7 @@ def deploy(
     use_module_mode: bool = typer.Option(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
+    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line."),
 ):
     """Deploy a Modal application.
 
@@ -481,11 +482,11 @@ def deploy(
             "modal deploy ... --name=some-name"
         )
 
-    with enable_output():
+    with enable_output(show_timestamps=timestamps):
         res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
 
     if stream_logs:
-        stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url)
+        stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url, show_timestamps=timestamps)
 
 
 def serve(
@@ -495,6 +496,7 @@ def serve(
     use_module_mode: bool = typer.Option(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
+    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line."),
 ):
     """Run a web endpoint(s) associated with a Modal app and hot-reload code.
 
@@ -516,7 +518,7 @@ def serve(
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
 
-    with enable_output():
+    with enable_output(show_timestamps=timestamps):
         with serve_app(app, import_ref, environment_name=env):
             if timeout is None:
                 timeout = config["serve_timeout"]
