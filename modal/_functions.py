@@ -921,7 +921,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _load(
             self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            with FunctionCreationStatus(resolver, tag) as function_creation_status:
+            with FunctionCreationStatus(tag) as function_creation_status:
                 timeout_secs = timeout
 
                 if app and app.is_interactive and not is_builder_function:

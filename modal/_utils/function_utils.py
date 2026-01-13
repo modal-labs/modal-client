@@ -622,12 +622,13 @@ class FunctionCreationStatus:
     tag: str
     response: Optional[api_pb2.FunctionCreateResponse] = None
 
-    def __init__(self, resolver, tag):
-        self.resolver = resolver
+    def __init__(self, tag: str):
         self.tag = tag
 
     def __enter__(self):
-        self.status_row = self.resolver.add_status_row()
+        from modal.output import get_status_row
+
+        self.status_row = get_status_row()
         self.status_row.message(f"Creating function {self.tag}...")
         return self
 
@@ -635,6 +636,8 @@ class FunctionCreationStatus:
         self.response = resp
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        from modal.output import get_status_row
+
         if exc_type:
             raise exc_val
 
@@ -657,14 +660,14 @@ class FunctionCreationStatus:
 
             # Print custom domain in terminal
             for custom_domain in self.response.function.custom_domain_info:
-                custom_domain_status_row = self.resolver.add_status_row()
+                custom_domain_status_row = get_status_row()
                 custom_domain_status_row.finish(
                     f"Custom domain for {self.tag} => [magenta underline]{custom_domain.url}[/magenta underline]"
                 )
 
         elif self.response.function.flash_service_urls:
             for flash_service_url in self.response.function.flash_service_urls:
-                flash_service_url_status_row = self.resolver.add_status_row()
+                flash_service_url_status_row = get_status_row()
                 flash_service_url_status_row.finish(
                     f"Created flash service endpoint for {self.tag} => "
                     f"[magenta underline]{flash_service_url}[/magenta underline]"
@@ -679,13 +682,13 @@ class FunctionCreationStatus:
                     if method_definition.web_url:
                         url_info = method_definition.web_url_info
                         suffix = _get_suffix_from_web_url_info(url_info)
-                        class_web_endpoint_method_status_row = self.resolver.add_status_row()
+                        class_web_endpoint_method_status_row = get_status_row()
                         class_web_endpoint_method_status_row.finish(
                             f"Created web endpoint for {method_definition.function_name} => [magenta underline]"
                             f"{method_definition.web_url}[/magenta underline]{suffix}"
                         )
                         for custom_domain in method_definition.custom_domain_info:
-                            custom_domain_status_row = self.resolver.add_status_row()
+                            custom_domain_status_row = get_status_row()
                             custom_domain_status_row.finish(
                                 f"Custom domain for {method_definition.function_name} => [magenta underline]"
                                 f"{custom_domain.url}[/magenta underline]"
