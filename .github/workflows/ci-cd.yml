@@ -1,11 +1,10 @@
 name: CI/CD
 
 on:
-  workflow_call:
-    inputs:
-      working_directory:
-        required: true
-        type: string
+  push:
+    branches:
+      - main
+  pull_request:
 
 # Cancel previous runs of the same PR but do not cancel previous runs on main
 concurrency:
