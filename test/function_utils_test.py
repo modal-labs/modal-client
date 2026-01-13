@@ -157,7 +157,9 @@ def test_global_variable_extraction(func):
 
 def test_url_displayed_function_create_status_web_url(monkeypatch):
     status_row_mock = Mock()
-    monkeypatch.setattr("modal.output.get_status_row", lambda: status_row_mock)
+    output_mgr_mock = Mock()
+    output_mgr_mock.add_status_row.return_value = status_row_mock
+    monkeypatch.setattr("modal.output._get_output_manager", lambda: output_mgr_mock)
 
     web_url = "https://user--endpoint-f.me"
     tag = "fu-abc"
