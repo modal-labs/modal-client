@@ -185,7 +185,8 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
         _validate_interactive_quiet_params(ctx)
 
         show_progress: bool = ctx.obj["show_progress"]
-        with enable_output(show_progress):
+        show_timestamps: bool = ctx.obj["show_timestamps"]
+        with enable_output(show_progress, show_timestamps=show_timestamps):
             with run_app(
                 app,
                 detach=ctx.obj["detach"],
@@ -314,7 +315,8 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
         _validate_interactive_quiet_params(ctx)
 
         show_progress: bool = ctx.obj["show_progress"]
-        with enable_output(show_progress):
+        show_timestamps: bool = ctx.obj["show_timestamps"]
+        with enable_output(show_progress, show_timestamps=show_timestamps):
             with run_app(
                 app,
                 detach=ctx.obj["detach"],
@@ -404,8 +406,9 @@ class RunGroup(click.Group):
 @click.option("-i", "--interactive", is_flag=True, help="Run the app in interactive mode.")
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None)
 @click.option("-m", is_flag=True, help="Interpret argument as a Python module path instead of a file/script path")
+@click.option("--timestamps", is_flag=True, help="Show timestamps for each log line.")
 @click.pass_context
-def run(ctx, write_result, detach, quiet, interactive, env, m):
+def run(ctx, write_result, detach, quiet, interactive, env, m, timestamps):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -442,6 +445,7 @@ def run(ctx, write_result, detach, quiet, interactive, env, m):
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
     ctx.obj["interactive"] = interactive
+    ctx.obj["show_timestamps"] = timestamps
 
 
 def deploy(
