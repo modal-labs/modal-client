@@ -8,7 +8,7 @@ on:
     secrets:
       MODAL_TOKEN_ID:
         required: true
-      modal_token_secret:
+      MODAL_TOKEN_SECRET:
         required: true
 
 
