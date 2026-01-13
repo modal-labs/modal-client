@@ -8,7 +8,7 @@ import typer
 from rich.json import JSON
 from rich.table import Table
 
-from modal._output import make_console
+from modal._rich_output import make_console
 from modal._utils.async_utils import synchronizer
 from modal.config import Config, _lookup_workspace, _profile, config_profiles, config_set_active_profile
 from modal.exception import AuthError

@@ -5,8 +5,8 @@ import typer
 from typer import Argument, Option, Typer
 
 from modal._load_context import LoadContext
-from modal._output import make_console
 from modal._resolver import Resolver
+from modal._rich_output import make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table

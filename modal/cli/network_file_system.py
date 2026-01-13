@@ -12,7 +12,7 @@ from typer import Argument, Typer
 
 import modal
 from modal._location import display_location
-from modal._output import OutputManager, ProgressHandler, make_console
+from modal._rich_output import ProgressHandler, RichOutputManager, make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
@@ -128,7 +128,7 @@ async def put(
         with progress_handler.live:
             await volume.add_local_dir(local_path, remote_path, progress_cb=progress_handler.progress)
             progress_handler.progress(complete=True)
-        console.print(OutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+        console.print(RichOutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
 
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
@@ -138,7 +138,7 @@ async def put(
             written_bytes = await volume.add_local_file(local_path, remote_path, progress_cb=progress_handler.progress)
             progress_handler.progress(complete=True)
         console.print(
-            OutputManager.step_completed(
+            RichOutputManager.step_completed(
                 f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)"
             )
         )
@@ -178,7 +178,7 @@ async def get(
     progress_handler = ProgressHandler(type="download", console=console)
     with progress_handler.live:
         await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
-    console.print(OutputManager.step_completed("Finished downloading files to local!"))
+    console.print(RichOutputManager.step_completed("Finished downloading files to local!"))
 
 
 @nfs_cli.command(
@@ -195,7 +195,7 @@ async def rm(
     volume = _NetworkFileSystem.from_name(volume_name)
     console = make_console()
     await volume.remove_file(remote_path, recursive=recursive)
-    console.print(OutputManager.step_completed(f"{remote_path} was deleted successfully!"))
+    console.print(RichOutputManager.step_completed(f"{remote_path} was deleted successfully!"))
 
 
 @nfs_cli.command(

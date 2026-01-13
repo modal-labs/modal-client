@@ -10,7 +10,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._output import make_console
+from ._rich_output import make_console
 from ._utils.async_utils import synchronize_api
 from ._utils.http_utils import run_temporary_http_server
 from .client import _Client

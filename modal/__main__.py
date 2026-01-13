@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import sys
 
-from ._output import make_console
+from ._rich_output import make_console
 from ._traceback import reduce_traceback_to_user_code
 from .cli._traceback import highlight_modal_warnings, setup_rich_traceback
 from .cli.entry_point import entrypoint_cli
