@@ -18,7 +18,7 @@ env:
 
 jobs:
   docs-test:
-    uses: ./.github/workflows/tests.yml
+    uses: ./.github/workflows/docs.yml
     with:
       working_directory: "."
 
