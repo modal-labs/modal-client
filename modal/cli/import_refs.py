@@ -21,7 +21,7 @@ from typing import Optional, Union, cast
 import click
 from rich.markdown import Markdown
 
-from modal._output import make_console
+from modal._rich_output import make_console
 from modal._utils.deprecation import deprecation_warning
 from modal.app import App, LocalEntrypoint
 from modal.cls import Cls

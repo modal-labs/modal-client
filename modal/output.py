@@ -2,9 +2,8 @@
 """Interface to Modal's OutputManager functionality.
 
 These functions live here so that Modal library code can import them without
-transitively importing Rich, as we do in global scope in _output.py. This allows
+transitively importing Rich, as we do in _rich_output.py. This allows
 us to avoid importing Rich for client code that runs in the container environment.
-
 """
 
 import contextlib
@@ -12,10 +11,12 @@ from collections.abc import Generator
 from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    from ._output import DisabledOutputManager, RichOutputManager
+    from ._output import DisabledOutputManager
+    from ._rich_output import RichOutputManager
 
 
-OUTPUT_ENABLED = False
+# Module-level state for output management
+_current_output_manager: "Union[RichOutputManager, None]" = None
 
 
 @contextlib.contextmanager
@@ -37,23 +38,16 @@ def enable_output(
             ...
     ```
     """
-    from ._output import RichOutputManager
+    global _current_output_manager
 
-    # Toggle the output flag from within this function so that we can
-    # call _get_output_manager from within the library and only import
-    # the _output module if output is explicitly enabled. That prevents
-    # us from trying to import rich inside a container environment where
-    # it might not be installed. This is sort of hacky and I would prefer
-    # a more thorough refactor where the OutputManager is fully useable
-    # without rich installed, but that's a larger project.
-    global OUTPUT_ENABLED
+    if show_progress:
+        from ._rich_output import RichOutputManager
 
+        _current_output_manager = RichOutputManager(show_timestamps=show_timestamps)
     try:
-        with RichOutputManager.enable_output(show_progress, show_timestamps=show_timestamps) as mgr:
-            OUTPUT_ENABLED = True
-            yield mgr
+        yield _current_output_manager
     finally:
-        OUTPUT_ENABLED = False
+        _current_output_manager = None
 
 
 def _get_output_manager() -> "Union[RichOutputManager, DisabledOutputManager]":
@@ -65,12 +59,8 @@ def _get_output_manager() -> "Union[RichOutputManager, DisabledOutputManager]":
     This allows code to call output methods without checking if output is enabled,
     simplifying the calling code.
     """
-    if OUTPUT_ENABLED:
-        from ._output import RichOutputManager
-
-        mgr = RichOutputManager.get()
-        if mgr is not None:
-            return mgr
+    if _current_output_manager is not None:
+        return _current_output_manager
 
     # Return the singleton disabled output manager
     from ._output import _DISABLED_OUTPUT_MANAGER
@@ -84,4 +74,14 @@ def _is_output_enabled() -> bool:
     This is useful for code that needs to conditionally perform operations
     based on whether output is truly enabled (e.g., starting a logs loop).
     """
-    return OUTPUT_ENABLED
+    return _current_output_manager is not None
+
+
+def _disable_output_manager() -> None:
+    """Disable the current output manager.
+
+    This is called by RichOutputManager.disable() to ensure that subsequent calls
+    to _get_output_manager() return a DisabledOutputManager.
+    """
+    global _current_output_manager
+    _current_output_manager = None

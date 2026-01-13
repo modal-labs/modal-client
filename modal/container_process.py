@@ -149,7 +149,7 @@ class _ContainerProcessThroughServer(Generic[T]):
             print("interactive exec is not currently supported on Windows.")  # noqa: T201
             return
 
-        from ._output import make_console
+        from ._rich_output import make_console
 
         console = make_console()
 
@@ -350,7 +350,7 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
             print("interactive exec is not currently supported on Windows.")  # noqa: T201
             return
 
-        from ._output import make_console
+        from ._rich_output import make_console
 
         console = make_console()
 
