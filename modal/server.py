@@ -31,7 +31,7 @@ class _Server:
     Generally, you will not construct a Server directly.
     Instead, use the [`@app.server()`](https://modal.com/docs/reference/modal.App#server) decorator.
 
-    Example: TODO(claudia): Add examples
+    TODO(claudia): Add examples
     """
 
     # Maps 1-1 w function
@@ -64,7 +64,6 @@ class _Server:
         self._user_cls = other._user_cls
         self._user_cls_instance = other._user_cls_instance
         self._service_function = other._service_function
-        self._load_context_overrides = other._load_context_overrides
         self._has_entered = other._has_entered
 
     def _get_user_cls(self) -> type:
@@ -123,6 +122,7 @@ class _Server:
     @synchronizer.nowrap
     async def _aenter(self):
         """Run @enter lifecycle hooks (async version)."""
+        assert self._user_cls is not None
         if self._has_entered:
             return
 
@@ -141,7 +141,9 @@ class _Server:
             _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
         ):
             for enter_method in _find_callables_for_obj(user_cls_instance, method_flag).values():
-                enter_method()
+                res = enter_method()
+                if inspect.iscoroutine(res):
+                    await res
 
         self._has_entered = True
 
