@@ -9,9 +9,6 @@ on:
       python_version:
         type: string
         default: "3.10"
-      uv_version:
-        type: string
-        default: "0.9.24"
 
 jobs:
   doc-test:

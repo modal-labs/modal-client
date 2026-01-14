@@ -9,9 +9,6 @@ on:
       python_version:
         type: string
         default: "3.10"
-      uv_version:
-        type: string
-        default: "0.9.24"
 
 jobs:
   lint:
@@ -26,7 +23,7 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python-client
         with:
-          version: "3.10"
+          version: ${{ inputs.python_version }}
           working_directory: ${{ inputs.working_directory }}
 
       - run: inv lint
@@ -45,7 +42,7 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python-client
         with:
-          version: "3.10"
+          version: ${{ inputs.python_version }}
           working_directory: ${{ inputs.working_directory }}
 
       - run: inv protoc
@@ -71,7 +68,7 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python-client
         with:
-          version: "3.10"
+          version: ${{ inputs.python_version }}
           working_directory: ${{ inputs.working_directory }}
 
       - run: inv check-copyright
