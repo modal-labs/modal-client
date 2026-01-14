@@ -23,6 +23,11 @@ jobs:
       working_directory: "."
       python_version: "3.10"
 
+  docs-test:
+    uses: ./.github/workflows/docs.yml
+    with:
+      working_directory: "."
+
   client-versioning:
     if: github.ref == 'refs/heads/main'
     name: Update changelog and client version
