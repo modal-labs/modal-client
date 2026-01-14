@@ -8,20 +8,15 @@ us to avoid importing Rich for client code that runs in the container environmen
 
 import contextlib
 from collections.abc import Generator
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from ._output import OutputManager
-
+from ._output import DisabledOutputManager, OutputManager
 
 # Module-level state for output management
-_current_output_manager: "OutputManager | None" = None
+_current_output_manager: OutputManager = DisabledOutputManager()
 
 
 @contextlib.contextmanager
-def enable_output(
-    show_progress: bool = True, show_timestamps: bool = False
-) -> Generator["OutputManager | None", None, None]:
+def enable_output(show_progress: bool = True, show_timestamps: bool = False) -> Generator[OutputManager, None, None]:
     """Context manager that enable output when using the Python SDK.
 
     This will print to stdout and stderr things such as
@@ -46,10 +41,10 @@ def enable_output(
     try:
         yield _current_output_manager
     finally:
-        _current_output_manager = None
+        _current_output_manager = DisabledOutputManager()
 
 
-def _get_output_manager() -> "OutputManager":
+def _get_output_manager() -> OutputManager:
     """Get the current output manager.
 
     Returns a RichOutputManager when output is enabled, otherwise returns
@@ -58,13 +53,7 @@ def _get_output_manager() -> "OutputManager":
     This allows code to call output methods without checking if output is enabled,
     simplifying the calling code.
     """
-    if _current_output_manager is not None:
-        return _current_output_manager
-
-    # Return the singleton disabled output manager
-    from ._output import _DISABLED_OUTPUT_MANAGER
-
-    return _DISABLED_OUTPUT_MANAGER
+    return _current_output_manager
 
 
 def _is_output_enabled() -> bool:
@@ -73,7 +62,7 @@ def _is_output_enabled() -> bool:
     This is useful for code that needs to conditionally perform operations
     based on whether output is truly enabled (e.g., starting a logs loop).
     """
-    return _current_output_manager is not None
+    return not isinstance(_current_output_manager, DisabledOutputManager)
 
 
 def _disable_output_manager() -> None:
@@ -83,4 +72,4 @@ def _disable_output_manager() -> None:
     to _get_output_manager() return a DisabledOutputManager.
     """
     global _current_output_manager
-    _current_output_manager = None
+    _current_output_manager = DisabledOutputManager()

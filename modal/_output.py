@@ -216,7 +216,3 @@ class DisabledOutputManager:
     @staticmethod
     def substep_completed(message: str) -> str:
         return message
-
-
-# Singleton instance of the disabled output manager
-_DISABLED_OUTPUT_MANAGER = DisabledOutputManager()
