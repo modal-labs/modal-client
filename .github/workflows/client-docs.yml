@@ -26,10 +26,9 @@ jobs:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
       - uses: ./.github/actions/setup-cached-python-client
-
         with:
           version: ${{ inputs.python_version }}
-          working_directory: "."
+          working_directory: ${{ inputs.working_directory }}
 
       - name: Build protobuf
         run: inv protoc

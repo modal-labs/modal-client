@@ -54,7 +54,7 @@ jobs:
       - uses: ./.github/actions/setup-cached-python-client
         with:
           version: ${{ matrix.python-version }}
-          working_directory: "."
+          working_directory: ${{ inputs.working_directory }}
 
       - if: matrix.proto-version != 'latest'
         name: Install protobuf

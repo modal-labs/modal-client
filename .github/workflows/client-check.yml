@@ -27,7 +27,7 @@ jobs:
       - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.10"
-          working_directory: "."
+          working_directory: ${{ inputs.working_directory }}
 
       - run: inv lint
 
@@ -46,7 +46,7 @@ jobs:
       - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.10"
-          working_directory: "."
+          working_directory: ${{ inputs.working_directory }}
 
       - run: inv protoc
 
@@ -72,6 +72,6 @@ jobs:
       - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.10"
-          working_directory: "."
+          working_directory: ${{ inputs.working_directory }}
 
       - run: inv check-copyright
