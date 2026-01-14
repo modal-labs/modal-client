@@ -8,21 +8,20 @@ us to avoid importing Rich for client code that runs in the container environmen
 
 import contextlib
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ._output import DisabledOutputManager
-    from ._rich_output import RichOutputManager
+    from ._output import OutputManager
 
 
 # Module-level state for output management
-_current_output_manager: "Union[RichOutputManager, None]" = None
+_current_output_manager: "OutputManager | None" = None
 
 
 @contextlib.contextmanager
 def enable_output(
     show_progress: bool = True, show_timestamps: bool = False
-) -> Generator["RichOutputManager | None", None, None]:
+) -> Generator["OutputManager | None", None, None]:
     """Context manager that enable output when using the Python SDK.
 
     This will print to stdout and stderr things such as
@@ -50,7 +49,7 @@ def enable_output(
         _current_output_manager = None
 
 
-def _get_output_manager() -> "Union[RichOutputManager, DisabledOutputManager]":
+def _get_output_manager() -> "OutputManager":
     """Get the current output manager.
 
     Returns a RichOutputManager when output is enabled, otherwise returns

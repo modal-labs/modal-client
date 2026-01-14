@@ -48,6 +48,7 @@ from .config import logger
 from .exception import InternalError, ServiceError
 
 if TYPE_CHECKING:
+    from ._output import OutputManager
     from .client import _Client
 
 if platform.system() == "Windows":
@@ -574,7 +575,7 @@ async def put_pty_content(log: api_pb2.TaskLogs, stdout):
 
 async def get_app_logs_loop(
     client: "_Client",
-    output_mgr: "RichOutputManager",
+    output_mgr: "OutputManager",
     app_id: str | None = None,
     task_id: str | None = None,
     app_logs_url: str | None = None,
