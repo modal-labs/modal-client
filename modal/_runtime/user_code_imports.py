@@ -558,7 +558,8 @@ def import_class_service(
         # Servers have no methods, just lifecycle hooks
         method_partials = {}
         # Get or create instance of the user's server class
-        user_cls_instance = _server._get_or_create_user_cls_instance()
+        user_cls = _server._get_user_cls()
+        user_cls_instance = user_cls()
     else:
         # Undecorated user class (serialized or local scope-decoration).
         service_deps = None  # we can't infer service deps for now
