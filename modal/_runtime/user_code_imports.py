@@ -528,12 +528,12 @@ def import_class_service(
             raise LocalFunctionError("Attempted to load a class defined in a function scope")
 
         parts = qual_name.split(".")
-        # Class service functions have pattern "ClassName.*", servers use just "ClassName"
+        # Class service functions have pattern "ClassName.*", servers use "#ClassName"
         if len(parts) == 2 and parts[1] == "*":
             cls_name = parts[0]
-        elif len(parts) == 1:
-            # Server class - function name is just the class name
-            cls_name = qual_name
+        elif len(parts) == 1 and qual_name.startswith("#"):
+            # Server class - function name is "#ClassName"
+            cls_name = qual_name[1:]  # Remove the "#" prefix
         else:
             raise ExecutionError(
                 f"Internal error: Invalid 'service function' identifier {qual_name}. Please contact Modal support"

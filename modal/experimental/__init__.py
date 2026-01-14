@@ -11,7 +11,6 @@ from .._clustered_functions import ClusterInfo, get_cluster_info as _get_cluster
 from .._functions import _Function
 from .._object import _get_environment_name
 from .._partial_function import _clustered
-from .._runtime.asgi_on_flash import asgi_app_on_flash, wsgi_app_on_flash  # noqa: F401
 from .._runtime.container_io_manager import _ContainerIOManager
 from .._utils.async_utils import synchronize_api, synchronizer
 from ..app import _App
@@ -143,7 +142,9 @@ async def get_app_objects(
 
     for func_name in app_layout_resp.app_layout.function_ids:
         if func_name.endswith(".*"):
-            continue  # TODO explain
+            continue  # Skip class service functions
+        if func_name.startswith("#"):
+            continue  # Skip server service functions
         app_objects[func_name] = _Function.from_name(app_name, func_name, environment_name=environment_name)
 
     return app_objects

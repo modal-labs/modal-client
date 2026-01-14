@@ -22,15 +22,15 @@ class SimpleServer:
         self.proc.terminate()
 
 
-@app.server(port=8000, proxy_regions=["us-east"], image=modal.Image.debian_slim().pip_install("fastapi", "uvicorn"))
-@modal.experimental.asgi_app_on_flash()
-def create_app():
-    from fastapi import FastAPI
+# @app.server(port=8000, proxy_regions=["us-east"], image=modal.Image.debian_slim().pip_install("fastapi", "uvicorn"))
+# @modal.experimental.asgi_app_on_flash()
+# def create_app():
+#     from fastapi import FastAPI
 
-    app = FastAPI()
+#     app = FastAPI()
 
-    @app.get("/")
-    def root():
-        return {"message": "Hello World"}
+#     @app.get("/")
+#     def root():
+#         return {"message": "Hello World"}
 
-    return app
+#     return app

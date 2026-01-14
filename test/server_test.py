@@ -702,9 +702,10 @@ def test_server_creates_class_object(client, servicer):
         app_id = app.app_id
         objects = servicer.app_objects[app_id]
 
-        assert "ObjectsServer" in objects
+        # Servers use "#ClassName" naming convention
+        assert "#ObjectsServer" in objects
 
-        server_id = objects["ObjectsServer"]
+        server_id = objects["#ObjectsServer"]
         assert server_id.startswith("fu-")
 
 

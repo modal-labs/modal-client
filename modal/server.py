@@ -322,10 +322,13 @@ class _Server:
 
         load_context_overrides = LoadContext(client=client, environment_name=environment_name)
 
+        # Server service functions use "#ClassName" naming convention
+        service_function_name = f"#{name}"
+
         server = _Server()
         server._service_function = _Function._from_name(
             app_name,
-            name,
+            service_function_name,
             load_context_overrides=load_context_overrides,
         )
         server._name = name
