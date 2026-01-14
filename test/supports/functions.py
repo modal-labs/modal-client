@@ -889,6 +889,41 @@ class FlashClsWithEnter:
         print(f"[flash_lifecycle_events:{','.join(flash_cls_lifecycle_events)}]")
 
 
+server_lifecycle_events: list[str] = []
+
+# Create a separate app for server tests since servers require different config
+server_app = modal.App("server-support-app")
+
+
+@server_app.server(port=8002, proxy_regions=["us-east"], serialized=True, enable_memory_snapshot=True)
+class ServerWithEnter:
+    @modal.enter(snap=True)
+    def enter(self):
+        # Redirect stdout/stderr to DEVNULL so communicate() doesn't hang waiting
+        # for the subprocess's inherited file descriptors to close.
+        self.process = subprocess.Popen(
+            ["python3", "-m", "http.server", "8002"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        server_lifecycle_events.append("enter")
+        # Print lifecycle events after enter method runs
+        print(f"[server_lifecycle_events:{','.join(server_lifecycle_events)}]")
+
+    @modal.enter(snap=False)
+    def enter_post_snapshot(self):
+        server_lifecycle_events.append("enter_post_snapshot")
+        # Print lifecycle events after all enter methods have run
+        # This will be captured by the test before the container exits
+        print(f"[server_lifecycle_events:{','.join(server_lifecycle_events)}]")
+
+    @modal.exit()
+    def on_exit(self):
+        server_lifecycle_events.append("exit")
+        if hasattr(self, "process"):
+            self.process.terminate()
+
+
 @app.function(name="custom_name")
 def impl_for_custom_name(x):
     return x * x

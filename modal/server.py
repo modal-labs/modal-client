@@ -257,7 +257,7 @@ class _Server:
             # @modal.http_server not allowed on server classes
             if wrapped_user_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
                 raise InvalidError(
-                    f"Server class {user_cls.__name__} cannot have @modal.http_server() decorator. "
+                    f"Server class {user_cls.__name__} cannot have @modal.experimental.http_server() decorator. "
                     "Servers already expose HTTP endpoints."
                 )
 
@@ -322,13 +322,10 @@ class _Server:
 
         load_context_overrides = LoadContext(client=client, environment_name=environment_name)
 
-        # The service function uses a special naming convention
-        service_function_name = f"{name}.*"
-
         server = _Server()
         server._service_function = _Function._from_name(
             app_name,
-            service_function_name,
+            name,
             load_context_overrides=load_context_overrides,
         )
         server._name = name
