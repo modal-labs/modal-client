@@ -5,6 +5,9 @@ on:
       working_directory:
         required: true
         type: string
+      uv_version:
+        type: string
+        default: "0.9.24"
     secrets:
       MODAL_TOKEN_ID:
         required: true
@@ -57,7 +60,7 @@ jobs:
         uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.1.2
         with:
           enable-cache: true
-          version: "0.9.24"
+          version: ${{ inputs.uv_version }}
           cache-dependency-glob: |
             ${{ inputs.working_directory }}/requirements.dev.txt
             ${{ inputs.working_directory }}/pyproject.toml
