@@ -87,6 +87,13 @@ class _Server:
         assert self._service_function is not None
         return self._service_function
 
+    @staticmethod
+    def _extract_user_cls(wrapped_user_cls: "type | _PartialFunction") -> type:
+        if isinstance(wrapped_user_cls, _PartialFunction):
+            return wrapped_user_cls.user_cls
+        else:
+            return wrapped_user_cls
+
     # ============ Lifecycle Management ============
 
     def _get_or_create_user_cls_instance(self) -> Any:
@@ -195,25 +202,30 @@ class _Server:
     # ============ Construction ============
 
     @staticmethod
-    def validate_wrapped_user_cls_decorators(wrapped_user_cls: type, enable_memory_snapshot: bool):
+    def _validate_wrapped_user_cls_decorators(
+        wrapped_user_cls: "type | _PartialFunction", enable_memory_snapshot: bool
+    ):
         # TODO(claudia): Add tests for this, ensure that parametrization is not allowed.
-        if not inspect.isclass(wrapped_user_cls):
+        user_cls = _Server._extract_user_cls(wrapped_user_cls)
+
+        if not inspect.isclass(user_cls):
             raise TypeError("The @app.server() decorator must be used on a class.")
+
         if not _find_partial_methods_for_user_cls(
-            wrapped_user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
-        ) and not _find_partial_methods_for_user_cls(wrapped_user_cls, _PartialFunctionFlags.ENTER_POST_SNAPSHOT):
+            user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
+        ) and not _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_POST_SNAPSHOT):
             raise InvalidError("Server class must have an @modal.enter() to setup the server.")
 
         # Check for disallowed decorators
         # @modal.method() not allowed
-        if _find_partial_methods_for_user_cls(wrapped_user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE).values():
+        if _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE).values():
             raise InvalidError(
-                f"Server class {wrapped_user_cls.__name__} cannot have @method() decorated functions. "
+                f"Server class {user_cls.__name__} cannot have @method() decorated functions. "
                 "Servers only expose HTTP endpoints."
             )
         # @enter with snap=True without enable_memory_snapshot
         if (
-            _find_partial_methods_for_user_cls(wrapped_user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+            _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
             and not enable_memory_snapshot
         ):
             raise InvalidError("Server must have `enable_memory_snapshot=True` to use `snap=True` on @enter methods.")
@@ -222,19 +234,22 @@ class _Server:
             # @modal.concurrent not allowed on server classes
             if wrapped_user_cls.flags & _PartialFunctionFlags.CONCURRENT:
                 raise InvalidError(
-                    f"Server class {wrapped_user_cls.__name__} cannot have @concurrent() decorated functions. "
+                    f"Server class {user_cls.__name__} cannot have @concurrent() decorated functions. "
                     "Please use `target_concurrency` param instead."
                 )
             # @modal.http_server not allowed on server classes
             if wrapped_user_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
                 raise InvalidError(
-                    f"Server class {wrapped_user_cls.__name__} cannot have @modal.http_server() decorator. "
+                    f"Server class {user_cls.__name__} cannot have @modal.http_server() decorator. "
                     "Servers already expose HTTP endpoints."
                 )
 
     @staticmethod
-    def validate_construction_mechanism(user_cls: type):
+    def validate_construction_mechanism(wrapped_user_cls: "type | _PartialFunction"):
         """Validate that the server class doesn't have a custom constructor."""
+        # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
+        user_cls = _Server._extract_user_cls(wrapped_user_cls)
+
         if user_cls.__init__ != object.__init__:
             raise InvalidError(
                 f"Server class {user_cls.__name__} cannot have a custom __init__ method. "
@@ -243,14 +258,17 @@ class _Server:
 
     @staticmethod
     def from_local(
-        user_cls: type,
+        wrapped_user_cls: "type | _PartialFunction",
         app: "modal.app._App",
         service_function: _Function,
     ) -> "_Server":
-        """Create a Server from a local class definition."""
-        _Server.validate_wrapped_user_cls_decorators(user_cls, enable_memory_snapshot=False)
-        # Validate - no custom constructors allowed
-        _Server.validate_construction_mechanism(user_cls)
+        """Create a Server from a local class definition.
+
+        Note: Validation should be done by the caller (app.server()) BEFORE creating
+        the service function, so we don't repeat it here.
+        """
+        # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
+        user_cls = _Server._extract_user_cls(wrapped_user_cls)
 
         # Mark lifecycle methods as registered to avoid warnings
         lifecycle_flags = ~_PartialFunctionFlags.interface_flags()

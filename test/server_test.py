@@ -166,6 +166,161 @@ def test_server_enter_runs_once():
     assert call_count == 1
 
 
+@pytest.mark.asyncio
+async def test_server_aenter_runs_sync_enter_methods():
+    """Test that _aenter correctly runs sync @modal.enter methods."""
+    from modal.server import _Server
+
+    class TestServer:
+        def __init__(self):
+            self.entered = False
+
+        @modal.enter()
+        def on_enter(self):
+            self.entered = True
+
+    server = _Server()
+    server._user_cls = TestServer
+    server._user_cls_instance = TestServer()
+
+    await server._aenter()
+
+    assert server._has_entered is True
+    assert server._user_cls_instance.entered is True
+
+
+@pytest.mark.asyncio
+async def test_server_aenter_awaits_async_enter_methods():
+    """Test that _aenter correctly awaits async @modal.enter methods."""
+    from modal.server import _Server
+
+    class TestServer:
+        def __init__(self):
+            self.entered = False
+
+        @modal.enter()
+        async def on_enter(self):
+            self.entered = True
+
+    server = _Server()
+    server._user_cls = TestServer
+    server._user_cls_instance = TestServer()
+
+    await server._aenter()
+
+    assert server._has_entered is True
+    assert server._user_cls_instance.entered is True
+
+
+@pytest.mark.asyncio
+async def test_server_aenter_runs_both_sync_and_async_enter_methods():
+    """Test that _aenter handles a mix of sync and async @modal.enter methods."""
+    from modal.server import _Server
+
+    class TestServer:
+        def __init__(self):
+            self.sync_entered = False
+            self.async_entered = False
+
+        @modal.enter()
+        def sync_enter(self):
+            self.sync_entered = True
+
+        @modal.enter()
+        async def async_enter(self):
+            self.async_entered = True
+
+    server = _Server()
+    server._user_cls = TestServer
+    server._user_cls_instance = TestServer()
+
+    await server._aenter()
+
+    assert server._has_entered is True
+    assert server._user_cls_instance.sync_entered is True
+    assert server._user_cls_instance.async_entered is True
+
+
+@pytest.mark.asyncio
+async def test_server_aenter_runs_dunder_aenter():
+    """Test that _aenter correctly runs __aenter__ method."""
+    from modal.server import _Server
+
+    class TestServer:
+        def __init__(self):
+            self.context_entered = False
+            self.modal_entered = False
+
+        async def __aenter__(self):
+            self.context_entered = True
+
+        @modal.enter()
+        def on_enter(self):
+            self.modal_entered = True
+
+    server = _Server()
+    server._user_cls = TestServer
+    server._user_cls_instance = TestServer()
+
+    await server._aenter()
+
+    assert server._has_entered is True
+    assert server._user_cls_instance.context_entered is True
+    assert server._user_cls_instance.modal_entered is True
+
+
+@pytest.mark.asyncio
+async def test_server_aenter_runs_once():
+    """Test that _aenter only runs @modal.enter methods once."""
+    from modal.server import _Server
+
+    call_count = 0
+
+    class TestServer:
+        @modal.enter()
+        async def on_enter(self):
+            nonlocal call_count
+            call_count += 1
+
+    server = _Server()
+    server._user_cls = TestServer
+    server._user_cls_instance = TestServer()
+
+    await server._aenter()
+    await server._aenter()
+    await server._aenter()
+
+    assert call_count == 1
+
+
+# ============ Clustered Server Tests ============
+
+
+def test_server_with_clustered_decorator(client, servicer):
+    """Test that @modal.experimental.clustered() works with @app.server().
+
+    Regression test: @modal.clustered() wraps the class in a _PartialFunction,
+    which caused validate_wrapped_user_cls_decorators to fail on inspect.isclass().
+    """
+    app = modal.App("server-clustered-test", include_source=False)
+
+    @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
+    @modal.experimental.clustered(size=2)  # type: ignore
+    class ClusteredServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        assert isinstance(ClusteredServer, Server)
+        service_function = ClusteredServer._get_service_function()  # type: ignore[attr-defined]
+        function_id = service_function.object_id
+        function_def = servicer.app_functions[function_id]
+
+        # Verify cluster settings were applied
+        assert function_def.cluster_size == 2
+
+
 # ============ from_name Tests ============
 
 

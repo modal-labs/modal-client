@@ -1302,21 +1302,26 @@ class _App:
             # Inject the port into the class so decorators like @asgi_app_on_flash can access it
             wrapped_user_cls._flash_port = port  # type: ignore
 
-            _Server.validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
-
-            cluster_size = None
-            rdma = None
-            if isinstance(wrapped_user_cls, _PartialFunction):
-                if wrapped_user_cls.flags & _PartialFunctionFlags.CLUSTERED:
-                    cluster_size = wrapped_user_cls.params.cluster_size
-                    rdma = wrapped_user_cls.params.rdma
-
-            local_state = self._local_state
+            _Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
 
             # Validate the server class
             _Server.validate_construction_mechanism(wrapped_user_cls)
+
+            # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
+            cluster_size = None
+            rdma = None
+            if isinstance(wrapped_user_cls, _PartialFunction):
+                user_cls = wrapped_user_cls.user_cls
+                if wrapped_user_cls.flags & _PartialFunctionFlags.CLUSTERED:
+                    cluster_size = wrapped_user_cls.params.cluster_size
+                    rdma = wrapped_user_cls.params.rdma
+            else:
+                user_cls = wrapped_user_cls
+
+            local_state = self._local_state
+
             # Create the FunctionInfo for the server, note we treat FunctionInfo as a class for servers
-            info = FunctionInfo(None, serialized=serialized, user_cls=wrapped_user_cls)
+            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
             # Create the service function
             service_function = _Function.from_local(
                 info,
@@ -1361,7 +1366,7 @@ class _App:
 
             # Mark lifecycle methods as registered
             for flag in (~_PartialFunctionFlags.interface_flags(),):
-                for partial in _find_partial_methods_for_user_cls(wrapped_user_cls, flag).values():
+                for partial in _find_partial_methods_for_user_cls(user_cls, flag).values():
                     partial.registered = True
 
             # Note: We don't register the Server in classes - only the service_function is registered.
