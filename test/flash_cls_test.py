@@ -185,10 +185,7 @@ def test_flash_no_port_parameter_error():
     """Test that http_server requires a port parameter."""
     with pytest.raises(
         modal.exception.InvalidError,
-        match=(
-            r"Positional arguments are not allowed\. "
-            r"Did you forget parentheses\? Suggestion: `@modal\.http_server\(\)`\."
-        ),
+        match=(r"Port argument is required."),
     ):
         flash_compatibility_app = App("flash-compatibility")
 

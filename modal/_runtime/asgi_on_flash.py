@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2025
+# type: ignore
 
 from typing import Any, Callable, TypeVar
 

@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2025
+# type: ignore
+
 """Test deployment of @app.server() decorator."""
 
 import modal
