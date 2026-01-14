@@ -18,13 +18,13 @@ env:
 
 jobs:
   check:
-    uses: ./.github/workflows/client-reusable/check.yml
+    uses: ./.github/workflows/check.yml
     with:
       working_directory: "."
       python_version: "3.10"
 
   docs-test:
-    uses: ./.github/workflows/client-reusable/docs.yml
+    uses: ./.github/workflows/docs.yml
     with:
       working_directory: "."
 
@@ -92,7 +92,7 @@ jobs:
         run: python -m modal_global_objects.mounts.modal_client_package
 
   client-test:
-    uses: ./.github/workflows/client-reusable/tests.yml
+    uses: ./.github/workflows/tests.yml
     with:
       working_directory: "."
     secrets:
