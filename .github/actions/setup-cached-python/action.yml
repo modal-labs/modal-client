@@ -5,6 +5,9 @@ inputs:
     description: Which Python version to install
     required: true
     default: "3.10"
+  working_directory:
+    description: Working directory
+    default: "."
 
 runs:
   using: composite
@@ -20,10 +23,11 @@ runs:
         enable-cache: true
         version: "0.9.24"
         cache-dependency-glob: |
-          requirements.dev.txt
-          pyproject.toml
+          ${{ inputs.working_directory }}/requirements.dev.txt
+          ${{ inputs.working_directory }}/pyproject.toml
 
     - name: Install Python packages
       shell: bash
       run: |
         uv pip install --system -r requirements.dev.txt
+      working-directory: ${{ inputs.working_directory }}
