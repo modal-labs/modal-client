@@ -6,7 +6,7 @@ inputs:
     required: true
     default: "3.10"
   working_directory:
-    default: "."
+    required: true
     type: string
 
 runs:
