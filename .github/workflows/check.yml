@@ -7,11 +7,9 @@ on:
         required: true
         type: string
       python_version:
-        required: true
         type: string
         default: "3.10"
       uv_version:
-        required: true
         type: string
         default: "0.9.24"
 
@@ -57,6 +55,9 @@ jobs:
   type_check:
     name: Static type checks
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
 
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
@@ -94,6 +95,9 @@ jobs:
   check-copyright:
     name: Check copyright
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
 
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
