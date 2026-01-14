@@ -17,6 +17,7 @@ from ._partial_function import (
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.deprecation import warn_if_passing_namespace
 from .client import _Client
+from .cls import is_parameter
 from .exception import InvalidError
 
 if typing.TYPE_CHECKING:
@@ -214,11 +215,18 @@ class _Server:
     def _validate_wrapped_user_cls_decorators(
         wrapped_user_cls: "type | _PartialFunction", enable_memory_snapshot: bool
     ):
-        # TODO(claudia): Add tests for this, ensure that parametrization is not allowed.
         user_cls = _Server._extract_user_cls(wrapped_user_cls)
 
         if not inspect.isclass(user_cls):
             raise TypeError("The @app.server() decorator must be used on a class.")
+
+        # Check for modal.parameter() - not allowed on server classes
+        params = {k: v for k, v in user_cls.__dict__.items() if is_parameter(v)}
+        if params:
+            raise InvalidError(
+                f"Server class {user_cls.__name__} cannot use modal.parameter(). "
+                "Servers do not support parameterization."
+            )
 
         if not _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT

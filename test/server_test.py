@@ -118,6 +118,34 @@ def test_server_requires_port():
             pass
 
 
+def test_server_rejects_parametrization():
+    """Test that modal.parameter() cannot be used on server classes."""
+    with pytest.raises(InvalidError, match="cannot use modal.parameter"):
+        app = modal.App("server-param-test", include_source=False)
+
+        @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
+        class ParameterizedServer:
+            model_name: str = modal.parameter()
+
+            @modal.enter()
+            def start(self):
+                pass
+
+
+def test_server_rejects_parametrization_with_default():
+    """Test that modal.parameter() with default cannot be used on server classes."""
+    with pytest.raises(InvalidError, match="cannot use modal.parameter"):
+        app = modal.App("server-param-default-test", include_source=False)
+
+        @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
+        class ParameterizedServerWithDefault:
+            model_name: str = modal.parameter(default="gpt-4")
+
+            @modal.enter()
+            def start(self):
+                pass
+
+
 # ============ Lifecycle Tests ============
 
 
