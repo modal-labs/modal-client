@@ -1,0 +1,27 @@
+name: Trigger Copybara
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  trigger-copybara:
+    name: Trigger copybara workflow in modal-labs/modal
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate token for triggering workflow
+        id: generate_token
+        uses: tibdex/github-app-token@32691ba7c9e7063bd457bd8f2a5703138591fa58 # v1
+        with:
+          app_id: ${{ secrets.GH_TRIGGEROO_APP_ID }}
+          private_key: ${{ secrets.GH_TRIGGEROO_APP_PRIVATE_KEY }}
+          repository: modal-labs/modal
+
+      - name: Trigger copybara workflow
+        env:
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+        run: |
+          gh workflow run copybara.yaml \
+            --repo modal-labs/modal \
+            --ref main
