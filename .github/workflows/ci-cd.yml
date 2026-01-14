@@ -17,6 +17,12 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
+  check:
+    uses: ./.github/workflows/check.yml
+    with:
+      working_directory: "."
+      python_version: "3.10"
+
   client-versioning:
     if: github.ref == 'refs/heads/main'
     name: Update changelog and client version
