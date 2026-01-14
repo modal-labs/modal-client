@@ -1,4 +1,4 @@
-name: Unit tests
+name: Client Unit tests
 on:
   workflow_call:
     inputs:
