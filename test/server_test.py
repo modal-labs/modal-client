@@ -3,6 +3,7 @@ import pytest
 import re
 
 import modal
+import modal.experimental
 from modal.exception import InvalidError
 from modal.server import Server, _Server
 
@@ -346,7 +347,7 @@ def test_server_with_clustered_decorator(client, servicer):
         function_def = servicer.app_functions[function_id]
 
         # Verify cluster settings were applied
-        assert function_def.cluster_size == 2
+        assert function_def._experimental_group_size == 2
 
 
 # ============ from_name Tests ============

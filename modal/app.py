@@ -1255,7 +1255,7 @@ class _App:
         # Validate HTTP server config
         validate_http_server_config(
             port=port,
-            proxy_regions=list(proxy_regions),
+            proxy_regions=proxy_regions,
             startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
         )
