@@ -6,6 +6,17 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.3.1.dev20 (2026-01-14)
+
+- Added `--timestamps` flag to `modal run`, `modal serve` and `modal deploy` to show timestamps for log output.
+  ```bash
+  modal run --timestamps my_app.py::my_function
+  ```
+
+---
+<a href="https://cursor.com/background-agent?bcId=bc-0c7a7490-46c2-4503-87f9-98731aa8805d"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/open-in-cursor-dark.svg"><source media="(prefers-color-scheme: light)" srcset="https://cursor.com/open-in-cursor-light.svg"><img alt="Open in Cursor" src="https://cursor.com/open-in-cursor.svg"></picture></a>&nbsp;<a href="https://cursor.com/agents?id=bc-0c7a7490-46c2-4503-87f9-98731aa8805d"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/open-in-web-dark.svg"><source media="(prefers-color-scheme: light)" srcset="https://cursor.com/open-in-web-light.svg"><img alt="Open in Web" src="https://cursor.com/open-in-web.svg"></picture></a>
+
+
 #### 1.3.1.dev16 (2026-01-12)
 
 - Added a `--timestamps` option to the `modal container logs` CLI.
