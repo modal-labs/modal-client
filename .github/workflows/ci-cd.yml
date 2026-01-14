@@ -51,7 +51,7 @@ jobs:
           token: ${{ steps.generate_token.outputs.token }}
           fetch-depth: 2 # Needed so that we can check whether the version file was modified
 
-      - uses: ./.github/actions/setup-cached-python
+      - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.10"
 
@@ -112,7 +112,7 @@ jobs:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
           ref: ${{ needs.client-versioning.outputs.release-hash }}
 
-      - uses: ./.github/actions/setup-cached-python
+      - uses: ./.github/actions/setup-cached-python-client
         with:
           # This is load-bearing because it determines the version of the protobuf compiler
           # used for the gencode, which should be the *minimal* version that we support.
@@ -160,7 +160,7 @@ jobs:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
           ref: ${{ needs.client-versioning.outputs.release-hash }}
 
-      - uses: ./.github/actions/setup-cached-python
+      - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.11"
 
@@ -190,7 +190,7 @@ jobs:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
           ref: ${{ needs.client-versioning.outputs.release-hash }}
 
-      - uses: ./.github/actions/setup-cached-python
+      - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.11"
 
@@ -225,7 +225,7 @@ jobs:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
           ref: ${{ needs.client-versioning.outputs.release-hash }}
 
-      - uses: ./.github/actions/setup-cached-python
+      - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.11"
 
