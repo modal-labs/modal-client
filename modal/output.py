@@ -19,7 +19,7 @@ OUTPUT_ENABLED = False
 
 
 @contextlib.contextmanager
-def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
+def enable_output(show_progress: bool = True, show_timestamps: bool = False) -> Generator[None, None, None]:
     """Context manager that enable output when using the Python SDK.
 
     This will print to stdout and stderr things such as
@@ -47,7 +47,7 @@ def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
     global OUTPUT_ENABLED
 
     try:
-        with OutputManager.enable_output(show_progress):
+        with OutputManager.enable_output(show_progress, show_timestamps=show_timestamps):
             OUTPUT_ENABLED = True
             yield
     finally:
