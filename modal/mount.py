@@ -4,7 +4,6 @@ import asyncio
 import concurrent.futures
 import dataclasses
 import os
-import re
 import time
 import typing
 import warnings
@@ -33,7 +32,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
 from .client import _Client
 from .config import config, logger
-from .exception import ExecutionError, InvalidError
+from .exception import InvalidError
 from .file_pattern_matcher import FilePatternMatcher
 
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
@@ -62,11 +61,8 @@ See https://modal.com/docs/guide/modal-1-0-migration for more details.
 
 def client_mount_name() -> str:
     """Get the deployed name of the client package mount."""
-    # Strip any annotations (i.e. `+{git_hash}`) becuase the + is not valid in a mount name
-    if m := re.match(r"^([\d\.\w]+)", __version__):
-        version = m.group(1)
-    else:
-        raise ExecutionError(f"Modal client has improperly formatted version: {__version__!r}")
+    # Replace any annotations (i.e. `+{git_hash}`) becuase the + is not valid in a mount name
+    version = __version__.replace("+", "-")
     return f"modal-client-mount-{version}"
 
 
