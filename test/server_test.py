@@ -332,6 +332,49 @@ def test_server_from_name(client, servicer):
     assert not my_server._get_service_function().is_hydrated
 
 
+# ============ Live Method Tests ============
+
+
+def test_server_get_urls(client, servicer):
+    """Test that Server.get_urls() works without raising AttributeError.
+
+    Regression test: @live_method calls self.hydrate(), but _Server didn't
+    have a hydrate() method, causing AttributeError at runtime.
+    """
+    app = modal.App("server-get-urls-test", include_source=False)
+
+    @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
+    class URLServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        # This should not raise AttributeError: '_Server' object has no attribute 'hydrate'
+        urls = URLServer.get_urls()
+        # URLs may be None or a list depending on servicer behavior
+        assert urls is None or isinstance(urls, list)
+
+
+def test_server_update_autoscaler(client, servicer):
+    """Test that Server.update_autoscaler() works without raising AttributeError.
+
+    Regression test: @live_method calls self.hydrate(), but _Server didn't
+    have a hydrate() method, causing AttributeError at runtime.
+    """
+    app = modal.App("server-update-autoscaler-test", include_source=False)
+
+    @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
+    class AutoscaleServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        # This should not raise AttributeError: '_Server' object has no attribute 'hydrate'
+        AutoscaleServer.update_autoscaler(min_containers=1, max_containers=5)
+
+
 # ============ HTTP Config Tests ============
 
 

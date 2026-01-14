@@ -199,6 +199,15 @@ class _Server:
         service_function = self._get_service_function()
         assert service_function.is_hydrated
 
+    async def hydrate(self, client: Optional[_Client] = None) -> "_Server":
+        """Hydrate the server by hydrating its underlying service function."""
+        # This is required since we want to support @livemethod() decorated methods
+        # and is normally handled by the _Object.hydrate() method
+        # but we only want to hydrate the service function.
+        service_function = self._get_service_function()
+        await service_function.hydrate(client)
+        return self
+
     # ============ Construction ============
 
     @staticmethod
