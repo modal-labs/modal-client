@@ -171,13 +171,13 @@ def test_run_app_interactive_no_spinner(servicer, client):
     """Don't show status spinner in interactive mode to avoid interfering with breakpoints."""
     app = modal.App()
 
-    with mock.patch("modal._output.OutputManager.show_status_spinner") as mock_spinner:
+    with mock.patch("modal._rich_output.RichOutputManager.show_status_spinner") as mock_spinner:
         with modal.enable_output():
             with run_app(app, client=client, interactive=True):
                 pass
         mock_spinner.return_value.__enter__.assert_not_called()
 
-    with mock.patch("modal._output.OutputManager.show_status_spinner") as mock_spinner:
+    with mock.patch("modal._rich_output.RichOutputManager.show_status_spinner") as mock_spinner:
         with modal.enable_output():
             with run_app(app, client=client, interactive=False):
                 pass

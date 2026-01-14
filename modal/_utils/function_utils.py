@@ -629,11 +629,7 @@ class FunctionCreationStatus:
         self._output_mgr = _get_output_manager()
 
     def _add_status_row(self):
-        from modal._output import StatusRow
-
-        if self._output_mgr:
-            return self._output_mgr.add_status_row()
-        return StatusRow(None)
+        return self._output_mgr.add_status_row()
 
     def __enter__(self):
         self.status_row = self._add_status_row()

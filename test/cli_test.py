@@ -546,10 +546,10 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
 
         with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
             res = run_cli_command(["deploy", "myapp.py", "--name", "my-app", "--stream-logs"])
-            assert res.stdout.endswith("hello\n")
+            assert res.stdout.rstrip().endswith("hello")
 
         res = run_cli_command(["app", "logs", "my-app"])
-        assert res.stdout == "hello\n"
+        assert res.stdout.strip() == "hello"
 
     run_cli_command(
         ["app", "logs", "does-not-exist"],
