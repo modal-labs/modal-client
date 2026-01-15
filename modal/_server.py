@@ -153,7 +153,7 @@ class _Server:
         # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
         user_cls = _Server._extract_user_cls(wrapped_user_cls)
 
-        if user_cls.__init__ != object.__init__:
+        if user_cls.__init__ != object.__init__:  # type: ignore
             raise InvalidError(
                 f"Server class {user_cls.__name__} cannot have a custom __init__ method. "
                 "Use @modal.enter() for initialization logic instead."

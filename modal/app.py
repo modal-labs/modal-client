@@ -60,7 +60,7 @@ from .running_app import RunningApp
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
-from .server import _Server
+from .server import Server
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
@@ -1227,7 +1227,7 @@ class _App:
         include_source: Optional[bool] = None,  # Whether to add source to container
         # Experimental options
         experimental_options: Optional[dict[str, Any]] = None,
-    ) -> Callable[[Union[CLS_T, _PartialFunction]], _Server]:
+    ) -> Callable[[Union[CLS_T, _PartialFunction]], Server]:
         """
         Decorator to register a new Modal Server with this App.
 
@@ -1277,7 +1277,7 @@ class _App:
         if env:
             secrets_list.append(_Secret.from_dict(env))
 
-        def wrapper(wrapped_user_cls: Union[CLS_T, _PartialFunction, Callable]) -> _Server:
+        def wrapper(wrapped_user_cls: Union[CLS_T, _PartialFunction, Callable]) -> Server:
             # Check if this is an ASGI/WSGI app factory marked by @asgi_app_on_flash or @wsgi_app_on_flash
             from ._runtime.asgi_on_flash import (
                 ASGI_APP_MARKER,
@@ -1302,10 +1302,10 @@ class _App:
             # Inject the port into the class so decorators like @asgi_app_on_flash can access it
             wrapped_user_cls._flash_port = port  # type: ignore
 
-            _Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
+            Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
 
             # Validate the server class
-            _Server.validate_construction_mechanism(wrapped_user_cls)
+            Server.validate_construction_mechanism(wrapped_user_cls)
 
             # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
             cluster_size = None
@@ -1363,7 +1363,7 @@ class _App:
             self._add_function(service_function, is_web_endpoint=False)
 
             # Create the Server object
-            server: _Server = _Server.from_local(wrapped_user_cls, self, service_function)
+            server: Server = Server.from_local(wrapped_user_cls, self, service_function)
 
             # Mark lifecycle methods as registered
             for flag in (~_PartialFunctionFlags.interface_flags(),):
