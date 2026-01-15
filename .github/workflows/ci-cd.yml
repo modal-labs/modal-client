@@ -20,13 +20,13 @@ jobs:
   check:
     uses: ./.github/workflows/client-check.yml
     with:
-      working_directory: "."
-      python_version: "3.10"
+      working-directory: "."
+      python-version: "3.10"
 
   docs-test:
     uses: ./.github/workflows/client-docs.yml
     with:
-      working_directory: "."
+      working-directory: "."
 
   client-versioning:
     if: github.ref == 'refs/heads/main'
@@ -54,7 +54,7 @@ jobs:
       - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.10"
-          working_directory: "."
+          working-directory: "."
 
       - name: Update the version
         run: inv bump-dev-version
@@ -95,7 +95,7 @@ jobs:
   client-test:
     uses: ./.github/workflows/client-tests.yml
     with:
-      working_directory: "."
+      working-directory: "."
     secrets:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -118,7 +118,7 @@ jobs:
           # This is load-bearing because it determines the version of the protobuf compiler
           # used for the gencode, which should be the *minimal* version that we support.
           version: "3.10"
-          working_directory: "."
+          working-directory: "."
 
       - name: Build protobuf
         run: inv protoc
@@ -165,7 +165,7 @@ jobs:
       - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.11"
-          working_directory: "."
+          working-directory: "."
 
       - name: Build protobuf
         run: inv protoc
@@ -196,7 +196,7 @@ jobs:
       - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.11"
-          working_directory: "."
+          working-directory: "."
 
       - name: Build protobuf
         run: inv protoc
@@ -232,7 +232,7 @@ jobs:
       - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.11"
-          working_directory: "."
+          working-directory: "."
 
       - name: Build protobuf
         run: inv protoc
