@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2026
 from ._server import _Server
 from ._utils.async_utils import synchronize_api
 

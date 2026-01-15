@@ -556,18 +556,15 @@ def import_class_service(
             raise LocalFunctionError("Attempted to load a class defined in a function scope")
 
         parts = qual_name.split(".")
-        # Class service functions have pattern "ClassName.*", servers use "#ClassName"
-        if len(parts) == 2 and parts[1] == "*":
-            cls_name = parts[0]
-        elif len(parts) == 1 and qual_name.startswith("#"):
-            # Server class - function name is "#ClassName"
-            cls_name = qual_name[1:]  # Remove the "#" prefix
+        # Class service functions have pattern "ClassName.*", servers use "ClassName"
+        if len(parts) == 1:
             is_server = True
-        else:
+        elif not (len(parts) == 2 and parts[1] == "*"):
             raise ExecutionError(
                 f"Internal error: Invalid 'service function' identifier {qual_name}. Please contact Modal support"
             )
 
+        cls_name = parts[0]
         assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
         cls_or_user_cls = getattr(module, cls_name)
 
