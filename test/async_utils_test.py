@@ -201,13 +201,15 @@ async def test_task_context_gather_exception_priority():
     """
     Test that real exceptions take priority over CancelledError in TaskContext.gather.
 
-    This test mimics the Resolver pattern where multiple objects load a shared
-    dependency by awaiting the same cached future. When one coroutine has a failing
-    dependency, TaskContext should propagate the real exception, not CancelledError.
+    This test simulates a race condition where:
+    1. One task fails with a real exception (ValueError)
+    2. A sibling task completes with CancelledError (e.g., due to a shared resource being cancelled)
+    3. The sibling's CancelledError completes BEFORE the real exception propagates
+
+    TaskContext.gather should ensure the real exception is raised, not CancelledError.
     """
 
-    async def raises_soon():
-        await asyncio.sleep(0.01)
+    async def raises_immediately():
         raise ValueError("original error")
 
     async def await_shared(shared_task):
@@ -216,25 +218,31 @@ async def test_task_context_gather_exception_priority():
 
     async def raises_with_shared(shared_task):
         """Simulates loading deps where one succeeds and one fails"""
-        # TaskContext.gather will cancel the await_shared coroutine when raises_soon fails
-        await TaskContext.gather(await_shared(shared_task), raises_soon())
+        try:
+            await TaskContext.gather(await_shared(shared_task), raises_immediately())
+        except BaseException:
+            # at this point the shared_task will have been cancelled
+            # as a result of raises_immediately stopping the gather
+            # we wait a bit more here which will give sibling_with_shared
+            # some time to also fail *first* before the original error is
+            # raised here
+            await asyncio.sleep(0.05)
+            raise
 
     async def sibling_with_shared(shared_task):
         """Simulates another object loading the same shared dependency"""
-        await TaskContext.gather(await_shared(shared_task))
+        await shared_task
 
     async def long_running():
         await asyncio.sleep(10)
 
-    # Shared task simulates the cached future in Resolver
-    shared_task = asyncio.create_task(long_running())
-
     # Load two objects that share a dependency
+    shared_task = asyncio.create_task(long_running())
     with pytest.raises(ValueError) as exc_info:
-        await asyncio.gather(sibling_with_shared(shared_task), raises_with_shared(shared_task))
+        await TaskContext.gather(sibling_with_shared(shared_task), raises_with_shared(shared_task))
 
     # Verify the correct exception was raised (not CancelledError)
-    assert isinstance(exc_info.value, ValueError)
+    assert isinstance(exc_info.value, ValueError), f"Got {type(exc_info.value).__name__} instead of ValueError"
     assert "original error" in str(exc_info.value)
 
 
