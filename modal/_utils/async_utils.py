@@ -541,6 +541,11 @@ class TaskContext:
         For example, if you use `asyncio.gather(t1, t2, t3)` and t2 raises an exception, then t1 and
         t3 would continue running. With `TaskContext.gather(t1, t2, t3)`, they are cancelled.
 
+        Additionally, this method prioritizes non-CancelledError exceptions over CancelledError.
+        If `asyncio.gather` raises CancelledError (e.g., from a sibling task that was cancelled),
+        but another task has already completed with a different exception, that exception will be
+        raised instead. This prevents cancellation from masking real errors.
+
         (It's still acceptable to use `asyncio.gather()` if you don't need cancellation — for
         example, if you're just gathering quick coroutines with no side-effects. Or if you're
         gathering the tasks with `return_exceptions=True`.)
@@ -561,7 +566,24 @@ class TaskContext:
         ```
         """
         async with TaskContext() as tc:
-            results = await asyncio.gather(*(tc.create_task(coro) for coro in coros))
+            tasks = [tc.create_task(coro) for coro in coros]
+            try:
+                results = await asyncio.gather(*tasks)
+            except asyncio.CancelledError:
+                # If we got CancelledError, wait for all tasks to complete and check
+                # if any has a real exception that should take priority
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                for task in tasks:
+                    try:
+                        task.result()
+                    except asyncio.CancelledError:
+                        pass
+                    except BaseException as real_exc:
+                        raise real_exc from None
+                raise
         return results
 
 
