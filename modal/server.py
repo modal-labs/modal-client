@@ -1,21 +1,17 @@
 # Copyright Modal Labs 2025
 import inspect
 import typing
-from typing import Any, Optional
-
-from google.protobuf.message import Message
+from typing import Optional
 
 from ._functions import _Function
 from ._load_context import LoadContext
 from ._object import live_method
 from ._partial_function import (
-    _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
-from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import warn_if_passing_namespace
+from ._utils.async_utils import synchronize_api
 from .client import _Client
 from .cls import is_parameter
 from .exception import InvalidError
@@ -35,54 +31,17 @@ class _Server:
     TODO(claudia): Add examples
     """
 
-    # Maps 1-1 w function
-    _type_prefix = "fu"
-
-    _app: Optional["modal.app._App"] = None
-    _name: Optional[str] = None
-    # Raw user defined class
-    _user_cls: Optional[type] = None
-    # Instantiated raw user class
-    _user_cls_instance: Optional[Any] = None
-    # Function interface with server backend
-    _service_function: Optional[_Function] = None
-    _has_entered: bool = False
-
-    def __init__(self):
-        self._initialize_from_empty()
-
-    def _initialize_from_empty(self):
-        self._app = None
-        self._name = None
-        self._user_cls = None
-        self._user_cls_instance = None
-        self._service_function = None
-        self._has_entered = False
-
-    def _initialize_from_other(self, other: "_Server"):
-        self._app = other._app
-        self._name = other._name
-        self._user_cls = other._user_cls
-        self._user_cls_instance = other._user_cls_instance
-        self._service_function = other._service_function
-        self._has_entered = other._has_entered
+    _user_cls: Optional[type] = None  # None if remote
+    _service_function: _Function
+    _app: Optional["modal.app._App"] = None  # None if remote
 
     def _get_user_cls(self) -> type:
         assert self._user_cls is not None
         return self._user_cls
 
-    def _get_name(self) -> str:
-        assert self._name is not None
-        return self._name
-
     def _get_app(self) -> "modal.app._App":
-        assert self._app is not None
+        assert self._app, "app can only be extracted for local Server (in container entrypoint)"
         return self._app
-
-    @property
-    def __name__(self) -> str:
-        """Return the name of the server class for compatibility with code expecting class-like objects."""
-        return self._name or ""
 
     def _get_service_function(self) -> _Function:
         assert self._service_function is not None
@@ -91,77 +50,10 @@ class _Server:
     @staticmethod
     def _extract_user_cls(wrapped_user_cls: "type | _PartialFunction") -> type:
         if isinstance(wrapped_user_cls, _PartialFunction):
+            assert wrapped_user_cls.user_cls, "Non-class partial used as app.server input"
             return wrapped_user_cls.user_cls
         else:
             return wrapped_user_cls
-
-    # ============ Lifecycle Management ============
-
-    def _get_or_create_user_cls_instance(self) -> Any:
-        """Get or construct the local server instance."""
-        if self._user_cls_instance is None:
-            assert self._user_cls is not None
-            self._user_cls_instance = object.__new__(self._user_cls)
-        return self._user_cls_instance
-
-    def _enter(self):
-        """Run @enter lifecycle hooks (sync version)."""
-        assert self._user_cls is not None
-        if self._has_entered:
-            return
-
-        user_cls_instance = self._get_or_create_user_cls_instance()
-
-        # Support __enter__ context manager protocol
-        enter_method = getattr(user_cls_instance, "__enter__", None)
-        if enter_method is not None:
-            enter_method()
-
-        # Run @modal.enter() decorated methods
-        for method_flag in (
-            _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
-            _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
-        ):
-            for enter_method in _find_callables_for_obj(user_cls_instance, method_flag).values():
-                enter_method()
-
-        self._has_entered = True
-
-    @synchronizer.nowrap
-    async def _aenter(self):
-        """Run @enter lifecycle hooks (async version)."""
-        assert self._user_cls is not None
-        if self._has_entered:
-            return
-
-        user_cls_instance = self._get_or_create_user_cls_instance()
-
-        aenter_method = getattr(user_cls_instance, "__aenter__", None)
-        enter_method = getattr(user_cls_instance, "__enter__", None)
-        if aenter_method is not None:
-            await aenter_method()
-        elif enter_method is not None:
-            enter_method()
-
-        # Run @modal.enter() decorated methods
-        for method_flag in (
-            _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
-            _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
-        ):
-            for enter_method in _find_callables_for_obj(user_cls_instance, method_flag).values():
-                res = enter_method()
-                if inspect.iscoroutine(res):
-                    await res
-
-        self._has_entered = True
-
-    @property
-    def _entered(self) -> bool:
-        return self._has_entered
-
-    @_entered.setter
-    def _entered(self, val: bool):
-        self._has_entered = val
 
     # ============ Live Methods ============
 
@@ -195,11 +87,6 @@ class _Server:
         )
 
     # ============ Hydration ============
-
-    def _hydrate_metadata(self, metadata: Optional[Message]):
-        service_function = self._get_service_function()
-        assert service_function.is_hydrated
-
     async def hydrate(self, client: Optional[_Client] = None) -> "_Server":
         """Hydrate the server by hydrating its underlying service function."""
         # This is required since we want to support @livemethod() decorated methods
@@ -297,7 +184,6 @@ class _Server:
         server._app = app
         server._user_cls = user_cls
         server._service_function = service_function
-        server._name = user_cls.__name__
         return server
 
     @classmethod
@@ -306,7 +192,6 @@ class _Server:
         app_name: str,
         name: str,
         *,
-        namespace: Any = None,  # Deprecated, hidden
         environment_name: Optional[str] = None,
         client: Optional[_Client] = None,
     ) -> "_Server":
@@ -318,7 +203,6 @@ class _Server:
 
         TODO(claudia): Add examples
         """
-        warn_if_passing_namespace(namespace, "modal.Server.from_name")
 
         load_context_overrides = LoadContext(client=client, environment_name=environment_name)
 
@@ -331,7 +215,6 @@ class _Server:
             service_function_name,
             load_context_overrides=load_context_overrides,
         )
-        server._name = name
         return server
 
     def _is_local(self) -> bool:
