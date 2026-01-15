@@ -435,7 +435,6 @@ class ImportedServer(_LifecycleManager, Service):
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> dict[str, "FinalizedFunction"]:
         # Servers have no callable methods - they only expose HTTP endpoints via the server
-        # started in @enter methods. Return empty dict.
         return {}
 
 
@@ -542,7 +541,6 @@ def import_class_service(
     active_app: Optional["modal.app._App"]
     service_deps: Optional[Sequence["modal._object._Object"]]
     cls_or_user_cls: typing.Union[type, modal.cls.Cls]
-    is_server = False
 
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert ser_user_cls is not None
@@ -557,9 +555,7 @@ def import_class_service(
 
         parts = qual_name.split(".")
         # Class service functions have pattern "ClassName.*", servers use "ClassName"
-        if len(parts) == 1:
-            is_server = True
-        elif not (len(parts) == 2 and parts[1] == "*"):
+        if not (len(parts) == 1 or (len(parts) == 2 and parts[1] == "*")):
             raise ExecutionError(
                 f"Internal error: Invalid 'service function' identifier {qual_name}. Please contact Modal support"
             )
@@ -576,15 +572,20 @@ def import_class_service(
         method_partials: dict[str, "modal._partial_function._PartialFunction"] = _cls._get_partial_functions()
         user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
     elif isinstance(cls_or_user_cls, modal.server.Server):
-        # Server object from @app.server() decorator
         _server = typing.cast(modal._server._Server, synchronizer._translate_in(cls_or_user_cls))
         server_service_function: _Function = _server._get_service_function()
         service_deps = server_service_function.deps(only_explicit_mounts=True)
         active_app = _server._get_app()
-        is_server = True
         # Get or create instance of the user's server class
         user_cls = _server._get_user_cls()
         user_cls_instance = user_cls()
+
+        return ImportedServer(
+            user_cls_instance=user_cls_instance,
+            app=active_app,
+            service_deps=service_deps,
+            function_def=function_def,
+        )
     else:
         # Undecorated user class (serialized or local scope-decoration).
         service_deps = None  # we can't infer service deps for now
@@ -603,22 +604,14 @@ def import_class_service(
         method_partials = _cls._get_partial_functions()
         user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
 
-    if is_server:
-        return ImportedServer(
-            user_cls_instance=user_cls_instance,
-            app=active_app,
-            service_deps=service_deps,
-            function_def=function_def,
-        )
-    else:
-        return ImportedClass(
-            user_cls_instance=user_cls_instance,
-            app=active_app,
-            service_deps=service_deps,
-            # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
-            _partial_functions=method_partials,
-            function_def=function_def,
-        )
+    return ImportedClass(
+        user_cls_instance=user_cls_instance,
+        app=active_app,
+        service_deps=service_deps,
+        # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
+        _partial_functions=method_partials,
+        function_def=function_def,
+    )
 
 
 def get_active_app_fallback(function_def: api_pb2.Function) -> _App:

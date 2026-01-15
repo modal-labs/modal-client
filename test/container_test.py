@@ -1946,6 +1946,73 @@ def _run_container_process(
     )
 
 
+def _run_container_process_deployed(
+    servicer,
+    tmp_path,
+    deployed_function_definitions: tuple[dict[str, tuple[str, api_pb2.Function]], api_pb2.AppLayout],
+    function_name: str,
+    *,
+    inputs: list[tuple[str, tuple, dict[str, Any]]],
+    cls_params: tuple[tuple, dict[str, Any]] = ((), {}),
+    _print=False,  # for debugging - print directly to stdout/stderr instead of piping
+    env={},
+) -> subprocess.Popen:
+    """
+    Run container entrypoint as subprocess using function definitions from a real deploy.
+
+    This is the "Isolated Deploy + Isolated Container" testing mode - both the deploy
+    (via deploy_app_externally) and the container execution happen in separate processes,
+    preventing any client state leakage.
+
+    Use this when you need:
+    - Real function metadata from SDK decorators (not synthetic _container_args)
+    - Subprocess execution for signal handling, lifecycle testing, etc.
+
+    Args:
+        servicer: The test servicer
+        tmp_path: pytest tmp_path fixture for writing container args file
+        deployed_function_definitions: Tuple of (functions_dict, app_layout) from
+            deploy_app_externally or deployed_support_function_definitions fixture
+        function_name: Name of the function to run (must exist in deployed_function_definitions)
+        inputs: List of (method_name, args, kwargs) tuples for container inputs
+        cls_params: Class constructor parameters as (args, kwargs)
+        _print: If True, print stdout/stderr directly instead of capturing
+        env: Additional environment variables
+    """
+    functions_dict, app_layout = deployed_function_definitions
+    function_id, function_def = functions_dict[function_name]
+
+    # Build container args using the real function definition from deploy
+    container_args = api_pb2.ContainerArguments(
+        task_id="ta-123",
+        function_id=function_id,
+        app_id="ap-1",
+        function_def=function_def,
+        checkpoint_id=f"ch-{uuid.uuid4()}",
+        app_layout=app_layout,
+        serialized_params=serialize(cls_params),
+    )
+
+    # These env vars are always present in containers
+    env = {**env}  # Make a copy to avoid mutating the default
+    env["MODAL_TASK_ID"] = "ta-123"
+    env["MODAL_IS_REMOTE"] = "1"
+
+    container_args_path = tmp_path / "container-arguments.bin"
+    with container_args_path.open("wb") as f:
+        f.write(container_args.SerializeToString())
+    env["MODAL_CONTAINER_ARGUMENTS_PATH"] = str(container_args_path)
+
+    servicer.container_inputs = _get_multi_inputs(inputs)
+
+    return subprocess.Popen(
+        [sys.executable, "-m", "modal._container_entrypoint"],
+        env={**os.environ, **env},
+        stdout=subprocess.PIPE if not _print else None,
+        stderr=subprocess.PIPE if not _print else None,
+    )
+
+
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize(
@@ -2394,6 +2461,55 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
             f"Found deregister at position {d_idx} before last register at position {last_register_idx}. "
             f"Flash RPCs: {servicer.flash_rpc_calls}"
         )
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_server_lifecycle_with_deployed_metadata(servicer, tmp_path, deployed_support_function_definitions):
+    """
+    Test app.server lifecycle using real deployed metadata + subprocess execution.
+
+    This is the "Isolated Deploy + Isolated Container" testing mode:
+    - Deploy happens in separate process (via deploy_app_externally in fixture)
+    - Container runs in separate subprocess
+    - No client state can leak between deploy and container execution
+
+    This ensures the @app.server() decorator properly sets function_type, http_config,
+    etc. in the function definition, and that the container handles them correctly.
+    """
+    # Clear any previous Flash RPC calls
+    servicer.flash_rpc_calls = []
+
+    container_process = _run_container_process_deployed(
+        servicer,
+        tmp_path,
+        deployed_support_function_definitions,
+        "AppServerWithEnter.*",  # function name as stored by isolated_deploy
+        inputs=[],  # Server classes don't have method inputs
+    )
+    stdout, stderr = container_process.communicate(timeout=15)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+
+    # Verify the enter methods ran in the correct order
+    expected_events = "enter_pre_snapshot,enter_post_snapshot"
+    assert f"[server_cls_lifecycle_events:{expected_events}]" in stdout.decode(), (
+        f"Expected lifecycle events not found. stdout: {stdout.decode()}"
+    )
+
+    # Verify Flash RPCs were called (http_config comes from the deployed function_def)
+    assert "register" in servicer.flash_rpc_calls, (
+        f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+    assert "deregister" in servicer.flash_rpc_calls, (
+        f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+
+    # Verify order: register should come before deregister
+    register_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "register"]
+    deregister_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "deregister"]
+    assert register_indices[0] < deregister_indices[0], (
+        f"Flash RPCs called in wrong order. Expected register before deregister. RPC calls: {servicer.flash_rpc_calls}"
+    )
 
 
 @skip_github_non_linux
