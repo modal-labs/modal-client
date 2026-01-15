@@ -3,7 +3,7 @@ name: Client Docs
 on:
   workflow_call:
     inputs:
-      working_directory:
+      working-directory:
         required: true
         type: string
       python_version:
@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     defaults:
       run:
-        working-directory: ${{ inputs.working_directory }}
+        working-directory: ${{ inputs.working-directory }}
 
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
@@ -25,13 +25,13 @@ jobs:
       - uses: ./.github/actions/setup-cached-python-client
         with:
           version: ${{ inputs.python_version }}
-          working_directory: ${{ inputs.working_directory }}
+          working-directory: ${{ inputs.working-directory }}
 
       - name: Build protobuf
         run: inv protoc
 
       - name: Install package + deps
-        run: pip install -e .  # Makes sure doc generation doesn't break on client imports etc.
+        run: pip install -e . # Makes sure doc generation doesn't break on client imports etc.
 
       - name: Generate reference docs
         run: python -m modal_docs.gen_reference_docs reference_docs_output
