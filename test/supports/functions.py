@@ -929,15 +929,10 @@ def impl_for_custom_name(x):
     return x * x
 
 
-
 server_cls_lifecycle_events: list[str] = []
 
 
-@app.server(
-    port=9000,
-    enable_memory_snapshot=True,
-    min_containers=1,
-    proxy_regions=["us-east", "us-west", "ap-south"])
+@app.server(port=9000, enable_memory_snapshot=True, min_containers=1, proxy_regions=["us-east", "us-west", "ap-south"])
 class AppServerWithEnter:
     @modal.enter(snap=True)
     def enter(self):

@@ -2297,6 +2297,7 @@ def test_flash_container_entry_lifecycle(servicer, tmp_path):
             f"Flash RPCs: {servicer.flash_rpc_calls}"
         )
 
+
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 def test_server_cls_enter_lifecycle(servicer, tmp_path):
