@@ -57,8 +57,7 @@ class _Server:
     # ============ Live Methods ============
 
     @live_method
-    async def get_urls(self) -> Optional[list[str]]:
-        """Get the URL(s) of this server."""
+    async def get_urls(self) -> Optional[dict[str, str]]:
         return await self._get_service_function()._experimental_get_flash_urls()
 
     @live_method

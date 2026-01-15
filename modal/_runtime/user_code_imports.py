@@ -338,7 +338,7 @@ class _LifecycleManager:
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ):
-        """Run pre-snapshot @enter(snap=True) methods."""
+        # Identify all "enter" methods that need to run before we snapshot.
         if not self.function_def.is_auto_snapshot:
             pre_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
@@ -352,7 +352,7 @@ class _LifecycleManager:
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ):
-        """Run post-snapshot @enter() methods and cleanup with @exit() methods."""
+        # Identify the "enter" methods to run after resuming from a snapshot.
         flash_entry = _FlashContainerEntry(self.function_def.http_config)
         if not self.function_def.is_auto_snapshot:
             post_snapshot_methods = _find_callables_for_obj(
@@ -372,8 +372,6 @@ class _LifecycleManager:
 
 @dataclass
 class ImportedClass(_LifecycleManager, Service):
-    """Service for Modal Cls - classes with @method() decorated callable methods."""
-
     user_cls_instance: Any
     app: "modal.app._App"
     service_deps: Optional[Sequence["modal._object._Object"]]
@@ -434,7 +432,6 @@ class ImportedServer(_LifecycleManager, Service):
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> dict[str, "FinalizedFunction"]:
-        # Servers have no callable methods - they only expose HTTP endpoints via the server
         return {}
 
 
@@ -569,10 +566,10 @@ def import_class_service(
         server_service_function: _Function = _server._get_service_function()
         service_deps = server_service_function.deps(only_explicit_mounts=True)
         active_app = _server._get_app()
-        # Get or create instance of the user's server class
         user_cls = _server._get_user_cls()
         user_cls_instance = user_cls()
 
+        # Create server object with lifecycle methods registered.
         return ImportedServer(
             user_cls_instance=user_cls_instance,
             app=active_app,

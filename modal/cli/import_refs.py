@@ -152,6 +152,7 @@ def list_cli_commands(
             all_runnables[local_entrypoint].append(f"{app_name}.{name}")
             priorities[local_entrypoint] = AutoRunPriority.APP_LOCAL_ENTRYPOINT
         for name, function in app.registered_functions.items():
+            parts = name.split(".")
             if name.endswith(".*"):
                 continue  # Skip class service functions
             if name.startswith("#"):

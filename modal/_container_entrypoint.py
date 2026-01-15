@@ -308,8 +308,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     service_function_hydration_data = [
                         o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
                     ][0]
-                    # Note: Even though Servers are classes, they don't have class_ids since only
-                    # the service function is registered. Get fails on Servers and is Empty.
+                    # Servers do not have a class_id even though they are classes.
                     class_id = container_args.app_layout.class_ids.get(
                         function_def.function_name.removesuffix(".*"), ""
                     )
