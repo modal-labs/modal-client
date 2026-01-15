@@ -1758,3 +1758,24 @@ async def test_sync_in_async_no_warning_in_ipython(client, monkeypatch):
 
         # Verify NO warning was emitted
         assert len(w) == 0
+
+
+@pytest.mark.asyncio
+async def test_cancellations_dont_mask_real_errors():
+    async def raises():
+        await asyncio.sleep(0.1)
+        raise ValueError("hello")
+
+    fut = asyncio.Future()
+
+    async def other():
+        await fut
+
+    with pytest.raises(ValueError):
+        async with TaskContext() as tc:
+            tc.create_task(other())
+            try:
+                await tc.create_task(raises())
+            except:
+                fut.cancel()
+                raise
