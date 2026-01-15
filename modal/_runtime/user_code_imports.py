@@ -323,8 +323,57 @@ class ImportedFunction(Service):
         yield
 
 
+class _LifecycleManager:
+    """Lifecycle manager for class-based services (Cls and Server).
+
+    Handles pre snapshot, post snapshot, and exit lifecycle handling
+    """
+
+    user_cls_instance: Any
+    function_def: api_pb2.Function
+
+    @contextmanager
+    def lifecycle_presnapshot(
+        self,
+        event_loop: UserCodeEventLoop,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    ):
+        """Run pre-snapshot @enter(snap=True) methods."""
+        if not self.function_def.is_auto_snapshot:
+            pre_snapshot_methods = _find_callables_for_obj(
+                self.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
+            )
+            call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
+        yield
+
+    @contextmanager
+    def lifecycle_postsnapshot(
+        self,
+        event_loop: UserCodeEventLoop,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    ):
+        """Run post-snapshot @enter() methods and cleanup with @exit() methods."""
+        flash_entry = _FlashContainerEntry(self.function_def.http_config)
+        if not self.function_def.is_auto_snapshot:
+            post_snapshot_methods = _find_callables_for_obj(
+                self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
+            )
+            call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
+            flash_entry.enter()
+        try:
+            yield
+        finally:
+            if not self.function_def.is_auto_snapshot:
+                flash_entry.stop()
+                exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
+                call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
+                flash_entry.close()
+
+
 @dataclass
-class ImportedClass(Service):
+class ImportedClass(_LifecycleManager, Service):
+    """Service for Modal Cls - classes with @method() decorated callable methods."""
+
     user_cls_instance: Any
     app: "modal.app._App"
     service_deps: Optional[Sequence["modal._object._Object"]]
@@ -374,42 +423,20 @@ class ImportedClass(Service):
             finalized_functions[method_name] = finalized_function
         return finalized_functions
 
-    @contextmanager
-    def lifecycle_presnapshot(
-        self,
-        event_loop: UserCodeEventLoop,
-        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ):
-        # Identify all "enter" methods that need to run before we snapshot.
-        if not self.function_def.is_auto_snapshot:
-            pre_snapshot_methods = _find_callables_for_obj(
-                self.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
-            )
-            call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
-        yield
 
-    @contextmanager
-    def lifecycle_postsnapshot(
-        self,
-        event_loop: UserCodeEventLoop,
-        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ):
-        flash_entry = _FlashContainerEntry(self.function_def.http_config)
-        # Identify the "enter" methods to run after resuming from a snapshot.
-        if not self.function_def.is_auto_snapshot:
-            post_snapshot_methods = _find_callables_for_obj(
-                self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
-            )
-            call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
-            flash_entry.enter()
-        try:
-            yield
-        finally:
-            if not self.function_def.is_auto_snapshot:
-                flash_entry.stop()
-                exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
-                call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
-                flash_entry.close()
+@dataclass
+class ImportedServer(_LifecycleManager, Service):
+    user_cls_instance: Any
+    app: "modal.app._App"
+    service_deps: Optional[Sequence["modal._object._Object"]]
+    function_def: api_pb2.Function
+
+    def get_finalized_functions(
+        self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
+    ) -> dict[str, "FinalizedFunction"]:
+        # Servers have no callable methods - they only expose HTTP endpoints via the server
+        # started in @enter methods. Return empty dict.
+        return {}
 
 
 def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs: dict[str, Any]) -> typing.Any:
@@ -515,6 +542,7 @@ def import_class_service(
     active_app: Optional["modal.app._App"]
     service_deps: Optional[Sequence["modal._object._Object"]]
     cls_or_user_cls: typing.Union[type, modal.cls.Cls]
+    is_server = False
 
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert ser_user_cls is not None
@@ -534,6 +562,7 @@ def import_class_service(
         elif len(parts) == 1 and qual_name.startswith("#"):
             # Server class - function name is "#ClassName"
             cls_name = qual_name[1:]  # Remove the "#" prefix
+            is_server = True
         else:
             raise ExecutionError(
                 f"Internal error: Invalid 'service function' identifier {qual_name}. Please contact Modal support"
@@ -555,8 +584,7 @@ def import_class_service(
         server_service_function: _Function = _server._get_service_function()
         service_deps = server_service_function.deps(only_explicit_mounts=True)
         active_app = _server._get_app()
-        # Servers have no methods, just lifecycle hooks
-        method_partials = {}
+        is_server = True
         # Get or create instance of the user's server class
         user_cls = _server._get_user_cls()
         user_cls_instance = user_cls()
@@ -578,14 +606,22 @@ def import_class_service(
         method_partials = _cls._get_partial_functions()
         user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
 
-    return ImportedClass(
-        user_cls_instance=user_cls_instance,
-        app=active_app,
-        service_deps=service_deps,
-        # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
-        _partial_functions=method_partials,
-        function_def=function_def,
-    )
+    if is_server:
+        return ImportedServer(
+            user_cls_instance=user_cls_instance,
+            app=active_app,
+            service_deps=service_deps,
+            function_def=function_def,
+        )
+    else:
+        return ImportedClass(
+            user_cls_instance=user_cls_instance,
+            app=active_app,
+            service_deps=service_deps,
+            # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
+            _partial_functions=method_partials,
+            function_def=function_def,
+        )
 
 
 def get_active_app_fallback(function_def: api_pb2.Function) -> _App:
