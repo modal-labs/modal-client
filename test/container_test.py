@@ -2297,6 +2297,103 @@ def test_flash_container_entry_lifecycle(servicer, tmp_path):
             f"Flash RPCs: {servicer.flash_rpc_calls}"
         )
 
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_server_cls_enter_lifecycle(servicer, tmp_path):
+    """
+    Test that @modal.enter methods are executed for app.server classes (@app.server decorator).
+
+    Server classes don't have methods - they just start an HTTP server.
+    This verifies the lifecycle order:
+    1. modal.enter(snap=True) - pre-snapshot enter (starts HTTP server)
+    2. modal.enter(snap=False) - post-snapshot enter
+    3. Container waits for HTTP requests (but we send kill_switch to exit)
+    """
+    container_process = _run_container_process(
+        servicer,
+        tmp_path,
+        "test.supports.functions",
+        "#AppServerWithEnter",
+        inputs=[],
+        is_class=True,
+    )
+    stdout, stderr = container_process.communicate(timeout=10)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+
+    # Verify the enter methods ran in the correct order
+    expected_events = "enter_pre_snapshot,enter_post_snapshot"
+    assert f"[server_cls_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_server_container_entry_lifecycle(servicer, tmp_path):
+    """
+    Test that Server lifecycle methods (enter, stop, close) are called
+    in the correct order and that Flash RPCs (FlashContainerRegister, FlashContainerDeregister)
+    are invoked appropriately.
+
+    Lifecycle order:
+    1. Server.enter() - creates FlashManager, starts heartbeat which calls FlashContainerRegister
+    2. Container processes inputs (or gets kill_switch)
+    3. Server.stop() - cancels tasks, calls FlashContainerDeregister
+    4. SErver.close() - closes tunnel
+    """
+    # Clear any previous Flash RPC calls
+    servicer.flash_rpc_calls = []
+
+    # Create http_config to enable Flash functionality
+    http_config = api_pb2.HTTPConfig(
+        port=8001,
+        startup_timeout=5,
+        exit_grace_period=0,
+        h2_enabled=False,
+    )
+
+    container_process = _run_container_process(
+        servicer,
+        tmp_path,
+        "test.supports.functions",
+        "#AppServerWithEnter",
+        inputs=[],  # No method inputs - Flash classes just serve HTTP
+        is_class=True,
+        http_config=http_config,
+    )
+    stdout, stderr = container_process.communicate(timeout=15)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+
+    # Verify the enter methods ran
+    expected_events = "enter_pre_snapshot,enter_post_snapshot"
+    assert f"[server_cls_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+    # Verify Flash RPCs were called in the correct order:
+    # - register: called during enter when heartbeat starts
+    # - deregister: called during stop
+    assert "register" in servicer.flash_rpc_calls, (
+        f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+    assert "deregister" in servicer.flash_rpc_calls, (
+        f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+
+    # Verify order: register should come before deregister
+    register_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "register"]
+    deregister_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "deregister"]
+    assert register_indices, f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    assert deregister_indices, f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
+
+    # Verify the *first* register is before the *first* deregister (for compatibility)
+    assert register_indices[0] < deregister_indices[0], (
+        f"Flash RPCs called in wrong order. Expected register before deregister. RPC calls: {servicer.flash_rpc_calls}"
+    )
+    # Ensure that *all* deregisters happen after the *last* register
+    last_register_idx = max(register_indices)
+    for d_idx in deregister_indices:
+        assert d_idx > last_register_idx, (
+            f"Found deregister at position {d_idx} before last register at position {last_register_idx}. "
+            f"Flash RPCs: {servicer.flash_rpc_calls}"
+        )
+
 
 @skip_github_non_linux
 @pytest.mark.timeout(10)

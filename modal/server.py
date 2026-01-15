@@ -31,12 +31,16 @@ class _Server:
     TODO(claudia): Add examples
     """
 
+    _user_cls: Optional[type] = None  # None if remote
+    _service_function: _Function
+    _app: Optional["modal.app._App"] = None  # None if remote
+
     def _get_user_cls(self) -> type:
         assert self._user_cls is not None
         return self._user_cls
 
     def _get_app(self) -> "modal.app._App":
-        assert self._app is not None, "app can only be extracted for local Server (in container entrypoint)"
+        assert self._app, "app can only be extracted for local Server (in container entrypoint)"
         return self._app
 
     def _get_service_function(self) -> _Function:
@@ -83,7 +87,6 @@ class _Server:
         )
 
     # ============ Hydration ============
-
     async def hydrate(self, client: Optional[_Client] = None) -> "_Server":
         """Hydrate the server by hydrating its underlying service function."""
         # This is required since we want to support @livemethod() decorated methods
@@ -212,7 +215,6 @@ class _Server:
             service_function_name,
             load_context_overrides=load_context_overrides,
         )
-        server._name = name
         return server
 
     def _is_local(self) -> bool:

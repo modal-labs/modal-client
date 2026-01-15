@@ -927,3 +927,33 @@ class ServerWithEnter:
 @app.function(name="custom_name")
 def impl_for_custom_name(x):
     return x * x
+
+
+
+server_cls_lifecycle_events: list[str] = []
+
+
+@app.server(
+    port=9000,
+    enable_memory_snapshot=True,
+    min_containers=1,
+    proxy_regions=["us-east", "us-west", "ap-south"])
+class AppServerWithEnter:
+    @modal.enter(snap=True)
+    def enter(self):
+        # Redirect stdout/stderr to DEVNULL so communicate() doesn't hang waiting
+        # for the subprocess's inherited file descriptors to close. This fails on Github Actions
+        # if we don't pipe the subprocess stdout/stderr to DEVNULL.
+        self.process = subprocess.Popen(
+            ["python3", "-m", "http.server", "8001"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        server_cls_lifecycle_events.append("enter_pre_snapshot")
+
+    @modal.enter(snap=False)
+    def enter_post_snapshot(self):
+        server_cls_lifecycle_events.append("enter_post_snapshot")
+        # Print lifecycle events after all enter methods have run
+        # This will be captured by the test before the container exits
+        print(f"[server_cls_lifecycle_events:{','.join(server_cls_lifecycle_events)}]")
