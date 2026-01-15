@@ -570,8 +570,8 @@ class TaskContext:
             try:
                 results = await asyncio.gather(*tasks)
             except asyncio.CancelledError:
-                # If we got CancelledError, wait for all tasks to complete and check
-                # if any has a real exception that should take priority
+                # If we got CancelledError, check if any task
+                # has a real exception that should take priority
                 for task in tasks:
                     if not task.done():
                         task.cancel()

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from typing import Any
 
 import pytest_asyncio
 from synchronicity import Synchronizer
@@ -1774,7 +1775,7 @@ async def test_cancellations_dont_mask_real_errors():
         await asyncio.sleep(0.1)
         raise ValueError("hello")
 
-    fut = asyncio.Future()
+    fut: asyncio.Future[Any] = asyncio.Future()
 
     async def other():
         await fut
