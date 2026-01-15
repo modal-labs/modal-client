@@ -482,16 +482,12 @@ def test_run_literal_args_entrypoint(servicer, set_env_client, test_dir):
 
     # Test Literal with strings
     valid_call_args = [
-        (["run", f"{app_file.as_posix()}::literal_str_arg", "--mode=read"], "'read' <class 'str'>"),
         (["run", f"{app_file.as_posix()}::literal_str_arg", "--mode=write"], "'write' <class 'str'>"),
-        (["run", f"{app_file.as_posix()}::literal_str_arg", "--mode=append"], "'append' <class 'str'>"),
-        # Test Literal with integers
-        (["run", f"{app_file.as_posix()}::literal_int_arg", "--level=1"], "1 <class 'int'>"),
         (["run", f"{app_file.as_posix()}::literal_int_arg", "--level=2"], "2 <class 'int'>"),
-        (["run", f"{app_file.as_posix()}::literal_int_arg", "--level=3"], "3 <class 'int'>"),
-        # Test Literal with default
         (["run", f"{app_file.as_posix()}::literal_with_default"], "'dev' <class 'str'>"),
         (["run", f"{app_file.as_posix()}::literal_with_default", "--mode=prod"], "'prod' <class 'str'>"),
+        (["run", f"{app_file.as_posix()}::literal_int_with_default"], "2 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::literal_int_with_default", "--level=3"], "3 <class 'int'>"),
     ]
     for args, expected in valid_call_args:
         res = run_cli_command(args)

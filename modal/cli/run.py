@@ -57,7 +57,13 @@ class LiteralIntParamType(click.Choice):
         super().__init__(list(self.int_values.keys()))
 
     def convert(self, value, param, ctx):
-        # Use Choice's validation, then convert back to int
+        # If value is already an int (e.g., from a default), validate and return it
+        if isinstance(value, int):
+            if value in self.int_values.values():
+                return value
+            # Invalid int - convert to string so Choice can generate a nice error message
+            value = str(value)
+        # Use Choice's validation for string inputs, then convert back to int
         str_value = super().convert(value, param, ctx)
         return self.int_values[str_value]
 
@@ -151,14 +157,10 @@ def _add_click_options(func, parameters: dict[str, ParameterMetadata]):
         param_name = param["name"].replace("_", "-")
         cli_name = "--" + param_name
 
-        # Check for Literal type first
-        literal_values = _get_literal_values(param["type_hint"])
         parser: Any
-        if literal_values is not None:
-            # Check if all values are strings
+        if (literal_values := _get_literal_values(param["type_hint"])) is not None:
             if all(isinstance(v, str) for v in literal_values):
                 parser = click.Choice(list(literal_values))
-            # Check if all values are ints (excluding bools, which are subclass of int)
             elif all(isinstance(v, int) and not isinstance(v, bool) for v in literal_values):
                 parser = LiteralIntParamType(literal_values)
             else:

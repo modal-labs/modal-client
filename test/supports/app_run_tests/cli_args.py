@@ -100,6 +100,11 @@ def literal_with_default(mode: typing.Literal["dev", "prod"] = "dev"):
     print(repr(mode), type(mode))
 
 
+@app.local_entrypoint()
+def literal_int_with_default(level: typing.Literal[1, 2, 3] = 2):
+    print(repr(level), type(level))
+
+
 @app.function()
 def literal_arg_fn(level: typing.Literal[1, 2, 3]):
     print(repr(level), type(level))
