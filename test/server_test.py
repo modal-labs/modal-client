@@ -6,8 +6,9 @@ import uuid
 import modal
 import modal.experimental
 from modal._serialization import deserialize
+from modal._server import _Server
 from modal.exception import InvalidError, NotFoundError
-from modal.server import Server, _Server
+from modal.server import Server
 from modal_proto import api_pb2
 
 # ============ Basic Server Registration ============
@@ -601,65 +602,3 @@ def _container_args_for_server(
         checkpoint_id=f"ch-{uuid.uuid4()}",
         app_layout=app_layout,
     )
-
-
-# @skip_github_non_linux
-# def test_server_e2e_lifecycle(servicer):
-#     """
-#     End-to-end test that @app.server() runs enter methods correctly in a container.
-
-#     This test runs the container entrypoint in-process with a server class,
-#     verifying that:
-#     1. The @modal.enter() method is called
-#     2. Flash RPCs (register/deregister) are called appropriately
-#     """
-#     # Clear any previous Flash RPC calls
-#     servicer.flash_rpc_calls = []
-
-#     # Create http_config to enable Flash/server functionality
-#     http_config = api_pb2.HTTPConfig(
-#         port=8002,
-#         startup_timeout=5,
-#         exit_grace_period=0,
-#         h2_enabled=False,
-#     )
-
-#     container_args = _container_args_for_server(
-#         "test.supports.functions",
-#         "ServerWithEnter",
-#         http_config=http_config,
-#     )
-
-#     # Provide empty inputs - servers serve HTTP, they don't process function inputs
-#     servicer.container_inputs = []
-
-#     # Set up environment for container execution
-#     env = {
-#         "MODAL_SERVER_URL": servicer.container_addr,
-#         "MODAL_TASK_ID": "ta-123",
-#         "MODAL_IS_REMOTE": "1",
-#     }
-
-#     # Drop the module from sys.modules to ensure clean import
-#     module_name = "test.supports.functions"
-#     if module_name in sys.modules:
-#         sys.modules.pop(module_name)
-
-#     # Reset _App tracking state between runs
-#     _App._all_apps.clear()
-
-#     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
-#         try:
-#             with mock.patch.dict(os.environ, env):
-#                 main(container_args, client)
-#         except UserException:
-#             # Handle gracefully
-#             pass
-
-#     # Verify Flash RPCs were called
-#     assert "register" in servicer.flash_rpc_calls, (
-#         f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
-#     )
-#     assert "deregister" in servicer.flash_rpc_calls, (
-#         f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
-#     )

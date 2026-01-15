@@ -551,7 +551,7 @@ def import_class_service(
         user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
     elif isinstance(cls_or_user_cls, modal.server.Server):
         # Server object from @app.server() decorator
-        _server = typing.cast(modal.server._Server, synchronizer._translate_in(cls_or_user_cls))
+        _server = typing.cast(modal._server._Server, synchronizer._translate_in(cls_or_user_cls))
         server_service_function: _Function = _server._get_service_function()
         service_deps = server_service_function.deps(only_explicit_mounts=True)
         active_app = _server._get_app()
