@@ -49,6 +49,19 @@ class AnyParamType(click.ParamType):
         return value
 
 
+class LiteralIntParamType(click.Choice):
+    """A ParamType for Literal types containing only integers."""
+
+    def __init__(self, literal_values: tuple[int, ...]):
+        self.int_values = {str(v): v for v in literal_values}
+        super().__init__(list(self.int_values.keys()))
+
+    def convert(self, value, param, ctx):
+        # Use Choice's validation, then convert back to int
+        str_value = super().convert(value, param, ctx)
+        return self.int_values[str_value]
+
+
 option_parsers = {
     "str": str,
     "int": int,
@@ -99,6 +112,20 @@ def _get_cli_runnable_signature(sig: inspect.Signature, type_hints: dict[str, ty
     return CliRunnableSignature(signature, has_variadic_args)
 
 
+def _get_literal_values(type_hint: Any) -> Optional[tuple[Any, ...]]:
+    """Extract values from a Literal type annotation.
+
+    Returns None if not a Literal type, otherwise returns tuple of literal values.
+    """
+    try:
+        origin = typing.get_origin(type_hint)
+        if origin is typing.Literal:
+            return typing.get_args(type_hint)
+    except Exception:
+        pass
+    return None
+
+
 def _get_param_type_as_str(annot: Any) -> str:
     """Return annotation as a string, handling various spellings for optional types."""
     annot_str = str(annot)
@@ -121,16 +148,32 @@ def _add_click_options(func, parameters: dict[str, ParameterMetadata]):
     Kind of like typer, but using options instead of positional arguments
     """
     for param in parameters.values():
-        param_type_str = _get_param_type_as_str(param["type_hint"])
         param_name = param["name"].replace("_", "-")
         cli_name = "--" + param_name
-        if param_type_str == "bool":
-            cli_name += "/--no-" + param_name
 
-        parser = option_parsers.get(param_type_str)
-        if parser is None:
-            msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']}"
-            raise NoParserAvailable(msg)
+        # Check for Literal type first
+        literal_values = _get_literal_values(param["type_hint"])
+        parser: Any
+        if literal_values is not None:
+            # Check if all values are strings
+            if all(isinstance(v, str) for v in literal_values):
+                parser = click.Choice(list(literal_values))
+            # Check if all values are ints (excluding bools, which are subclass of int)
+            elif all(isinstance(v, int) and not isinstance(v, bool) for v in literal_values):
+                parser = LiteralIntParamType(literal_values)
+            else:
+                # Mixed types, booleans, or other unsupported types
+                msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']}"
+                raise NoParserAvailable(msg)
+        else:
+            param_type_str = _get_param_type_as_str(param["type_hint"])
+            if param_type_str == "bool":
+                cli_name += "/--no-" + param_name
+
+            parser = option_parsers.get(param_type_str)
+            if parser is None:
+                msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']}"
+                raise NoParserAvailable(msg)
         kwargs: Any = {
             "type": parser,
         }

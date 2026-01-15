@@ -77,3 +77,35 @@ def unparseable_annot(i: typing.Union[int, str]):
 @app.local_entrypoint()
 def unevaluatable_annot(i: "no go"):  # type: ignore  # noqa
     pass
+
+
+@app.local_entrypoint()
+def literal_str_arg(mode: typing.Literal["read", "write", "append"]):
+    print(repr(mode), type(mode))
+
+
+@app.local_entrypoint()
+def literal_int_arg(level: typing.Literal[1, 2, 3]):
+    print(repr(level), type(level))
+
+
+@app.local_entrypoint()
+def literal_bool_arg(val: typing.Literal[True, False]):
+    """This should fail - booleans are not supported."""
+    print(repr(val), type(val))
+
+
+@app.local_entrypoint()
+def literal_with_default(mode: typing.Literal["dev", "prod"] = "dev"):
+    print(repr(mode), type(mode))
+
+
+@app.function()
+def literal_arg_fn(level: typing.Literal[1, 2, 3]):
+    print(repr(level), type(level))
+
+
+@app.local_entrypoint()
+def literal_ambiguous_arg(val: typing.Literal["2", 2]):
+    """This should fail - mixed types (str and int) not supported."""
+    print(repr(val), type(val))
