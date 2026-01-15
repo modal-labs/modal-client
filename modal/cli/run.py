@@ -58,7 +58,8 @@ class LiteralIntParamType(click.Choice):
 
     def convert(self, value, param, ctx):
         # If value is already an int (e.g., from a default), validate and return it
-        if isinstance(value, int):
+        # Exclude bools since they're a subclass of int but we don't support them
+        if isinstance(value, int) and not isinstance(value, bool):
             if value in self.int_values.values():
                 return value
             # Invalid int - convert to string so Choice can generate a nice error message
