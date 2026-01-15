@@ -431,7 +431,7 @@ class _App:
     ) -> typing_extensions.Self:
         """Deploy the App so that it is available persistently.
 
-        Deployed Apps will be avaible for lookup or web-based invocations until they are stopped.
+        Deployed Apps will be available for lookup or web-based invocations until they are stopped.
         Unlike with `App.run`, this method will return as soon as the deployment completes.
 
         This method is a programmatic alternative to the `modal deploy` CLI command.

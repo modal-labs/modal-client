@@ -47,9 +47,12 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
 
 
 @container_cli.command("logs")
-def logs(container_id: str = typer.Argument(help="Container ID")):
+def logs(
+    container_id: str = typer.Argument(help="Container ID"),
+    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line"),
+):
     """Show logs for a specific container, streaming while active."""
-    stream_app_logs(task_id=container_id)
+    stream_app_logs(task_id=container_id, show_timestamps=timestamps)
 
 
 @container_cli.command("exec")

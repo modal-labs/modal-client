@@ -34,6 +34,9 @@ if __name__ == "__main__":
     assert builder_version, "Script requires MODAL_IMAGE_BUILDER_VERSION environment variable"
     python_versions = SUPPORTED_PYTHON_SERIES[cast(ImageBuilderVersion, builder_version)]
 
+    # Filter out unsupported free-threaded Python for base images.
+    python_versions = [v for v in python_versions if not v.endswith("t")]
+
     app = modal.App(f"build-{name.replace('_', '-')}-image")
     with app.run(), modal.enable_output():  # Image.build needs these in reverse of normal order to avoid duplicate logs
         images = asyncio.run(build_images(app, constructor, python_versions))

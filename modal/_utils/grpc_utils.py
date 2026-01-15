@@ -92,8 +92,7 @@ class ConnectionManager:
 
     def __init__(self, client: "modal.client._Client", metadata: dict[str, str] = {}):
         self._client = client
-        # Warning: This metadata is shared across all channels! If the metadata is mutated
-        # in one `create_channel` call, the mutation will be reflected in all channels.
+        # This metadata is injected into all requests on all channels created by this manager.
         self._metadata = metadata
         self._channels: dict[str, grpclib.client.Channel] = {}
 
@@ -168,8 +167,7 @@ def create_channel(
 ) -> grpclib.client.Channel:
     """Creates a grpclib.Channel to be used by a GRPC stub.
 
-    Note that this function mutates the given metadata argument by adding an x-modal-auth-token
-    if one is present in the trailing metadata of any response.
+    The given metadata dict is injected into all outgoing requests on this channel.
     """
     o = urllib.parse.urlparse(server_url)
 
