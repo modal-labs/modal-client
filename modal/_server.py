@@ -61,7 +61,7 @@ class _Server:
         return self._user_cls
 
     def _get_app(self) -> "modal.app._App":
-        assert self._app, "App can only be extracted for a local Server (in container entrypoint)"
+        assert self._app
         return self._app
 
     def _get_service_function(self) -> _Function:
@@ -70,7 +70,7 @@ class _Server:
     @staticmethod
     def _extract_user_cls(wrapped_user_cls: "type | _PartialFunction") -> type:
         if isinstance(wrapped_user_cls, _PartialFunction):
-            assert wrapped_user_cls.user_cls, "Non-class partial used as app.server input"
+            assert wrapped_user_cls.user_cls
             return wrapped_user_cls.user_cls
         else:
             return wrapped_user_cls
