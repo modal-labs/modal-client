@@ -75,7 +75,7 @@ def test_run_server(client, servicer):
     assert server_function_id.startswith("fu-")
     assert servicer.app_functions[server_function_id].is_class
 
-    assert servicer.app_functions[server_function_id].module_name == "test.flash_cls_test_with_app_server"
+    assert servicer.app_functions[server_function_id].module_name == "test.flash_app_server_test"
     assert servicer.app_functions[server_function_id].function_name == "FlashClassDefault"
     assert servicer.app_functions[server_function_id].target_concurrent_inputs == 10
     assert servicer.app_functions[server_function_id].method_definitions_set

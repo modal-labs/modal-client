@@ -137,8 +137,8 @@ class Resolver:
                         prefix_hint = f" (expected prefix {expected_prefix}-)" if expected_prefix else ""
                         raise InvalidError(
                             f"Existing object id {existing_object_id} is not a {expected_type} id{prefix_hint}. "
-                            "This usually means the object tag/name was previously used for a different type. "
-                            "Rename the object/app or delete the previous deployment."
+                            "This usually means the object name was previously used for a different type. "
+                            "Rename the object/app or stop the previous deployment and redeploy."
                         )
 
                     await obj._load(obj, self, load_context, existing_object_id)

@@ -127,9 +127,11 @@ class _Object:
         assert isinstance(object_id, str) and self._type_prefix is not None
         if not object_id.startswith(self._type_prefix):
             raise ExecutionError(
-                f"Can not hydrate {type(self)}:"
+                f"Can not hydrate {type(self)}: "
                 f" it has type prefix {self._type_prefix}"
-                f" but the object_id starts with {object_id[:3]}"
+                f" but the object_id starts with {object_id[:3]}. "
+                "This usually means the object name was previously used for a different type. "
+                "Rename the object/app or stop the previous deployment and redeploy."
             )
         self._object_id = object_id
         self._client = client
