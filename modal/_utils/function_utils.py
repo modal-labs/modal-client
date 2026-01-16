@@ -79,25 +79,6 @@ def is_flash_object(experimental_options: Optional[dict[str, Any]], http_config:
     return bool(experimental_options and experimental_options.get("flash", False)) or http_config is not None
 
 
-def validate_http_server_config(
-    port: Optional[int] = None,
-    proxy_regions: list[str] = [],  # The regions to proxy the HTTP server to.
-    startup_timeout: int = 30,  # Maximum number of seconds to wait for the HTTP server to start.
-    exit_grace_period: Optional[int] = None,  # The time to wait for the HTTP server to exit gracefully.
-):
-    if port is None:
-        # TODO(claudia): Fix this error to be correct
-        raise InvalidError("Port argument is required.")
-    if not isinstance(port, int) or port < 1 or port > 65535:
-        raise InvalidError("Port must be a positive integer between 1 and 65535.")
-    if startup_timeout <= 0:
-        raise InvalidError("The `startup_timeout` argument must be positive.")
-    if exit_grace_period is not None and exit_grace_period < 0:
-        raise InvalidError("The `exit_grace_period` argument must be non-negative.")
-    if not proxy_regions:
-        raise InvalidError("The `proxy_regions` argument must be non-empty.")
-
-
 def is_method_fn(object_qual_name: str):
     # methods have names like Cls.foo.
     if "<locals>" in object_qual_name:
@@ -268,12 +249,12 @@ class FunctionInfo:
     @staticmethod
     def get_cls_vars(self) -> dict[str, Any]:
         if self.user_cls is not None:
-            class_vars = {
+            cls_vars = {
                 attr: getattr(self.user_cls, attr)
                 for attr in dir(self.user_cls)
                 if not callable(getattr(self.user_cls, attr)) and not attr.startswith("__")
             }
-            return class_vars
+            return cls_vars
         return {}
 
     @staticmethod

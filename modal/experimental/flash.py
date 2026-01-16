@@ -15,9 +15,9 @@ from modal.cls import _Cls
 from modal.dict import _Dict
 from modal_proto import api_pb2
 
+from .._server import validate_http_server_config
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
-from .._utils.function_utils import validate_http_server_config
 from ..client import _Client
 from ..config import logger
 from ..exception import InvalidError

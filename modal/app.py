@@ -30,6 +30,7 @@ from ._partial_function import (
     _PartialFunctionFlags,
     verify_concurrent_params,
 )
+from ._server import _Server, validate_http_server_config
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import (
     deprecation_warning,
@@ -40,7 +41,6 @@ from ._utils.function_utils import (
     is_flash_object,
     is_global_object,
     is_method_fn,
-    validate_http_server_config,
 )
 from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name, check_tag_dict
@@ -60,7 +60,6 @@ from .running_app import RunningApp
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
-from .server import Server
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
@@ -1226,7 +1225,7 @@ class _App:
         include_source: Optional[bool] = None,  # Whether to add source to container
         # Experimental options
         experimental_options: Optional[dict[str, Any]] = None,
-    ) -> Callable[[Union[CLS_T, _PartialFunction]], Server]:
+    ) -> Callable[[Union[CLS_T, _PartialFunction]], _Server]:
         """
         Decorator to register a new Modal Server with this App.
 
@@ -1276,11 +1275,11 @@ class _App:
         if env:
             secrets_list.append(_Secret.from_dict(env))
 
-        def wrapper(wrapped_user_cls: Union[CLS_T, _PartialFunction, Callable]) -> Server:
-            Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
+        def wrapper(wrapped_user_cls: Union[CLS_T, _PartialFunction, Callable]) -> _Server:
+            _Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
 
             # Validate the server class
-            Server.validate_construction_mechanism(wrapped_user_cls)
+            _Server.validate_construction_mechanism(wrapped_user_cls)
 
             # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
             cluster_size = None
@@ -1335,8 +1334,8 @@ class _App:
             )
 
             self._add_function(service_function, is_web_endpoint=False)
-            server: Server = Server.from_local(wrapped_user_cls, self, service_function)
-            return server  # type: ignore
+            server: _Server = _Server.from_local(wrapped_user_cls, self, service_function)
+            return server
 
         return wrapper
 

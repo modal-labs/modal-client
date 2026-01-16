@@ -19,6 +19,25 @@ if typing.TYPE_CHECKING:
     import modal.app
 
 
+def validate_http_server_config(
+    port: Optional[int] = None,
+    proxy_regions: list[str] = [],  # The regions to proxy the HTTP server to.
+    startup_timeout: int = 30,  # Maximum number of seconds to wait for the HTTP server to start.
+    exit_grace_period: Optional[int] = None,  # The time to wait for the HTTP server to exit gracefully.
+):
+    if port is None:
+        # TODO(claudia): Fix this error to be correct
+        raise InvalidError("Port argument is required.")
+    if not isinstance(port, int) or port < 1 or port > 65535:
+        raise InvalidError("Port must be a positive integer between 1 and 65535.")
+    if startup_timeout <= 0:
+        raise InvalidError("The `startup_timeout` argument must be positive.")
+    if exit_grace_period is not None and exit_grace_period < 0:
+        raise InvalidError("The `exit_grace_period` argument must be non-negative.")
+    if not proxy_regions:
+        raise InvalidError("The `proxy_regions` argument must be non-empty.")
+
+
 class _Server:
     """Server runs an HTTP server started in an @enter method.
 
