@@ -2,7 +2,6 @@
 import pytest
 import re
 import subprocess
-import uuid
 
 import modal
 import modal.experimental
@@ -12,7 +11,10 @@ from modal.exception import InvalidError, NotFoundError
 from modal.server import Server
 from modal_proto import api_pb2
 
-# ============ Basic Server Registration ============
+# =============================================================================
+# Basic Server Registration
+# =============================================================================
+
 
 server_app = modal.App("server-test-app", include_source=False)
 
@@ -152,7 +154,11 @@ def test_flash_params_override_experimental_options(client, servicer):
         assert servicer.app_functions[server_function_id].experimental_options["flash"] == "us-east"
 
 
-# ============ Validation Tests ============
+# =============================================================================
+# Validation Tests
+# =============================================================================
+
+
 class ServerWithInit:
     def __init__(self, value: int):
         self.value = value
@@ -298,7 +304,9 @@ def test_server_with_clustered_decorator(client, servicer):
         assert function_def._experimental_group_size == 2
 
 
-# ============ from_name Tests ============
+# =============================================================================
+# from_name Tests
+# =============================================================================
 
 
 def test_server_from_name(client, servicer):
@@ -321,7 +329,9 @@ def test_server_from_name_with_environment(client, servicer):
         Server.from_name("my-nonexistent-app", "MyServer", environment_name="some-env", client=client).hydrate()
 
 
-# ============ Live Method Tests ============
+# =============================================================================
+# Live Method Tests
+# =============================================================================
 
 
 def test_server_get_urls(client, servicer):
@@ -368,7 +378,9 @@ def test_server_update_autoscaler(client, servicer):
     assert servicer.app_functions[function_id].autoscaler_settings.max_containers == 5
 
 
-# ============ HTTP Config Tests ============
+# =============================================================================
+# HTTP Config Tests
+# =============================================================================
 
 
 def test_server_http_config_parameters(client, servicer):
@@ -397,7 +409,9 @@ def test_server_http_config_parameters(client, servicer):
         assert function_def.http_config.h2_enabled is False
 
 
-# ============ Resource Configuration Tests ============
+# =============================================================================
+# Resource Configuration Tests
+# =============================================================================
 
 
 def test_server_target_concurrency(client, servicer):
@@ -519,7 +533,9 @@ def test_server_multiple_proxy_regions(client, servicer):
         assert list(function_def.http_config.proxy_regions) == ["us-east", "us-west", "eu-west"]
 
 
-# ============ Integration Tests ============
+# =============================================================================
+# Integration Tests
+# =============================================================================
 
 
 def test_server_creates_class_object(client, servicer):
@@ -602,7 +618,9 @@ def test_server_serialization_roundtrip(client, servicer):
         assert instance.started is True
 
 
-# ============ Container Import Handling Tests ============
+# =============================================================================
+# Container Import Handling Tests
+# =============================================================================
 
 
 def test_server_has_user_server_with_mro():
@@ -653,45 +671,3 @@ def test_server_user_class_instantiation():
 
     # It's an instance of the original class
     assert type(instance).__name__ == "SimpleServer"
-
-
-# ============ E2E Container Tests ============
-
-
-def _container_args_for_server(
-    module_name: str,
-    function_name: str,
-    http_config: "api_pb2.HTTPConfig",
-    serialized_params: bytes = b"",
-):
-    """Create container arguments for a server test."""
-    app_layout = api_pb2.AppLayout(
-        objects=[
-            api_pb2.Object(object_id="im-1"),
-            api_pb2.Object(
-                object_id="fu-123",
-                function_handle_metadata=api_pb2.FunctionHandleMetadata(
-                    function_name=function_name,
-                ),
-            ),
-        ],
-        function_ids={function_name: "fu-123"},
-    )
-
-    function_def = api_pb2.Function(
-        module_name=module_name,
-        function_name=function_name,
-        is_class=True,
-        definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
-        http_config=http_config,
-    )
-
-    return api_pb2.ContainerArguments(
-        task_id="ta-123",
-        function_id="fu-123",
-        app_id="ap-1",
-        function_def=function_def,
-        serialized_params=serialized_params,
-        checkpoint_id=f"ch-{uuid.uuid4()}",
-        app_layout=app_layout,
-    )
