@@ -2322,8 +2322,8 @@ def test_server_cls_enter_lifecycle(servicer, tmp_path):
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
 
     # Verify the enter methods ran in the correct order
-    expected_events = "enter_pre_snapshot,enter_post_snapshot"
-    assert f"[server_cls_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+    expected_events = "enter,enter_post_snapshot"
+    assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
 
 
 @skip_github_non_linux
@@ -2364,8 +2364,8 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
 
     # Verify the enter methods ran
-    expected_events = "enter_pre_snapshot,enter_post_snapshot"
-    assert f"[server_cls_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+    expected_events = "enter,enter_post_snapshot"
+    assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
 
     # Verify Flash RPCs were called in the correct order:
     # - register: called during enter when heartbeat starts
@@ -2399,17 +2399,6 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 def test_server_lifecycle_with_deployed_metadata(servicer, tmp_path, deployed_support_function_definitions):
-    """
-    Test app.server lifecycle using real deployed metadata + subprocess execution.
-
-    This is the "Isolated Deploy + Isolated Container" testing mode:
-    - Deploy happens in separate process (via deploy_app_externally in fixture)
-    - Container runs in separate subprocess
-    - No client state can leak between deploy and container execution
-
-    This ensures the @app.server() decorator properly sets function_type, http_config,
-    etc. in the function definition, and that the container handles them correctly.
-    """
     # Clear any previous Flash RPC calls
     servicer.flash_rpc_calls = []
 
