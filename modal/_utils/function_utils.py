@@ -246,7 +246,6 @@ class FunctionInfo:
             logger.debug(f"Serializing function for class service function {self.user_cls.__qualname__} as empty")
             return b""
 
-    @staticmethod
     def get_cls_vars(self) -> dict[str, Any]:
         if self.user_cls is not None:
             cls_vars = {
@@ -257,7 +256,6 @@ class FunctionInfo:
             return cls_vars
         return {}
 
-    @staticmethod
     def get_cls_var_attrs(self) -> dict[str, Any]:
         import dis
         import opcode

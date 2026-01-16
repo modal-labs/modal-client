@@ -1560,6 +1560,7 @@ message Function {
   string implementation_name = 90;
 
   bool single_use_containers = 91; // When True, containers will shut down after handling a single input
+  bool is_server = 92; // When True, the function is a server function
 
 }
 
@@ -1744,6 +1745,7 @@ message FunctionData {
   // Attribute on the module with the implementation, which may differ from function_name
   // when the user provided a custom name= for the Function inside the Application namespace
   string implementation_name = 40;
+  bool is_server = 41; // When True, the function is a server function
 }
 
 message FunctionExtended {
