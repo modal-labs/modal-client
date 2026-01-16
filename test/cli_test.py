@@ -477,6 +477,75 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn):
     assert len(recwarn) == 0
 
 
+def test_run_literal_args_entrypoint(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
+
+    # Test Literal with strings
+    valid_call_args = [
+        (["run", f"{app_file.as_posix()}::literal_str_arg", "--mode=write"], "'write' <class 'str'>"),
+        (["run", f"{app_file.as_posix()}::literal_int_arg", "--level=2"], "2 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::literal_with_default"], "'dev' <class 'str'>"),
+        (["run", f"{app_file.as_posix()}::literal_with_default", "--mode=prod"], "'prod' <class 'str'>"),
+        (["run", f"{app_file.as_posix()}::literal_int_with_default"], "2 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::literal_int_with_default", "--level=3"], "3 <class 'int'>"),
+    ]
+    for args, expected in valid_call_args:
+        res = run_cli_command(args)
+        assert expected in res.stdout, f"Expected {expected} in output, got: {res.stdout}"
+        assert len(servicer.function_call_inputs) == 0
+
+    # Test invalid Literal values
+    res = run_cli_command(
+        ["run", f"{app_file.as_posix()}::literal_str_arg", "--mode=invalid"],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "invalid value" in res.stderr.lower()
+
+    res = run_cli_command(
+        ["run", f"{app_file.as_posix()}::literal_int_arg", "--level=99"],
+        expected_exit_code=2,
+        expected_stderr=None,
+    )
+    assert "invalid value" in res.stderr.lower()
+
+
+def test_run_literal_unsupported_types(servicer, set_env_client, test_dir):
+    """Test that Literal types with unsupported types are rejected."""
+    app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
+
+    # Boolean literals should be rejected
+    res = run_cli_command(
+        ["run", f"{app_file.as_posix()}::literal_bool_arg", "--val=True"],
+        expected_exit_code=1,
+    )
+    assert "unparseable annotation" in str(res.exception).lower()
+
+    # Mixed type literals (str + int) should be rejected
+    res = run_cli_command(
+        ["run", f"{app_file.as_posix()}::literal_ambiguous_arg", "--val=2"],
+        expected_exit_code=1,
+    )
+    assert "unparseable annotation" in str(res.exception).lower()
+
+
+def test_run_literal_args_function(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
+
+    @servicer.function_body
+    def print_type(level):
+        print(repr(level), type(level))
+
+    valid_call_args = [
+        (["run", f"{app_file.as_posix()}::literal_arg_fn", "--level=1"], "1 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::literal_arg_fn", "--level=2"], "2 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::literal_arg_fn", "--level=3"], "3 <class 'int'>"),
+    ]
+    for args, expected in valid_call_args:
+        res = run_cli_command(args)
+        assert expected in res.stdout
+
+
 def test_run_user_script_exception(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "raises_error.py"
     res = run_cli_command(["run", app_file.as_posix()], expected_exit_code=1)
@@ -556,6 +625,43 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
         expected_exit_code=1,
         expected_error="Could not find a deployed app named 'does-not-exist'",
     )
+
+
+def test_run_timestamps(servicer, server_url_env, set_env_client, test_dir, monkeypatch):
+    from datetime import timezone
+
+    # Use a known timestamp (2025-01-15 12:00:45 UTC)
+    known_timestamp = 1736942445.0
+
+    # Mock locale_tz to return UTC for predictable timestamp formatting
+    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: timezone.utc)
+
+    async def app_logs_with_timestamp(self, stream):
+        await stream.recv_message()
+        log = api_pb2.TaskLogs(
+            data="test log message\n",
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+            timestamp=known_timestamp,
+        )
+        await stream.send_message(api_pb2.TaskLogsBatch(entry_id="1", items=[log]))
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppGetLogs", app_logs_with_timestamp)
+
+        app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
+
+        # Test without --timestamps flag - should not include timestamp
+        res = run_cli_command(["run", app_file.as_posix()])
+        assert "test log message" in res.stdout
+        # The timestamp string format is "YYYY-MM-DD HH:MM:SS+TZ" - check that it's NOT there
+        assert "2025-01-15 12:00:45" not in res.stdout
+
+        # Test with --timestamps flag - should include timestamp prefix
+        res = run_cli_command(["run", "--timestamps", app_file.as_posix()])
+        # Check for the full formatted line: "YYYY-MM-DD HH:MM:SS+00:00 <message>"
+        expected_line = "2025-01-15 12:00:45+00:00 test log message"
+        assert expected_line in res.stdout
 
 
 def test_app_stop(servicer, mock_dir, set_env_client):
