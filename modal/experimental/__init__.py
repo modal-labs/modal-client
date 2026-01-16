@@ -142,9 +142,7 @@ async def get_app_objects(
 
     for func_name in app_layout_resp.app_layout.function_ids:
         if func_name.endswith(".*"):
-            continue  # Skip class service functions
-        if func_name.startswith("#"):
-            continue  # Skip server service functions
+            continue  # Skip class service functions and server service functions
         app_objects[func_name] = _Function.from_name(app_name, func_name, environment_name=environment_name)
 
     return app_objects

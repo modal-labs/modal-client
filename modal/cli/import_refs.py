@@ -152,11 +152,8 @@ def list_cli_commands(
             all_runnables[local_entrypoint].append(f"{app_name}.{name}")
             priorities[local_entrypoint] = AutoRunPriority.APP_LOCAL_ENTRYPOINT
         for name, function in app.registered_functions.items():
-            parts = name.split(".")
-            if name.endswith(".*"):
-                continue  # Skip class service functions
-            if name.startswith("#"):
-                continue  # Skip server service functions
+            if function.info.is_service_class():
+                continue  # Skip class service functions and server service functions
             all_runnables[function].append(f"{app_name}.{name}")
             priorities[function] = AutoRunPriority.APP_FUNCTION
         for cls_name, cls in app.registered_classes.items():

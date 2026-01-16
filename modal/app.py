@@ -1297,8 +1297,7 @@ class _App:
             local_state = self._local_state
 
             # Create the FunctionInfo for the server, note we treat FunctionInfo as a class for servers
-            # Use "#ClassName" format to avoid collision with class_ids which use "ClassName"
-            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls, name_override=f"{user_cls.__name__}")
+            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls, name_override=user_cls.__name__)
             # Create the service function
             service_function = _Function.from_local(
                 info,
