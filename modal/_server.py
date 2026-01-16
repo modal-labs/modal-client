@@ -43,7 +43,7 @@ class _Server:
     Generally, you will not construct a Server directly.
     Instead, use the [`@app.server()`](https://modal.com/docs/reference/modal.App#server) decorator.
 
-    ```python
+    ```python notest
     @app.server(port=8000, proxy_regions=["us-east", "us-west"])
     class MyServer:
         @modal.enter()
@@ -154,7 +154,7 @@ class _Server:
         object with metadata from Modal servers until the first
         time it is actually used.
 
-        ```python
+        ```python notest
         server = modal.Server.from_name("other-app", "Server")
         ```
         """
