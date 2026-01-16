@@ -227,7 +227,7 @@ class _Server:
                     "Servers already expose HTTP endpoints."
                 )
             # @modal.web_server not allowed on server classes
-            if  wrapped_user_cls.flags & _PartialFunctionFlags.WEB_INTERFACE:
+            if wrapped_user_cls.flags & _PartialFunctionFlags.WEB_INTERFACE:
                 raise InvalidError(
                     f"Server class {user_cls.__name__} cannot be decorated with `@modal.web_server()`. "
                     "Servers already expose HTTP endpoints."
