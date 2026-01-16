@@ -38,14 +38,20 @@ def validate_http_server_config(
 
 
 class _Server:
-    """Server runs an HTTP server started in an @enter method.
+    """Server runs an HTTP server started in an `@modal.enter` method.
 
     See [lifecycle hooks](https://modal.com/docs/guide/lifecycle-functions) for more information.
 
     Generally, you will not construct a Server directly.
     Instead, use the [`@app.server()`](https://modal.com/docs/reference/modal.App#server) decorator.
 
-    TODO(claudia): Add examples
+    ```python
+    @app.server(port=8000, proxy_regions=["us-east", "us-west"])
+    class MyServer:
+        @modal.enter()
+        def start_server(self):
+            self.process = subprocess.Popen(["python3", "-m", "http.server", "8080"])
+    ```
     """
 
     _user_cls: Optional[type] = None  # None if remote
@@ -74,7 +80,7 @@ class _Server:
     # ============ Live Methods ============
 
     @live_method
-    async def _experimental_get_urls(self) -> Optional[list[str]]:
+    async def get_urls(self) -> Optional[list[str]]:
         return await self._get_service_function()._experimental_get_flash_urls()
 
     @live_method
@@ -83,15 +89,23 @@ class _Server:
         *,
         min_containers: Optional[int] = None,
         max_containers: Optional[int] = None,
-        scaledown_window: Optional[int] = None,
         buffer_containers: Optional[int] = None,
+        scaledown_window: Optional[int] = None,
     ) -> None:
         """Override the current autoscaler behavior for this Server.
 
         Unspecified parameters will retain their current value.
 
         Examples:
-        TODO(claudia): Add examples
+        ```python notest
+        server = modal.Server.from_name("my-app", "Server")
+
+        # Always have at least 2 containers running, with an extra buffer of 2 containers
+        server.update_autoscaler(min_containers=2, buffer_containers=1)
+
+        # Limit this Server to avoid spinning up more than 5 containers
+        server.update_autoscaler(max_containers=5)
+        ```
 
         """
         return await self._get_service_function().update_autoscaler(
@@ -142,7 +156,9 @@ class _Server:
         object with metadata from Modal servers until the first
         time it is actually used.
 
-        TODO(claudia): Add examples
+        ```python
+        server = modal.Server.from_name("other-app", "Server")
+        ```
         """
 
         load_context_overrides = LoadContext(client=client, environment_name=environment_name)
@@ -187,7 +203,7 @@ class _Server:
         # @modal.method() not allowed
         if _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE).values():
             raise InvalidError(
-                f"Server class {user_cls.__name__} cannot have @method() decorated functions. "
+                f"Server class {user_cls.__name__} cannot have `@modal.method()` decorated functions. "
                 "Servers only expose HTTP endpoints."
             )
         # @enter with snap=True without enable_memory_snapshot
@@ -195,13 +211,15 @@ class _Server:
             _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
             and not enable_memory_snapshot
         ):
-            raise InvalidError("Server must have `enable_memory_snapshot=True` to use `snap=True` on @enter methods.")
+            raise InvalidError(
+                "Server must have `enable_memory_snapshot=True` to use `snap=True` on `@modal.enter` methods."
+            )
 
         if isinstance(wrapped_user_cls, _PartialFunction):
             # @modal.concurrent not allowed on server classes
             if wrapped_user_cls.flags & _PartialFunctionFlags.CONCURRENT:
                 raise InvalidError(
-                    f"Server class {user_cls.__name__} cannot have @concurrent() decorated functions. "
+                    f"Server class {user_cls.__name__} cannot be decorated with `@modal.concurrent()`. "
                     "Please use `target_concurrency` param instead."
                 )
             # @modal.http_server not allowed on server classes
@@ -210,9 +228,15 @@ class _Server:
                     f"Server class {user_cls.__name__} cannot have @modal.experimental.http_server() decorator. "
                     "Servers already expose HTTP endpoints."
                 )
+            # @modal.web_server not allowed on server classes
+            if  wrapped_user_cls.flags & _PartialFunctionFlags.WEB_INTERFACE:
+                raise InvalidError(
+                    f"Server class {user_cls.__name__} cannot be decorated with `@modal.web_server()`. "
+                    "Servers already expose HTTP endpoints."
+                )
 
     @staticmethod
-    def validate_construction_mechanism(wrapped_user_cls: "type | _PartialFunction"):
+    def _validate_construction_mechanism(wrapped_user_cls: "type | _PartialFunction"):
         """Validate that the server class doesn't have a custom constructor."""
         # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
         user_cls = _Server._extract_user_cls(wrapped_user_cls)
