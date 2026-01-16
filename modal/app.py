@@ -1278,30 +1278,6 @@ class _App:
             secrets_list.append(_Secret.from_dict(env))
 
         def wrapper(wrapped_user_cls: Union[CLS_T, _PartialFunction, Callable]) -> Server:
-            # Check if this is an ASGI/WSGI app factory marked by @asgi_app_on_flash or @wsgi_app_on_flash
-            from ._runtime.asgi_on_flash import (
-                ASGI_APP_MARKER,
-                WSGI_APP_MARKER,
-                create_asgi_server_class,
-                create_wsgi_server_class,
-            )
-
-            if callable(wrapped_user_cls) and not isinstance(wrapped_user_cls, type):
-                # It's a function, check for ASGI/WSGI markers
-                if getattr(wrapped_user_cls, ASGI_APP_MARKER, False):
-                    wrapped_user_cls = create_asgi_server_class(wrapped_user_cls, port)  # type: ignore
-                elif getattr(wrapped_user_cls, WSGI_APP_MARKER, False):
-                    wrapped_user_cls = create_wsgi_server_class(wrapped_user_cls, port)  # type: ignore
-                else:
-                    raise InvalidError(
-                        "Functions passed to @app.server() must be decorated with "
-                        "@modal.experimental.asgi_app_on_flash() or @modal.experimental.wsgi_app_on_flash(). "
-                        "For class-based servers, pass a class with @modal.enter() methods."
-                    )
-
-            # Inject the port into the class so decorators like @asgi_app_on_flash can access it
-            wrapped_user_cls._flash_port = port  # type: ignore
-
             Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
 
             # Validate the server class
