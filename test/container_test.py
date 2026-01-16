@@ -2484,7 +2484,7 @@ def test_server_lifecycle_with_deployed_metadata(servicer, tmp_path, deployed_su
         servicer,
         tmp_path,
         deployed_support_function_definitions,
-        "AppServerWithEnter.*",  # function name as stored by isolated_deploy
+        "AppServerWithEnter",
         inputs=[],  # Server classes don't have method inputs
     )
     stdout, stderr = container_process.communicate(timeout=15)

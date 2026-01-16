@@ -125,7 +125,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     user_cls: Optional[type] = None  # class
     flags: _PartialFunctionFlags
     params: _PartialFunctionParams
-    registered: bool = False  # Set to True when registered with an App to avoid warnings
 
     def __init__(
         self,

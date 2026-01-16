@@ -1286,19 +1286,19 @@ class _App:
             # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
             cluster_size = None
             rdma = None
+            user_cls = wrapped_user_cls
+
             if isinstance(wrapped_user_cls, _PartialFunction):
                 user_cls = wrapped_user_cls.user_cls
                 if wrapped_user_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_user_cls.params.cluster_size
                     rdma = wrapped_user_cls.params.rdma
-            else:
-                user_cls = wrapped_user_cls
 
             local_state = self._local_state
 
             # Create the FunctionInfo for the server, note we treat FunctionInfo as a class for servers
             # Use "#ClassName" format to avoid collision with class_ids which use "ClassName"
-            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls, name_override=f"#{user_cls.__name__}")
+            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls, name_override=f"{user_cls.__name__}")
             # Create the service function
             service_function = _Function.from_local(
                 info,
@@ -1337,19 +1337,7 @@ class _App:
             )
 
             self._add_function(service_function, is_web_endpoint=False)
-
-            # Create the Server object
             server: Server = Server.from_local(wrapped_user_cls, self, service_function)
-
-            # Mark lifecycle methods as registered
-            for flag in (~_PartialFunctionFlags.interface_flags(),):
-                for partial in _find_partial_methods_for_user_cls(user_cls, flag).values():
-                    partial.registered = True
-
-            # Note: We don't register the Server in classes - only the service_function is registered.
-            # The Server is just a local wrapper. The container side identifies servers via
-            # function_def.is_class and the function_ids.
-
             return server  # type: ignore
 
         return wrapper

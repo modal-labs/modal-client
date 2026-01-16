@@ -68,7 +68,7 @@ def test_run_server(client, servicer):
     assert servicer.n_functions == 1
     objects = servicer.app_objects[app_id]
     # Servers use just the class name, not "ClassName.*"
-    server_function_id = objects["#FlashClassDefault"]
+    server_function_id = objects["FlashClassDefault"]
     assert servicer.precreated_functions == {server_function_id}
     assert method_handle_object_id == server_function_id
     assert len(objects) == 1  # just the service function
@@ -76,7 +76,7 @@ def test_run_server(client, servicer):
     assert servicer.app_functions[server_function_id].is_class
 
     assert servicer.app_functions[server_function_id].module_name == "test.flash_cls_test_with_app_server"
-    assert servicer.app_functions[server_function_id].function_name == "#FlashClassDefault"
+    assert servicer.app_functions[server_function_id].function_name == "FlashClassDefault"
     assert servicer.app_functions[server_function_id].target_concurrent_inputs == 10
     assert servicer.app_functions[server_function_id].method_definitions_set
     assert servicer.app_functions[server_function_id].startup_timeout_secs == 30
@@ -106,7 +106,7 @@ def test_flash_params_override_experimental_options(client, servicer):
         app_id = flash_params_override_app.app_id
 
         objects = servicer.app_objects[app_id]
-        server_function_id = objects["#FlashParamsOverrideClass"]
+        server_function_id = objects["FlashParamsOverrideClass"]
 
         assert servicer.app_functions[server_function_id].target_concurrent_inputs == 11
         assert servicer.app_functions[server_function_id].experimental_options["flash"] == "us-east"
