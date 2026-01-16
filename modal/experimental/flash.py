@@ -666,6 +666,10 @@ def _http_server(
         exit_grace_period: The time to wait for the HTTP server to exit gracefully.
 
     """
+    if port is None:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
+        )
     validate_http_server_config(port, proxy_regions, startup_timeout, exit_grace_period)
 
     from modal._partial_function import _PartialFunction, _PartialFunctionParams
