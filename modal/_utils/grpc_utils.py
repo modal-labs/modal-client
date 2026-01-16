@@ -16,8 +16,6 @@ from typing import Any, Callable, Optional, Sequence, TypeVar
 import grpclib.client
 import grpclib.config
 import grpclib.events
-import grpclib.protocol
-import grpclib.stream
 from google.protobuf.message import Message
 from google.protobuf.symbol_database import SymbolDatabase
 from grpclib import GRPCError, Status
@@ -25,11 +23,11 @@ from grpclib.encoding.base import StatusDetailsCodecBase
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
-from modal.exception import AuthError, ConnectionError
+from modal.exception import ConnectionError
 from modal_proto import api_pb2
 from modal_version import __version__
 
-from .._traceback import suppress_tb_frames
+from .._traceback import suppress_tb_frame
 from ..config import config
 from .async_utils import retry
 from .logger import logger
@@ -113,8 +111,7 @@ class ConnectionManager:
 
     def __init__(self, client: "modal.client._Client", metadata: dict[str, str] = {}):
         self._client = client
-        # Warning: This metadata is shared across all channels! If the metadata is mutated
-        # in one `create_channel` call, the mutation will be reflected in all channels.
+        # This metadata is injected into all requests on all channels created by this manager.
         self._metadata = metadata
         self._channels: dict[str, grpclib.client.Channel] = {}
 
@@ -189,8 +186,7 @@ def create_channel(
 ) -> grpclib.client.Channel:
     """Creates a grpclib.Channel to be used by a GRPC stub.
 
-    Note that this function mutates the given metadata argument by adding an x-modal-auth-token
-    if one is present in the trailing metadata of any response.
+    The given metadata dict is injected into all outgoing requests on this channel.
     """
     o = urllib.parse.urlparse(server_url)
 
@@ -294,7 +290,7 @@ def process_exception_before_retry(
     idempotency_key: str,
 ):
     """Process exception before retry, used by `_retry_transient_errors`."""
-    with suppress_tb_frames(1):
+    with suppress_tb_frame():
         if final_attempt:
             logger.debug(
                 f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})"
@@ -412,7 +408,7 @@ async def _retry_transient_errors(
             timeout = None
 
         try:
-            with suppress_tb_frames(1):
+            with suppress_tb_frame():
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             # Note that we only catch AttributeError to handle a specific case that works around a bug
@@ -439,7 +435,7 @@ async def _retry_transient_errors(
                 )
                 final_attempt = total_timeout_will_be_reached or max_throttle_will_be_reached
 
-                with suppress_tb_frames(1):
+                with suppress_tb_frame():
                     process_exception_before_retry(
                         exc, final_attempt, fn.name, n_retries, server_delay, idempotency_key
                     )
@@ -473,10 +469,7 @@ async def _retry_transient_errors(
 
             # Client handles retry
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
-                if exc.status == Status.UNAUTHENTICATED:
-                    raise AuthError(exc.message)
-                else:
-                    raise exc
+                raise exc
             if retry.max_retries is not None and n_retries >= retry.max_retries:
                 final_attempt = True
             elif total_deadline is not None and time.time() + delay + retry.attempt_timeout_floor >= total_deadline:
@@ -484,7 +477,7 @@ async def _retry_transient_errors(
             else:
                 final_attempt = False
 
-            with suppress_tb_frames(1):
+            with suppress_tb_frame():
                 process_exception_before_retry(exc, final_attempt, fn.name, n_retries, delay, idempotency_key)
 
             attempt_number = n_retries + 1

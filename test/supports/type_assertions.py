@@ -6,6 +6,7 @@ from typing_extensions import assert_type
 
 import modal
 from modal.partial_function import method
+from modal.volume import AbstractVolumeUploadContextManager
 
 app = modal.App()
 
@@ -37,8 +38,6 @@ assert_type(should_be_float, float)
 async def async_typed_func(b: bool) -> str:
     return ""
 
-
-async_typed_func
 
 should_be_str = async_typed_func.remote(False)  # should be blocking without aio
 assert_type(should_be_str, str)
@@ -115,3 +114,10 @@ assert_type(secret, modal.Secret)
 if find_spec("dotenv"):
     secret = modal.Secret.from_dotenv(filename="non-existing-dotenv")
     assert_type(secret, modal.Secret)
+
+
+with modal.Volume.ephemeral() as vol:
+    assert_type(vol, modal.Volume)
+
+    with vol.batch_upload() as upload_context:
+        assert_type(upload_context, AbstractVolumeUploadContextManager)

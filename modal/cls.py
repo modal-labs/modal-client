@@ -7,7 +7,6 @@ from pathlib import PurePosixPath
 from typing import Any, Callable, Optional, Sequence, TypeVar, Union
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 
@@ -562,7 +561,7 @@ class {user_cls.__name__}:
 More information on class parameterization can be found here: https://modal.com/docs/guide/parametrized-functions
 """,
             )
-        annotations = user_cls.__dict__.get("__annotations__", {})  # compatible with older pythons
+        annotations = inspect.get_annotations(user_cls)
         missing_annotations = params.keys() - annotations.keys()
         if missing_annotations:
             raise InvalidError("All modal.parameter() specifications need to be type-annotated")
@@ -580,12 +579,9 @@ More information on class parameterization can be found here: https://modal.com/
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        # Disable the warning that lifecycle methods are not wrapped
         lifecycle_method_partials = _find_partial_methods_for_user_cls(
             user_cls, ~_PartialFunctionFlags.interface_flags()
         )
-        for partial_function in lifecycle_method_partials.values():
-            partial_function.registered = True
 
         method_partials = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.interface_flags())
 
@@ -659,11 +655,6 @@ More information on class parameterization can be found here: https://modal.com/
                 raise NotFoundError(
                     f"Lookup failed for Cls '{name}' from the '{app_name}' app{env_context}: {exc}."
                 ) from None
-            except GRPCError as exc:
-                if exc.status == Status.FAILED_PRECONDITION:
-                    raise InvalidError(exc.message) from None
-                else:
-                    raise
 
             print_server_warnings(response.server_warnings)
             await resolver.load(self._class_service_function, load_context)

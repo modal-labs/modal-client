@@ -21,7 +21,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._functions import _Function
-from ._ipython import is_notebook
+from ._ipython import is_interactive_ipython
 from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
 from ._partial_function import (
@@ -431,7 +431,7 @@ class _App:
     ) -> typing_extensions.Self:
         """Deploy the App so that it is available persistently.
 
-        Deployed Apps will be avaible for lookup or web-based invocations until they are stopped.
+        Deployed Apps will be available for lookup or web-based invocations until they are stopped.
         Unlike with `App.run`, this method will return as soon as the deployment completes.
 
         This method is a programmatic alternative to the `modal deploy` CLI command.
@@ -509,7 +509,10 @@ class _App:
             if old_function is function:
                 return  # already added the same exact instance, ignore
 
-            if not is_notebook():
+            # In a notebook or interactive REPL it would be relatively normal to rerun a cell that
+            # registers a function multiple times (i.e. as you iterate on the Function definition),
+            # and we don't want to warn about a collision in that case.
+            if not is_interactive_ipython():
                 logger.warning(
                     f"Warning: function name '{function.tag}' collision!"
                     " Overriding existing function "
@@ -687,9 +690,7 @@ class _App:
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
         secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Union[
-            GPU_T, list[GPU_T]
-        ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
+        gpu: Union[GPU_T, list[GPU_T]] = None,  # GPU request; either a single GPU type or a list of types
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
@@ -723,9 +724,7 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this function access to other Modal resources
-        # Maximum number of inputs a container should handle before shutting down.
-        # With `max_inputs = 1`, containers will be single-use.
-        max_inputs: Optional[int] = None,
+        single_use_containers: bool = False,  # When True, containers will shut down after handling a single input
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
         # Whether the file or directory containing the Function's source should automatically be included
         # in the container. When unset, falls back to the App-level configuration, or is otherwise True by default.
@@ -740,6 +739,7 @@ class _App:
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
+        max_inputs: Optional[int] = None,  # Replaced with `single_use_containers`
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Replaced in favor of
         # using `region` and `nonpreemptible`
@@ -761,6 +761,20 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
+
+        if max_inputs is not None:
+            if not isinstance(max_inputs, int):
+                raise InvalidError(f"`max_inputs` must be an int, not {type(max_inputs).__name__}")
+            if max_inputs <= 0:
+                raise InvalidError("`max_inputs` must be positive")
+            if max_inputs > 1:
+                raise InvalidError("Only `max_inputs=1` is currently supported")
+            deprecation_warning(
+                (2025, 12, 16),
+                "The `max_inputs` parameter is deprecated. Please set `single_use_containers=True` instead.",
+                pending=True,
+            )
+            single_use_containers = max_inputs == 1
 
         if _experimental_scheduler_placement is not None:
             deprecation_warning(
@@ -799,7 +813,6 @@ class _App:
 
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
-                f.registered = True
 
                 # but we don't support @app.function wrapping a method.
                 if is_method_fn(f.raw_f.__qualname__):
@@ -827,7 +840,7 @@ class _App:
                 batch_max_size = f.params.batch_max_size
                 batch_wait_ms = f.params.batch_wait_ms
                 if f.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options))
+                    verify_concurrent_params(params=f.params, is_flash=is_flash_object(experimental_options, None))
                     max_concurrent_inputs = f.params.max_concurrent_inputs
                     target_concurrent_inputs = f.params.target_concurrent_inputs
                 else:
@@ -910,7 +923,7 @@ class _App:
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
-                max_inputs=max_inputs,
+                single_use_containers=single_use_containers,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
                 rdma=rdma,
@@ -935,9 +948,7 @@ class _App:
         image: Optional[_Image] = None,  # The image to run as the container for the function
         env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
         secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Union[
-            GPU_T, list[GPU_T]
-        ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
+        gpu: Union[GPU_T, list[GPU_T]] = None,  # GPU request; either a single GPU type or a list of types
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
@@ -967,9 +978,7 @@ class _App:
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this class access to other Modal resources
-        # Limits the number of inputs a container handles before shutting down.
-        # Use `max_inputs = 1` for single-use containers.
-        max_inputs: Optional[int] = None,
+        single_use_containers: bool = False,  # When True, containers will shut down after handling a single input
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
         include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
         experimental_options: Optional[dict[str, Any]] = None,
@@ -982,6 +991,7 @@ class _App:
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
+        max_inputs: Optional[int] = None,  # Replaced with `single_use_containers`
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,  # Replaced in favor of
         # using `region` and `nonpreemptible`
@@ -999,6 +1009,20 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
+
+        if max_inputs is not None:
+            if not isinstance(max_inputs, int):
+                raise InvalidError(f"`max_inputs` must be an int, not {type(max_inputs).__name__}")
+            if max_inputs <= 0:
+                raise InvalidError("`max_inputs` must be positive")
+            if max_inputs > 1:
+                raise InvalidError("Only `max_inputs=1` is currently supported")
+            deprecation_warning(
+                (2025, 12, 16),
+                "The `max_inputs` parameter is deprecated. Please set `single_use_containers=True` instead.",
+                pending=True,
+            )
+            single_use_containers = max_inputs == 1
 
         if _experimental_scheduler_placement is not None:
             deprecation_warning(
@@ -1025,11 +1049,16 @@ class _App:
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             local_state = self._local_state
             # Check if the decorated object is a class
+            http_config = None
             if isinstance(wrapped_cls, _PartialFunction):
-                wrapped_cls.registered = True
                 user_cls = wrapped_cls.user_cls
+                if wrapped_cls.flags & _PartialFunctionFlags.HTTP_WEB_INTERFACE:
+                    http_config = wrapped_cls.params.http_config
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
-                    verify_concurrent_params(params=wrapped_cls.params, is_flash=is_flash_object(experimental_options))
+                    verify_concurrent_params(
+                        params=wrapped_cls.params,
+                        is_flash=is_flash_object(experimental_options or {}, http_config=http_config),
+                    )
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
@@ -1039,6 +1068,7 @@ class _App:
                 if wrapped_cls.flags & _PartialFunctionFlags.CLUSTERED:
                     cluster_size = wrapped_cls.params.cluster_size
                     rdma = wrapped_cls.params.rdma
+
                 else:
                     cluster_size = None
                     rdma = None
@@ -1078,15 +1108,26 @@ class _App:
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
             for method in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CONCURRENT).values():
-                method.registered = True  # Avoid warning about not registering the method (hacky!)
                 raise InvalidError(
                     "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
                 )
 
+            for method in _find_partial_methods_for_user_cls(
+                user_cls, _PartialFunctionFlags.HTTP_WEB_INTERFACE
+            ).values():
+                raise InvalidError(
+                    "The `@modal.http_server` decorator cannot be used on methods; decorate the class instead."
+                )
+
+            if http_config is not None:
+                for method in _find_partial_methods_for_user_cls(
+                    user_cls, _PartialFunctionFlags.CALLABLE_INTERFACE
+                ).values():
+                    raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             i6pn_enabled = i6pn or cluster_size is not None
-
             cls_func = _Function.from_local(
                 info,
                 app=self,
@@ -1116,7 +1157,8 @@ class _App:
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
-                max_inputs=max_inputs,
+                single_use_containers=single_use_containers,
+                http_config=http_config,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,
                 rdma=rdma,
@@ -1130,11 +1172,11 @@ class _App:
             self._add_function(cls_func, is_web_endpoint=False)
 
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
+
             for method_name, partial_function in cls._method_partials.items():
                 if partial_function.params.webhook_config is not None:
                     full_name = f"{user_cls.__name__}.{method_name}"
                     local_state.web_endpoints.append(full_name)
-                partial_function.registered = True
 
             tag: str = user_cls.__name__
             self._add_class(tag, cls)

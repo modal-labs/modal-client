@@ -30,6 +30,7 @@ from modal._utils.function_utils import (
 from modal.app import _App
 from modal.config import logger
 from modal.exception import ExecutionError, InvalidError
+from modal.experimental.flash import _FlashContainerEntry
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
@@ -242,7 +243,7 @@ def create_breakpoint_wrapper(container_io_manager: "modal._runtime.container_io
     def breakpoint_wrapper():
         # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
         container_io_manager.interact(from_breakpoint=True)
-        import pdb
+        import pdb  # noqa: T100
 
         current_frame = inspect.currentframe()
         if current_frame is not None:
@@ -392,18 +393,22 @@ class ImportedClass(Service):
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ):
+        flash_entry = _FlashContainerEntry(self.function_def.http_config)
         # Identify the "enter" methods to run after resuming from a snapshot.
         if not self.function_def.is_auto_snapshot:
             post_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             )
             call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
+            flash_entry.enter()
         try:
             yield
         finally:
             if not self.function_def.is_auto_snapshot:
+                flash_entry.stop()
                 exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
                 call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
+                flash_entry.close()
 
 
 def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs: dict[str, Any]) -> typing.Any:
@@ -460,7 +465,10 @@ def import_single_function_service(
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
-        qual_name: str = function_def.function_name
+
+        # Fall back to function_name just to be safe around the migration
+        # Going forward, implementation_name should always be set
+        qual_name: str = function_def.implementation_name or function_def.function_name
 
         if not is_global_object(qual_name):
             raise LocalFunctionError("Attempted to load a function defined in a function scope")

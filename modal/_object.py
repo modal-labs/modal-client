@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import contextlib
 import typing
 import uuid
 from collections.abc import Awaitable, Hashable, Sequence
@@ -8,7 +9,7 @@ from typing import Callable, ClassVar, Optional
 from google.protobuf.message import Message
 from typing_extensions import Self
 
-from modal._traceback import suppress_tb_frames
+from modal._traceback import suppress_tb_frame
 
 from ._load_context import LoadContext
 from ._resolver import Resolver
@@ -327,7 +328,7 @@ class _Object:
             # Set the client on LoadContext before loading
             root_load_context = LoadContext(client=client)
             resolver = Resolver()
-            with suppress_tb_frames(1):  # skip this frame by default
+            with suppress_tb_frame():  # skip this frame by default
                 await resolver.load(self, root_load_context)
         return self
 
@@ -348,5 +349,20 @@ def live_method_gen(method):
         async with aclosing(method(self, *args, **kwargs)) as stream:
             async for item in stream:
                 yield item
+
+    return wrapped
+
+
+def live_method_contextmanager(method):
+    # make sure a wrapped function returning an async context manager
+    # will not require both an `await func.aio()` and `async with`
+    # which would have been the case if it was wrapped in live_method
+
+    @wraps(method)
+    @contextlib.asynccontextmanager
+    async def wrapped(self, *args, **kwargs):
+        await self.hydrate()
+        async with method(self, *args, **kwargs) as ctx:
+            yield ctx
 
     return wrapped

@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
+import builtins
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional, Union
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -28,7 +28,14 @@ from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
 from .config import logger
-from .exception import AlreadyExistsError, InvalidError, NotFoundError, RequestSizeError
+from .exception import (
+    AlreadyExistsError,
+    DeserializationError,
+    Error,
+    InvalidError,
+    NotFoundError,
+    RequestSizeError,
+)
 
 
 class _NoDefaultSentinel:
@@ -41,6 +48,25 @@ _NO_DEFAULT = _NoDefaultSentinel()
 
 def _serialize_dict(data):
     return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
+
+
+def _deserialize_dict_key(dict: "_Dict", data: bytes) -> Any:
+    try:
+        return deserialize(data, dict._client)
+    except DeserializationError as exc:
+        dict_identifier = f"Dict '{dict.name}'" if dict.name else f"ephemeral Dict {dict.object_id}"
+        raise DeserializationError(f"Failed to deserialize a key from {dict_identifier}: {exc}") from exc
+
+
+def _deserialize_dict_value(dict: "_Dict", data: bytes, key: Any = _NO_DEFAULT) -> Any:
+    try:
+        return deserialize(data, dict._client)
+    except DeserializationError as exc:
+        key_identifier = "" if key is _NO_DEFAULT else f" for key {key!r}"
+        dict_identifier = f"Dict '{dict.name}'" if dict.name else f"ephemeral Dict {dict.object_id}"
+        raise DeserializationError(
+            f"Failed to deserialize value{key_identifier} from {dict_identifier}: {exc}"
+        ) from exc
 
 
 @dataclass
@@ -107,10 +133,8 @@ class _DictManager:
         )
         try:
             await client.stub.DictGetOrCreate(req)
-        except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
-                raise AlreadyExistsError(exc.message)
-            else:
+        except AlreadyExistsError:
+            if not allow_existing:
                 raise
 
     @staticmethod
@@ -120,7 +144,7 @@ class _DictManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> list["_Dict"]:
+    ) -> builtins.list["_Dict"]:
         """Return a list of hydrated Dict objects.
 
         **Examples:**
@@ -439,7 +463,7 @@ class _Dict(_Object, type_prefix="di"):
         resp = await self._client.stub.DictGet(req)
         if not resp.found:
             return default
-        return deserialize(resp.value, self._client)
+        return _deserialize_dict_value(self, resp.value, key)
 
     @live_method
     async def contains(self, key: Any) -> bool:
@@ -485,8 +509,8 @@ class _Dict(_Object, type_prefix="di"):
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         try:
             await self._client.stub.DictUpdate(req)
-        except GRPCError as exc:
-            if "status = '413'" in exc.message:
+        except Error as exc:
+            if "status = '413'" in str(exc):
                 raise RequestSizeError("Dict.update request is too large") from exc
             else:
                 raise exc
@@ -504,8 +528,8 @@ class _Dict(_Object, type_prefix="di"):
         try:
             resp = await self._client.stub.DictUpdate(req)
             return resp.created
-        except GRPCError as exc:
-            if "status = '413'" in exc.message:
+        except Error as exc:
+            if "status = '413'" in str(exc):
                 raise RequestSizeError("Dict.put request is too large") from exc
             else:
                 raise exc
@@ -530,7 +554,7 @@ class _Dict(_Object, type_prefix="di"):
             if default is not _NO_DEFAULT:
                 return default
             raise KeyError(f"{key} not in dict {self.object_id}")
-        return deserialize(resp.value, self._client)
+        return _deserialize_dict_value(self, resp.value, key)
 
     @live_method
     async def __delitem__(self, key: Any) -> Any:
@@ -557,7 +581,7 @@ class _Dict(_Object, type_prefix="di"):
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True)
         async for resp in self._client.stub.DictContents.unary_stream(req):
-            yield deserialize(resp.key, self._client)
+            yield _deserialize_dict_key(self, resp.key)
 
     @live_method_gen
     async def values(self) -> AsyncIterator[Any]:
@@ -568,7 +592,11 @@ class _Dict(_Object, type_prefix="di"):
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, values=True)
         async for resp in self._client.stub.DictContents.unary_stream(req):
-            yield deserialize(resp.value, self._client)
+            try:
+                key_deser = _deserialize_dict_key(self, resp.key)
+            except DeserializationError:
+                key_deser = _NO_DEFAULT
+            yield _deserialize_dict_value(self, resp.value, key_deser)
 
     @live_method_gen
     async def items(self) -> AsyncIterator[tuple[Any, Any]]:
@@ -579,7 +607,9 @@ class _Dict(_Object, type_prefix="di"):
         """
         req = api_pb2.DictContentsRequest(dict_id=self.object_id, keys=True, values=True)
         async for resp in self._client.stub.DictContents.unary_stream(req):
-            yield (deserialize(resp.key, self._client), deserialize(resp.value, self._client))
+            key_deser = _deserialize_dict_key(self, resp.key)
+            value_deser = _deserialize_dict_value(self, resp.value, key_deser)
+            yield (key_deser, value_deser)
 
 
 Dict = synchronize_api(_Dict)

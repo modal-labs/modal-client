@@ -33,6 +33,10 @@ from modal._utils.async_utils import (
 )
 from test import helpers
 
+# Allow AsyncUsageWarning to be a warning (not error) in this test file
+# since we're specifically testing the warning behavior
+pytestmark = pytest.mark.filterwarnings("default::modal._utils.async_utils.AsyncUsageWarning")
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def no_dangling_tasks():
@@ -1525,3 +1529,190 @@ async def test_task_context_cancellation_timeout():
     # Should have timed out around 1 second (the _cancellation_grace period)
     # Allow some margin for timing variations
     assert 0.9 < elapsed < 1.5
+
+
+@pytest.fixture()
+def enable_async_warnings(monkeypatch):
+    monkeypatch.setenv("MODAL_ASYNC_WARNINGS", "true")
+
+
+@pytest.mark.asyncio
+async def test_sync_in_async_warning(client, enable_async_warnings):
+    """Test that using blocking interface from async context emits a warning."""
+    import warnings
+
+    import modal
+    from modal._utils.async_utils import AsyncUsageWarning
+
+    # Call the blocking interface from within an async context
+    # This should trigger the sync_in_async_warning_callback
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        modal.Dict.objects.list(client=client)
+
+        # Verify the warning was emitted
+        assert len(w) == 1
+        assert issubclass(w[0].category, AsyncUsageWarning)
+
+        warning_message = str(w[0].message)
+        print(warning_message)
+        # Verify the warning contains key information
+        assert "A blocking Modal interface is being used in " in warning_message
+        assert "await modal.Dict.objects.list.aio(client=client)" in warning_message
+
+
+@pytest.mark.asyncio
+async def test_sync_in_async_property_warning(client, enable_async_warnings):
+    import warnings
+
+    import modal
+    from modal._utils.async_utils import AsyncUsageWarning
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        f = modal.Function.from_name("test", "f")
+        with pytest.raises(Exception):
+            f.web_url  # expected to raise due to failing hydration
+
+        # Verify the warning was emitted
+        assert len(w) == 1
+        assert issubclass(w[0].category, AsyncUsageWarning)
+
+        warning_message = str(w[0].message)
+        print(warning_message)
+        # Verify the warning contains key information
+        assert "A blocking Modal interface is being used in " in warning_message
+        assert "await f.web_url" in warning_message
+
+
+@pytest.mark.asyncio
+async def test_sync_in_async_warning_iteration(servicer, client, set_env_client, enable_async_warnings):
+    """Test that using blocking function call from async context emits a warning."""
+    import warnings
+
+    import modal
+    from modal._utils.async_utils import AsyncUsageWarning
+
+    async with modal.Queue.ephemeral(client=client) as q:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            for _ in q.iterate():  # this blocks!
+                pass
+            # Verify the warning was emitted
+            assert len(w) == 1
+            assert issubclass(w[0].category, AsyncUsageWarning)
+            warning_message = str(w[0].message)
+            print(warning_message)
+
+            # Verify the warning contains key information
+            assert "A blocking Modal interface is being used in " in warning_message
+            assert "async for _ in q.iterate():" in warning_message
+
+
+@pytest.mark.asyncio
+async def test_sync_in_async_warning_iteration_volume(servicer, client, set_env_client, enable_async_warnings):
+    """Test that using blocking Volume.read_file from async context emits a warning."""
+    import warnings
+
+    import modal
+    from modal._utils.async_utils import AsyncUsageWarning
+
+    async with modal.Volume.ephemeral(client=client) as vol:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            with pytest.raises(FileNotFoundError):
+                for chunk in vol.read_file("dummy"):
+                    pass
+            # Verify the warning was emitted
+            assert len(w) == 1
+            assert issubclass(w[0].category, AsyncUsageWarning)
+            warning_message = str(w[0].message)
+            print(warning_message)
+
+            # Verify the warning contains key information
+            assert "A blocking Modal interface is being used in " in warning_message
+            assert 'async for chunk in vol.read_file("dummy"):' in warning_message
+
+
+@pytest.mark.asyncio
+async def test_sync_in_async_warning_context_manager(servicer, client, enable_async_warnings):
+    """Test that using blocking context manager from async context emits a warning."""
+    import warnings
+
+    import modal
+    from modal._utils.async_utils import AsyncUsageWarning
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+
+        # Try to use blocking context manager from async context
+        # This should trigger the warning
+        with modal.Queue.ephemeral(client=client) as q:  # This triggers the warning
+            pass
+
+        # Verify the warning was emitted
+        assert len(w) == 1
+        warning_message = str(w[0].message)
+        assert issubclass(w[0].category, AsyncUsageWarning)
+        print(warning_message)
+
+        # Verify the warning contains key information
+        assert "A blocking Modal interface is being used in " in warning_message
+        assert "async with modal.Queue.ephemeral(client=client) as q:" in warning_message
+
+
+def test_extract_user_call_frame_filters_packages_not_filenames():
+    """Test that _extract_user_call_frame correctly filters packages, not just filenames containing those words."""
+    from modal._utils.async_utils import _extract_user_call_frame
+
+    # This test itself is in a file that might contain "asyncio" or other keywords
+    # The important thing is that it should NOT be filtered out just because the filename contains those words
+    call_frame = _extract_user_call_frame()
+
+    # We should get a call frame (not None)
+    assert call_frame is not None
+
+    # The filename should be this test file
+    assert call_frame.filename.endswith("async_utils_test.py")
+
+    # The line should contain our function call
+    assert "_extract_user_call_frame()" in call_frame.line
+
+
+def test_extract_user_call_frame_with_asyncio_in_filename():
+    """Test that files with 'asyncio' or 'synchronicity' in their names are not filtered out."""
+    from test.supports.my_asyncio_test_helper import call_extract_from_asyncio_named_file
+
+    # Call the function from a file that has 'asyncio' in its name
+    call_frame = call_extract_from_asyncio_named_file()
+
+    # We should get a call frame (not None) - proving the file wasn't filtered
+    assert call_frame is not None
+
+    # The filename should be the helper file with 'asyncio' in its name
+    assert "my_asyncio_test_helper.py" in call_frame.filename
+
+    # Verify it's not from a package path (no /asyncio/ in the path)
+    assert "/asyncio/" not in call_frame.filename
+
+
+@pytest.mark.asyncio
+async def test_sync_in_async_no_warning_in_ipython(client, monkeypatch):
+    """Test that no warning is emitted when using sync code in async blocks in IPython."""
+    import warnings
+
+    import modal
+
+    # Monkeypatch is_interactive_ipython at the module where it's used
+    from modal._utils import async_utils
+
+    monkeypatch.setattr(async_utils, "is_interactive_ipython", lambda: True)
+
+    # Call the blocking interface from within an async context
+    # This should NOT trigger a warning because we're in "IPython mode"
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        modal.Dict.objects.list(client=client)
+
+        # Verify NO warning was emitted
+        assert len(w) == 0

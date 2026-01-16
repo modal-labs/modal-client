@@ -18,17 +18,16 @@ from typing import (
     cast,
 )
 
-from grpclib import Status
-from grpclib.exceptions import GRPCError, StreamTerminatedError
+from grpclib.exceptions import StreamTerminatedError
 
 from modal.exception import ClientClosed, ExecTimeoutError, InvalidError
 from modal_proto import api_pb2
 
-from ._utils.async_utils import aclosing, synchronize_api
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
+from ._utils.async_utils import aclosing, synchronize_api, synchronizer
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .config import logger
+from .exception import ConflictError, InternalError, ServiceError
 from .stream_type import StreamType
 
 if TYPE_CHECKING:
@@ -153,17 +152,17 @@ class _StreamReaderThroughServer(Generic[T]):
         """Fetch the entire contents of the stream until EOF."""
         logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read starting")
         if self._text:
-            data_str = ""
+            buffer = io.StringIO()
             async for message in _decode_bytes_stream_to_str(self._get_logs()):
-                data_str += message
+                buffer.write(message)
             logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
-            return cast(T, data_str)
+            return cast(T, buffer.getvalue())
         else:
-            data_bytes = b""
+            buffer = io.BytesIO()
             async for message in self._get_logs():
-                data_bytes += message
+                buffer.write(message)
             logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
-            return cast(T, data_bytes)
+            return cast(T, buffer.getvalue())
 
     async def _consume_container_process_stream(self):
         """Consume the container process stream and store messages in the buffer."""
@@ -183,7 +182,7 @@ class _StreamReaderThroughServer(Generic[T]):
                 async for message, batch_index in iterator:
                     if self._stream_type == StreamType.STDOUT and message:
                         # TODO: rearchitect this, since these bytes aren't necessarily decodable
-                        print(message.decode("utf-8"), end="")
+                        print(message.decode("utf-8"), end="")  # noqa: T201
                     elif self._stream_type == StreamType.PIPE:
                         self._container_process_buffer.append(message)
 
@@ -193,13 +192,12 @@ class _StreamReaderThroughServer(Generic[T]):
                     else:
                         last_index = batch_index
 
-            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
+            except (ServiceError, InternalError, StreamTerminatedError, ClientClosed) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
+                    if isinstance(exc, (ServiceError, InternalError)):
+                        await asyncio.sleep(1.0)
+                        continue
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                     elif isinstance(exc, ClientClosed):
@@ -270,13 +268,12 @@ class _StreamReaderThroughServer(Generic[T]):
 
                     yield message
 
-            except (GRPCError, StreamTerminatedError) as exc:
+            except (ServiceError, InternalError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
+                    if isinstance(exc, (ServiceError, InternalError)):
+                        await asyncio.sleep(1.0)
+                        continue
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                 raise
@@ -566,6 +563,9 @@ class _StreamReader(Generic[T]):
         task_id: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
+        # we can remove this once we ensure no constructors use async code
+        assert asyncio.get_running_loop() == synchronizer._get_loop(start=False)
+
         if by_line and not text:
             raise ValueError("line-buffering is only supported when text=True")
 
@@ -697,11 +697,8 @@ class _StreamWriterThroughServer:
                         input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
                     ),
                 )
-        except GRPCError as exc:
-            if exc.status == Status.FAILED_PRECONDITION:
-                raise ValueError(exc.message)
-            else:
-                raise exc
+        except ConflictError as exc:
+            raise ValueError(str(exc))
 
 
 class _StreamWriterThroughCommandRouter:

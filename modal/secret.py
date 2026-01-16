@@ -1,11 +1,11 @@
 # Copyright Modal Labs 2022
+import builtins
 import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Union
 
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 from synchronicity import classproperty
 
 from modal_proto import api_pb2
@@ -92,10 +92,8 @@ class _SecretManager:
         )
         try:
             await client.stub.SecretGetOrCreate(req)
-        except GRPCError as exc:
-            if exc.status == Status.ALREADY_EXISTS and not allow_existing:
-                raise AlreadyExistsError(exc.message)
-            else:
+        except AlreadyExistsError:
+            if not allow_existing:
                 raise
 
     @staticmethod
@@ -105,7 +103,7 @@ class _SecretManager:
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
         client: Optional[_Client] = None,  # Optional client with Modal credentials
-    ) -> list["_Secret"]:
+    ) -> builtins.list["_Secret"]:
         """Return a list of hydrated Secret objects.
 
         **Examples:**
@@ -222,14 +220,7 @@ async def _load_from_env_dict(instance: "_Secret", load_context: LoadContext, en
             environment_name=load_context.environment_name,
         )
 
-    try:
-        resp = await load_context.client.stub.SecretGetOrCreate(req)
-    except GRPCError as exc:
-        if exc.status == Status.INVALID_ARGUMENT:
-            raise InvalidError(exc.message)
-        if exc.status == Status.FAILED_PRECONDITION:
-            raise InvalidError(exc.message)
-        raise
+    resp = await load_context.client.stub.SecretGetOrCreate(req)
     instance._hydrate(resp.secret_id, load_context.client, resp.metadata)
 
 
@@ -411,13 +402,7 @@ class _Secret(_Object, type_prefix="st"):
                 environment_name=load_context.environment_name,
                 required_keys=required_keys,
             )
-            try:
-                response = await load_context.client.stub.SecretGetOrCreate(req)
-            except GRPCError as exc:
-                if exc.status == Status.NOT_FOUND:
-                    raise NotFoundError(exc.message)
-                else:
-                    raise
+            response = await load_context.client.stub.SecretGetOrCreate(req)
             self._hydrate(response.secret_id, load_context.client, response.metadata)
 
         rep = _Secret._repr(name, environment_name)

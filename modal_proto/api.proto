@@ -1469,6 +1469,8 @@ message Function {
 
   bool block_network = 44;
 
+  // In the SDK, we've deprecated `max_inputs` (which only every implemented `max_inputs=1`)
+  // in favor of a boolean `single_use_containers` parameter.
   uint32 max_inputs = 46;
 
   repeated S3Mount s3_mounts = 47;
@@ -1552,6 +1554,13 @@ message Function {
   repeated DataFormat supported_input_formats = 87; // can be used as inputs
   repeated DataFormat supported_output_formats = 88;
   optional HTTPConfig http_config = 89;
+
+  // Attribute on the module with the implementation, which may differ from function_name
+  // when the user provided a custom name= for the Function inside the Application namespace
+  string implementation_name = 90;
+
+  bool single_use_containers = 91; // When True, containers will shut down after handling a single input
+
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1731,6 +1740,10 @@ message FunctionData {
   repeated DataFormat supported_input_formats = 37;
   repeated DataFormat supported_output_formats = 38;
   optional HTTPConfig http_config = 39;
+
+  // Attribute on the module with the implementation, which may differ from function_name
+  // when the user provided a custom name= for the Function inside the Application namespace
+  string implementation_name = 40;
 }
 
 message FunctionExtended {
@@ -2096,6 +2109,7 @@ message HTTPConfig {
   repeated string proxy_regions = 2;
   uint32 startup_timeout = 3;
   uint32 exit_grace_period = 4;
+  bool h2_enabled = 5;
 }
 
 message Image {
@@ -2665,6 +2679,19 @@ message RateLimit {
   RateLimitInterval interval = 2;
 }
 
+message ResourceInfo {
+    message ResourceValue {
+      uint32 value = 1;
+      bool is_default = 2;
+    }
+    ResourceValue memory_mb = 1; // MiB
+    ResourceValue milli_cpu = 2; // milli CPU cores
+    string gpu_type = 3;
+    uint32 memory_mb_max = 4  ; // MiB
+    uint32 ephemeral_disk_mb = 5;  // MiB
+    uint32 milli_cpu_max = 6; // milli CPU cores
+}
+
 message Resources {
   uint32 memory_mb = 2; // MiB
   uint32 milli_cpu = 3; // milli CPU cores
@@ -2785,6 +2812,11 @@ message Sandbox {
   // Exec commands for the sandbox will be issued directly to the sandbox
   // command router running on the Modal worker.
   bool direct_sandbox_commands_enabled = 34;
+
+  // Internal: restricts sandbox to run on this specific instance type.
+  // Set by server during SandboxRestore to ensure the restored sandbox runs
+  // on the same instance type as the original snapshot.
+  string _restore_instance_type = 35;
 }
 
 message SandboxCreateConnectTokenRequest {
@@ -2862,14 +2894,17 @@ message SandboxHandleMetadata {
 
 message SandboxInfo {
   string id = 1;
+  reserved 2; // modal.client.Sandbox definition
   double created_at = 3;
   TaskInfo task_info = 4;
   string app_id = 5;
   repeated SandboxTag tags = 6; // TODO: Not yet exposed in client library.
   string name = 7;
-
-  reserved 2; // modal.client.Sandbox definition
+  string image_id = 8;
+  ResourceInfo resource_info = 9;
+  repeated string regions = 10;
 }
+
 
 message SandboxListRequest {
   string app_id = 1;
@@ -3015,12 +3050,13 @@ message Schedule {
   }
 }
 
+// Scheduling constraints for Functions and Sandboxes.
 message SchedulerPlacement {
   repeated string regions = 4;
-  optional string _zone = 2; // TODO: Deprecate
-  optional string _lifecycle = 3; // TODO: Deprecate
-  repeated string _instance_types = 5; // TODO: Deprecate
-  bool nonpreemptible = 6;
+  optional string _zone = 2 [deprecated = true];
+  optional string _lifecycle = 3 [deprecated = true];
+  repeated string _instance_types = 5 [deprecated = true];
+  bool nonpreemptible = 6;  // Functions only
 
   reserved 1;
 }
@@ -3077,6 +3113,12 @@ message SecretListResponse {
 message SecretMetadata {
   string name = 1;
   CreationInfo creation_info = 2;
+}
+
+message ServiceUserIdentity {
+  string service_user_id = 1;
+  string service_user_name = 2;
+  UserIdentity created_by = 3;
 }
 
 // SharedVolume in the backend corresponds to NetworkFileSystem in the current API
@@ -3300,6 +3342,23 @@ message TokenFlowWaitResponse {
   string workspace_username = 4;
 }
 
+message TokenInfoGetRequest {}
+
+message TokenInfoGetResponse {
+  string token_id = 1;
+  string workspace_id = 2;
+  string workspace_name = 3;
+
+  oneof identity {
+    UserIdentity user_identity = 4;
+    ServiceUserIdentity service_user_identity = 5;
+  }
+
+  // Token metadata
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp expires_at = 7;
+}
+
 message TunnelData {
   string host = 1;
   uint32 port = 2;
@@ -3337,6 +3396,11 @@ message UploadUrlList {
 message UserActionInfo {
   string user_id = 1;
   double timestamp = 2;
+}
+
+message UserIdentity {
+  string user_id = 1;
+  string username = 2;
 }
 
 message VolumeCommitRequest {
@@ -3822,6 +3886,7 @@ service ModalClient {
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
   rpc TokenFlowWait(TokenFlowWaitRequest) returns (TokenFlowWaitResponse);
+  rpc TokenInfoGet(TokenInfoGetRequest) returns (TokenInfoGetResponse);
 
   // Tunnels
   rpc TunnelStart(TunnelStartRequest) returns (TunnelStartResponse);

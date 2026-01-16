@@ -21,8 +21,9 @@ from typing import (
     get_args,
 )
 
+import typing_extensions
 from google.protobuf.message import Message
-from grpclib.exceptions import GRPCError, StreamTerminatedError
+from grpclib.exceptions import StreamTerminatedError
 from typing_extensions import Self
 
 from modal._serialization import serialize_data_format
@@ -32,20 +33,27 @@ from ._load_context import LoadContext
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import get_preferred_payload_format, serialize
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import deprecate_aio_usage, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
 )
 from ._utils.function_utils import FunctionInfo
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from ._utils.mount_utils import validate_only_modal_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
-from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError, VersionError
+from .exception import (
+    ExecutionError,
+    InternalError,
+    InvalidError,
+    NotFoundError,
+    RemoteError,
+    ServiceError,
+    VersionError,
+)
 from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_fn
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
@@ -56,6 +64,7 @@ from .volume import _Volume
 
 if typing.TYPE_CHECKING:
     import modal._functions
+    import modal.client
 
 # This is used for both type checking and runtime validation
 ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVIEW"]
@@ -65,11 +74,11 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.06", "PREVI
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
-    "PREVIEW": ["3.9", "3.10", "3.11", "3.12", "3.13"],
-    "2025.06": ["3.9", "3.10", "3.11", "3.12", "3.13"],
-    "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
-    "2024.04": ["3.9", "3.10", "3.11", "3.12"],
-    "2023.12": ["3.9", "3.10", "3.11", "3.12"],
+    "PREVIEW": ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"],
+    "2025.06": ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"],
+    "2024.10": ["3.10", "3.11", "3.12", "3.13"],
+    "2024.04": ["3.10", "3.11", "3.12"],
+    "2023.12": ["3.10", "3.11", "3.12"],
 }
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "builder"
@@ -95,15 +104,22 @@ See https://modal.com/docs/guide/modal-1-0-migration for more details.
 
 
 def _validate_python_version(
-    python_version: Optional[str], builder_version: ImageBuilderVersion, allow_micro_granularity: bool = True
+    python_version: Optional[str],
+    builder_version: ImageBuilderVersion,
+    allow_micro_granularity: bool = True,
+    allow_free_threading: bool = False,
+    caller_name: str = "",
 ) -> str:
     if python_version is None:
         # If Python version is unspecified, match the local version, up to the minor component
         python_version = series_version = "{}.{}".format(*sys.version_info)
     elif not isinstance(python_version, str):
         raise InvalidError(f"Python version must be specified as a string, not {type(python_version).__name__}")
-    elif not re.match(r"^3(?:\.\d{1,2}){1,2}(rc\d*)?$", python_version):
+    elif not re.match(r"^3(?:\.\d{1,2}){1,2}(rc\d*)?t?$", python_version):
         raise InvalidError(f"Invalid Python version: {python_version!r}")
+    elif not allow_free_threading and python_version.endswith("t"):
+        context = f"with {caller_name}" if caller_name else ""
+        raise InvalidError(f"Free threaded Python is not supported {context}")
     else:
         components = python_version.split(".")
         if len(components) == 3 and not allow_micro_granularity:
@@ -111,7 +127,8 @@ def _validate_python_version(
                 "Python version must be specified as 'major.minor' for this interface;"
                 f" micro-level specification ({python_version!r}) is not valid."
             )
-        series_version = "{}.{}".format(*components)
+        suffix = "t" if len(components) == 3 and python_version.endswith("t") else ""
+        series_version = f"{components[0]}.{components[1]}{suffix}"
 
     supported_series = SUPPORTED_PYTHON_SERIES[builder_version]
     if series_version not in supported_series:
@@ -123,8 +140,15 @@ def _validate_python_version(
     return python_version
 
 
-def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
-    python_version = _validate_python_version(python_version, builder_version)
+def _dockerhub_python_version(
+    builder_version: ImageBuilderVersion,
+    python_version: Optional[str] = None,
+    allow_free_threading: bool = False,
+    caller_name: str = "",
+) -> str:
+    python_version = _validate_python_version(
+        python_version, builder_version, allow_free_threading=allow_free_threading, caller_name=caller_name
+    )
     version_components = python_version.split(".")
 
     # When user specifies a full Python version, use that
@@ -374,9 +398,7 @@ async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.I
     while result_response is None:
         try:
             await join()
-        except (StreamTerminatedError, GRPCError) as exc:
-            if isinstance(exc, GRPCError) and exc.status not in RETRYABLE_GRPC_STATUS_CODES:
-                raise exc
+        except (ServiceError, InternalError, StreamTerminatedError) as exc:
             retry_count += 1
             if retry_count >= 3:
                 raise exc
@@ -861,21 +883,25 @@ class _Image(_Object, type_prefix="im"):
         img._added_python_source_set |= set(modules)
         return img
 
-    @staticmethod
-    async def from_id(image_id: str, client: Optional[_Client] = None) -> "_Image":
+    @deprecate_aio_usage((2025, 11, 14), "Image.from_id")
+    @classmethod
+    def from_id(cls, image_id: str, client: Optional["modal.client.Client"] = None) -> typing_extensions.Self:
         """Construct an Image from an id and look up the Image result.
 
         The ID of an Image object can be accessed using `.object_id`.
         """
+        _client = typing.cast(_Client, synchronizer._translate_in(client))
 
         async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
             resp = await load_context.client.stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, load_context.client, resp.metadata)
 
         rep = f"Image.from_id({image_id!r})"
-        obj = _Image._from_loader(_load, rep, load_context_overrides=LoadContext(client=client))
 
-        return obj
+        obj = _Image._from_loader(_load, rep, load_context_overrides=LoadContext(client=_client))
+        obj._object_id = image_id
+
+        return typing.cast(typing_extensions.Self, synchronizer._translate_out(obj))
 
     async def build(self, app: "modal.app._App") -> "_Image":
         """Eagerly build an image.
@@ -1742,10 +1768,9 @@ class _Image(_Object, type_prefix="im"):
         """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            nonlocal python_version
-            if version == "2023.12" and python_version is None:
-                python_version = "3.9"  # Backcompat for old hardcoded default param
-            validated_python_version = _validate_python_version(python_version, version)
+            validated_python_version = _validate_python_version(
+                python_version, version, allow_free_threading=False, caller_name="Image.micromamba"
+            )
             micromamba_version = _base_image_config("micromamba", version)
             tag = f"mambaorg/micromamba:{micromamba_version}"
             setup_commands = [
@@ -1825,12 +1850,16 @@ class _Image(_Object, type_prefix="im"):
     ) -> list[str]:
         add_python_commands: list[str] = []
         if add_python:
-            _validate_python_version(add_python, builder_version, allow_micro_granularity=False)
+            _validate_python_version(
+                add_python, builder_version, allow_micro_granularity=False, allow_free_threading=True
+            )
             add_python_commands = [
                 "COPY /python/. /usr/local",
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
             ]
             python_minor = add_python.split(".")[1]
+            if python_minor.endswith("t"):
+                python_minor = python_minor[:-1]
             if int(python_minor) < 13:
                 # Previous versions did not include the `python` binary, but later ones do.
                 # (The important factor is not the Python version itself, but the standalone dist version.)
@@ -2152,7 +2181,9 @@ class _Image(_Object, type_prefix="im"):
             if version <= "2024.10":
                 requirements_path = _get_modal_requirements_path(version, python_version)
                 context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
-            full_python_version = _dockerhub_python_version(version, python_version)
+            full_python_version = _dockerhub_python_version(
+                version, python_version, allow_free_threading=False, caller_name="Image.debian_slim"
+            )
             debian_codename = _base_image_config("debian", version)
 
             commands = [

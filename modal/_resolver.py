@@ -9,7 +9,7 @@ from collections.abc import Hashable
 from typing import TYPE_CHECKING, Optional
 
 import modal._object
-from modal._traceback import suppress_tb_frames
+from modal._traceback import suppress_tb_frame
 from modal_proto import api_pb2
 
 from ._load_context import LoadContext
@@ -120,37 +120,38 @@ class Resolver:
         if not cached_future:
             # don't run any awaits within this if-block to prevent race conditions
             async def loader():
-                load_context = await obj._load_context_overrides.merged_with(parent_load_context).apply_defaults()
+                with suppress_tb_frame():
+                    load_context = await obj._load_context_overrides.merged_with(parent_load_context).apply_defaults()
 
-                # TODO(erikbern): do we need existing_object_id for those?
-                await TaskContext.gather(*[self.load(dep, load_context) for dep in obj.deps()])
+                    # TODO(erikbern): do we need existing_object_id for those?
+                    await TaskContext.gather(*[self.load(dep, load_context) for dep in obj.deps()])
 
-                # Load the object itself
-                if not obj._load:
-                    raise Exception(f"Object {obj} has no loader function")
+                    # Load the object itself
+                    if not obj._load:
+                        raise Exception(f"Object {obj} has no loader function")
 
-                await obj._load(obj, self, load_context, existing_object_id)
+                    await obj._load(obj, self, load_context, existing_object_id)
 
-                # Check that the id of functions didn't change
-                # Persisted refs are ignored because their life cycle is managed independently.
-                if (
-                    not obj._is_another_app
-                    and existing_object_id is not None
-                    and existing_object_id.startswith("fu-")
-                    and obj.object_id != existing_object_id
-                ):
-                    raise Exception(
-                        f"Tried creating an object using existing id {existing_object_id} but it has id {obj.object_id}"
-                    )
+                    # Check that the id of functions didn't change
+                    # Persisted refs are ignored because their life cycle is managed independently.
+                    if (
+                        not obj._is_another_app
+                        and existing_object_id is not None
+                        and existing_object_id.startswith("fu-")
+                        and obj.object_id != existing_object_id
+                    ):
+                        raise Exception(
+                            f"Tried creating an object using existing id {existing_object_id} "
+                            f"but it has id {obj.object_id}"
+                        )
 
-                return obj
+                    return obj
 
             cached_future = asyncio.create_task(loader())
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
-        with suppress_tb_frames(2):
-            # skip current frame + `loader()` closure frame from above
+        with suppress_tb_frame():
             return await cached_future
 
     def objects(self) -> list["modal._object._Object"]:

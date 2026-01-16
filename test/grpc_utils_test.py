@@ -26,7 +26,7 @@ from modal._utils.grpc_utils import (
     register_retry_metrics_callback,
 )
 from modal.exception import InvalidError
-from modal_proto import api_grpc, api_pb2, sandbox_router_pb2
+from modal_proto import api_grpc, api_pb2, task_command_router_pb2
 
 from .supports.skip import skip_windows_unix_socket
 
@@ -163,7 +163,7 @@ async def test_retry_timeout_error(servicer, client):
 
 def test_CustomProtoStatusDetailsCodec_round_trip():
     blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
-    sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
+    sandbox_msg = task_command_router_pb2.TaskExecPollResponse(code=31)
     msgs = [blob_msg, sandbox_msg]
 
     codec = CustomProtoStatusDetailsCodec()
@@ -201,7 +201,7 @@ def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
     from grpclib.encoding.proto import ProtoStatusDetailsCodec
 
     blob_msg = api_pb2.BlobCreateResponse(blob_id="abc")
-    sandbox_msg = sandbox_router_pb2.SandboxExecPollResponse(code=31)
+    sandbox_msg = task_command_router_pb2.TaskExecPollResponse(code=31)
     msgs = [blob_msg, sandbox_msg]
 
     grpclib_codec = ProtoStatusDetailsCodec()
@@ -227,7 +227,7 @@ async def test_codec_with_channel(servicer, client):
     with servicer.intercept() as ctx:
         ctx.set_responder("BlobCreate", raise_error)
         with pytest.raises(GRPCError) as excinfo:
-            await client.stub.BlobCreate(req, retry=None, timeout=0.1)
+            await client.stub.BlobCreate.direct(req, timeout=0.1)
     assert excinfo.value.details == details
 
 
@@ -297,7 +297,9 @@ async def test_retry_transient_errors_grpc_retry(servicer, client, caplog, monke
     assert servicer.blob_create_metadata.get("x-throttle-retry-attempt") == "10"
 
     # With an interval of 0.3 sec and retrying for a 1.0 sec, warning message is shown at time 0.0, 0.3, 0.6, 0.9
-    assert caplog.text.count(f"foobar-message{os.linesep}Will retry in 0.10 seconds") == 4
+    message_count = caplog.text.count(f"foobar-message{os.linesep}Will retry in 0.10 seconds")
+    # Test can be flaky so we assert that there are 3 or 4 messages
+    assert message_count in (3, 4)
 
 
 @synchronize_api

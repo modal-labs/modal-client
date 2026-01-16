@@ -10,16 +10,16 @@ if TYPE_CHECKING:
 
 import json
 
-from grpclib.exceptions import GRPCError, StreamTerminatedError
+from grpclib.exceptions import StreamTerminatedError
 
 from modal._utils.async_utils import TaskContext
 from modal.exception import ClientClosed
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
+from ._utils.deprecation import deprecation_error
 from .client import _Client
-from .exception import FilesystemExecutionError, InvalidError
+from .exception import FilesystemExecutionError, InternalError, ServiceError
 
 WRITE_CHUNK_SIZE = 16 * 1024 * 1024  # 16 MiB
 WRITE_FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1 GiB
@@ -46,55 +46,17 @@ T = TypeVar("T", str, bytes)
 
 
 async def _delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optional[int] = None) -> None:
-    """Delete a range of bytes from the file.
-
-    `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
-    If either is None, the start or end of the file is used, respectively.
+    """mdmd:hidden
+    This method has been removed.
     """
-    assert file._file_descriptor is not None
-    file._check_closed()
-    if start is not None and end is not None:
-        if start >= end:
-            raise ValueError("start must be less than end")
-    resp = await file._client.stub.ContainerFilesystemExec(
-        api_pb2.ContainerFilesystemExecRequest(
-            file_delete_bytes_request=api_pb2.ContainerFileDeleteBytesRequest(
-                file_descriptor=file._file_descriptor,
-                start_inclusive=start,
-                end_exclusive=end,
-            ),
-            task_id=file._task_id,
-        ),
-    )
-    await file._wait(resp.exec_id)
+    deprecation_error((2025, 12, 3), "delete_bytes has been removed.")
 
 
 async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = None, end: Optional[int] = None) -> None:
-    """Replace a range of bytes in the file with new data. The length of the data does not
-    have to be the same as the length of the range being replaced.
-
-    `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
-    If either is None, the start or end of the file is used, respectively.
+    """mdmd:hidden
+    This method has been removed.
     """
-    assert file._file_descriptor is not None
-    file._check_closed()
-    if start is not None and end is not None:
-        if start >= end:
-            raise InvalidError("start must be less than end")
-    if len(data) > WRITE_CHUNK_SIZE:
-        raise InvalidError("Write request payload exceeds 16 MiB limit")
-    resp = await file._client.stub.ContainerFilesystemExec(
-        api_pb2.ContainerFilesystemExecRequest(
-            file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
-                file_descriptor=file._file_descriptor,
-                data=data,
-                start_inclusive=start,
-                end_exclusive=end,
-            ),
-            task_id=file._task_id,
-        ),
-    )
-    await file._wait(resp.exec_id)
+    deprecation_error((2025, 12, 3), "replace_bytes has been removed.")
 
 
 class FileWatchEventType(enum.Enum):
@@ -203,13 +165,12 @@ class _FileIO(Generic[T]):
                         completed = True
                         break
 
-            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
+            except (ServiceError, InternalError, StreamTerminatedError, ClientClosed) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
+                    if isinstance(exc, (ServiceError, InternalError)):
+                        await asyncio.sleep(1.0)
+                        continue
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                     elif isinstance(exc, ClientClosed):
@@ -227,7 +188,7 @@ class _FileIO(Generic[T]):
 
     async def _wait(self, exec_id: str) -> bytes:
         # The logic here is similar to how output is read from `exec`
-        output = b""
+        output_buffer = io.BytesIO()
         completed = False
         retries_remaining = 10
         while not completed:
@@ -238,18 +199,17 @@ class _FileIO(Generic[T]):
                         break
                     if isinstance(data, Exception):
                         raise data
-                    output += data
-            except (GRPCError, StreamTerminatedError) as exc:
+                    output_buffer.write(data)
+            except (ServiceError, InternalError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
                     retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
+                    if isinstance(exc, (ServiceError, InternalError)):
+                        await asyncio.sleep(1.0)
+                        continue
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                 raise
-        return output
+        return output_buffer.getvalue()
 
     def _validate_type(self, data: Union[bytes, str]) -> None:
         if self._binary and isinstance(data, str):
@@ -458,10 +418,22 @@ class _FileIO(Generic[T]):
                 task_id=self._task_id,
             ),
         )
+
+        def end_of_event(item: bytes, buffer: io.BytesIO, boundary_token: bytes) -> bool:
+            if not item.endswith(b"\n"):
+                return False
+            boundary_token_size = len(boundary_token)
+            if buffer.tell() < boundary_token_size:
+                return False
+            buffer.seek(-boundary_token_size, io.SEEK_END)
+            if buffer.read(boundary_token_size) == boundary_token:
+                return True
+            return False
+
         async with TaskContext() as tc:
             tc.create_task(self._consume_watch_output(resp.exec_id))
 
-            buffer = b""
+            item_buffer = io.BytesIO()
             while True:
                 if len(self._watch_output_buffer) > 0:
                     item = self._watch_output_buffer.pop(0)
@@ -469,12 +441,12 @@ class _FileIO(Generic[T]):
                         break
                     if isinstance(item, Exception):
                         raise item
-                    buffer += item
-                    # a single event may be split across multiple messages
-                    # the end of an event is marked by two newlines
-                    if buffer.endswith(b"\n\n"):
+                    item_buffer.write(item)
+                    assert isinstance(item, bytes)
+                    # Single events may span multiple messages so we need to check for a special event boundary token
+                    if end_of_event(item, item_buffer, boundary_token=b"\n\n"):
                         try:
-                            event_json = json.loads(buffer.strip().decode())
+                            event_json = json.loads(item_buffer.getvalue().strip().decode())
                             event = FileWatchEvent(
                                 type=FileWatchEventType(event_json["event_type"]),
                                 paths=event_json["paths"],
@@ -484,7 +456,7 @@ class _FileIO(Generic[T]):
                         except (json.JSONDecodeError, KeyError, ValueError):
                             # skip invalid events
                             pass
-                        buffer = b""
+                        item_buffer = io.BytesIO()
                 else:
                     await asyncio.sleep(0.1)
 

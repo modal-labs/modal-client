@@ -13,7 +13,7 @@ import warnings
 from types import TracebackType
 from typing import Any, Iterable, Optional
 
-from modal.config import config, logger
+from modal.config import config
 from modal_proto import api_pb2
 
 from ._vendor.tblib import Traceback as TBLibTraceback
@@ -119,7 +119,7 @@ def print_exception(exc: Optional[type[BaseException]], value: Optional[BaseExce
     traceback.print_exception(exc, value, tb)
     if sys.version_info < (3, 11) and value is not None:  # type: ignore
         notes = getattr(value, "__notes__", [])
-        print(*notes, sep="\n", file=sys.stderr)
+        print(*notes, sep="\n", file=sys.stderr)  # noqa: T201
 
 
 def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
@@ -137,10 +137,7 @@ traceback_suppression_note = (
 )
 
 
-class suppress_tb_frames:
-    def __init__(self, n: int):
-        self.n = n
-
+class suppress_tb_frame:
     def __enter__(self):
         pass
 
@@ -154,13 +151,7 @@ class suppress_tb_frames:
             return False
 
         # modify traceback on exception object
-        try:
-            final_tb = tb
-            for _ in range(self.n):
-                final_tb = final_tb.tb_next
-        except AttributeError:
-            logger.debug(f"Failed to suppress {self.n} traceback frames from {str(exc_type)} {str(exc)}")
-            raise
+        final_tb = tb.tb_next if tb is not None else tb
 
         exc.with_traceback(final_tb)
         notes = getattr(exc, "__notes__", [])

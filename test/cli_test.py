@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 import toml
 
 from modal import App, Sandbox
-from modal._serialization import serialize
+from modal._serialization import PICKLE_PROTOCOL, serialize
 from modal._utils.grpc_testing import InterceptionContext
 from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
@@ -162,6 +162,25 @@ def test_token_env_var_warning(servicer, set_env_client, server_url_env, modal_c
     with modal_config():
         res = run_cli_command(["token", "new"])
         assert "MODAL_TOKEN_ID / MODAL_TOKEN_SECRET environment variables are" in res.stdout
+
+
+def test_token_info(servicer, set_env_client):
+    res = run_cli_command(["token", "info"])
+    assert "ak-test123" in res.stdout
+    assert "test-workspace" in res.stdout
+    assert "test-user" in res.stdout
+
+
+def test_token_identity_from_env(servicer, set_env_client, monkeypatch):
+    # Test that the command shows when credentials are from environment variables
+    monkeypatch.setenv("MODAL_TOKEN_ID", "ak-from-env")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "as-from-env")
+
+    res = run_cli_command(["token", "info"])
+    # Check for key parts of the message (may have line wrapping, so check individual words)
+    assert "Using" in res.stdout
+    assert "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET" in res.stdout
+    assert "environment" in res.stdout
 
 
 def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
@@ -537,6 +556,43 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
         expected_exit_code=1,
         expected_error="Could not find a deployed app named 'does-not-exist'",
     )
+
+
+def test_run_timestamps(servicer, server_url_env, set_env_client, test_dir, monkeypatch):
+    from datetime import timezone
+
+    # Use a known timestamp (2025-01-15 12:00:45 UTC)
+    known_timestamp = 1736942445.0
+
+    # Mock locale_tz to return UTC for predictable timestamp formatting
+    monkeypatch.setattr("modal._utils.time_utils.locale_tz", lambda: timezone.utc)
+
+    async def app_logs_with_timestamp(self, stream):
+        await stream.recv_message()
+        log = api_pb2.TaskLogs(
+            data="test log message\n",
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+            timestamp=known_timestamp,
+        )
+        await stream.send_message(api_pb2.TaskLogsBatch(entry_id="1", items=[log]))
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppGetLogs", app_logs_with_timestamp)
+
+        app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
+
+        # Test without --timestamps flag - should not include timestamp
+        res = run_cli_command(["run", app_file.as_posix()])
+        assert "test log message" in res.stdout
+        # The timestamp string format is "YYYY-MM-DD HH:MM:SS+TZ" - check that it's NOT there
+        assert "2025-01-15 12:00:45" not in res.stdout
+
+        # Test with --timestamps flag - should include timestamp prefix
+        res = run_cli_command(["run", "--timestamps", app_file.as_posix()])
+        # Check for the full formatted line: "YYYY-MM-DD HH:MM:SS+00:00 <message>"
+        expected_line = "2025-01-15 12:00:45+00:00 test log message"
+        assert expected_line in res.stdout
 
 
 def test_app_stop(servicer, mock_dir, set_env_client):
@@ -930,7 +986,10 @@ def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
     key = ("baz-dict", os.environ.get("MODAL_ENVIRONMENT", "main"))
     dict_id = "di-abc123"
     servicer.deployed_dicts[key] = dict_id
-    servicer.dicts[dict_id] = {dumps("a"): dumps(123), dumps("b"): dumps("blah")}
+    servicer.dicts[dict_id] = {
+        dumps("a", protocol=PICKLE_PROTOCOL): dumps(123, protocol=PICKLE_PROTOCOL),
+        dumps("b", protocol=PICKLE_PROTOCOL): dumps("blah", protocol=PICKLE_PROTOCOL),
+    }
 
     res = run_cli_command(["dict", "items", "baz-dict"])
     assert re.search(r" Key .+ Value", res.stdout)

@@ -87,6 +87,29 @@ def check_path():
 async def setup(profile: Optional[str] = None):
     check_path()
 
+    art = """
+           #############        #############
+          ####         ##      ####         ##
+         ##  ##         ##    ##  ##         ##
+        ##    ##         ##  ##    ##         ##
+       ##      ##         ####      ##         ##
+      ##        #############        ##         ##
+     ##        ##         ####        ##         ##
+    ##        ##         ##  ##        ##         ##
+   ##        ##         ##    ##        ##         ##
+  ##        ##         ##      ##        ##         ##
+ ##        ##         ##        ##        ##         ##
+##        ##         ##          ##        #############
+ ##      ##         ##            ##      ##         ##
+  ##    ##         ##              ##    ##         ##
+   ##  ##         ##                ##  ##         ##
+    ####         ##                  ####         ##
+     #############                    #############
+"""
+
+    console = make_console()
+    console.print(art, style="green")
+
     # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
     await _new_token(profile=profile, next_url="/home")
 

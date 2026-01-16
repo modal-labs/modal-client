@@ -129,7 +129,7 @@ def _add_click_options(func, parameters: dict[str, ParameterMetadata]):
 
         parser = option_parsers.get(param_type_str)
         if parser is None:
-            msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']!r}"
+            msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']}"
             raise NoParserAvailable(msg)
         kwargs: Any = {
             "type": parser,
@@ -185,7 +185,8 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
         _validate_interactive_quiet_params(ctx)
 
         show_progress: bool = ctx.obj["show_progress"]
-        with enable_output(show_progress):
+        show_timestamps: bool = ctx.obj["show_timestamps"]
+        with enable_output(show_progress, show_timestamps=show_timestamps):
             with run_app(
                 app,
                 detach=ctx.obj["detach"],
@@ -200,11 +201,21 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
     return f
 
 
+def _get_signature(func: typing.Any) -> inspect.Signature:
+    """Returns signature with the original source annotations."""
+    kwargs: dict[str, typing.Any] = {}
+    if sys.version_info[:2] >= (3, 14):
+        import annotationlib
+
+        kwargs["annotation_format"] = annotationlib.Format.STRING
+    return inspect.signature(func, **kwargs)
+
+
 def _get_click_command_for_function(app: App, function: Function, ctx: click.Context):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    sig: inspect.Signature = inspect.signature(function.info.raw_f)
+    sig: inspect.Signature = _get_signature(function.info.raw_f)
     type_hints = safe_get_type_hints(function.info.raw_f)
     signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
@@ -253,7 +264,7 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference, ctx: click
 
     partial_function = partial_functions[method_name]
     raw_f = partial_function._get_raw_f()
-    sig_without_self = inspect.signature(functools.partial(raw_f, None))
+    sig_without_self = _get_signature(functools.partial(raw_f, None))
     fun_signature = _get_cli_runnable_signature(sig_without_self, safe_get_type_hints(raw_f))
 
     # TODO(erikbern): assert there's no overlap?
@@ -287,12 +298,12 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
-    signature = _get_cli_runnable_signature(inspect.signature(func), safe_get_type_hints(func))
+    signature = _get_cli_runnable_signature(_get_signature(func), safe_get_type_hints(func))
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
         if ctx.obj["detach"]:
-            print(
+            print(  # noqa: T201
                 "Note that running a local entrypoint in detached mode only keeps the last "
                 "triggered Modal function alive after the parent process has been killed or disconnected."
             )
@@ -304,7 +315,8 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
         _validate_interactive_quiet_params(ctx)
 
         show_progress: bool = ctx.obj["show_progress"]
-        with enable_output(show_progress):
+        show_timestamps: bool = ctx.obj["show_timestamps"]
+        with enable_output(show_progress, show_timestamps=show_timestamps):
             with run_app(
                 app,
                 detach=ctx.obj["detach"],
@@ -394,8 +406,9 @@ class RunGroup(click.Group):
 @click.option("-i", "--interactive", is_flag=True, help="Run the app in interactive mode.")
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None)
 @click.option("-m", is_flag=True, help="Interpret argument as a Python module path instead of a file/script path")
+@click.option("--timestamps", is_flag=True, help="Show timestamps for each log line.")
 @click.pass_context
-def run(ctx, write_result, detach, quiet, interactive, env, m):
+def run(ctx, write_result, detach, quiet, interactive, env, m, timestamps):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -432,6 +445,7 @@ def run(ctx, write_result, detach, quiet, interactive, env, m):
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
     ctx.obj["interactive"] = interactive
+    ctx.obj["show_timestamps"] = timestamps
 
 
 def deploy(
@@ -443,6 +457,7 @@ def deploy(
     use_module_mode: bool = typer.Option(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
+    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line."),
 ):
     """Deploy a Modal application.
 
@@ -467,11 +482,11 @@ def deploy(
             "modal deploy ... --name=some-name"
         )
 
-    with enable_output():
+    with enable_output(show_timestamps=timestamps):
         res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
 
     if stream_logs:
-        stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url)
+        stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url, show_timestamps=timestamps)
 
 
 def serve(
@@ -481,6 +496,7 @@ def serve(
     use_module_mode: bool = typer.Option(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
+    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line."),
 ):
     """Run a web endpoint(s) associated with a Modal app and hot-reload code.
 
@@ -502,7 +518,7 @@ def serve(
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
 
-    with enable_output():
+    with enable_output(show_timestamps=timestamps):
         with serve_app(app, import_ref, environment_name=env):
             if timeout is None:
                 timeout = config["serve_timeout"]
