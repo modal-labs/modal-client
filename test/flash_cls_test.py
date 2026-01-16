@@ -147,7 +147,7 @@ def test_flash_params_override_experimental_options(client, servicer):
 
 
 def test_flash_class_http_config_is_set(client, servicer):
-    """Test flash classes have http-config set correctly."""
+    """Test flash classes have http_config set correctly."""
     app = App("flash-options")
 
     @app.cls(serialized=True)
@@ -185,10 +185,7 @@ def test_flash_no_port_parameter_error():
     """Test that http_server requires a port parameter."""
     with pytest.raises(
         modal.exception.InvalidError,
-        match=(
-            r"Positional arguments are not allowed\. "
-            r"Did you forget parentheses\? Suggestion: `@modal\.http_server\(\)`\."
-        ),
+        match=(r"Port argument is required."),
     ):
         flash_compatibility_app = App("flash-compatibility")
 
