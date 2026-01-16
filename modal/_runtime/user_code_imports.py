@@ -521,7 +521,7 @@ def import_class_service(
     """
     active_app: Optional["modal.app._App"]
     service_deps: Optional[Sequence["modal._object._Object"]]
-    cls_or_user_cls: typing.Union[type, modal.cls.Cls]
+    cls_or_user_cls: typing.Union[type, modal.cls.Cls, modal.server.Server]
 
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert ser_user_cls is not None
@@ -543,8 +543,6 @@ def import_class_service(
 
         assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
         cls_name = parts[0]
-        if len(parts) == 1:
-            cls_name = cls_name.removeprefix("#")
         cls_or_user_cls = getattr(module, cls_name)
 
     if isinstance(cls_or_user_cls, modal.server.Server):
