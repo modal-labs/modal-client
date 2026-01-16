@@ -266,25 +266,25 @@ class FunctionInfo:
             return b""
 
     @staticmethod
-    def get_class_vars(class_obj) -> dict[str, Any]:
-        if class_obj is not None:
+    def get_cls_vars(self) -> dict[str, Any]:
+        if self.user_cls is not None:
             class_vars = {
-                attr: getattr(class_obj, attr)
-                for attr in dir(class_obj)
-                if not callable(getattr(class_obj, attr)) and not attr.startswith("__")
+                attr: getattr(self.user_cls, attr)
+                for attr in dir(self.user_cls)
+                if not callable(getattr(self.user_cls, attr)) and not attr.startswith("__")
             }
             return class_vars
         return {}
 
     @staticmethod
-    def get_class_var_attrs(class_obj, func: Optional[Callable[..., Any]]) -> dict[str, Any]:
+    def get_cls_var_attrs(self) -> dict[str, Any]:
         import dis
         import opcode
 
         LOAD_ATTR = opcode.opmap["LOAD_ATTR"]
         STORE_ATTR = opcode.opmap["STORE_ATTR"]
 
-        code = func.__code__
+        code = self.raw_f.__code__
         f_attr_ops = set()
         for instr in dis.get_instructions(code):
             if instr.opcode == LOAD_ATTR:
@@ -292,15 +292,9 @@ class FunctionInfo:
             elif instr.opcode == STORE_ATTR:
                 f_attr_ops.add(instr.argval)
 
-        cls_vars = FunctionInfo.get_class_vars(class_obj)
+        cls_vars = self.get_cls_vars()
         f_attrs = {k: cls_vars[k] for k in cls_vars if k in f_attr_ops}
         return f_attrs
-
-    def get_cls_vars(self) -> dict[str, Any]:
-        return FunctionInfo.get_class_vars(self.user_cls)
-
-    def get_cls_var_attrs(self) -> dict[str, Any]:
-        return FunctionInfo.get_class_var_attrs(self.user_cls, self.raw_f)
 
     def get_globals(self) -> dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals

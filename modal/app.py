@@ -1191,7 +1191,6 @@ class _App:
 
         return wrapper
 
-    @warn_on_renamed_autoscaler_settings
     def server(
         self,
         _warn_parentheses_missing=None,  # mdmd:line-hidden
