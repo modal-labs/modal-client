@@ -15,6 +15,7 @@ from modal.cls import _Cls
 from modal.dict import _Dict
 from modal_proto import api_pb2
 
+from .._server import validate_http_server_config
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
 from ..client import _Client
@@ -63,6 +64,7 @@ class _FlashManager:
             try:
                 if error := check_process_is_running():
                     return False, error
+                # TODO(claudia): use asyncio socket create connection
                 with socket.create_connection(("localhost", self.port), timeout=0.5):
                     return True, None
             except (ConnectionRefusedError, OSError):
@@ -142,7 +144,6 @@ class _FlashManager:
                         )
                         self.num_failures += 1
                         await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
-
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
@@ -666,16 +667,7 @@ def _http_server(
         exit_grace_period: The time to wait for the HTTP server to exit gracefully.
 
     """
-    if port is None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
-        )
-    if not isinstance(port, int) or port < 1 or port > 65535:
-        raise InvalidError("First argument of `@http_server` must be a local port, such as `@http_server(8000)`.")
-    if startup_timeout <= 0:
-        raise InvalidError("The `startup_timeout` argument of `@http_server` must be positive.")
-    if exit_grace_period is not None and exit_grace_period < 0:
-        raise InvalidError("The `exit_grace_period` argument of `@http_server` must be non-negative.")
+    validate_http_server_config(port, proxy_regions, startup_timeout, exit_grace_period)
 
     from modal._partial_function import _PartialFunction, _PartialFunctionParams
 

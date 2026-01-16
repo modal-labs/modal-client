@@ -19,6 +19,24 @@ if typing.TYPE_CHECKING:
     import modal.app
 
 
+def validate_http_server_config(
+    port: Optional[int] = None,
+    proxy_regions: list[str] = [],  # The regions to proxy the HTTP server to.
+    startup_timeout: int = 30,  # Maximum number of seconds to wait for the HTTP server to start.
+    exit_grace_period: Optional[int] = None,  # The time to wait for the HTTP server to exit gracefully.
+):
+    if port is None:
+        raise InvalidError("Port argument is required.")
+    if not isinstance(port, int) or port < 1 or port > 65535:
+        raise InvalidError("Port must be a positive integer between 1 and 65535.")
+    if startup_timeout <= 0:
+        raise InvalidError("The `startup_timeout` argument must be positive.")
+    if exit_grace_period is not None and exit_grace_period < 0:
+        raise InvalidError("The `exit_grace_period` argument must be non-negative.")
+    if not proxy_regions:
+        raise InvalidError("The `proxy_regions` argument must be non-empty.")
+
+
 class _Server:
     """Server runs an HTTP server started in an @enter method.
 
@@ -39,11 +57,10 @@ class _Server:
         return self._user_cls
 
     def _get_app(self) -> "modal.app._App":
-        assert self._app, "app can only be extracted for local Server (in container entrypoint)"
+        assert self._app, "App can only be extracted for a local Server (in container entrypoint)"
         return self._app
 
     def _get_service_function(self) -> _Function:
-        assert self._service_function is not None  # don't we need this?
         return self._service_function
 
     @staticmethod
@@ -57,7 +74,7 @@ class _Server:
     # ============ Live Methods ============
 
     @live_method
-    async def get_urls(self) -> Optional[dict[str, str]]:
+    async def _experimental_get_urls(self) -> Optional[list[str]]:
         return await self._get_service_function()._experimental_get_flash_urls()
 
     @live_method
@@ -86,15 +103,63 @@ class _Server:
 
     # ============ Hydration ============
     async def hydrate(self, client: Optional[_Client] = None) -> "_Server":
-        """Hydrate the server by hydrating its underlying service function."""
         # This is required since we want to support @livemethod() decorated methods
-        # and is normally handled by the _Object.hydrate() method
-        # but we only want to hydrate the service function.
         service_function = self._get_service_function()
         await service_function.hydrate(client)
         return self
 
     # ============ Construction ============
+    @staticmethod
+    def from_local(
+        wrapped_user_cls: "type | _PartialFunction",
+        app: "modal.app._App",
+        service_function: _Function,
+    ) -> "_Server":
+        """Create a Server from a local class definition."""
+
+        # Note: Validation should be done by the caller (app.server()) BEFORE creating the Server.
+        # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
+        user_cls = _Server._extract_user_cls(wrapped_user_cls)
+
+        server = _Server()
+        server._app = app
+        server._user_cls = user_cls
+        server._service_function = service_function
+        return server
+
+    @classmethod
+    def from_name(
+        cls: type["_Server"],
+        app_name: str,
+        name: str,
+        *,
+        environment_name: Optional[str] = None,
+        client: Optional[_Client] = None,
+    ) -> "_Server":
+        """Reference a Server from a deployed App by its name.
+
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
+
+        TODO(claudia): Add examples
+        """
+
+        load_context_overrides = LoadContext(client=client, environment_name=environment_name)
+
+        server = _Server()
+        server._service_function = _Function._from_name(
+            app_name,
+            name,
+            load_context_overrides=load_context_overrides,
+        )
+        return server
+
+    def _is_local(self) -> bool:
+        """Returns True if this Server has local source code available."""
+        return self._user_cls is not None
+
+    # ============ Validation ============
 
     @staticmethod
     def _validate_wrapped_user_cls_decorators(
@@ -157,64 +222,3 @@ class _Server:
                 f"Server class {user_cls.__name__} cannot have a custom __init__ method. "
                 "Use @modal.enter() for initialization logic instead."
             )
-
-    @staticmethod
-    def from_local(
-        wrapped_user_cls: "type | _PartialFunction",
-        app: "modal.app._App",
-        service_function: _Function,
-    ) -> "_Server":
-        """Create a Server from a local class definition.
-
-        Note: Validation should be done by the caller (app.server()) BEFORE creating
-        the service function, so we don't repeat it here.
-        """
-        # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
-        user_cls = _Server._extract_user_cls(wrapped_user_cls)
-
-        # Mark lifecycle methods as registered to avoid warnings
-        lifecycle_flags = ~_PartialFunctionFlags.interface_flags()
-        lifecycle_partials = _find_partial_methods_for_user_cls(user_cls, lifecycle_flags)
-        for partial_function in lifecycle_partials.values():
-            partial_function.registered = True
-
-        server = _Server()
-        server._app = app
-        server._user_cls = user_cls
-        server._service_function = service_function
-        return server
-
-    @classmethod
-    def from_name(
-        cls: type["_Server"],
-        app_name: str,
-        name: str,
-        *,
-        environment_name: Optional[str] = None,
-        client: Optional[_Client] = None,
-    ) -> "_Server":
-        """Reference a Server from a deployed App by its name.
-
-        This is a lazy method that defers hydrating the local
-        object with metadata from Modal servers until the first
-        time it is actually used.
-
-        TODO(claudia): Add examples
-        """
-
-        load_context_overrides = LoadContext(client=client, environment_name=environment_name)
-
-        # Server service functions use "#ClassName" naming convention
-        service_function_name = f"#{name}"
-
-        server = _Server()
-        server._service_function = _Function._from_name(
-            app_name,
-            service_function_name,
-            load_context_overrides=load_context_overrides,
-        )
-        return server
-
-    def _is_local(self) -> bool:
-        """Returns True if this Server has local source code available."""
-        return self._user_cls is not None
