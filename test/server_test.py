@@ -209,11 +209,11 @@ def test_server_with_clustered_decorator(client, servicer):
 
 
 def test_server_from_name(client, servicer):
-    """Test Server.from_name() lookup."""
-    my_server = Server.from_name("my-app", "MyServer")
-
-    # Should be lazy - not hydrated yet
+    server_app.deploy(client=client)
+    my_server = Server.from_name("server-test-app", "BasicServer", client=client)
     assert not my_server._get_service_function().is_hydrated
+    urls = my_server._experimental_get_urls()
+    assert urls == ["https://modal-labs--basicserver.modal-us-east.modal.direct"]
 
 
 def test_server_from_name_failed_lookup_error(client, servicer):
