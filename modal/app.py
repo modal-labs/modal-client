@@ -1216,7 +1216,7 @@ class _App:
         port: int = 8000,  # Port the HTTP server listens on
         startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: Optional[int] = None,  # Grace period for in-flight requests on shutdown
-        proxy_regions: Optional[Sequence[str]] = None,  # Required: Regions to deploy proxy endpoints
+        proxy_regions: Optional[Sequence[str]] = ["us-east"],  # Required: Regions to deploy proxy endpoints
         h2_enabled: bool = False,  # Enable HTTP/2
         target_concurrency: Optional[int] = None,  # Target concurrency for the server
         cloud: Optional[str] = None,  # Cloud provider (aws, gcp, oci, auto)

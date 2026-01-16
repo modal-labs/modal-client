@@ -130,21 +130,23 @@ class Service(metaclass=ABCMeta):
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> dict[str, "FinalizedFunction"]: ...
 
-    @abstractmethod
     @contextmanager
     def lifecycle_presnapshot(
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ) -> Generator[None, None, None]: ...
+    ) -> Generator[None, None, None]:
+        # Default no-op implementation for services without pre-snapshot lifecycle handling
+        yield
 
-    @abstractmethod
     @contextmanager
     def lifecycle_postsnapshot(
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ) -> Generator[None, None, None]: ...
+    ) -> Generator[None, None, None]:
+        # Default no-op implementation for services without post-snapshot lifecycle handling
+        yield
 
     @contextmanager
     def execution_context(
@@ -303,24 +305,6 @@ class ImportedFunction(Service):
                 supported_output_formats=fun_def.supported_output_formats or [api_pb2.DATA_FORMAT_ASGI],
             )
         }
-
-    @contextmanager
-    def lifecycle_presnapshot(
-        self,
-        event_loop: UserCodeEventLoop,
-        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ):
-        # This is a no-op for imported functions since @enter methods are not supported
-        yield
-
-    @contextmanager
-    def lifecycle_postsnapshot(
-        self,
-        event_loop: UserCodeEventLoop,
-        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ):
-        # This is a no-op for imported functions since @enter methods are not supported
-        yield
 
 
 class _LifecycleManager:
@@ -559,6 +543,8 @@ def import_class_service(
 
         assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
         cls_name = parts[0]
+        if len(parts) == 1:
+            cls_name = cls_name.removeprefix("#")
         cls_or_user_cls = getattr(module, cls_name)
 
     if isinstance(cls_or_user_cls, modal.server.Server):
