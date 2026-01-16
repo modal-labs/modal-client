@@ -1,0 +1,74 @@
+name: Client Check
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+      python-version:
+        type: string
+        default: "3.10"
+
+jobs:
+  lint:
+    name: Ruff linting
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+
+      - uses: ./.github/actions/setup-cached-python-client
+        with:
+          version: ${{ inputs.python-version }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - run: inv lint
+
+      - run: inv lint-protos
+
+  type-check:
+    name: Static type checks
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+
+      - uses: ./.github/actions/setup-cached-python-client
+        with:
+          version: ${{ inputs.python-version }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - run: inv protoc
+
+      - run: pip install -e . # gets all dependencies and the package itself into python env
+
+      - run: pip install "synchronicity[compile]==0.11.1" # gets all dependencies and the package itself into python env
+
+      - name: Build type stubs
+        run: inv type-stubs
+
+      - run: inv type-check
+
+  check-copyright:
+    name: Check copyright
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+
+      - uses: ./.github/actions/setup-cached-python-client
+        with:
+          version: ${{ inputs.python-version }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - run: inv check-copyright
