@@ -20,10 +20,10 @@ if typing.TYPE_CHECKING:
 
 
 def validate_http_server_config(
-    port: Optional[int] = None,
-    proxy_regions: list[str] = [],  # The regions to proxy the HTTP server to.
-    startup_timeout: int = 30,  # Maximum number of seconds to wait for the HTTP server to start.
-    exit_grace_period: Optional[int] = None,  # The time to wait for the HTTP server to exit gracefully.
+    port: int,
+    proxy_regions: list[str],  # The regions to proxy the HTTP server to.
+    startup_timeout: int,  # Maximum number of seconds to wait for the HTTP server to start.
+    exit_grace_period: Optional[int],  # The time to wait for the HTTP server to exit gracefully.
 ):
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError("Port must be a positive integer between 1 and 65535.")
@@ -122,7 +122,7 @@ class _Server:
 
     # ============ Construction ============
     @staticmethod
-    def from_local(
+    def _from_local(
         wrapped_user_cls: "type | _PartialFunction",
         app: "modal.app._App",
         service_function: _Function,
