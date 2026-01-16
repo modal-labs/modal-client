@@ -582,7 +582,8 @@ def import_class_service(
         # hydration of the class itself - just sets the id and triggers some side effects
         # that transfers metadata from the service function to the class. TODO: cleanup!
         _cls._hydrate(class_id, _client, api_pb2.ClassHandleMetadata())
-    method_partials = _cls._get_partial_functions()
+
+    method_partials: dict[str, "modal._partial_function._PartialFunction"] = _cls._get_partial_functions()
     user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
 
     return ImportedClass(
