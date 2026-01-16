@@ -1645,6 +1645,7 @@ def test_flash_container_entry_lifecycle(servicer, tmp_path):
             f"Flash RPCs: {servicer.flash_rpc_calls}"
         )
 
+
 @skip_github_non_linux
 @pytest.mark.timeout(10)
 def test_stop_fetching_inputs(servicer, deployed_support_function_definitions):
