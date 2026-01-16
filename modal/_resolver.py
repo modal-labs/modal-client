@@ -14,6 +14,7 @@ from modal_proto import api_pb2
 
 from ._load_context import LoadContext
 from ._utils.async_utils import TaskContext
+from .exception import InvalidError
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -129,6 +130,16 @@ class Resolver:
                     # Load the object itself
                     if not obj._load:
                         raise Exception(f"Object {obj} has no loader function")
+
+                    if existing_object_id is not None and not obj._is_id_type(existing_object_id):
+                        expected_type = obj.__class__.__name__.strip("_")
+                        expected_prefix = getattr(obj.__class__, "_type_prefix", None)
+                        prefix_hint = f" (expected prefix {expected_prefix}-)" if expected_prefix else ""
+                        raise InvalidError(
+                            f"Existing object id {existing_object_id} is not a {expected_type} id{prefix_hint}. "
+                            "This usually means the object tag/name was previously used for a different type. "
+                            "Rename the object/app or delete the previous deployment."
+                        )
 
                     await obj._load(obj, self, load_context, existing_object_id)
 

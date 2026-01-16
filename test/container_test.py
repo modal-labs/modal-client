@@ -2381,7 +2381,7 @@ def test_server_cls_enter_lifecycle(servicer, tmp_path):
         servicer,
         tmp_path,
         "test.supports.functions",
-        "#AppServerWithEnter",
+        "ServerWithEnter",
         inputs=[],
         is_class=True,
     )
@@ -2422,7 +2422,7 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
         servicer,
         tmp_path,
         "test.supports.functions",
-        "#AppServerWithEnter",
+        "ServerWithEnter",
         inputs=[],  # No method inputs - Flash classes just serve HTTP
         is_class=True,
         http_config=http_config,
@@ -2484,7 +2484,7 @@ def test_server_lifecycle_with_deployed_metadata(servicer, tmp_path, deployed_su
         servicer,
         tmp_path,
         deployed_support_function_definitions,
-        "AppServerWithEnter",
+        "ServerWithEnter",
         inputs=[],  # Server classes don't have method inputs
     )
     stdout, stderr = container_process.communicate(timeout=15)
