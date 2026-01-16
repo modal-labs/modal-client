@@ -49,6 +49,26 @@ class AnyParamType(click.ParamType):
         return value
 
 
+class LiteralIntParamType(click.Choice):
+    """A ParamType for Literal types containing only integers."""
+
+    def __init__(self, literal_values: tuple[int, ...]):
+        self.int_values = {str(v): v for v in literal_values}
+        super().__init__(list(self.int_values.keys()))
+
+    def convert(self, value, param, ctx):
+        # If value is already an int (e.g., from a default), validate and return it
+        # Exclude bools since they're a subclass of int but we don't support them
+        if isinstance(value, int) and not isinstance(value, bool):
+            if value in self.int_values.values():
+                return value
+            # Invalid int - convert to string so Choice can generate a nice error message
+            value = str(value)
+        # Use Choice's validation for string inputs, then convert back to int
+        str_value = super().convert(value, param, ctx)
+        return self.int_values[str_value]
+
+
 option_parsers = {
     "str": str,
     "int": int,
@@ -99,6 +119,20 @@ def _get_cli_runnable_signature(sig: inspect.Signature, type_hints: dict[str, ty
     return CliRunnableSignature(signature, has_variadic_args)
 
 
+def _get_literal_values(type_hint: Any) -> Optional[tuple[Any, ...]]:
+    """Extract values from a Literal type annotation.
+
+    Returns None if not a Literal type, otherwise returns tuple of literal values.
+    """
+    try:
+        origin = typing.get_origin(type_hint)
+        if origin is typing.Literal:
+            return typing.get_args(type_hint)
+    except Exception:
+        pass
+    return None
+
+
 def _get_param_type_as_str(annot: Any) -> str:
     """Return annotation as a string, handling various spellings for optional types."""
     annot_str = str(annot)
@@ -121,16 +155,28 @@ def _add_click_options(func, parameters: dict[str, ParameterMetadata]):
     Kind of like typer, but using options instead of positional arguments
     """
     for param in parameters.values():
-        param_type_str = _get_param_type_as_str(param["type_hint"])
         param_name = param["name"].replace("_", "-")
         cli_name = "--" + param_name
-        if param_type_str == "bool":
-            cli_name += "/--no-" + param_name
 
-        parser = option_parsers.get(param_type_str)
-        if parser is None:
-            msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']}"
-            raise NoParserAvailable(msg)
+        parser: Any
+        if (literal_values := _get_literal_values(param["type_hint"])) is not None:
+            if all(isinstance(v, str) for v in literal_values):
+                parser = click.Choice(list(literal_values))
+            elif all(isinstance(v, int) and not isinstance(v, bool) for v in literal_values):
+                parser = LiteralIntParamType(literal_values)
+            else:
+                # Mixed types, booleans, or other unsupported types
+                msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']}"
+                raise NoParserAvailable(msg)
+        else:
+            param_type_str = _get_param_type_as_str(param["type_hint"])
+            if param_type_str == "bool":
+                cli_name += "/--no-" + param_name
+
+            parser = option_parsers.get(param_type_str)
+            if parser is None:
+                msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']}"
+                raise NoParserAvailable(msg)
         kwargs: Any = {
             "type": parser,
         }
@@ -185,7 +231,8 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
         _validate_interactive_quiet_params(ctx)
 
         show_progress: bool = ctx.obj["show_progress"]
-        with enable_output(show_progress):
+        show_timestamps: bool = ctx.obj["show_timestamps"]
+        with enable_output(show_progress, show_timestamps=show_timestamps):
             with run_app(
                 app,
                 detach=ctx.obj["detach"],
@@ -314,7 +361,8 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
         _validate_interactive_quiet_params(ctx)
 
         show_progress: bool = ctx.obj["show_progress"]
-        with enable_output(show_progress):
+        show_timestamps: bool = ctx.obj["show_timestamps"]
+        with enable_output(show_progress, show_timestamps=show_timestamps):
             with run_app(
                 app,
                 detach=ctx.obj["detach"],
@@ -404,8 +452,9 @@ class RunGroup(click.Group):
 @click.option("-i", "--interactive", is_flag=True, help="Run the app in interactive mode.")
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None)
 @click.option("-m", is_flag=True, help="Interpret argument as a Python module path instead of a file/script path")
+@click.option("--timestamps", is_flag=True, help="Show timestamps for each log line.")
 @click.pass_context
-def run(ctx, write_result, detach, quiet, interactive, env, m):
+def run(ctx, write_result, detach, quiet, interactive, env, m, timestamps):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -442,6 +491,7 @@ def run(ctx, write_result, detach, quiet, interactive, env, m):
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
     ctx.obj["interactive"] = interactive
+    ctx.obj["show_timestamps"] = timestamps
 
 
 def deploy(
@@ -453,6 +503,7 @@ def deploy(
     use_module_mode: bool = typer.Option(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
+    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line."),
 ):
     """Deploy a Modal application.
 
@@ -477,11 +528,11 @@ def deploy(
             "modal deploy ... --name=some-name"
         )
 
-    with enable_output():
+    with enable_output(show_timestamps=timestamps):
         res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
 
     if stream_logs:
-        stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url)
+        stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url, show_timestamps=timestamps)
 
 
 def serve(
@@ -491,6 +542,7 @@ def serve(
     use_module_mode: bool = typer.Option(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
+    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line."),
 ):
     """Run a web endpoint(s) associated with a Modal app and hot-reload code.
 
@@ -512,7 +564,7 @@ def serve(
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
 
-    with enable_output():
+    with enable_output(show_timestamps=timestamps):
         with serve_app(app, import_ref, environment_name=env):
             if timeout is None:
                 timeout = config["serve_timeout"]

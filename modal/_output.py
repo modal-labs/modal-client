@@ -169,9 +169,9 @@ class OutputManager:
 
     @classmethod
     @contextlib.contextmanager
-    def enable_output(cls, show_progress: bool = True) -> Generator[None]:
+    def enable_output(cls, show_progress: bool = True, show_timestamps: bool = False) -> Generator[None]:
         if show_progress:
-            cls._instance = OutputManager()
+            cls._instance = OutputManager(show_timestamps=show_timestamps)
         try:
             yield
         finally:

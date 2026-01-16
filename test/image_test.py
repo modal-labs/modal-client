@@ -119,6 +119,19 @@ def test_python_version_validation(builder_version):
     with pytest.raises(InvalidError, match="Python version must be specified as 'major.minor'"):
         _validate_python_version("3.10.5", builder_version, allow_micro_granularity=False)
 
+    with pytest.raises(InvalidError, match="Free threaded Python is not supported with Image.debian_slim"):
+        _validate_python_version("3.14t", builder_version, allow_free_threading=False, caller_name="Image.debian_slim")
+
+    with pytest.raises(InvalidError, match="Free threaded Python is not supported"):
+        _validate_python_version("3.14.2t", builder_version, allow_free_threading=False, allow_micro_granularity=True)
+
+
+def test_python_version_validation_free_threading():
+    assert (
+        _validate_python_version("3.14.2t", "PREVIEW", allow_free_threading=True, allow_micro_granularity=True)
+        == "3.14.2t"
+    )
+
 
 def test_dockerhub_python_version(builder_version):
     assert _dockerhub_python_version(builder_version, "3.10.1") == "3.10.1"
@@ -2078,3 +2091,14 @@ def test_build(servicer, client):
             image.build(app)
 
     assert len(ctx.get_requests("ImageGetOrCreate")) == 2
+
+
+def test_debian_slim_free_threading_not_supported(servicer, client):
+    image = modal.Image.debian_slim(python_version="3.14t")
+
+    app = App()
+    msg = "Free threaded Python is not supported with Image.debian_slim"
+    with pytest.raises(InvalidError, match=msg):
+        with servicer.intercept():
+            with app.run(client=client):
+                image.build(app)
