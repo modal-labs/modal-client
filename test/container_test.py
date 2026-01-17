@@ -45,28 +45,26 @@ from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 from .container_test_helpers import (
-    _batch_function_test_helper,
-    _batch_function_test_helper_auto,
-    _run_container,
-    _run_container_auto,
-    _run_container_process,
-    deploy_app_externally,
-    isolated_deploy,
-)
-from .container_test_utils import (
     SLEEP_TIME,
     ContainerResult,
+    _batch_function_test_helper,
+    _batch_function_test_helper_auto,
     _flatten_outputs,
     _get_inputs,
     _get_inputs_batched_with_formats,
     _get_multi_inputs_with_methods,
     _get_web_inputs,
+    _run_container,
+    _run_container_auto,
+    _run_container_process,
     _unwrap_asgi,
     _unwrap_blob_scalar,
     _unwrap_concurrent_input_outputs,
     _unwrap_exception,
     _unwrap_generator,
     _unwrap_scalar,
+    deploy_app_externally,
+    isolated_deploy,
 )
 from .supports.skip import skip_github_non_linux
 
