@@ -13,7 +13,6 @@ from modal._traceback import suppress_tb_frame
 from modal_proto import api_pb2
 
 from ._load_context import LoadContext
-from ._utils.async_utils import TaskContext
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -123,7 +122,10 @@ class Resolver:
                 with suppress_tb_frame():
                     load_context = await obj._load_context_overrides.merged_with(parent_load_context).apply_defaults()
 
-                    await TaskContext.gather(*[self.load(dep, load_context) for dep in obj.deps()])
+                    # Use asyncio.gather here (not TaskContext.gather) - the shared TaskContext
+                    # in load_context handles cancellation at the top level, preventing premature
+                    # cancellation of shared dependencies when sibling tasks fail.
+                    await asyncio.gather(*[self.load(dep, load_context) for dep in obj.deps()])
 
                     # Load the object itself
                     if not obj._load:
@@ -146,7 +148,8 @@ class Resolver:
 
                     return obj
 
-            cached_future = asyncio.create_task(loader())
+            # use task_context from load_context to make sure tasks are cleaned up eventually
+            cached_future = parent_load_context.task_context.create_task(loader())
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future

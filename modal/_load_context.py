@@ -1,8 +1,11 @@
 # Copyright Modal Labs 2025
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from .client import _Client
 from .config import config
+
+if TYPE_CHECKING:
+    from ._utils.async_utils import TaskContext
 
 
 class LoadContext:
@@ -15,6 +18,7 @@ class LoadContext:
     _client: Optional[_Client] = None
     _environment_name: Optional[str] = None
     _app_id: Optional[str] = None
+    _task_context: Optional["TaskContext"] = None
 
     def __init__(
         self,
@@ -22,10 +26,12 @@ class LoadContext:
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         app_id: Optional[str] = None,
+        task_context: Optional["TaskContext"] = None,
     ):
         self._client = client
         self._environment_name = environment_name
         self._app_id = app_id
+        self._task_context = task_context
 
     @property
     def client(self) -> _Client:
@@ -40,6 +46,11 @@ class LoadContext:
     @property
     def app_id(self) -> Optional[str]:
         return self._app_id
+
+    @property
+    def task_context(self) -> "TaskContext":
+        assert self._task_context is not None, "LoadContext has no TaskContext"
+        return self._task_context
 
     @classmethod
     def empty(cls) -> "LoadContext":
@@ -59,6 +70,7 @@ class LoadContext:
             client=self._client if self._client is not None else parent._client,
             environment_name=self._environment_name if self._environment_name is not None else parent._environment_name,
             app_id=self._app_id if self._app_id is not None else parent._app_id,
+            task_context=self._task_context if self._task_context is not None else parent._task_context,
         )  # TODO (elias):  apply_defaults?
 
     async def apply_defaults(self) -> "LoadContext":
@@ -71,16 +83,27 @@ class LoadContext:
             client=self.client if is_valid_client else await _Client.from_env(),
             environment_name=self._environment_name or config.get("environment") or "",
             app_id=self._app_id,
+            task_context=self._task_context,
         )
 
     def reset(self) -> "LoadContext":
+        """In-place replace all values with None, such that any inferred values/upgrades
+        will work. This is useful in cases where a load context reference may have leaked
+        into objects and used/upgraded but you want to make a fresh re-load, e.g. when doing
+        multiple `app.run()` calls in the same interpreter session.
+        """
         self._client = None
         self._environment_name = None
         self._app_id = None
+        self._task_context = None
         return self
 
     async def in_place_upgrade(
-        self, client: Optional[_Client] = None, environment_name: Optional[str] = None, app_id: Optional[str] = None
+        self,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        app_id: Optional[str] = None,
+        task_context: Optional["TaskContext"] = None,
     ) -> "LoadContext":
         """In-place set values if they aren't already set, or set default values
 
@@ -103,4 +126,5 @@ class LoadContext:
         self._client = self._client or client or await _Client.from_env()
         self._environment_name = self._environment_name or environment_name or config.get("environment") or ""
         self._app_id = self._app_id or app_id
+        self._task_context = self._task_context or task_context
         return self

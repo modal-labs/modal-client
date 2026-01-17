@@ -590,24 +590,7 @@ class TaskContext:
         """
         async with TaskContext() as tc:
             tasks = [tc.create_task(coro) for coro in coros]
-            try:
-                results = await asyncio.gather(*tasks)
-            except asyncio.CancelledError:
-                # If we got CancelledError, check if any task
-                # has a real exception that should take priority
-                for task in tasks:
-                    if not task.done():
-                        task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
-                for task in tasks:
-                    try:
-                        task.result()
-                    except asyncio.CancelledError:
-                        pass
-                    except BaseException as real_exc:
-                        raise real_exc from None
-                raise
-        return results
+            return await asyncio.gather(*tasks)
 
 
 def run_coro_blocking(coro):

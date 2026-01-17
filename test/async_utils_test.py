@@ -197,56 +197,6 @@ async def test_task_context_gather():
     assert state == "t1"
 
 
-@pytest.mark.asyncio
-async def test_task_context_gather_exception_priority():
-    """
-    Test that real exceptions take priority over CancelledError in TaskContext.gather.
-
-    This test simulates a race condition where:
-    1. One task fails with a real exception (ValueError)
-    2. A sibling task completes with CancelledError (e.g., due to a shared resource being cancelled)
-    3. The sibling's CancelledError completes BEFORE the real exception propagates
-
-    TaskContext.gather should ensure the real exception is raised, not CancelledError.
-    """
-
-    async def raises_immediately():
-        raise ValueError("original error")
-
-    async def await_shared(shared_task):
-        """Simulates resolver.load() which awaits a cached future"""
-        await shared_task
-
-    async def raises_with_shared(shared_task):
-        """Simulates loading deps where one succeeds and one fails"""
-        try:
-            await TaskContext.gather(await_shared(shared_task), raises_immediately())
-        except BaseException:
-            # at this point the shared_task will have been cancelled
-            # as a result of raises_immediately stopping the gather
-            # we wait a bit more here which will give sibling_with_shared
-            # some time to also fail *first* before the original error is
-            # raised here
-            await asyncio.sleep(0.05)
-            raise
-
-    async def sibling_with_shared(shared_task):
-        """Simulates another object loading the same shared dependency"""
-        await shared_task
-
-    async def long_running():
-        await asyncio.sleep(10)
-
-    # Load two objects that share a dependency
-    shared_task = asyncio.create_task(long_running())
-    with pytest.raises(ValueError) as exc_info:
-        await TaskContext.gather(sibling_with_shared(shared_task), raises_with_shared(shared_task))
-
-    # Verify the correct exception was raised (not CancelledError)
-    assert isinstance(exc_info.value, ValueError), f"Got {type(exc_info.value).__name__} instead of ValueError"
-    assert "original error" in str(exc_info.value)
-
-
 DEBOUNCE_TIME = 0.1
 
 
