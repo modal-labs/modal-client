@@ -33,22 +33,12 @@ from .helpers import deploy_app_externally
 EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
 SLEEP_DELAY = 0.1
-
-blob_upload = synchronize_api(_blob_upload)
-blob_download = synchronize_api(_blob_download)
-
-
-EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
-FUNCTION_CALL_ID = "fc-123"
-SLEEP_DELAY = 0.1
-
-blob_upload = synchronize_api(_blob_upload)
-blob_download = synchronize_api(_blob_download)
-
 SLEEP_TIME = 0.1
 
-
 DEFAULT_APP_LAYOUT_SENTINEL: Any = object()
+
+blob_upload = synchronize_api(_blob_upload)
+blob_download = synchronize_api(_blob_download)
 
 
 @dataclasses.dataclass
