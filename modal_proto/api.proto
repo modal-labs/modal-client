@@ -2818,8 +2818,8 @@ message Sandbox {
   // on the same instance type as the original snapshot.
   string _restore_instance_type = 35;
 
-  // If set, tunnels to this sandbox will be subdomains of this domain rather than the default.
-  optional string custom_tunnel_domain = 36;
+  // If set, connections to this sandbox will be subdomains of this domain rather than the default.
+  optional string custom_domain = 36;
 }
 
 message SandboxCreateConnectTokenRequest {
