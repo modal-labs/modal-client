@@ -402,26 +402,32 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
 class TaskContext:
     """A structured group that helps manage stray tasks.
 
-    This differs from the standard library `asyncio.TaskGroup` in that it cancels all tasks still
+    This differs from the standard library `asyncio.TaskGroup` in that it *cancels* tasks still
     running after exiting the context manager, rather than waiting for them to finish.
 
     A `TaskContext` can have an optional `grace` period in seconds, which will wait for a certain
     amount of time before cancelling all remaining tasks. This is useful for allowing tasks to
     gracefully exit when they determine that the context is shutting down.
 
+    A task is first allowed up to `grace` seconds to exit by itself. If the task doesn't finish
+    in that time, it will be cancelled. Cancellation itsels is allowed to take up to `cancellation_grace`
+    seconds to run before the context manager exits with potentially dangling tasks.
+
     Usage:
 
     ```python notest
-    async with TaskContext() as task_context:
+    async with TaskContext(grace=1.0) as task_context:
         task = task_context.create_task(coro())
     ```
     """
 
     _loops: set[asyncio.Task]
 
-    def __init__(self, grace: Optional[float] = None):
+    def __init__(self, grace: Optional[float] = None, *, cancellation_grace: float = 1.0):
         self._grace = grace  # grace is the time we want for tasks to finish before cancelling them
-        self._cancellation_grace: float = 1.0  # extra graceperiod for the cancellation itself to "bubble up"
+        self._cancellation_grace: float = (
+            cancellation_grace  # extra graceperiod for the cancellation itself to "bubble up"
+        )
         self._loops = set()
 
     async def start(self):
@@ -438,6 +444,14 @@ class TaskContext:
         return self
 
     async def stop(self):
+        """This is called when exiting the TaskContext
+
+        Two important properties that we need to maintain here:
+        * Should never raise exceptions as a result
+        of exceptions (incl. cancellations) in the contained tasks
+        * Should not have an open-ended runtime, even if
+        the contained tasks are uncooperative with cancellations.
+        """
         self._exited.set()
         await asyncio.sleep(0)  # Causes any just-created tasks to get started
         unfinished_tasks = [t for t in self._tasks if not t.done()]
@@ -477,13 +491,22 @@ class TaskContext:
                 warnings.warn(f"Internal warning: Tasks did not cancel in a timely manner: {cancelled_tasks}")
 
     async def __aexit__(self, exc_type, value, tb):
-        if exc_type:
-            # if there is an exception inside the context mgr
-            # we ignore further cancellations that may pop
-            with contextlib.suppress(asyncio.CancelledError):
-                await self.stop()
-        else:
-            await self.stop()
+        """
+        This is a bit involved:
+        * If there is an exception within the "context", we typically always want to reraise that
+        * If a cancellation comes in *during* aexit/stop execution itself, we don't actually cancel
+          the exit logic (it's already performing cancellation logic of sorts), but we do reraise
+          the CancelledError to prevent muting cancellation chains
+        """
+        stop_task = asyncio.ensure_future(self.stop())
+        try:
+            await asyncio.shield(stop_task)
+        except asyncio.CancelledError:
+            if not stop_task.done():
+                # External cancellation - wait for stop() to finish, then propagate
+                with contextlib.suppress(asyncio.CancelledError):
+                    await stop_task  # always run stop_task to completion
+            raise
 
     def create_task(self, coro_or_task) -> asyncio.Task:
         if isinstance(coro_or_task, asyncio.Task):

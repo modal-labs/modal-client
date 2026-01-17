@@ -123,7 +123,6 @@ class Resolver:
                 with suppress_tb_frame():
                     load_context = await obj._load_context_overrides.merged_with(parent_load_context).apply_defaults()
 
-                    # TODO(erikbern): do we need existing_object_id for those?
                     await TaskContext.gather(*[self.load(dep, load_context) for dep in obj.deps()])
 
                     # Load the object itself
