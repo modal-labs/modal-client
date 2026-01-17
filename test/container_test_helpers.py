@@ -24,6 +24,7 @@ from modal.app import _App
 from modal_proto import api_pb2
 
 from .container_test_utils import (
+    DEFAULT_APP_LAYOUT_SENTINEL,
     ContainerResult,
     _container_args,
     _flatten_outputs,
@@ -41,8 +42,6 @@ SLEEP_DELAY = 0.1
 
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
-
-DEFAULT_APP_LAYOUT_SENTINEL: Any = object()
 
 # =============================================================================
 # Deployment Helpers
