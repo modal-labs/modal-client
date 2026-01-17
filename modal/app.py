@@ -1279,7 +1279,7 @@ class _App:
             _Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
 
             # Validate the server class
-            _Server.validate_construction_mechanism(wrapped_user_cls)
+            _Server._validate_construction_mechanism(wrapped_user_cls)
 
             # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
             cluster_size = None
@@ -1334,7 +1334,7 @@ class _App:
             )
 
             self._add_function(service_function, is_web_endpoint=False)
-            server: _Server = _Server.from_local(wrapped_user_cls, self, service_function)
+            server: _Server = _Server._from_local(wrapped_user_cls, self, service_function)
             return server
 
         return wrapper

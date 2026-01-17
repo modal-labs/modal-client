@@ -170,7 +170,7 @@ def test_server_rejects_custom_init():
         InvalidError,
         match="cannot have a custom __init__ method",
     ):
-        _Server.validate_construction_mechanism(ServerWithInit)
+        _Server._validate_construction_mechanism(ServerWithInit)
 
 
 class ServerWithDefaultInit:
@@ -179,7 +179,7 @@ class ServerWithDefaultInit:
 
 def test_server_allows_default_init():
     """Test that servers with default __init__ are accepted."""
-    _Server.validate_construction_mechanism(ServerWithDefaultInit)
+    _Server._validate_construction_mechanism(ServerWithDefaultInit)
 
 
 def test_server_rejects_method_decorator():
