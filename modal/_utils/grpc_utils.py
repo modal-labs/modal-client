@@ -30,6 +30,7 @@ from modal_version import __version__
 from .._traceback import suppress_tb_frame
 from ..config import config
 from .async_utils import retry
+from .grpclib_ext import Channel
 from .logger import logger
 
 RequestType = TypeVar("RequestType", bound=Message)
@@ -178,7 +179,7 @@ def create_channel(
     )
 
     if o.scheme == "unix":
-        channel = grpclib.client.Channel(path=o.path, config=config, status_details_codec=custom_detail_codec)
+        channel = Channel(path=o.path, config=config, status_details_codec=custom_detail_codec)
     elif o.scheme in ("http", "https"):
         target = o.netloc
         parts = target.split(":")
@@ -186,7 +187,7 @@ def create_channel(
         ssl = o.scheme.endswith("s")
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 else 443 if ssl else 80
-        channel = grpclib.client.Channel(host, port, ssl=ssl, config=config, status_details_codec=custom_detail_codec)
+        channel = Channel(host, port, ssl=ssl, config=config, status_details_codec=custom_detail_codec)
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
 
