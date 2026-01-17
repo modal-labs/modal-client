@@ -65,10 +65,3 @@ async def test_multi_resolve_concurrent_loads_once(client):
     await asyncio.gather(resolver.load(obj, load_context), resolver.load(obj, load_context))
     assert 0.08 < time.monotonic() - t0 < 0.17
     assert load_count == 1
-
-
-def test_resolver_without_rich(no_rich):
-    resolver = Resolver()
-    resolver.add_status_row()
-    with resolver.display():
-        pass

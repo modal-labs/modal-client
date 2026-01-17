@@ -129,10 +129,14 @@ async def _create_all_objects(
     load_context: LoadContext,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
+    from .output import _get_output_manager
+
     indexed_objects: dict[str, _Object] = {**local_app_state.functions, **local_app_state.classes}
 
     resolver = Resolver()
-    with resolver.display():
+    output_mgr = _get_output_manager()
+    display_ctx = output_mgr.display_object_tree() if output_mgr else nullcontext()
+    with display_ctx:
         # Get current objects, and reset all objects
         tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
         running_app.function_ids = {}
