@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # Copyright Modal Labs 2024
 # built by modifying grpclib.plugin.main, see https://github.com/vmagamedov/grpclib
 # original: Copyright (c) 2019  , Vladimir Magamedov
