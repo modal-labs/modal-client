@@ -4,7 +4,9 @@
 # This is because aiohttp is a pretty big dependency that adds significant latency when imported
 
 import asyncio
+import time
 from collections.abc import AsyncGenerator
+from datetime import datetime
 from typing import Any, Callable, NoReturn, Optional, cast
 
 import aiohttp
@@ -334,10 +336,43 @@ def _add_forwarded_for_header(scope):
     return scope
 
 
+async def _send_to_dark_star(
+    session: aiohttp.ClientSession,
+    scope: dict,
+    path: str,
+    body_chunks: list[bytes],
+    timestamp: float,
+) -> None:
+    """Fire-and-forget: send a copy of the request to a logging endpoint."""
+    # Yield execution to allow the main response to start streaming immediately
+    await asyncio.sleep(0)
+    _DARK_STAR_URL = "https://modal-labs-shankha-dev--dark-star-request-handler.modal.run"
+    try:
+        body = b"".join(body_chunks)
+        await session.post(
+            _DARK_STAR_URL,
+            json={
+                "method": scope["method"],
+                "path": path,
+                "headers": [(k.decode(), v.decode()) for k, v in scope["headers"]],
+                "body": body.decode("utf-8", errors="replace"),
+                "timestamp": datetime.fromtimestamp(timestamp).isoformat(),
+                "workspace": "dummy-workspace",
+                "app_name": "dummy-app-name",
+            },
+            timeout=aiohttp.ClientTimeout(total=5),
+        )
+    except Exception:
+        pass
+
+
 async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
     proxy_response: aiohttp.ClientResponse
 
     scope = _add_forwarded_for_header(scope)
+
+    request_timestamp = time.time()
+    body_chunks: list[bytes] = []
 
     async def request_generator() -> AsyncGenerator[bytes, None]:
         while True:
@@ -345,6 +380,7 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
             if message["type"] == "http.request":
                 body = message.get("body", b"")
                 if body:
+                    body_chunks.append(body)
                     yield body
                 if not message.get("more_body", False):
                     break
@@ -371,6 +407,11 @@ async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, se
         if isinstance(e.__cause__, ConnectionAbortedError):
             return
         raise
+
+    # Fire and forget: log request to dark-star (intentionally not awaited)
+    asyncio.create_task(  # noqa: RUF006
+        _send_to_dark_star(session, scope, path, body_chunks, request_timestamp)
+    )
 
     async def send_response() -> None:
         msg = {
