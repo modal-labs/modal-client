@@ -11,7 +11,6 @@ from typing import AsyncGenerator, Optional
 
 import grpclib.client
 import grpclib.config
-import grpclib.events
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 
