@@ -113,9 +113,11 @@ async def test_task_context_grace():
 async def test_task_context_infinite_loop():
     async with TaskContext(grace=0.01) as task_context:
         counter = 0
+        t0 = time.monotonic()
 
         async def f():
             nonlocal counter
+            print(time.monotonic() - t0)
             counter += 1
 
         t = task_context.infinite_loop(f, sleep=0.1)
