@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.3.1.dev25 (2026-01-16)
+
+- The automatic CLI creation for `modal run` entrypoints now supports `Literal` type annotations, provided that the literal type contains either all string or all int values.
+
+
 #### 1.3.1.dev20 (2026-01-14)
 
 - Added `--timestamps` flag to `modal run`, `modal serve` and `modal deploy` to show timestamps for log output.

@@ -1,8 +1,8 @@
-name: Unit tests
+name: Client Unit tests
 on:
   workflow_call:
     inputs:
-      working_directory:
+      working-directory:
         required: true
         type: string
     secrets:
@@ -18,7 +18,9 @@ env:
 
 jobs:
   client-test:
-    name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
+    name:
+      Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }}
+      (protobuf=${{ matrix.proto-version }})
     timeout-minutes: 30
 
     strategy:
@@ -44,28 +46,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: ${{ inputs.working_directory }}
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
-      - name: Install Python
-        uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5
+      - uses: ./.github/actions/setup-cached-python-client
         with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Setup uv with caching
-        uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.1.2
-        with:
-          enable-cache: true
-          version: "0.9.24"
-          cache-dependency-glob: |
-            ${{ inputs.working_directory }}/requirements.dev.txt
-            ${{ inputs.working_directory }}/pyproject.toml
-
-      - name: Install Python packages
-        shell: bash
-        run: |
-          uv pip install --system -r requirements.dev.txt
+          version: ${{ matrix.python-version }}
+          working-directory: ${{ inputs.working-directory }}
 
       - if: matrix.proto-version != 'latest'
         name: Install protobuf
@@ -89,7 +77,9 @@ jobs:
         run: pytest -v --markdown-docs -m markdown-docs modal
 
   container-dependencies:
-    name: Check minimal container dependencies for ${{ matrix.python-version }} - ${{ matrix.image-builder-version }}
+    name:
+      Check minimal container dependencies for ${{ matrix.python-version }} -
+      ${{ matrix.image-builder-version }}
     runs-on: ubuntu-24.04
     timeout-minutes: 4
     strategy:
@@ -110,7 +100,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: ${{ inputs.working_directory }}
+        working-directory: ${{ inputs.working-directory }}
 
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
@@ -125,21 +115,10 @@ jobs:
           pip install synchronicity
 
       - name: Compile protos
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-          if [ "${{ matrix.python-version }}" == "3.10" ]; then
-            pip install grpcio-tools==1.48.2 grpclib==0.4.7;
-          elif [ "${{ matrix.python-version }}" == "3.12" ]; then
-            pip install grpcio-tools==1.59.2 grpclib==0.4.7;
-          elif [ "${{ matrix.python-version }}" == "3.13" ]; then
-            pip install grpcio-tools==1.66.2 grpclib==0.4.7;
-          elif [ "${{ matrix.python-version }}" == "3.14" ]; then
-            pip install grpcio-tools==1.76.0 grpclib==0.4.9;
-          fi
-          python -m grpc_tools.protoc --python_out=. --grpclib_python_out=. --grpc_python_out=. -I . modal_proto/api.proto modal_proto/task_command_router.proto
-          python -m grpc_tools.protoc --plugin=protoc-gen-modal-grpclib-python=protoc_plugin/plugin.py --modal-grpclib-python_out=. -I . modal_proto/api.proto
-          deactivate
+        run:
+          .github/scripts/client-generate-container-runtime-protos.sh ${{
+          inputs.working-directory }} ${{ matrix.python-version }}
+        working-directory: "."
 
       - name: Check entrypoint import
         run: |

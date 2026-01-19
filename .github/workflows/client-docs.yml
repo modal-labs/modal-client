@@ -1,0 +1,40 @@
+name: Client Docs
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+      python-version:
+        type: string
+        default: "3.10"
+
+jobs:
+  doc-test:
+    name: Doc generation tests
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+
+      - uses: ./.github/actions/setup-cached-python-client
+        with:
+          version: ${{ inputs.python-version }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Build protobuf
+        run: inv protoc
+
+      - name: Install package + deps
+        run: pip install -e . # Makes sure doc generation doesn't break on client imports etc.
+
+      - name: Generate reference docs
+        run: python -m modal_docs.gen_reference_docs reference_docs_output
+
+      - name: Generate CLI docs
+        run: python -m modal_docs.gen_cli_docs cli_docs
