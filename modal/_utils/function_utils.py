@@ -616,6 +616,19 @@ def _get_suffix_from_web_url_info(url_info: api_pb2.WebUrlInfo) -> str:
     return suffix
 
 
+class _NoOpStatusRow:
+    """A no-op status row used when rich is not installed or output is disabled."""
+
+    def message(self, message: str) -> None:
+        pass
+
+    def warning(self, warning) -> None:
+        pass
+
+    def finish(self, message: str) -> None:
+        pass
+
+
 class FunctionCreationStatus:
     # TODO(michael) this really belongs with other output-related code
     # but moving it here so we can use it when loading a function with output disabled
@@ -629,11 +642,10 @@ class FunctionCreationStatus:
         self._output_mgr = _get_output_manager()
 
     def _add_status_row(self):
-        from modal._output import StatusRow
-
         if self._output_mgr:
             return self._output_mgr.add_status_row()
-        return StatusRow(None)
+        # No-op status row when output is disabled
+        return _NoOpStatusRow()
 
     def __enter__(self):
         self.status_row = self._add_status_row()
