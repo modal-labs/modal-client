@@ -490,6 +490,8 @@ class TaskContext:
             except asyncio.TimeoutError:
                 warnings.warn(f"Internal warning: Tasks did not cancel in a timely manner: {cancelled_tasks}")
 
+            await asyncio.sleep(0)  # wake up coroutines waiting for cancellations
+
     async def __aexit__(self, exc_type, value, tb):
         """
         This is a bit involved:
