@@ -45,29 +45,27 @@ from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 from .container_test_helpers import (
-    _batch_function_test_helper,
-    _batch_function_test_helper_auto,
-    _run_container,
-    _run_container_auto,
-    _run_container_process,
-    _run_container_process_auto,
-    deploy_app_externally,
-    isolated_deploy,
-)
-from .container_test_utils import (
     SLEEP_TIME,
     ContainerResult,
+    _batch_function_test_helper,
+    _batch_function_test_helper_auto,
     _flatten_outputs,
     _get_inputs,
     _get_inputs_batched_with_formats,
     _get_multi_inputs_with_methods,
     _get_web_inputs,
+    _run_container,
+    _run_container_auto,
+    _run_container_process,
+    _run_container_process_auto,
     _unwrap_asgi,
     _unwrap_blob_scalar,
     _unwrap_concurrent_input_outputs,
     _unwrap_exception,
     _unwrap_generator,
     _unwrap_scalar,
+    deploy_app_externally,
+    isolated_deploy,
 )
 from .supports.skip import skip_github_non_linux
 
@@ -1648,119 +1646,6 @@ def test_flash_container_entry_lifecycle(servicer, tmp_path):
 
 
 @skip_github_non_linux
-@pytest.mark.usefixtures("server_url_env")
-def test_server_container_entry_lifecycle(servicer, tmp_path):
-    """
-    End-to-end server lifecycle using deployed metadata and a subprocess container.
-
-    Deploy happens in an isolated process; container entrypoint runs in a separate
-    subprocess using the deployed function definition and app layout.
-    """
-    servicer.flash_rpc_calls = []
-    deployed_server_support_definitions = isolated_deploy("test.supports.functions", "server_app")
-
-    container_process = _run_container_process_auto(
-        servicer,
-        tmp_path,
-        "ServerWithEnter",
-        deployed_server_support_definitions,
-        inputs=[],  # No method inputs - just an HTTP Server
-    )
-    stdout, stderr = container_process.communicate(timeout=15)
-    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
-
-    expected_events = "enter,enter_post_snapshot"
-    assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
-
-    assert "register" in servicer.flash_rpc_calls, (
-        f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
-    )
-    assert "deregister" in servicer.flash_rpc_calls, (
-        f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
-    )
-
-    # @skip_github_non_linux
-    # def test_container_heartbeat_survives_grpc_deadlines(
-    #     servicer, caplog, monkeypatch, deployed_support_function_definitions
-    # ):
-    #     monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", 0.01)
-    #     num_heartbeats = 0
-
-    #     async def heartbeat_responder(servicer, stream):
-    #         nonlocal num_heartbeats
-    #         num_heartbeats += 1
-    #         await stream.recv_message()
-    #         raise GRPCError(Status.DEADLINE_EXCEEDED)
-
-    #     with servicer.intercept() as ctx:
-    #         ctx.set_responder("ContainerHeartbeat", heartbeat_responder)
-    #         ret = _run_container_auto(
-    #             servicer,
-    #             "delay",
-    #             deployed_support_function_definitions,
-    #             inputs=_get_inputs(((2,), {})),
-    #         )
-    #         assert ret.task_result is None  # should not cause a failure result
-    #     loop_iteration_failures = caplog.text.count("Heartbeat attempt failed")
-    #     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
-    #     assert (
-    #         loop_iteration_failures > 1
-    #     )  # one occurence per failing `retry_transient_errors()`, so fewer than the number of failing requests!
-    #     assert loop_iteration_failures < num_heartbeats
-    #     assert num_heartbeats > 4  # more than the default number of retries per heartbeat attempt + 1
-
-    # Verify the enter methods ran
-    expected_events = "enter,enter_post_snapshot"
-    assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
-
-    # Verify Flash RPCs were called in the correct order:
-    # - register: called during enter when heartbeat starts
-    # - deregister: called during stop
-    assert "register" in servicer.flash_rpc_calls, (
-        f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
-    )
-    assert "deregister" in servicer.flash_rpc_calls, (
-        f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
-    )
-
-    # Verify order: register should come before deregister
-    register_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "register"]
-    deregister_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "deregister"]
-    assert register_indices, f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
-    assert deregister_indices, f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
-
-    # Verify the *first* register is before the *first* deregister (for compatibility)
-    assert register_indices[0] < deregister_indices[0], (
-        f"Flash RPCs called in wrong order. Expected register before deregister. RPC calls: {servicer.flash_rpc_calls}"
-    )
-    # Ensure that *all* deregisters happen after the *last* register
-    last_register_idx = max(register_indices)
-    for d_idx in deregister_indices:
-        assert d_idx > last_register_idx, (
-            f"Found deregister at position {d_idx} before last register at position {last_register_idx}. "
-            f"Flash RPCs: {servicer.flash_rpc_calls}"
-        )
-
-
-@skip_github_non_linux
-@pytest.mark.timeout(10)
-def test_server_isolated_deploy_isolated_container(servicer, deployed_support_function_definitions):
-    # deploy_app_externally + _run_container_process
-    pass
-
-
-@skip_github_non_linux
-@pytest.mark.usefixtures("server_url_env")
-def test_server_lifecycle_signals_correctly_registered(servicer, tmp_path):
-    """
-    Test that verifies signals are disabled BEFORE Server exit functions run.
-
-    This confirms the complete order of lifecycle operations:
-    """
-    pass
-
-
-@skip_github_non_linux
 @pytest.mark.timeout(10)
 def test_stop_fetching_inputs(servicer, deployed_support_function_definitions):
     ret = _run_container_auto(
@@ -2534,3 +2419,116 @@ def test_batch_sync_function_mixed_input_data_formats_exceptions(servicer, deplo
 def test_custom_name(servicer, deployed_support_function_definitions):
     ret = _run_container_auto(servicer, "custom_name", deployed_support_function_definitions)
     assert _unwrap_scalar(ret) == 42**2
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_server_container_entry_lifecycle(servicer, tmp_path):
+    """
+    End-to-end server lifecycle using deployed metadata and a subprocess container.
+
+    Deploy happens in an isolated process; container entrypoint runs in a separate
+    subprocess using the deployed function definition and app layout.
+    """
+    servicer.flash_rpc_calls = []
+    deployed_server_support_definitions = isolated_deploy("test.supports.functions", "server_app")
+
+    container_process = _run_container_process_auto(
+        servicer,
+        tmp_path,
+        "ServerWithEnter",
+        deployed_server_support_definitions,
+        inputs=[],  # No method inputs - just an HTTP Server
+    )
+    stdout, stderr = container_process.communicate(timeout=15)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+
+    expected_events = "enter,enter_post_snapshot"
+    assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+    assert "register" in servicer.flash_rpc_calls, (
+        f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+    assert "deregister" in servicer.flash_rpc_calls, (
+        f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+
+    # @skip_github_non_linux
+    # def test_container_heartbeat_survives_grpc_deadlines(
+    #     servicer, caplog, monkeypatch, deployed_support_function_definitions
+    # ):
+    #     monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", 0.01)
+    #     num_heartbeats = 0
+
+    #     async def heartbeat_responder(servicer, stream):
+    #         nonlocal num_heartbeats
+    #         num_heartbeats += 1
+    #         await stream.recv_message()
+    #         raise GRPCError(Status.DEADLINE_EXCEEDED)
+
+    #     with servicer.intercept() as ctx:
+    #         ctx.set_responder("ContainerHeartbeat", heartbeat_responder)
+    #         ret = _run_container_auto(
+    #             servicer,
+    #             "delay",
+    #             deployed_support_function_definitions,
+    #             inputs=_get_inputs(((2,), {})),
+    #         )
+    #         assert ret.task_result is None  # should not cause a failure result
+    #     loop_iteration_failures = caplog.text.count("Heartbeat attempt failed")
+    #     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
+    #     assert (
+    #         loop_iteration_failures > 1
+    #     )  # one occurence per failing `retry_transient_errors()`, so fewer than the number of failing requests!
+    #     assert loop_iteration_failures < num_heartbeats
+    #     assert num_heartbeats > 4  # more than the default number of retries per heartbeat attempt + 1
+
+    # Verify the enter methods ran
+    expected_events = "enter,enter_post_snapshot"
+    assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+    # Verify Flash RPCs were called in the correct order:
+    # - register: called during enter when heartbeat starts
+    # - deregister: called during stop
+    assert "register" in servicer.flash_rpc_calls, (
+        f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+    assert "deregister" in servicer.flash_rpc_calls, (
+        f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+
+    # Verify order: register should come before deregister
+    register_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "register"]
+    deregister_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "deregister"]
+    assert register_indices, f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    assert deregister_indices, f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
+
+    # Verify the *first* register is before the *first* deregister (for compatibility)
+    assert register_indices[0] < deregister_indices[0], (
+        f"Flash RPCs called in wrong order. Expected register before deregister. RPC calls: {servicer.flash_rpc_calls}"
+    )
+    # Ensure that *all* deregisters happen after the *last* register
+    last_register_idx = max(register_indices)
+    for d_idx in deregister_indices:
+        assert d_idx > last_register_idx, (
+            f"Found deregister at position {d_idx} before last register at position {last_register_idx}. "
+            f"Flash RPCs: {servicer.flash_rpc_calls}"
+        )
+
+
+@skip_github_non_linux
+@pytest.mark.timeout(10)
+def test_server_isolated_deploy_isolated_container(servicer, deployed_support_function_definitions):
+    # deploy_app_externally + _run_container_process
+    pass
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_server_lifecycle_signals_correctly_registered(servicer, tmp_path):
+    """
+    Test that verifies signals are disabled BEFORE Server exit functions run.
+
+    This confirms the complete order of lifecycle operations:
+    """
+    pass
