@@ -13,6 +13,7 @@ from typing import Any, Callable, Generator, Optional, Sequence
 import modal._object
 import modal._runtime.container_io_manager
 import modal.cls
+import modal.server
 from modal import Function
 from modal._functions import _Function
 from modal._partial_function import (
@@ -129,21 +130,23 @@ class Service(metaclass=ABCMeta):
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> dict[str, "FinalizedFunction"]: ...
 
-    @abstractmethod
     @contextmanager
     def lifecycle_presnapshot(
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ) -> Generator[None, None, None]: ...
+    ) -> Generator[None, None, None]:
+        # Default no-op implementation for services without pre-snapshot lifecycle handling
+        yield
 
-    @abstractmethod
     @contextmanager
     def lifecycle_postsnapshot(
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ) -> Generator[None, None, None]: ...
+    ) -> Generator[None, None, None]:
+        # Default no-op implementation for services without post-snapshot lifecycle handling
+        yield
 
     @contextmanager
     def execution_context(
@@ -303,13 +306,28 @@ class ImportedFunction(Service):
             )
         }
 
+
+class _LifecycleManager:
+    """Lifecycle manager for class-based services (Cls and Server).
+
+    Handles pre snapshot, post snapshot, and exit lifecycle handling
+    """
+
+    user_cls_instance: Any
+    function_def: api_pb2.Function
+
     @contextmanager
     def lifecycle_presnapshot(
         self,
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ):
-        # This is a no-op for imported functions since @enter methods are not supported
+        # Identify all "enter" methods that need to run before we snapshot.
+        if not self.function_def.is_auto_snapshot:
+            pre_snapshot_methods = _find_callables_for_obj(
+                self.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
+            )
+            call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
         yield
 
     @contextmanager
@@ -318,12 +336,26 @@ class ImportedFunction(Service):
         event_loop: UserCodeEventLoop,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ):
-        # This is a no-op for imported functions since @enter methods are not supported
-        yield
+        # Identify the "enter" methods to run after resuming from a snapshot.
+        flash_entry = _FlashContainerEntry(self.function_def.http_config)
+        if not self.function_def.is_auto_snapshot:
+            post_snapshot_methods = _find_callables_for_obj(
+                self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
+            )
+            call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
+            flash_entry.enter()
+        try:
+            yield
+        finally:
+            if not self.function_def.is_auto_snapshot:
+                flash_entry.stop()
+                exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
+                call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
+                flash_entry.close()
 
 
 @dataclass
-class ImportedClass(Service):
+class ImportedClass(_LifecycleManager, Service):
     user_cls_instance: Any
     app: "modal.app._App"
     service_deps: Optional[Sequence["modal._object._Object"]]
@@ -373,42 +405,18 @@ class ImportedClass(Service):
             finalized_functions[method_name] = finalized_function
         return finalized_functions
 
-    @contextmanager
-    def lifecycle_presnapshot(
-        self,
-        event_loop: UserCodeEventLoop,
-        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ):
-        # Identify all "enter" methods that need to run before we snapshot.
-        if not self.function_def.is_auto_snapshot:
-            pre_snapshot_methods = _find_callables_for_obj(
-                self.user_cls_instance, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
-            )
-            call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
-        yield
 
-    @contextmanager
-    def lifecycle_postsnapshot(
-        self,
-        event_loop: UserCodeEventLoop,
-        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    ):
-        flash_entry = _FlashContainerEntry(self.function_def.http_config)
-        # Identify the "enter" methods to run after resuming from a snapshot.
-        if not self.function_def.is_auto_snapshot:
-            post_snapshot_methods = _find_callables_for_obj(
-                self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
-            )
-            call_lifecycle_functions(event_loop, container_io_manager, list(post_snapshot_methods.values()))
-            flash_entry.enter()
-        try:
-            yield
-        finally:
-            if not self.function_def.is_auto_snapshot:
-                flash_entry.stop()
-                exit_methods = _find_callables_for_obj(self.user_cls_instance, _PartialFunctionFlags.EXIT)
-                call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
-                flash_entry.close()
+@dataclass
+class ImportedServer(_LifecycleManager, Service):
+    user_cls_instance: Any
+    app: "modal.app._App"
+    service_deps: Optional[Sequence["modal._object._Object"]]
+    function_def: api_pb2.Function
+
+    def get_finalized_functions(
+        self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
+    ) -> dict[str, "FinalizedFunction"]:
+        return {}
 
 
 def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs: dict[str, Any]) -> typing.Any:
@@ -513,7 +521,7 @@ def import_class_service(
     """
     active_app: Optional["modal.app._App"]
     service_deps: Optional[Sequence["modal._object._Object"]]
-    cls_or_user_cls: typing.Union[type, modal.cls.Cls]
+    cls_or_user_cls: typing.Union[type, modal.cls.Cls, modal.server.Server]
 
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert ser_user_cls is not None
@@ -527,9 +535,8 @@ def import_class_service(
             raise LocalFunctionError("Attempted to load a class defined in a function scope")
 
         parts = qual_name.split(".")
-        if not (
-            len(parts) == 2 and parts[1] == "*"
-        ):  # the "function name" of a class service "function placeholder" is expected to be "ClassName.*"
+        # Class service functions have pattern "ClassName.*", servers use "ClassName"
+        if not (len(parts) == 1 or (len(parts) == 2 and parts[1] == "*")):
             raise ExecutionError(
                 f"Internal error: Invalid 'service function' identifier {qual_name}. Please contact Modal support"
             )
@@ -538,7 +545,22 @@ def import_class_service(
         cls_name = parts[0]
         cls_or_user_cls = getattr(module, cls_name)
 
-    if isinstance(cls_or_user_cls, modal.cls.Cls):
+    if isinstance(cls_or_user_cls, modal.server.Server):
+        _server = typing.cast(modal._server._Server, synchronizer._translate_in(cls_or_user_cls))
+        server_service_function: _Function = _server._get_service_function()
+        service_deps = server_service_function.deps(only_explicit_mounts=True)
+        active_app = _server._get_app()
+        user_cls = _server._get_user_cls()
+        user_cls_instance = user_cls()
+
+        # Create server object with lifecycle methods registered.
+        return ImportedServer(
+            user_cls_instance=user_cls_instance,
+            app=active_app,
+            service_deps=service_deps,
+            function_def=function_def,
+        )
+    elif isinstance(cls_or_user_cls, modal.cls.Cls):
         _cls = typing.cast(modal.cls._Cls, synchronizer._translate_in(cls_or_user_cls))
         class_service_function: _Function = _cls._get_class_service_function()
         service_deps = class_service_function.deps(only_explicit_mounts=True)

@@ -722,7 +722,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     f"Function {raw_f} has a schedule, so it needs to support being called with no arguments"
                 )
         else:
-            # must be a "class service function"
             assert info.user_cls
             assert not webhook_config
             assert not schedule
@@ -734,7 +733,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ]
 
         retry_policy = _parse_retries(
-            retries, f"Function '{info.get_tag()}'" if info.raw_f else f"Class '{info.get_tag()}'"
+            retries,
+            f"Function '{info.get_tag()}'" if info.raw_f else f"Class '{info.get_tag()}'",
         )
 
         if retry_policy is not None:

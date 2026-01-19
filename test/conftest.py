@@ -587,6 +587,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         input_plane_region = definition.experimental_options.get("input_plane_region")
         return input_plane_region
 
+    def _get_experimental_flash_urls(self, definition: Union[api_pb2.Function, api_pb2.FunctionData]) -> list[str]:
+        """Generate mock flash URLs for functions with http_config."""
+        if not definition.HasField("http_config") or not definition.http_config.proxy_regions:
+            return []
+        # Generate URLs in format: https://modal-labs--{function-name}.modal-{region}.modal.direct
+        function_name = definition.function_name.lower().replace("_", "-")
+        urls = []
+        for region in definition.http_config.proxy_regions:
+            urls.append(f"https://modal-labs--{function_name}.modal-{region}.modal.direct")
+        return urls
+
     def get_function_metadata(self, function_id: str) -> api_pb2.FunctionHandleMetadata:
         function_proto: api_pb2.Function = self.app_functions[function_id]
         definition_id = self.function_id_to_definition_id[function_id]
@@ -619,6 +630,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             definition_id=definition_id,
             supported_input_formats=function_proto.supported_input_formats,
             supported_output_formats=function_proto.supported_output_formats,
+            _experimental_flash_urls=self._get_experimental_flash_urls(function_proto),
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
