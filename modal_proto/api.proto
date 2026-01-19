@@ -1561,8 +1561,6 @@ message Function {
 
   bool single_use_containers = 91; // When True, containers will shut down after handling a single input
   bool is_server = 92; // When True, the function is a server function
-
-  bool is_server = 92; // When True, the function is a server-side function.
 }
 
 message FunctionAsyncInvokeRequest {
