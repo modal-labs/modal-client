@@ -498,13 +498,13 @@ class _Mount(_Object, type_prefix="mo"):
         n_seen, n_finished = 0, 0
         total_uploads, total_bytes = 0, 0
         accounted_hashes: set[str] = set()
-        from modal._output import StatusRow
+        from modal._utils.function_utils import _NoOpStatusRow
         from modal.output import _get_output_manager
 
         message_label = _Mount._description(self._entries)
         blob_upload_concurrency = asyncio.Semaphore(16)  # Limit uploads of large files.
         output_mgr = _get_output_manager()
-        status_row = output_mgr.add_status_row() if output_mgr else StatusRow(None)
+        status_row = output_mgr.add_status_row() if output_mgr else _NoOpStatusRow()
 
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
             nonlocal n_seen, n_finished, total_uploads, total_bytes
