@@ -498,7 +498,7 @@ class _Mount(_Object, type_prefix="mo"):
         n_seen, n_finished = 0, 0
         total_uploads, total_bytes = 0, 0
         accounted_hashes: set[str] = set()
-        from modal._output import StatusRow
+        from modal._status_row import StatusRow
         from modal.output import _get_output_manager
 
         message_label = _Mount._description(self._entries)

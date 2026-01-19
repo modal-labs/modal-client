@@ -35,6 +35,7 @@ from rich.tree import Tree
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal_proto import api_pb2
 
+from ._status_row import StatusRow as StatusRow  # Re-export for backward compatibility
 from ._utils.grpc_utils import Retry
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
@@ -117,30 +118,6 @@ class LineBufferedOutput:
         if self._buf:
             self._callback(self._buf)
             self._buf = ""
-
-
-class StatusRow:
-    """A row in the object creation status tree."""
-
-    def __init__(self, progress: "Tree | None"):
-        self._spinner: Spinner | None = None
-        self._step_node = None
-        if progress is not None:
-            self._spinner = OutputManager.step_progress()
-            self._step_node = progress.add(self._spinner)
-
-    def message(self, message: str) -> None:
-        if self._spinner is not None:
-            self._spinner.update(text=message)
-
-    def warning(self, warning: api_pb2.Warning) -> None:
-        if self._step_node is not None:
-            self._step_node.add(f"[yellow]:warning:[/yellow] {warning.message}")
-
-    def finish(self, message: str) -> None:
-        if self._step_node is not None and self._spinner is not None:
-            self._spinner.update(text=message)
-            self._step_node.label = OutputManager.substep_completed(message)
 
 
 class OutputManager:
