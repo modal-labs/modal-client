@@ -13,7 +13,7 @@ from modal._traceback import suppress_tb_frame
 
 from ._load_context import LoadContext
 from ._resolver import Resolver
-from ._utils.async_utils import aclosing
+from ._utils.async_utils import TaskContext, aclosing
 from ._utils.deprecation import deprecation_warning
 from .client import _Client
 from .config import config, logger
@@ -314,9 +314,10 @@ class _Object:
                     self._is_hydrated = False  # un-hydrate and re-resolve
                     # we don't set an explicit Client here, relying on the default
                     # env client to be applied by LoadContext.apply_default
-                    root_load_context = LoadContext.empty()
                     resolver = Resolver()
-                    await resolver.load(typing.cast(_Object, self), root_load_context)
+                    async with TaskContext() as tc:
+                        root_load_context = LoadContext(task_context=tc)
+                        await resolver.load(typing.cast(_Object, self), root_load_context)
                 else:
                     logger.debug(f"reloading non-lazy {self} by replacing client")
                     self._client = client or await _Client.from_env()
@@ -325,11 +326,13 @@ class _Object:
         elif not self._hydrate_lazily:
             self._validate_is_hydrated()
         else:
-            # Set the client on LoadContext before loading
-            root_load_context = LoadContext(client=client)
+            # Set the client on LoadContext before loading, with a TaskContext for proper
+            # exception handling when loading shared dependencies
             resolver = Resolver()
-            with suppress_tb_frame():  # skip this frame by default
-                await resolver.load(self, root_load_context)
+            async with TaskContext() as tc:
+                root_load_context = LoadContext(client=client, task_context=tc)
+                with suppress_tb_frame():  # skip this frame by default
+                    await resolver.load(self, root_load_context)
         return self
 
 

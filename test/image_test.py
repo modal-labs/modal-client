@@ -2093,6 +2093,12 @@ def test_build(servicer, client):
     assert len(ctx.get_requests("ImageGetOrCreate")) == 2
 
 
+def test_build_using_lookup_app(client):
+    app = modal.App.lookup("remote-app", client=client, create_if_missing=True)
+    image = modal.Image.debian_slim().uv_pip_install("scipy", "numpy")
+    image.build(app=app)
+
+
 def test_debian_slim_free_threading_not_supported(servicer, client):
     image = modal.Image.debian_slim(python_version="3.14t")
 

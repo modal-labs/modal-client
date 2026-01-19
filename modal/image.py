@@ -33,7 +33,7 @@ from ._load_context import LoadContext
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import get_preferred_payload_format, serialize
-from ._utils.async_utils import deprecate_aio_usage, synchronize_api, synchronizer
+from ._utils.async_utils import TaskContext, deprecate_aio_usage, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
@@ -959,7 +959,9 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError("App has not been initialized yet. Use the content manager `app.run()` or `App.lookup`")
 
         resolver = Resolver()
-        await resolver.load(self, app._root_load_context)
+        async with TaskContext() as tc:
+            load_context = LoadContext(task_context=tc).merged_with(app._root_load_context)
+            await resolver.load(self, load_context)
         return self
 
     def pip_install(

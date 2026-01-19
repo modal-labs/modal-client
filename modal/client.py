@@ -74,6 +74,7 @@ class _Client:
     _stub: Optional[modal_api_grpc.ModalClientModal] = None
     _auth_token_manager: Optional[_AuthTokenManager] = None
     _snapshotted: bool = False
+    _connection_manager: Optional[ConnectionManager] = None
     client_type: "api_pb2.ClientType.ValueType"
 
     def __init__(
@@ -315,6 +316,7 @@ class _Client:
         # Get a valid grpclib channel, reusing existing channels if possible.
         # This prevents usage of stale channels across forks of processes.
         await self._reset_on_pid_change()
+        assert self._connection_manager  # invariant: ._open() should always have been called before this
         return await self._connection_manager.get_or_create_channel(server_url)
 
     @synchronizer.nowrap
