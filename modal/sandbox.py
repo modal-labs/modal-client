@@ -150,6 +150,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         experimental_options: Optional[dict[str, bool]] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
+        custom_domain: Optional[str] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -259,6 +260,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 verbose=verbose,
                 name=name,
                 experimental_options=experimental_options,
+                custom_domain=custom_domain,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
@@ -315,6 +317,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
+        # If set, connections to this sandbox will be subdomains of this domain rather than the default.
+        # Custom domains must be configured manually by Modal. They are different from the custom domains
+        # in the Modal dashboard.
+        custom_domain: Optional[str] = None,
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
@@ -376,6 +382,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             client=client,
             verbose=verbose,
             pty_info=pty_info,
+            custom_domain=custom_domain,
         )
 
     @staticmethod
@@ -409,6 +416,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         verbose: bool = False,
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        custom_domain: Optional[str] = None,
     ):
         """Private method used internally.
 
@@ -457,6 +465,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             experimental_options=experimental_options,
             enable_snapshot=_experimental_enable_snapshot,
             verbose=verbose,
+            custom_domain=custom_domain,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
