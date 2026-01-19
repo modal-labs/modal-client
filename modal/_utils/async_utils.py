@@ -405,13 +405,13 @@ class TaskContext:
     This differs from the standard library `asyncio.TaskGroup` in that it *cancels* tasks still
     running after exiting the context manager, rather than waiting for them to finish.
 
-    A `TaskContext` can have an optional `grace` period in seconds, which will wait for a certain
-    amount of time before cancelling all remaining tasks. This is useful for allowing tasks to
-    gracefully exit when they determine that the context is shutting down.
+    Arguments:
+    `grace: float`: period in seconds, which will wait for a certain amount of time before cancelling
+    all remaining tasks. This is useful for allowing tasks to finish after the context exits.
 
-    A task is first allowed up to `grace` seconds to exit by itself. If the task doesn't finish
-    in that time, it will be cancelled. Cancellation itsels is allowed to take up to `cancellation_grace`
-    seconds to run before the context manager exits with potentially dangling tasks.
+    `cancellation_grace: float = 1.0`: period in seconds that cancelled tasks are allowed to stall before
+    they exit once they get cancelled (e.g. if they do async handling of the CancelledError). If tasks
+    take longer than this to exit the tasks are left dangling when the context exits.
 
     Usage:
 
