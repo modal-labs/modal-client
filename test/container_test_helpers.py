@@ -484,6 +484,7 @@ def _container_args(
     ],
     method_definitions: dict[str, api_pb2.MethodDefinition] = {},
     http_config: Optional[api_pb2.HTTPConfig] = None,
+    is_server: bool = False,
 ):
     if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
         app_layout = api_pb2.AppLayout(
@@ -539,6 +540,7 @@ def _container_args(
         supported_output_formats=supported_output_formats,
         method_definitions=method_definitions,
         http_config=http_config,
+        is_server=is_server,
     )
 
     return api_pb2.ContainerArguments(
