@@ -402,26 +402,32 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
 class TaskContext:
     """A structured group that helps manage stray tasks.
 
-    This differs from the standard library `asyncio.TaskGroup` in that it cancels all tasks still
+    This differs from the standard library `asyncio.TaskGroup` in that it *cancels* tasks still
     running after exiting the context manager, rather than waiting for them to finish.
 
-    A `TaskContext` can have an optional `grace` period in seconds, which will wait for a certain
-    amount of time before cancelling all remaining tasks. This is useful for allowing tasks to
-    gracefully exit when they determine that the context is shutting down.
+    Arguments:
+    `grace: float`: period in seconds, which will wait for a certain amount of time before cancelling
+    all remaining tasks. This is useful for allowing tasks to finish after the context exits.
+
+    `cancellation_grace: float = 1.0`: period in seconds that cancelled tasks are allowed to stall before
+    they exit once they get cancelled (e.g. if they do async handling of the CancelledError). If tasks
+    take longer than this to exit the tasks are left dangling when the context exits.
 
     Usage:
 
     ```python notest
-    async with TaskContext() as task_context:
+    async with TaskContext(grace=1.0) as task_context:
         task = task_context.create_task(coro())
     ```
     """
 
     _loops: set[asyncio.Task]
 
-    def __init__(self, grace: Optional[float] = None):
+    def __init__(self, grace: Optional[float] = None, *, cancellation_grace: float = 1.0):
         self._grace = grace  # grace is the time we want for tasks to finish before cancelling them
-        self._cancellation_grace: float = 1.0  # extra graceperiod for the cancellation itself to "bubble up"
+        self._cancellation_grace: float = (
+            cancellation_grace  # extra graceperiod for the cancellation itself to "bubble up"
+        )
         self._loops = set()
 
     async def start(self):
@@ -438,10 +444,19 @@ class TaskContext:
         return self
 
     async def stop(self):
+        """This is called when exiting the TaskContext
+
+        Two important properties that we need to maintain here:
+        * Should never raise exceptions as a result
+        of exceptions (incl. cancellations) in the contained tasks
+        * Should not have an open-ended runtime, even if
+        the contained tasks are uncooperative with cancellations.
+        """
         self._exited.set()
         await asyncio.sleep(0)  # Causes any just-created tasks to get started
         unfinished_tasks = [t for t in self._tasks if not t.done()]
         gather_future = None
+
         try:
             if self._grace is not None and unfinished_tasks:
                 gather_future = asyncio.gather(*unfinished_tasks, return_exceptions=True)
@@ -458,17 +473,16 @@ class TaskContext:
 
             cancelled_tasks: list[asyncio.Task] = []
             for task in self._tasks:
-                if task.done() and not task.cancelled():
-                    # Raise any exceptions if they happened.
-                    # Only tasks without a done_callback will still be present in self._tasks
-                    task.result()
-
                 if task.done():
-                    continue
-
-                # Cancel any remaining unfinished tasks.
-                task.cancel()
-                cancelled_tasks.append(task)
+                    # consume potential exceptions so we don't get warnings
+                    # not that this is not supposed to reraise exceptions
+                    # since those are expected to be reraised by aexit anyway
+                    with contextlib.suppress(BaseException):
+                        task.result()
+                else:
+                    # Cancel any remaining unfinished tasks.
+                    task.cancel()
+                    cancelled_tasks.append(task)
 
             cancellation_gather = asyncio.gather(*cancelled_tasks, return_exceptions=True)
             try:
@@ -479,7 +493,22 @@ class TaskContext:
             await asyncio.sleep(0)  # wake up coroutines waiting for cancellations
 
     async def __aexit__(self, exc_type, value, tb):
-        await self.stop()
+        """
+        This is a bit involved:
+        * If there is an exception within the "context", we typically always want to reraise that
+        * If a cancellation comes in *during* aexit/stop execution itself, we don't actually cancel
+          the exit logic (it's already performing cancellation logic of sorts), but we do reraise
+          the CancelledError to prevent muting cancellation chains
+        """
+        stop_task = asyncio.ensure_future(self.stop())
+        try:
+            await asyncio.shield(stop_task)
+        except asyncio.CancelledError:
+            if not stop_task.done():
+                # External cancellation - wait for stop() to finish, then propagate
+                with contextlib.suppress(asyncio.CancelledError):
+                    await stop_task  # always run stop_task to completion
+            raise
 
     def create_task(self, coro_or_task) -> asyncio.Task:
         if isinstance(coro_or_task, asyncio.Task):
@@ -537,9 +566,9 @@ class TaskContext:
         For example, if you use `asyncio.gather(t1, t2, t3)` and t2 raises an exception, then t1 and
         t3 would continue running. With `TaskContext.gather(t1, t2, t3)`, they are cancelled.
 
-        (It's still acceptable to use `asyncio.gather()` if you don't need cancellation — for
+        It's still useful to use `asyncio.gather()` if you don't need cancellation — for
         example, if you're just gathering quick coroutines with no side-effects. Or if you're
-        gathering the tasks with `return_exceptions=True`.)
+        gathering the tasks with `return_exceptions=True`.
 
         Usage:
 
@@ -557,8 +586,8 @@ class TaskContext:
         ```
         """
         async with TaskContext() as tc:
-            results = await asyncio.gather(*(tc.create_task(coro) for coro in coros))
-        return results
+            tasks = [tc.create_task(coro) for coro in coros]
+            return await asyncio.gather(*tasks)
 
 
 def run_coro_blocking(coro):

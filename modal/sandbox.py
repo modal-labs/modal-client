@@ -491,8 +491,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         client = client or app_client
 
         resolver = Resolver()
-        load_context = LoadContext(client=client, app_id=app_id)
-        await resolver.load(obj, load_context)
+        async with TaskContext() as tc:
+            load_context = LoadContext(client=client, app_id=app_id, task_context=tc)
+            await resolver.load(obj, load_context)
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):

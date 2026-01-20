@@ -9,6 +9,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from typing import Any
 
 import pytest_asyncio
 from synchronicity import Synchronizer
@@ -112,9 +113,11 @@ async def test_task_context_grace():
 async def test_task_context_infinite_loop():
     async with TaskContext(grace=0.01) as task_context:
         counter = 0
+        t0 = time.monotonic()
 
         async def f():
             nonlocal counter
+            print(time.monotonic() - t0)
             counter += 1
 
         t = task_context.infinite_loop(f, sleep=0.1)
@@ -1716,3 +1719,59 @@ async def test_sync_in_async_no_warning_in_ipython(client, monkeypatch):
 
         # Verify NO warning was emitted
         assert len(w) == 0
+
+
+@pytest.mark.asyncio
+async def test_cancellations_dont_mask_real_errors():
+    async def raises():
+        await asyncio.sleep(0.1)
+        raise ValueError("hello")
+
+    fut: asyncio.Future[Any] = asyncio.Future()
+
+    async def other():
+        await fut
+
+    with pytest.raises(ValueError):
+        async with TaskContext() as tc:
+            tc.create_task(other())
+            try:
+                await tc.create_task(raises())
+            except:
+                fut.cancel()
+                raise
+
+
+@pytest.mark.asyncio
+async def test_task_context_dangling_task_error_doesnt_raise():
+    async def raises():
+        raise ValueError()
+
+    async with TaskContext() as tc:
+        tc.create_task(raises())
+        await asyncio.sleep(0.1)  # at this point the task should have failed
+
+
+@pytest.mark.asyncio
+async def test_cancelling_aexit_propagates_cancellation():
+    # task context's exit will ignore cancellations,
+    # but it should still reraise the cancellederror (unless there is an exception
+    # in the context). This is to ensure that a cancellation during a "clean"
+    # aexit won't swallow cancellations entirely, preventing unwinding of a
+    # call stack
+    async def longrunning():
+        await asyncio.sleep(2)
+
+    async def context_task():
+        async with TaskContext(grace=0.2) as tc:
+            tc.create_task(longrunning())
+            raise Exception()  # we exit with an exception
+
+    t = asyncio.create_task(context_task())
+    await asyncio.sleep(0.01)
+    t.cancel()
+    t0 = time.monotonic()
+    with pytest.raises(asyncio.CancelledError):
+        await t
+    dur = time.monotonic() - t0
+    assert 0.15 < dur < 0.25, "cancellation of aexit will still run the full cancellation"
