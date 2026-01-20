@@ -78,8 +78,14 @@ class _Server:
     # ============ Live Methods ============
 
     @live_method
-    async def get_urls(self) -> Optional[list[str]]:
-        return await self._get_service_function()._experimental_get_flash_urls()
+    async def get_urls(self) -> Optional[dict[str, str]]:
+        def _extract_region_from_url(url: str) -> str:
+            return url.split(".")[-3].removeprefix("modal-")
+
+        return {
+            _extract_region_from_url(url): url
+            for url in await self._get_service_function()._experimental_get_flash_urls()
+        }
 
     @live_method
     async def update_autoscaler(
