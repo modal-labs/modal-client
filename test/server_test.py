@@ -185,7 +185,8 @@ def test_server_allows_default_init():
 def test_server_rejects_method_decorator():
     """Test that @modal.method() cannot be used on server classes."""
     with pytest.raises(
-        InvalidError, match=re.escape("cannot have @method() decorated functions. Servers only expose HTTP endpoints.")
+        InvalidError,
+        match=re.escape("cannot have `@modal.method()` decorated functions. Servers only expose HTTP endpoints."),
     ):
         app = modal.App("server-method-test", include_source=False)
 
@@ -240,7 +241,11 @@ def test_server_rejects_parametrization_with_default():
 
 def test_server_rejects_concurrent_decorator():
     """Test that @modal.concurrent() cannot be used on server classes."""
-    with pytest.raises(InvalidError, match="cannot have @concurrent"):
+    with pytest.raises(
+        InvalidError,
+        match=r"Server class ConcurrentServer cannot be decorated with `@modal\.concurrent\(\)`. "
+        r"Please use `target_concurrency` param instead\.",
+    ):
         app = modal.App("server-concurrent-test", include_source=False)
 
         @app.server(port=8000, proxy_regions=["us-east"], serialized=True)
