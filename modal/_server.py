@@ -41,10 +41,10 @@ class _Server:
     See [lifecycle hooks](https://modal.com/docs/guide/lifecycle-functions) for more information.
 
     Generally, you will not construct a Server directly.
-    Instead, use the [`@app.server()`](https://modal.com/docs/reference/modal.App#server) decorator.
+    Instead, use the [`@app._experimental_server()`](https://modal.com/docs/reference/modal.App#server) decorator.
 
     ```python notest
-    @app.server(port=8000, proxy_regions=["us-east", "us-west"])
+    @app._experimental_server(port=8000, proxy_regions=["us-east", "us-west"])
     class MyServer:
         @modal.enter()
         def start_server(self):
@@ -135,7 +135,7 @@ class _Server:
     ) -> "_Server":
         """Create a Server from a local class definition."""
 
-        # Note: Validation should be done by the caller (app.server()) BEFORE creating the Server.
+        # Note: Validation should be done by the caller (app._experimental_server()) BEFORE creating the Server.
         # Extract the underlying class if wrapped in a _PartialFunction (e.g., from @modal.clustered())
         user_cls = _Server._extract_user_cls(wrapped_user_cls)
 
@@ -188,7 +188,7 @@ class _Server:
         user_cls = _Server._extract_user_cls(wrapped_user_cls)
 
         if not inspect.isclass(user_cls):
-            raise TypeError("The @app.server() decorator must be used on a class.")
+            raise TypeError("The @app._experimental_server() decorator must be used on a class.")
 
         # Check for modal.parameter() - not allowed on server classes
         params = {k: v for k, v in user_cls.__dict__.items() if is_parameter(v)}

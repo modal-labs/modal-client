@@ -1235,7 +1235,7 @@ class _App:
         Example:
 
         ```python
-        @app.server(port=8000, proxy_regions=["us-east"])
+        @app._experimental_server(port=8000, proxy_regions=["us-east"])
         class MyServer:
             @modal.enter()
             def start(self):
@@ -1247,7 +1247,7 @@ class _App:
         ```
         """
         if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@app.server()`.")
+            raise InvalidError("Did you forget parentheses? Suggestion: `@app._experimental_server()`.")
 
         # Validate HTTP server config
         validate_http_server_config(

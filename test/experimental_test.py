@@ -20,7 +20,7 @@ class C:
         pass
 
 
-@app.server(port=8000, proxy_regions=["us-east"], serialized=True)
+@app._experimental_server(port=8000, proxy_regions=["us-east"], serialized=True)
 class SimpleServer:
     @modal.enter()
     def start(self):

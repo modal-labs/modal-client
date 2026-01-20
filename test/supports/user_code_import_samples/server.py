@@ -19,4 +19,4 @@ class S:
 
 UndecoratedS = S  # keep a reference to original class before overwriting
 
-DecoratedS = app.server(port=8000, proxy_regions=["us-east"])(S)  # type: ignore # "decorator" of S
+DecoratedS = app._experimental_server(port=8000, proxy_regions=["us-east"])(S)  # type: ignore # "decorator" of S
