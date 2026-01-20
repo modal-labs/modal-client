@@ -21,6 +21,7 @@ from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._load_context import LoadContext
 from ._object import _Object, live_method, live_method_gen
+from ._output import FunctionCreationStatus
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -47,7 +48,6 @@ from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
-    FunctionCreationStatus,
     FunctionInfo,
     _create_input,
     _process_result,
