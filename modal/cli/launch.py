@@ -10,7 +10,7 @@ import rich.panel
 from rich.markdown import Markdown
 from typer import Typer
 
-from .._output import make_console
+from .._rich_output import make_console
 from ..exception import _CliUserExecutionError
 from ..output import enable_output
 from ..runner import run_app

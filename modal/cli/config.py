@@ -3,7 +3,7 @@ import json
 
 import typer
 
-from modal._output import make_console
+from modal._rich_output import make_console
 from modal.config import _profile, _store_user_config, config
 from modal.environments import Environment
 

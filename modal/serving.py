@@ -8,8 +8,6 @@ from typing import TYPE_CHECKING, Optional
 
 from synchronicity.async_wrap import asynccontextmanager
 
-from modal._output import OutputManager
-
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api
 from ._utils.logger import logger
 from ._watcher import watch
@@ -37,8 +35,7 @@ async def _restart_serve(
 ) -> SpawnProcess:
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
     is_ready = ctx.Event()
-    output_mgr = OutputManager.get()
-    show_progress = output_mgr is not None
+    show_progress = _get_output_manager().is_enabled
     p = ctx.Process(target=_run_serve, args=(import_ref, existing_app_id, is_ready, environment_name, show_progress))
     p.start()
     await asyncify(is_ready.wait)(timeout)
@@ -50,15 +47,14 @@ async def _restart_serve(
 async def _terminate(proc: Optional[SpawnProcess], timeout: float = 5.0):
     if proc is None:
         return
+    output_mgr = _get_output_manager()
     try:
         proc.terminate()
         await asyncify(proc.join)(timeout)
         if proc.exitcode is not None:
-            if output_mgr := _get_output_manager():
-                output_mgr.print(f"Serve process {proc.pid} terminated")
+            output_mgr.print(f"Serve process {proc.pid} terminated")
         else:
-            if output_mgr := _get_output_manager():
-                output_mgr.print(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it[/red]")
+            output_mgr.print(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it[/red]")
             proc.kill()
     except ProcessLookupError:
         pass  # Child process already finished
@@ -76,10 +72,10 @@ async def _run_watch_loop(
         unsupported_msg = "Live-reload skipped. This feature is currently unsupported on Windows"
         " This can hopefully be fixed in a future version of Modal."
 
+    output_mgr = _get_output_manager()
     if unsupported_msg:
-        if output_mgr := _get_output_manager():
-            async for _ in watcher:
-                output_mgr.print(unsupported_msg)
+        async for _ in watcher:
+            output_mgr.print(unsupported_msg)
     else:
         curr_proc = None
         try:

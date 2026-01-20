@@ -73,8 +73,7 @@ def _print_watched_paths(paths: set[Path]):
     for path in paths:
         output_tree.add(f"Watching {path}.")
 
-    if output_mgr := _get_output_manager():
-        output_mgr.print(output_tree)
+    _get_output_manager().print(output_tree)
 
 
 def _watch_args_from_mounts(mounts: list[_Mount]) -> tuple[set[Path], AppFilesFilter]:

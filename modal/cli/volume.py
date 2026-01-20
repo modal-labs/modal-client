@@ -10,7 +10,7 @@ from rich.syntax import Syntax
 from typer import Argument, Option, Typer
 
 import modal
-from modal._output import OutputManager, ProgressHandler, make_console
+from modal._rich_output import ProgressHandler, RichOutputManager, make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
@@ -102,7 +102,7 @@ async def get(
             overwrite=force,
             progress_cb=progress_handler.progress,
         )
-    console.print(OutputManager.step_completed("Finished downloading files to local!"))
+    console.print(RichOutputManager.step_completed("Finished downloading files to local!"))
 
 
 @volume_cli.command(
@@ -208,7 +208,7 @@ async def put(
                     batch.put_directory(local_path, remote_path)
             except FileExistsError as exc:
                 raise UsageError(str(exc))
-        console.print(OutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+        console.print(RichOutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
     else:
@@ -225,7 +225,7 @@ async def put(
 
             except FileExistsError as exc:
                 raise UsageError(str(exc))
-        console.print(OutputManager.step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
+        console.print(RichOutputManager.step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
 
 
 @volume_cli.command(
@@ -242,7 +242,7 @@ async def rm(
     volume = _Volume.from_name(volume_name, environment_name=env)
     await volume.remove_file(remote_path, recursive=recursive)
     console = make_console()
-    console.print(OutputManager.step_completed(f"{remote_path} was deleted successfully!"))
+    console.print(RichOutputManager.step_completed(f"{remote_path} was deleted successfully!"))
 
 
 @volume_cli.command(

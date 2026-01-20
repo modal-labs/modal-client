@@ -5,7 +5,7 @@ from typing import Optional
 import typer
 from rich.rule import Rule
 
-from modal._output import make_console
+from modal._rich_output import make_console
 from modal._utils.async_utils import synchronizer
 
 from . import run, shell as shell_module

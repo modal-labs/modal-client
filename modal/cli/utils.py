@@ -10,7 +10,8 @@ from rich.text import Text
 
 from modal_proto import api_pb2
 
-from .._output import OutputManager, get_app_logs_loop, make_console
+from .._output import get_app_logs_loop
+from .._rich_output import RichOutputManager, make_console
 from .._utils.async_utils import synchronizer
 from ..client import _Client
 from ..environments import ensure_env
@@ -25,7 +26,7 @@ async def stream_app_logs(
     show_timestamps: bool = False,
 ):
     client = await _Client.from_env()
-    output_mgr = OutputManager(status_spinner_text=f"Tailing logs for {app_id}", show_timestamps=show_timestamps)
+    output_mgr = RichOutputManager(status_spinner_text=f"Tailing logs for {app_id}", show_timestamps=show_timestamps)
     try:
         with output_mgr.show_status_spinner():
             await get_app_logs_loop(client, output_mgr, app_id=app_id, task_id=task_id, app_logs_url=app_logs_url)

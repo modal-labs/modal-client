@@ -21,6 +21,7 @@ from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._load_context import LoadContext
 from ._object import _Object, live_method, live_method_gen
+from ._output import FunctionCreationStatus
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -47,7 +48,6 @@ from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
-    FunctionCreationStatus,
     FunctionInfo,
     _create_input,
     _process_result,
@@ -1639,10 +1639,7 @@ Use the `Function.get_web_url()` method instead.
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        if output_mgr := _get_output_manager():
-            count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
-        else:
-            count_update_callback = None
+        count_update_callback = _get_output_manager().function_progress_callback(self._function_name, total=None)
 
         if self._input_plane_url:
             async with aclosing(

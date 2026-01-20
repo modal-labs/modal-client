@@ -3195,11 +3195,15 @@ def tmp_cwd(tmp_path, monkeypatch):
 
 
 def run_cli_command(args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
-    if sys.version_info < (3, 10):
-        # mix_stderr was removed in Click 8.2 which also removed support for Python 3.9
-        # The desired behavior is the same across verisons, but we need to explicitly enable it on Python 3.9
-        runner = click.testing.CliRunner(mix_stderr=False)
+    from importlib.metadata import version as get_version
+
+    from packaging.version import parse as parse_version
+
+    if parse_version(get_version("click")) < parse_version("8.2"):
+        # mix_stderr=False is required to capture stderr separately in older Click versions
+        runner = click.testing.CliRunner(mix_stderr=False)  # type: ignore   # this will fail type checks on newer click
     else:
+        # Click 8.2+ defaults to separate stderr capture
         runner = click.testing.CliRunner()
     # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
     # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
