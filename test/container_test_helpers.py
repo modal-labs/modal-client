@@ -372,9 +372,18 @@ def _run_container_process_auto(
         f.write(container_args.SerializeToString())
 
     if inputs is None:
-        servicer.container_inputs = _get_multi_inputs([]) if function_def.is_class else _get_inputs()
+        servicer.container_inputs = (
+            _get_multi_inputs([]) if function_def.is_class or function_def.is_server else _get_inputs()
+        )
     elif function_def.is_class or function_def.is_server:
-        servicer.container_inputs = _get_multi_inputs(inputs)
+        if function_def.is_server and inputs == []:
+            # Grace period for server heartbeat to start before the container exits.
+            servicer.container_inputs = [
+                api_pb2.FunctionGetInputsResponse(rate_limit_sleep_duration=0.2),
+                api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
+            ]
+        else:
+            servicer.container_inputs = _get_multi_inputs(inputs)
     else:
         servicer.container_inputs = inputs
 

@@ -9,7 +9,7 @@ import modal.experimental
 app = modal.App("test-server-deploy")
 
 
-@app.server(port=8000, min_containers=1, proxy_regions=["us-east"], serialized=True)
+@app.server(port=8000, min_containers=1, proxy_regions=["us-east"])
 
 # @app.cls(image=modal.Image.debian_slim().pip_install("fastapi", "uvicorn"))
 # @modal.experimental.http_server(port=8000, proxy_regions=["us-east"])

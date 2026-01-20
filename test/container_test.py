@@ -2443,53 +2443,11 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
     stdout, stderr = container_process.communicate(timeout=3)
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
 
+    # TODO(claudia): refactor to use servicer.intercept()
+
     expected_events = "enter,enter_post_snapshot"
     assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
 
-    assert "register" in servicer.flash_rpc_calls, (
-        f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
-    )
-    assert "deregister" in servicer.flash_rpc_calls, (
-        f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
-    )
-
-    # @skip_github_non_linux
-    # def test_container_heartbeat_survives_grpc_deadlines(
-    #     servicer, caplog, monkeypatch, deployed_support_function_definitions
-    # ):
-    #     monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", 0.01)
-    #     num_heartbeats = 0
-
-    #     async def heartbeat_responder(servicer, stream):
-    #         nonlocal num_heartbeats
-    #         num_heartbeats += 1
-    #         await stream.recv_message()
-    #         raise GRPCError(Status.DEADLINE_EXCEEDED)
-
-    #     with servicer.intercept() as ctx:
-    #         ctx.set_responder("ContainerHeartbeat", heartbeat_responder)
-    #         ret = _run_container_auto(
-    #             servicer,
-    #             "delay",
-    #             deployed_support_function_definitions,
-    #             inputs=_get_inputs(((2,), {})),
-    #         )
-    #         assert ret.task_result is None  # should not cause a failure result
-    #     loop_iteration_failures = caplog.text.count("Heartbeat attempt failed")
-    #     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
-    #     assert (
-    #         loop_iteration_failures > 1
-    #     )  # one occurence per failing `retry_transient_errors()`, so fewer than the number of failing requests!
-    #     assert loop_iteration_failures < num_heartbeats
-    #     assert num_heartbeats > 4  # more than the default number of retries per heartbeat attempt + 1
-
-    # Verify the enter methods ran
-    expected_events = "enter,enter_post_snapshot"
-    assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
-
-    # Verify Flash RPCs were called in the correct order:
-    # - register: called during enter when heartbeat starts
-    # - deregister: called during stop
     assert "register" in servicer.flash_rpc_calls, (
         f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
     )
