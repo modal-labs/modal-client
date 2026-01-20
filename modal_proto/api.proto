@@ -2819,7 +2819,7 @@ message Sandbox {
   string _restore_instance_type = 35;
 
   // If set, connections to this sandbox will be subdomains of this domain rather than the default.
-  optional string custom_domain = 36;
+  string custom_domain = 36;
 }
 
 message SandboxCreateConnectTokenRequest {
