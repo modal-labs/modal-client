@@ -104,3 +104,31 @@ def test_import_class(monkeypatch, supports_dir, client):
 
 # TODO: add test cases for serialized functions, web endpoints, explicit/implicit generators etc.
 #   with and without decorators in globals scope...
+
+
+def test_import_server(monkeypatch, supports_dir, client):
+    monkeypatch.syspath_prepend(supports_dir)
+    function_def = api_pb2.Function(
+        module_name="user_code_import_samples.server",
+        function_name="S",
+        supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
+    )
+    service = user_code_imports.import_server_service(
+        function_def,
+        service_function_hydration_data=api_pb2.Object(
+            object_id="fu-123",
+        ),
+        client=client,
+        ser_user_cls=None,
+    )
+
+    print(service)
+
+    assert service.app is not None
+    assert service.user_cls_instance is not None
+    assert service.service_deps is None
+    assert service.function_def is not None
+
+    from user_code_import_samples.server import UndecoratedS  # type: ignore
+
+    assert isinstance(service.user_cls_instance, UndecoratedS)
