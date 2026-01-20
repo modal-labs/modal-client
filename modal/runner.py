@@ -313,10 +313,7 @@ async def _run_app(
 
         output_mgr = _get_output_manager()
         if _is_output_enabled():
-            # Defer import so this module is rich-safe
-            # TODO(michael): The get_app_logs_loop function is itself rich-safe aside from accepting an OutputManager
-            # as an argument, so with some refactoring we could avoid the need for this deferred import.
-            from modal._rich_output import get_app_logs_loop
+            from modal._output import get_app_logs_loop
 
             with output_mgr.make_live(output_mgr.step_progress("Initializing...")):
                 initialized_msg = (
