@@ -18,31 +18,34 @@ if TYPE_CHECKING:
     from modal_proto import api_pb2
 
 
-class StatusRow:
-    """A row in the object creation status tree.
-
-    This class handles both enabled and disabled output modes.
-    When disabled (no tree/spinner), all methods become no-ops.
-    """
-
-    def __init__(self, progress: Any = None, spinner: Any = None, step_node: Any = None):
-        self._spinner = spinner
-        self._step_node = step_node
+@runtime_checkable
+class StatusRow(Protocol):
+    """Protocol describing a row in the object creation status tree."""
 
     def message(self, message: str) -> None:
-        if self._spinner is not None:
-            self._spinner.update(text=message)
+        """Update the primary message shown for this row."""
+        ...
 
     def warning(self, warning: "api_pb2.Warning") -> None:
-        if self._step_node is not None:
-            self._step_node.add(f"[yellow]:warning:[/yellow] {warning.message}")
+        """Append a warning message associated with this row."""
+        ...
 
     def finish(self, message: str) -> None:
-        if self._step_node is not None and self._spinner is not None:
-            from ._rich_output import RichOutputManager
+        """Mark the row as finished with the given message."""
+        ...
 
-            self._spinner.update(text=message)
-            self._step_node.label = RichOutputManager.substep_completed(message)
+
+class DisabledStatusRow:
+    """No-op StatusRow used when output is disabled."""
+
+    def message(self, message: str) -> None:
+        pass
+
+    def warning(self, warning: "api_pb2.Warning") -> None:
+        pass
+
+    def finish(self, message: str) -> None:
+        pass
 
 
 @runtime_checkable
@@ -164,7 +167,7 @@ class DisabledOutputManager:
         yield
 
     def add_status_row(self) -> StatusRow:
-        return StatusRow(None)
+        return DisabledStatusRow()
 
     def print(self, renderable: Any) -> None:
         pass

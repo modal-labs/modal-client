@@ -41,7 +41,7 @@ from rich.tree import Tree
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal_proto import api_pb2
 
-from ._output import StatusRow as _StatusRow
+from ._output import StatusRow
 from ._utils.grpc_utils import Retry
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .config import logger
@@ -128,16 +128,28 @@ class LineBufferedOutput:
             self._buf = ""
 
 
-class StatusRow(_StatusRow):
-    """A row in the object creation status tree for rich output."""
+class RichStatusRow:
+    """Rich-backed implementation of the StatusRow protocol."""
 
     def __init__(self, progress: "Tree | None"):
-        spinner: Spinner | None = None
-        step_node = None
+        self._spinner: Spinner | None = None
+        self._step_node = None
         if progress is not None:
-            spinner = RichOutputManager.step_progress()
-            step_node = progress.add(spinner)
-        super().__init__(progress, spinner=spinner, step_node=step_node)
+            self._spinner = RichOutputManager.step_progress()
+            self._step_node = progress.add(self._spinner)
+
+    def message(self, message: str) -> None:
+        if self._spinner is not None:
+            self._spinner.update(text=message)
+
+    def warning(self, warning: api_pb2.Warning) -> None:
+        if self._step_node is not None:
+            self._step_node.add(f"[yellow]:warning:[/yellow] {warning.message}")
+
+    def finish(self, message: str) -> None:
+        if self._step_node is not None and self._spinner is not None:
+            self._spinner.update(text=message)
+            self._step_node.label = RichOutputManager.substep_completed(message)
 
 
 class RichOutputManager:
@@ -220,7 +232,7 @@ class RichOutputManager:
 
     def add_status_row(self) -> StatusRow:
         """Add a status row to the current object tree."""
-        return StatusRow(self._object_tree)
+        return RichStatusRow(self._object_tree)
 
     def print(self, renderable: Any) -> None:
         self._console.print(renderable)
