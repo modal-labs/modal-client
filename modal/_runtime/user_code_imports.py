@@ -505,29 +505,15 @@ def import_single_function_service(
     )
 
 
-def import_class_service(
+def _get_cls_or_user_cls(
     function_def: api_pb2.Function,
-    service_function_hydration_data: api_pb2.Object,
-    class_id: str,
-    client: "modal.client.Client",
     ser_user_cls: Optional[type],
-    cls_args,
-    cls_kwargs,
-) -> Service:
-    """
-    This imports a full class to be able to execute any @method or webhook decorated methods.
-
-    See import_function.
-    """
-    active_app: Optional["modal.app._App"]
-    service_deps: Optional[Sequence["modal._object._Object"]]
-    cls_or_user_cls: typing.Union[type, modal.cls.Cls, modal.server.Server]
-
+) -> typing.Union[type, modal.cls.Cls, modal.server.Server]:
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert ser_user_cls is not None
         cls_or_user_cls = ser_user_cls
     else:
-        # Load the module dynamically
+        # Load the module dynamically for non-serialized class.
         module = importlib.import_module(function_def.module_name)
         qual_name: str = function_def.function_name
 
@@ -544,23 +530,33 @@ def import_class_service(
         assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
         cls_name = parts[0]
         cls_or_user_cls = getattr(module, cls_name)
+    return cls_or_user_cls
 
-    if isinstance(cls_or_user_cls, modal.server.Server):
-        _server = typing.cast(modal._server._Server, synchronizer._translate_in(cls_or_user_cls))
-        server_service_function: _Function = _server._get_service_function()
-        service_deps = server_service_function.deps(only_explicit_mounts=True)
-        active_app = _server._get_app()
-        user_cls = _server._get_user_cls()
-        user_cls_instance = user_cls()
 
-        # Create server object with lifecycle methods registered.
-        return ImportedServer(
-            user_cls_instance=user_cls_instance,
-            app=active_app,
-            service_deps=service_deps,
-            function_def=function_def,
-        )
-    elif isinstance(cls_or_user_cls, modal.cls.Cls):
+def import_class_service(
+    function_def: api_pb2.Function,
+    service_function_hydration_data: api_pb2.Object,
+    class_id: str,
+    client: "modal.client.Client",
+    ser_user_cls: Optional[type],
+    cls_args,
+    cls_kwargs,
+) -> Service:
+    """
+    This imports a full class to be able to execute any @method or webhook decorated methods.
+
+    See import_function.
+    """
+    active_app: Optional["modal.app._App"]
+    service_deps: Optional[Sequence["modal._object._Object"]]
+    cls_or_user_cls: typing.Union[type, modal.cls.Cls]
+
+    cls_or_user_cls = typing.cast(
+        typing.Union[type, modal.cls.Cls],
+        _get_cls_or_user_cls(function_def, ser_user_cls),
+    )
+
+    if isinstance(cls_or_user_cls, modal.cls.Cls):
         _cls = typing.cast(modal.cls._Cls, synchronizer._translate_in(cls_or_user_cls))
         class_service_function: _Function = _cls._get_class_service_function()
         service_deps = class_service_function.deps(only_explicit_mounts=True)
@@ -590,6 +586,55 @@ def import_class_service(
         service_deps=service_deps,
         # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
         _partial_functions=method_partials,
+        function_def=function_def,
+    )
+
+
+def import_server_service(
+    function_def: api_pb2.Function,
+    service_function_hydration_data: api_pb2.Object,
+    client: "modal.client.Client",
+    ser_user_cls: Optional[type],
+) -> Service:
+    """
+    This imports a full class to be able to execute any @method or webhook decorated methods.
+
+    See import_function.
+    """
+    active_app: Optional["modal.app._App"]
+    service_deps: Optional[Sequence["modal._object._Object"]]
+    cls_or_user_cls: typing.Union[type, modal.server.Server]
+
+    cls_or_user_cls = typing.cast(
+        typing.Union[type, modal.server.Server],
+        _get_cls_or_user_cls(function_def, ser_user_cls),
+    )
+
+    if isinstance(cls_or_user_cls, modal.server.Server):
+        _server = typing.cast(modal._server._Server, synchronizer._translate_in(cls_or_user_cls))
+        server_service_function: _Function = _server._get_service_function()
+        service_deps = server_service_function.deps(only_explicit_mounts=True)
+        active_app = _server._get_app()
+        user_cls = _server._get_user_cls()
+        user_cls_instance = user_cls()
+    else:
+        # Undecorated user class (serialized or local scope-decoration).
+        service_deps = None  # we can't infer service deps for now
+        active_app = get_active_app_fallback(function_def)
+        _client = typing.cast("modal.client._Client", synchronizer._translate_in(client))
+        _service_function: modal._functions._Function[Any, Any, Any] = modal._functions._Function._new_hydrated(
+            service_function_hydration_data.object_id,
+            _client,
+            service_function_hydration_data.function_handle_metadata,
+            is_another_app=True,  # this skips re-loading the function, which is required since it doesn't have a loader
+        )
+        _server = modal._server._Server._from_local(cls_or_user_cls, active_app, _service_function)
+
+    # Create server object with lifecycle methods registered.
+    return ImportedServer(
+        user_cls_instance=user_cls_instance,
+        app=active_app,
+        service_deps=service_deps,
         function_def=function_def,
     )
 
