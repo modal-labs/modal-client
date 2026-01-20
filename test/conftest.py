@@ -2904,7 +2904,7 @@ async def run_server(servicer, host=None, port=None, path=None):
 
     async def _start_servicer():
         nonlocal server
-        server = grpclib.server._experimental_server([servicer], status_details_codec=custom_detail_codec)
+        server = grpclib.server.Server([servicer], status_details_codec=custom_detail_codec)
         listen(server, RecvRequest, servicer.recv_request)
         await server.start(host=host, port=port, path=path)
 
