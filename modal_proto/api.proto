@@ -2906,6 +2906,8 @@ message SandboxInfo {
   string image_id = 8;
   ResourceInfo resource_info = 9;
   repeated string regions = 10;
+  uint32 timeout_secs = 11;
+  optional uint32 idle_timeout_secs = 12;
 }
 
 
