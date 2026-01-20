@@ -41,6 +41,7 @@ try:
     from .schedule import Cron, Period
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
+    from .server import Server
     from .snapshot import SandboxSnapshot
     from .volume import Volume
 except Exception:
@@ -75,6 +76,7 @@ __all__ = [
     "SandboxSnapshot",
     "SchedulerPlacement",
     "Secret",
+    "Server",
     "Tunnel",
     "Volume",
     "asgi_app",

@@ -140,6 +140,7 @@ def _run_container(
         api_pb2.DATA_FORMAT_CBOR,
     ],
     method_definitions: dict[str, api_pb2.MethodDefinition] = {},
+    is_server: bool = False,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name=module_name,
@@ -168,6 +169,7 @@ def _run_container(
         class_serialized=class_serialized,
         supported_output_formats=supported_output_formats,
         method_definitions=method_definitions,
+        is_server=is_server,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
@@ -307,6 +309,7 @@ def _run_container_process(
     function_type: "api_pb2.Function.FunctionType.ValueType" = api_pb2.Function.FUNCTION_TYPE_FUNCTION,
     volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
     http_config: Optional[api_pb2.HTTPConfig] = None,
+    is_server: bool = False,
 ) -> subprocess.Popen:
     container_args = _container_args(
         module_name,
@@ -318,6 +321,7 @@ def _run_container_process(
         function_type=function_type,
         volume_mounts=volume_mounts,
         http_config=http_config,
+        is_server=is_server,
     )
 
     # These env vars are always present in containers
@@ -368,9 +372,18 @@ def _run_container_process_auto(
         f.write(container_args.SerializeToString())
 
     if inputs is None:
-        servicer.container_inputs = _get_multi_inputs([]) if function_def.is_class else _get_inputs()
-    elif function_def.is_class:
-        servicer.container_inputs = _get_multi_inputs(inputs)
+        servicer.container_inputs = (
+            _get_multi_inputs([]) if function_def.is_class or function_def.is_server else _get_inputs()
+        )
+    elif function_def.is_class or function_def.is_server:
+        if function_def.is_server:
+            # Grace period for server heartbeat to start before the container exits.
+            servicer.container_inputs = [
+                api_pb2.FunctionGetInputsResponse(rate_limit_sleep_duration=0.2),
+                api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
+            ]
+        else:
+            servicer.container_inputs = _get_multi_inputs(inputs)
     else:
         servicer.container_inputs = inputs
 
@@ -480,6 +493,7 @@ def _container_args(
     ],
     method_definitions: dict[str, api_pb2.MethodDefinition] = {},
     http_config: Optional[api_pb2.HTTPConfig] = None,
+    is_server: bool = False,
 ):
     if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
         app_layout = api_pb2.AppLayout(
@@ -535,6 +549,7 @@ def _container_args(
         supported_output_formats=supported_output_formats,
         method_definitions=method_definitions,
         http_config=http_config,
+        is_server=is_server,
     )
 
     return api_pb2.ContainerArguments(

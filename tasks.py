@@ -369,7 +369,7 @@ def publish_base_images(
 
 
 version_file_contents_template = '''\
-# Copyright Modal Labs 2025
+# Copyright Modal Labs 2026
 """Supplies the current version of the modal client library."""
 
 __version__ = "{}"

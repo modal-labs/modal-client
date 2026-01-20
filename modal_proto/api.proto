@@ -1561,7 +1561,7 @@ message Function {
 
   bool single_use_containers = 91; // When True, containers will shut down after handling a single input
 
-  bool is_server = 92; // When True, the function is a server-side function.
+  bool is_server = 92; // When True, the function is a server function
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1746,7 +1746,7 @@ message FunctionData {
   // when the user provided a custom name= for the Function inside the Application namespace
   string implementation_name = 40;
 
-  bool is_server = 41; // When True, the function is a server-side function.
+  bool is_server = 41; // When True, the function is a server function
 }
 
 message FunctionExtended {
@@ -2113,6 +2113,7 @@ message HTTPConfig {
   uint32 startup_timeout = 3;
   uint32 exit_grace_period = 4;
   bool h2_enabled = 5;
+  uint32 target_concurrency = 6;
 }
 
 message Image {
