@@ -1190,7 +1190,7 @@ class _App:
 
         return wrapper
 
-    def server(
+    def _experimental_server(
         self,
         _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
