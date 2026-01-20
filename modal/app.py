@@ -1210,7 +1210,6 @@ class _App:
         buffer_containers: Optional[int] = None,  # Additional idle containers under active load
         scaledown_window: Optional[int] = None,  # Max idle time before scaling down (seconds)
         proxy: Optional[_Proxy] = None,  # Modal Proxy to use in front of this server
-        # server specific parameters
         port: int = 8000,  # Port the HTTP server listens on
         startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: int = 0,  # Grace period for in-flight requests on shutdown
@@ -1248,7 +1247,7 @@ class _App:
         ```
         """
         if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@app.server(port=8000)`.")
+            raise InvalidError("Did you forget parentheses? Suggestion: `@app.server()`.")
 
         # Validate HTTP server config
         validate_http_server_config(

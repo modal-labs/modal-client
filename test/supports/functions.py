@@ -890,13 +890,13 @@ class FlashClsWithEnter:
 
 
 server_lifecycle_events: list[str] = []
+server_signal_events: list[str] = []
 
 # Create a separate app for server tests since servers require different config
 server_app = modal.App("server-support-app")
 
 
-@server_app.server(port=8002, proxy_regions=["us-east"], serialized=True, enable_memory_snapshot=True)
-class ServerWithEnter:
+class BasicServer:
     @modal.enter(snap=True)
     def enter(self):
         # Redirect stdout/stderr to DEVNULL so communicate() doesn't hang waiting
@@ -920,6 +920,47 @@ class ServerWithEnter:
     @modal.exit()
     def on_exit(self):
         server_lifecycle_events.append("exit")
+        if hasattr(self, "process"):
+            self.process.terminate()
+
+
+@server_app.server(port=8002, proxy_regions=["us-east"], enable_memory_snapshot=True)
+class ServerWithEnter(BasicServer):
+    pass
+
+
+@server_app.server(port=8002, proxy_regions=["us-east"], serialized=True, enable_memory_snapshot=True)
+class SerializedServerWithEnter(BasicServer):
+    pass
+
+
+@server_app.server(port=8003, proxy_regions=["us-east"], serialized=True, enable_memory_snapshot=True)
+class ServerWithExitSignals:
+    @modal.enter(snap=True)
+    def enter(self):
+        # Redirect stdout/stderr to DEVNULL so communicate() doesn't hang waiting
+        # for the subprocess's inherited file descriptors to close.
+        self.process = subprocess.Popen(
+            ["python3", "-m", "http.server", "8003"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        server_signal_events.append("enter")
+
+    @modal.enter(snap=False)
+    def enter_post_snapshot(self):
+        server_signal_events.append("enter_post_snapshot")
+
+    @modal.exit()
+    def on_exit(self):
+        import signal
+
+        sigint_handler = signal.getsignal(signal.SIGINT)
+        if sigint_handler == signal.SIG_IGN:
+            server_signal_events.append("exit_signals_disabled")
+        else:
+            server_signal_events.append("exit_signals_enabled")
+        print(f"[server_signal_events:{','.join(server_signal_events)}]")
         if hasattr(self, "process"):
             self.process.terminate()
 
