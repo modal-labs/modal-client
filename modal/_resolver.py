@@ -10,7 +10,6 @@ import modal._object
 from modal._traceback import suppress_tb_frame
 
 from ._load_context import LoadContext
-from ._utils.async_utils import TaskContext
 
 
 class Resolver:
