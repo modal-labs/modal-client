@@ -20,12 +20,21 @@ class C:
         pass
 
 
+@app._experimental_server(port=8000, proxy_regions=["us-east"], serialized=True)
+class SimpleServer:
+    @modal.enter()
+    def start(self):
+        pass
+
+
 def test_app_get_objects(client, servicer):
     app.deploy(name="test", environment_name="dev", client=client)
     res = modal.experimental.get_app_objects("test", environment_name="dev", client=client)
-    assert res.keys() == {"C", "f"}
+    assert len(res) == 3
+    assert res.keys() == {"C", "SimpleServer", "f"}
     assert isinstance(res["C"], modal.Cls)
     assert isinstance(res["f"], modal.Function)
+    assert isinstance(res["SimpleServer"], modal.Function)
 
 
 def test_image_delete(client, servicer):
