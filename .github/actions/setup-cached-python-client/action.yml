@@ -21,7 +21,8 @@ runs:
       uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.1.2
       with:
         enable-cache: true
-        version: "0.9.26"
+        version: "0.9.24"
+        activate-environment: "true"
         cache-dependency-glob: |
           ${{ inputs.working-directory }}/requirements.dev.txt
           ${{ inputs.working-directory }}/pyproject.toml
@@ -29,5 +30,5 @@ runs:
     - name: Install Python packages
       shell: bash
       run: |
-        uv pip install --system -r requirements.dev.txt
+        uv pip install -r requirements.dev.txt
       working-directory: ${{ inputs.working-directory }}

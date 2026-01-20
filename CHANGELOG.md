@@ -4,6 +4,49 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+<!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
+
+#### 1.3.1.dev25 (2026-01-16)
+
+- The automatic CLI creation for `modal run` entrypoints now supports `Literal` type annotations, provided that the literal type contains either all string or all int values.
+
+
+#### 1.3.1.dev20 (2026-01-14)
+
+- Added `--timestamps` flag to `modal run`, `modal serve` and `modal deploy` to show timestamps for log output.
+  ```bash
+  modal run --timestamps my_app.py::my_function
+  ```
+
+#### 1.3.1.dev16 (2026-01-12)
+
+- Added a `--timestamps` option to the `modal container logs` CLI.
+
+
+#### 1.3.1.dev14 (2026-01-12)
+
+- Adds experimental support for Python 3.14t. You can test Python 3.14t with the following image definition:
+
+```python
+image = modal.Image.from_registry("debian:bookworm-slim", add_python="3.14t")
+```
+
+
+#### 1.3.1.dev12 (2026-01-09)
+
+- Added a new `modal token info` CLI command to retrieve information about the credentials that are currently in use
+
+
+#### 1.3.1.dev8 (2026-01-06)
+
+- Correctly specify the minimum version for `grpclib` with Python 3.14.
+
+
+#### 1.3.1.dev2 (2025-12-23)
+
+- Improves client resource management when running `Sandbox.exec`.
+
+
 ### 1.3.0 (2025-12-19)
 
 Modal now supports Python 3.14. Python 3.14t (the free-threading build) is **not** supported, because we are waiting for dependencies to be updated with free-threaded support. Additionally, Modal no longer supports Python 3.9, which has reached [end-of-life](https://devguide.python.org/versions).

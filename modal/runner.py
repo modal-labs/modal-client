@@ -159,16 +159,6 @@ async def _create_all_objects(
             # Note: preload only currently implemented for Functions, returns None otherwise
             # this is to ensure that directly referenced functions from the global scope has
             # ids associated with them when they are serialized into other functions
-            if existing_object_id is not None and not obj._is_id_type(existing_object_id):
-                expected_type = obj.__class__.__name__.strip("_")
-                expected_prefix = getattr(obj.__class__, "_type_prefix", None)
-                prefix_hint = f" (expected prefix {expected_prefix}-)" if expected_prefix else ""
-                raise InvalidError(
-                    f"Existing object id {existing_object_id} is not a {expected_type} id{prefix_hint}. "
-                    "This usually means the object name was previously used for a different type. "
-                    "Rename the object/app or stop the previous deployment and redeploy."
-                )
-
             await resolver.preload(obj, load_context, existing_object_id)
             if obj.is_hydrated:
                 tag_to_object_id[tag] = obj.object_id

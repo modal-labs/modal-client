@@ -34,7 +34,7 @@ class StatusRow:
 
     def warning(self, warning: api_pb2.Warning):
         if self._step_node is not None:
-            self._step_node.add(f"⚠️ {warning.message}")
+            self._step_node.add(f"[yellow]:warning:[/yellow] {warning.message}")
 
     def finish(self, message):
         if self._step_node is not None and self._spinner is not None:

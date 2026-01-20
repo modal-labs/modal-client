@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import pytest
 
-import modal
 from modal.app import App, LocalEntrypoint
 from modal.cli.import_refs import (
     AutoRunPriority,
@@ -203,12 +202,6 @@ def test_list_cli_commands():
 
         @web_server(8000)
         def web_method(self):
-            pass
-
-    @app._experimental_server(port=8000, proxy_regions=["us-east"], serialized=True)
-    class SimpleServer:
-        @modal.enter()
-        def start(self):
             pass
 
     def non_modal_func():
