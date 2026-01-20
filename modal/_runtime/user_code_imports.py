@@ -615,8 +615,7 @@ def import_server_service(
         server_service_function: _Function = _server._get_service_function()
         service_deps = server_service_function.deps(only_explicit_mounts=True)
         active_app = _server._get_app()
-        user_cls = _server._get_user_cls()
-        user_cls_instance = user_cls()
+
     else:
         # Undecorated user class (serialized or local scope-decoration).
         service_deps = None  # we can't infer service deps for now
@@ -628,11 +627,13 @@ def import_server_service(
             service_function_hydration_data.function_handle_metadata,
             is_another_app=True,  # this skips re-loading the function, which is required since it doesn't have a loader
         )
+
         _server = modal._server._Server._from_local(cls_or_user_cls, active_app, _service_function)
 
+    user_cls = _server._get_user_cls()
     # Create server object with lifecycle methods registered.
     return ImportedServer(
-        user_cls_instance=user_cls_instance,
+        user_cls_instance=user_cls(),
         app=active_app,
         service_deps=service_deps,
         function_def=function_def,
