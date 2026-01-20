@@ -2476,9 +2476,46 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
 
 @skip_github_non_linux
 @pytest.mark.timeout(10)
-def test_server_isolated_deploy_isolated_container(servicer, deployed_support_function_definitions):
+@pytest.mark.usefixtures("server_url_env")
+def test_server_isolated_deploy_isolated_container(servicer, credentials, tmp_path):
     # deploy_app_externally + _run_container_process
-    pass
+    deploy_app_externally(servicer, credentials, "test.supports.functions", "server_app", capture_output=False)
+    http_config = api_pb2.HTTPConfig(port=8002, proxy_regions=["us-east"], startup_timeout=30, exit_grace_period=0)
+    container_process = _run_container_process(
+        servicer,
+        tmp_path,
+        "test.supports.functions",
+        "ServerWithEnter",
+        inputs=[],
+        is_server=True,
+        http_config=http_config,
+    )
+    stdout, stderr = container_process.communicate(timeout=5)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+    expected_events = "enter,enter_post_snapshot"
+    assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+
+@skip_github_non_linux
+@pytest.mark.timeout(10)
+@pytest.mark.usefixtures("server_url_env")
+def test_serialized_server_isolated_deploy_isolated_container(servicer, credentials, tmp_path):
+    # deploy_app_externally + _run_container_process
+    deploy_app_externally(servicer, credentials, "test.supports.functions", "server_app", capture_output=False)
+    http_config = api_pb2.HTTPConfig(port=8002, proxy_regions=["us-east"], startup_timeout=30, exit_grace_period=0)
+    container_process = _run_container_process(
+        servicer,
+        tmp_path,
+        "test.supports.functions",
+        "SerializedServerWithEnter",
+        inputs=[],
+        is_server=True,
+        http_config=http_config,
+    )
+    stdout, stderr = container_process.communicate(timeout=5)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+    expected_events = "enter,enter_post_snapshot"
+    assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
 
 
 @skip_github_non_linux
@@ -2489,4 +2526,17 @@ def test_server_lifecycle_signals_correctly_registered(servicer, tmp_path):
 
     This confirms the complete order of lifecycle operations:
     """
-    pass
+    deployed_server_support_definitions = isolated_deploy("test.supports.functions", "server_app")
+
+    container_process = _run_container_process_auto(
+        servicer,
+        tmp_path,
+        "ServerWithExitSignals",
+        deployed_server_support_definitions,
+        inputs=[],  # No method inputs - just an HTTP Server
+    )
+    stdout, stderr = container_process.communicate(timeout=5)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+
+    expected_events = "enter,enter_post_snapshot,exit_signals_disabled"
+    assert f"[server_signal_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
