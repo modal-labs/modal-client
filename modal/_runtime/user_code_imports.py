@@ -597,7 +597,7 @@ def import_server_service(
     ser_user_cls: Optional[type],
 ) -> Service:
     """
-    This imports a full class to be able to execute any @method or webhook decorated methods.
+    This imports a class as a server to server HTTP requests.
 
     See import_function.
     """
