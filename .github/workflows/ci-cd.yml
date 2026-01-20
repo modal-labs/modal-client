@@ -17,6 +17,17 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
+  check:
+    uses: ./.github/workflows/client-check.yml
+    with:
+      working-directory: "."
+      python-version: "3.10"
+
+  docs-test:
+    uses: ./.github/workflows/client-docs.yml
+    with:
+      working-directory: "."
+
   client-versioning:
     if: github.ref == 'refs/heads/main'
     name: Update changelog and client version
@@ -40,9 +51,10 @@ jobs:
           token: ${{ steps.generate_token.outputs.token }}
           fetch-depth: 2 # Needed so that we can check whether the version file was modified
 
-      - uses: ./.github/actions/setup-cached-python
+      - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.10"
+          working-directory: "."
 
       - name: Update the version
         run: inv bump-dev-version
@@ -81,111 +93,12 @@ jobs:
         run: python -m modal_global_objects.mounts.modal_client_package
 
   client-test:
-    name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
-    timeout-minutes: 30
-
-    strategy:
-      fail-fast: false # run all variants across python versions/os to completion
-      matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        os: ["ubuntu-24.04"]
-        proto-version: ["latest"]
-        include:
-          - os: "macos-15-intel" # x86-64
-            python-version: "3.10"
-            proto-version: "latest"
-          - os: "macos-15" # ARM64 (M1)
-            python-version: "3.10"
-            proto-version: "latest"
-          - os: "windows-latest"
-            python-version: "3.10"
-            proto-version: "latest"
-          - os: "ubuntu-24.04"
-            python-version: "3.10"
-            proto-version: "3.20"
-
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
-
-      - uses: ./.github/actions/setup-cached-python
-        with:
-          version: ${{ matrix.python-version }}
-
-      - if: matrix.proto-version != 'latest'
-        name: Install protobuf
-        run: pip install protobuf==${{ matrix.proto-version }}
-
-      - name: Build protobuf
-        run: inv protoc
-
-      - name: Build client package (installs all dependencies)
-        run: pip install -e .
-
-      - name: Run client tests
-        run: inv test
-
-      - name: Run docstring tests
-        if: github.event.pull_request.head.repo.fork == false
-        env:
-          MODAL_ENVIRONMENT: client-doc-tests
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: pytest -v --markdown-docs -m markdown-docs modal
-
-  container-dependencies:
-    name: Check minimal container dependencies for ${{ matrix.python-version }} / ${{ matrix.image-builder-version }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 4
-    strategy:
-      matrix:
-        include:
-          - image-builder-version: "2024.04"
-            python-version: "3.10"
-          - image-builder-version: "2024.04"
-            python-version: "3.12"
-          - image-builder-version: "2024.10"
-            python-version: "3.10"
-          - image-builder-version: "2024.10"
-            python-version: "3.13"
-          - image-builder-version: "2025.06"
-            python-version: "3.10"
-          - image-builder-version: "2025.06"
-            python-version: "3.14"
-
-    steps:
-      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
-
-      - uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: |
-          pip install -r modal/builder/${{ matrix.image-builder-version }}.txt
-          pip install synchronicity
-
-      - name: Compile protos
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-          if [ "${{ matrix.python-version }}" == "3.10" ]; then
-            pip install grpcio-tools==1.48.2 grpclib==0.4.7;
-          elif [ "${{ matrix.python-version }}" == "3.12" ]; then
-            pip install grpcio-tools==1.59.2 grpclib==0.4.7;
-          elif [ "${{ matrix.python-version }}" == "3.13" ]; then
-            pip install grpcio-tools==1.66.2 grpclib==0.4.7;
-          elif [ "${{ matrix.python-version }}" == "3.14" ]; then
-            pip install grpcio-tools==1.76.0 grpclib==0.4.9;
-          fi
-          python -m grpc_tools.protoc --python_out=. --grpclib_python_out=. --grpc_python_out=. -I . modal_proto/api.proto modal_proto/task_command_router.proto
-          python -m grpc_tools.protoc --plugin=protoc-gen-modal-grpclib-python=protoc_plugin/plugin.py --modal-grpclib-python_out=. -I . modal_proto/api.proto
-          deactivate
-
-      - name: Check entrypoint import
-        run: |
-          python -c 'import modal._container_entrypoint; import modal._runtime.asgi'
-          if [ "${{ matrix.image-builder-version }}" == "2024.04" ]; then python -c 'import fastapi'; fi
+    uses: ./.github/workflows/client-tests.yml
+    with:
+      working-directory: "."
+    secrets:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
 
   publish-client:
     name: Publish client package
@@ -200,11 +113,12 @@ jobs:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
           ref: ${{ needs.client-versioning.outputs.release-hash }}
 
-      - uses: ./.github/actions/setup-cached-python
+      - uses: ./.github/actions/setup-cached-python-client
         with:
           # This is load-bearing because it determines the version of the protobuf compiler
           # used for the gencode, which should be the *minimal* version that we support.
           version: "3.10"
+          working-directory: "."
 
       - name: Build protobuf
         run: inv protoc
@@ -248,9 +162,10 @@ jobs:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
           ref: ${{ needs.client-versioning.outputs.release-hash }}
 
-      - uses: ./.github/actions/setup-cached-python
+      - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.11"
+          working-directory: "."
 
       - name: Build protobuf
         run: inv protoc
@@ -278,9 +193,10 @@ jobs:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
           ref: ${{ needs.client-versioning.outputs.release-hash }}
 
-      - uses: ./.github/actions/setup-cached-python
+      - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.11"
+          working-directory: "."
 
       - name: Build protobuf
         run: inv protoc
@@ -313,9 +229,10 @@ jobs:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
           ref: ${{ needs.client-versioning.outputs.release-hash }}
 
-      - uses: ./.github/actions/setup-cached-python
+      - uses: ./.github/actions/setup-cached-python-client
         with:
           version: "3.11"
+          working-directory: "."
 
       - name: Build protobuf
         run: inv protoc

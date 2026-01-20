@@ -682,8 +682,9 @@ class _Mount(_Object, type_prefix="mo"):
         self._namespace = namespace
         self._allow_overwrite = allow_overwrite
         resolver = Resolver()
-        root_metadata = LoadContext(client=client, environment_name=environment_name)
-        await resolver.load(self, root_metadata)
+        async with TaskContext() as tc:
+            load_context = LoadContext(client=client, environment_name=environment_name, task_context=tc)
+            await resolver.load(self, load_context)
 
     def _get_metadata(self) -> api_pb2.MountHandleMetadata:
         if self._content_checksum_sha256_hex is None:

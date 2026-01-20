@@ -128,10 +128,13 @@ async def _create_all_objects(
     local_app_state: "modal.app._LocalAppState",
     load_context: LoadContext,
 ) -> None:
-    """Create objects that have been defined but not created on the server."""
-    from .output import _get_output_manager
+    """Create objects that have been defined but not created on the server.
 
+    The load_context must have a task_context set for proper exception handling
+    when loading shared dependencies.
+    """
     indexed_objects: dict[str, _Object] = {**local_app_state.functions, **local_app_state.classes}
+    tc = load_context.task_context
 
     resolver = Resolver()
     output_mgr = _get_output_manager()
@@ -161,8 +164,6 @@ async def _create_all_objects(
             if obj.is_hydrated:
                 tag_to_object_id[tag] = obj.object_id
 
-        await TaskContext.gather(*(_preload(tag, obj) for tag, obj in indexed_objects.items()))
-
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
             # Pass load_context so dependencies can inherit app_id, client, etc.
@@ -174,7 +175,8 @@ async def _create_all_objects(
             else:
                 raise RuntimeError(f"Unexpected object {obj.object_id}")
 
-        await TaskContext.gather(*(_load(tag, obj) for tag, obj in indexed_objects.items()))
+        await asyncio.gather(*[tc.create_task(_preload(tag, obj)) for tag, obj in indexed_objects.items()])
+        await asyncio.gather(*[tc.create_task(_load(tag, obj)) for tag, obj in indexed_objects.items()])
 
 
 async def _publish_app(
@@ -299,10 +301,12 @@ async def _run_app(
         app_state=app_state,
         interactive=interactive,
     )
-    await load_context.in_place_upgrade(app_id=running_app.app_id)
 
     logs_timeout = config["logs_timeout"]
     async with app._set_local_app(load_context.client, running_app), TaskContext(grace=logs_timeout) as tc:
+        # Inject TaskContext into load_context for proper exception handling when loading shared dependencies
+        await load_context.in_place_upgrade(task_context=tc, app_id=running_app.app_id)
+
         # Start heartbeats loop to keep the client alive
         # we don't log heartbeat exceptions in detached mode
         # as losing the local connection will not affect the running app
@@ -434,10 +438,12 @@ async def _serve_update(
     load_context = await app._root_load_context.reset().in_place_upgrade(environment_name=environment_name)
     try:
         running_app: RunningApp = await _init_local_app_existing(load_context.client, existing_app_id, environment_name)
-        await load_context.in_place_upgrade(app_id=running_app.app_id)
         local_app_state = app._local_state
-        # Create objects
-        await _create_all_objects(running_app, local_app_state, load_context)
+
+        # Create objects with a TaskContext for proper exception handling
+        async with TaskContext() as tc:
+            await load_context.in_place_upgrade(task_context=tc, app_id=running_app.app_id)
+            await _create_all_objects(running_app, local_app_state, load_context)
 
         # Publish the updated app
         await _publish_app(
@@ -517,11 +523,10 @@ async def _deploy_app(
         root_load_context.client, name, local_app_state.tags, environment_name=root_load_context.environment_name
     )
 
-    await root_load_context.in_place_upgrade(
-        app_id=running_app.app_id,
-    )
-
     async with TaskContext(0) as tc:
+        # Inject TaskContext into load_context for proper exception handling when loading shared dependencies
+        await root_load_context.in_place_upgrade(task_context=tc, app_id=running_app.app_id)
+
         # Start heartbeats loop to keep the client alive
         def heartbeat():
             return _heartbeat(client, running_app.app_id)

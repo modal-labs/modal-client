@@ -7,7 +7,7 @@ from typer import Argument, Option, Typer
 from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._rich_output import make_console
-from modal._utils.async_utils import synchronizer
+from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
@@ -32,8 +32,9 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
     client = await _Client.from_env()
     resolver = Resolver()
 
-    load_context = LoadContext(client=client, environment_name=env)
-    await resolver.load(d, load_context)
+    async with TaskContext() as tc:
+        load_context = LoadContext(client=client, environment_name=env, task_context=tc)
+        await resolver.load(d, load_context)
 
 
 @dict_cli.command(name="list", rich_help_panel="Management")
