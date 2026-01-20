@@ -6,6 +6,22 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.3.1.dev32 (2026-01-20)
+
+- Allow `custom_domain` to be passed for a `Sandbox`. Note that sandbox custom domains work differently from other Modal custom domains and must currently be set up manually by Modal.
+
+<details> <summary>Checklists</summary>
+
+## Compatibility checklist
+
+Check these boxes or delete any item (or this section) if not relevant for this PR.
+
+- [x] Client+Server: this change is compatible with old servers
+- [x] Client forward compatibility: this change ensures client can accept data intended for later versions of itself
+
+</details>
+
+
 #### 1.3.1.dev25 (2026-01-16)
 
 - The automatic CLI creation for `modal run` entrypoints now supports `Literal` type annotations, provided that the literal type contains either all string or all int values.

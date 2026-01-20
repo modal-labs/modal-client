@@ -7,6 +7,7 @@ import warnings
 from typing import Optional
 
 from rich.console import RenderResult, group
+from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
@@ -189,7 +190,7 @@ def highlight_modal_warnings() -> None:
             if date:
                 title += f" ({date})"
             panel = Panel(
-                message,
+                escape(message),
                 border_style="yellow",
                 title=title,
                 title_align="left",
