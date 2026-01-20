@@ -1325,6 +1325,7 @@ class _App:
                 enable_memory_snapshot=enable_memory_snapshot,
                 single_use_containers=False,  # No support for single-use server containers
                 http_config=http_config,
+                is_server=True,
                 i6pn_enabled=i6pn or (cluster_size is not None),
                 cluster_size=cluster_size,
                 rdma=rdma,

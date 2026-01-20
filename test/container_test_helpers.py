@@ -140,6 +140,7 @@ def _run_container(
         api_pb2.DATA_FORMAT_CBOR,
     ],
     method_definitions: dict[str, api_pb2.MethodDefinition] = {},
+    is_server: bool = False,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name=module_name,
@@ -168,6 +169,7 @@ def _run_container(
         class_serialized=class_serialized,
         supported_output_formats=supported_output_formats,
         method_definitions=method_definitions,
+        is_server=is_server,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
@@ -307,6 +309,7 @@ def _run_container_process(
     function_type: "api_pb2.Function.FunctionType.ValueType" = api_pb2.Function.FUNCTION_TYPE_FUNCTION,
     volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
     http_config: Optional[api_pb2.HTTPConfig] = None,
+    is_server: bool = False,
 ) -> subprocess.Popen:
     container_args = _container_args(
         module_name,
@@ -318,6 +321,7 @@ def _run_container_process(
         function_type=function_type,
         volume_mounts=volume_mounts,
         http_config=http_config,
+        is_server=is_server,
     )
 
     # These env vars are always present in containers
@@ -369,7 +373,7 @@ def _run_container_process_auto(
 
     if inputs is None:
         servicer.container_inputs = _get_multi_inputs([]) if function_def.is_class else _get_inputs()
-    elif function_def.is_class:
+    elif function_def.is_class or function_def.is_server:
         servicer.container_inputs = _get_multi_inputs(inputs)
     else:
         servicer.container_inputs = inputs

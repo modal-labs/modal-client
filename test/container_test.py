@@ -2440,7 +2440,7 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
         deployed_server_support_definitions,
         inputs=[],  # No method inputs - just an HTTP Server
     )
-    stdout, stderr = container_process.communicate(timeout=15)
+    stdout, stderr = container_process.communicate(timeout=3)
     assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
 
     expected_events = "enter,enter_post_snapshot"

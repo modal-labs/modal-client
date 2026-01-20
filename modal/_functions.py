@@ -689,6 +689,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         nonpreemptible: bool = False,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
+        is_server: bool = False,
         enable_memory_snapshot: bool = False,
         block_network: bool = False,
         restrict_modal_access: bool = False,
@@ -1054,6 +1055,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     supported_input_formats=supported_input_formats,
                     supported_output_formats=supported_output_formats,
                     http_config=http_config,
+                    is_server=is_server,
                 )
 
                 if isinstance(gpu, list):
@@ -1093,6 +1095,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         supported_input_formats=supported_input_formats,
                         supported_output_formats=supported_output_formats,
                         http_config=http_config,
+                        is_server=function_definition.is_server,
                     )
 
                     ranked_functions = []

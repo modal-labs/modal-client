@@ -110,7 +110,7 @@ def test_import_server(monkeypatch, supports_dir, client):
     monkeypatch.syspath_prepend(supports_dir)
     function_def = api_pb2.Function(
         module_name="user_code_import_samples.server",
-        function_name="Server",
+        function_name="S",
         supported_output_formats=[api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR],
     )
     service = user_code_imports.import_server_service(
@@ -121,10 +121,13 @@ def test_import_server(monkeypatch, supports_dir, client):
         client=client,
         ser_user_cls=None,
     )
-    assert len(service.service_deps) == 1
-    assert type(service.service_deps[0]) is _Image
 
-    assert service.app
+    print(service)
+
+    assert service.app is not None
+    assert service.user_cls_instance is not None
+    assert service.service_deps is None
+    assert service.function_def is not None
 
     from user_code_import_samples.server import UndecoratedS  # type: ignore
 
