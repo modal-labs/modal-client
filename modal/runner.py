@@ -35,7 +35,7 @@ from .cls import _Cls
 from .config import config, logger
 from .environments import _get_environment_cached
 from .exception import ConnectionError, InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
-from .output import _get_output_manager, _is_output_enabled, enable_output
+from .output import _get_output_manager, enable_output
 from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
 from .secret import _Secret
@@ -283,8 +283,9 @@ async def _run_app(
             app.set_description(__main__.__name__)
 
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
+    output_mgr = _get_output_manager()
 
-    if interactive and not _is_output_enabled():
+    if interactive and not output_mgr.is_enabled:
         msg = "Interactive mode requires output to be enabled. (Use the the `modal.enable_output()` context manager.)"
         raise InvalidError(msg)
 
@@ -311,8 +312,7 @@ async def _run_app(
         heartbeat_loop = tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
         logs_loop: Optional[asyncio.Task] = None
 
-        output_mgr = _get_output_manager()
-        if _is_output_enabled():
+        if output_mgr.is_enabled:
             from modal._output import get_app_logs_loop
 
             with output_mgr.make_live(output_mgr.step_progress("Initializing...")):
@@ -393,7 +393,7 @@ async def _run_app(
         except ConnectionError as e:
             # If we lose connection to the server after a detached App has started running, it will continue
             # I think we can only exit "nicely" if we are able to print output though, otherwise we should raise
-            if detach and _is_output_enabled():
+            if detach and output_mgr.is_enabled:
                 output_mgr.print(":white_exclamation_mark: Connection lost!")
                 output_mgr.print(detached_disconnect_msg)
                 return
@@ -413,8 +413,9 @@ async def _run_app(
                 logger.warning("Timed out waiting for final app logs.")
 
     # Print completion message if output is still enabled (it may have been disabled during PTY mode)
-    if _is_output_enabled():
-        output_mgr = _get_output_manager()
+    # Re-fetch the output manager in case it was disabled
+    output_mgr = _get_output_manager()
+    if output_mgr.is_enabled:
         output_mgr.print(
             output_mgr.step_completed(
                 f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"

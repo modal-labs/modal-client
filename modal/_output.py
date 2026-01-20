@@ -71,6 +71,11 @@ class OutputManager(Protocol):
     """
 
     @property
+    def is_enabled(self) -> bool:
+        """Whether rich output is enabled."""
+        ...
+
+    @property
     def _stdout(self) -> Any:
         """The stdout stream for PTY shell output."""
         ...
@@ -161,6 +166,10 @@ class DisabledOutputManager:
     All methods are no-ops that do nothing, allowing code to call output methods
     without checking if the output manager exists.
     """
+
+    @property
+    def is_enabled(self) -> bool:
+        return False
 
     @property
     def _stdout(self) -> Any:

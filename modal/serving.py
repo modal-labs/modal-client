@@ -14,7 +14,7 @@ from ._watcher import watch
 from .cli.import_refs import ImportRef, import_app_from_ref
 from .client import _Client
 from .config import config
-from .output import _get_output_manager, _is_output_enabled, enable_output
+from .output import _get_output_manager, enable_output
 from .runner import _run_app, serve_update
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ async def _restart_serve(
 ) -> SpawnProcess:
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
     is_ready = ctx.Event()
-    show_progress = _is_output_enabled()
+    show_progress = _get_output_manager().is_enabled
     p = ctx.Process(target=_run_serve, args=(import_ref, existing_app_id, is_ready, environment_name, show_progress))
     p.start()
     await asyncify(is_ready.wait)(timeout)

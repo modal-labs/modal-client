@@ -165,6 +165,10 @@ class RichOutputManager:
     _show_timestamps: bool
     _object_tree: Tree | None
 
+    @property
+    def is_enabled(self) -> bool:
+        return True
+
     def __init__(
         self,
         *,

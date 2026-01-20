@@ -58,7 +58,7 @@ from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .output import _get_output_manager, _is_output_enabled
+from .output import _get_output_manager
 from .secret import _Secret
 from .volume import _Volume
 
@@ -685,7 +685,7 @@ class _Image(_Object, type_prefix="im"):
                     raise RemoteError(f"Image build for {image_id} failed with the exception:\n{result.exception}")
                 else:
                     msg = f"Image build for {image_id} failed. See build logs for more details."
-                    if not _is_output_enabled():
+                    if not _get_output_manager().is_enabled:
                         msg += " (Hint: Use `modal.enable_output()` to see logs from the process building the Image.)"
                     raise RemoteError(msg)
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
