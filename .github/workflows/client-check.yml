@@ -47,9 +47,9 @@ jobs:
 
       - run: inv protoc
 
-      - run: pip install -e . # gets all dependencies and the package itself into python env
+      - run: uv pip install -e . # gets all dependencies and the package itself into python env
 
-      - run: pip install "synchronicity[compile]==0.11.1" # gets all dependencies and the package itself into python env
+      - run: uv pip install "synchronicity[compile]==0.11.1" # gets all dependencies and the package itself into python env
 
       - name: Build type stubs
         run: inv type-stubs

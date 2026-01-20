@@ -35,7 +35,6 @@ def main():
         ):
             raise
 
-        from rich.markup import escape
         from rich.panel import Panel
 
         title = "Error"
@@ -44,7 +43,7 @@ def main():
             content = f"{content}\n\nNote: {' '.join(notes)}"
 
         console = make_console(stderr=True)
-        panel = Panel(escape(content), title=title, title_align="left", border_style="red")
+        panel = Panel(content, title=title, title_align="left", border_style="red")
         console.print(panel, highlight=False)
         sys.exit(1)
 

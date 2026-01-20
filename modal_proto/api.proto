@@ -1561,7 +1561,7 @@ message Function {
 
   bool single_use_containers = 91; // When True, containers will shut down after handling a single input
 
-  bool is_server = 92; // When True, the function is a server function
+  bool is_server = 92; // When True, the function is a server-side function.
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1746,7 +1746,7 @@ message FunctionData {
   // when the user provided a custom name= for the Function inside the Application namespace
   string implementation_name = 40;
 
-  bool is_server = 41; // When True, the function is a server function
+  bool is_server = 41; // When True, the function is a server-side function.
 }
 
 message FunctionExtended {
@@ -2113,7 +2113,6 @@ message HTTPConfig {
   uint32 startup_timeout = 3;
   uint32 exit_grace_period = 4;
   bool h2_enabled = 5;
-  uint32 target_concurrency = 6;
 }
 
 message Image {
@@ -2821,9 +2820,6 @@ message Sandbox {
   // Set by server during SandboxRestore to ensure the restored sandbox runs
   // on the same instance type as the original snapshot.
   string _restore_instance_type = 35;
-
-  // If set, connections to this sandbox will be subdomains of this domain rather than the default.
-  string custom_domain = 36;
 }
 
 message SandboxCreateConnectTokenRequest {
@@ -2910,8 +2906,6 @@ message SandboxInfo {
   string image_id = 8;
   ResourceInfo resource_info = 9;
   repeated string regions = 10;
-  uint32 timeout_secs = 11;
-  optional uint32 idle_timeout_secs = 12;
 }
 
 

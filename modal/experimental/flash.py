@@ -64,7 +64,6 @@ class _FlashManager:
             try:
                 if error := check_process_is_running():
                     return False, error
-                # TODO(claudia): use asyncio socket create connection
                 with socket.create_connection(("localhost", self.port), timeout=0.5):
                     return True, None
             except (ConnectionRefusedError, OSError):

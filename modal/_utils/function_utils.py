@@ -160,6 +160,7 @@ class FunctionInfo:
     ):
         self.raw_f = f
         self.user_cls = user_cls
+
         if f is None and user_cls:
             # "service function" for running all methods of a class
             self.implementation_name = f"{user_cls.__name__}.*"
@@ -263,7 +264,8 @@ class FunctionInfo:
         LOAD_ATTR = opcode.opmap["LOAD_ATTR"]
         STORE_ATTR = opcode.opmap["STORE_ATTR"]
 
-        code = self.raw_f.__code__
+        func = self.raw_f
+        code = func.__code__
         f_attr_ops = set()
         for instr in dis.get_instructions(code):
             if instr.opcode == LOAD_ATTR:
@@ -661,11 +663,10 @@ class FunctionCreationStatus:
                 )
 
         elif self.response.function.flash_service_urls:
-            self.status_row.finish(f"Created function {self.tag}.")
             for flash_service_url in self.response.function.flash_service_urls:
                 flash_service_url_status_row = self.resolver.add_status_row()
                 flash_service_url_status_row.finish(
-                    f"Created server endpoints for {self.tag} => "
+                    f"Created flash service endpoint for {self.tag} => "
                     f"[magenta underline]{flash_service_url}[/magenta underline]"
                 )
 

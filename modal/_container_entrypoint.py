@@ -5,7 +5,6 @@ import os
 from modal._runtime.user_code_imports import (
     Service,
     import_class_service,
-    import_server_service,
     import_single_function_service,
 )
 
@@ -301,18 +300,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 param_kwargs = {}
 
             with execution_context._import_context():
-                if function_def.is_server:
-                    service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
-                    service_function_hydration_data = [
-                        o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
-                    ][0]
-                    service = import_server_service(
-                        function_def,
-                        service_function_hydration_data,
-                        client,
-                        ser_usr_cls,
-                    )
-                elif function_def.is_class:
+                if function_def.is_class:
                     # this is a bit ugly - match the function and class based on function name to get metadata
                     # This metadata is required in order to hydrate the class in case it's not globally
                     # decorated (or serialized)
