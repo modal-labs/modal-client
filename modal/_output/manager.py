@@ -17,8 +17,6 @@ from typing import TYPE_CHECKING, Any, Callable, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from modal_proto import api_pb2
 
-    from .rich import ProgressHandler
-
 
 @runtime_checkable
 class StatusContext(Protocol):
@@ -69,6 +67,38 @@ class DisabledStatusRow:
 
     def finish(self, message: str) -> None:
         pass
+
+
+@runtime_checkable
+class TransferProgressContext(Protocol):
+    """Protocol for transfer progress tracking context."""
+
+    def progress(
+        self,
+        task_id: Any = None,
+        advance: float | None = None,
+        name: str | None = None,
+        size: float | None = None,
+        reset: bool | None = False,
+        complete: bool | None = False,
+    ) -> Any:
+        """Update progress. Returns task_id when creating a new task."""
+        ...
+
+
+class _DisabledTransferProgress:
+    """No-op transfer progress context for when output is disabled."""
+
+    def progress(
+        self,
+        task_id: Any = None,
+        advance: float | None = None,
+        name: str | None = None,
+        size: float | None = None,
+        reset: bool | None = False,
+        complete: bool | None = False,
+    ) -> None:
+        return None
 
 
 @runtime_checkable
@@ -179,11 +209,14 @@ class OutputManager(Protocol):
         """Flush any buffered output."""
         ...
 
-    def create_progress_handler(self, type: str) -> "ProgressHandler":
-        """Create a progress handler for file transfer operations.
+    def transfer_progress(self, type: str) -> AbstractContextManager["TransferProgressContext"]:
+        """Context manager for tracking file transfer progress.
 
         Args:
             type: Either "download" or "upload".
+
+        Returns:
+            A context manager that yields a TransferProgressContext with a progress() method.
         """
         ...
 
@@ -300,11 +333,10 @@ class DisabledOutputManager:
     def flush_lines(self) -> None:
         pass
 
-    def create_progress_handler(self, type: str) -> "ProgressHandler":
-        # Return a real ProgressHandler even when disabled, as it handles its own display
-        from .rich import ProgressHandler, _make_console
-
-        return ProgressHandler(type, _make_console())
+    @contextlib.contextmanager
+    def transfer_progress(self, type: str) -> Generator[TransferProgressContext, None, None]:
+        """No-op transfer progress context manager."""
+        yield _DisabledTransferProgress()
 
     @staticmethod
     def step_progress(text: str = "") -> str:

@@ -94,14 +94,13 @@ async def get(
     destination = Path(local_destination)
     volume = _Volume.from_name(volume_name, environment_name=env)
     with enable_output() as output:
-        progress_handler = output.create_progress_handler("download")
-        with progress_handler.live:
+        with output.transfer_progress("download") as progress:
             await _volume_download(
                 volume=volume,
                 remote_path=remote_path,
                 local_destination=destination,
                 overwrite=force,
-                progress_cb=progress_handler.progress,
+                progress_cb=progress.progress,
             )
         output.print(RichOutputManager.step_completed("Finished downloading files to local!"))
 
@@ -195,16 +194,14 @@ async def put(
         remote_path = remote_path + os.path.basename(local_path)
 
     with enable_output() as output:
-        progress_handler = output.create_progress_handler("upload")
-
         if Path(local_path).is_dir():
-            with progress_handler.live:
+            with output.transfer_progress("upload") as progress:
                 try:
                     async with _AbstractVolumeUploadContextManager.resolve(
                         vol._metadata.version,
                         vol.object_id,
                         vol._client,
-                        progress_cb=progress_handler.progress,
+                        progress_cb=progress.progress,
                         force=force,
                     ) as batch:
                         batch.put_directory(local_path, remote_path)
@@ -214,13 +211,13 @@ async def put(
         elif "*" in local_path:
             raise UsageError("Glob uploads are currently not supported")
         else:
-            with progress_handler.live:
+            with output.transfer_progress("upload") as progress:
                 try:
                     async with _AbstractVolumeUploadContextManager.resolve(
                         vol._metadata.version,
                         vol.object_id,
                         vol._client,
-                        progress_cb=progress_handler.progress,
+                        progress_cb=progress.progress,
                         force=force,
                     ) as batch:
                         batch.put_file(local_path, remote_path)

@@ -125,21 +125,17 @@ async def put(
 
     with enable_output() as output:
         if Path(local_path).is_dir():
-            progress_handler = output.create_progress_handler("upload")
-            with progress_handler.live:
-                await volume.add_local_dir(local_path, remote_path, progress_cb=progress_handler.progress)
-                progress_handler.progress(complete=True)
+            with output.transfer_progress("upload") as progress:
+                await volume.add_local_dir(local_path, remote_path, progress_cb=progress.progress)
+                progress.progress(complete=True)
             output.print(RichOutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
 
         elif "*" in local_path:
             raise UsageError("Glob uploads are currently not supported")
         else:
-            progress_handler = output.create_progress_handler("upload")
-            with progress_handler.live:
-                written_bytes = await volume.add_local_file(
-                    local_path, remote_path, progress_cb=progress_handler.progress
-                )
-                progress_handler.progress(complete=True)
+            with output.transfer_progress("upload") as progress:
+                written_bytes = await volume.add_local_file(local_path, remote_path, progress_cb=progress.progress)
+                progress.progress(complete=True)
             output.print(
                 RichOutputManager.step_completed(
                     f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)"
@@ -178,9 +174,8 @@ async def get(
     destination = Path(local_destination)
     volume = _NetworkFileSystem.from_name(volume_name)
     with enable_output() as output:
-        progress_handler = output.create_progress_handler("download")
-        with progress_handler.live:
-            await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
+        with output.transfer_progress("download") as progress:
+            await _volume_download(volume, remote_path, destination, force, progress_cb=progress.progress)
         output.print(RichOutputManager.step_completed("Finished downloading files to local!"))
 
 
