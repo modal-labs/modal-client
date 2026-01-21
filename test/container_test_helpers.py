@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-
 import dataclasses
 import json
 import os
@@ -376,14 +375,7 @@ def _run_container_process_auto(
             _get_multi_inputs([]) if function_def.is_class or function_def.is_server else _get_inputs()
         )
     elif function_def.is_class or function_def.is_server:
-        if function_def.is_server:
-            # Grace period for server heartbeat to start before the container exits.
-            servicer.container_inputs = [
-                api_pb2.FunctionGetInputsResponse(rate_limit_sleep_duration=0.2),
-                api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
-            ]
-        else:
-            servicer.container_inputs = _get_multi_inputs(inputs)
+        servicer.container_inputs = _get_multi_inputs(inputs)
     else:
         servicer.container_inputs = inputs
 

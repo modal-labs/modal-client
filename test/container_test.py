@@ -2540,3 +2540,49 @@ def test_server_lifecycle_signals_correctly_registered(servicer, tmp_path):
 
     expected_events = "enter,enter_post_snapshot,exit_signals_disabled"
     assert f"[server_signal_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_server_sigint_termination_input(servicer, tmp_path):
+    # Sync and async container lifecycle methods on a sync function.
+    servicer.flash_rpc_calls = []
+    deployed_server_support_definitions = isolated_deploy("test.supports.functions", "server_app")
+    functions_dict, _ = deployed_server_support_definitions
+    functions_dict["ServerWithExitSignals"][1].http_config.startup_timeout = 5
+
+    with servicer.input_lockstep() as input_barrier:
+        container_process = _run_container_process_auto(
+            servicer,
+            tmp_path,
+            "ServerWithExitSignals",
+            deployed_server_support_definitions,
+            inputs=[],  # No method inputs - just an HTTP Server
+        )
+
+        # Ensure SIGINT terminates the container even if the inputs loop is blocked.
+        time.sleep(1)
+        os.kill(container_process.pid, signal.SIGINT)
+    stdout, stderr = container_process.communicate(timeout=3)
+    assert container_process.returncode == 0, f"Container failed: {stderr.decode()}"
+
+    expected_events = "enter,enter_post_snapshot,exit_signals_disabled"
+    assert f"[server_signal_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+
+    assert "register" in servicer.flash_rpc_calls, (
+        f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+    assert "deregister" in servicer.flash_rpc_calls, (
+        f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    )
+
+    # Verify order: register should come before deregister
+    register_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "register"]
+    deregister_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "deregister"]
+    assert register_indices, f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
+    assert deregister_indices, f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
+
+    # Verify the *first* register is before the *first* deregister (for compatibility)
+    assert register_indices[0] < deregister_indices[0], (
+        f"Flash RPCs called in wrong order. Expected register before deregister. RPC calls: {servicer.flash_rpc_calls}"
+    )

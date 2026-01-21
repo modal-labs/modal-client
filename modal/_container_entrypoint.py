@@ -94,6 +94,112 @@ class DaemonizedThreadPool:
         self.inputs.put((func, args))
 
 
+def call_server_function_v2(
+    user_code_event_loop: UserCodeEventLoop,
+    container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
+    batch_max_size: int,
+    batch_wait_ms: int,
+):
+    def run_input_sync(io_context: IOContext) -> None:
+        started_at = time.time()
+        reset_context = execution_context._set_current_context_ids(
+            io_context.input_ids, io_context.function_call_ids, io_context.attempt_tokens
+        )
+        with container_io_manager.handle_input_exception(io_context, started_at):
+            # TODO(erikbern): any exception below shouldn't be considered a user exception
+            if io_context.finalized_function.is_generator:
+                gen = io_context.call_generator_sync()
+                # Send up to this many outputs at a time.
+                current_function_call_id = execution_context.current_function_call_id()
+                assert current_function_call_id is not None  # Set above.
+                current_attempt_token = execution_context.current_attempt_token()
+                assert current_attempt_token is not None  # Set above, but can be empty string.
+                generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)
+                with container_io_manager.generator_output_sender(
+                    current_function_call_id,
+                    current_attempt_token,
+                    io_context._generator_output_format(),
+                    generator_queue,
+                ):
+                    item_count = 0
+                    for value in gen:
+                        container_io_manager._queue_put(generator_queue, value)
+                        item_count += 1
+
+                container_io_manager._send_outputs(
+                    started_at, io_context.output_items_generator_done(started_at, item_count)
+                )
+            else:
+                values = io_context.call_function_sync()
+                container_io_manager.push_outputs(io_context, started_at, values)
+        reset_context()
+
+    with DaemonizedThreadPool(max_threads=container_io_manager.max_concurrency) as thread_pool:
+        did_sigint = False
+
+        def cancel_callback_sync():
+            nonlocal did_sigint
+            # We only want one sigint even if multiple inputs are cancelled
+            # A second sigint would forcibly shut down the event loop and spew
+            # out a bunch of tracebacks, which we only want to happen in case
+            # the worker kills this process after a failed self-termination
+            if not did_sigint:
+                did_sigint = True
+                logger.warning(
+                    "User cancelling input of non-async functions with input concurrency enabled.\n"
+                    "This shuts down the container, causing concurrently running inputs to be "
+                    "rescheduled in other containers."
+                )
+                os.kill(os.getpid(), signal.SIGINT)
+
+        async def run_concurrent_inputs():
+            # all run_input coroutines will have completed by the time we leave the execution context
+            # but the wrapping *tasks* may not yet have been resolved, so we add a 0.01s
+            # for them to resolve gracefully:
+            async with TaskContext(0.01) as task_context:
+                async for io_context in container_io_manager.run_inputs_outputs.aio(
+                    finalized_functions, batch_max_size, batch_wait_ms
+                ):
+                    # run sync input in thread
+                    thread_pool.submit(run_input_sync, io_context)
+                    io_context.set_cancel_callback(cancel_callback_sync)
+
+        user_code_event_loop.run(run_concurrent_inputs())
+
+
+def call_server_function(
+    user_code_event_loop: UserCodeEventLoop,
+    container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+):
+    # Servers don't fetch inputs; keep the event loop alive and just honor SIGINT.
+    async def run():
+        # Fire a single FunctionGetInputs request so the worker can mark the container as ready.
+        request = api_pb2.FunctionGetInputsRequest(function_id=container_io_manager.function_id, input_concurrency=1)
+        ready_loop = container_io_manager._client._cancellation_context_event_loop
+        if ready_loop is not None:
+            ready_future = asyncio.run_coroutine_threadsafe(
+                container_io_manager._client.stub.FunctionGetInputs(request),
+                ready_loop,
+            )
+
+            def _log_ready_result(fut):
+                try:
+                    fut.result()
+                except Exception as exc:
+                    logger.debug("Server readiness probe failed: %s", exc)
+
+            ready_future.add_done_callback(_log_ready_result)
+        else:
+            try:
+                await container_io_manager._client.stub.FunctionGetInputs(request)
+            except Exception as exc:
+                logger.debug("Server readiness probe failed: %s", exc)
+        await asyncio.Event().wait()
+
+    user_code_event_loop.run(run())
+
+
 def call_function(
     user_code_event_loop: UserCodeEventLoop,
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
@@ -385,7 +491,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             )
 
         with service.execution_context(event_loop, container_io_manager) as finalized_functions:
-            call_function(event_loop, container_io_manager, finalized_functions, batch_max_size, batch_wait_ms)
+            # call_function(event_loop, container_io_manager, finalized_functions, batch_max_size, batch_wait_ms)
+            if function_def.is_server:
+                call_server_function_v2(event_loop, container_io_manager)
+            else:
+                call_function(event_loop, container_io_manager, finalized_functions, batch_max_size, batch_wait_ms)
 
 
 if __name__ == "__main__":
