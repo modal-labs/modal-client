@@ -13,7 +13,7 @@ import typer
 from rich.syntax import Syntax
 from typer import Argument, Option
 
-from modal._rich_output import make_console
+from modal._output.rich import make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table

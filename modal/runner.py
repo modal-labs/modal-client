@@ -23,7 +23,7 @@ from modal_proto import api_pb2
 
 from ._functions import _Function
 from ._object import _get_environment_name, _Object
-from ._pty import get_pty_info
+from ._output.pty import get_pty_info
 from ._resolver import Resolver
 from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
@@ -327,7 +327,7 @@ async def _run_app(
         logs_loop: Optional[asyncio.Task] = None
 
         if output_mgr.is_enabled:
-            from modal._output import get_app_logs_loop
+            from modal._output.pty import get_app_logs_loop
 
             with output_mgr.make_live(output_mgr.step_progress("Initializing...")):
                 initialized_msg = (

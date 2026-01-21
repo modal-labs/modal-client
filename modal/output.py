@@ -2,14 +2,14 @@
 """Interface to Modal's OutputManager functionality.
 
 These functions live here so that Modal library code can import them without
-transitively importing Rich, as we do in _rich_output.py. This allows
+transitively importing Rich, as we do in _output/rich.py. This allows
 us to avoid importing Rich for client code that runs in the container environment.
 """
 
 import contextlib
 from collections.abc import Generator
 
-from ._output import _DISABLED_OUTPUT_MANAGER, OutputManager
+from ._output.manager import _DISABLED_OUTPUT_MANAGER, OutputManager
 
 # Module-level state for output management
 _current_output_manager: OutputManager = _DISABLED_OUTPUT_MANAGER
@@ -36,7 +36,7 @@ def enable_output(show_progress: bool = True, show_timestamps: bool = False) -> 
     previous_output_manager = _current_output_manager
 
     if show_progress:
-        from ._rich_output import RichOutputManager
+        from ._output.rich import RichOutputManager
 
         _current_output_manager = RichOutputManager(show_timestamps=show_timestamps)
     try:

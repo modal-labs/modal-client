@@ -13,7 +13,7 @@ from rich.syntax import Syntax
 from rich.text import Text
 from rich.traceback import PathHighlighter, Stack, Traceback, install
 
-from .._rich_output import make_console
+from .._output.rich import make_console
 from ..exception import DeprecationError, PendingDeprecationError, ServerWarning
 
 

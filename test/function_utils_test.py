@@ -7,7 +7,7 @@ from unittest.mock import Mock
 from grpclib import Status
 
 from modal import fastapi_endpoint, method
-from modal._output import FunctionCreationStatus
+from modal._output.status import FunctionCreationStatus
 from modal._serialization import serialize_data_format
 from modal._utils import async_utils
 from modal._utils.function_utils import (

@@ -10,8 +10,8 @@ from rich.text import Text
 
 from modal_proto import api_pb2
 
-from .._output import get_app_logs_loop
-from .._rich_output import RichOutputManager, make_console
+from .._output.pty import get_app_logs_loop
+from .._output.rich import RichOutputManager, make_console
 from .._utils.async_utils import synchronizer
 from ..client import _Client
 from ..environments import ensure_env

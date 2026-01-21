@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
 
-from ._pty import get_pty_info
+from ._output.pty import get_pty_info
 from .config import config, logger
 
 if TYPE_CHECKING:

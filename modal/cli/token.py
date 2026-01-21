@@ -6,7 +6,7 @@ from typing import Optional
 
 import typer
 
-from modal._rich_output import make_console
+from modal._output.rich import make_console
 from modal._utils.async_utils import synchronizer
 from modal.client import _Client
 from modal.token_flow import _new_token, _set_token

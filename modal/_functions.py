@@ -21,8 +21,8 @@ from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._load_context import LoadContext
 from ._object import _Object, live_method, live_method_gen
-from ._output import FunctionCreationStatus
-from ._pty import get_pty_info
+from ._output.pty import get_pty_info
+from ._output.status import FunctionCreationStatus
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local

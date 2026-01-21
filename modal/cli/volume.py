@@ -10,7 +10,7 @@ from rich.syntax import Syntax
 from typer import Argument, Option, Typer
 
 import modal
-from modal._rich_output import ProgressHandler, RichOutputManager, make_console
+from modal._output.rich import ProgressHandler, RichOutputManager, make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download

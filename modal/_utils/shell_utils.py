@@ -9,9 +9,55 @@ import sys
 from collections.abc import Coroutine
 from typing import Callable, Optional
 
-from modal._pty import raw_terminal, set_nonblocking
-
 from .async_utils import asyncify
+
+# =============================================================================
+# Low-level terminal utilities
+# =============================================================================
+
+
+def get_winsz(fd=None) -> tuple[Optional[int], Optional[int]]:
+    """Get the window size of a terminal."""
+    try:
+        if fd is None:
+            fd = sys.stdin.fileno()
+
+        import fcntl
+        import struct
+        import termios
+
+        return struct.unpack("hh", fcntl.ioctl(fd, termios.TIOCGWINSZ, "1234"))  # type: ignore
+    except Exception:
+        return None, None
+
+
+def set_nonblocking(fd: int):
+    """Set a file descriptor to non-blocking mode."""
+    import fcntl
+
+    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+
+@contextlib.contextmanager
+def raw_terminal():
+    """Context manager that puts the terminal in raw mode."""
+    import termios
+    import tty
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+
+    try:
+        tty.setraw(fd, termios.TCSADRAIN)
+        yield
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+# =============================================================================
+# Async shell utilities
+# =============================================================================
 
 
 def write_to_fd(fd: int, data: bytes):
