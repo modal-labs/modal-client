@@ -20,7 +20,7 @@ from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
-from modal.output import enable_output
+from modal.output import _get_output_manager
 from modal_proto import api_pb2
 
 nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
@@ -62,10 +62,10 @@ def create(
 ):
     ensure_env(env)
     modal.NetworkFileSystem.create_deployed(name, environment_name=env)
-    with enable_output() as output:
-        output.print(f"Created volume '{name}'. \n\nCode example:\n")
-        usage = Syntax(gen_usage_code(name), "python")
-        output.print(usage)
+    output = _get_output_manager()
+    output.print(f"Created volume '{name}'. \n\nCode example:\n")
+    usage = Syntax(gen_usage_code(name), "python")
+    output.print(usage)
 
 
 @nfs_cli.command(
@@ -84,17 +84,17 @@ async def ls(
     entries = await volume.listdir(path)
 
     if sys.stdout.isatty():
-        with enable_output() as output:
-            output.print(f"Directory listing of '{path}' in '{volume_name}'")
-            table = Table()
+        output = _get_output_manager()
+        output.print(f"Directory listing of '{path}' in '{volume_name}'")
+        table = Table()
 
-            table.add_column("filename")
-            table.add_column("type")
+        table.add_column("filename")
+        table.add_column("type")
 
-            for entry in entries:
-                filetype = "dir" if entry.type == api_pb2.FileEntry.FileType.DIRECTORY else "file"
-                table.add_row(entry.path, filetype)
-            output.print(table)
+        for entry in entries:
+            filetype = "dir" if entry.type == api_pb2.FileEntry.FileType.DIRECTORY else "file"
+            table.add_row(entry.path, filetype)
+        output.print(table)
     else:
         for entry in entries:
             print(entry.path)  # noqa: T201
@@ -123,24 +123,24 @@ async def put(
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
 
-    with enable_output() as output:
-        if Path(local_path).is_dir():
-            with output.transfer_progress("upload") as progress:
-                await volume.add_local_dir(local_path, remote_path, progress_cb=progress.progress)
-                progress.progress(complete=True)
-            output.print(RichOutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+    output = _get_output_manager()
+    if Path(local_path).is_dir():
+        with output.transfer_progress("upload") as progress:
+            await volume.add_local_dir(local_path, remote_path, progress_cb=progress.progress)
+            progress.progress(complete=True)
+        output.print(RichOutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
 
-        elif "*" in local_path:
-            raise UsageError("Glob uploads are currently not supported")
-        else:
-            with output.transfer_progress("upload") as progress:
-                written_bytes = await volume.add_local_file(local_path, remote_path, progress_cb=progress.progress)
-                progress.progress(complete=True)
-            output.print(
-                RichOutputManager.step_completed(
-                    f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)"
-                )
+    elif "*" in local_path:
+        raise UsageError("Glob uploads are currently not supported")
+    else:
+        with output.transfer_progress("upload") as progress:
+            written_bytes = await volume.add_local_file(local_path, remote_path, progress_cb=progress.progress)
+            progress.progress(complete=True)
+        output.print(
+            RichOutputManager.step_completed(
+                f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)"
             )
+        )
 
 
 class CliError(Exception):
@@ -173,10 +173,10 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = _NetworkFileSystem.from_name(volume_name)
-    with enable_output() as output:
-        with output.transfer_progress("download") as progress:
-            await _volume_download(volume, remote_path, destination, force, progress_cb=progress.progress)
-        output.print(RichOutputManager.step_completed("Finished downloading files to local!"))
+    output = _get_output_manager()
+    with output.transfer_progress("download") as progress:
+        await _volume_download(volume, remote_path, destination, force, progress_cb=progress.progress)
+    output.print(RichOutputManager.step_completed("Finished downloading files to local!"))
 
 
 @nfs_cli.command(
@@ -192,8 +192,7 @@ async def rm(
     ensure_env(env)
     volume = _NetworkFileSystem.from_name(volume_name)
     await volume.remove_file(remote_path, recursive=recursive)
-    with enable_output() as output:
-        output.print(RichOutputManager.step_completed(f"{remote_path} was deleted successfully!"))
+    _get_output_manager().print(RichOutputManager.step_completed(f"{remote_path} was deleted successfully!"))
 
 
 @nfs_cli.command(

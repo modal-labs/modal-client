@@ -8,7 +8,7 @@ import typer
 
 from modal._utils.async_utils import synchronizer
 from modal.client import _Client
-from modal.output import enable_output
+from modal.output import _get_output_manager
 from modal.token_flow import _new_token, _set_token
 from modal_proto import api_pb2
 
@@ -50,8 +50,7 @@ async def set(
         token_id = getpass.getpass("Token ID:")
     if token_secret is None:
         token_secret = getpass.getpass("Token secret:")
-    with enable_output():
-        await _set_token(token_id, token_secret, profile=profile, activate=activate, verify=verify)
+    await _set_token(token_id, token_secret, profile=profile, activate=activate, verify=verify)
 
 
 @token_cli.command(name="new")
@@ -63,8 +62,7 @@ async def new(
     source: Optional[str] = None,
 ):
     """Create a new token by using an authenticated web session."""
-    with enable_output():
-        await _new_token(profile=profile, activate=activate, verify=verify, source=source)
+    await _new_token(profile=profile, activate=activate, verify=verify, source=source)
 
 
 @token_cli.command(name="info")
@@ -75,37 +73,35 @@ async def info():
     req = api_pb2.TokenInfoGetRequest()
     resp = await client.stub.TokenInfoGet(req)
 
-    with enable_output() as output:
-        env_vars = []
-        if os.environ.get("MODAL_TOKEN_ID"):
-            env_vars.append("MODAL_TOKEN_ID")
-        if os.environ.get("MODAL_TOKEN_SECRET"):
-            env_vars.append("MODAL_TOKEN_SECRET")
+    output = _get_output_manager()
+    env_vars = []
+    if os.environ.get("MODAL_TOKEN_ID"):
+        env_vars.append("MODAL_TOKEN_ID")
+    if os.environ.get("MODAL_TOKEN_SECRET"):
+        env_vars.append("MODAL_TOKEN_SECRET")
 
-        if env_vars:
-            env_vars_str = " and ".join(env_vars)
-            plural = "s" if len(env_vars) > 1 else ""
-            output.print(f"[dim](Using {env_vars_str} environment variable{plural})[/dim]")
+    if env_vars:
+        env_vars_str = " and ".join(env_vars)
+        plural = "s" if len(env_vars) > 1 else ""
+        output.print(f"[dim](Using {env_vars_str} environment variable{plural})[/dim]")
 
-        output.print(f"[bold]Token:[/bold] {resp.token_id}")
-        output.print(f"[bold]Workspace:[/bold] {resp.workspace_name} [dim]({resp.workspace_id})[/dim]")
+    output.print(f"[bold]Token:[/bold] {resp.token_id}")
+    output.print(f"[bold]Workspace:[/bold] {resp.workspace_name} [dim]({resp.workspace_id})[/dim]")
 
-        if resp.HasField("user_identity"):
-            output.print(f"[bold]User:[/bold] {resp.user_identity.username} [dim]({resp.user_identity.user_id})[/dim]")
-        elif resp.HasField("service_user_identity"):
-            service = resp.service_user_identity
+    if resp.HasField("user_identity"):
+        output.print(f"[bold]User:[/bold] {resp.user_identity.username} [dim]({resp.user_identity.user_id})[/dim]")
+    elif resp.HasField("service_user_identity"):
+        service = resp.service_user_identity
+        output.print(f"[bold]Service User:[/bold] {service.service_user_name} [dim]({service.service_user_id})[/dim]")
+        if service.HasField("created_by"):
             output.print(
-                f"[bold]Service User:[/bold] {service.service_user_name} [dim]({service.service_user_id})[/dim]"
+                f"[bold]Created By:[/bold] {service.created_by.username} [dim]({service.created_by.user_id})[/dim]"
             )
-            if service.HasField("created_by"):
-                output.print(
-                    f"[bold]Created By:[/bold] {service.created_by.username} [dim]({service.created_by.user_id})[/dim]"
-                )
 
-        if resp.HasField("created_at") and resp.created_at.seconds > 0:
-            created_dt = datetime.fromtimestamp(resp.created_at.seconds).astimezone()
-            output.print(f"[bold]Created at:[/bold] [white]{created_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}[/white]")
+    if resp.HasField("created_at") and resp.created_at.seconds > 0:
+        created_dt = datetime.fromtimestamp(resp.created_at.seconds).astimezone()
+        output.print(f"[bold]Created at:[/bold] [white]{created_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}[/white]")
 
-        if resp.HasField("expires_at") and resp.expires_at.seconds > 0:
-            expires_dt = datetime.fromtimestamp(resp.expires_at.seconds).astimezone()
-            output.print(f"[bold]Expires at:[/bold] [white]{expires_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}[/white]")
+    if resp.HasField("expires_at") and resp.expires_at.seconds > 0:
+        expires_dt = datetime.fromtimestamp(resp.expires_at.seconds).astimezone()
+        output.print(f"[bold]Expires at:[/bold] [white]{expires_dt.strftime('%Y-%m-%d %H:%M:%S %Z')}[/white]")

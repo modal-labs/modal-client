@@ -12,7 +12,7 @@ from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.dict import _Dict
 from modal.environments import ensure_env
-from modal.output import enable_output
+from modal.output import _get_output_manager
 
 dict_cli = Typer(
     name="dict",
@@ -92,9 +92,8 @@ async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
     Note: When using the CLI, keys are always interpreted as having a string type.
     """
     d = _Dict.from_name(name, environment_name=env)
-    with enable_output() as output:
-        val = await d.get(key)
-        output.print(val)
+    val = await d.get(key)
+    _get_output_manager().print(val)
 
 
 def _display(input: str, use_repr: bool) -> str:

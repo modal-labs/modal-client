@@ -16,7 +16,7 @@ from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.environments import ensure_env
-from modal.output import enable_output
+from modal.output import _get_output_manager
 from modal.volume import _AbstractVolumeUploadContextManager, _Volume
 from modal_proto import api_pb2
 
@@ -61,10 +61,10 @@ def some_func():
     os.listdir("/my_vol")
 """
 
-    with enable_output() as output:
-        output.print(f"Created Volume '{name}' in environment '{env_name}'. \n\nCode example:\n")
-        usage = Syntax(usage_code, "python")
-        output.print(usage)
+    output = _get_output_manager()
+    output.print(f"Created Volume '{name}' in environment '{env_name}'. \n\nCode example:\n")
+    usage = Syntax(usage_code, "python")
+    output.print(usage)
 
 
 @volume_cli.command(name="get", rich_help_panel="File operations")
@@ -93,16 +93,16 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = _Volume.from_name(volume_name, environment_name=env)
-    with enable_output() as output:
-        with output.transfer_progress("download") as progress:
-            await _volume_download(
-                volume=volume,
-                remote_path=remote_path,
-                local_destination=destination,
-                overwrite=force,
-                progress_cb=progress.progress,
-            )
-        output.print(RichOutputManager.step_completed("Finished downloading files to local!"))
+    output = _get_output_manager()
+    with output.transfer_progress("download") as progress:
+        await _volume_download(
+            volume=volume,
+            remote_path=remote_path,
+            local_destination=destination,
+            overwrite=force,
+            progress_cb=progress.progress,
+        )
+    output.print(RichOutputManager.step_completed("Finished downloading files to local!"))
 
 
 @volume_cli.command(
@@ -193,38 +193,38 @@ async def put(
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
 
-    with enable_output() as output:
-        if Path(local_path).is_dir():
-            with output.transfer_progress("upload") as progress:
-                try:
-                    async with _AbstractVolumeUploadContextManager.resolve(
-                        vol._metadata.version,
-                        vol.object_id,
-                        vol._client,
-                        progress_cb=progress.progress,
-                        force=force,
-                    ) as batch:
-                        batch.put_directory(local_path, remote_path)
-                except FileExistsError as exc:
-                    raise UsageError(str(exc))
-            output.print(RichOutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
-        elif "*" in local_path:
-            raise UsageError("Glob uploads are currently not supported")
-        else:
-            with output.transfer_progress("upload") as progress:
-                try:
-                    async with _AbstractVolumeUploadContextManager.resolve(
-                        vol._metadata.version,
-                        vol.object_id,
-                        vol._client,
-                        progress_cb=progress.progress,
-                        force=force,
-                    ) as batch:
-                        batch.put_file(local_path, remote_path)
+    output = _get_output_manager()
+    if Path(local_path).is_dir():
+        with output.transfer_progress("upload") as progress:
+            try:
+                async with _AbstractVolumeUploadContextManager.resolve(
+                    vol._metadata.version,
+                    vol.object_id,
+                    vol._client,
+                    progress_cb=progress.progress,
+                    force=force,
+                ) as batch:
+                    batch.put_directory(local_path, remote_path)
+            except FileExistsError as exc:
+                raise UsageError(str(exc))
+        output.print(RichOutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+    elif "*" in local_path:
+        raise UsageError("Glob uploads are currently not supported")
+    else:
+        with output.transfer_progress("upload") as progress:
+            try:
+                async with _AbstractVolumeUploadContextManager.resolve(
+                    vol._metadata.version,
+                    vol.object_id,
+                    vol._client,
+                    progress_cb=progress.progress,
+                    force=force,
+                ) as batch:
+                    batch.put_file(local_path, remote_path)
 
-                except FileExistsError as exc:
-                    raise UsageError(str(exc))
-            output.print(RichOutputManager.step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
+            except FileExistsError as exc:
+                raise UsageError(str(exc))
+        output.print(RichOutputManager.step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
 
 
 @volume_cli.command(
@@ -240,8 +240,7 @@ async def rm(
     ensure_env(env)
     volume = _Volume.from_name(volume_name, environment_name=env)
     await volume.remove_file(remote_path, recursive=recursive)
-    with enable_output() as output:
-        output.print(RichOutputManager.step_completed(f"{remote_path} was deleted successfully!"))
+    _get_output_manager().print(RichOutputManager.step_completed(f"{remote_path} was deleted successfully!"))
 
 
 @volume_cli.command(

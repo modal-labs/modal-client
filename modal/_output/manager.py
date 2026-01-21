@@ -246,6 +246,18 @@ class OutputManager(Protocol):
         """
         ...
 
+    def set_quiet_mode(self, quiet: bool) -> None:
+        """Enable or disable quiet mode.
+
+        When quiet mode is enabled, progress indicators (spinners, progress bars)
+        are suppressed, but essential output like errors and warnings still appear.
+        """
+        ...
+
+    def set_timestamps(self, show: bool) -> None:
+        """Enable or disable timestamp display in log output."""
+        ...
+
     @staticmethod
     def step_progress(text: str = "") -> Any:
         """Returns the element to be rendered when a step is in progress."""
@@ -374,6 +386,12 @@ class DisabledOutputManager:
     def transfer_progress(self, type: str) -> Generator[TransferProgressContext, None, None]:
         """No-op transfer progress context manager."""
         yield _DisabledTransferProgress()
+
+    def set_quiet_mode(self, quiet: bool) -> None:
+        pass
+
+    def set_timestamps(self, show: bool) -> None:
+        pass
 
     @staticmethod
     def step_progress(text: str = "") -> str:

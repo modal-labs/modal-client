@@ -5,7 +5,7 @@ import typer
 
 from modal.config import _profile, _store_user_config, config
 from modal.environments import Environment
-from modal.output import enable_output
+from modal.output import _get_output_manager
 
 config_cli = typer.Typer(
     name="config",
@@ -26,8 +26,7 @@ def show(redact: bool = typer.Option(True, help="Redact the `token_secret` value
     if redact and config_dict.get("token_secret"):
         config_dict["token_secret"] = "***"
 
-    with enable_output() as output:
-        output.print_json(json.dumps(config_dict))
+    _get_output_manager().print_json(json.dumps(config_dict))
 
 
 SET_DEFAULT_ENV_HELP = """Set the default Modal environment for the active profile

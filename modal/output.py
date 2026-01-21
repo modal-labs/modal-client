@@ -16,7 +16,7 @@ _current_output_manager: OutputManager = _DISABLED_OUTPUT_MANAGER
 
 
 @contextlib.contextmanager
-def enable_output(show_progress: bool = True, show_timestamps: bool = False) -> Generator[OutputManager, None, None]:
+def enable_output() -> Generator[OutputManager, None, None]:
     """Context manager that enable output when using the Python SDK.
 
     This will print to stdout and stderr things such as
@@ -31,14 +31,16 @@ def enable_output(show_progress: bool = True, show_timestamps: bool = False) -> 
         with app.run():
             ...
     ```
+
+    To suppress progress indicators, use `output_manager.set_quiet_mode(True)`.
+    To enable timestamps, use `output_manager.set_timestamps(True)`.
     """
     global _current_output_manager
     previous_output_manager = _current_output_manager
 
-    if show_progress:
-        from ._output.rich import RichOutputManager
+    from ._output.rich import RichOutputManager
 
-        _current_output_manager = RichOutputManager(show_timestamps=show_timestamps)
+    _current_output_manager = RichOutputManager()
     try:
         yield _current_output_manager
     finally:

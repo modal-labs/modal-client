@@ -14,7 +14,7 @@ from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
 from modal.environments import ensure_env
-from modal.output import enable_output
+from modal.output import _get_output_manager
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
@@ -68,11 +68,10 @@ async def shell(
     if len(res.cluster.task_ids) <= rank:
         raise typer.Abort(f"No node with rank {rank} in cluster {cluster_id}")
     task_id = res.cluster.task_ids[rank]
-    with enable_output() as output:
-        is_main = "(main)" if rank == 0 else ""
-        output.print(
-            f"[green]Opening shell to node {rank} {is_main} of cluster {cluster_id} (container {task_id})[/green]"
-        )
+    is_main = "(main)" if rank == 0 else ""
+    _get_output_manager().print(
+        f"[green]Opening shell to node {rank} {is_main} of cluster {cluster_id} (container {task_id})[/green]"
+    )
 
     pty = is_tty()
     req = api_pb2.ContainerExecRequest(

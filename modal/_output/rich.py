@@ -174,6 +174,7 @@ class RichOutputManager:
     _status_spinner_live: Live | None
     _show_timestamps: bool
     _object_tree: Tree | None
+    _quiet_mode: bool
 
     @property
     def is_enabled(self) -> bool:
@@ -207,6 +208,7 @@ class RichOutputManager:
         self._status_spinner_live = None
         self._show_timestamps = show_timestamps
         self._object_tree = None
+        self._quiet_mode = False
 
     def disable(self) -> None:
         """Disable this output manager and clean up resources."""
@@ -233,6 +235,9 @@ class RichOutputManager:
     @contextlib.contextmanager
     def display_object_tree(self) -> Generator[None, None, None]:
         """Context manager that displays a tree of objects being created."""
+        if self._quiet_mode:
+            yield
+            return
         self._object_tree = Tree(self.step_progress("Creating objects..."), guide_style="gray50")
         with self.make_live(self._object_tree):
             yield
@@ -504,15 +509,35 @@ class RichOutputManager:
         Yields:
             A TransferProgressContext with a progress() method for updating transfer progress.
         """
+        if self._quiet_mode:
+            from modal._output.manager import _DisabledTransferProgress
+
+            yield _DisabledTransferProgress()
+            return
         handler = ProgressHandler(type, self._console)
         with handler.live:
             yield _RichTransferProgress(handler)
 
     @contextlib.contextmanager
     def show_status_spinner(self) -> Generator[None, None, None]:
+        if self._quiet_mode:
+            yield
+            return
         self._status_spinner_live = self.make_live(self._status_spinner)
         with self._status_spinner_live:
             yield
+
+    def set_quiet_mode(self, quiet: bool) -> None:
+        """Enable or disable quiet mode.
+
+        When quiet mode is enabled, progress indicators (spinners, progress bars)
+        are suppressed, but essential output like errors and warnings still appear.
+        """
+        self._quiet_mode = quiet
+
+    def set_timestamps(self, show: bool) -> None:
+        """Enable or disable timestamp display in log output."""
+        self._show_timestamps = show
 
 
 class _RichTransferProgress:

@@ -11,7 +11,7 @@ from rich.markdown import Markdown
 from typer import Typer
 
 from ..exception import _CliUserExecutionError
-from ..output import enable_output
+from ..output import _get_output_manager
 from ..runner import run_app
 from .import_refs import ImportRef, _get_runnable_app, import_file_or_module
 
@@ -28,13 +28,12 @@ launch_cli = Typer(
 def _launch_program(
     name: str, filename: str, detach: bool, args: dict[str, Any], *, description: Optional[str] = None
 ) -> None:
-    with enable_output() as output:
-        output.print(
-            rich.panel.Panel(
-                Markdown(f"⚠️  `modal launch {name}` is **experimental** and may change in the future."),
-                border_style="yellow",
-            ),
-        )
+    _get_output_manager().print(
+        rich.panel.Panel(
+            Markdown(f"⚠️  `modal launch {name}` is **experimental** and may change in the future."),
+            border_style="yellow",
+        ),
+    )
 
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
@@ -49,15 +48,14 @@ def _launch_program(
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
-    with enable_output():
-        with run_app(app, detach=detach):
-            try:
-                if isasync:
-                    asyncio.run(func())
-                else:
-                    func()
-            except Exception as exc:
-                raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+    with run_app(app, detach=detach):
+        try:
+            if isasync:
+                asyncio.run(func())
+            else:
+                func()
+        except Exception as exc:
+            raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
 
 
 @launch_cli.command(name="jupyter", help="Start Jupyter Lab on Modal.")
@@ -72,18 +70,17 @@ def jupyter(
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
     detach: bool = False,  # Run the app in "detached" mode to persist after local client disconnects
 ):
-    with enable_output() as output:
-        output.print(
-            rich.panel.Panel(
-                (
-                    "[link=https://modal.com/notebooks]Try Modal Notebooks! "
-                    "modal.com/notebooks[/link]\n"
-                    "Notebooks have a new UI, saved content, real-time collaboration and more."
-                ),
+    _get_output_manager().print(
+        rich.panel.Panel(
+            (
+                "[link=https://modal.com/notebooks]Try Modal Notebooks! "
+                "modal.com/notebooks[/link]\n"
+                "Notebooks have a new UI, saved content, real-time collaboration and more."
             ),
-            highlight=False,
-            style="bold cyan",
-        )
+        ),
+        highlight=False,
+        style="bold cyan",
+    )
     args = {
         "cpu": cpu,
         "memory": memory,

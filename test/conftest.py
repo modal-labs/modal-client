@@ -3199,6 +3199,8 @@ def run_cli_command(args: list[str], expected_exit_code: int = 0, expected_stder
 
     from packaging.version import parse as parse_version
 
+    from modal.output import enable_output
+
     if parse_version(get_version("click")) < parse_version("8.2"):
         # mix_stderr=False is required to capture stderr separately in older Click versions
         runner = click.testing.CliRunner(mix_stderr=False)  # type: ignore   # this will fail type checks on newer click
@@ -3208,7 +3210,9 @@ def run_cli_command(args: list[str], expected_exit_code: int = 0, expected_stder
     # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
     # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
     with mock.patch.object(sys, "argv", args):
-        res = runner.invoke(entrypoint_cli, args)
+        # Enable rich output during CLI tests, just like __main__.py does
+        with enable_output():
+            res = runner.invoke(entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
         print("stdout:", repr(res.stdout))
         print("stderr:", repr(res.stderr))

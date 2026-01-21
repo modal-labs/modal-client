@@ -20,7 +20,7 @@ from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
 from ..functions import Function
-from ..output import enable_output
+from ..output import _get_output_manager
 from ..runner import deploy_app, run_app
 from ..serving import serve_app
 from .import_refs import (
@@ -230,19 +230,19 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
 
         _validate_interactive_quiet_params(ctx)
 
-        show_progress: bool = ctx.obj["show_progress"]
-        show_timestamps: bool = ctx.obj["show_timestamps"]
-        with enable_output(show_progress, show_timestamps=show_timestamps):
-            with run_app(
-                app,
-                detach=ctx.obj["detach"],
-                environment_name=ctx.obj["env"],
-                interactive=ctx.obj["interactive"],
-            ):
-                res = inner(args, kwargs)
+        output_mgr = _get_output_manager()
+        output_mgr.set_quiet_mode(ctx.obj["show_progress"] is False)
+        output_mgr.set_timestamps(ctx.obj["show_timestamps"])
+        with run_app(
+            app,
+            detach=ctx.obj["detach"],
+            environment_name=ctx.obj["env"],
+            interactive=ctx.obj["interactive"],
+        ):
+            res = inner(args, kwargs)
 
-            if result_path := ctx.obj["result_path"]:
-                _write_local_result(result_path, res)
+        if result_path := ctx.obj["result_path"]:
+            _write_local_result(result_path, res)
 
     return f
 
@@ -360,25 +360,25 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
 
         _validate_interactive_quiet_params(ctx)
 
-        show_progress: bool = ctx.obj["show_progress"]
-        show_timestamps: bool = ctx.obj["show_timestamps"]
-        with enable_output(show_progress, show_timestamps=show_timestamps):
-            with run_app(
-                app,
-                detach=ctx.obj["detach"],
-                environment_name=ctx.obj["env"],
-                interactive=ctx.obj["interactive"],
-            ):
-                try:
-                    if isasync:
-                        res = asyncio.run(func(*args, **kwargs))
-                    else:
-                        res = func(*args, **kwargs)
-                except Exception as exc:
-                    raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+        output_mgr = _get_output_manager()
+        output_mgr.set_quiet_mode(ctx.obj["show_progress"] is False)
+        output_mgr.set_timestamps(ctx.obj["show_timestamps"])
+        with run_app(
+            app,
+            detach=ctx.obj["detach"],
+            environment_name=ctx.obj["env"],
+            interactive=ctx.obj["interactive"],
+        ):
+            try:
+                if isasync:
+                    res = asyncio.run(func(*args, **kwargs))
+                else:
+                    res = func(*args, **kwargs)
+            except Exception as exc:
+                raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
 
-            if result_path := ctx.obj["result_path"]:
-                _write_local_result(result_path, res)
+        if result_path := ctx.obj["result_path"]:
+            _write_local_result(result_path, res)
 
     with_click_options = _add_click_options(f, signature.parameters)
 
@@ -408,11 +408,9 @@ class RunGroup(click.Group):
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
         import_ref = parse_import_ref(func_ref, use_module_mode=ctx.params["m"])
-        # Enable output during import so deprecation warnings are displayed with rich formatting
-        with enable_output(show_progress=ctx.params.get("quiet") is not True):
-            runnable, all_usable_commands = import_and_filter(
-                import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False
-            )
+        runnable, all_usable_commands = import_and_filter(
+            import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False
+        )
         if not runnable:
             help_header = (
                 "Specify a Modal Function or local entrypoint to run. E.g.\n"
@@ -518,22 +516,21 @@ def deploy(
 
     import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
 
-    # Enable output for the entire deploy flow, including import, so deprecation warnings are highlighted
-    with enable_output(show_timestamps=timestamps):
-        app = import_app_from_ref(import_ref, base_cmd="modal deploy")
+    _get_output_manager().set_timestamps(timestamps)
+    app = import_app_from_ref(import_ref, base_cmd="modal deploy")
 
-        name = name or app.name or ""
-        if not name:
-            raise ExecutionError(
-                "You need to either supply an explicit deployment name on the command line "
-                "or have a name set on the App.\n"
-                "\n"
-                "Examples:\n"
-                'app = modal.App("some-name")\n'
-                "modal deploy ... --name=some-name"
-            )
+    name = name or app.name or ""
+    if not name:
+        raise ExecutionError(
+            "You need to either supply an explicit deployment name on the command line "
+            "or have a name set on the App.\n"
+            "\n"
+            "Examples:\n"
+            'app = modal.App("some-name")\n'
+            "modal deploy ... --name=some-name"
+        )
 
-        res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
+    res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
 
     if stream_logs:
         stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url, show_timestamps=timestamps)
@@ -565,17 +562,16 @@ def serve(
     env = ensure_env(env)
     import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
 
-    # Enable output for the entire serve flow, including import, so deprecation warnings are highlighted
-    with enable_output(show_timestamps=timestamps):
-        app = import_app_from_ref(import_ref, base_cmd="modal serve")
-        if app.description is None:
-            app.set_description(_get_clean_app_description(app_ref))
-        with serve_app(app, import_ref, environment_name=env):
-            if timeout is None:
-                timeout = config["serve_timeout"]
-            if timeout is None:
-                timeout = float("inf")
-            while timeout > 0:
-                t = min(timeout, 3600)
-                time.sleep(t)
-                timeout -= t
+    _get_output_manager().set_timestamps(timestamps)
+    app = import_app_from_ref(import_ref, base_cmd="modal serve")
+    if app.description is None:
+        app.set_description(_get_clean_app_description(app_ref))
+    with serve_app(app, import_ref, environment_name=env):
+        if timeout is None:
+            timeout = config["serve_timeout"]
+        if timeout is None:
+            timeout = float("inf")
+        while timeout > 0:
+            t = min(timeout, 3600)
+            time.sleep(t)
+            timeout -= t

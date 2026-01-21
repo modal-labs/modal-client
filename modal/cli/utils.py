@@ -11,12 +11,11 @@ from rich.text import Text
 from modal_proto import api_pb2
 
 from .._output.pty import get_app_logs_loop
-from .._output.rich import RichOutputManager
 from .._utils.async_utils import synchronizer
 from ..client import _Client
 from ..environments import ensure_env
 from ..exception import NotFoundError
-from ..output import enable_output
+from ..output import _get_output_manager
 
 
 @synchronizer.create_blocking
@@ -27,7 +26,8 @@ async def stream_app_logs(
     show_timestamps: bool = False,
 ):
     client = await _Client.from_env()
-    output_mgr = RichOutputManager(status_spinner_text=f"Tailing logs for {app_id}", show_timestamps=show_timestamps)
+    output_mgr = _get_output_manager()
+    output_mgr.set_timestamps(show_timestamps)
     try:
         with output_mgr.show_status_spinner():
             await get_app_logs_loop(client, output_mgr, app_id=app_id, task_id=task_id, app_logs_url=app_logs_url)
@@ -55,8 +55,7 @@ def _plain(text: Union[Text, str]) -> str:
 
 
 def is_tty() -> bool:
-    with enable_output() as output:
-        return output.is_terminal
+    return _get_output_manager().is_terminal
 
 
 def display_table(
@@ -68,15 +67,15 @@ def display_table(
     def col_to_str(col: Union[Column, str]) -> str:
         return str(col.header) if isinstance(col, Column) else col
 
-    with enable_output() as output:
-        if json:
-            json_data = [{col_to_str(col): _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
-            output.print_json(dumps(json_data))
-        else:
-            table = Table(*columns, title=title)
-            for row in rows:
-                table.add_row(*row)
-            output.print(table)
+    output = _get_output_manager()
+    if json:
+        json_data = [{col_to_str(col): _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
+        output.print_json(dumps(json_data))
+    else:
+        table = Table(*columns, title=title)
+        for row in rows:
+            table.add_row(*row)
+        output.print(table)
 
 
 ENV_OPTION_HELP = """Environment to interact with.

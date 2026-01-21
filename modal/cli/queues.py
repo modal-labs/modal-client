@@ -12,7 +12,7 @@ from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.output import enable_output
+from modal.output import _get_output_manager
 from modal.queue import _Queue
 from modal_proto import api_pb2
 
@@ -140,13 +140,13 @@ async def peek(
 ):
     """Print the next N items in the queue or queue partition (without removal)."""
     q = _Queue.from_name(name, environment_name=env)
-    with enable_output() as output:
-        i = 0
-        async for item in q.iterate(partition=partition):
-            output.print(item)
-            i += 1
-            if i >= n:
-                break
+    output = _get_output_manager()
+    i = 0
+    async for item in q.iterate(partition=partition):
+        output.print(item)
+        i += 1
+        if i >= n:
+            break
 
 
 @queue_cli.command(name="len", rich_help_panel="Inspection")
@@ -160,5 +160,4 @@ async def len_(
 ):
     """Print the length of a queue partition or the total length of all partitions."""
     q = _Queue.from_name(name, environment_name=env)
-    with enable_output() as output:
-        output.print(await q.len(partition=partition, total=total))
+    _get_output_manager().print(await q.len(partition=partition, total=total))
