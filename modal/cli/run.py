@@ -408,9 +408,11 @@ class RunGroup(click.Group):
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
         import_ref = parse_import_ref(func_ref, use_module_mode=ctx.params["m"])
-        runnable, all_usable_commands = import_and_filter(
-            import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False
-        )
+        # Enable output during import so deprecation warnings are displayed with rich formatting
+        with enable_output(show_progress=ctx.params.get("quiet") is not True):
+            runnable, all_usable_commands = import_and_filter(
+                import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False
+            )
         if not runnable:
             help_header = (
                 "Specify a Modal Function or local entrypoint to run. E.g.\n"
@@ -515,20 +517,22 @@ def deploy(
     env = ensure_env(env)
 
     import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
-    app = import_app_from_ref(import_ref, base_cmd="modal deploy")
 
-    name = name or app.name or ""
-    if not name:
-        raise ExecutionError(
-            "You need to either supply an explicit deployment name on the command line "
-            "or have a name set on the App.\n"
-            "\n"
-            "Examples:\n"
-            'app = modal.App("some-name")\n'
-            "modal deploy ... --name=some-name"
-        )
-
+    # Enable output for the entire deploy flow, including import, so deprecation warnings are highlighted
     with enable_output(show_timestamps=timestamps):
+        app = import_app_from_ref(import_ref, base_cmd="modal deploy")
+
+        name = name or app.name or ""
+        if not name:
+            raise ExecutionError(
+                "You need to either supply an explicit deployment name on the command line "
+                "or have a name set on the App.\n"
+                "\n"
+                "Examples:\n"
+                'app = modal.App("some-name")\n'
+                "modal deploy ... --name=some-name"
+            )
+
         res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
 
     if stream_logs:
@@ -560,11 +564,12 @@ def serve(
     """
     env = ensure_env(env)
     import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
-    app = import_app_from_ref(import_ref, base_cmd="modal serve")
-    if app.description is None:
-        app.set_description(_get_clean_app_description(app_ref))
 
+    # Enable output for the entire serve flow, including import, so deprecation warnings are highlighted
     with enable_output(show_timestamps=timestamps):
+        app = import_app_from_ref(import_ref, base_cmd="modal serve")
+        if app.description is None:
+            app.set_description(_get_clean_app_description(app_ref))
         with serve_app(app, import_ref, environment_name=env):
             if timeout is None:
                 timeout = config["serve_timeout"]
