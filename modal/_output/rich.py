@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
+from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -260,6 +261,61 @@ class RichOutputManager:
     def print_json(self, data: str) -> None:
         """Print JSON data with formatting."""
         self._console.print_json(data)
+
+    def show_warning(
+        self,
+        warning: Warning,
+        category: type[Warning],
+        filename: str,
+        lineno: int,
+        base_showwarning: Callable[..., None],
+    ) -> None:
+        """Display a warning, using rich formatting for Modal-specific warnings.
+
+        Modal warnings (DeprecationError, PendingDeprecationError, ServerWarning) are shown
+        in a yellow-bordered panel with source context. Other warnings fall back to the
+        default Python warning display.
+        """
+        from modal.exception import DeprecationError, PendingDeprecationError, ServerWarning
+
+        # For non-Modal warnings, fall back to the default display
+        if not issubclass(category, (DeprecationError, PendingDeprecationError, ServerWarning)):
+            base_showwarning(warning, category, filename, lineno, file=None, line=None)
+            return
+
+        content = str(warning)
+        # Extract date prefix if present (e.g., "2024-01-15 Some warning message")
+        if re.match(r"^\d{4}-\d{2}-\d{2}", content):
+            date = content[:10]
+            message = content[11:].strip()
+        else:
+            date = ""
+            message = content
+
+        # Try to add source context
+        try:
+            with open(filename, encoding="utf-8", errors="replace") as code_file:
+                source = code_file.readlines()[lineno - 1].strip()
+            message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
+        except OSError:
+            # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows
+            pass
+
+        # Build title
+        if issubclass(category, ServerWarning):
+            title = "Modal Warning"
+        else:
+            title = "Modal Deprecation Warning"
+        if date:
+            title += f" ({date})"
+
+        panel = Panel(
+            escape(message),
+            border_style="yellow",
+            title=title,
+            title_align="left",
+        )
+        self._stderr_console.print(panel)
 
     def status(self, message: str) -> "Status":
         """Create a status spinner context manager.

@@ -156,6 +156,31 @@ class OutputManager(Protocol):
         """
         ...
 
+    def show_warning(
+        self,
+        warning: Warning,
+        category: type[Warning],
+        filename: str,
+        lineno: int,
+        base_showwarning: Callable[..., None],
+    ) -> None:
+        """Display a warning message.
+
+        This method is called by the patched warnings.showwarning for all warnings.
+        Implementations decide how to display the warning based on category:
+        - RichOutputManager: Shows Modal-specific warnings with fancy formatting,
+          falls back to base_showwarning for others.
+        - DisabledOutputManager: Always uses base_showwarning.
+
+        Args:
+            warning: The warning instance.
+            category: The warning category (class).
+            filename: The source file where the warning originated.
+            lineno: The line number where the warning originated.
+            base_showwarning: The original warnings.showwarning function to fall back to.
+        """
+        ...
+
     def print_json(self, data: str) -> None:
         """Print JSON data with formatting."""
         ...
@@ -291,6 +316,17 @@ class DisabledOutputManager:
 
     def print(self, renderable: Any, *, stderr: bool = False, highlight: bool = True, style: str | None = None) -> None:
         pass
+
+    def show_warning(
+        self,
+        warning: Warning,
+        category: type[Warning],
+        filename: str,
+        lineno: int,
+        base_showwarning: Callable[..., None],
+    ) -> None:
+        # When output is disabled, fall back to the default warning display
+        base_showwarning(warning, category, filename, lineno, file=None, line=None)
 
     def print_json(self, data: str) -> None:
         pass
