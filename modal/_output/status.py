@@ -71,6 +71,7 @@ class FunctionCreationStatus:
                 )
 
         elif self.response.function.flash_service_urls:
+            self.status_row.finish(f"Created function {self.tag}.")
             for flash_service_url in self.response.function.flash_service_urls:
                 flash_service_url_status_row = self._output_mgr.add_status_row()
                 flash_service_url_status_row.finish(
