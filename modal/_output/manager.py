@@ -145,13 +145,14 @@ class OutputManager(Protocol):
         """Add a status row to the current object tree."""
         ...
 
-    def print(self, renderable: Any, *, stderr: bool = False, highlight: bool = True) -> None:
+    def print(self, renderable: Any, *, stderr: bool = False, highlight: bool = True, style: str | None = None) -> None:
         """Print a renderable to the console.
 
         Args:
             renderable: The content to print.
             stderr: If True, print to stderr instead of stdout.
             highlight: If True, apply syntax highlighting.
+            style: Optional Rich style string (e.g., "green", "bold cyan").
         """
         ...
 
@@ -288,7 +289,7 @@ class DisabledOutputManager:
     def add_status_row(self) -> StatusRow:
         return DisabledStatusRow()
 
-    def print(self, renderable: Any, *, stderr: bool = False, highlight: bool = True) -> None:
+    def print(self, renderable: Any, *, stderr: bool = False, highlight: bool = True, style: str | None = None) -> None:
         pass
 
     def print_json(self, data: str) -> None:

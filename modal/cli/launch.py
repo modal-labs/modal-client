@@ -82,6 +82,7 @@ def jupyter(
                 ),
             ),
             highlight=False,
+            style="bold cyan",
         )
     args = {
         "cpu": cpu,

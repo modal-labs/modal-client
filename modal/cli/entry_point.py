@@ -108,7 +108,7 @@ async def setup(profile: Optional[str] = None):
 """
 
     with enable_output() as output:
-        output.print(art, highlight=False)
+        output.print(art, highlight=False, style="green")
 
         # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
         await _new_token(profile=profile, next_url="/home")
