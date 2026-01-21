@@ -206,7 +206,7 @@ async def get_app_logs_loop(
                     pty_shell_stdout = output_mgr._stdout
                     pty_shell_finish_event = asyncio.Event()
                     pty_shell_task_id = log_batch.task_id
-                    output_mgr.disable()
+                    output_mgr.set_quiet_mode(True)
                     pty_shell_input_task = asyncio.create_task(
                         stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event)
                     )

@@ -132,10 +132,6 @@ class OutputManager(Protocol):
         """Whether to show image logs."""
         ...
 
-    def disable(self) -> None:
-        """Disable output and clean up resources."""
-        ...
-
     @contextlib.contextmanager
     def display_object_tree(self) -> Generator[None, None, None]:
         """Context manager that displays a tree of objects being created."""
@@ -315,9 +311,6 @@ class DisabledOutputManager:
     @property
     def _show_image_logs(self) -> bool:
         return True  # Always "show" logs when disabled (don't filter them)
-
-    def disable(self) -> None:
-        pass
 
     @contextlib.contextmanager
     def display_object_tree(self) -> Generator[None, None, None]:

@@ -57,13 +57,3 @@ def _get_output_manager() -> OutputManager:
     simplifying the calling code.
     """
     return _current_output_manager
-
-
-def _disable_output_manager() -> None:
-    """Disable the current output manager.
-
-    This is called by RichOutputManager.disable() to ensure that subsequent calls
-    to _get_output_manager() return a DisabledOutputManager.
-    """
-    global _current_output_manager
-    _current_output_manager = _DISABLED_OUTPUT_MANAGER

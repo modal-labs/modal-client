@@ -210,15 +210,6 @@ class RichOutputManager:
         self._object_tree = None
         self._quiet_mode = False
 
-    def disable(self) -> None:
-        """Disable this output manager and clean up resources."""
-        from modal.output import _disable_output_manager
-
-        self.flush_lines()
-        if self._status_spinner_live:
-            self._status_spinner_live.stop()
-        _disable_output_manager()
-
     @staticmethod
     def step_progress(text: str = "") -> Spinner:
         """Returns the element to be rendered when a step is in progress."""
@@ -532,7 +523,16 @@ class RichOutputManager:
 
         When quiet mode is enabled, progress indicators (spinners, progress bars)
         are suppressed, but essential output like errors and warnings still appear.
+
+        When transitioning to quiet mode, this also flushes any buffered output
+        and stops the status spinner if running.
         """
+        if quiet and not self._quiet_mode:
+            # Transitioning to quiet mode - clean up any active output
+            self.flush_lines()
+            if self._status_spinner_live:
+                self._status_spinner_live.stop()
+                self._status_spinner_live = None
         self._quiet_mode = quiet
 
     def set_timestamps(self, show: bool) -> None:
