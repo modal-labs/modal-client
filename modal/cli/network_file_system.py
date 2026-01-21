@@ -12,7 +12,7 @@ from typer import Argument, Typer
 
 import modal
 from modal._location import display_location
-from modal._output.rich import ProgressHandler, RichOutputManager, make_console
+from modal._output.rich import RichOutputManager
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
@@ -20,6 +20,7 @@ from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
+from modal.output import enable_output
 from modal_proto import api_pb2
 
 nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
@@ -61,10 +62,10 @@ def create(
 ):
     ensure_env(env)
     modal.NetworkFileSystem.create_deployed(name, environment_name=env)
-    console = make_console()
-    console.print(f"Created volume '{name}'. \n\nCode example:\n")
-    usage = Syntax(gen_usage_code(name), "python")
-    console.print(usage)
+    with enable_output() as output:
+        output.print(f"Created volume '{name}'. \n\nCode example:\n")
+        usage = Syntax(gen_usage_code(name), "python")
+        output.print(usage)
 
 
 @nfs_cli.command(
@@ -83,17 +84,17 @@ async def ls(
     entries = await volume.listdir(path)
 
     if sys.stdout.isatty():
-        console = make_console()
-        console.print(f"Directory listing of '{path}' in '{volume_name}'")
-        table = Table()
+        with enable_output() as output:
+            output.print(f"Directory listing of '{path}' in '{volume_name}'")
+            table = Table()
 
-        table.add_column("filename")
-        table.add_column("type")
+            table.add_column("filename")
+            table.add_column("type")
 
-        for entry in entries:
-            filetype = "dir" if entry.type == api_pb2.FileEntry.FileType.DIRECTORY else "file"
-            table.add_row(entry.path, filetype)
-        console.print(table)
+            for entry in entries:
+                filetype = "dir" if entry.type == api_pb2.FileEntry.FileType.DIRECTORY else "file"
+                table.add_row(entry.path, filetype)
+            output.print(table)
     else:
         for entry in entries:
             print(entry.path)  # noqa: T201
@@ -121,27 +122,29 @@ async def put(
     volume = _NetworkFileSystem.from_name(volume_name)
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
-    console = make_console()
 
-    if Path(local_path).is_dir():
-        progress_handler = ProgressHandler(type="upload", console=console)
-        with progress_handler.live:
-            await volume.add_local_dir(local_path, remote_path, progress_cb=progress_handler.progress)
-            progress_handler.progress(complete=True)
-        console.print(RichOutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+    with enable_output() as output:
+        if Path(local_path).is_dir():
+            progress_handler = output.create_progress_handler("upload")
+            with progress_handler.live:
+                await volume.add_local_dir(local_path, remote_path, progress_cb=progress_handler.progress)
+                progress_handler.progress(complete=True)
+            output.print(RichOutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
 
-    elif "*" in local_path:
-        raise UsageError("Glob uploads are currently not supported")
-    else:
-        progress_handler = ProgressHandler(type="upload", console=console)
-        with progress_handler.live:
-            written_bytes = await volume.add_local_file(local_path, remote_path, progress_cb=progress_handler.progress)
-            progress_handler.progress(complete=True)
-        console.print(
-            RichOutputManager.step_completed(
-                f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)"
+        elif "*" in local_path:
+            raise UsageError("Glob uploads are currently not supported")
+        else:
+            progress_handler = output.create_progress_handler("upload")
+            with progress_handler.live:
+                written_bytes = await volume.add_local_file(
+                    local_path, remote_path, progress_cb=progress_handler.progress
+                )
+                progress_handler.progress(complete=True)
+            output.print(
+                RichOutputManager.step_completed(
+                    f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)"
+                )
             )
-        )
 
 
 class CliError(Exception):
@@ -174,11 +177,11 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = _NetworkFileSystem.from_name(volume_name)
-    console = make_console()
-    progress_handler = ProgressHandler(type="download", console=console)
-    with progress_handler.live:
-        await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
-    console.print(RichOutputManager.step_completed("Finished downloading files to local!"))
+    with enable_output() as output:
+        progress_handler = output.create_progress_handler("download")
+        with progress_handler.live:
+            await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
+        output.print(RichOutputManager.step_completed("Finished downloading files to local!"))
 
 
 @nfs_cli.command(
@@ -193,9 +196,9 @@ async def rm(
 ):
     ensure_env(env)
     volume = _NetworkFileSystem.from_name(volume_name)
-    console = make_console()
     await volume.remove_file(remote_path, recursive=recursive)
-    console.print(RichOutputManager.step_completed(f"{remote_path} was deleted successfully!"))
+    with enable_output() as output:
+        output.print(RichOutputManager.step_completed(f"{remote_path} was deleted successfully!"))
 
 
 @nfs_cli.command(

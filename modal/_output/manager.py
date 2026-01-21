@@ -17,6 +17,29 @@ from typing import TYPE_CHECKING, Any, Callable, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from modal_proto import api_pb2
 
+    from .rich import ProgressHandler
+
+
+@runtime_checkable
+class StatusContext(Protocol):
+    """Protocol for status context managers that support manual start/stop control."""
+
+    def start(self) -> None:
+        """Start showing the status spinner."""
+        ...
+
+    def stop(self) -> None:
+        """Stop showing the status spinner."""
+        ...
+
+    def update(self, status: str) -> None:
+        """Update the status message."""
+        ...
+
+    def __enter__(self) -> "StatusContext": ...
+
+    def __exit__(self, *args: Any) -> None: ...
+
 
 @runtime_checkable
 class StatusRow(Protocol):
@@ -65,6 +88,11 @@ class OutputManager(Protocol):
         ...
 
     @property
+    def is_terminal(self) -> bool:
+        """Whether the output is connected to a terminal (TTY)."""
+        ...
+
+    @property
     def _stdout(self) -> Any:
         """The stdout stream for PTY shell output."""
         ...
@@ -87,8 +115,26 @@ class OutputManager(Protocol):
         """Add a status row to the current object tree."""
         ...
 
-    def print(self, renderable: Any) -> None:
-        """Print a renderable to the console."""
+    def print(self, renderable: Any, *, stderr: bool = False, highlight: bool = True) -> None:
+        """Print a renderable to the console.
+
+        Args:
+            renderable: The content to print.
+            stderr: If True, print to stderr instead of stdout.
+            highlight: If True, apply syntax highlighting.
+        """
+        ...
+
+    def print_json(self, data: str) -> None:
+        """Print JSON data with formatting."""
+        ...
+
+    def status(self, message: str) -> "StatusContext":
+        """Context manager that displays a status spinner with a message.
+
+        Returns a context manager that shows a spinner while active.
+        The returned object has start(), stop(), and update() methods for manual control.
+        """
         ...
 
     def make_live(self, renderable: Any) -> AbstractContextManager[Any]:
@@ -133,6 +179,14 @@ class OutputManager(Protocol):
         """Flush any buffered output."""
         ...
 
+    def create_progress_handler(self, type: str) -> "ProgressHandler":
+        """Create a progress handler for file transfer operations.
+
+        Args:
+            type: Either "download" or "upload".
+        """
+        ...
+
     @staticmethod
     def step_progress(text: str = "") -> Any:
         """Returns the element to be rendered when a step is in progress."""
@@ -149,6 +203,25 @@ class OutputManager(Protocol):
         ...
 
 
+class _DisabledStatus:
+    """No-op status context manager for when output is disabled."""
+
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    def update(self, status: str) -> None:
+        pass
+
+    def __enter__(self) -> "_DisabledStatus":
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        pass
+
+
 class DisabledOutputManager:
     """No-op implementation of OutputManager for when output is disabled.
 
@@ -159,6 +232,10 @@ class DisabledOutputManager:
     @property
     def is_enabled(self) -> bool:
         return False
+
+    @property
+    def is_terminal(self) -> bool:
+        return sys.stdout.isatty()
 
     @property
     def _stdout(self) -> Any:
@@ -178,8 +255,14 @@ class DisabledOutputManager:
     def add_status_row(self) -> StatusRow:
         return DisabledStatusRow()
 
-    def print(self, renderable: Any) -> None:
+    def print(self, renderable: Any, *, stderr: bool = False, highlight: bool = True) -> None:
         pass
+
+    def print_json(self, data: str) -> None:
+        pass
+
+    def status(self, message: str) -> StatusContext:
+        return _DisabledStatus()
 
     def make_live(self, renderable: Any) -> AbstractContextManager[Any]:
         return nullcontext()
@@ -216,6 +299,12 @@ class DisabledOutputManager:
 
     def flush_lines(self) -> None:
         pass
+
+    def create_progress_handler(self, type: str) -> "ProgressHandler":
+        # Return a real ProgressHandler even when disabled, as it handles its own display
+        from .rich import ProgressHandler, _make_console
+
+        return ProgressHandler(type, _make_console())
 
     @staticmethod
     def step_progress(text: str = "") -> str:

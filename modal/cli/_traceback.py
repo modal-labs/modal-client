@@ -13,8 +13,8 @@ from rich.syntax import Syntax
 from rich.text import Text
 from rich.traceback import PathHighlighter, Stack, Traceback, install
 
-from .._output.rich import make_console
 from ..exception import DeprecationError, PendingDeprecationError, ServerWarning
+from ..output import _get_output_manager
 
 
 @group()
@@ -195,7 +195,7 @@ def highlight_modal_warnings() -> None:
                 title=title,
                 title_align="left",
             )
-            make_console().print(panel)
+            _get_output_manager().print(panel)
         else:
             base_showwarning(warning, category, filename, lineno, file=None, line=None)
 

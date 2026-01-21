@@ -13,12 +13,12 @@ import typer
 from rich.syntax import Syntax
 from typer import Argument, Option
 
-from modal._output.rich import make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
+from modal.output import enable_output
 from modal.secret import _Secret
 from modal_proto import api_pb2
 
@@ -146,19 +146,20 @@ modal secret create my-credentials username=john password="$PASSWORD"
         await _Secret.objects.create(secret_name, env_dict)
 
     # Print code sample
-    console = make_console()
-    env_var_code = "\n    ".join(f'os.getenv("{name}")' for name in env_dict.keys()) if env_dict else "..."
-    example_code = f"""
+    with enable_output() as output:
+        env_var_code = "\n    ".join(f'os.getenv("{name}")' for name in env_dict.keys()) if env_dict else "..."
+        example_code = f"""
 @app.function(secrets=[modal.Secret.from_name("{secret_name}")])
 def some_function():
     {env_var_code}
 """
-    plural_s = "s" if len(env_dict) > 1 else ""
-    console.print(
-        f"""Created a new secret '{secret_name}' with the key{plural_s} {", ".join(repr(k) for k in env_dict.keys())}"""
-    )
-    console.print("\nUse it in your Modal app:\n")
-    console.print(Syntax(example_code, "python"))
+        plural_s = "s" if len(env_dict) > 1 else ""
+        output.print(
+            f"""Created a new secret '{secret_name}' with the key{plural_s} """
+            f"""{", ".join(repr(k) for k in env_dict.keys())}"""
+        )
+        output.print("\nUse it in your Modal app:\n")
+        output.print(Syntax(example_code, "python"))
 
 
 @secret_cli.command("delete", help="Delete a named Secret.")

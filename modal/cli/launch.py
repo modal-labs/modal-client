@@ -10,7 +10,6 @@ import rich.panel
 from rich.markdown import Markdown
 from typer import Typer
 
-from .._output.rich import make_console
 from ..exception import _CliUserExecutionError
 from ..output import enable_output
 from ..runner import run_app
@@ -29,13 +28,13 @@ launch_cli = Typer(
 def _launch_program(
     name: str, filename: str, detach: bool, args: dict[str, Any], *, description: Optional[str] = None
 ) -> None:
-    console = make_console()
-    console.print(
-        rich.panel.Panel(
-            Markdown(f"⚠️  `modal launch {name}` is **experimental** and may change in the future."),
-            border_style="yellow",
-        ),
-    )
+    with enable_output() as output:
+        output.print(
+            rich.panel.Panel(
+                Markdown(f"⚠️  `modal launch {name}` is **experimental** and may change in the future."),
+                border_style="yellow",
+            ),
+        )
 
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
@@ -73,17 +72,17 @@ def jupyter(
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
     detach: bool = False,  # Run the app in "detached" mode to persist after local client disconnects
 ):
-    console = make_console()
-    console.print(
-        rich.panel.Panel(
-            (
-                "[link=https://modal.com/notebooks]Try Modal Notebooks! "
-                "modal.com/notebooks[/link]\n"
-                "Notebooks have a new UI, saved content, real-time collaboration and more."
+    with enable_output() as output:
+        output.print(
+            rich.panel.Panel(
+                (
+                    "[link=https://modal.com/notebooks]Try Modal Notebooks! "
+                    "modal.com/notebooks[/link]\n"
+                    "Notebooks have a new UI, saved content, real-time collaboration and more."
+                ),
             ),
-        ),
-        style="bold cyan",
-    )
+            highlight=False,
+        )
     args = {
         "cpu": cpu,
         "memory": memory,

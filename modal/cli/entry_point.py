@@ -5,8 +5,8 @@ from typing import Optional
 import typer
 from rich.rule import Rule
 
-from modal._output.rich import make_console
 from modal._utils.async_utils import synchronizer
+from modal.output import enable_output
 
 from . import run, shell as shell_module
 from .app import app_cli
@@ -55,8 +55,8 @@ def modal(
     # - set invoke_without_command=False in the callback decorator
     # - set no_args_is_help=True in entrypoint_cli_typer
     if ctx.invoked_subcommand is None:
-        console = make_console()
-        console.print(ctx.get_help())
+        with enable_output() as output:
+            output.print(ctx.get_help())
         raise typer.Exit()
 
 
@@ -78,9 +78,9 @@ def check_path():
             "You may need to give it permissions or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
         )
     text += f"See more information here:\n\n[link={url}]{url}[/link]\n"
-    console = make_console()
-    console.print(text)
-    console.print(Rule(style="white"))
+    with enable_output() as output:
+        output.print(text)
+        output.print(Rule(style="white"))
 
 
 @synchronizer.create_blocking
@@ -99,7 +99,7 @@ async def setup(profile: Optional[str] = None):
    ##        ##         ##    ##        ##         ##
   ##        ##         ##      ##        ##         ##
  ##        ##         ##        ##        ##         ##
-##        ##         ##          ##        #############
+   ##        ##         ##          ##        #############
  ##      ##         ##            ##      ##         ##
   ##    ##         ##              ##    ##         ##
    ##  ##         ##                ##  ##         ##
@@ -107,11 +107,11 @@ async def setup(profile: Optional[str] = None):
      #############                    #############
 """
 
-    console = make_console()
-    console.print(art, style="green")
+    with enable_output() as output:
+        output.print(art, highlight=False)
 
-    # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
-    await _new_token(profile=profile, next_url="/home")
+        # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
+        await _new_token(profile=profile, next_url="/home")
 
 
 # Commands

@@ -5,7 +5,6 @@ import typer
 from typer import Argument, Option, Typer
 
 from modal._load_context import LoadContext
-from modal._output.rich import make_console
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
@@ -13,6 +12,7 @@ from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.dict import _Dict
 from modal.environments import ensure_env
+from modal.output import enable_output
 
 dict_cli = Typer(
     name="dict",
@@ -92,9 +92,9 @@ async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
     Note: When using the CLI, keys are always interpreted as having a string type.
     """
     d = _Dict.from_name(name, environment_name=env)
-    console = make_console()
-    val = await d.get(key)
-    console.print(val)
+    with enable_output() as output:
+        val = await d.get(key)
+        output.print(val)
 
 
 def _display(input: str, use_repr: bool) -> str:

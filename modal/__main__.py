@@ -1,12 +1,12 @@
 # Copyright Modal Labs 2022
 import sys
 
-from ._output.rich import make_console
 from ._traceback import reduce_traceback_to_user_code
 from .cli._traceback import highlight_modal_warnings, setup_rich_traceback
 from .cli.entry_point import entrypoint_cli
 from .cli.import_refs import _CliUserExecutionError
 from .config import config
+from .output import _get_output_manager
 
 
 def main():
@@ -43,9 +43,8 @@ def main():
         if notes := getattr(exc, "__notes__", []):
             content = f"{content}\n\nNote: {' '.join(notes)}"
 
-        console = make_console(stderr=True)
         panel = Panel(escape(content), title=title, title_align="left", border_style="red")
-        console.print(panel, highlight=False)
+        _get_output_manager().print(panel, stderr=True, highlight=False)
         sys.exit(1)
 
 
