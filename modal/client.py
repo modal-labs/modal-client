@@ -103,7 +103,8 @@ class _Client:
     @property
     def _is_localhost(self) -> bool:
         """Returns True if the server URL points to localhost."""
-        return urllib.parse.urlparse(self.server_url).hostname == "localhost"
+        hostname = urllib.parse.urlparse(self.server_url).hostname
+        return hostname in {"localhost", "127.0.0.1", "::1"}
 
     @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
