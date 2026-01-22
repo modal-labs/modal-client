@@ -42,6 +42,7 @@ jobs:
 
       - name: Push tag
         run: |
+          set -ex
           VERSION=$(python -c "from modal_version import __version__; print(__version__)")
           # TAG="v$VERSION"
           # git config user.name "modal-bot"
