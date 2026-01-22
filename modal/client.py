@@ -101,6 +101,11 @@ class _Client:
         return self._closed
 
     @property
+    def _is_localhost(self) -> bool:
+        """Returns True if the server URL points to localhost."""
+        return urllib.parse.urlparse(self.server_url).hostname == "localhost"
+
+    @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
         """mdmd:hidden
         The default stub. Stubs can safely be used across forks / client snapshots.
