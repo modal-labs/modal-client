@@ -3,7 +3,7 @@ name: Tag Release Commit
 on:
   push:
     branches:
-      - thomasjpfan/tag_release
+      - main
 
 jobs:
   release-tag-needed:
@@ -44,8 +44,8 @@ jobs:
         run: |
           set -ex
           VERSION=$(python -c "from modal_version import __version__; print(__version__)")
-          # TAG="v$VERSION"
-          # git config user.name "modal-bot"
-          # git config user.email "bot@modal.com"
-          # git tag $TAG || true
-          # git push origin $TAG || true
+          TAG="v$VERSION"
+          git config user.name "modal-bot"
+          git config user.email "bot@modal.com"
+          git tag $TAG || true
+          git push origin $TAG || true
