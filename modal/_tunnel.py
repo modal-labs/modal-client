@@ -11,7 +11,7 @@ from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
 from .client import _Client
-from .exception import AlreadyExistsError, InvalidError, RemoteError, ServiceError
+from .exception import AlreadyExistsError, ClientClosed, InvalidError, RemoteError, ServiceError
 
 
 @dataclass(frozen=True)
@@ -193,7 +193,11 @@ async def _forward(
     try:
         yield Tunnel(response.host, response.port, response.unencrypted_host, response.unencrypted_port)
     finally:
-        await client.stub.TunnelStop(api_pb2.TunnelStopRequest(port=port))
+        try:
+            await client.stub.TunnelStop(api_pb2.TunnelStopRequest(port=port))
+        except ClientClosed:
+            # Client might already be closing during generator cleanup.
+            pass
 
 
 forward = synchronize_api(_forward)

@@ -15,6 +15,7 @@ from modal.cls import _Cls
 from modal.dict import _Dict
 from modal_proto import api_pb2
 
+from .._runtime.container_io_manager import UserException
 from .._server import validate_http_server_config
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
@@ -124,17 +125,10 @@ class _FlashManager:
 
     async def _wait_for_port_success(self, host: str, port: int) -> bool:
         start_time = time.monotonic()
-        last_error: Optional[Exception] = None
-        sleep_seconds = 0.1
-        while True:
-            elapsed = time.monotonic() - start_time
-            remaining = self.startup_timeout - elapsed
-            if remaining <= 0:
-                break
+        while time.monotonic() - start_time < self.startup_timeout:
             try:
                 port_check_resp, _ = await self.is_port_connection_healthy(process=self.process)
                 if port_check_resp:
-                    register_timeout = min(10.0, remaining)
                     resp = await self.client.stub.FlashContainerRegister(
                         api_pb2.FlashContainerRegisterRequest(
                             priority=10,
@@ -142,7 +136,7 @@ class _FlashManager:
                             host=host,
                             port=port,
                         ),
-                        timeout=register_timeout,
+                        timeout=10,
                         retry=None,
                     )
                     logger.warning(
@@ -150,21 +144,20 @@ class _FlashManager:
                     )
                     return True
             except asyncio.CancelledError:
-                logger.warning("[Modal Flash] Startup check cancelled. Shutting down...")
+                logger.warning(
+                    "[Modal Flash] Waited too long for port to start accepting connections. Shutting down..."
+                )
                 raise
             except Exception as e:
-                last_error = e
-                logger.warning(f"[Modal Flash] Startup check retrying after error: {e}")
+                logger.error(f"[Modal Flash] Error waiting for port to start accepting connections: {e}")
             try:
-                await asyncio.sleep(min(1.0, sleep_seconds))
-                sleep_seconds = min(1.0, sleep_seconds * 2)
+                await asyncio.sleep(1)
             except asyncio.CancelledError:
-                logger.warning("[Modal Flash] Shutting down...")
+                logger.warning(
+                    "[Modal Flash] Waited too long for port to start accepting connections. Shutting down..."
+                )
                 raise
-        error_msg = f"[Modal Flash] Server failed to startup after {time.monotonic() - start_time} seconds."
-        if last_error is not None:
-            error_msg = f"{error_msg} Last error: {last_error}"
-        raise Exception(f"{error_msg} Shutting down...")
+        raise Exception("Waited too long for port to start accepting connections. Shutting down...")
 
     async def _run_heartbeat(self, host: str, port: int):
         start_time = time.monotonic()
@@ -762,12 +755,16 @@ class _FlashContainerEntry:
 
     def enter(self):
         if self.http_config != api_pb2.HTTPConfig():
-            self.flash_manager = flash_forward(
-                self.http_config.port,
-                startup_timeout=self.http_config.startup_timeout,
-                exit_grace_period=self.http_config.exit_grace_period,
-                h2_enabled=self.http_config.h2_enabled,
-            )
+            try:
+                self.flash_manager = flash_forward(
+                    self.http_config.port,
+                    startup_timeout=self.http_config.startup_timeout,
+                    exit_grace_period=self.http_config.exit_grace_period,
+                    h2_enabled=self.http_config.h2_enabled,
+                )
+            except Exception as e:
+                logger.warning("[Modal Flash] Startup failed: {e}")
+                raise UserException()
 
     def stop(self):
         if self.flash_manager:
