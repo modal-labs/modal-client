@@ -51,8 +51,6 @@ class _FlashManager:
     async def is_port_connection_healthy(
         self, process: Optional[subprocess.Popen], timeout: float = 0.5
     ) -> tuple[bool, Optional[Exception]]:
-        import socket
-
         start_time = time.monotonic()
 
         def check_process_is_running() -> Optional[Exception]:
@@ -64,10 +62,21 @@ class _FlashManager:
             try:
                 if error := check_process_is_running():
                     return False, error
-                # TODO(claudia): use asyncio socket create connection
-                with socket.create_connection(("localhost", self.port), timeout=0.5):
-                    return True, None
-            except (ConnectionRefusedError, OSError):
+                remaining = timeout - (time.monotonic() - start_time)
+                per_attempt_timeout = max(0.0, min(0.5, remaining))
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection("localhost", self.port),
+                    timeout=per_attempt_timeout,
+                )
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+                return True, None
+            except asyncio.CancelledError:
+                raise
+            except (OSError, asyncio.TimeoutError):
                 await asyncio.sleep(0.1)
 
         return False, Exception(f"Waited too long for port {self.port} to start accepting connections")
@@ -77,6 +86,8 @@ class _FlashManager:
         parsed_url = urlparse(self.tunnel.url)
         host = parsed_url.hostname
         port = parsed_url.port or 443
+
+        await self._wait_for_port_success(host, port)
 
         self.heartbeat_task = asyncio.create_task(self._run_heartbeat(host, port))
         self.drain_task = asyncio.create_task(self._drain_container())
@@ -111,8 +122,51 @@ class _FlashManager:
                 logger.warning("[Modal Flash] Shutting down...")
                 return
 
+    async def _wait_for_port_success(self, host: str, port: int) -> bool:
+        start_time = time.monotonic()
+        last_error: Optional[Exception] = None
+        sleep_seconds = 0.1
+        while True:
+            elapsed = time.monotonic() - start_time
+            remaining = self.startup_timeout - elapsed
+            if remaining <= 0:
+                break
+            try:
+                port_check_resp, _ = await self.is_port_connection_healthy(process=self.process)
+                if port_check_resp:
+                    register_timeout = min(10.0, remaining)
+                    resp = await self.client.stub.FlashContainerRegister(
+                        api_pb2.FlashContainerRegisterRequest(
+                            priority=10,
+                            weight=5,
+                            host=host,
+                            port=port,
+                        ),
+                        timeout=register_timeout,
+                        retry=None,
+                    )
+                    logger.warning(
+                        f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
+                    )
+                    return True
+            except asyncio.CancelledError:
+                logger.warning("[Modal Flash] Startup check cancelled. Shutting down...")
+                raise
+            except Exception as e:
+                last_error = e
+                logger.warning(f"[Modal Flash] Startup check retrying after error: {e}")
+            try:
+                await asyncio.sleep(min(1.0, sleep_seconds))
+                sleep_seconds = min(1.0, sleep_seconds * 2)
+            except asyncio.CancelledError:
+                logger.warning("[Modal Flash] Shutting down...")
+                raise
+        error_msg = f"[Modal Flash] Server failed to startup after {time.monotonic() - start_time} seconds."
+        if last_error is not None:
+            error_msg = f"{error_msg} Last error: {last_error}"
+        raise Exception(f"{error_msg} Shutting down...")
+
     async def _run_heartbeat(self, host: str, port: int):
-        first_registration = True
         start_time = time.monotonic()
         while True:
             try:
@@ -129,21 +183,13 @@ class _FlashManager:
                         retry=None,
                     )
                     self.num_failures = 0
-                    if first_registration:
-                        logger.warning(
-                            f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
-                        )
-                        first_registration = False
                 else:
-                    if first_registration and (time.monotonic() - start_time < self.startup_timeout):
-                        continue
-                    else:
-                        logger.error(
-                            f"[Modal Flash] Deregistering container {self.task_id} on {self.tunnel.url} "
-                            f"due to error: {port_check_error}, num_failures: {self.num_failures}"
-                        )
-                        self.num_failures += 1
-                        await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
+                    logger.error(
+                        f"[Modal Flash] Deregistering container {self.task_id} on {self.tunnel.url} "
+                        f"due to error: {port_check_error}, num_failures: {self.num_failures}"
+                    )
+                    self.num_failures += 1
+                    await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
