@@ -4,9 +4,30 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.3.1 (2026-01-22)
+
+- We've improved our experimental support for Python 3.14t (free-threaded Python) inside Modal containers.
+  - The container environment will now use the Python implementation of the Protobuf runtime rather than the incompatible `upb` implementation.
+  - As 3.14t images are not being published to the official source for our prebuilt `modal.Image.debian_slim()` images, we recommend using `modal.Image.from_registry` to build a 3.14t Image:
+    ```python
+    modal.Image.from_registry("debian:bookworm-slim", add_python="3.14t")
+    ```
+  - Note that 3.14t support is available only on the 2025.06 [Image Builder Version](https://modal.com/settings/image-config).
+  - Support is still experimental, so please share any issues that you encounter running 3.14t in Modal containers.
+- It's now possible to provide a `custom_domain` for a `modal.Sandbox`:
+  ```python
+  sb = modal.Sandbox.create(..., custom_domain="sandboxes.mydomain.com")
+  ```
+  Note that Sandbox custom domains work differently from Function custom domains and must currently be set up manually by Modal; please get in touch if this feature interests you.
+- We added a new `modal token info` CLI command to retrieve information about the credentials that are currently in use.
+- We added a `--timestamps` flag to a number of CLI entrypoints (`modal run`, `modal serve`, `modal deploy`, and `modal container logs`) to show timestamps in the logging output.
+- The automatic CLI creation for `modal run` entrypoints now supports `Literal` type annotations, provided that the literal type contains either all `str` or all `int` values.
+- We've fixed a bug that could cause App builds to fail with an uninformative `CancelledError` when the App was misconfigured.
+- We've improved client resource management when running `modal.Sandbox.exec`, which avoids a rare thread race condition.
+
 ### 1.3.0 (2025-12-19)
 
-Modal now supports Python 3.14. Python 3.14t (the free-threading build) is **not** supported, because we are waiting for dependencies to be updated with free-threaded support. Additionally, Modal no longer supports Python 3.9, which has reached [end-of-life](https://devguide.python.org/versions).
+Modal now supports Python 3.14. Python 3.14t (the free-threading build) support is currently a work in progress, because we are waiting for dependencies to be updated with free-threaded support. Additionally, Modal no longer supports Python 3.9, which has reached [end-of-life](https://devguide.python.org/versions).
 
 We are adding experimental support for detecting cases where Modal's blocking APIs are used in async contexts (which can be a source of bugs or performance issues). You can opt into runtime warnings by setting `MODAL_ASYNC_WARNINGS=1` as an environment variable or `async_warnings = true` as a config field. We will enable these warnings by default in the future; please report any apparent false positives or other issues while support is experimental.
 
