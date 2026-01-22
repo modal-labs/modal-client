@@ -1,0 +1,54 @@
+name: Tag Release Commit
+
+on:
+  push:
+    branches:
+      - thomasjpfan/tag_release
+
+jobs:
+  release-tag-needed:
+    name: Check if release tag is needed
+    runs-on: ubuntu-24.04
+    outputs:
+      tag-release: ${{ steps.git-version-check.outputs.tag-release }}
+
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            modal_version/__init__.py
+
+      - name: Issue tag if version changed
+        id: git-version-check
+        run: |
+          VERSION_CHANGED=$(git show -- modal_version/__init__.py | grep -q "^[+-].*__version__" && echo true || echo false)
+          echo "tag-release=$VERSION_CHANGED" >> "$GITHUB_OUTPUT"
+
+  tag-release:
+    name: Tag release
+    runs-on: ubuntu-24.04
+    needs: [release-tag-needed]
+    if: needs.release-tag-needed.outputs.tag-release == 'true'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Push tag
+        run: |
+          VERSION=$(python -c "from modal_version import __version__; print(__version__)")
+          # TAG="v$VERSION"
+          # git config user.name "modal-bot"
+          # git config user.email "bot@modal.com"
+          # git tag $TAG || true
+          # git push origin $TAG || true
+
+
+
+
