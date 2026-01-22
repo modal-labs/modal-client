@@ -461,6 +461,25 @@ class _Mount(_Object, type_prefix="mo"):
         return ", ".join(local_contents)
 
     @staticmethod
+    async def _old_get_files(entries: list[_MountEntry]) -> AsyncGenerator[FileUploadSpec, None]:
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as exe:
+            all_files = await loop.run_in_executor(exe, _select_files, entries)
+
+            futs = []
+            for local_filename, remote_filename in all_files:
+                logger.debug(f"Mounting {local_filename} as {remote_filename}")
+                futs.append(loop.run_in_executor(exe, get_file_upload_spec_from_path, local_filename, remote_filename))
+
+            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} worker threads")
+            for fut in asyncio.as_completed(futs):
+                try:
+                    yield await fut
+                except FileNotFoundError as exc:
+                    # Can happen with temporary files (e.g. emacs will write temp files and delete them quickly)
+                    logger.info(f"Ignoring file not found: {exc}")
+
+    @staticmethod
     async def _get_files(entries: list[_MountEntry]) -> AsyncGenerator[FileUploadSpec, None]:
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
@@ -566,11 +585,21 @@ class _Mount(_Object, type_prefix="mo"):
         # Upload files, or check if they already exist.
         n_concurrent_uploads = 64
         files: list[api_pb2.MountFile] = []
-        async with aclosing(
-            async_map(_Mount._get_files(self._entries), _put_file, concurrency=n_concurrent_uploads)
-        ) as stream:
-            async for file in stream:
-                files.append(file)
+        use_old_get_files = True
+        logger.info(f"Using {'old' if use_old_get_files else 'new'} mount file enumeration method")
+        if use_old_get_files:
+            async with aclosing(
+                async_map(_Mount._old_get_files(self._entries), _put_file, concurrency=n_concurrent_uploads)
+            ) as stream:
+                async for file in stream:
+                    files.append(file)
+
+        else:
+            async with aclosing(
+                async_map(_Mount._get_files(self._entries), _put_file, concurrency=n_concurrent_uploads)
+            ) as stream:
+                async for file in stream:
+                    files.append(file)
 
         if not files:
             logger.warning(f"Mount of '{message_label}' is empty.")
