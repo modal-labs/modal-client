@@ -198,6 +198,7 @@ async def test_concurrent_refresh(auth_token_manager, token_near_expiry, valid_j
 
     # Set up new token in servicer
     servicer.auth_token = valid_jwt_token
+    servicer.auth_token_delay = 0.5
 
     @synchronize_api
     async def wrapped_get_token():
