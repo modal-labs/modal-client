@@ -585,8 +585,8 @@ class _Mount(_Object, type_prefix="mo"):
         # Upload files, or check if they already exist.
         n_concurrent_uploads = 64
         files: list[api_pb2.MountFile] = []
-        use_old_get_files = True
-        logger.info(f"Using {'old' if use_old_get_files else 'new'} mount file enumeration method")
+        use_old_get_files = os.environ.get("MODAL_USE_OLD_GET_FILES", "0") != "0"  # default to new get files
+        logger.info(f"[og] Using {'old' if use_old_get_files else 'new'} mount file enumeration method")
         if use_old_get_files:
             async with aclosing(
                 async_map(_Mount._old_get_files(self._entries), _put_file, concurrency=n_concurrent_uploads)
