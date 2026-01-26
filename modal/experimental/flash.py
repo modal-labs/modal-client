@@ -15,6 +15,7 @@ from modal.cls import _Cls
 from modal.dict import _Dict
 from modal_proto import api_pb2
 
+from .._runtime.container_io_manager import UserException
 from .._server import validate_http_server_config
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
@@ -45,14 +46,12 @@ class _FlashManager:
         self.exit_grace_period = exit_grace_period
         self.tunnel_manager = _forward_tunnel(port, h2_enabled=h2_enabled, client=client)
         self.stopped = False
-        self.num_failures = 0
+        self.num_heartbeat_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
 
     async def is_port_connection_healthy(
         self, process: Optional[subprocess.Popen], timeout: float = 0.5
     ) -> tuple[bool, Optional[Exception]]:
-        import socket
-
         start_time = time.monotonic()
 
         def check_process_is_running() -> Optional[Exception]:
@@ -64,10 +63,16 @@ class _FlashManager:
             try:
                 if error := check_process_is_running():
                     return False, error
-                # TODO(claudia): use asyncio socket create connection
-                with socket.create_connection(("localhost", self.port), timeout=0.5):
-                    return True, None
-            except (ConnectionRefusedError, OSError):
+                _, writer = await asyncio.wait_for(asyncio.open_connection("localhost", self.port), timeout=0.5)
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+                return True, None
+            except asyncio.CancelledError:
+                raise
+            except (OSError, asyncio.TimeoutError):
                 await asyncio.sleep(0.1)
 
         return False, Exception(f"Waited too long for port {self.port} to start accepting connections")
@@ -78,8 +83,24 @@ class _FlashManager:
         host = parsed_url.hostname
         port = parsed_url.port or 443
 
+        try:
+            await self._wait_for_port_success(host, port)
+        except (Exception, KeyboardInterrupt, asyncio.CancelledError):
+            await self._deregister()
+            await self.tunnel_manager.__aexit__(*sys.exc_info())
+            raise
+
         self.heartbeat_task = asyncio.create_task(self._run_heartbeat(host, port))
         self.drain_task = asyncio.create_task(self._drain_container())
+
+    async def _deregister(self):
+        await asyncio.shield(
+            self.client.stub.FlashContainerDeregister(
+                api_pb2.FlashContainerDeregisterRequest(),
+                timeout=2,
+                retry=None,
+            )
+        )
 
     async def _drain_container(self):
         """
@@ -88,7 +109,7 @@ class _FlashManager:
         while True:
             try:
                 # Check if the container should be drained (e.g., too many failures)
-                if self.num_failures > _MAX_FAILURES:
+                if self.num_heartbeat_failures > _MAX_FAILURES:
                     logger.warning(
                         f"[Modal Flash] Draining task {self.task_id} on {self.tunnel.url} due to too many failures."
                     )
@@ -111,9 +132,37 @@ class _FlashManager:
                 logger.warning("[Modal Flash] Shutting down...")
                 return
 
-    async def _run_heartbeat(self, host: str, port: int):
-        first_registration = True
+    async def _wait_for_port_success(self, host: str, port: int) -> bool:
         start_time = time.monotonic()
+        while time.monotonic() - start_time < self.startup_timeout:
+            try:
+                port_check_resp, _ = await self.is_port_connection_healthy(process=self.process)
+                if port_check_resp:
+                    resp = await self.client.stub.FlashContainerRegister(
+                        api_pb2.FlashContainerRegisterRequest(
+                            priority=10,
+                            weight=5,
+                            host=host,
+                            port=port,
+                        ),
+                        timeout=10,
+                        retry=None,
+                    )
+                    logger.info(f"Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}")
+                    return True
+            except asyncio.CancelledError:
+                logger.warning("Waited too long for port to start accepting connections. Shutting down...")
+                raise
+            except Exception as e:
+                logger.error(f"Error waiting for port to start accepting connections: {e}")
+            try:
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                logger.warning("Waited too long for port to start accepting connections. Shutting down...")
+                raise
+        raise TimeoutError("Waited too long for port to start accepting connections. Shutting down...")
+
+    async def _run_heartbeat(self, host: str, port: int):
         while True:
             try:
                 port_check_resp, port_check_error = await self.is_port_connection_healthy(process=self.process)
@@ -128,32 +177,24 @@ class _FlashManager:
                         timeout=10,
                         retry=None,
                     )
-                    self.num_failures = 0
-                    if first_registration:
-                        logger.warning(
-                            f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}"
-                        )
-                        first_registration = False
+                    self.num_heartbeat_failures = 0
                 else:
-                    if first_registration and (time.monotonic() - start_time < self.startup_timeout):
-                        continue
-                    else:
-                        logger.error(
-                            f"[Modal Flash] Deregistering container {self.task_id} on {self.tunnel.url} "
-                            f"due to error: {port_check_error}, num_failures: {self.num_failures}"
-                        )
-                        self.num_failures += 1
-                        await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
+                    logger.error(
+                        f"[Modal Flash] Deregistering container {self.task_id} on {self.tunnel.url} "
+                        f"due to error: {port_check_error}, num_heartbeat_failures: {self.num_heartbeat_failures}"
+                    )
+                    self.num_heartbeat_failures += 1
+                    await self._deregister()
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
+                await self._deregister()
                 break
             except Exception as e:
                 logger.error(f"[Modal Flash] Heartbeat failed: {e}")
-
             try:
                 await asyncio.sleep(1)
             except asyncio.CancelledError:
-                logger.warning("[Modal Flash] Shutting down...")
+                await self._deregister()
                 break
 
     def get_container_url(self):
@@ -162,11 +203,14 @@ class _FlashManager:
 
     async def stop(self):
         try:
-            self.heartbeat_task.cancel()
+            if self.heartbeat_task:
+                self.heartbeat_task.cancel()
+                try:
+                    await asyncio.wait_for(self.heartbeat_task, timeout=5)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    logger.warning("[Modal Flash] Heartbeat task did not stop within 5s.")
         except Exception as e:
             logger.error(f"[Modal Flash] Error stopping: {e}")
-
-        await self.client.stub.FlashContainerDeregister(api_pb2.FlashContainerDeregisterRequest())
         self.stopped = True
         logger.warning(f"[Modal Flash] No longer accepting new requests on {self.tunnel.url}.")
 
@@ -716,12 +760,16 @@ class _FlashContainerEntry:
 
     def enter(self):
         if self.http_config != api_pb2.HTTPConfig():
-            self.flash_manager = flash_forward(
-                self.http_config.port,
-                startup_timeout=self.http_config.startup_timeout,
-                exit_grace_period=self.http_config.exit_grace_period,
-                h2_enabled=self.http_config.h2_enabled,
-            )
+            try:
+                self.flash_manager = flash_forward(
+                    self.http_config.port,
+                    startup_timeout=self.http_config.startup_timeout,
+                    exit_grace_period=self.http_config.exit_grace_period,
+                    h2_enabled=self.http_config.h2_enabled,
+                )
+            except Exception as e:
+                logger.warning(f"[Modal Flash] Startup failed: {e}")
+                raise UserException()
 
     def stop(self):
         if self.flash_manager:
