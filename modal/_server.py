@@ -84,7 +84,7 @@ class _Server:
 
         return {
             _extract_region_from_url(url): url
-            for url in await self._get_service_function()._experimental_get_flash_urls()
+            for url in await self._get_service_function()._experimental_get_flash_urls() or []
         }
 
     @live_method
