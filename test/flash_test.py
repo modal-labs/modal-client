@@ -205,7 +205,7 @@ class TestFlashManagerStopping:
                 pass  # Expected when task is cancelled
 
         # Check that failures were recorded
-        assert flash_manager.num_failures > 0
+        assert flash_manager.num_heartbeat_failures > 0
 
     @pytest.mark.asyncio
     async def test_heartbeat_success_resets_counter(self, flash_manager):
@@ -226,7 +226,7 @@ class TestFlashManagerStopping:
             pass  # Expected when task is cancelled
 
         # Check that failures were recorded
-        assert flash_manager.num_failures == 0
+        assert flash_manager.num_heartbeat_failures == 0
 
     @pytest.mark.asyncio
     async def test_heartbeat_triggers_failure(self, flash_manager):
@@ -240,12 +240,12 @@ class TestFlashManagerStopping:
 
         with patch.object(flash_manager, "stop", new_callable=AsyncMock) as mock_stop:
             for i in range(_MAX_FAILURES, _MAX_FAILURES + 2):
-                flash_manager.num_failures = i
+                flash_manager.num_heartbeat_failures = i
                 if i <= _MAX_FAILURES:
-                    assert flash_manager.num_failures == i
+                    assert flash_manager.num_heartbeat_failures == i
                     assert mock_stop.call_count == 0
                 else:
-                    assert flash_manager.num_failures > _MAX_FAILURES
+                    assert flash_manager.num_heartbeat_failures > _MAX_FAILURES
                 await asyncio.sleep(1.2)
         assert mock_stop.call_count == 1
 
@@ -258,7 +258,7 @@ class TestFlashManagerStopping:
             pass  # Expected when task is cancelled
 
         # Check that failures were recorded
-        assert flash_manager.num_failures > 0
+        assert flash_manager.num_heartbeat_failures > 0
 
     @pytest.mark.asyncio
     async def test_hearbeat_on_dead_process(self, flash_manager, servicer):
@@ -291,7 +291,7 @@ class TestFlashManagerStopping:
         except asyncio.CancelledError:
             pass
 
-        assert flash_manager.num_failures > 0
+        assert flash_manager.num_heartbeat_failures > 0
 
     @pytest.mark.asyncio
     async def test_full_failure_and_stop_integration(self, flash_manager):
@@ -314,7 +314,7 @@ class TestFlashManagerStopping:
             flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
             flash_manager.client.stub.ContainerStop = AsyncMock()
 
-            flash_manager.num_failures = _MAX_FAILURES
+            flash_manager.num_heartbeat_failures = _MAX_FAILURES
 
             # Start both background tasks
             heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
@@ -335,8 +335,8 @@ class TestFlashManagerStopping:
             except asyncio.CancelledError:
                 pass
 
-            assert flash_manager.num_failures > _MAX_FAILURES, (
-                f"Expected > {_MAX_FAILURES} failures, got {flash_manager.num_failures}"
+            assert flash_manager.num_heartbeat_failures > _MAX_FAILURES, (
+                f"Expected > {_MAX_FAILURES} failures, got {flash_manager.num_heartbeat_failures}"
             )
 
             mock_stop.assert_called_once()
@@ -353,7 +353,14 @@ class TestFlashManagerStopping:
         port = 9000
 
         task = asyncio.create_task(flash_manager._run_heartbeat(host, port))
-        await asyncio.sleep(0.2)
+
+        async def wait_for_registration():
+            while not servicer.flash_container_registrations:
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(wait_for_registration(), timeout=2.0)
+
+        assert len(servicer.flash_container_registrations) == 1
 
         task.cancel()
         try:
@@ -361,7 +368,9 @@ class TestFlashManagerStopping:
         except asyncio.CancelledError:
             pass
 
-        assert len(servicer.flash_container_registrations) >= 1
+        assert len(servicer.flash_container_registrations) == 0
+        assert "register" in servicer.flash_rpc_calls
+        assert "deregister" in servicer.flash_rpc_calls
 
     @pytest.mark.asyncio
     async def test_flash_startup_heartbeat(self, flash_manager):
@@ -387,6 +396,10 @@ class TestFlashManagerStopping:
         task = asyncio.create_task(flash_manager._run_heartbeat(host, port))
         await asyncio.sleep(0.2)
         task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     @pytest.mark.asyncio
     async def test_flash_startup_timeout(self, flash_manager):
@@ -420,5 +433,188 @@ class TestFlashManagerStopping:
             except asyncio.CancelledError:
                 pass
 
-        assert flash_manager.num_failures > 0
-        assert flash_manager.num_failures >= _MAX_FAILURES
+        assert flash_manager.num_heartbeat_failures > 0
+        assert flash_manager.num_heartbeat_failures >= _MAX_FAILURES
+
+    @pytest.mark.asyncio
+    async def test_wait_for_port_success_registers(self, flash_manager):
+        """Test that port success registers the container"""
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.startup_timeout = 1.0
+
+        flash_manager.is_port_connection_healthy = AsyncMock(return_value=(True, None))
+        flash_manager.client.stub.FlashContainerRegister = AsyncMock(return_value=MagicMock(url="https://ready"))
+
+        with patch("asyncio.sleep", return_value=None):
+            result = await flash_manager._wait_for_port_success("test.modal.test", 443)
+
+        assert result is True
+        flash_manager.client.stub.FlashContainerRegister.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_wait_for_port_success_retries_on_error(self, flash_manager):
+        """Test that retries work if port is ready later on"""
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.startup_timeout = 6.0
+
+        flash_manager.is_port_connection_healthy = AsyncMock(side_effect=[Exception("boom")] * 10 + [(True, None)])
+        flash_manager.client.stub.FlashContainerRegister = AsyncMock(return_value=MagicMock(url="https://ready"))
+
+        with patch("asyncio.sleep", return_value=None):
+            result = await flash_manager._wait_for_port_success("test.modal.test", 443)
+
+        assert result is True
+        assert flash_manager.is_port_connection_healthy.call_count == 11
+        flash_manager.client.stub.FlashContainerRegister.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_wait_for_port_success_propagates_cancelled(self, flash_manager):
+        """Test that cancellation propagates"""
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.startup_timeout = 1.0
+
+        flash_manager.is_port_connection_healthy = AsyncMock(side_effect=asyncio.CancelledError())
+        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
+
+        with pytest.raises(asyncio.CancelledError):
+            await flash_manager._wait_for_port_success("test.modal.test", 443)
+
+        flash_manager.client.stub.FlashContainerRegister.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_wait_for_port_success_times_out(self, flash_manager):
+        """Test that timeout works if port is not ready"""
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+        flash_manager.startup_timeout = 0.5
+
+        flash_manager.is_port_connection_healthy = AsyncMock(return_value=(False, None))
+        flash_manager.client.stub.FlashContainerRegister = AsyncMock()
+
+        count = 0
+
+        def fake_monotonic():
+            nonlocal count
+            count += 1
+            return count * 0.25
+
+        with (
+            patch("modal.experimental.flash.time.monotonic", side_effect=fake_monotonic),
+            patch("asyncio.sleep", return_value=None),
+        ):
+            with pytest.raises(
+                TimeoutError, match="Waited too long for port to start accepting connections. Shutting down..."
+            ):
+                await flash_manager._wait_for_port_success("test.modal.test", 443)
+
+        flash_manager.client.stub.FlashContainerRegister.assert_not_called()
+
+
+class TestFlashCancellation:
+    async def _wait_for_registration(self, servicer, timeout: float = 1.0, sleep_fn=asyncio.sleep) -> None:
+        async def _wait():
+            while not servicer.flash_container_registrations:
+                await sleep_fn(0.01)
+
+        await asyncio.wait_for(_wait(), timeout=timeout)
+
+    async def _wait_for_no_registrations(self, servicer, timeout: float = 1.0, sleep_fn=asyncio.sleep) -> None:
+        async def _wait():
+            while servicer.flash_container_registrations:
+                await sleep_fn(0.01)
+
+        await asyncio.wait_for(_wait(), timeout=timeout)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("cancel_point", ["tunnel_enter", "wait_for_port", "register"])
+    async def test_start_cancellation_cleans_registrations(self, flash_manager, servicer, cancel_point):
+        flash_manager.startup_timeout = 5.0
+
+        started_event = asyncio.Event()
+
+        if cancel_point == "tunnel_enter":
+
+            async def blocking_enter():
+                started_event.set()
+                await asyncio.Event().wait()
+
+            flash_manager.tunnel_manager.__aenter__ = AsyncMock(side_effect=blocking_enter)
+        elif cancel_point == "wait_for_port":
+
+            async def blocking_wait_for_port(*_args, **_kwargs):
+                started_event.set()
+                await asyncio.Event().wait()
+
+            flash_manager._wait_for_port_success = blocking_wait_for_port
+        else:
+            flash_manager.is_port_connection_healthy = AsyncMock(return_value=(True, None))
+
+            async def blocking_register(*_args, **_kwargs):
+                started_event.set()
+                await asyncio.Event().wait()
+
+            flash_manager.client.stub.FlashContainerRegister = AsyncMock(side_effect=blocking_register)
+
+        start_task = asyncio.create_task(flash_manager._start())
+        await asyncio.wait_for(started_event.wait(), timeout=1.0)
+        start_task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await start_task
+
+        await self._wait_for_no_registrations(servicer)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("cancel_point", ["health_check", "register", "sleep"])
+    async def test_heartbeat_cancellation_deregisters(self, flash_manager, servicer, cancel_point):
+        flash_manager.tunnel = MagicMock()
+        flash_manager.tunnel.url = "https://test.modal.test"
+        started_event = asyncio.Event()
+
+        if cancel_point == "health_check":
+
+            async def blocking_health_check(*_args, **_kwargs):
+                started_event.set()
+                await asyncio.Event().wait()
+
+            flash_manager.is_port_connection_healthy = blocking_health_check
+        elif cancel_point == "register":
+            flash_manager.is_port_connection_healthy = AsyncMock(return_value=(True, None))
+
+            async def blocking_register(*_args, **_kwargs):
+                started_event.set()
+                await asyncio.Event().wait()
+
+            flash_manager.client.stub.FlashContainerRegister = AsyncMock(side_effect=blocking_register)
+        else:
+            flash_manager.is_port_connection_healthy = AsyncMock(return_value=(True, None))
+
+        if cancel_point == "sleep":
+            original_sleep = asyncio.sleep
+
+            async def blocking_sleep(_delay, *_args, **_kwargs):
+                started_event.set()
+                await asyncio.Event().wait()
+
+            with patch("asyncio.sleep", side_effect=blocking_sleep):
+                heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
+                await self._wait_for_registration(servicer, sleep_fn=original_sleep)
+                await asyncio.wait_for(started_event.wait(), timeout=1.0)
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+        else:
+            heartbeat_task = asyncio.create_task(flash_manager._run_heartbeat("test.modal.test", 443))
+            await asyncio.wait_for(started_event.wait(), timeout=1.0)
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+        await self._wait_for_no_registrations(servicer)
