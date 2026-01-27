@@ -75,8 +75,7 @@ def _validate_exec_args(args: Sequence[str]) -> None:
     total_arg_len = sum(len(arg) for arg in args)
     if total_arg_len > ARG_MAX_BYTES:
         raise InvalidError(
-            f"Total length of CMD arguments must be less than {ARG_MAX_BYTES} bytes (ARG_MAX). "
-            f"Got {total_arg_len} bytes."
+            f"Total length of CMD arguments cannot exceed {ARG_MAX_BYTES} bytes (ARG_MAX). Got {total_arg_len} bytes."
         )
 
 
