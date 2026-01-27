@@ -469,7 +469,17 @@ class _Queue(_Object, type_prefix="qu"):
 
     @live_method
     async def clear(self, *, partition: Optional[str] = None, all: bool = False) -> None:
-        """Clear the contents of a single partition or all partitions."""
+        """Clear the contents of a single partition or all partitions.
+
+        Warning: this is a destructive operation and will irrevocably delete data.
+
+        **Examples:**
+
+        ```python
+        q = modal.Queue.from_name("my-queue", create_if_missing=True)
+        q.clear()
+        ```
+        """
         if partition and all:
             raise InvalidError("Partition must be null when requesting to clear all.")
         request = api_pb2.QueueClearRequest(
