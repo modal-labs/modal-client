@@ -307,6 +307,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         h2_ports: Sequence[int] = [],
         # List of ports to tunnel into the sandbox without encryption.
         unencrypted_ports: Sequence[int] = [],
+        # Allow connections to the Sandbox via a subdomain of this parent rather than a default Modal domain.
+        custom_domain: Optional[str] = None,
         # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: Optional[_Proxy] = None,
         # Enable verbose logging for sandbox operations.
@@ -317,10 +319,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
-        # If set, connections to this sandbox will be subdomains of this domain rather than the default.
-        # Custom domains must be configured manually by Modal. They are different from the custom domains
-        # in the Modal dashboard.
-        custom_domain: Optional[str] = None,
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
