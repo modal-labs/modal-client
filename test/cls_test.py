@@ -1515,3 +1515,115 @@ def test_with_batching_is_lazy(client):
     cls: Cls = Cls.from_name("my-cls-app", "Foo", client=client)
     optioned_cls = cls.with_batching(max_batch_size=4, wait_ms=100)
     optioned_cls.hydrate()
+
+
+def test_cls_with_options_creates_new_options_instance(client, servicer):
+    """Test that with_options creates a new _options instance instead of modifying in place."""
+    SomeClass = modal.Cls.from_name("some_app", "SomeClass", client=client)
+
+    # Need to translate_in to access _options
+    parent_options = synchronizer._translate_in(SomeClass)._options  # type: ignore
+
+    # Call with_options
+    ChildClass = SomeClass.with_options(cpu=10)
+    child_options = synchronizer._translate_in(ChildClass)._options  # type: ignore
+
+    # Child should have a different _options instance than parent
+    assert parent_options is not child_options, (
+        "with_options should create a new _options instance, not modify parent in place"
+    )
+
+    # Verify the options value is set correctly before hydration
+    assert child_options.resources.milli_cpu == 10_000
+
+    # Now hydrate the child class and verify options are preserved
+    with servicer.intercept() as ctx:
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(),
+            ),
+        )
+        ChildClass.hydrate()
+
+    # Options should still be correct after hydration
+    child_options_after = synchronizer._translate_in(ChildClass)._options  # type: ignore
+    assert child_options_after.resources.milli_cpu == 10_000, "with_options options should be preserved after hydration"
+
+
+def test_cls_with_concurrency_creates_new_options_instance(client, servicer):
+    """Test that with_concurrency creates a new _options instance instead of modifying in place."""
+    SomeClass = modal.Cls.from_name("some_app", "SomeClass", client=client)
+
+    # Need to translate_in to access _options
+    parent_options = synchronizer._translate_in(SomeClass)._options  # type: ignore
+
+    # Call with_concurrency
+    ChildClass = SomeClass.with_concurrency(max_inputs=100)
+    child_options = synchronizer._translate_in(ChildClass)._options  # type: ignore
+
+    # Child should have a different _options instance than parent
+    assert parent_options is not child_options, (
+        "with_concurrency should create a new _options instance, not modify parent in place"
+    )
+
+    # Verify the options value is set correctly before hydration
+    assert child_options.max_concurrent_inputs == 100
+
+    # Now hydrate the child class and verify options are preserved
+    with servicer.intercept() as ctx:
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(),
+            ),
+        )
+        ChildClass.hydrate()
+
+    # Options should still be correct after hydration
+    child_options_after = synchronizer._translate_in(ChildClass)._options  # type: ignore
+    assert child_options_after.max_concurrent_inputs == 100, (
+        "with_concurrency options should be preserved after hydration"
+    )
+
+
+def test_cls_with_batching_creates_new_options_instance(client, servicer):
+    """Test that with_batching creates a new _options instance instead of modifying in place."""
+    SomeClass = modal.Cls.from_name("some_app", "SomeClass", client=client)
+
+    # Need to translate_in to access _options
+    parent_options = synchronizer._translate_in(SomeClass)._options  # type: ignore
+
+    # Call with_batching
+    ChildClass = SomeClass.with_batching(max_batch_size=10, wait_ms=100)
+    child_options = synchronizer._translate_in(ChildClass)._options  # type: ignore
+
+    # Child should have a different _options instance than parent
+    assert parent_options is not child_options, (
+        "with_batching should create a new _options instance, not modify parent in place"
+    )
+
+    # Verify the options value is set correctly before hydration
+    assert child_options.batch_max_size == 10
+    assert child_options.batch_wait_ms == 100
+
+    # Now hydrate the child class and verify options are preserved
+    with servicer.intercept() as ctx:
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(),
+            ),
+        )
+        ChildClass.hydrate()
+
+    # Options should still be correct after hydration
+    child_options_after = synchronizer._translate_in(ChildClass)._options  # type: ignore
+    assert child_options_after.batch_max_size == 10, "with_batching options should be preserved after hydration"
+    assert child_options_after.batch_wait_ms == 100, "with_batching options should be preserved after hydration"
