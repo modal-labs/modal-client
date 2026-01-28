@@ -99,21 +99,27 @@ class _ServiceOptions:
         """Implement protobuf-like MergeFrom semantics for this dataclass.
 
         This mostly exists to support "stacking" of `.with_options()` calls.
+        Returns a new _ServiceOptions instance without modifying self.
         """
+        # Create a shallow copy of self to start with
+        merged = dataclasses.replace(self)
+
         # Don't use dataclasses.asdict() because it does a deepcopy(), which chokes on a hydrated object
         new_options_dict = {k.name: getattr(new_options, k.name) for k in dataclasses.fields(new_options)}
 
         # Resources needs special merge handling because individual fields are parameters in the public API
         merged_resources = api_pb2.Resources()
-        if self.resources:
-            merged_resources.MergeFrom(self.resources)
+        if merged.resources:
+            merged_resources.MergeFrom(merged.resources)
         if new_resources := new_options_dict.pop("resources"):
             merged_resources.MergeFrom(new_resources)
-        self.resources = merged_resources
+        merged.resources = merged_resources
 
         for key, value in new_options_dict.items():
             if value:  # Only overwrite data when the value was set in the new options
-                setattr(self, key, value)
+                setattr(merged, key, value)
+
+        return merged
 
 
 def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name: str):
@@ -743,32 +749,6 @@ More information on class parameterization can be found here: https://modal.com/
                 " please use the `.with_concurrency` method instead.",
             )
 
-        async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
-            # this is a bit confusing, the cls will always have the same metadata
-            # since it has the same *class* service function (i.e. "template")
-            # But the (instance) service function for each Obj will be different
-            # since it will rebind to whatever `_options` have been assigned on
-            # the particular Cls parent
-            if not self.is_hydrated:
-                # this should only happen for Cls.from_name instances
-                # other classes should already be hydrated!
-                await resolver.load(self, load_context)
-
-            new_cls._initialize_from_other(self)
-
-        def _deps():
-            return []
-
-        cls = _Cls._from_loader(
-            _load_from_base,
-            rep=f"{self._name}.with_options(...)",
-            is_another_app=True,
-            deps=_deps,
-            load_context_overrides=self._load_context_overrides,
-            hydrate_lazily=True,
-        )
-        cls._initialize_from_other(self)
-
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
@@ -801,8 +781,37 @@ More information on class parameterization can be found here: https://modal.com/
             target_concurrent_inputs=allow_concurrent_inputs,
         )
 
-        cls._options.merge_options(new_options)
-        return cls
+        combined_options = self._options.merge_options(new_options)
+
+        async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
+            # this is a bit confusing, the cls will always have the same metadata
+            # since it has the same *class* service function (i.e. "template")
+            # But the (instance) service function for each Obj will be different
+            # since it will rebind to whatever `_options` have been assigned on
+            # the particular Cls parent
+            if not self.is_hydrated:
+                # this should only happen for Cls.from_name instances
+                # other classes should already be hydrated!
+                await resolver.load(self, load_context)
+
+            new_cls._initialize_from_other(self)
+            # Restore the merged options after _initialize_from_other overwrites them
+            new_cls._options = combined_options
+
+        def _deps():
+            return []
+
+        new_cls = _Cls._from_loader(
+            _load_from_base,
+            rep=f"{self._name}.with_options(...)",
+            is_another_app=True,
+            deps=_deps,
+            load_context_overrides=self._load_context_overrides,
+            hydrate_lazily=True,
+        )
+        new_cls._initialize_from_other(self)
+        new_cls._options = combined_options
+        return new_cls
 
     def with_concurrency(self: "_Cls", *, max_inputs: int, target_inputs: Optional[int] = None) -> "_Cls":
         """Create an instance of the Cls with input concurrency enabled or overridden with new values.
@@ -815,16 +824,20 @@ More information on class parameterization can be found here: https://modal.com/
         ModelUsingGPU().generate.remote(42)  # will run on an A100 GPU with input concurrency enabled
         ```
         """
+        concurrency_options = _ServiceOptions(max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs)
+        combined_options = self._options.merge_options(concurrency_options)
 
         async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
             if not self.is_hydrated:
                 await resolver.load(self, load_context)
             new_cls._initialize_from_other(self)
+            # Restore the merged options after _initialize_from_other overwrites them
+            new_cls._options = combined_options
 
         def _deps():
             return []
 
-        cls = _Cls._from_loader(
+        new_cls = _Cls._from_loader(
             _load_from_base,
             rep=f"{self._name}.with_concurrency(...)",
             is_another_app=True,
@@ -832,11 +845,9 @@ More information on class parameterization can be found here: https://modal.com/
             load_context_overrides=self._load_context_overrides,
             hydrate_lazily=True,
         )
-        cls._initialize_from_other(self)
-
-        concurrency_options = _ServiceOptions(max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs)
-        cls._options.merge_options(concurrency_options)
-        return cls
+        new_cls._initialize_from_other(self)
+        new_cls._options = combined_options
+        return new_cls
 
     def with_batching(self: "_Cls", *, max_batch_size: int, wait_ms: int) -> "_Cls":
         """Create an instance of the Cls with dynamic batching enabled or overridden with new values.
@@ -849,16 +860,20 @@ More information on class parameterization can be found here: https://modal.com/
         ModelUsingGPU().generate.remote(42)  # will run on an A100 GPU with input concurrency enabled
         ```
         """
+        batching_options = _ServiceOptions(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
+        combined_options = self._options.merge_options(batching_options)
 
         async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
             if not self.is_hydrated:
                 await resolver.load(self, load_context)
             new_cls._initialize_from_other(self)
+            # Restore the merged options after _initialize_from_other overwrites them
+            new_cls._options = combined_options
 
         def _deps():
             return []
 
-        cls = _Cls._from_loader(
+        new_cls = _Cls._from_loader(
             _load_from_base,
             rep=f"{self._name}.with_batching(...)",
             is_another_app=True,
@@ -866,11 +881,9 @@ More information on class parameterization can be found here: https://modal.com/
             load_context_overrides=self._load_context_overrides,
             hydrate_lazily=True,
         )
-        cls._initialize_from_other(self)
-
-        batching_options = _ServiceOptions(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
-        cls._options.merge_options(batching_options)
-        return cls
+        new_cls._initialize_from_other(self)
+        new_cls._options = combined_options
+        return new_cls
 
     @synchronizer.no_input_translation
     def __call__(self, *args, **kwargs) -> _Obj:
