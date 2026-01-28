@@ -14,11 +14,7 @@ from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-import requests
 from invoke import call, task
-from packaging.version import Version
-from rich.console import Console
-from rich.table import Table
 
 # Set working directory to the root of the client repository.
 original_cwd = Path.cwd()
@@ -49,8 +45,12 @@ def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
         yield path
 
 
-@task
-def protoc(ctx):
+@task(
+    help={
+        "skip_mypy": "skip generating MyPy files",
+    },
+)
+def protoc(ctx, skip_mypy: bool = False):
     """Compile protocol buffer files for gRPC and Modal-specific wrappers.
 
     Generates Python stubs for api.proto."""
@@ -60,9 +60,9 @@ def protoc(ctx):
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
     client_proto_files = "modal_proto/api.proto"
     task_command_router_proto_file = "modal_proto/task_command_router.proto"
-    py_protoc = (
-        protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
-    )
+    py_protoc = protoc_cmd + " --python_out=. --grpclib_python_out=. --grpc_python_out=."
+    if not skip_mypy:
+        py_protoc = f"{py_protoc} --mypy_out=. --mypy_grpc_out=."
     print(py_protoc)
     # generate grpcio and grpclib proto files:
     ctx.run(f"{py_protoc} -I . {client_proto_files} {task_command_router_proto_file}", env=protoc_env)
@@ -97,6 +97,8 @@ def lint_protos_impl(ctx, proto_fname: str):
     section_regex = "|".join(sections)
     matches = re.findall(rf"^((?:{section_regex})\s+(?:\w+))", proto_text, flags=re.MULTILINE)
     entities = [tuple(e.split()) for e in matches]
+
+    from rich.console import Console
 
     console = Console()
 
@@ -355,6 +357,8 @@ def publish_base_images(
     deployments is *risky* because it would affect all workspaces. Pass the
     `--allow-global-deployment` flag to confirm this behavior."""
     if not allow_global_deployment:
+        from rich.console import Console
+
         console = Console()
         console.print("This is a dry run. Rerun with `--allow-global-deployment` to publish.", style="yellow")
 
@@ -398,6 +402,8 @@ def bump_dev_version(ctx, dry_run: bool = False, force: bool = False):
         print(f"Aborting: {version_file} was modified by the most recent commit")
         return
 
+    from packaging.version import Version
+
     from modal_version import __version__
 
     v = Version(__version__)
@@ -424,6 +430,8 @@ def bump_dev_version(ctx, dry_run: bool = False, force: bool = False):
 @task
 def get_release_tag(ctx):
     """Optionally print a tag name for the current modal client version."""
+    from packaging.version import Version
+
     from modal_version import __version__
 
     v = Version(__version__)
@@ -440,6 +448,8 @@ def update_changelog(ctx, sha: str = ""):
     """Update CHANGELOG.md from GitHub PR description.
 
     Parse a commit message for a GitHub PR number. Requires GITHUB_TOKEN environment variable."""
+    import requests
+
     res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout", warn=True)
     if res.exited:
         print("Failed to extract changelog update!")
@@ -602,6 +612,9 @@ def show_deprecations(ctx):
         visitor = FunctionCallVisitor(fname)
         visitor.visit(tree)
         deprecations.extend(visitor.deprecations)
+
+    from rich.console import Console
+    from rich.table import Table
 
     console = Console()
     table = Table("Date", "Level", "Location", "Function", "Message")
