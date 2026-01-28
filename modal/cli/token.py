@@ -87,6 +87,8 @@ async def info():
         console.print(f"[dim](Using {env_vars_str} environment variable{plural})[/dim]")
 
     console.print(f"[bold]Token:[/bold] {resp.token_id}")
+    if resp.token_name:
+        console.print(f"[bold]Name:[/bold] {resp.token_name}")
     console.print(f"[bold]Workspace:[/bold] {resp.workspace_name} [dim]({resp.workspace_id})[/dim]")
 
     if resp.HasField("user_identity"):

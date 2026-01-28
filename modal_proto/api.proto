@@ -3366,6 +3366,8 @@ message TokenInfoGetResponse {
   // Token metadata
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp expires_at = 7;
+
+  string token_name = 8;
 }
 
 message TunnelData {
