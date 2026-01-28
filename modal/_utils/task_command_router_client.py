@@ -15,7 +15,7 @@ import grpclib.events
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 
-from modal.config import config, logger
+from modal.config import logger
 from modal.exception import ConflictError, ExecTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
@@ -152,8 +152,8 @@ class TaskCommandRouterClient:
         ssl_context = ssl.create_default_context()
 
         # Allow insecure TLS when explicitly enabled via config.
-        if config["task_command_router_insecure"]:
-            logger.warning("Using insecure TLS for task command router due to MODAL_TASK_COMMAND_ROUTER_INSECURE")
+        if server_client._is_localhost:
+            logger.warning("Using insecure TLS for task command router because server client points to localhost")
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
 
