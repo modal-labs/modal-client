@@ -2189,6 +2189,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     user_id="us-test789",
                     username="test-user",
                 ),
+                token_name="test-token",
             )
         )
 
