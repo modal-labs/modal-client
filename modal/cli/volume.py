@@ -12,6 +12,7 @@ from typer import Argument, Option, Typer
 import modal
 from modal._output import OutputManager, ProgressHandler, make_console
 from modal._utils.async_utils import synchronizer
+from modal._utils.browser_utils import open_url_and_display
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
@@ -310,3 +311,30 @@ async def rename(
         )
 
     await _Volume.rename(old_name, new_name, environment_name=env)
+
+
+@volume_cli.command(
+    name="dashboard",
+    help="Open the Volume's dashboard page in your web browser.",
+    rich_help_panel="Management",
+)
+@synchronizer.create_blocking
+async def dashboard(
+    volume_name: str = Argument(help="Name of the Volume to view in the dashboard."),
+    env: Optional[str] = ENV_OPTION,
+):
+    """Open a Volume's dashboard page in your web browser.
+
+    **Example:**
+
+    ```
+    modal volume dashboard my-volume
+    ```
+    """
+    env = ensure_env(env)
+    volume = await _Volume.from_name(volume_name, environment_name=env).hydrate()
+
+    console = make_console()
+    url = f"https://modal.com/id/{volume.object_id}"
+
+    open_url_and_display(url, "Volume dashboard", console)

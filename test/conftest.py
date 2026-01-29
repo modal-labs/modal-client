@@ -2207,6 +2207,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         item.interval.FromDatetime(datetime.datetime(2025, 1, 1, 0, 0, 0))
         await stream.send_message(item)
 
+    async def WorkspaceDashboardUrlGet(self, stream):
+        request = await stream.recv_message()
+        # Return a dashboard URL based on the environment name
+        env_name = request.environment_name or "main"
+        url = f"https://modal.com/apps/{env_name}"
+        await stream.send_message(api_pb2.WorkspaceDashboardUrlResponse(url=url))
+
     async def WorkspaceNameLookup(self, stream):
         await stream.send_message(api_pb2.WorkspaceNameLookupResponse(username="test-username"))
 
@@ -3195,6 +3202,21 @@ def tmp_cwd(tmp_path, monkeypatch):
     with monkeypatch.context() as m:
         m.chdir(tmp_path)
         yield
+
+
+@pytest.fixture
+def mock_webbrowser(monkeypatch):
+    from unittest.mock import MagicMock
+
+    def _mock_browser(success=True):
+        mock_browser = MagicMock()
+        mock_browser.open_new_tab = MagicMock(return_value=success)
+        mock_browser.name = "chrome"
+        mock_get = MagicMock(return_value=mock_browser)
+        monkeypatch.setattr("modal._utils.browser_utils.webbrowser.get", mock_get)
+        return mock_browser
+
+    return _mock_browser
 
 
 def run_cli_command(args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):

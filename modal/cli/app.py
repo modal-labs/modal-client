@@ -10,7 +10,9 @@ from rich.text import Text
 from typer import Argument
 
 from modal._object import _get_environment_name
+from modal._output import make_console
 from modal._utils.async_utils import synchronizer
+from modal._utils.browser_utils import open_url_and_display
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal_proto import api_pb2
@@ -248,3 +250,35 @@ async def history(
 
     if deployments_with_dirty_commit and not json:
         rich.print("* - repo had uncommitted changes")
+
+
+@app_cli.command("dashboard", no_args_is_help=True)
+@synchronizer.create_blocking
+async def dashboard(
+    app_identifier: str = APP_IDENTIFIER,
+    *,
+    env: Optional[str] = ENV_OPTION,
+):
+    """Open an App's dashboard page in your web browser.
+
+    **Examples:**
+
+    Open dashboard for an app by name:
+
+    ```
+    modal app dashboard my-app
+    ```
+
+    Use a specified environment:
+
+    ```
+    modal app dashboard my-app --env dev
+    ```
+    """
+    client = await _Client.from_env()
+    app_id = await get_app_id.aio(app_identifier, env, client)
+
+    console = make_console()
+    url = f"https://modal.com/id/{app_id}"
+
+    open_url_and_display(url, "App dashboard", console)

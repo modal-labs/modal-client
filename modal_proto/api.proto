@@ -3690,6 +3690,15 @@ message WorkspaceBillingReportRequest {
   repeated string tag_names = 4;
 }
 
+message WorkspaceDashboardUrlRequest {
+  string environment_name = 1;
+}
+
+message WorkspaceDashboardUrlResponse {
+  string url = 1;
+}
+
+
 message WorkspaceNameLookupResponse {
   string workspace_name = 1 [deprecated=true];
   string username = 2;
@@ -3924,5 +3933,6 @@ service ModalClient {
 
   // Workspaces
   rpc WorkspaceBillingReport(WorkspaceBillingReportRequest) returns (stream WorkspaceBillingReportItem);
+  rpc WorkspaceDashboardUrlGet(WorkspaceDashboardUrlRequest) returns (WorkspaceDashboardUrlResponse);
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
 }

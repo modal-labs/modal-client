@@ -39,6 +39,41 @@ def _get_environment_name(
         return config.get("environment")
 
 
+def live_method(method):
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        await self.hydrate()
+        return await method(self, *args, **kwargs)
+
+    return wrapped
+
+
+def live_method_gen(method):
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        await self.hydrate()
+        async with aclosing(method(self, *args, **kwargs)) as stream:
+            async for item in stream:
+                yield item
+
+    return wrapped
+
+
+def live_method_contextmanager(method):
+    # make sure a wrapped function returning an async context manager
+    # will not require both an `await func.aio()` and `async with`
+    # which would have been the case if it was wrapped in live_method
+
+    @wraps(method)
+    @contextlib.asynccontextmanager
+    async def wrapped(self, *args, **kwargs):
+        await self.hydrate()
+        async with method(self, *args, **kwargs) as ctx:
+            yield ctx
+
+    return wrapped
+
+
 class _Object:
     _type_prefix: ClassVar[Optional[str]] = None
     _prefix_to_type: ClassVar[dict[str, type]] = {}
@@ -275,6 +310,11 @@ class _Object:
             raise AttributeError(f"Attempting to get object_id of unhydrated {self}")
         return self._object_id
 
+    @live_method
+    async def get_dashboard_url(self) -> str:
+        """mdmd:hidden"""
+        return f"https://modal.com/id/{self.object_id}"
+
     @property
     def client(self) -> _Client:
         """mdmd:hidden"""
@@ -336,38 +376,3 @@ class _Object:
                 with suppress_tb_frame():  # skip this frame by default
                     await resolver.load(self, root_load_context)
         return self
-
-
-def live_method(method):
-    @wraps(method)
-    async def wrapped(self, *args, **kwargs):
-        await self.hydrate()
-        return await method(self, *args, **kwargs)
-
-    return wrapped
-
-
-def live_method_gen(method):
-    @wraps(method)
-    async def wrapped(self, *args, **kwargs):
-        await self.hydrate()
-        async with aclosing(method(self, *args, **kwargs)) as stream:
-            async for item in stream:
-                yield item
-
-    return wrapped
-
-
-def live_method_contextmanager(method):
-    # make sure a wrapped function returning an async context manager
-    # will not require both an `await func.aio()` and `async with`
-    # which would have been the case if it was wrapped in live_method
-
-    @wraps(method)
-    @contextlib.asynccontextmanager
-    async def wrapped(self, *args, **kwargs):
-        await self.hydrate()
-        async with method(self, *args, **kwargs) as ctx:
-            yield ctx
-
-    return wrapped
