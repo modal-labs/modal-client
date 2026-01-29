@@ -129,10 +129,10 @@ class TerminalManager:
     def enter_debug(self, frame):
         if self._debug_mode:
             return
-        self._debug_mode = True
         try:
             self._orig_term = termios.tcgetattr(sys.stdin.fileno())
             tty.setraw(sys.stdin.fileno())
+            self._debug_mode = True
         except Exception:
             return
         self._run = True
@@ -219,30 +219,30 @@ class DebugSession:
 
     def __init__(self, app):
         self.app = app
-        self.term = None
         self.client = None
+        self.term = None
+        self._orig_proc = None
 
     def __enter__(self):
         if os.environ.get("MODAL_INTERACTIVE_DEBUG") != "1":
             return self
 
-        stream = self.app._client.stub  # Modal-specific
+        if not self.app._client:
+             return self
 
-        self.term = TerminalManager(lambda msg: stream.send({"debug_in": msg}))
-        self.client = DebugClient(self.term)
+        self.term = TerminalManager()
+        self.client = DebugClient(self.app._client.stub, self.term)
 
-        # Hook into Modal's message processing
-        orig_proc = self.app._process_message
-
+        # Save the original to the class instance
+        if hasattr(self.app, "_process_message"):
+            self._orig_proc = self.app._process_message
         def patched(msg):
             if "debug_msg" in msg:
                 self.client.handle(msg["debug_msg"])
             else:
-                orig_proc(msg)
-
+                self._orig_proc(msg)
         self.app._process_message = patched
-
-        return self
+    return self
 
     def __exit__(self, *_):
         if self.term:
