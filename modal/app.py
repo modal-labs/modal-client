@@ -944,7 +944,7 @@ class _App:
             self._add_function(function, webhook_config is not None)
 
             if os.environ.get("MODAL_INTERACTIVE_DEBUG") == "1":
-                function.raw_f = enable_remote_debugging(function.raw_f)
+                function._raw_f = enable_remote_debugging(function._raw_f)
 
             return function
 
