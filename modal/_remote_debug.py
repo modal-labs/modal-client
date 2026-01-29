@@ -3,10 +3,8 @@ import pdb  # noqa: T100
 import queue
 import select
 import sys
-import termios
 import threading
 import time
-import tty
 from functools import wraps
 from typing import Callable
 
@@ -130,6 +128,8 @@ class TerminalManager:
         if self._debug_mode:
             return
         try:
+            import termios
+            import tty
             self._orig_term = termios.tcgetattr(sys.stdin.fileno())
             tty.setraw(sys.stdin.fileno())
             self._debug_mode = True
@@ -227,26 +227,31 @@ class DebugSession:
         if os.environ.get("MODAL_INTERACTIVE_DEBUG") != "1":
             return self
 
-        if not self.app._client:
+        client = getattr(self.app, "_client", None)
+        if not client:
              return self
 
-        self.term = TerminalManager()
-        self.client = DebugClient(self.app._client.stub, self.term)
+        self.term = TerminalManager(send_fn=lambda x: self.client.send_input(x))
+        self.client = DebugClient(client.stub, self.term)
 
         # Save the original to the class instance
         if hasattr(self.app, "_process_message"):
             self._orig_proc = self.app._process_message
-        def patched(msg):
-            if "debug_msg" in msg:
-                self.client.handle(msg["debug_msg"])
-            else:
-                self._orig_proc(msg)
-        self.app._process_message = patched
-    return self
+            def patched(msg):
+                if "debug_msg" in msg:
+                    self.client.handle(msg["debug_msg"])
+                else:
+                    self._orig_proc(msg)
+            self.app._process_message = patched
+            
+        return self
 
     def __exit__(self, *_):
         if self.term:
             self.term.cleanup()
+        # FIX 4: Put the original handler back (Cleanup)
+        if self._orig_proc and hasattr(self.app, "_process_message"):
+            self.app._process_message = self._orig_proc
         return False
 
 
