@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import inspect
+import os
 import typing
 from collections.abc import AsyncGenerator, Collection, Coroutine, Mapping, Sequence
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from ._partial_function import (
     _PartialFunctionFlags,
     verify_concurrent_params,
 )
+from ._remote_debug import enable_remote_debugging
 from ._server import _Server, validate_http_server_config
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import (
@@ -940,6 +942,9 @@ class _App:
             )
 
             self._add_function(function, webhook_config is not None)
+
+            if os.environ.get("MODAL_INTERACTIVE_DEBUG") == "1":
+                function.raw_f = enable_remote_debugging(function.raw_f)
 
             return function
 

@@ -14,6 +14,7 @@ import typer
 from click import ClickException
 from typing_extensions import TypedDict
 
+from .._remote_debug import DebugSession, patch_modal_cli
 from ..app import App, LocalEntrypoint
 from ..cls import _get_class_constructor_signature
 from ..config import config
@@ -233,13 +234,24 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
         show_progress: bool = ctx.obj["show_progress"]
         show_timestamps: bool = ctx.obj["show_timestamps"]
         with enable_output(show_progress, show_timestamps=show_timestamps):
-            with run_app(
-                app,
-                detach=ctx.obj["detach"],
-                environment_name=ctx.obj["env"],
-                interactive=ctx.obj["interactive"],
-            ):
-                res = inner(args, kwargs)
+            if ctx.obj["interactive"]:
+                patch_modal_cli()
+                with DebugSession(app):
+                    with run_app(
+                        app,
+                        detach=ctx.obj["detach"],
+                        environment_name=ctx.obj["env"],
+                        interactive=ctx.obj["interactive"],
+                    ):
+                        res = inner(args, kwargs)
+            else:
+                with run_app(
+                    app,
+                    detach=ctx.obj["detach"],
+                    environment_name=ctx.obj["env"],
+                    interactive=ctx.obj["interactive"],
+                ):
+                    res = inner(args, kwargs)
 
             if result_path := ctx.obj["result_path"]:
                 _write_local_result(result_path, res)
