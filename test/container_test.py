@@ -539,6 +539,7 @@ def test_cls_web_asgi_with_lifespan(servicer, deployed_support_function_definiti
 
 @skip_github_non_linux
 @pytest.mark.filterwarnings("error")
+@pytest.mark.filterwarnings("ignore::ResourceWarning")  # Python 3.14+ triggers ResourceWarnings during cleanup
 def test_app_with_slow_lifespan_wind_down(servicer, caplog, deployed_support_function_definitions):
     inputs = _get_web_inputs()
     with caplog.at_level(logging.WARNING):
