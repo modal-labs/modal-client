@@ -545,7 +545,7 @@ async def get_app_logs_loop(
     output_mgr: OutputManager,
     app_id: str | None = None,
     task_id: str | None = None,
-    app_logs_url: str | None = None,
+    sandbox_id: str | None = None,
 ):
     last_log_batch_entry_id = ""
 
@@ -600,6 +600,7 @@ async def get_app_logs_loop(
         request = api_pb2.AppGetLogsRequest(
             app_id=app_id or "",
             task_id=task_id or "",
+            sandbox_id=sandbox_id or "",
             timeout=55,
             last_entry_id=last_log_batch_entry_id,
         )

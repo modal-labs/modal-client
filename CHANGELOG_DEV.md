@@ -4,5 +4,6 @@
 
 * Modal objects now have a `.get_dashboard_url()` method.
 * There is a new `modal dashboard` CLI and `modal app dashboard` and `modal volume dashboard` CLI subcommands.
+* You can now pass a Sandbox ID (`sb-xxxxx`) directly to the `modal container logs` CLI.
 * Fixed an issue where Cls.with_options()/with_concurrency()/with_batching() multiple times on the same class could sometimes use stale argument values
 

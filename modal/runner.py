@@ -340,11 +340,7 @@ async def _run_app(
 
             # Start logs loop
 
-            logs_loop = tc.create_task(
-                get_app_logs_loop(
-                    load_context.client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url
-                )
-            )
+            logs_loop = tc.create_task(get_app_logs_loop(load_context.client, output_mgr, app_id=running_app.app_id))
 
         try:
             # Create all members

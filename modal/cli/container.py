@@ -13,6 +13,7 @@ from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
 from modal.environments import ensure_env
+from modal.exception import InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
@@ -52,7 +53,14 @@ def logs(
     timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line"),
 ):
     """Show logs for a specific container, streaming while active."""
-    stream_app_logs(task_id=container_id, show_timestamps=timestamps)
+    task_id, sandbox_id = None, None
+    if container_id.startswith("sb-"):
+        sandbox_id = container_id
+    elif container_id.startswith("ta-"):
+        task_id = container_id
+    else:
+        raise InvalidError(f"Invalid container ID: {container_id}")
+    stream_app_logs(task_id=task_id, sandbox_id=sandbox_id, show_timestamps=timestamps)
 
 
 @container_cli.command("exec")

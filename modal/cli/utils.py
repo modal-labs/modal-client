@@ -21,14 +21,16 @@ from ..exception import NotFoundError
 async def stream_app_logs(
     app_id: Optional[str] = None,
     task_id: Optional[str] = None,
+    sandbox_id: Optional[str] = None,
     app_logs_url: Optional[str] = None,
     show_timestamps: bool = False,
 ):
     client = await _Client.from_env()
-    output_mgr = OutputManager(status_spinner_text=f"Tailing logs for {app_id}", show_timestamps=show_timestamps)
+    display_id = app_id or task_id or sandbox_id
+    output_mgr = OutputManager(status_spinner_text=f"Tailing logs for {display_id}", show_timestamps=show_timestamps)
     try:
         with output_mgr.show_status_spinner():
-            await get_app_logs_loop(client, output_mgr, app_id=app_id, task_id=task_id, app_logs_url=app_logs_url)
+            await get_app_logs_loop(client, output_mgr, app_id=app_id, task_id=task_id, sandbox_id=sandbox_id)
     except asyncio.CancelledError:
         pass
     except KeyboardInterrupt:
