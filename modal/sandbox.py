@@ -735,6 +735,21 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         await self._client.stub.SandboxTerminate(api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id))
 
+    async def close(self) -> None:
+        """Close the Sandbox connection.
+
+        This only releases local resources and does not terminate the Sandbox.
+        """
+        if self._command_router_client is not None:
+            await self._command_router_client.close()
+            self._command_router_client = None
+
+    async def __aenter__(self) -> "_Sandbox":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.close()
+
     async def poll(self) -> Optional[int]:
         """Check if the Sandbox has finished running.
 
