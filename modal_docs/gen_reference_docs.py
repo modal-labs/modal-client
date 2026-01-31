@@ -85,7 +85,7 @@ def run(output_dir: str = None):
     # These aren't defined in `modal`, but should still be documented as top-level entries.
     forced_members: set[str] = set()
     # These are excluded from the sidebar, typically to 'soft release' some documentation.
-    sidebar_excluded: set[str] = set()
+    sidebar_excluded: set[str] = {"modal.NetworkFileSystem"}
 
     for title, modulepath in forced_module_docs:
         module = importlib.import_module(modulepath)

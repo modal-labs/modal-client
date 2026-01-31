@@ -130,7 +130,7 @@ entrypoint_cli_typer.add_typer(cluster_cli, rich_help_panel="Deployments", hidde
 
 # Storage
 entrypoint_cli_typer.add_typer(dict_cli, rich_help_panel="Storage")
-entrypoint_cli_typer.add_typer(nfs_cli, rich_help_panel="Storage")
+entrypoint_cli_typer.add_typer(nfs_cli, rich_help_panel="Storage", hidden=True)
 entrypoint_cli_typer.add_typer(secret_cli, rich_help_panel="Storage")
 entrypoint_cli_typer.add_typer(queue_cli, rich_help_panel="Storage")
 entrypoint_cli_typer.add_typer(volume_cli, rich_help_panel="Storage")
