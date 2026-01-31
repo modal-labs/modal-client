@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2022
 import asyncio
+import base64
 import contextlib
 import os
 import platform
 import socket
+import socket as _socket
 import time
 import typing
 import urllib.parse
@@ -46,6 +48,84 @@ grpclib.client.USER_AGENT = "modal-client/{version} ({sys}; {py}/{py_ver})'".for
     py=platform.python_implementation(),
     py_ver=platform.python_version(),
 ).lower()
+
+
+class ProxyChannel(grpclib.client.Channel):
+    """A gRPC channel that tunnels through an HTTP CONNECT proxy.
+
+    Subclasses grpclib's Channel to override connection creation. Instead of
+    connecting directly to the target host, it first establishes a TCP
+    connection to the proxy, performs an HTTP CONNECT handshake, and then
+    upgrades the tunneled connection to TLS + HTTP/2.
+    """
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        *,
+        proxy_url: str,
+        ssl: Any = None,
+        config: Optional[grpclib.config.Configuration] = None,
+        status_details_codec: Any = None,
+    ):
+        super().__init__(
+            host,
+            port,
+            ssl=ssl,
+            config=config,
+            status_details_codec=status_details_codec,
+        )
+        parsed = urllib.parse.urlparse(proxy_url)
+        self._proxy_host = parsed.hostname or "localhost"
+        self._proxy_port = parsed.port or 3128
+        self._proxy_auth: Optional[str] = None
+        if parsed.username:
+            credentials = f"{parsed.username}:{parsed.password or ''}"
+            self._proxy_auth = base64.b64encode(credentials.encode()).decode()
+
+    async def _create_connection(self) -> H2Protocol:
+        loop = asyncio.get_event_loop()
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        sock.setblocking(False)
+        try:
+            await loop.sock_connect(sock, (self._proxy_host, self._proxy_port))
+
+            # Build HTTP CONNECT request
+            connect_req = f"CONNECT {self._host}:{self._port} HTTP/1.1\r\n"
+            connect_req += f"Host: {self._host}:{self._port}\r\n"
+            if self._proxy_auth:
+                connect_req += f"Proxy-Authorization: Basic {self._proxy_auth}\r\n"
+            connect_req += "\r\n"
+
+            await loop.sock_sendall(sock, connect_req.encode())
+
+            # Read proxy response
+            response = b""
+            while b"\r\n\r\n" not in response:
+                chunk = await loop.sock_recv(sock, 4096)
+                if not chunk:
+                    raise ConnectionError("Proxy closed connection during CONNECT handshake")
+                response += chunk
+
+            status_line = response.split(b"\r\n", 1)[0].decode()
+            # Expected: "HTTP/1.1 200 Connection established" (or similar 2xx)
+            parts = status_line.split(" ", 2)
+            if len(parts) < 2 or not parts[1].startswith("2"):
+                sock.close()
+                raise ConnectionError(f"Proxy CONNECT failed: {status_line}")
+
+            # Upgrade tunneled socket to TLS + H2
+            _, protocol = await loop.create_connection(
+                self._protocol_factory,
+                ssl=self._ssl,
+                sock=sock,
+                server_hostname=self._host,
+            )
+            return protocol
+        except Exception:
+            sock.close()
+            raise
 
 
 class Subchannel:
@@ -172,13 +252,13 @@ def create_channel(
     o = urllib.parse.urlparse(server_url)
 
     channel: grpclib.client.Channel
-    config = grpclib.config.Configuration(
+    grpc_config = grpclib.config.Configuration(
         http2_connection_window_size=64 * 1024 * 1024,  # 64 MiB
         http2_stream_window_size=64 * 1024 * 1024,  # 64 MiB
     )
 
     if o.scheme == "unix":
-        channel = grpclib.client.Channel(path=o.path, config=config, status_details_codec=custom_detail_codec)
+        channel = grpclib.client.Channel(path=o.path, config=grpc_config, status_details_codec=custom_detail_codec)
     elif o.scheme in ("http", "https"):
         target = o.netloc
         parts = target.split(":")
@@ -186,7 +266,25 @@ def create_channel(
         ssl = o.scheme.endswith("s")
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 else 443 if ssl else 80
-        channel = grpclib.client.Channel(host, port, ssl=ssl, config=config, status_details_codec=custom_detail_codec)
+
+        proxy_url = config.get("grpc_proxy") if ssl else None
+        if proxy_url:
+            channel = ProxyChannel(
+                host,
+                port,
+                proxy_url=proxy_url,
+                ssl=ssl,
+                config=grpc_config,
+                status_details_codec=custom_detail_codec,
+            )
+        else:
+            channel = grpclib.client.Channel(
+                host,
+                port,
+                ssl=ssl,
+                config=grpc_config,
+                status_details_codec=custom_detail_codec,
+            )
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
 
