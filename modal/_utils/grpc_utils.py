@@ -5,7 +5,6 @@ import contextlib
 import os
 import platform
 import socket
-import socket as _socket
 import time
 import typing
 import urllib.parse
@@ -51,13 +50,16 @@ grpclib.client.USER_AGENT = "modal-client/{version} ({sys}; {py}/{py_ver})'".for
 
 
 class ProxyChannel(grpclib.client.Channel):
-    """A gRPC channel that tunnels through an HTTP CONNECT proxy.
+    """A gRPC channel that tunnels HTTPS gRPC connections through an HTTP CONNECT proxy.
 
     Subclasses grpclib's Channel to override connection creation. Instead of
     connecting directly to the target host, it first establishes a TCP
     connection to the proxy, performs an HTTP CONNECT handshake, and then
     upgrades the tunneled connection to TLS + HTTP/2.
     """
+
+    _CONNECT_TIMEOUT = 30  # seconds for proxy connect and handshake operations
+    _MAX_RESPONSE_BYTES = 16 * 1024  # 16 KiB max for proxy CONNECT response
 
     def __init__(
         self,
@@ -76,20 +78,30 @@ class ProxyChannel(grpclib.client.Channel):
             config=config,
             status_details_codec=status_details_codec,
         )
+        # Validate raw URL before parsing to prevent header injection (urlparse strips CR/LF)
+        if "\r" in proxy_url or "\n" in proxy_url:
+            raise ValueError("Proxy URL contains invalid characters (CR/LF)")
+
         parsed = urllib.parse.urlparse(proxy_url)
+        if parsed.scheme not in ("http", ""):
+            raise ValueError(f"Unsupported proxy scheme: {parsed.scheme!r} (only http:// is supported)")
+
         self._proxy_host = parsed.hostname or "localhost"
         self._proxy_port = parsed.port or 3128
+
         self._proxy_auth: Optional[str] = None
         if parsed.username:
             credentials = f"{parsed.username}:{parsed.password or ''}"
             self._proxy_auth = base64.b64encode(credentials.encode()).decode()
 
     async def _create_connection(self) -> H2Protocol:
-        loop = asyncio.get_event_loop()
-        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setblocking(False)
         try:
-            await loop.sock_connect(sock, (self._proxy_host, self._proxy_port))
+            await asyncio.wait_for(
+                self._loop.sock_connect(sock, (self._proxy_host, self._proxy_port)),
+                timeout=self._CONNECT_TIMEOUT,
+            )
 
             # Build HTTP CONNECT request
             connect_req = f"CONNECT {self._host}:{self._port} HTTP/1.1\r\n"
@@ -98,33 +110,46 @@ class ProxyChannel(grpclib.client.Channel):
                 connect_req += f"Proxy-Authorization: Basic {self._proxy_auth}\r\n"
             connect_req += "\r\n"
 
-            await loop.sock_sendall(sock, connect_req.encode())
+            await self._loop.sock_sendall(sock, connect_req.encode())
 
-            # Read proxy response
+            # Read proxy response (bounded buffer + timeout)
             response = b""
             while b"\r\n\r\n" not in response:
-                chunk = await loop.sock_recv(sock, 4096)
+                if len(response) > self._MAX_RESPONSE_BYTES:
+                    raise ConnectionError(
+                        f"Proxy response exceeded {self._MAX_RESPONSE_BYTES} bytes"
+                    )
+                chunk = await asyncio.wait_for(
+                    self._loop.sock_recv(sock, 4096),
+                    timeout=self._CONNECT_TIMEOUT,
+                )
                 if not chunk:
                     raise ConnectionError("Proxy closed connection during CONNECT handshake")
                 response += chunk
 
-            status_line = response.split(b"\r\n", 1)[0].decode()
+            status_line = response.split(b"\r\n", 1)[0].decode("ascii", errors="replace")
             # Expected: "HTTP/1.1 200 Connection established" (or similar 2xx)
             parts = status_line.split(" ", 2)
             if len(parts) < 2 or not parts[1].startswith("2"):
-                sock.close()
                 raise ConnectionError(f"Proxy CONNECT failed: {status_line}")
 
+            # Respect ssl_target_name_override from grpclib config
+            server_hostname = self._config.ssl_target_name_override or self._host
+
             # Upgrade tunneled socket to TLS + H2
-            _, protocol = await loop.create_connection(
+            _, protocol = await self._loop.create_connection(
                 self._protocol_factory,
                 ssl=self._ssl,
                 sock=sock,
-                server_hostname=self._host,
+                server_hostname=server_hostname,
             )
+            # Transport now owns the socket
+            sock = None  # type: ignore[assignment]
             return protocol
         except Exception:
-            sock.close()
+            if sock is not None:
+                with contextlib.suppress(OSError):
+                    sock.close()
             raise
 
 

@@ -122,6 +122,31 @@ def test_proxy_channel_default_port():
         ch.close()
 
 
+def test_proxy_channel_rejects_socks_scheme():
+    """ProxyChannel rejects non-http proxy URL schemes."""
+    with pytest.raises(ValueError, match="Unsupported proxy scheme"):
+        ProxyChannel("api.modal.com", 443, proxy_url="socks5://myproxy:1080", ssl=True)
+
+
+def test_proxy_channel_rejects_crlf_in_url():
+    """ProxyChannel rejects proxy URLs containing CRLF (header injection prevention)."""
+    with pytest.raises(ValueError, match="invalid characters"):
+        ProxyChannel("api.modal.com", 443, proxy_url="http://evil\r\nhost:3128", ssl=True)
+    with pytest.raises(ValueError, match="invalid characters"):
+        ProxyChannel("api.modal.com", 443, proxy_url="http://user:pass@proxy:3128\r\n", ssl=True)
+
+
+# --- Config edge case tests ---
+
+
+def test_grpc_proxy_whitespace_only_https_proxy_treated_as_none(monkeypatch):
+    """Whitespace-only HTTPS_PROXY is treated as unset."""
+    monkeypatch.delenv("MODAL_GRPC_PROXY", raising=False)
+    monkeypatch.setenv("HTTPS_PROXY", "   ")
+    monkeypatch.delenv("https_proxy", raising=False)
+    assert Config().get("grpc_proxy") is None
+
+
 # --- CONNECT handshake tests ---
 
 

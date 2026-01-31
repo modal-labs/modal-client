@@ -81,7 +81,7 @@ Other possible configuration options are:
   alphanumeric string.
 * `grpc_proxy` (in the .toml file) / `MODAL_GRPC_PROXY` (as an env var).
   HTTP proxy URL for gRPC connections (e.g., ``http://proxy:3128``).
-  When set, all gRPC connections to the Modal server are tunneled through the
+  When set, HTTPS gRPC connections to the Modal server are tunneled through the
   proxy using HTTP CONNECT. Supports ``http://host:port`` and
   ``http://user:pass@host:port`` (basic auth). Falls back to the standard
   ``HTTPS_PROXY`` / ``https_proxy`` environment variables when not set.
@@ -303,7 +303,7 @@ class Config:
             return transform(_user_config[profile][key])
         elif key == "grpc_proxy" and use_env:
             # Fall back to standard proxy environment variables
-            proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+            proxy = (os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or "").strip()
             return proxy if proxy else s.default
         else:
             return s.default
