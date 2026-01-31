@@ -144,15 +144,19 @@ def test_secret_create_from_json(servicer, set_env_client, tmp_path, json_conten
     )
 
 
-def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
+def test_app_token_new(servicer, set_env_client, server_url_env, modal_config, mock_webbrowser):
     servicer.required_creds = {"abc": "xyz"}
+    mock_webbrowser()
+
     with modal_config() as config_file_path:
         run_cli_command(["token", "new", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
 
 
-def test_token_env_var_warning(servicer, set_env_client, server_url_env, modal_config, monkeypatch):
+def test_token_env_var_warning(servicer, set_env_client, server_url_env, modal_config, mock_webbrowser, monkeypatch):
     servicer.required_creds = {"abc": "xyz"}
+    mock_webbrowser()
+
     monkeypatch.setenv("MODAL_TOKEN_ID", "ak-123")
     with modal_config():
         res = run_cli_command(["token", "new"])
@@ -183,8 +187,10 @@ def test_token_identity_from_env(servicer, set_env_client, monkeypatch):
     assert "environment" in res.stdout
 
 
-def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
+def test_app_setup(servicer, set_env_client, server_url_env, modal_config, mock_webbrowser):
     servicer.required_creds = {"abc": "xyz"}
+    mock_webbrowser()
+
     with modal_config() as config_file_path:
         run_cli_command(["setup", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
@@ -1350,3 +1356,48 @@ def test_server_warnings(servicer, set_env_client, supports_dir):
 def test_run_with_options(servicer, set_env_client, supports_dir):
     app_file = supports_dir / "app_run_tests" / "uses_with_options.py"
     run_cli_command(["run", f"{app_file.as_posix()}::C_with_gpu.f"])
+
+
+def test_dashboard_workspace_url(servicer, set_env_client, mock_webbrowser):
+    """Test that modal dashboard (without object ID) calls WorkspaceDashboardUrlGet RPC."""
+    mock_browser = mock_webbrowser()
+
+    # Run the dashboard command without an object ID
+    result = run_cli_command(["dashboard"])
+
+    # Check that the output contains the URL returned by the mock servicer
+    assert "https://modal.com/apps/main" in result.stdout
+    assert "Opening dashboard in your web browser" in result.stdout
+
+    # Verify that the browser was opened
+    assert mock_browser.open_new_tab.call_count == 1
+    assert mock_browser.open_new_tab.call_args[0][0] == "https://modal.com/apps/main"
+
+
+def test_dashboard_object_id(servicer, set_env_client, mock_webbrowser):
+    """Test that modal dashboard with object ID constructs URL directly."""
+    mock_browser = mock_webbrowser()
+
+    # Run the dashboard command with an object ID
+    result = run_cli_command(["dashboard", "fu-abc123"])
+
+    # Check that the output contains the constructed URL
+    assert "https://modal.com/id/fu-abc123" in result.stdout
+    assert "Opening dashboard in your web browser" in result.stdout
+
+    # Verify that the browser was opened
+    assert mock_browser.open_new_tab.call_count == 1
+    assert mock_browser.open_new_tab.call_args[0][0] == "https://modal.com/id/fu-abc123"
+
+
+def test_dashboard_browser_fails(servicer, set_env_client, mock_webbrowser):
+    """Test that modal dashboard handles browser open failure gracefully."""
+    mock_webbrowser(success=False)
+
+    # Run the dashboard command
+    result = run_cli_command(["dashboard", "ap-xyz789"])
+
+    # Check that the failure message is displayed
+    assert "Could not open web browser automatically" in result.stdout
+    assert "Please open this URL in your browser" in result.stdout
+    assert "https://modal.com/id/ap-xyz789" in result.stdout

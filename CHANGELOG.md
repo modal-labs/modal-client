@@ -4,6 +4,25 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.3.2 (2026-01-30)
+
+- Modal objects now have a `.get_dashboard_url()` method. This method will return a URL for viewing that object on the Modal dashboard:
+  ```python
+  fc = f.spawn()
+  print(fc.get_dashboard_url())  # Easy access to logs, etc.
+  ```
+- There is also a new `modal dashboard` CLI and new `modal app dashboard` / `modal volume dashboard` CLI subcommands:
+  ```bash
+  modal dashboard  # Opens up the Apps homepage for the current environment
+  modal dashboard <object-id>  # Opens up a view of this object
+  modal app dashboard <app-name>  # Opens up the dashboard for this deployed App
+  modal volume dashboard <volume-name>  # Opens up the file browser for this persistent Volume
+  ```
+- You can now pass a Sandbox ID (`sb-xxxxx`) directly to the `modal container logs` CLI.
+- The `modal token info` CLI will now include the token name, if provided at token creation.
+- We fixed an issue where `modal.Cls.with_options()` (or the `with_concurrency()` / `with_batching()` methods) could sometimes use stale argument values when called repeatedly.
+
+
 ### 1.3.1 (2026-01-22)
 
 - We've improved our experimental support for Python 3.14t (free-threaded Python) inside Modal containers.

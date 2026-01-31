@@ -13,6 +13,7 @@ from .app import app_cli
 from .cluster import cluster_cli
 from .config import config_cli
 from .container import container_cli
+from .dashboard import dashboard
 from .dict import dict_cli
 from .environment import environment_cli
 from .launch import launch_cli
@@ -118,6 +119,7 @@ async def setup(profile: Optional[str] = None):
 entrypoint_cli_typer.command("deploy", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
 entrypoint_cli_typer.command("shell")(shell_module.shell)
+entrypoint_cli_typer.command("dashboard")(dashboard)
 entrypoint_cli_typer.add_typer(launch_cli)
 
 # Deployments
@@ -128,7 +130,7 @@ entrypoint_cli_typer.add_typer(cluster_cli, rich_help_panel="Deployments", hidde
 
 # Storage
 entrypoint_cli_typer.add_typer(dict_cli, rich_help_panel="Storage")
-entrypoint_cli_typer.add_typer(nfs_cli, rich_help_panel="Storage")
+entrypoint_cli_typer.add_typer(nfs_cli, rich_help_panel="Storage", hidden=True)
 entrypoint_cli_typer.add_typer(secret_cli, rich_help_panel="Storage")
 entrypoint_cli_typer.add_typer(queue_cli, rich_help_panel="Storage")
 entrypoint_cli_typer.add_typer(volume_cli, rich_help_panel="Storage")

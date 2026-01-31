@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import itertools
 import os
-import webbrowser
 from collections.abc import AsyncGenerator
 from typing import Optional
 
@@ -12,6 +11,7 @@ from modal_proto import api_pb2
 
 from ._output import make_console
 from ._utils.async_utils import synchronize_api
+from ._utils.browser_utils import open_url
 from ._utils.http_utils import run_temporary_http_server
 from .client import _Client
 from .config import DEFAULT_SERVER_URL, _lookup_workspace, _store_user_config, config, config_profiles, user_config_path
@@ -85,7 +85,7 @@ async def _new_token(
         async with token_flow.start(source, next_url) as (_, web_url, code):
             with console.status("Waiting for authentication in the web browser", spinner="dots"):
                 # Open the web url in the browser
-                if _open_url(web_url):
+                if open_url(web_url):
                     console.print(
                         "The web browser should have opened for you to authenticate and get an API token.\n"
                         "If it didn't, please copy this URL into your web browser manually:\n"
@@ -176,18 +176,3 @@ async def _set_token(
             f"Warning: The {env_vars_str} environment variable{s} {verb} set; this will override your new credentials.",
             style="yellow",
         )
-
-
-def _open_url(url: str) -> bool:
-    """Opens url in web browser, making sure we use a modern one (not Lynx etc)"""
-    if "PYTEST_CURRENT_TEST" in os.environ:
-        return False
-    try:
-        browser = webbrowser.get()
-        # zpresto defines `BROWSER=open` by default on macOS, which causes `webbrowser` to return `GenericBrowser`.
-        if isinstance(browser, webbrowser.GenericBrowser) and browser.name != "open":
-            return False
-        else:
-            return browser.open_new_tab(url)
-    except webbrowser.Error:
-        return False
