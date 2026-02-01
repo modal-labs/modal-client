@@ -50,6 +50,8 @@ def test_grpc_proxy_none_when_no_env_vars(monkeypatch):
 def test_create_channel_uses_proxy_for_https(monkeypatch):
     """create_channel returns ProxyChannel when proxy is configured and scheme is https."""
     monkeypatch.setenv("MODAL_GRPC_PROXY", "http://proxy:3128")
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
     channel = create_channel("https://api.modal.com:443")
     try:
         assert isinstance(channel, ProxyChannel)
@@ -136,6 +138,22 @@ def test_proxy_channel_rejects_crlf_in_url():
         ProxyChannel("api.modal.com", 443, proxy_url="http://user:pass@proxy:3128\r\n", ssl=True)
 
 
+def test_proxy_channel_no_scheme_url():
+    """ProxyChannel rejects a URL without an http:// scheme."""
+    with pytest.raises(ValueError, match="Unsupported proxy scheme"):
+        ProxyChannel("api.modal.com", 443, proxy_url="myproxy:3128", ssl=True)
+
+
+def test_proxy_channel_parses_percent_encoded_auth():
+    """ProxyChannel correctly decodes percent-encoded credentials."""
+    ch = ProxyChannel("api.modal.com", 443, proxy_url="http://user%40corp:p%40ss@proxy:3128", ssl=True)
+    try:
+        expected = base64.b64encode(b"user@corp:p@ss").decode()
+        assert ch._proxy_auth == expected
+    finally:
+        ch.close()
+
+
 # --- Config edge case tests ---
 
 
@@ -147,11 +165,38 @@ def test_grpc_proxy_whitespace_only_https_proxy_treated_as_none(monkeypatch):
     assert Config().get("grpc_proxy") is None
 
 
+# --- NO_PROXY tests ---
+
+
+def test_no_proxy_bypasses_proxy(monkeypatch):
+    """create_channel returns standard Channel when target host matches NO_PROXY."""
+    monkeypatch.setenv("MODAL_GRPC_PROXY", "http://proxy:3128")
+    monkeypatch.setenv("NO_PROXY", "*.modal.com")
+    monkeypatch.delenv("no_proxy", raising=False)
+    channel = create_channel("https://api.modal.com:443")
+    try:
+        assert type(channel) is grpclib.client.Channel
+    finally:
+        channel.close()
+
+
+def test_no_proxy_does_not_bypass_unrelated_host(monkeypatch):
+    """create_channel returns ProxyChannel when target host does not match NO_PROXY."""
+    monkeypatch.setenv("MODAL_GRPC_PROXY", "http://proxy:3128")
+    monkeypatch.setenv("NO_PROXY", "*.other.com")
+    monkeypatch.delenv("no_proxy", raising=False)
+    channel = create_channel("https://api.modal.com:443")
+    try:
+        assert isinstance(channel, ProxyChannel)
+    finally:
+        channel.close()
+
+
 # --- CONNECT handshake tests ---
 
 
-async def _run_mock_proxy(host, port, response_bytes):
-    """Start a mock TCP server that captures the CONNECT request and sends a response."""
+async def _run_mock_proxy(host, response_bytes):
+    """Start a mock TCP server on an OS-assigned port that captures the CONNECT request and sends a response."""
     received = bytearray()
     done = asyncio.Event()
 
@@ -171,141 +216,180 @@ async def _run_mock_proxy(host, port, response_bytes):
                 return
         done.set()
 
-    server = await asyncio.start_server(handle_client, host, port)
-    return server, received, done
+    server = await asyncio.start_server(handle_client, host, 0)
+    port = server.sockets[0].getsockname()[1]
+    return server, port, received, done
 
 
 @pytest.mark.asyncio
 async def test_connect_handshake_sends_correct_request():
     """Verify the CONNECT request format sent to the proxy."""
-    # Find a free port for the mock proxy
-    import socket as _socket
-
-    with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        proxy_port = s.getsockname()[1]
-
-    # Respond with 200 then close — TLS handshake will fail, but we can inspect the CONNECT request
-    server, received, done = await _run_mock_proxy(
-        "127.0.0.1", proxy_port, b"HTTP/1.1 200 Connection established\r\n\r\n"
-    )
-
-    ch = ProxyChannel(
-        "api.modal.com",
-        443,
-        proxy_url=f"http://127.0.0.1:{proxy_port}",
-        ssl=True,
+    server, proxy_port, received, done = await _run_mock_proxy(
+        "127.0.0.1", b"HTTP/1.1 200 Connection established\r\n\r\n"
     )
     try:
-        # The TLS handshake will fail because our mock proxy just closes,
-        # but the CONNECT request should have been sent correctly
-        with pytest.raises(Exception):
-            await ch.__connect__()
+        ch = ProxyChannel(
+            "api.modal.com",
+            443,
+            proxy_url=f"http://127.0.0.1:{proxy_port}",
+            ssl=True,
+        )
+        try:
+            # The TLS handshake will fail because our mock proxy just closes,
+            # but the CONNECT request should have been sent correctly
+            with pytest.raises(Exception):
+                await ch.__connect__()
+        finally:
+            ch.close()
+
+        await asyncio.wait_for(done.wait(), timeout=5)
+
+        request_text = received.decode()
+        assert request_text.startswith("CONNECT api.modal.com:443 HTTP/1.1\r\n")
+        assert "Host: api.modal.com:443\r\n" in request_text
+        assert "Proxy-Authorization" not in request_text
     finally:
-        ch.close()
-
-    await asyncio.wait_for(done.wait(), timeout=5)
-    server.close()
-    await server.wait_closed()
-
-    request_text = received.decode()
-    assert request_text.startswith("CONNECT api.modal.com:443 HTTP/1.1\r\n")
-    assert "Host: api.modal.com:443\r\n" in request_text
-    assert "Proxy-Authorization" not in request_text
+        server.close()
+        await server.wait_closed()
 
 
 @pytest.mark.asyncio
 async def test_connect_handshake_sends_auth_header():
     """Verify Proxy-Authorization header is sent for authenticated proxies."""
-    import socket as _socket
-
-    with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        proxy_port = s.getsockname()[1]
-
-    server, received, done = await _run_mock_proxy(
-        "127.0.0.1", proxy_port, b"HTTP/1.1 200 Connection established\r\n\r\n"
-    )
-
-    ch = ProxyChannel(
-        "api.modal.com",
-        443,
-        proxy_url=f"http://myuser:mypass@127.0.0.1:{proxy_port}",
-        ssl=True,
+    server, proxy_port, received, done = await _run_mock_proxy(
+        "127.0.0.1", b"HTTP/1.1 200 Connection established\r\n\r\n"
     )
     try:
-        with pytest.raises(Exception):
-            await ch.__connect__()
+        ch = ProxyChannel(
+            "api.modal.com",
+            443,
+            proxy_url=f"http://myuser:mypass@127.0.0.1:{proxy_port}",
+            ssl=True,
+        )
+        try:
+            with pytest.raises(Exception):
+                await ch.__connect__()
+        finally:
+            ch.close()
+
+        await asyncio.wait_for(done.wait(), timeout=5)
+
+        request_text = received.decode()
+        expected_auth = base64.b64encode(b"myuser:mypass").decode()
+        assert f"Proxy-Authorization: Basic {expected_auth}\r\n" in request_text
     finally:
-        ch.close()
-
-    await asyncio.wait_for(done.wait(), timeout=5)
-    server.close()
-    await server.wait_closed()
-
-    request_text = received.decode()
-    expected_auth = base64.b64encode(b"myuser:mypass").decode()
-    assert f"Proxy-Authorization: Basic {expected_auth}\r\n" in request_text
+        server.close()
+        await server.wait_closed()
 
 
 @pytest.mark.asyncio
 async def test_connect_handshake_rejects_non_200():
     """Verify ConnectionError is raised when proxy returns non-2xx status."""
-    import socket as _socket
-
-    with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        proxy_port = s.getsockname()[1]
-
-    server, received, done = await _run_mock_proxy(
+    server, proxy_port, received, done = await _run_mock_proxy(
         "127.0.0.1",
-        proxy_port,
         b"HTTP/1.1 407 Proxy Authentication Required\r\n\r\n",
     )
-
-    ch = ProxyChannel(
-        "api.modal.com",
-        443,
-        proxy_url=f"http://127.0.0.1:{proxy_port}",
-        ssl=True,
-    )
     try:
-        with pytest.raises(ModalConnectionError, match="Proxy CONNECT failed.*407"):
-            await ch.__connect__()
+        ch = ProxyChannel(
+            "api.modal.com",
+            443,
+            proxy_url=f"http://127.0.0.1:{proxy_port}",
+            ssl=True,
+        )
+        try:
+            with pytest.raises(ModalConnectionError, match="Proxy CONNECT failed.*407"):
+                await ch.__connect__()
+        finally:
+            ch.close()
     finally:
-        ch.close()
-
-    server.close()
-    await server.wait_closed()
+        server.close()
+        await server.wait_closed()
 
 
 @pytest.mark.asyncio
 async def test_connect_handshake_handles_closed_connection():
     """Verify ConnectionError is raised when proxy closes connection during handshake."""
-    import socket as _socket
-
-    with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        proxy_port = s.getsockname()[1]
 
     async def handle_and_close(reader, writer):
         await reader.read(4096)
         writer.close()
         await writer.wait_closed()
 
-    server = await asyncio.start_server(handle_and_close, "127.0.0.1", proxy_port)
-
-    ch = ProxyChannel(
-        "api.modal.com",
-        443,
-        proxy_url=f"http://127.0.0.1:{proxy_port}",
-        ssl=True,
-    )
+    server = await asyncio.start_server(handle_and_close, "127.0.0.1", 0)
+    proxy_port = server.sockets[0].getsockname()[1]
     try:
-        with pytest.raises(ModalConnectionError, match="Proxy closed connection"):
-            await ch.__connect__()
+        ch = ProxyChannel(
+            "api.modal.com",
+            443,
+            proxy_url=f"http://127.0.0.1:{proxy_port}",
+            ssl=True,
+        )
+        try:
+            with pytest.raises(ModalConnectionError, match="Proxy closed connection"):
+                await ch.__connect__()
+        finally:
+            ch.close()
     finally:
-        ch.close()
+        server.close()
+        await server.wait_closed()
 
-    server.close()
-    await server.wait_closed()
+
+@pytest.mark.asyncio
+async def test_connect_rejects_oversized_response():
+    """Verify ConnectionError when proxy sends >16KiB without terminating headers."""
+    oversized = b"X" * (16 * 1024 + 1)
+
+    async def handle_client(reader, writer):
+        await reader.read(4096)
+        writer.write(oversized)
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    server = await asyncio.start_server(handle_client, "127.0.0.1", 0)
+    proxy_port = server.sockets[0].getsockname()[1]
+    try:
+        ch = ProxyChannel(
+            "api.modal.com",
+            443,
+            proxy_url=f"http://127.0.0.1:{proxy_port}",
+            ssl=True,
+        )
+        try:
+            with pytest.raises(ModalConnectionError, match="exceeded"):
+                await ch.__connect__()
+        finally:
+            ch.close()
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_connect_timeout():
+    """Verify ConnectionError with timeout message when proxy never responds."""
+    hang_forever = asyncio.Event()
+
+    async def handle_client(reader, writer):
+        # Accept TCP connection but never send a response
+        await hang_forever.wait()
+
+    server = await asyncio.start_server(handle_client, "127.0.0.1", 0)
+    proxy_port = server.sockets[0].getsockname()[1]
+    try:
+        ch = ProxyChannel(
+            "api.modal.com",
+            443,
+            proxy_url=f"http://127.0.0.1:{proxy_port}",
+            ssl=True,
+        )
+        ch._CONNECT_TIMEOUT = 0.5  # Reduce timeout for fast test
+        try:
+            with pytest.raises(ModalConnectionError, match="timed out"):
+                await ch.__connect__()
+        finally:
+            ch.close()
+    finally:
+        hang_forever.set()
+        server.close()
+        await server.wait_closed()

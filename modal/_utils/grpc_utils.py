@@ -56,6 +56,9 @@ class ProxyChannel(grpclib.client.Channel):
     connecting directly to the target host, it first establishes a TCP
     connection to the proxy, performs an HTTP CONNECT handshake, and then
     upgrades the tunneled connection to TLS + HTTP/2.
+
+    Validated against grpclib 0.4.7–0.4.9. Accesses private attributes:
+    _loop, _host, _port, _ssl, _config, _protocol_factory (from Channel.__init__).
     """
 
     _CONNECT_TIMEOUT = 30  # seconds for proxy connect and handshake operations
@@ -91,66 +94,82 @@ class ProxyChannel(grpclib.client.Channel):
 
         self._proxy_auth: Optional[str] = None
         if parsed.username:
-            credentials = f"{parsed.username}:{parsed.password or ''}"
+            username = urllib.parse.unquote(parsed.username)
+            password = urllib.parse.unquote(parsed.password or "")
+            credentials = f"{username}:{password}"
             self._proxy_auth = base64.b64encode(credentials.encode()).decode()
 
     async def _create_connection(self) -> H2Protocol:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        loop = self._loop
+        # Resolve proxy address (supports both IPv4 and IPv6)
+        infos = await loop.getaddrinfo(self._proxy_host, self._proxy_port, type=socket.SOCK_STREAM)
+        if not infos:
+            raise ConnectionError(f"Could not resolve proxy host: {self._proxy_host}")
+        family, _, _, _, sockaddr = infos[0]
+
+        sock = socket.socket(family, socket.SOCK_STREAM)
         sock.setblocking(False)
         try:
-            await asyncio.wait_for(
-                self._loop.sock_connect(sock, (self._proxy_host, self._proxy_port)),
+            protocol = await asyncio.wait_for(
+                self._proxy_handshake(sock, sockaddr),
                 timeout=self._CONNECT_TIMEOUT,
             )
-
-            # Build HTTP CONNECT request
-            connect_req = f"CONNECT {self._host}:{self._port} HTTP/1.1\r\n"
-            connect_req += f"Host: {self._host}:{self._port}\r\n"
-            if self._proxy_auth:
-                connect_req += f"Proxy-Authorization: Basic {self._proxy_auth}\r\n"
-            connect_req += "\r\n"
-
-            await self._loop.sock_sendall(sock, connect_req.encode())
-
-            # Read proxy response (bounded buffer + timeout)
-            response = b""
-            while b"\r\n\r\n" not in response:
-                if len(response) > self._MAX_RESPONSE_BYTES:
-                    raise ConnectionError(
-                        f"Proxy response exceeded {self._MAX_RESPONSE_BYTES} bytes"
-                    )
-                chunk = await asyncio.wait_for(
-                    self._loop.sock_recv(sock, 4096),
-                    timeout=self._CONNECT_TIMEOUT,
-                )
-                if not chunk:
-                    raise ConnectionError("Proxy closed connection during CONNECT handshake")
-                response += chunk
-
-            status_line = response.split(b"\r\n", 1)[0].decode("ascii", errors="replace")
-            # Expected: "HTTP/1.1 200 Connection established" (or similar 2xx)
-            parts = status_line.split(" ", 2)
-            if len(parts) < 2 or not parts[1].startswith("2"):
-                raise ConnectionError(f"Proxy CONNECT failed: {status_line}")
-
-            # Respect ssl_target_name_override from grpclib config
-            server_hostname = self._config.ssl_target_name_override or self._host
-
-            # Upgrade tunneled socket to TLS + H2
-            _, protocol = await self._loop.create_connection(
-                self._protocol_factory,
-                ssl=self._ssl,
-                sock=sock,
-                server_hostname=server_hostname,
-            )
-            # Transport now owns the socket
-            sock = None  # type: ignore[assignment]
+            sock = None  # type: ignore[assignment]  # Transport now owns the socket
             return protocol
-        except Exception:
+        except TimeoutError as exc:
+            raise ConnectionError(
+                f"Proxy connect/handshake timed out after {self._CONNECT_TIMEOUT}s "
+                f"({self._proxy_host}:{self._proxy_port})"
+            ) from exc
+        finally:
             if sock is not None:
                 with contextlib.suppress(OSError):
                     sock.close()
-            raise
+
+    async def _proxy_handshake(self, sock: socket.socket, sockaddr: tuple) -> H2Protocol:
+        loop = self._loop
+        await loop.sock_connect(sock, sockaddr)
+
+        # Bracket-wrap IPv6 literal hosts in the CONNECT request
+        host = f"[{self._host}]" if ":" in self._host else self._host
+
+        connect_req = f"CONNECT {host}:{self._port} HTTP/1.1\r\n"
+        connect_req += f"Host: {host}:{self._port}\r\n"
+        if self._proxy_auth:
+            connect_req += f"Proxy-Authorization: Basic {self._proxy_auth}\r\n"
+        connect_req += "\r\n"
+
+        await loop.sock_sendall(sock, connect_req.encode())
+
+        # Read proxy response (bounded buffer; overall timeout enforced by caller)
+        response = b""
+        while b"\r\n\r\n" not in response:
+            if len(response) > self._MAX_RESPONSE_BYTES:
+                raise ConnectionError(f"Proxy response exceeded {self._MAX_RESPONSE_BYTES} bytes")
+            chunk = await loop.sock_recv(sock, 4096)
+            if not chunk:
+                raise ConnectionError("Proxy closed connection during CONNECT handshake")
+            response += chunk
+
+        status_line = response.split(b"\r\n", 1)[0].decode("ascii", errors="replace")
+        # Expected: "HTTP/1.1 200 Connection established" (or similar 2xx)
+        parts = status_line.split(" ", 2)
+        if len(parts) < 2 or not parts[1].startswith("2"):
+            raise ConnectionError(f"Proxy CONNECT failed: {status_line}")
+
+        # server_hostname is required explicitly when using sock= mode with
+        # create_connection, unlike the base class which passes host= and lets
+        # asyncio handle hostname resolution and TLS server name indication.
+        server_hostname = self._config.ssl_target_name_override or self._host
+
+        # Upgrade tunneled socket to TLS + H2
+        _, protocol = await loop.create_connection(
+            self._protocol_factory,
+            ssl=self._ssl,
+            sock=sock,
+            server_hostname=server_hostname,
+        )
+        return protocol
 
 
 class Subchannel:
@@ -266,6 +285,35 @@ class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
 custom_detail_codec = CustomProtoStatusDetailsCodec()
 
 
+def _should_bypass_proxy(host: str) -> bool:
+    """Check if the target host should bypass the proxy based on NO_PROXY/no_proxy."""
+    no_proxy = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
+    if not no_proxy:
+        return False
+
+    host_lower = host.lower()
+    for entry in no_proxy.split(","):
+        entry = entry.strip().lower()
+        if not entry:
+            continue
+        if entry == "*":
+            return True
+        # Handle wildcard prefix (*.example.com)
+        if entry.startswith("*."):
+            suffix = entry[1:]  # ".example.com"
+            if host_lower.endswith(suffix) or host_lower == entry[2:]:
+                return True
+        # Handle dot prefix (.example.com) — matches example.com and *.example.com
+        elif entry.startswith("."):
+            if host_lower == entry[1:] or host_lower.endswith(entry):
+                return True
+        # Exact match or suffix match
+        elif host_lower == entry or host_lower.endswith("." + entry):
+            return True
+
+    return False
+
+
 def create_channel(
     server_url: str,
     metadata: dict[str, str] = {},
@@ -293,6 +341,8 @@ def create_channel(
         port = int(parts[1]) if len(parts) == 2 else 443 if ssl else 80
 
         proxy_url = config.get("grpc_proxy") if ssl else None
+        if proxy_url and _should_bypass_proxy(host):
+            proxy_url = None
         if proxy_url:
             channel = ProxyChannel(
                 host,
