@@ -123,7 +123,7 @@ class ProxyChannel(grpclib.client.Channel):
                 self._resolve_and_connect(),
                 timeout=self._CONNECT_TIMEOUT,
             )
-        except TimeoutError as exc:
+        except (TimeoutError, asyncio.TimeoutError) as exc:
             raise OSError(
                 f"Proxy connect/handshake timed out after {self._CONNECT_TIMEOUT}s "
                 f"({self._proxy_host}:{self._proxy_port})"
@@ -156,8 +156,8 @@ class ProxyChannel(grpclib.client.Channel):
         loop = asyncio.get_running_loop()
         await loop.sock_connect(sock, sockaddr)
 
-        # Bracket-wrap IPv6 literal hosts in the CONNECT request
-        host = f"[{self._host}]" if ":" in self._host else self._host
+        # Bracket-wrap IPv6 literal hosts in the CONNECT request (avoid double-bracketing)
+        host = self._host if self._host.startswith("[") else (f"[{self._host}]" if ":" in self._host else self._host)
 
         connect_req = f"CONNECT {host}:{self._port} HTTP/1.1\r\n"
         connect_req += f"Host: {host}:{self._port}\r\n"

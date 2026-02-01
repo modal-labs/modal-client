@@ -576,6 +576,46 @@ def test_redact_url_credentials_handles_username_only():
     assert "***@proxy:3128" in result
 
 
+def test_redact_url_credentials_preserves_ipv6_brackets():
+    """_redact_url_credentials preserves IPv6 brackets in the output."""
+    from modal.cli.config import _redact_url_credentials
+
+    result = _redact_url_credentials("http://user:pass@[::1]:3128")
+    assert result == "http://***@[::1]:3128"
+
+
+# --- IPv6 double-bracket prevention test ---
+
+
+@pytest.mark.asyncio
+async def test_connect_handshake_no_double_brackets_for_ipv6():
+    """CONNECT request does not double-bracket an already-bracketed IPv6 host."""
+    server, proxy_port, received, done = await _run_mock_proxy(
+        "127.0.0.1", b"HTTP/1.1 200 Connection established\r\n\r\n"
+    )
+    try:
+        ch = ProxyChannel(
+            "[2001:db8::1]",
+            443,
+            proxy_url=f"http://127.0.0.1:{proxy_port}",
+            ssl=True,
+        )
+        try:
+            with pytest.raises(Exception):
+                await ch.__connect__()
+        finally:
+            ch.close()
+
+        await asyncio.wait_for(done.wait(), timeout=5)
+
+        request_text = received.decode()
+        assert "CONNECT [2001:db8::1]:443" in request_text
+        assert "[[" not in request_text
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 # --- DNS timeout coverage test ---
 
 

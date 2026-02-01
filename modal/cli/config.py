@@ -13,8 +13,9 @@ def _redact_url_credentials(url: str) -> str:
     """Replace userinfo (user:pass@) in a URL with ***@."""
     parsed = urllib.parse.urlparse(url)
     if parsed.username:
-        # Rebuild with redacted userinfo
-        replaced = parsed._replace(netloc=f"***@{parsed.hostname}" + (f":{parsed.port}" if parsed.port else ""))
+        # parsed.hostname strips IPv6 brackets, so re-add them if the original netloc had them
+        host = f"[{parsed.hostname}]" if ":" in (parsed.hostname or "") else parsed.hostname
+        replaced = parsed._replace(netloc=f"***@{host}" + (f":{parsed.port}" if parsed.port else ""))
         return urllib.parse.urlunparse(replaced)
     return url
 
