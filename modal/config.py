@@ -85,8 +85,8 @@ Other possible configuration options are:
   proxy using HTTP CONNECT. Supports ``http://host:port`` and
   ``http://user:pass@host:port`` (basic auth). Falls back to the standard
   ``HTTPS_PROXY`` / ``https_proxy`` environment variables when not set.
-  The ``NO_PROXY`` / ``no_proxy`` environment variable is honored when falling
-  back to ``HTTPS_PROXY`` / ``https_proxy``; matching hosts bypass the proxy.
+  The ``NO_PROXY`` / ``no_proxy`` environment variable is always honored;
+  matching hosts bypass the proxy regardless of how it was configured.
 
 Meta-configuration
 ------------------

@@ -2,12 +2,12 @@
 import asyncio
 import base64
 import pytest
+import socket
 
 import grpclib.client
 
-from modal._utils.grpc_utils import ProxyChannel, create_channel
+from modal._utils.grpc_utils import ProxyChannel, _should_bypass_proxy, create_channel
 from modal.config import Config
-from modal.exception import ConnectionError as ModalConnectionError
 
 # --- Config priority tests ---
 
@@ -138,10 +138,24 @@ def test_proxy_channel_rejects_crlf_in_url():
         ProxyChannel("api.modal.com", 443, proxy_url="http://user:pass@proxy:3128\r\n", ssl=True)
 
 
+def test_proxy_channel_rejects_crlf_in_host():
+    """ProxyChannel rejects target host containing CRLF (CONNECT request injection prevention)."""
+    with pytest.raises(ValueError, match="invalid characters"):
+        ProxyChannel("evil\r\nhost", 443, proxy_url="http://proxy:3128", ssl=True)
+    with pytest.raises(ValueError, match="invalid characters"):
+        ProxyChannel("api.modal.com\r\n", 443, proxy_url="http://proxy:3128", ssl=True)
+
+
 def test_proxy_channel_no_scheme_url():
     """ProxyChannel rejects a URL without an http:// scheme."""
     with pytest.raises(ValueError, match="Unsupported proxy scheme"):
         ProxyChannel("api.modal.com", 443, proxy_url="myproxy:3128", ssl=True)
+
+
+def test_proxy_channel_rejects_schemeless_double_slash_url():
+    """ProxyChannel rejects //proxy:port URLs (empty scheme not accepted)."""
+    with pytest.raises(ValueError, match="Unsupported proxy scheme"):
+        ProxyChannel("api.modal.com", 443, proxy_url="//proxy:3128", ssl=True)
 
 
 def test_proxy_channel_parses_percent_encoded_auth():
@@ -190,6 +204,54 @@ def test_no_proxy_does_not_bypass_unrelated_host(monkeypatch):
         assert isinstance(channel, ProxyChannel)
     finally:
         channel.close()
+
+
+# --- _should_bypass_proxy edge cases ---
+
+
+def test_should_bypass_proxy_bracketed_ipv6(monkeypatch):
+    """Bracketed IPv6 target host matches unbracketed NO_PROXY entry."""
+    monkeypatch.setenv("NO_PROXY", "::1")
+    monkeypatch.delenv("no_proxy", raising=False)
+    assert _should_bypass_proxy("[::1]") is True
+
+
+def test_should_bypass_proxy_bracketed_ipv6_entry(monkeypatch):
+    """NO_PROXY entry with brackets matches plain IPv6 host."""
+    monkeypatch.setenv("NO_PROXY", "[::1]")
+    monkeypatch.delenv("no_proxy", raising=False)
+    assert _should_bypass_proxy("::1") is True
+
+
+def test_should_bypass_proxy_port_match(monkeypatch):
+    """NO_PROXY entry with port matches when target port matches."""
+    monkeypatch.setenv("NO_PROXY", "example.com:443")
+    monkeypatch.delenv("no_proxy", raising=False)
+    assert _should_bypass_proxy("example.com", port=443) is True
+
+
+def test_should_bypass_proxy_port_mismatch(monkeypatch):
+    """NO_PROXY entry with port does not match when target port differs."""
+    monkeypatch.setenv("NO_PROXY", "example.com:8443")
+    monkeypatch.delenv("no_proxy", raising=False)
+    assert _should_bypass_proxy("example.com", port=443) is False
+
+
+def test_should_bypass_proxy_no_port_in_entry_matches_any_port(monkeypatch):
+    """NO_PROXY entry without port matches regardless of target port."""
+    monkeypatch.setenv("NO_PROXY", "example.com")
+    monkeypatch.delenv("no_proxy", raising=False)
+    assert _should_bypass_proxy("example.com", port=443) is True
+    assert _should_bypass_proxy("example.com", port=8080) is True
+
+
+def test_should_bypass_proxy_bracketed_ipv6_with_port(monkeypatch):
+    """NO_PROXY entry [::1]:8443 matches only when port matches."""
+    monkeypatch.setenv("NO_PROXY", "[::1]:8443")
+    monkeypatch.delenv("no_proxy", raising=False)
+    assert _should_bypass_proxy("::1", port=8443) is True
+    assert _should_bypass_proxy("[::1]", port=8443) is True
+    assert _should_bypass_proxy("::1", port=443) is False
 
 
 # --- CONNECT handshake tests ---
@@ -297,7 +359,7 @@ async def test_connect_handshake_rejects_non_200():
             ssl=True,
         )
         try:
-            with pytest.raises(ModalConnectionError, match="Proxy CONNECT failed.*407"):
+            with pytest.raises(OSError, match="Proxy CONNECT failed.*407"):
                 await ch.__connect__()
         finally:
             ch.close()
@@ -325,7 +387,7 @@ async def test_connect_handshake_handles_closed_connection():
             ssl=True,
         )
         try:
-            with pytest.raises(ModalConnectionError, match="Proxy closed connection"):
+            with pytest.raises(OSError, match="Proxy closed connection"):
                 await ch.__connect__()
         finally:
             ch.close()
@@ -356,7 +418,7 @@ async def test_connect_rejects_oversized_response():
             ssl=True,
         )
         try:
-            with pytest.raises(ModalConnectionError, match="exceeded"):
+            with pytest.raises(OSError, match="exceeded"):
                 await ch.__connect__()
         finally:
             ch.close()
@@ -366,8 +428,8 @@ async def test_connect_rejects_oversized_response():
 
 
 @pytest.mark.asyncio
-async def test_connect_timeout():
-    """Verify ConnectionError with timeout message when proxy never responds."""
+async def test_connect_timeout(monkeypatch):
+    """Verify OSError with timeout message when proxy never responds."""
     hang_forever = asyncio.Event()
 
     async def handle_client(reader, writer):
@@ -383,9 +445,9 @@ async def test_connect_timeout():
             proxy_url=f"http://127.0.0.1:{proxy_port}",
             ssl=True,
         )
-        ch._CONNECT_TIMEOUT = 0.5  # Reduce timeout for fast test
+        monkeypatch.setattr(ProxyChannel, "_CONNECT_TIMEOUT", 0.5)
         try:
-            with pytest.raises(ModalConnectionError, match="timed out"):
+            with pytest.raises(OSError, match="timed out"):
                 await ch.__connect__()
         finally:
             ch.close()
@@ -393,3 +455,148 @@ async def test_connect_timeout():
         hang_forever.set()
         server.close()
         await server.wait_closed()
+
+
+# --- DNS resolution failure test ---
+
+
+@pytest.mark.asyncio
+async def test_connect_getaddrinfo_failure(monkeypatch):
+    """Verify OSError propagates when proxy hostname cannot be resolved."""
+    ch = ProxyChannel(
+        "api.modal.com",
+        443,
+        proxy_url="http://nonexistent-proxy.invalid:3128",
+        ssl=True,
+    )
+
+    async def fake_getaddrinfo(*args, **kwargs):
+        raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+
+    monkeypatch.setattr(asyncio.get_event_loop().__class__, "getaddrinfo", fake_getaddrinfo)
+    try:
+        with pytest.raises(OSError):
+            await ch.__connect__()
+    finally:
+        ch.close()
+
+
+# --- IPv6 proxy URL test ---
+
+
+def test_proxy_channel_parses_ipv6_url():
+    """ProxyChannel correctly parses bracketed IPv6 proxy URL."""
+    ch = ProxyChannel("api.modal.com", 443, proxy_url="http://[::1]:3128", ssl=True)
+    try:
+        assert ch._proxy_host == "::1"
+        assert ch._proxy_port == 3128
+        assert ch._proxy_auth is None
+    finally:
+        ch.close()
+
+
+# --- __repr__ tests ---
+
+
+def test_proxy_channel_repr_without_auth():
+    """__repr__ shows proxy host/port and target without auth."""
+    ch = ProxyChannel("api.modal.com", 443, proxy_url="http://myproxy:8080", ssl=True)
+    try:
+        r = repr(ch)
+        assert "myproxy:8080" in r
+        assert "api.modal.com:443" in r
+        assert "auth" not in r
+    finally:
+        ch.close()
+
+
+def test_proxy_channel_repr_masks_auth():
+    """__repr__ masks auth credentials."""
+    ch = ProxyChannel("api.modal.com", 443, proxy_url="http://user:secret@myproxy:8080", ssl=True)
+    try:
+        r = repr(ch)
+        assert "myproxy:8080" in r
+        assert "auth=***" in r
+        assert "secret" not in r
+        assert "user" not in r
+    finally:
+        ch.close()
+
+
+# --- Input validation tests ---
+
+
+def test_proxy_channel_rejects_whitespace_in_host():
+    """ProxyChannel rejects target host containing spaces or tabs."""
+    with pytest.raises(ValueError, match="whitespace"):
+        ProxyChannel("api modal.com", 443, proxy_url="http://proxy:3128", ssl=True)
+    with pytest.raises(ValueError, match="whitespace"):
+        ProxyChannel("api\tmodal.com", 443, proxy_url="http://proxy:3128", ssl=True)
+
+
+def test_proxy_channel_rejects_port_out_of_range():
+    """ProxyChannel rejects target port outside 1..65535."""
+    with pytest.raises(ValueError, match="port out of range"):
+        ProxyChannel("api.modal.com", 0, proxy_url="http://proxy:3128", ssl=True)
+    with pytest.raises(ValueError, match="port out of range"):
+        ProxyChannel("api.modal.com", 65536, proxy_url="http://proxy:3128", ssl=True)
+    with pytest.raises(ValueError, match="port out of range"):
+        ProxyChannel("api.modal.com", -1, proxy_url="http://proxy:3128", ssl=True)
+
+
+def test_proxy_channel_rejects_missing_hostname():
+    """ProxyChannel rejects proxy URL with no hostname."""
+    with pytest.raises(ValueError, match="missing a hostname"):
+        ProxyChannel("api.modal.com", 443, proxy_url="http://:3128", ssl=True)
+
+
+# --- Config credential redaction tests ---
+
+
+def test_redact_url_credentials_strips_userinfo():
+    """_redact_url_credentials replaces user:pass with ***."""
+    from modal.cli.config import _redact_url_credentials
+
+    assert _redact_url_credentials("http://user:pass@proxy:3128") == "http://***@proxy:3128"
+
+
+def test_redact_url_credentials_preserves_no_auth_url():
+    """_redact_url_credentials returns URL unchanged when no userinfo present."""
+    from modal.cli.config import _redact_url_credentials
+
+    assert _redact_url_credentials("http://proxy:3128") == "http://proxy:3128"
+
+
+def test_redact_url_credentials_handles_username_only():
+    """_redact_url_credentials redacts even username-only URLs."""
+    from modal.cli.config import _redact_url_credentials
+
+    result = _redact_url_credentials("http://admin@proxy:3128")
+    assert "admin" not in result
+    assert "***@proxy:3128" in result
+
+
+# --- DNS timeout coverage test ---
+
+
+@pytest.mark.asyncio
+async def test_connect_dns_timeout(monkeypatch):
+    """Verify timeout covers DNS resolution (getaddrinfo), not just handshake."""
+
+    async def slow_getaddrinfo(*args, **kwargs):
+        await asyncio.sleep(10)  # Simulate a hanging resolver
+        return []
+
+    ch = ProxyChannel(
+        "api.modal.com",
+        443,
+        proxy_url="http://slow-proxy.invalid:3128",
+        ssl=True,
+    )
+    monkeypatch.setattr(ProxyChannel, "_CONNECT_TIMEOUT", 0.3)
+    monkeypatch.setattr(asyncio.get_event_loop().__class__, "getaddrinfo", slow_getaddrinfo)
+    try:
+        with pytest.raises(OSError, match="timed out"):
+            await ch.__connect__()
+    finally:
+        ch.close()
