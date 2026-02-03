@@ -1,7 +1,13 @@
 # Copyright Modal Labs 2022
+
+import logging
+
 import os
 import pytest
+
 import time
+
+import pytest
 
 from google.protobuf.any_pb2 import Any
 from grpclib import GRPCError, Status
@@ -12,9 +18,12 @@ from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
     CustomProtoStatusDetailsCodec,
     Retry,
+    RetryEvent,
+    _emit_retry_event,
     connect_channel,
     create_channel,
     get_server_retry_policy,
+    register_retry_metrics_callback,
 )
 from modal.exception import InvalidError
 from modal_proto import api_grpc, api_pb2, task_command_router_pb2
@@ -333,3 +342,58 @@ async def test_retry_transient_errors_grpc_no_retries(servicer, client, monkeypa
         await client.stub.BlobCreate(req)
 
     assert servicer.blob_create_metadata.get("x-throttle-retry-attempt") == "0"
+
+
+def test_retry_structured_logging(caplog):
+    # Ensure we capture INFO-level structured retry logs
+    retry_logger = logging.getLogger("modal-utils")
+    retry_logger.setLevel(logging.INFO)
+    for handler in retry_logger.handlers:
+        handler.setLevel(logging.INFO)
+
+    event = RetryEvent(
+        call_name="TestCall",
+        attempt=2,
+        delay=0.05,
+        grpc_status="UNAVAILABLE",
+        throttled=True,
+        idempotency_key="deadbeef",
+    )
+    with caplog.at_level(logging.INFO, logger="modal-utils"):
+        _emit_retry_event(event)
+
+    assert caplog.records
+    record = caplog.records[0]
+    assert record.call_name == "TestCall"
+    assert record.grpc_status == "UNAVAILABLE"
+    assert record.throttled is True
+    assert record.attempt == 2
+    assert "Retrying TestCall" in record.message
+
+
+def test_retry_metrics_callback(monkeypatch):
+    monkeypatch.setenv("MODAL_RETRY_METRICS_ENABLED", "1")
+    events: list[RetryEvent] = []
+
+    def _capture(event: RetryEvent):
+        events.append(event)
+
+    register_retry_metrics_callback(_capture)
+    try:
+        _emit_retry_event(
+            RetryEvent(
+                call_name="MetricsCall",
+                attempt=1,
+                delay=0.01,
+                grpc_status="UNAVAILABLE",
+                throttled=False,
+                idempotency_key="cafebabe",
+            )
+        )
+    finally:
+        register_retry_metrics_callback(None)
+
+    assert len(events) == 1
+    captured = events[0]
+    assert captured.call_name == "MetricsCall"
+    assert captured.grpc_status == "UNAVAILABLE"
