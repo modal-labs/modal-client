@@ -79,6 +79,14 @@ Other possible configuration options are:
   Overrides the default `-dev` suffix added to URLs generated for web endpoints
   when the App is ephemeral (i.e., created via `modal serve`). Must be a short
   alphanumeric string.
+* `grpc_proxy` (in the .toml file) / `MODAL_GRPC_PROXY` (as an env var).
+  HTTP proxy URL for gRPC connections (e.g., ``http://proxy:3128``).
+  When set, HTTPS gRPC connections to the Modal server are tunneled through the
+  proxy using HTTP CONNECT. Supports ``http://host:port`` and
+  ``http://user:pass@host:port`` (basic auth). Falls back to the standard
+  ``HTTPS_PROXY`` / ``https_proxy`` environment variables when not set.
+  The ``NO_PROXY`` / ``no_proxy`` environment variable is always honored;
+  matching hosts bypass the proxy regardless of how it was configured.
 
 Meta-configuration
 ------------------
@@ -262,6 +270,7 @@ _SETTINGS = {
     "dev_suffix": _Setting("", transform=_enforce_suffix_rules),
     "max_throttle_wait": _Setting(None, transform=lambda x: int(x) if x else None),
     "async_warnings": _Setting(False, transform=_to_boolean),  # Feature flag for async API warnings
+    "grpc_proxy": _Setting(),
 }
 
 
@@ -294,6 +303,10 @@ class Config:
             return transform(os.environ[env_var_key])
         elif profile in _user_config and key in _user_config[profile]:
             return transform(_user_config[profile][key])
+        elif key == "grpc_proxy" and use_env:
+            # Fall back to standard proxy environment variables
+            proxy = (os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or "").strip()
+            return proxy if proxy else s.default
         else:
             return s.default
 

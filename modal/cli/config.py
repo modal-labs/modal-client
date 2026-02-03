@@ -1,11 +1,23 @@
 # Copyright Modal Labs 2022
 import json
+import urllib.parse
 
 import typer
 
 from modal._output import make_console
 from modal.config import _profile, _store_user_config, config
 from modal.environments import Environment
+
+
+def _redact_url_credentials(url: str) -> str:
+    """Replace userinfo (user:pass@) in a URL with ***@."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.username:
+        # parsed.hostname strips IPv6 brackets, so re-add them if the original netloc had them
+        host = f"[{parsed.hostname}]" if ":" in (parsed.hostname or "") else parsed.hostname
+        replaced = parsed._replace(netloc=f"***@{host}" + (f":{parsed.port}" if parsed.port else ""))
+        return urllib.parse.urlunparse(replaced)
+    return url
 
 config_cli = typer.Typer(
     name="config",
@@ -23,8 +35,11 @@ config_cli = typer.Typer(
 def show(redact: bool = typer.Option(True, help="Redact the `token_secret` value.")):
     # This is just a test command
     config_dict = config.to_dict()
-    if redact and config_dict.get("token_secret"):
-        config_dict["token_secret"] = "***"
+    if redact:
+        if config_dict.get("token_secret"):
+            config_dict["token_secret"] = "***"
+        if config_dict.get("grpc_proxy"):
+            config_dict["grpc_proxy"] = _redact_url_credentials(config_dict["grpc_proxy"])
 
     console = make_console()
     console.print_json(json.dumps(config_dict))
