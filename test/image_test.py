@@ -78,6 +78,37 @@ def get_all_dockerfile_commands(image_id: str, servicer) -> str:
     return "\n".join([cmd for layer in layers for cmd in layer.dockerfile_commands])
 
 
+def copy_uv_directory(source, tmp_path) -> Path:
+    # Given that these uv.lock files are used only for testing and not in prod, we
+    # do not want to trigger dependabot alerts. To prevent the alert, we name the lock files
+    # `uv_lock.txt` and when the test runs, we create a temporary directory and rename the
+    # file back to `uv.lock`
+
+    uv_lock_project_dir = tmp_path / "uv_project"
+    shutil.copytree(source, uv_lock_project_dir)
+    uv_lock_text = uv_lock_project_dir / "uv_lock.txt"
+    uv_lock_text.rename(uv_lock_project_dir / "uv.lock")
+    return uv_lock_project_dir
+
+
+@pytest.fixture
+def uv_lock_project_dir(tmp_path) -> Path:
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
+    return copy_uv_directory(uv_project_path, tmp_path)
+
+
+@pytest.fixture
+def uv_lock_no_modal_dir(tmp_path) -> Path:
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
+    return copy_uv_directory(uv_project_path, tmp_path)
+
+
+@pytest.fixture
+def uv_lock_workspace_dir(tmp_path) -> Path:
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_workspace")
+    return copy_uv_directory(uv_project_path, tmp_path)
+
+
 @pytest.fixture(params=SUPPORTED_IMAGE_BUILDER_VERSIONS)
 def builder_version(request, server_url_env, modal_config):
     builder_version = request.param
@@ -708,10 +739,8 @@ def test_poetry_files(builder_version, servicer, client):
         (["group1"], ["extra1", "extra2"], True),
     ],
 )
-def test_uv_sync(builder_version, servicer, client, groups, extras, frozen):
-    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
-
-    image = Image.debian_slim().uv_sync(uv_project_path, groups=groups, extras=extras, frozen=frozen)
+def test_uv_sync(builder_version, servicer, client, groups, extras, frozen, uv_lock_project_dir):
+    image = Image.debian_slim().uv_sync(uv_lock_project_dir, groups=groups, extras=extras, frozen=frozen)
 
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
@@ -733,14 +762,12 @@ def test_uv_sync(builder_version, servicer, client, groups, extras, frozen):
         assert context_files == {"/.uv.lock", "/.pyproject.toml"}
 
 
-def test_uv_sync_error_invalid_kwargs(servicer, client):
-    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
-
+def test_uv_sync_error_invalid_kwargs(servicer, client, uv_lock_project_dir):
     with pytest.raises(InvalidError, match="groups must be None or a list of strings"):
-        Image.debian_slim().uv_sync(uv_project_path, groups="xyz")  # type: ignore
+        Image.debian_slim().uv_sync(uv_lock_project_dir, groups="xyz")  # type: ignore
 
     with pytest.raises(InvalidError, match="extras must be None or a list of strings"):
-        Image.debian_slim().uv_sync(uv_project_path, extras="xyz")  # type: ignore
+        Image.debian_slim().uv_sync(uv_lock_project_dir, extras="xyz")  # type: ignore
 
 
 def test_uv_sync_just_pyproject(builder_version, servicer, client):
@@ -760,9 +787,8 @@ def test_uv_sync_just_pyproject(builder_version, servicer, client):
         assert context_files == {"/.pyproject.toml"}
 
 
-def test_uv_sync_no_modal(builder_version, client):
-    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
-    image = Image.debian_slim().uv_sync(uv_project_path)
+def test_uv_sync_no_modal(builder_version, client, uv_lock_no_modal_dir):
+    image = Image.debian_slim().uv_sync(uv_lock_no_modal_dir)
 
     if builder_version <= "2024.10":
         with pytest.raises(InvalidError, match="requires modal to be specified"):
@@ -770,9 +796,8 @@ def test_uv_sync_no_modal(builder_version, client):
 
 
 @pytest.mark.parametrize("kwargs", [{"groups": ["group1", "group2"]}, {"extras": ["extra1"]}])
-def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwargs):
-    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
-    image = Image.debian_slim().uv_sync(uv_project_path, **kwargs)
+def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwargs, uv_lock_no_modal_dir):
+    image = Image.debian_slim().uv_sync(uv_lock_no_modal_dir, **kwargs)
 
     build_image(image, client)
     layers = get_image_layers(image.object_id, servicer)
@@ -786,9 +811,8 @@ def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwar
         assert any(extras_cli in cmd for cmd in layers[0].dockerfile_commands)
 
 
-def test_uv_lock_workspaces_error(builder_version, client):
-    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_workspace")
-    image = Image.debian_slim().uv_sync(uv_project_path)
+def test_uv_lock_workspaces_error(builder_version, client, uv_lock_workspace_dir):
+    image = Image.debian_slim().uv_sync(uv_lock_workspace_dir)
     with pytest.raises(InvalidError, match="uv workspaces are not supported"):
         build_image(image, client)
 
@@ -1407,7 +1431,7 @@ def force_2023_12(modal_config):
 
 
 @skip_windows("Different hash values for context file paths")
-def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
+def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir, uv_lock_project_dir):
     def get_hash(image: Image) -> str:
         build_image(image, client)
         layers = get_image_layers(image.object_id, servicer)
@@ -1460,7 +1484,7 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
     assert get_hash(img) == "fb1ea2563fad89d3e6d00abf1c91a3835b6ba897693a61cdfe29dc1e5ea01c33"
 
-    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    img = base.uv_sync(uv_lock_project_dir)
     assert get_hash(img) == "6c9f3debe511508a99ec70212ff79dcfc01ec95be9400c63edfb36c9035be9de"
 
 
@@ -1472,7 +1496,7 @@ def force_2024_04(modal_config):
 
 
 @skip_windows("Different hash values for context file paths")
-def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
+def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir, uv_lock_project_dir):
     def get_hash(image: Image) -> str:
         build_image(image, client)
         layers = get_image_layers(image.object_id, servicer)
@@ -1535,7 +1559,7 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
     assert get_hash(img) == "1b45416b4a1563a0522047e1faa124c8132fc068720299445c3d7b6204b696f9"
 
-    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    img = base.uv_sync(uv_lock_project_dir)
     assert get_hash(img) == "925054c1aed3a194de979389eeacb5a842695316f7a9f889e314de5c51a62760"
 
 
@@ -1547,7 +1571,7 @@ def force_2024_10(modal_config):
 
 
 @skip_windows("Different hash values for context file paths")
-def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
+def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir, uv_lock_project_dir):
     def get_hash(image: Image) -> str:
         build_image(image, client)
         layers = get_image_layers(image.object_id, servicer)
@@ -1610,7 +1634,7 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
     assert get_hash(img) == "166413c4c2a08decd03092a328aca9b34f85b5e77eb50a584aebd8f754523412"
 
-    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    img = base.uv_sync(uv_lock_project_dir)
     assert get_hash(img) == "2b6cd5b524ac796cafdabe8b95bf626a765f28c909d23f6051fc4329d6edbc0b"
 
 
@@ -1622,7 +1646,7 @@ def force_2025_06(modal_config):
 
 
 @skip_windows("Different hash values for context file paths")
-def test_image_stability_on_2025_06(force_2025_06, servicer, client, test_dir):
+def test_image_stability_on_2025_06(force_2025_06, servicer, client, test_dir, uv_lock_project_dir):
     def get_hash(image: Image) -> str:
         build_image(image, client)
         layers = get_image_layers(image.object_id, servicer)
@@ -1685,7 +1709,7 @@ def test_image_stability_on_2025_06(force_2025_06, servicer, client, test_dir):
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
     assert get_hash(img) == "1ceaf730b03f1b068e5c66f0fb701ce932eaa555cbc91fa1823c1ed7cc8bc687"
 
-    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    img = base.uv_sync(uv_lock_project_dir)
     assert get_hash(img) == "60304d4a13826e0a450248cb37bc0192020b83dd20bcb2dbea058e0149d54532"
 
 
