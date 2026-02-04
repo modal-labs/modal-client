@@ -40,6 +40,7 @@ async def _volume_download(
     q: asyncio.Queue[tuple[Optional[Path], Optional[FileEntry]]] = asyncio.Queue()
     num_consumers = 1 if is_pipe else concurrency  # concurrency limit for downloading files
     download_semaphore = asyncio.Semaphore(concurrency)
+    rpc_semaphore = asyncio.Semaphore(64)  # Limit concurrent RPCs to avoid overwhelming server.
 
     async def producer():
         iterator: AsyncIterator[FileEntry]
@@ -101,6 +102,7 @@ async def _volume_download(
                                     path=entry.path,
                                     fileobj=fp,
                                     download_semaphore=download_semaphore,
+                                    rpc_semaphore=rpc_semaphore,
                                     progress_cb=file_progress_cb,
                                 )
                             else:

@@ -706,6 +706,7 @@ class _Volume(_Object, type_prefix="vo"):
         fileobj: typing.IO[bytes],
         concurrency: Optional[int] = None,
         download_semaphore: Optional[asyncio.Semaphore] = None,
+        rpc_semaphore: Optional[asyncio.Semaphore] = None,
         progress_cb: Optional[Callable[..., Any]] = None,
     ) -> int:
         if progress_cb is None:
@@ -718,10 +719,16 @@ class _Volume(_Object, type_prefix="vo"):
 
         req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
 
-        try:
-            response = await self._client.stub.VolumeGetFile2(req)
-        except modal.exception.NotFoundError as exc:
-            raise FileNotFoundError(exc.args[0])
+        # Acquire RPC semaphore if provided to limit concurrent VolumeGetFile2 RPCs.
+        # This is used by CLI downloads to prevent overwhelming the server.
+        # Note: Direct API usage without an rpc_semaphore can still overwhelm the server
+        # if many concurrent calls are made.
+        rpc_ctx = rpc_semaphore if rpc_semaphore is not None else asyncnullcontext()
+        async with rpc_ctx:
+            try:
+                response = await self._client.stub.VolumeGetFile2(req)
+            except modal.exception.NotFoundError as exc:
+                raise FileNotFoundError(exc.args[0])
 
         if download_semaphore is None:
             download_semaphore = asyncio.Semaphore(concurrency)
