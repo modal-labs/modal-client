@@ -9,6 +9,7 @@ import subprocess
 import sys
 import textwrap
 import time
+import warnings
 from typing import Any
 
 import pytest_asyncio
@@ -1534,13 +1535,8 @@ async def test_task_context_cancellation_timeout():
     assert 0.9 < elapsed < 1.5
 
 
-@pytest.fixture()
-def enable_async_warnings(monkeypatch):
-    monkeypatch.setenv("MODAL_ASYNC_WARNINGS", "true")
-
-
 @pytest.mark.asyncio
-async def test_sync_in_async_warning(client, enable_async_warnings):
+async def test_sync_in_async_warning(client):
     """Test that using blocking interface from async context emits a warning."""
     import warnings
 
@@ -1565,7 +1561,7 @@ async def test_sync_in_async_warning(client, enable_async_warnings):
 
 
 @pytest.mark.asyncio
-async def test_sync_in_async_property_warning(client, enable_async_warnings):
+async def test_sync_in_async_property_warning(client):
     import warnings
 
     import modal
@@ -1589,7 +1585,7 @@ async def test_sync_in_async_property_warning(client, enable_async_warnings):
 
 
 @pytest.mark.asyncio
-async def test_sync_in_async_warning_iteration(servicer, client, set_env_client, enable_async_warnings):
+async def test_sync_in_async_warning_iteration(servicer, client, set_env_client):
     """Test that using blocking function call from async context emits a warning."""
     import warnings
 
@@ -1613,7 +1609,7 @@ async def test_sync_in_async_warning_iteration(servicer, client, set_env_client,
 
 
 @pytest.mark.asyncio
-async def test_sync_in_async_warning_iteration_volume(servicer, client, set_env_client, enable_async_warnings):
+async def test_sync_in_async_warning_iteration_volume(servicer, client, set_env_client):
     """Test that using blocking Volume.read_file from async context emits a warning."""
     import warnings
 
@@ -1638,7 +1634,7 @@ async def test_sync_in_async_warning_iteration_volume(servicer, client, set_env_
 
 
 @pytest.mark.asyncio
-async def test_sync_in_async_warning_context_manager(servicer, client, enable_async_warnings):
+async def test_sync_in_async_warning_context_manager(servicer, client):
     """Test that using blocking context manager from async context emits a warning."""
     import warnings
 
@@ -1662,6 +1658,17 @@ async def test_sync_in_async_warning_context_manager(servicer, client, enable_as
         # Verify the warning contains key information
         assert "A blocking Modal interface is being used in " in warning_message
         assert "async with modal.Queue.ephemeral(client=client) as q:" in warning_message
+
+
+@pytest.mark.asyncio
+async def test_disable_async_warnings(servicer, client, monkeypatch, set_env_client):
+    import modal
+
+    monkeypatch.setenv("MODAL_ASYNC_WARNINGS", "0")
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        modal.Dict.objects.list()
+    assert len(w) == 0
 
 
 def test_extract_user_call_frame_filters_packages_not_filenames():
@@ -1702,8 +1709,6 @@ def test_extract_user_call_frame_with_asyncio_in_filename():
 @pytest.mark.asyncio
 async def test_sync_in_async_no_warning_in_ipython(client, monkeypatch):
     """Test that no warning is emitted when using sync code in async blocks in IPython."""
-    import warnings
-
     import modal
 
     # Monkeypatch is_interactive_ipython at the module where it's used
