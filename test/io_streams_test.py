@@ -188,7 +188,7 @@ async def test_stream_reader_bytes_mode(servicer, client):
         ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
 
         with enable_output():
-            stdout: StreamReader[bytes] = make_stream_reader(
+            stdout: StreamReader[bytes] = await _make_stream_reader.aio(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="tp-123",
                 object_type="container_process",
@@ -239,7 +239,7 @@ async def test_stream_reader_async_iter(servicer, client):
 
         expected = "foobar"
 
-        stdout: StreamReader[str] = make_stream_reader(
+        stdout: StreamReader[str] = await _make_stream_reader.aio(
             file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
             object_id="sb-123",
             object_type="sandbox",
@@ -284,7 +284,7 @@ async def test_stream_reader_container_process_retry(servicer, client):
         ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
 
         with enable_output():
-            stdout: StreamReader[str] = make_stream_reader(
+            stdout: StreamReader[str] = await _make_stream_reader.aio(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="tp-123",
                 object_type="container_process",
@@ -326,7 +326,7 @@ async def test_stream_reader_timeout(servicer, client):
     with servicer.intercept() as ctx:
         ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
         with enable_output():
-            stdout: StreamReader[str] = make_stream_reader(
+            stdout: StreamReader[str] = await _make_stream_reader.aio(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="tp-123",
                 object_type="container_process",
