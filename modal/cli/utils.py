@@ -10,11 +10,12 @@ from rich.text import Text
 
 from modal_proto import api_pb2
 
-from .._output import OutputManager, get_app_logs_loop, make_console
+from .._output.pty import get_app_logs_loop
 from .._utils.async_utils import synchronizer
 from ..client import _Client
 from ..environments import ensure_env
 from ..exception import NotFoundError
+from ..output import OutputManager
 
 
 @synchronizer.create_blocking
@@ -26,10 +27,15 @@ async def stream_app_logs(
     show_timestamps: bool = False,
 ):
     client = await _Client.from_env()
-    display_id = app_id or task_id or sandbox_id
-    output_mgr = OutputManager(status_spinner_text=f"Tailing logs for {display_id}", show_timestamps=show_timestamps)
+    output_mgr = OutputManager.get()
+    output_mgr.set_timestamps(show_timestamps)
+
+    # Determine the display ID for the status message
+    display_id = app_id or sandbox_id or task_id
+    status_text = f"Tailing logs for {display_id}..." if display_id else "Tailing logs..."
+
     try:
-        with output_mgr.show_status_spinner():
+        with output_mgr.show_status_spinner(status_text):
             await get_app_logs_loop(client, output_mgr, app_id=app_id, task_id=task_id, sandbox_id=sandbox_id)
     except asyncio.CancelledError:
         pass
@@ -55,7 +61,7 @@ def _plain(text: Union[Text, str]) -> str:
 
 
 def is_tty() -> bool:
-    return make_console().is_terminal
+    return OutputManager.get().is_terminal
 
 
 def display_table(
@@ -67,15 +73,15 @@ def display_table(
     def col_to_str(col: Union[Column, str]) -> str:
         return str(col.header) if isinstance(col, Column) else col
 
-    console = make_console()
+    output = OutputManager.get()
     if json:
         json_data = [{col_to_str(col): _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
-        console.print_json(dumps(json_data))
+        output.print_json(dumps(json_data))
     else:
         table = Table(*columns, title=title)
         for row in rows:
             table.add_row(*row)
-        console.print(table)
+        output.print(table)
 
 
 ENV_OPTION_HELP = """Environment to interact with.

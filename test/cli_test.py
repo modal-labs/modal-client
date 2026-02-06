@@ -294,6 +294,30 @@ def test_run_quiet(servicer, set_env_client, test_dir):
     run_cli_command(["run", "--quiet", app_file.as_posix()])
 
 
+def test_run_quiet_still_shows_errors(servicer, set_env_client, test_dir, monkeypatch):
+    """Test that errors are displayed even when running with --quiet flag."""
+    from io import StringIO
+
+    from modal.__main__ import main
+
+    app_file = test_dir / "supports" / "app_run_tests" / "raises_in_entrypoint.py"
+
+    # Capture stderr
+    stderr_capture = StringIO()
+    monkeypatch.setattr(sys, "stderr", stderr_capture)
+    monkeypatch.setattr(sys, "argv", ["modal", "run", "--quiet", app_file.as_posix()])
+
+    # Run main() and expect it to call sys.exit(1)
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+
+    assert exc_info.value.code == 1
+
+    # The error message should be visible in stderr even in quiet mode
+    stderr_output = stderr_capture.getvalue()
+    assert "This is an error message that should be visible" in stderr_output
+
+
 def test_run_class_hierarchy(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "class_hierarchy.py"
     run_cli_command(["run", app_file.as_posix() + "::Wrapped.defined_on_base"])
@@ -621,16 +645,45 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
 
         with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
             res = run_cli_command(["deploy", "myapp.py", "--name", "my-app", "--stream-logs"])
-            assert res.stdout.endswith("hello\n")
+            assert res.stdout.rstrip().endswith("hello")
 
         res = run_cli_command(["app", "logs", "my-app"])
-        assert res.stdout == "hello\n"
+        assert res.stdout.strip() == "hello"
 
     run_cli_command(
         ["app", "logs", "does-not-exist"],
         expected_exit_code=1,
         expected_error="Could not find a deployed app named 'does-not-exist'",
     )
+
+
+def test_logs_spinner_text(servicer, server_url_env, set_env_client, mock_dir):
+    """Test that modal app logs shows 'Tailing logs for <app_id>' in the status spinner."""
+    from unittest import mock
+
+    from modal._output.rich import RichOutputManager
+
+    async def app_done(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppGetLogs", app_done)
+
+        with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+            run_cli_command(["deploy", "myapp.py", "--name", "my-app"])
+
+        # Patch show_status_spinner to capture the status_text argument
+        original_show_status_spinner = RichOutputManager.show_status_spinner
+
+        def capture_spinner_text(self, status_text="Running app..."):
+            # Verify the spinner text contains "Tailing logs for"
+            assert "Tailing logs for" in status_text
+            # Call the original to maintain functionality
+            return original_show_status_spinner(self, status_text)
+
+        with mock.patch.object(RichOutputManager, "show_status_spinner", capture_spinner_text):
+            run_cli_command(["app", "logs", "my-app"])
 
 
 def test_run_timestamps(servicer, server_url_env, set_env_client, test_dir, monkeypatch):

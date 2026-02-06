@@ -5,8 +5,8 @@ from typing import Optional
 import typer
 from rich.rule import Rule
 
-from modal._output import make_console
 from modal._utils.async_utils import synchronizer
+from modal.output import OutputManager
 
 from . import run, shell as shell_module
 from .app import app_cli
@@ -56,8 +56,7 @@ def modal(
     # - set invoke_without_command=False in the callback decorator
     # - set no_args_is_help=True in entrypoint_cli_typer
     if ctx.invoked_subcommand is None:
-        console = make_console()
-        console.print(ctx.get_help())
+        OutputManager.get().print(ctx.get_help())
         raise typer.Exit()
 
 
@@ -79,9 +78,9 @@ def check_path():
             "You may need to give it permissions or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
         )
     text += f"See more information here:\n\n[link={url}]{url}[/link]\n"
-    console = make_console()
-    console.print(text)
-    console.print(Rule(style="white"))
+    output = OutputManager.get()
+    output.print(text)
+    output.print(Rule(style="white"))
 
 
 @synchronizer.create_blocking
@@ -108,8 +107,7 @@ async def setup(profile: Optional[str] = None):
      #############                    #############
 """
 
-    console = make_console()
-    console.print(art, style="green")
+    OutputManager.get().print(art, highlight=False, style="green")
 
     # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
     await _new_token(profile=profile, next_url="/home")
@@ -151,4 +149,7 @@ entrypoint_cli.list_commands(None)  # type: ignore
 
 if __name__ == "__main__":
     # this module is only called from tests, otherwise the parent package __main__.py is used as the entrypoint
-    entrypoint_cli()
+    from modal.output import enable_output
+
+    with enable_output():
+        entrypoint_cli()

@@ -8,10 +8,10 @@ import typer
 from rich.json import JSON
 from rich.table import Table
 
-from modal._output import make_console
 from modal._utils.async_utils import synchronizer
 from modal.config import Config, _lookup_workspace, _profile, config_profiles, config_set_active_profile
 from modal.exception import AuthError
+from modal.output import OutputManager
 
 profile_cli = typer.Typer(name="profile", help="Switch between Modal profiles.", no_args_is_help=True)
 
@@ -70,20 +70,20 @@ async def list_(json: Optional[bool] = False):
         except AuthError:
             env_based_workspace = "Unknown (authentication failure)"
 
-    console = make_console()
+    output = OutputManager.get()
     highlight = "bold green" if env_based_workspace is None else "yellow"
     if json:
         json_data = []
         for active, content in rows:
             json_data.append({"name": content[1], "workspace": content[2], "active": active})
-        console.print(JSON.from_data(json_data))
+        output.print(JSON.from_data(json_data))
     else:
         table = Table(" ", "Profile", "Workspace")
         for active, content in rows:
             table.add_row(*content, style=highlight if active else "dim")
-        console.print(table)
+        output.print(table)
 
     if env_based_workspace is not None:
-        console.print(
-            f"Using [bold]{env_based_workspace}[/bold] workspace based on environment variables", style="yellow"
+        output.print(
+            f"[yellow]Using [bold]{env_based_workspace}[/bold] workspace based on environment variables[/yellow]"
         )

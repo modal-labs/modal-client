@@ -2,24 +2,21 @@
 """Interface to Modal's OutputManager functionality.
 
 These functions live here so that Modal library code can import them without
-transitively importing Rich, as we do in global scope in _output.py. This allows
+transitively importing Rich, as we do in _output/rich.py. This allows
 us to avoid importing Rich for client code that runs in the container environment.
-
 """
 
 import contextlib
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Optional
 
-if TYPE_CHECKING:
-    from ._output import OutputManager
+from ._output.manager import OutputManager
 
-
-OUTPUT_ENABLED = False
+# Re-export OutputManager for external use
+__all__ = ["enable_output", "OutputManager"]
 
 
 @contextlib.contextmanager
-def enable_output(show_progress: bool = True, show_timestamps: bool = False) -> Generator[None, None, None]:
+def enable_output() -> Generator[OutputManager, None, None]:
     """Context manager that enable output when using the Python SDK.
 
     This will print to stdout and stderr things such as
@@ -34,31 +31,17 @@ def enable_output(show_progress: bool = True, show_timestamps: bool = False) -> 
         with app.run():
             ...
     ```
+
+    To suppress progress indicators, use `output_manager.set_quiet_mode(True)`.
+    To enable timestamps, use `output_manager.set_timestamps(True)`.
     """
-    from ._output import OutputManager
+    previous_output_manager = OutputManager.get()
 
-    # Toggle the output flag from within this function so that we can
-    # call _get_output_manager from within the library and only import
-    # the _output module if output is explicitly enabled. That prevents
-    # us from trying to import rich inside a container environment where
-    # it might not be installed. This is sort of hacky and I would prefer
-    # a more thorough refactor where the OutputManager is fully useable
-    # without rich installed, but that's a larger project.
-    global OUTPUT_ENABLED
+    from ._output.rich import RichOutputManager
 
+    new_manager = RichOutputManager()
+    OutputManager._set(new_manager)
     try:
-        with OutputManager.enable_output(show_progress, show_timestamps=show_timestamps):
-            OUTPUT_ENABLED = True
-            yield
+        yield new_manager
     finally:
-        OUTPUT_ENABLED = False
-
-
-def _get_output_manager() -> Optional["OutputManager"]:
-    """Interface to the OutputManager that returns None when output is not enabled."""
-    if OUTPUT_ENABLED:
-        from ._output import OutputManager
-
-        return OutputManager.get()
-    else:
-        return None
+        OutputManager._set(previous_output_manager)

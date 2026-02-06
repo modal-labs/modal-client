@@ -149,11 +149,10 @@ class _ContainerProcessThroughServer(Generic[T]):
             print("interactive exec is not currently supported on Windows.")  # noqa: T201
             return
 
-        from ._output import make_console
+        from .output import OutputManager
 
-        console = make_console()
-
-        connecting_status = console.status("Connecting...")
+        output = OutputManager.get()
+        connecting_status = output.status("Connecting...")
         connecting_status.start()
         on_connect = asyncio.Event()
 
@@ -350,11 +349,10 @@ class _ContainerProcessThroughCommandRouter(Generic[T]):
             print("interactive exec is not currently supported on Windows.")  # noqa: T201
             return
 
-        from ._output import make_console
+        from .output import OutputManager
 
-        console = make_console()
-
-        connecting_status = console.status("Connecting...")
+        output = OutputManager.get()
+        connecting_status = output.status("Connecting...")
         connecting_status.start()
         on_connect = asyncio.Event()
 

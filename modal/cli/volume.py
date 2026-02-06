@@ -10,13 +10,13 @@ from rich.syntax import Syntax
 from typer import Argument, Option, Typer
 
 import modal
-from modal._output import OutputManager, ProgressHandler, make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.browser_utils import open_url_and_display
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.environments import ensure_env
+from modal.output import OutputManager
 from modal.volume import _AbstractVolumeUploadContextManager, _Volume
 from modal_proto import api_pb2
 
@@ -61,10 +61,10 @@ def some_func():
     os.listdir("/my_vol")
 """
 
-    console = make_console()
-    console.print(f"Created Volume '{name}' in environment '{env_name}'. \n\nCode example:\n")
+    output = OutputManager.get()
+    output.print(f"Created Volume '{name}' in environment '{env_name}'. \n\nCode example:\n")
     usage = Syntax(usage_code, "python")
-    console.print(usage)
+    output.print(usage)
 
 
 @volume_cli.command(name="get", rich_help_panel="File operations")
@@ -93,17 +93,16 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = _Volume.from_name(volume_name, environment_name=env)
-    console = make_console()
-    progress_handler = ProgressHandler(type="download", console=console)
-    with progress_handler.live:
+    output = OutputManager.get()
+    with output.transfer_progress("download") as progress:
         await _volume_download(
             volume=volume,
             remote_path=remote_path,
             local_destination=destination,
             overwrite=force,
-            progress_cb=progress_handler.progress,
+            progress_cb=progress.progress,
         )
-    console.print(OutputManager.step_completed("Finished downloading files to local!"))
+    output.step_completed("Finished downloading files to local!")
 
 
 @volume_cli.command(
@@ -193,40 +192,39 @@ async def put(
 
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
-    console = make_console()
-    progress_handler = ProgressHandler(type="upload", console=console)
 
+    output = OutputManager.get()
     if Path(local_path).is_dir():
-        with progress_handler.live:
+        with output.transfer_progress("upload") as progress:
             try:
                 async with _AbstractVolumeUploadContextManager.resolve(
                     vol._metadata.version,
                     vol.object_id,
                     vol._client,
-                    progress_cb=progress_handler.progress,
+                    progress_cb=progress.progress,
                     force=force,
                 ) as batch:
                     batch.put_directory(local_path, remote_path)
             except FileExistsError as exc:
                 raise UsageError(str(exc))
-        console.print(OutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+        output.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'")
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
     else:
-        with progress_handler.live:
+        with output.transfer_progress("upload") as progress:
             try:
                 async with _AbstractVolumeUploadContextManager.resolve(
                     vol._metadata.version,
                     vol.object_id,
                     vol._client,
-                    progress_cb=progress_handler.progress,
+                    progress_cb=progress.progress,
                     force=force,
                 ) as batch:
                     batch.put_file(local_path, remote_path)
 
             except FileExistsError as exc:
                 raise UsageError(str(exc))
-        console.print(OutputManager.step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
+        output.step_completed(f"Uploaded file '{local_path}' to '{remote_path}'")
 
 
 @volume_cli.command(
@@ -242,8 +240,7 @@ async def rm(
     ensure_env(env)
     volume = _Volume.from_name(volume_name, environment_name=env)
     await volume.remove_file(remote_path, recursive=recursive)
-    console = make_console()
-    console.print(OutputManager.step_completed(f"{remote_path} was deleted successfully!"))
+    OutputManager.get().step_completed(f"{remote_path} was deleted successfully!")
 
 
 @volume_cli.command(
@@ -334,7 +331,5 @@ async def dashboard(
     env = ensure_env(env)
     volume = await _Volume.from_name(volume_name, environment_name=env).hydrate()
 
-    console = make_console()
     url = f"https://modal.com/id/{volume.object_id}"
-
-    open_url_and_display(url, "Volume dashboard", console)
+    open_url_and_display(url, "Volume dashboard")

@@ -3,7 +3,6 @@ from typing import Optional
 
 import typer
 
-from modal._output import make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.browser_utils import open_url_and_display
 from modal.client import _Client
@@ -16,8 +15,6 @@ async def dashboard(
     object_id: Optional[str] = typer.Argument(None, help="Open a view for a specific object."),
 ):
     """Open the Modal Dashboard in a web browser."""
-    console = make_console()
-
     if object_id:
         url = f"https://modal.com/id/{object_id}"
     else:
@@ -27,4 +24,4 @@ async def dashboard(
         response = await client.stub.WorkspaceDashboardUrlGet(request)
         url = response.url
 
-    open_url_and_display(url, "dashboard", console)
+    open_url_and_display(url, "dashboard")

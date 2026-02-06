@@ -6,8 +6,7 @@ from rich.table import Column
 from rich.text import Text
 
 from modal._object import _get_environment_name
-from modal._output import make_console
-from modal._pty import get_pty_info
+from modal._output.pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, display_table, is_tty
@@ -15,6 +14,7 @@ from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
 from modal.environments import ensure_env
+from modal.output import OutputManager
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
@@ -68,10 +68,9 @@ async def shell(
     if len(res.cluster.task_ids) <= rank:
         raise typer.Abort(f"No node with rank {rank} in cluster {cluster_id}")
     task_id = res.cluster.task_ids[rank]
-    console = make_console()
     is_main = "(main)" if rank == 0 else ""
-    console.print(
-        f"Opening shell to node {rank} {is_main} of cluster {cluster_id} (container {task_id})", style="green"
+    OutputManager.get().print(
+        f"[green]Opening shell to node {rank} {is_main} of cluster {cluster_id} (container {task_id})[/green]"
     )
 
     pty = is_tty()
