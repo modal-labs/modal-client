@@ -70,9 +70,6 @@ class Retries:
         if max_retries < 0:
             raise InvalidError(f"Invalid retries number: {max_retries}. Function retries must be non-negative.")
 
-        if max_retries > 10:
-            raise InvalidError(f"Invalid retries number: {max_retries}. Retries must be between 0 and 10.")
-
         if max_delay < 1.0:
             raise InvalidError(f"Invalid max_delay: {max_delay}. max_delay must be at least 1 second.")
 
