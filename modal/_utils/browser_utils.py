@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2026
 import webbrowser
 
-from rich.console import Console
+from modal.output import OutputManager
 
 
 def open_url(url: str) -> bool:
@@ -17,12 +17,13 @@ def open_url(url: str) -> bool:
         return False
 
 
-def open_url_and_display(url: str, target: str, console: Console) -> None:
+def open_url_and_display(url: str, target: str) -> None:
     """Open a URL in the web browser and display it to the user."""
+    output = OutputManager.get()
     if open_url(url):
-        console.print(f"Opening {target} in your web browser...")
-        console.print(f"[link={url}]{url}[/link]")
+        output.print(f"Opening {target} in your web browser...")
+        output.print(f"[link={url}]{url}[/link]")
     else:
-        console.print("[yellow]Could not open web browser automatically.[/yellow]")
-        console.print("Please open this URL in your browser:")
-        console.print(f"[link={url}]{url}[/link]")
+        output.print("[yellow]Could not open web browser automatically.[/yellow]")
+        output.print("Please open this URL in your browser:")
+        output.print(f"[link={url}]{url}[/link]")

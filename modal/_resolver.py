@@ -1,47 +1,15 @@
 # Copyright Modal Labs 2023
 import asyncio
-import contextlib
 import os
 import tempfile
-import typing
 from asyncio import Future
 from collections.abc import Hashable
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 import modal._object
 from modal._traceback import suppress_tb_frame
-from modal_proto import api_pb2
 
 from ._load_context import LoadContext
-
-if TYPE_CHECKING:
-    from rich.tree import Tree
-
-
-class StatusRow:
-    def __init__(self, progress: "typing.Optional[Tree]"):
-        self._spinner = None
-        self._step_node = None
-        if progress is not None:
-            from ._output import OutputManager
-
-            self._spinner = OutputManager.step_progress()
-            self._step_node = progress.add(self._spinner)
-
-    def message(self, message):
-        if self._spinner is not None:
-            self._spinner.update(text=message)
-
-    def warning(self, warning: api_pb2.Warning):
-        if self._step_node is not None:
-            self._step_node.add(f"⚠️ {warning.message}")
-
-    def finish(self, message):
-        if self._step_node is not None and self._spinner is not None:
-            from ._output import OutputManager
-
-            self._spinner.update(text=message)
-            self._step_node.label = OutputManager.substep_completed(message)
 
 
 class Resolver:
@@ -50,20 +18,7 @@ class Resolver:
     _build_start: float
 
     def __init__(self):
-        try:
-            # TODO(michael) If we don't clean this up more thoroughly, it would probably
-            # be good to have a single source of truth for "rich is installed" rather than
-            # doing a try/catch everywhere we want to use it.
-            from rich.tree import Tree
-
-            from ._output import OutputManager
-
-            tree = Tree(OutputManager.step_progress("Creating objects..."), guide_style="gray50")
-        except ImportError:
-            tree = None
-
         self._local_uuid_to_future = {}
-        self._tree = tree
         self._deduplication_cache = {}
 
         with tempfile.TemporaryFile() as temp_file:
@@ -167,19 +122,3 @@ class Resolver:
             obj = fut.result()
             unique_objects.setdefault(obj.object_id, obj)
         return list(unique_objects.values())
-
-    @contextlib.contextmanager
-    def display(self):
-        # TODO(erikbern): get rid of this wrapper
-        from .output import _get_output_manager
-
-        if self._tree and (output_mgr := _get_output_manager()):
-            with output_mgr.make_live(self._tree):
-                yield
-            self._tree.label = output_mgr.step_completed("Created objects.")
-            output_mgr.print(self._tree)
-        else:
-            yield
-
-    def add_status_row(self) -> StatusRow:
-        return StatusRow(self._tree)

@@ -384,6 +384,8 @@ def test_app_interactive(servicer, client, capsys):
                 time.sleep(0.1)
 
     captured = capsys.readouterr()
+    # PTY data is written raw to stdout; verify it ends with the expected data
+    # (quiet mode suppresses the "App completed" message that would otherwise follow)
     assert captured.out.endswith("\nsome data\n\r")
 
 

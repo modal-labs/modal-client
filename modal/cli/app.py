@@ -10,7 +10,6 @@ from rich.text import Text
 from typer import Argument
 
 from modal._object import _get_environment_name
-from modal._output import make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.browser_utils import open_url_and_display
 from modal.client import _Client
@@ -278,7 +277,5 @@ async def dashboard(
     client = await _Client.from_env()
     app_id = await get_app_id.aio(app_identifier, env, client)
 
-    console = make_console()
     url = f"https://modal.com/id/{app_id}"
-
-    open_url_and_display(url, "App dashboard", console)
+    open_url_and_display(url, "App dashboard")

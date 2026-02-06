@@ -2,19 +2,15 @@
 """Helper functions related to displaying tracebacks in the CLI."""
 
 import functools
-import re
 import warnings
 from typing import Optional
 
 from rich.console import RenderResult, group
-from rich.markup import escape
-from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 from rich.traceback import PathHighlighter, Stack, Traceback, install
 
-from .._output import make_console
-from ..exception import DeprecationError, PendingDeprecationError, ServerWarning
+from ..output import OutputManager
 
 
 @group()
@@ -164,39 +160,10 @@ def setup_rich_traceback() -> None:
 
 
 def highlight_modal_warnings() -> None:
-    """Patch the warnings module to make certain warnings more salient in the CLI."""
+    """Patch the warnings module to delegate warning display to the output manager."""
     base_showwarning = warnings.showwarning
 
     def showwarning(warning, category, filename, lineno, file=None, line=None):
-        if issubclass(category, (DeprecationError, PendingDeprecationError, ServerWarning)):
-            content = str(warning)
-            if re.match(r"^\d{4}-\d{2}-\d{2}", content):
-                date = content[:10]
-                message = content[11:].strip()
-            else:
-                date = ""
-                message = content
-            try:
-                with open(filename, encoding="utf-8", errors="replace") as code_file:
-                    source = code_file.readlines()[lineno - 1].strip()
-                message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
-            except OSError:
-                # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows
-                pass
-            if issubclass(category, ServerWarning):
-                title = "Modal Warning"
-            else:
-                title = "Modal Deprecation Warning"
-            if date:
-                title += f" ({date})"
-            panel = Panel(
-                escape(message),
-                border_style="yellow",
-                title=title,
-                title_align="left",
-            )
-            make_console().print(panel)
-        else:
-            base_showwarning(warning, category, filename, lineno, file=None, line=None)
+        OutputManager.get().show_warning(warning, category, filename, lineno, base_showwarning)
 
     warnings.showwarning = showwarning

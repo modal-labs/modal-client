@@ -9,13 +9,13 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
-from ._output import make_console
 from ._utils.async_utils import synchronize_api
 from ._utils.browser_utils import open_url
 from ._utils.http_utils import run_temporary_http_server
 from .client import _Client
 from .config import DEFAULT_SERVER_URL, _lookup_workspace, _store_user_config, config, config_profiles, user_config_path
 from .exception import AuthError
+from .output import OutputManager
 
 
 class _TokenFlow:
@@ -76,44 +76,43 @@ async def _new_token(
 ):
     server_url = config.get("server_url", profile=profile)
 
-    console = make_console()
-
+    output = OutputManager.get()
     result: Optional[api_pb2.TokenFlowWaitResponse] = None
     async with _Client.anonymous(server_url) as client:
         token_flow = _TokenFlow(client)
 
         async with token_flow.start(source, next_url) as (_, web_url, code):
-            with console.status("Waiting for authentication in the web browser", spinner="dots"):
+            with output.status("Waiting for authentication in the web browser"):
                 # Open the web url in the browser
                 if open_url(web_url):
-                    console.print(
+                    output.print(
                         "The web browser should have opened for you to authenticate and get an API token.\n"
                         "If it didn't, please copy this URL into your web browser manually:\n"
                     )
                 else:
-                    console.print(
+                    output.print(
                         "[red]Was not able to launch web browser[/red]\n"
                         "Please go to this URL manually and complete the flow:\n"
                     )
-                console.print(f"[link={web_url}]{web_url}[/link]\n")
+                output.print(f"[link={web_url}]{web_url}[/link]\n")
                 if code:
-                    console.print(f"Enter this code: [yellow]{code}[/yellow]\n")
+                    output.print(f"Enter this code: [yellow]{code}[/yellow]\n")
 
-            with console.status("Waiting for token flow to complete...", spinner="dots") as status:
+            with output.status("Waiting for token flow to complete...") as status:
                 for attempt in itertools.count():
                     result = await token_flow.finish()
                     if result is not None:
                         break
                     status.update(f"Waiting for token flow to complete... (attempt {attempt + 2})")
 
-        console.print("[green]Web authentication finished successfully![/green]")
+        output.print("[green]Web authentication finished successfully![/green]")
 
         server_url = client.server_url
 
     assert result is not None
 
     if result.workspace_username:
-        console.print(
+        output.print(
             f"[green]Token is connected to the [magenta]{result.workspace_username}[/magenta] workspace.[/green]"
         )
 
@@ -133,11 +132,11 @@ async def _set_token(
 ):
     # TODO add server_url as a parameter for verification?
     server_url = config.get("server_url", profile=profile)
-    console = make_console()
+    output = OutputManager.get()
     if verify:
-        console.print(f"Verifying token against [blue]{server_url}[/blue]")
+        output.print(f"Verifying token against [blue]{server_url}[/blue]")
         await _Client.verify(server_url, (token_id, token_secret))
-        console.print("[green]Token verified successfully![/green]")
+        output.print("[green]Token verified successfully![/green]")
 
     if profile is None:
         if "MODAL_PROFILE" in os.environ:
@@ -158,9 +157,9 @@ async def _set_token(
         config_data["server_url"] = server_url
     # Activate the profile when requested or if no other profiles currently exist
     active_profile = profile if (activate or not config_profiles()) else None
-    with console.status("Storing token", spinner="dots"):
+    with output.status("Storing token"):
         _store_user_config(config_data, profile=profile, active_profile=active_profile)
-    console.print(
+    output.print(
         f"[green]Token written to [magenta]{user_config_path}[/magenta] in profile "
         f"[magenta]{profile}[/magenta].[/green]"
     )
@@ -172,7 +171,7 @@ async def _set_token(
     if env_vars_used:
         s = "s" if len(env_vars_used) > 1 else ""
         verb = "are" if len(env_vars_used) > 1 else "is"
-        console.print(
-            f"Warning: The {env_vars_str} environment variable{s} {verb} set; this will override your new credentials.",
-            style="yellow",
+        output.print(
+            f"[yellow]Warning: The {env_vars_str} environment variable{s} {verb} set; "
+            "this will override your new credentials.[/yellow]"
         )

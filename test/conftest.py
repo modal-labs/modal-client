@@ -3220,16 +3220,24 @@ def mock_webbrowser(monkeypatch):
 
 
 def run_cli_command(args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
-    if sys.version_info < (3, 10):
-        # mix_stderr was removed in Click 8.2 which also removed support for Python 3.9
-        # The desired behavior is the same across verisons, but we need to explicitly enable it on Python 3.9
-        runner = click.testing.CliRunner(mix_stderr=False)
+    from importlib.metadata import version as get_version
+
+    from packaging.version import parse as parse_version
+
+    from modal.output import enable_output
+
+    if parse_version(get_version("click")) < parse_version("8.2"):
+        # mix_stderr=False is required to capture stderr separately in older Click versions
+        runner = click.testing.CliRunner(mix_stderr=False)  # type: ignore   # this will fail type checks on newer click
     else:
+        # Click 8.2+ defaults to separate stderr capture
         runner = click.testing.CliRunner()
     # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
     # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
     with mock.patch.object(sys, "argv", args):
-        res = runner.invoke(entrypoint_cli, args)
+        # Enable rich output during CLI tests, just like __main__.py does
+        with enable_output():
+            res = runner.invoke(entrypoint_cli, args)
     if res.exit_code != expected_exit_code:
         print("stdout:", repr(res.stdout))
         print("stderr:", repr(res.stderr))
@@ -3284,7 +3292,7 @@ def mock_shell_pty(servicer):
     with (
         mock.patch("rich.console.Console.is_terminal", True),
         mock.patch("modal.cli.container.get_pty_info", mock_get_pty_info),
-        mock.patch("modal._pty.get_pty_info", mock_get_pty_info),
+        mock.patch("modal._output.pty.get_pty_info", mock_get_pty_info),
         mock.patch("modal.sandbox.get_pty_info", mock_get_pty_info),
         mock.patch("modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin),
         mock.patch("modal.container_process.stream_from_stdin", fake_stream_from_stdin),

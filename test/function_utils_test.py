@@ -7,10 +7,10 @@ from unittest.mock import Mock
 from grpclib import Status
 
 from modal import fastapi_endpoint, method
+from modal._output.status import FunctionCreationStatus
 from modal._serialization import serialize_data_format
 from modal._utils import async_utils
 from modal._utils.function_utils import (
-    FunctionCreationStatus,
     FunctionInfo,
     _stream_function_call_data,
     callable_has_non_self_non_default_params,
@@ -155,10 +155,11 @@ def test_global_variable_extraction(func):
     assert info.get_globals().get("GLOBAL_VARIABLE") == GLOBAL_VARIABLE
 
 
-def test_url_displayed_function_create_status_web_url():
+def test_url_displayed_function_create_status_web_url(monkeypatch):
     status_row_mock = Mock()
-    resolver = Mock()
-    resolver.add_status_row.return_value = status_row_mock
+    output_mgr_mock = Mock()
+    output_mgr_mock.add_status_row.return_value = status_row_mock
+    monkeypatch.setattr("modal.output.OutputManager.get", lambda: output_mgr_mock)
 
     web_url = "https://user--endpoint-f.me"
     tag = "fu-abc"
@@ -172,7 +173,7 @@ def test_url_displayed_function_create_status_web_url():
         handle_metadata=api_pb2.FunctionHandleMetadata(web_url=web_url),
     )
 
-    with FunctionCreationStatus(resolver, tag) as function_creation_status:
+    with FunctionCreationStatus(tag) as function_creation_status:
         function_creation_status.set_response(response)
 
     start_message = status_row_mock.message.call_args.args[0]

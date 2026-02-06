@@ -23,7 +23,7 @@ from modal_proto import api_pb2
 
 from ._functions import _Function
 from ._object import _get_environment_name, _Object
-from ._pty import get_pty_info
+from ._output.pty import get_app_logs_loop, get_pty_info
 from ._resolver import Resolver
 from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
@@ -35,7 +35,7 @@ from .cls import _Cls
 from .config import config, logger
 from .environments import _get_environment_cached
 from .exception import ConnectionError, InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
-from .output import _get_output_manager, enable_output
+from .output import OutputManager
 from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
 from .secret import _Secret
@@ -137,7 +137,8 @@ async def _create_all_objects(
     tc = load_context.task_context
 
     resolver = Resolver()
-    with resolver.display():
+    output_mgr = OutputManager.get()
+    with output_mgr.display_object_tree():
         # Get current objects, and reset all objects
         tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
         running_app.function_ids = {}
@@ -294,9 +295,9 @@ async def _run_app(
             app.set_description(__main__.__name__)
 
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
+    output_mgr = OutputManager.get()
 
-    output_mgr = _get_output_manager()
-    if interactive and output_mgr is None:
+    if interactive and not output_mgr.is_enabled:
         msg = "Interactive mode requires output to be enabled. (Use the the `modal.enable_output()` context manager.)"
         raise InvalidError(msg)
 
@@ -325,17 +326,12 @@ async def _run_app(
         heartbeat_loop = tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
         logs_loop: Optional[asyncio.Task] = None
 
-        if output_mgr is not None:
-            # Defer import so this module is rich-safe
-            # TODO(michael): The get_app_logs_loop function is itself rich-safe aside from accepting an OutputManager
-            # as an argument, so with some refactoring we could avoid the need for this deferred import.
-            from modal._output import get_app_logs_loop
-
-            with output_mgr.make_live(output_mgr.step_progress("Initializing...")):
+        if output_mgr.is_enabled:
+            with output_mgr.make_live_spinner("Initializing..."):
                 initialized_msg = (
                     f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
                 )
-                output_mgr.print(output_mgr.step_completed(initialized_msg))
+                output_mgr.step_completed(initialized_msg)
                 output_mgr.update_app_page_url(running_app.app_page_url or "ERROR:NO_APP_PAGE")
 
             # Start logs loop
@@ -350,9 +346,7 @@ async def _run_app(
             await _publish_app(load_context.client, running_app, app_state, local_app_state)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
-            if output_mgr := _get_output_manager():
-                output_mgr.print("Aborting app initialization...\n")
-
+            OutputManager.get().print("Aborting app initialization...\n")
             await _status_based_disconnect(load_context.client, running_app.app_id, e)
             raise
         except BaseException as e:
@@ -371,16 +365,12 @@ async def _run_app(
         try:
             # Show logs from dynamically created images.
             # TODO: better way to do this
-            if output_mgr := _get_output_manager():
-                output_mgr.enable_image_logs()
+            output_mgr.enable_image_logs()
 
             # Yield to context
-            if output_mgr := _get_output_manager():
-                # Don't show status spinner in interactive mode to avoid interfering with breakpoints
-                spinner_ctx = nullcontext() if interactive else output_mgr.show_status_spinner()
-                with spinner_ctx:
-                    yield app
-            else:
+            # Don't show status spinner in interactive mode to avoid interfering with breakpoints
+            spinner_ctx = nullcontext() if interactive else output_mgr.show_status_spinner()
+            with spinner_ctx:
                 yield app
             # successful completion!
             heartbeat_loop.cancel()
@@ -388,17 +378,13 @@ async def _run_app(
         except KeyboardInterrupt as e:
             # this happens only if sigint comes in during the yield block above
             if detach:
-                if output_mgr := _get_output_manager():
-                    output_mgr.print(output_mgr.step_completed("Shutting down Modal client."))
-                    output_mgr.print(detached_disconnect_msg)
+                output_mgr.step_completed("Shutting down Modal client.")
+                output_mgr.print(detached_disconnect_msg)
                 if logs_loop:
                     logs_loop.cancel()
                 await _status_based_disconnect(load_context.client, running_app.app_id, e)
             else:
-                if output_mgr := _get_output_manager():
-                    output_mgr.print(
-                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
-                    )
+                output_mgr.print("Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n")
                 await _status_based_disconnect(load_context.client, running_app.app_id, e)
                 if logs_loop:
                     try:
@@ -406,18 +392,14 @@ async def _run_app(
                     except asyncio.TimeoutError:
                         logger.warning("Timed out waiting for final app logs.")
 
-                if output_mgr:
-                    output_mgr.print(
-                        output_mgr.step_completed(
-                            "App aborted. "
-                            f"[grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
-                        )
-                    )
+                output_mgr.step_completed(
+                    f"App aborted. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+                )
             return
         except ConnectionError as e:
             # If we lose connection to the server after a detached App has started running, it will continue
             # I think we can only exit "nicely" if we are able to print output though, otherwise we should raise
-            if detach and (output_mgr := _get_output_manager()):
+            if detach and output_mgr.is_enabled:
                 output_mgr.print(":white_exclamation_mark: Connection lost!")
                 output_mgr.print(detached_disconnect_msg)
                 return
@@ -436,11 +418,12 @@ async def _run_app(
             except asyncio.TimeoutError:
                 logger.warning("Timed out waiting for final app logs.")
 
-    if output_mgr := _get_output_manager():
-        output_mgr.print(
-            output_mgr.step_completed(
-                f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
-            )
+    # Print completion message if output is still enabled (it may have been disabled during PTY mode)
+    # Re-fetch the output manager in case it was disabled
+    output_mgr = OutputManager.get()
+    if output_mgr.is_enabled:
+        output_mgr.step_completed(
+            f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
         )
 
 
@@ -574,10 +557,10 @@ async def _deploy_app(
             await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
-    if output_mgr := _get_output_manager():
-        t = time.time() - t0
-        output_mgr.print(output_mgr.step_completed(f"App deployed in {t:.3f}s! 🎉"))
-        output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
+    output_mgr = OutputManager.get()
+    t = time.time() - t0
+    output_mgr.step_completed(f"App deployed in {t:.3f}s! 🎉")
+    output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(
         app_id=running_app.app_id,
         app_page_url=running_app.app_page_url,
@@ -613,6 +596,12 @@ async def _interactive_shell(
     """
 
     client = await _Client.from_env()
+    output_mgr = OutputManager.get()
+
+    # Suppress status output (spinners, "Initialized", etc.) during shell sessions
+    # since they interfere with the terminal UI
+    output_mgr.set_quiet_mode(True)
+
     async with _run_app(_app, client=client, environment_name=environment_name):
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
         sandbox_env = {
@@ -622,14 +611,18 @@ async def _interactive_shell(
         }
         secrets = kwargs.pop("secrets", []) + [_Secret.from_dict(sandbox_env)]
 
-        with enable_output():  # show any image build logs
-            sandbox = await _Sandbox._create(
-                "sleep",
-                "100000",
-                app=_app,
-                secrets=secrets,
-                **kwargs,
-            )
+        # Temporarily enable output to show image build logs during sandbox creation
+        output_mgr.set_quiet_mode(False)
+        sandbox = await _Sandbox._create(
+            "sleep",
+            "100000",
+            app=_app,
+            secrets=secrets,
+            **kwargs,
+        )
+
+        # Re-enable quiet mode before starting the interactive session
+        output_mgr.set_quiet_mode(True)
 
         try:
             if pty:

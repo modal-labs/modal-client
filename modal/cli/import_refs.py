@@ -21,12 +21,12 @@ from typing import Optional, Union, cast
 import click
 from rich.markdown import Markdown
 
-from modal._output import make_console
 from modal._utils.deprecation import deprecation_warning
 from modal.app import App, LocalEntrypoint
 from modal.cls import Cls
 from modal.exception import InvalidError, _CliUserExecutionError
 from modal.functions import Function
+from modal.output import OutputManager
 
 
 @dataclasses.dataclass
@@ -258,8 +258,11 @@ def import_app_from_ref(import_ref: ImportRef, base_cmd: str = "") -> App:
     app = getattr(module, object_path)
 
     if app is None:
-        error_console = make_console(stderr=True)
-        error_console.print(f"[bold red]Could not find Modal app '{object_path}' in {import_path}.[/bold red]")
+        output = OutputManager.get()
+        output.print(
+            f"[bold red]Could not find Modal app '{object_path}' in {import_path}.[/bold red]",
+            stderr=True,
+        )
 
         if not object_path:
             guidance_msg = Markdown(
@@ -269,7 +272,7 @@ def import_app_from_ref(import_ref: ImportRef, base_cmd: str = "") -> App:
                 f"For example an App variable `app_2 = modal.App()` in `{import_path}` would "
                 f"be specified as `{import_path}::app_2`."
             )
-            error_console.print(guidance_msg)
+            output.print(guidance_msg, stderr=True)
 
         sys.exit(1)
 
@@ -282,16 +285,18 @@ def import_app_from_ref(import_ref: ImportRef, base_cmd: str = "") -> App:
 def _show_function_ref_help(app_ref: ImportRef, base_cmd: str) -> None:
     object_path = app_ref.object_path
     import_path = app_ref.file_or_module
-    error_console = make_console(stderr=True)
+    output = OutputManager.get()
     if object_path:
-        error_console.print(
+        output.print(
             f"[bold red]Could not find Modal function or local entrypoint"
-            f" '{object_path}' in '{import_path}'.[/bold red]"
+            f" '{object_path}' in '{import_path}'.[/bold red]",
+            stderr=True,
         )
     else:
-        error_console.print(
+        output.print(
             f"[bold red]No function was specified, and no [green]`app`[/green] variable "
-            f"could be found in '{import_path}'.[/bold red]"
+            f"could be found in '{import_path}'.[/bold red]",
+            stderr=True,
         )
     guidance_msg = f"""
 Usage:
@@ -306,7 +311,7 @@ def foo():
     ...
 ```
 You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
-    error_console.print(guidance_msg)
+    output.print(guidance_msg, stderr=True)
 
 
 def _get_runnable_app(runnable: Runnable) -> App:

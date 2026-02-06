@@ -498,9 +498,12 @@ class _Mount(_Object, type_prefix="mo"):
         n_seen, n_finished = 0, 0
         total_uploads, total_bytes = 0, 0
         accounted_hashes: set[str] = set()
+        from modal.output import OutputManager
+
         message_label = _Mount._description(self._entries)
         blob_upload_concurrency = asyncio.Semaphore(16)  # Limit uploads of large files.
-        status_row = resolver.add_status_row()
+        output_mgr = OutputManager.get()
+        status_row = output_mgr.add_status_row()
 
         async def _put_file(file_spec: FileUploadSpec) -> api_pb2.MountFile:
             nonlocal n_seen, n_finished, total_uploads, total_bytes

@@ -21,7 +21,8 @@ from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._load_context import LoadContext
 from ._object import _Object, live_method, live_method_gen
-from ._pty import get_pty_info
+from ._output.pty import get_pty_info
+from ._output.status import FunctionCreationStatus
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
@@ -47,7 +48,6 @@ from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
-    FunctionCreationStatus,
     FunctionInfo,
     _create_input,
     _process_result,
@@ -71,7 +71,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .output import _get_output_manager
+from .output import OutputManager
 from .parallel_map import (
     _experimental_spawn_map_async,
     _experimental_spawn_map_sync,
@@ -922,7 +922,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _load(
             self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            with FunctionCreationStatus(resolver, tag) as function_creation_status:
+            with FunctionCreationStatus(tag) as function_creation_status:
                 timeout_secs = timeout
 
                 if app and app.is_interactive and not is_builder_function:
@@ -1639,10 +1639,7 @@ Use the `Function.get_web_url()` method instead.
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        if output_mgr := _get_output_manager():
-            count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
-        else:
-            count_update_callback = None
+        count_update_callback = OutputManager.get().function_progress_callback(self._function_name, total=None)
 
         if self._input_plane_url:
             async with aclosing(

@@ -1,20 +1,24 @@
 # Copyright Modal Labs 2022
+"""Rich-based output management for Modal CLI.
+
+This module contains all rich-dependent code and should only be imported when
+rich output is actually needed. This allows the rest of the codebase to avoid
+importing rich when output is disabled.
+"""
+
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import functools
 import platform
 import re
-import socket
-import sys
 from collections.abc import Generator
 from datetime import timedelta
-from typing import Callable, ClassVar
+from typing import Any, Callable
 
-from grpclib.exceptions import StreamTerminatedError
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
+from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -29,16 +33,22 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 from rich.spinner import Spinner
+from rich.status import Status
 from rich.text import Text
+from rich.tree import Tree
 
+from modal._output.manager import (
+    OutputManager,
+    StatusContext,
+    StatusRow,
+    TransferProgressContext,
+    _DisabledStatus,
+    _DisabledTransferProgress,
+)
 from modal._utils.time_utils import timestamp_to_localized_str
+from modal.config import logger
+from modal.exception import DeprecationError, PendingDeprecationError, ServerWarning
 from modal_proto import api_pb2
-
-from ._utils.grpc_utils import Retry
-from ._utils.shell_utils import stream_from_stdin, write_to_fd
-from .client import _Client
-from .config import logger
-from .exception import InternalError, ServiceError
 
 if platform.system() == "Windows":
     default_spinner = "line"
@@ -46,8 +56,12 @@ else:
     default_spinner = "dots"
 
 
-def make_console(*, stderr: bool = False, highlight: bool = True) -> Console:
-    """Create a rich Console tuned for Modal CLI output."""
+def _make_console(*, stderr: bool = False, highlight: bool = True) -> Console:
+    """Create a rich Console tuned for Modal CLI output.
+
+    This is an internal function. External code should use the OutputManager
+    interface (e.g., via enable_output()) instead of creating consoles directly.
+    """
     return Console(
         stderr=stderr,
         highlight=highlight,
@@ -118,10 +132,62 @@ class LineBufferedOutput:
             self._buf = ""
 
 
-class OutputManager:
-    _instance: ClassVar[OutputManager | None] = None
+class _RichStatusContext(StatusContext):
+    """Wrapper around Rich's Status that implements StatusContext."""
+
+    def __init__(self, status: Status):
+        self._status = status
+
+    def start(self) -> None:
+        self._status.start()
+
+    def stop(self) -> None:
+        self._status.stop()
+
+    def update(self, status: str) -> None:
+        self._status.update(status)
+
+    def __enter__(self) -> "_RichStatusContext":
+        self._status.__enter__()
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self._status.__exit__(*args)
+
+
+class RichStatusRow(StatusRow):
+    """Rich-backed implementation of StatusRow."""
+
+    def __init__(self, progress: "Tree | None"):
+        self._spinner: Spinner | None = None
+        self._step_node = None
+        if progress is not None:
+            self._spinner = RichOutputManager._step_progress()
+            self._step_node = progress.add(self._spinner)
+
+    def message(self, message: str) -> None:
+        if self._spinner is not None:
+            self._spinner.update(text=message)
+
+    def warn(self, warning: api_pb2.Warning) -> None:
+        if self._step_node is not None:
+            self._step_node.add(f"[yellow]:warning:[/yellow] {warning.message}")
+
+    def finish(self, message: str) -> None:
+        if self._step_node is not None and self._spinner is not None:
+            self._spinner.update(text=message)
+            self._step_node.label = f"🔨 {message}"
+
+
+class RichOutputManager(OutputManager):
+    """Rich-based implementation of OutputManager.
+
+    Provides full terminal output with progress spinners, trees, and colored output
+    using the Rich library.
+    """
 
     _console: Console
+    _stderr_console: Console
     _task_states: dict[str, int]
     _task_progress_items: dict[tuple[str, int], TaskID]
     _current_render_group: Group | None
@@ -129,20 +195,31 @@ class OutputManager:
     _function_queueing_progress: Progress | None
     _snapshot_progress: Progress | None
     _line_buffers: dict[int, LineBufferedOutput]
-    _status_spinner: Spinner
+    _status_spinner: Spinner | None
     _app_page_url: str | None
-    _show_image_logs: bool
+    __show_image_logs: bool
     _status_spinner_live: Live | None
-    _show_timestamps: bool
+    _object_tree: Tree | None
+
+    @property
+    def is_enabled(self) -> bool:
+        return not self._quiet_mode
+
+    @property
+    def is_terminal(self) -> bool:
+        return self._console.is_terminal
+
+    @property
+    def _show_image_logs(self) -> bool:
+        return self.__show_image_logs
 
     def __init__(
         self,
         *,
-        status_spinner_text: str = "Running app...",
         show_timestamps: bool = False,
     ):
-        self._stdout = sys.stdout
-        self._console = make_console(highlight=False)
+        self._console = _make_console(highlight=False)
+        self._stderr_console = _make_console(stderr=True, highlight=True)
         self._task_states = {}
         self._task_progress_items = {}
         self._current_render_group = None
@@ -150,61 +227,157 @@ class OutputManager:
         self._function_queueing_progress = None
         self._snapshot_progress = None
         self._line_buffers = {}
-        self._status_spinner = OutputManager.step_progress(status_spinner_text)
+        self._status_spinner: Spinner | None = None
         self._app_page_url = None
-        self._show_image_logs = False
+        self.__show_image_logs = False
         self._status_spinner_live = None
+        self._object_tree = None
         self._show_timestamps = show_timestamps
 
-    @classmethod
-    def disable(cls):
-        cls._instance.flush_lines()
-        if cls._instance._status_spinner_live:
-            cls._instance._status_spinner_live.stop()
-        cls._instance = None
-
-    @classmethod
-    def get(cls) -> OutputManager | None:
-        return cls._instance
-
-    @classmethod
-    @contextlib.contextmanager
-    def enable_output(cls, show_progress: bool = True, show_timestamps: bool = False) -> Generator[None]:
-        if show_progress:
-            cls._instance = OutputManager(show_timestamps=show_timestamps)
-        try:
-            yield
-        finally:
-            cls._instance = None
-
     @staticmethod
-    def step_progress(text: str = "") -> Spinner:
-        """Returns the element to be rendered when a step is in progress."""
+    def _step_progress(text: str = "") -> Spinner:
+        """Returns the element to be rendered when a step is in progress (internal use)."""
         return Spinner(default_spinner, text, style="blue")
 
     @staticmethod
-    def step_completed(message: str) -> RenderableType:
+    def _step_completed_text(message: str) -> str:
+        """Returns the formatted text for a step completed message (for internal use)."""
         return f"[green]✓[/green] {message}"
 
-    @staticmethod
-    def substep_completed(message: str) -> RenderableType:
-        return f"🔨 {message}"
+    def step_completed(self, message: str) -> None:
+        """Print a step completed message."""
+        self.print(self._step_completed_text(message))
 
-    def print(self, renderable) -> None:
-        self._console.print(renderable)
+    @contextlib.contextmanager
+    def display_object_tree(self) -> Generator[None, None, None]:
+        """Context manager that displays a tree of objects being created."""
+        if self._quiet_mode:
+            yield
+            return
+        self._object_tree = Tree(self._step_progress("Creating objects..."), guide_style="gray50")
+        with self._make_live(self._object_tree):
+            yield
+        self._object_tree.label = self._step_completed_text("Created objects.")
+        self.print(self._object_tree)
+        self._object_tree = None
 
-    def make_live(self, renderable: RenderableType) -> Live:
-        """Creates a customized `rich.Live` instance with the given renderable. The renderable
-        is placed in a `rich.Group` to allow for dynamic additions later."""
+    def add_status_row(self) -> StatusRow:
+        """Add a status row to the current object tree."""
+        return RichStatusRow(self._object_tree)
+
+    def print(self, renderable: Any, *, stderr: bool = False, highlight: bool = True, style: str | None = None) -> None:
+        """Print a renderable to the console.
+
+        Args:
+            renderable: The content to print.
+            stderr: If True, print to stderr instead of stdout.
+            highlight: If True, apply syntax highlighting.
+            style: Optional Rich style string (e.g., "green", "bold cyan").
+        """
+        if self._quiet_mode:
+            return
+        if stderr:
+            self._stderr_console.print(renderable, highlight=highlight, style=style)
+        else:
+            self._console.print(renderable, highlight=highlight, style=style)
+
+    def print_error(self, error_text: str) -> None:
+        """Print an error message to stderr in a panel, ignoring quiet mode.
+
+        This method always prints the error message regardless of quiet mode.
+        """
+        panel = Panel(escape(error_text), title="Error", title_align="left", border_style="red")
+        self._stderr_console.print(panel, highlight=False)
+
+    def print_json(self, data: str) -> None:
+        """Print JSON data with formatting."""
+        if self._quiet_mode:
+            return
+        self._console.print_json(data)
+
+    def show_warning(
+        self,
+        warning: Warning,
+        category: type[Warning],
+        filename: str,
+        lineno: int,
+        base_showwarning: Callable[..., None],
+    ) -> None:
+        """Display a warning, using rich formatting for Modal-specific warnings.
+
+        Modal warnings (DeprecationError, PendingDeprecationError, ServerWarning) are shown
+        in a yellow-bordered panel with source context. Other warnings fall back to the
+        default Python warning display.
+        """
+        # For non-Modal warnings, fall back to the default display
+        if not issubclass(category, (DeprecationError, PendingDeprecationError, ServerWarning)):
+            base_showwarning(warning, category, filename, lineno, file=None, line=None)
+            return
+
+        content = str(warning)
+        # Extract date prefix if present (e.g., "2024-01-15 Some warning message")
+        if re.match(r"^\d{4}-\d{2}-\d{2}", content):
+            date = content[:10]
+            message = content[11:].strip()
+        else:
+            date = ""
+            message = content
+
+        # Try to add source context
+        try:
+            with open(filename, encoding="utf-8", errors="replace") as code_file:
+                source = code_file.readlines()[lineno - 1].strip()
+            message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
+        except OSError:
+            # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows
+            pass
+
+        # Build title
+        if issubclass(category, ServerWarning):
+            title = "Modal Warning"
+        else:
+            title = "Modal Deprecation Warning"
+        if date:
+            title += f" ({date})"
+
+        panel = Panel(
+            escape(message),
+            border_style="yellow",
+            title=title,
+            title_align="left",
+        )
+        self._stderr_console.print(panel)
+
+    def status(self, message: str) -> StatusContext:
+        """Create a status spinner context manager.
+
+        Returns a StatusContext that can be used as a context manager
+        or controlled manually with start() and stop() methods.
+        """
+        if self._quiet_mode:
+            return _DisabledStatus()
+        return _RichStatusContext(self._console.status(message))
+
+    def _make_live(self, renderable: RenderableType) -> Live:
+        """Creates a customized `rich.Live` instance with the given renderable (internal use).
+
+        The renderable is placed in a `rich.Group` to allow for dynamic additions later."""
         self._function_progress = None
         self._current_render_group = Group(renderable)
         return Live(self._current_render_group, console=self._console, transient=True, refresh_per_second=4)
 
-    def enable_image_logs(self):
-        self._show_image_logs = True
+    @contextlib.contextmanager
+    def make_live_spinner(self, message: str) -> Generator[None, None, None]:
+        """Context manager that shows a live spinner with a message."""
+        spinner = self._step_progress(message)
+        with self._make_live(spinner):
+            yield
+
+    def enable_image_logs(self) -> None:
+        self.__show_image_logs = True
 
     @property
-    def function_progress(self) -> Progress:
+    def _function_progress_bar(self) -> Progress:
         """Creates a `rich.Progress` instance with custom columns for function progress,
         and adds it to the current render group."""
         if not self._function_progress:
@@ -220,7 +393,7 @@ class OutputManager:
         return self._function_progress
 
     @property
-    def snapshot_progress(self) -> Progress:
+    def _snapshot_progress_bar(self) -> Progress:
         """Creates a `rich.Progress` instance with custom columns for image snapshot progress,
         and adds it to the current render group."""
         if not self._snapshot_progress:
@@ -238,7 +411,7 @@ class OutputManager:
         return self._snapshot_progress
 
     @property
-    def function_queueing_progress(self) -> Progress:
+    def _function_queueing_progress_bar(self) -> Progress:
         """Creates a `rich.Progress` instance with custom columns for function queue waiting progress
         and adds it to the current render group."""
         if not self._function_queueing_progress:
@@ -256,10 +429,10 @@ class OutputManager:
         """Adds a task to the current function_progress instance, and returns a callback
         to update task progress with new completed and total counts."""
 
-        progress_task = self.function_progress.add_task(tag, total=total)
+        progress_task = self._function_progress_bar.add_task(tag, total=total)
 
         def update_counts(completed: int, total: int):
-            self.function_progress.update(progress_task, completed=completed, total=total)
+            self._function_progress_bar.update(progress_task, completed=completed, total=total)
 
         return update_counts
 
@@ -278,7 +451,7 @@ class OutputManager:
     def update_app_page_url(self, app_page_url: str) -> None:
         self._app_page_url = app_page_url
 
-    def update_task_state(self, task_id: str, state: int):
+    def update_task_state(self, task_id: str, state: int) -> None:
         """Updates the state of a task, sets the new task status string."""
         self._task_states[task_id] = state
 
@@ -309,7 +482,8 @@ class OutputManager:
         message = f"[blue]{message}[/blue] [grey70]View app at [underline]{self._app_page_url}[/underline][/grey70]"
 
         # Set the new message
-        self._status_spinner.update(text=message)
+        if self._status_spinner is not None:
+            self._status_spinner.update(text=message)
 
     def update_snapshot_progress(self, image_id: str, task_progress: api_pb2.TaskProgress) -> None:
         # TODO(erikbern): move this to sit on the resolver object, mostly
@@ -320,13 +494,13 @@ class OutputManager:
         if task_key in self._task_progress_items:
             progress_task_id = self._task_progress_items[task_key]
         else:
-            progress_task_id = self.snapshot_progress.add_task("[yellow]Uploading image snapshot…", total=total)
+            progress_task_id = self._snapshot_progress_bar.add_task("[yellow]Uploading image snapshot…", total=total)
             self._task_progress_items[task_key] = progress_task_id
 
         try:
-            self.snapshot_progress.update(progress_task_id, completed=completed, total=total)
+            self._snapshot_progress_bar.update(progress_task_id, completed=completed, total=total)
             if completed == total:
-                self.snapshot_progress.remove_task(progress_task_id)
+                self._snapshot_progress_bar.remove_task(progress_task_id)
         except KeyError:
             # Rich throws a KeyError if the task has already been removed.
             pass
@@ -341,35 +515,101 @@ class OutputManager:
         if task_key in self._task_progress_items:
             progress_task_id = self._task_progress_items[task_key]
             try:
-                self.function_queueing_progress.update(progress_task_id, completed=completed, total=total)
+                self._function_queueing_progress_bar.update(progress_task_id, completed=completed, total=total)
                 if completed == total:
                     del self._task_progress_items[task_key]
-                    self.function_queueing_progress.remove_task(progress_task_id)
+                    self._function_queueing_progress_bar.remove_task(progress_task_id)
             except KeyError:
                 pass
         elif completed != total:  # Create new bar for queued function
-            progress_task_id = self.function_queueing_progress.add_task(task_desc, start=True, total=None)
+            progress_task_id = self._function_queueing_progress_bar.add_task(task_desc, start=True, total=None)
             self._task_progress_items[task_key] = progress_task_id
 
-    async def put_log_content(self, log: api_pb2.TaskLogs):
+    async def put_log_content(self, log: api_pb2.TaskLogs) -> None:
+        """Process and display log content.
+
+        Note: Log output is always displayed even when quiet mode is enabled.
+        Quiet mode suppresses progress indicators and status messages, but not
+        actual log output from running functions/images.
+        """
         stream = self._line_buffers.get(log.file_descriptor)
         if stream is None:
             stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor), self._show_timestamps)
             self._line_buffers[log.file_descriptor] = stream
         stream.write(log)
 
-    def flush_lines(self):
+    def flush_lines(self) -> None:
         for stream in self._line_buffers.values():
             stream.finalize()
 
     @contextlib.contextmanager
-    def show_status_spinner(self):
-        self._status_spinner_live = self.make_live(self._status_spinner)
+    def transfer_progress(self, type: str) -> Generator[TransferProgressContext, None, None]:
+        """Context manager for tracking file transfer progress.
+
+        Args:
+            type: Either "download" or "upload".
+
+        Yields:
+            A TransferProgressContext with a progress() method for updating transfer progress.
+        """
+        if self._quiet_mode:
+            yield _DisabledTransferProgress()
+            return
+        handler = ProgressHandler(type, self._console)
+        with handler.live:
+            yield _RichTransferProgress(handler)
+
+    @contextlib.contextmanager
+    def show_status_spinner(self, status_text: str = "Running app...") -> Generator[None, None, None]:
+        if self._quiet_mode:
+            yield
+            return
+        self._status_spinner = RichOutputManager._step_progress(status_text)
+        self._status_spinner_live = self._make_live(self._status_spinner)
         with self._status_spinner_live:
             yield
 
+    def stop_status_spinner(self) -> None:
+        """Stop the status spinner if it's running."""
+        if self._status_spinner_live:
+            self._status_spinner_live.stop()
+            self._status_spinner_live = None
+
+
+class _RichTransferProgress(TransferProgressContext):
+    """Rich-backed transfer progress context.
+
+    Wraps a ProgressHandler to provide the TransferProgressContext interface.
+    """
+
+    def __init__(self, handler: "ProgressHandler"):
+        self._handler = handler
+
+    def progress(
+        self,
+        task_id: TaskID | None = None,
+        advance: float | None = None,
+        name: str | None = None,
+        size: float | None = None,
+        reset: bool | None = False,
+        complete: bool | None = False,
+    ) -> TaskID | None:
+        return self._handler.progress(
+            task_id=task_id,
+            advance=advance,
+            name=name,
+            size=size,
+            reset=reset,
+            complete=complete,
+        )
+
 
 class ProgressHandler:
+    """Internal handler for rich-based transfer progress display.
+
+    This class is used internally by RichOutputManager.transfer_progress().
+    """
+
     live: Live
     _type: str
     _spinner: Spinner
@@ -389,7 +629,7 @@ class ProgressHandler:
         else:
             raise NotImplementedError(f"Progress handler of type: `{type}` not yet implemented")
 
-        self._spinner = OutputManager.step_progress(title)
+        self._spinner = RichOutputManager._step_progress(title)
 
         self._overall_progress = Progress(
             TextColumn(f"[bold white]{title}", justify="right"),
@@ -482,194 +722,3 @@ class ProgressHandler:
             + f"reset={reset} "
             + f"complete={complete} "
         )
-
-
-async def stream_pty_shell_input(client: _Client, exec_id: str, finish_event: asyncio.Event):
-    """
-    Streams stdin to the given exec id until finish_event is triggered
-    """
-
-    async def _handle_input(data: bytes, message_index: int):
-        await client.stub.ContainerExecPutInput(
-            api_pb2.ContainerExecPutInputRequest(
-                exec_id=exec_id, input=api_pb2.RuntimeInputMessage(message=data, message_index=message_index)
-            ),
-            retry=Retry(total_timeout=10),
-        )
-
-    async with stream_from_stdin(_handle_input, use_raw_terminal=True):
-        await finish_event.wait()
-
-
-async def put_pty_content(log: api_pb2.TaskLogs, stdout):
-    if hasattr(stdout, "buffer"):
-        # If we're not showing progress, there's no need to buffer lines,
-        # because the progress spinner can't interfere with output.
-
-        data = log.data.encode("utf-8")
-        # Non-blocking terminals can fill the kernel buffer on output bursts, making flush() raise
-        # BlockingIOError (EAGAIN) and appear frozen until a key is pressed (this happened e.g. when
-        # printing large data from a pdb breakpoint). If stdout has a real fd, we await a
-        # non-blocking fd write (write_to_fd) instead.
-        fd = None
-        try:
-            if hasattr(stdout, "fileno"):
-                fd = stdout.fileno()
-        except Exception:
-            fd = None
-
-        if fd is not None:
-            await write_to_fd(fd, data)
-        else:
-            # For streams without fileno(), use the normal write/flush path.
-            written = 0
-            n_retries = 0
-            while written < len(data):
-                try:
-                    written += stdout.buffer.write(data[written:])
-                    stdout.flush()
-                except BlockingIOError:
-                    if n_retries >= 5:
-                        raise
-                    n_retries += 1
-                    await asyncio.sleep(0.1)
-    else:
-        # `stdout` isn't always buffered (e.g. %%capture in Jupyter notebooks redirects it to
-        # io.StringIO).
-        stdout.write(log.data)
-        stdout.flush()
-
-
-async def get_app_logs_loop(
-    client: _Client,
-    output_mgr: OutputManager,
-    app_id: str | None = None,
-    task_id: str | None = None,
-    sandbox_id: str | None = None,
-):
-    last_log_batch_entry_id = ""
-
-    pty_shell_stdout = None
-    pty_shell_finish_event: asyncio.Event | None = None
-    pty_shell_task_id: str | None = None
-    pty_shell_input_task: asyncio.Task | None = None
-
-    async def stop_pty_shell():
-        nonlocal pty_shell_finish_event, pty_shell_input_task
-        if pty_shell_finish_event:
-            print("\r", end="")  # move cursor to beginning of line # noqa: T201
-            pty_shell_finish_event.set()
-            pty_shell_finish_event = None
-
-            if pty_shell_input_task:
-                try:
-                    await pty_shell_input_task
-                except Exception as exc:
-                    logger.exception(f"Exception in PTY shell input task: {exc}")
-                finally:
-                    pty_shell_input_task = None
-
-    async def _put_log(log_batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs):
-        if log.task_state:
-            output_mgr.update_task_state(log_batch.task_id, log.task_state)
-            if log.task_state == api_pb2.TASK_STATE_WORKER_ASSIGNED:
-                # Close function's queueing progress bar (if it exists)
-                output_mgr.update_queueing_progress(
-                    function_id=log_batch.function_id, completed=1, total=1, description=None
-                )
-        elif log.task_progress.len or log.task_progress.pos:
-            if log.task_progress.progress_type == api_pb2.FUNCTION_QUEUED:
-                output_mgr.update_queueing_progress(
-                    function_id=log_batch.function_id,
-                    completed=log.task_progress.pos,
-                    total=log.task_progress.len,
-                    description=log.task_progress.description,
-                )
-            else:  # Ensure forward-compatible with new types.
-                logger.debug(f"Received unrecognized progress type: {log.task_progress.progress_type}")
-        elif log.data:
-            if pty_shell_finish_event:
-                await put_pty_content(log, pty_shell_stdout)
-            else:
-                await output_mgr.put_log_content(log)
-
-    async def _get_logs():
-        nonlocal last_log_batch_entry_id
-        nonlocal pty_shell_stdout, pty_shell_finish_event, pty_shell_task_id, pty_shell_input_task
-
-        request = api_pb2.AppGetLogsRequest(
-            app_id=app_id or "",
-            task_id=task_id or "",
-            sandbox_id=sandbox_id or "",
-            timeout=55,
-            last_entry_id=last_log_batch_entry_id,
-        )
-        log_batch: api_pb2.TaskLogsBatch
-        async for log_batch in client.stub.AppGetLogs.unary_stream(request):
-            if log_batch.entry_id:
-                # log_batch entry_id is empty for fd="server" messages from AppGetLogs
-                last_log_batch_entry_id = log_batch.entry_id
-            if log_batch.app_done:
-                logger.debug("App logs are done")
-                last_log_batch_entry_id = None
-                break
-            elif log_batch.image_id and not output_mgr._show_image_logs:
-                # Ignore image logs while app is creating objects.
-                # These logs are fetched through ImageJoinStreaming instead.
-                # Logs from images built "dynamically" (after the app has started)
-                # are printed through this loop.
-                # TODO (akshat): have a better way of differentiating between
-                # statically and dynamically built images.
-                pass
-            elif log_batch.pty_exec_id:
-                # This corresponds to the `modal run -i` use case where a breakpoint
-                # triggers and the task drops into an interactive PTY mode
-                if pty_shell_finish_event:
-                    print("ERROR: concurrent PTY shells are not supported.")  # noqa: T201
-                else:
-                    pty_shell_stdout = output_mgr._stdout
-                    pty_shell_finish_event = asyncio.Event()
-                    pty_shell_task_id = log_batch.task_id
-                    output_mgr.disable()
-                    pty_shell_input_task = asyncio.create_task(
-                        stream_pty_shell_input(client, log_batch.pty_exec_id, pty_shell_finish_event)
-                    )
-            else:
-                for log in log_batch.items:
-                    await _put_log(log_batch, log)
-
-            if log_batch.eof and log_batch.task_id == pty_shell_task_id:
-                await stop_pty_shell()
-
-        output_mgr.flush_lines()
-
-    while True:
-        try:
-            await _get_logs()
-        except (ServiceError, InternalError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
-            if isinstance(exc, (ServiceError, InternalError)):
-                # Try again if we had a temporary connection drop, for example if computer went to sleep.
-                logger.debug("Log fetching timed out. Retrying ...")
-                continue
-            elif isinstance(exc, StreamTerminatedError):
-                logger.debug("Stream closed. Retrying ...")
-                continue
-            elif isinstance(exc, socket.gaierror):
-                logger.debug("Lost connection. Retrying ...")
-                continue
-            elif isinstance(exc, AttributeError):
-                if "_write_appdata" in str(exc):
-                    # Happens after losing connection
-                    # StreamTerminatedError are not properly raised in grpclib<=0.4.7
-                    # fixed in https://github.com/vmagamedov/grpclib/issues/185
-                    # TODO: update to newer version (>=0.4.8) once stable
-                    logger.debug("Lost connection. Retrying ...")
-                    continue
-            raise
-
-        if last_log_batch_entry_id is None:
-            break
-
-    await stop_pty_shell()
-
-    logger.debug("Logging exited gracefully")

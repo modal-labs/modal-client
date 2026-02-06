@@ -263,3 +263,46 @@ def test_shell_function_ref_routes_to_function_spec(servicer, set_env_client, mo
     mock_shell_routing["start_running_container"].assert_not_called()
     mock_shell_routing["start_from_function_spec"].assert_called_once()
     mock_shell_routing["start_from_image"].assert_not_called()
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_no_status_output_after_sandbox_exec(servicer, set_env_client, mock_shell_pty):
+    """Test that modal shell doesn't print status/progress output after starting the sandbox exec.
+
+    The _run_app context manager normally prints status messages like "Initialized. View run at..."
+    and "App completed". These should be suppressed during interactive shell sessions because
+    they interfere with the terminal UI.
+
+    Note: Image build logs ("build starting", "build finished") SHOULD still be shown during
+    sandbox creation - only the progress/status output from _run_app should be suppressed.
+    """
+    fake_stdin, captured_out = mock_shell_pty
+    fake_stdin.clear()
+    fake_stdin.extend([b"exit\n"])
+
+    res = run_cli_command(["shell"])
+
+    # The shell should work - PTY data should be captured
+    shell_prompt = servicer.shell_prompt
+    assert (1, shell_prompt) in captured_out
+
+    # Status/progress output from _run_app should NOT appear in stdout.
+    # These are the messages that come from runner.py's _run_app function
+    # when output_mgr.is_enabled is True - they should be suppressed for shell.
+    unwanted_patterns = [
+        # From _run_app initialization
+        r"Initialized\.",
+        r"View run at",
+        # From object creation
+        r"Created objects",
+        # From app completion
+        r"App completed",
+        # Status spinner messages
+        r"containers? initializing",
+    ]
+
+    for pattern in unwanted_patterns:
+        assert not re.search(pattern, res.stdout, re.IGNORECASE)
+
+    # Image build logs ARE expected and should be allowed
+    # (e.g., "build starting", "build finished" from the sandbox image build)
