@@ -74,6 +74,28 @@ from .config import logger
 VOLUME_PUT_FILE_CLIENT_TIMEOUT = 60 * 60
 
 
+def _validate_volume_version(
+    requested_version: int,
+    actual_version: int,
+    volume_name: str,
+) -> None:
+    """Validate that the returned volume version matches the requested version."""
+
+    def normalize(v: int) -> int:
+        if v in (None, 0, api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED):
+            return api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1
+        return v
+
+    n_requested = normalize(requested_version)
+    n_actual = normalize(actual_version)
+
+    if n_requested != n_actual:
+        raise InvalidError(
+            f"Volume '{volume_name}' exists but has version v{n_actual}, not v{n_requested} as requested. "
+            f"To access this Volume, either omit the version parameter or use the correct version."
+        )
+
+
 class FileEntryType(enum.IntEnum):
     """Type of a file entry listed from a Modal volume."""
 
@@ -173,7 +195,9 @@ class _VolumeManager:
             version=version,
         )
         try:
-            await client.stub.VolumeGetOrCreate(req)
+            response = await client.stub.VolumeGetOrCreate(req)
+            if version is not None:
+                _validate_volume_version(version, response.metadata.version, name)
         except AlreadyExistsError:
             if not allow_existing:
                 raise
@@ -449,6 +473,8 @@ class _Volume(_Object, type_prefix="vo"):
                 version=version,
             )
             response = await load_context.client.stub.VolumeGetOrCreate(req)
+            if version is not None:
+                _validate_volume_version(version, response.metadata.version, name)
             self._hydrate(response.volume_id, load_context.client, response.metadata)
 
         rep = _Volume._repr(name, environment_name)
