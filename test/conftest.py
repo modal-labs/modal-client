@@ -2254,12 +2254,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
 
-        self.resource_creation_timestamps[volume_id] = timestamp = datetime.datetime.now().timestamp()
+        if volume_id not in self.resource_creation_timestamps:
+            self.resource_creation_timestamps[volume_id] = datetime.datetime.now().timestamp()
+        timestamp = self.resource_creation_timestamps[volume_id]
         creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
+        volume_version = self.volumes[volume_id].version
         metadata = api_pb2.VolumeMetadata(
-            name=request.deployment_name, creation_info=creation_info, version=request.version
+            name=request.deployment_name, creation_info=creation_info, version=volume_version
         )
-        response = api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id, version=request.version, metadata=metadata)
+        response = api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id, version=volume_version, metadata=metadata)
         await stream.send_message(response)
 
     async def VolumeList(self, stream):

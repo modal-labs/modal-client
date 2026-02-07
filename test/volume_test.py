@@ -643,6 +643,43 @@ def test_volume_create_version(servicer, client):
         modal.Volume.objects.create(name="should-be-v3", version=3, client=client)
 
 
+def test_volume_create_version_mismatch(servicer, client):
+    modal.Volume.objects.create(name="vol-v1", version=1, client=client)
+
+    with pytest.raises(InvalidError, match="exists but has version v1, not v2"):
+        modal.Volume.objects.create(name="vol-v1", version=2, allow_existing=True, client=client)
+
+    modal.Volume.objects.create(name="vol-v1", version=1, allow_existing=True, client=client)
+    modal.Volume.objects.create(name="vol-v1", allow_existing=True, client=client)
+
+    modal.Volume.objects.create(name="vol-v2", version=2, client=client)
+
+    with pytest.raises(InvalidError, match="exists but has version v2, not v1"):
+        modal.Volume.objects.create(name="vol-v2", version=1, allow_existing=True, client=client)
+
+    modal.Volume.objects.create(name="vol-v2", version=2, allow_existing=True, client=client)
+    modal.Volume.objects.create(name="vol-v2", allow_existing=True, client=client)
+
+
+@pytest.mark.parametrize("create_if_missing", [True, False])
+def test_volume_from_name_version_mismatch(servicer, client, create_if_missing):
+    modal.Volume.from_name("vol-fn-v1", create_if_missing=True, version=1).hydrate(client)
+
+    with pytest.raises(InvalidError, match="exists but has version v1, not v2"):
+        modal.Volume.from_name("vol-fn-v1", version=2, create_if_missing=create_if_missing).hydrate(client)
+
+    modal.Volume.from_name("vol-fn-v1", version=1, create_if_missing=create_if_missing).hydrate(client)
+    modal.Volume.from_name("vol-fn-v1", create_if_missing=create_if_missing).hydrate(client)
+
+    modal.Volume.from_name("vol-fn-v2", create_if_missing=True, version=2).hydrate(client)
+
+    with pytest.raises(InvalidError, match="exists but has version v2, not v1"):
+        modal.Volume.from_name("vol-fn-v2", version=1, create_if_missing=create_if_missing).hydrate(client)
+
+    modal.Volume.from_name("vol-fn-v2", version=2, create_if_missing=create_if_missing).hydrate(client)
+    modal.Volume.from_name("vol-fn-v2", create_if_missing=create_if_missing).hydrate(client)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("version", VERSIONS)
 async def test_volume_read_file_http_500_error(monkeypatch, servicer, client, version):
