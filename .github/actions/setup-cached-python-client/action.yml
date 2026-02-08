@@ -29,6 +29,9 @@ runs:
 
     - name: Install Python packages
       shell: bash
+      # Pin setuptools<82: v82.0.0 (2026-02-08) removed pkg_resources,
+      # which is needed at runtime by grpcio-tools (grpc_tools/protoc.py).
       run: |
+        uv pip install "setuptools<82"
         uv pip install -r requirements.dev.txt
       working-directory: ${{ inputs.working-directory }}
