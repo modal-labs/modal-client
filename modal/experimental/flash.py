@@ -10,6 +10,7 @@ from collections import defaultdict
 from typing import Any, Callable, Optional, Union
 from urllib.parse import urlparse
 
+from modal._clustered_functions import get_cluster_info
 from modal._partial_function import _PartialFunctionFlags
 from modal.cls import _Cls
 from modal.dict import _Dict
@@ -754,12 +755,20 @@ class _FlashContainerEntry:
     while exit handlers execute and the exit grace period elapses, before finally closing the tunnel.
     """
 
+    flash_manager: Optional[FlashManager]  # type: ignore
+
     def __init__(self, http_config: api_pb2.HTTPConfig):
         self.http_config: api_pb2.HTTPConfig = http_config
-        self.flash_manager: Optional[FlashManager] = None  # type: ignore
+        self.flash_manager = None
 
     def enter(self):
         if self.http_config != api_pb2.HTTPConfig():
+            try:
+                rank = get_cluster_info().rank
+                if rank != 0:
+                    return
+            except InvalidError:
+                pass
             try:
                 self.flash_manager = flash_forward(
                     self.http_config.port,
