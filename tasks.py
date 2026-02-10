@@ -373,34 +373,9 @@ def publish_base_images(
     )
 
 
-version_file_contents_template = '''\
-# Copyright Modal Labs 2026
-"""Supplies the current version of the modal client library."""
-
-__version__ = "{}"
-'''
-
-
-@task(
-    help={
-        "force": "Bump even if version file was modified in last commit",
-    },
-)
-def bump_dev_version(ctx, dry_run: bool = False, force: bool = False):
-    """Automatically increment the modal version, handling dev releases (but not other pre-releases).
-
-    This only has an effect when the version file was not modified by the most recent git commit
-    (unless `force` is True).
-
-    The version will always be in development after this runs. In the context of the modal client
-    release process, manually updating the version file to a non-development version will trigger
-    a "real" release. Otherwise we'll push the development version to PyPI.
-    """
-    version_file = "modal_version/__init__.py"
-    commit_files = ctx.run("git diff --name-only HEAD~1 HEAD", hide="out").stdout.splitlines()
-    if version_file in commit_files and not force:
-        print(f"Aborting: {version_file} was modified by the most recent commit")
-        return
+@task()
+def bump_dev_version(ctx, dry_run: bool = False):
+    """Automatically increment the modal version, handling dev releases (but not other pre-releases)."""
 
     from packaging.version import Version
 
@@ -417,101 +392,23 @@ def bump_dev_version(ctx, dry_run: bool = False, force: bool = False):
         # If the most recent commit was *not* a dev release, start the next cycle
         next_version = f"{v.major}.{v.minor}.{v.micro + 1}.dev0"
 
-    version_file_contents = version_file_contents_template.format(next_version)
+    version_file = "modal_version/__init__.py"
+    with open(version_file) as f:
+        current_file_contents = f.read()
+
+    version_pattern = r'__version__\s*=\s*["\']([^"\']+)["\']'
+    updated_file_contents = re.sub(version_pattern, f'__version__ = "{next_version}"', current_file_contents)
+
+    if updated_file_contents == current_file_contents:
+        raise RuntimeError(f"Unable to find the line defining __version__ in {version_file}")
+
     if dry_run:
         print(f"Would update {version_file} to the following:")
-        print(version_file_contents)
+        print(updated_file_contents)
         return
 
     with open(version_file, "w") as f:
-        f.write(version_file_contents)
-
-
-@task
-def get_release_tag(ctx):
-    """Optionally print a tag name for the current modal client version."""
-    from packaging.version import Version
-
-    from modal_version import __version__
-
-    v = Version(__version__)
-    if not v.is_devrelease:
-        print(f"v{v}")
-
-
-@task(
-    help={
-        "sha": "Commit SHA (defaults to the most recent commit)",
-    },
-)
-def update_changelog(ctx, sha: str = ""):
-    """Update CHANGELOG.md from GitHub PR description.
-
-    Parse a commit message for a GitHub PR number. Requires GITHUB_TOKEN environment variable."""
-    import requests
-
-    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout", warn=True)
-    if res.exited:
-        print("Failed to extract changelog update!")
-        print("Last 5 commits:")
-        res = ctx.run("git log --pretty=oneline -n 5")
-        return
-    m = re.search(r"\(#(\d+)\)$", res.stdout)
-    if m:
-        pull_number = m.group(1)
-    else:
-        print("Aborting: No PR number in commit message")
-        return
-
-    # Get the corresponding PR description via the GitHub API
-    url = f"https://api.github.com/repos/modal-labs/modal-client/pulls/{pull_number}"
-    headers = {"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}", "Accept": "application/vnd.github.v3+json"}
-    response = requests.get(url, headers=headers).json()
-    pr_description = response.get("body")
-    if pr_description is None:
-        print("Aborting: No PR description in response from GitHub API")
-        return
-
-    # Parse the PR description to get a changelog update, which is all text between
-    # the changelog header and any auto comments appended by Cursor
-
-    changelog_pattern = r"## Changelog\s*(.*?)(?:<!--\s*\w*CURSOR\w*\s*-->|$)"
-    m = re.search(changelog_pattern, pr_description, flags=re.DOTALL)
-    if m:
-        update = m.group(1)
-    else:
-        print("Aborting: No changelog section in PR description")
-        return
-
-    # Remove any HTML comments
-    comment_pattern = r"<!--.+?-->"
-    update = re.sub(comment_pattern, "", update, flags=re.DOTALL).strip()
-
-    if not update:
-        print("Aborting: Empty changelog in PR description")
-        return
-
-    # Read the existing changelog and split after the header so we can prepend new content
-    with open("CHANGELOG.md") as fid:
-        content = fid.read()
-    token_pattern = "<!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->"
-    m = re.search(token_pattern, content)
-    if m:
-        break_idx = m.span()[1]
-        header = content[:break_idx]
-        previous_changelog = content[break_idx:]
-    else:
-        print("Aborting: Could not find token in existing changelog to mark insertion spot")
-        return
-
-    # Build the new changelog and write it out
-    from modal_version import __version__
-
-    date = datetime.datetime.now().strftime("%Y-%m-%d")
-    new_section = f"#### {__version__} ({date})\n\n{update}"
-    final_content = f"{header}\n\n{new_section}\n{previous_changelog}"
-    with open("CHANGELOG.md", "w") as fid:
-        fid.write(final_content)
+        f.write(updated_file_contents)
 
 
 @task
