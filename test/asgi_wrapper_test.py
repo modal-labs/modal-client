@@ -296,6 +296,55 @@ async def test_cancellation_when_first_input_arrives():
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(1)
+async def test_request_state_isolation():
+    """Per-request mutations to scope['state'] should not leak between requests."""
+
+    async def asgi_app(scope, receive, send):
+        if scope["type"] == "lifespan":
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    scope["state"]["shared"] = "from_lifespan"
+                    await send({"type": "lifespan.startup.complete"})
+                elif message["type"] == "lifespan.shutdown":
+                    await send({"type": "lifespan.shutdown.complete"})
+                    return
+        else:
+            # Write per-request data into state
+            scope["state"]["request_path"] = scope["path"]
+            await send({"type": "http.response.start", "status": 200})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+    mock_manager = MockIOManager()
+    _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
+    wrapped_app, lifespan_manager = asgi_app_wrapper(asgi_app, mock_manager)
+
+    bt = asyncio.create_task(lifespan_manager.background_task())
+    await lifespan_manager.lifespan_startup()
+
+    # First request writes request_path="/first" into its state
+    scope1 = _asgi_get_scope("/first")
+    [_ async for _ in wrapped_app(scope1)]
+
+    # Second request writes request_path="/second" into its state
+    scope2 = _asgi_get_scope("/second")
+    [_ async for _ in wrapped_app(scope2)]
+
+    # Lifespan state should be available to both requests
+    assert scope1["state"]["shared"] == "from_lifespan"
+    assert scope2["state"]["shared"] == "from_lifespan"
+
+    # Per-request state should be isolated — first request's state must not be
+    # overwritten by the second request's mutations.
+    assert scope1["state"]["request_path"] == "/first"
+    assert scope2["state"]["request_path"] == "/second"
+
+    await lifespan_manager.lifespan_shutdown()
+    await bt
+
+
+@pytest.mark.asyncio
 async def test_lifespan_supported():
     lifespan_startup_complete = False
     lifespan_shutdown_complete = False

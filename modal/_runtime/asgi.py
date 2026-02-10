@@ -103,8 +103,8 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> tuple[Callable[..., Asyn
         if "state" in scope:
             # we don't expect users to set state in ASGI scope
             # this should be handled internally by the LifespanManager
-            raise ExecutionError("Unpexected state in ASGI scope")
-        scope["state"] = state
+            raise ExecutionError("Unexpected state in ASGI scope")
+        scope["state"] = dict(state)
         function_call_id = current_function_call_id()
         attempt_token = current_attempt_token()
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
