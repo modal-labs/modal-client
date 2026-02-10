@@ -31,6 +31,9 @@ def validate_http_server_config(
         raise InvalidError("The `startup_timeout` argument must be positive.")
     if exit_grace_period is not None and exit_grace_period < 0:
         raise InvalidError("The `exit_grace_period` argument must be non-negative.")
+    if exit_grace_period is not None and exit_grace_period > 25:
+        raise InvalidError("The `exit_grace_period` argument must not exceed 25 seconds.")
+
     if not proxy_regions:
         raise InvalidError("The `proxy_regions` argument must be non-empty.")
 
