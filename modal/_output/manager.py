@@ -177,7 +177,14 @@ class OutputManager(ABC):
 
     @abstractmethod
     def print(
-        self, renderable: Any, *, stderr: bool = False, highlight: bool = True, style: Optional[str] = None
+        self,
+        renderable: Any,
+        *,
+        stderr: bool = False,
+        highlight: bool = True,
+        style: Optional[str] = None,
+        sep: str = " ",
+        end: str = "\n",
     ) -> None:
         """Print a renderable to the console.
 
@@ -186,6 +193,8 @@ class OutputManager(ABC):
             stderr: If True, print to stderr instead of stdout.
             highlight: If True, apply syntax highlighting.
             style: Optional Rich style string (e.g., "green", "bold cyan").
+            sep: The separator to use between items.
+            end: The string to use at the end of the output.
         """
         ...
 
@@ -444,7 +453,14 @@ class DisabledOutputManager(OutputManager):
         return DisabledStatusRow()
 
     def print(
-        self, renderable: Any, *, stderr: bool = False, highlight: bool = True, style: Optional[str] = None
+        self,
+        renderable: Any,
+        *,
+        stderr: bool = False,
+        highlight: bool = True,
+        style: Optional[str] = None,
+        sep: str = " ",
+        end: str = "\n",
     ) -> None:
         pass
 

@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
 import asyncio
+import io
 from collections.abc import Sequence
+from csv import writer as csv_writer
 from json import dumps
 from typing import Optional, Union
 
@@ -14,7 +16,7 @@ from .._output.pty import get_app_logs_loop
 from .._utils.async_utils import synchronizer
 from ..client import _Client
 from ..environments import ensure_env
-from ..exception import NotFoundError
+from ..exception import InvalidError, NotFoundError
 from ..output import OutputManager
 
 
@@ -68,15 +70,26 @@ def display_table(
     columns: Sequence[Union[Column, str]],
     rows: Sequence[Sequence[Union[Text, str]]],
     json: bool = False,
+    csv: bool = False,
     title: str = "",
 ):
     def col_to_str(col: Union[Column, str]) -> str:
         return str(col.header) if isinstance(col, Column) else col
 
+    if csv and json:
+        raise InvalidError("Cannot output both JSON and CSV at the same time.")
+
     output = OutputManager.get()
     if json:
         json_data = [{col_to_str(col): _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
         output.print_json(dumps(json_data))
+    elif csv:
+        csv_buffer = io.StringIO()
+        writer = csv_writer(csv_buffer)
+        writer.writerow([col_to_str(col) for col in columns])
+        for row in rows:
+            writer.writerow([_plain(cell) for cell in row])
+        output.print(csv_buffer.getvalue(), end="")
     else:
         table = Table(*columns, title=title)
         for row in rows:
