@@ -10,6 +10,7 @@ from modal.output import OutputManager
 
 from . import run, shell as shell_module
 from .app import app_cli
+from .billing import billing_cli
 from .cluster import cluster_cli
 from .config import config_cli
 from .container import container_cli
@@ -117,7 +118,6 @@ async def setup(profile: Optional[str] = None):
 entrypoint_cli_typer.command("deploy", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
 entrypoint_cli_typer.command("shell")(shell_module.shell)
-entrypoint_cli_typer.command("dashboard")(dashboard)
 entrypoint_cli_typer.add_typer(launch_cli)
 
 # Deployments
@@ -138,6 +138,10 @@ entrypoint_cli_typer.add_typer(config_cli, rich_help_panel="Configuration")
 entrypoint_cli_typer.add_typer(environment_cli, rich_help_panel="Configuration")
 entrypoint_cli_typer.add_typer(profile_cli, rich_help_panel="Configuration")
 entrypoint_cli_typer.add_typer(token_cli, rich_help_panel="Configuration")
+
+# Observability
+entrypoint_cli_typer.add_typer(billing_cli, rich_help_panel="Observability")
+entrypoint_cli_typer.command("dashboard", rich_help_panel="Observability")(dashboard)
 
 # Hide setup from help as it's redundant with modal token new, but nicer for onboarding
 entrypoint_cli_typer.command("setup", help="Bootstrap Modal's configuration.", rich_help_panel="Onboarding")(setup)

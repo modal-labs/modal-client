@@ -1454,3 +1454,145 @@ def test_dashboard_browser_fails(servicer, set_env_client, mock_webbrowser):
     assert "Could not open web browser automatically" in result.stdout
     assert "Please open this URL in your browser" in result.stdout
     assert "https://modal.com/id/ap-xyz789" in result.stdout
+
+
+def test_billing_report(servicer, set_env_client):
+    # Test default table output with daily resolution
+    res = run_cli_command(["billing", "report", "--start", "2025-01-01"])
+    assert "ap-123" in res.stdout
+    assert "app1" in res.stdout
+    assert "test" in res.stdout
+    assert "100.123456" in res.stdout
+    # Daily resolution should show date only (YYYY-MM-DD)
+    assert "2025-01-01" in res.stdout
+    # Should NOT include time component in table for daily resolution
+    assert "2025-01-01T00:00:00" not in res.stdout
+
+    # Test hourly resolution - should include time without seconds
+    res = run_cli_command(["billing", "report", "--start", "2025-01-01", "-r", "h"])
+    assert "2025-01-01T00:00" in res.stdout
+    # Should NOT include seconds in table for hourly resolution
+    assert "2025-01-01T00:00:00" not in res.stdout
+
+    # Test JSON output - should include full ISO format
+    res = run_cli_command(["billing", "report", "--start", "2025-01-01", "--json"])
+    json_data = json.loads(res.stdout)
+    assert len(json_data) == 1
+    assert json_data[0]["Object ID"] == "ap-123"
+    assert json_data[0]["Description"] == "app1"
+    assert json_data[0]["Environment"] == "test"
+    assert json_data[0]["Cost"] == "100.123456"
+    # JSON output should have full ISO format
+    assert "2025-01-01T00:00:00" in json_data[0]["Interval Start"]
+
+    # Test CSV output
+    res = run_cli_command(["billing", "report", "--start", "2025-01-01", "--csv"])
+    assert "Object ID,Description,Environment,Interval Start,Cost" in res.stdout
+    assert "ap-123,app1,test," in res.stdout
+    # CSV output should have full ISO format
+    assert "2025-01-01T00:00:00" in res.stdout
+
+    # Test with tag names
+    res = run_cli_command(["billing", "report", "--start", "2025-01-01", "--tag-names", "team,project"])
+    assert "ap-123" in res.stdout
+    # Tags column should be present (may be JSON formatted)
+    assert "team" in res.stdout or "eng" in res.stdout
+
+    # Test mutually exclusive output options
+    res = run_cli_command(
+        ["billing", "report", "--start", "2025-01-01", "--json", "--csv"],
+        expected_exit_code=2,
+        expected_stderr="mutually exclusive",
+    )
+
+    # Test invalid resolution
+    res = run_cli_command(
+        ["billing", "report", "--start", "2025-01-01", "-r", "x"],
+        expected_exit_code=2,
+        expected_stderr="Resolution must be",
+    )
+
+    # Test relative date parsing
+    res = run_cli_command(["billing", "report", "--start", "yesterday"])
+    assert "ap-123" in res.stdout
+
+    res = run_cli_command(["billing", "report", "--start", "7 days ago"])
+    assert "ap-123" in res.stdout
+
+    res = run_cli_command(["billing", "report", "--start", "2 weeks ago"])
+    assert "ap-123" in res.stdout
+
+    res = run_cli_command(["billing", "report", "--start", "1 month ago"])
+    assert "ap-123" in res.stdout
+
+    # Test --for convenience option
+    res = run_cli_command(["billing", "report", "--for", "today"])
+    assert "ap-123" in res.stdout
+
+    res = run_cli_command(["billing", "report", "--for", "last week"])
+    assert "ap-123" in res.stdout
+
+    # Test --for with --start is mutually exclusive
+    res = run_cli_command(
+        ["billing", "report", "--for", "today", "--start", "2025-01-01"],
+        expected_exit_code=2,
+        expected_stderr="mutually exclusive",
+    )
+
+    # Test --for with --end is mutually exclusive
+    res = run_cli_command(
+        ["billing", "report", "--for", "today", "--end", "2025-01-01"],
+        expected_exit_code=2,
+        expected_stderr="mutually exclusive",
+    )
+
+    # Test invalid --for value
+    res = run_cli_command(
+        ["billing", "report", "--for", "next year"],
+        expected_exit_code=2,
+        expected_stderr="Unrecognized range",
+    )
+
+    # Test invalid date format
+    res = run_cli_command(
+        ["billing", "report", "--start", "not-a-date"],
+        expected_exit_code=2,
+        expected_stderr="Invalid date format",
+    )
+
+    # Test --tz with daily resolution is rejected (default resolution is daily)
+    res = run_cli_command(
+        ["billing", "report", "--start", "2025-01-01", "--tz", "America/New_York"],
+        expected_exit_code=2,
+        expected_stderr="requires hourly resolution",
+    )
+
+    # Test --tz with explicit daily resolution is also rejected
+    res = run_cli_command(
+        ["billing", "report", "--start", "2025-01-01", "-r", "d", "--tz", "5"],
+        expected_exit_code=2,
+        expected_stderr="requires hourly resolution",
+    )
+
+    # Test --tz with IANA timezone and hourly resolution
+    res = run_cli_command(["billing", "report", "--start", "2025-01-01", "-r", "h", "--tz", "America/New_York"])
+    assert "ap-123" in res.stdout
+    # UTC midnight (2025-01-01T00:00) should be displayed as 2024-12-31T19:00 in America/New_York (EST = UTC-5)
+    assert "2024-12-31T19:00" in res.stdout
+
+    # Test --tz local with --for and hourly resolution
+    res = run_cli_command(["billing", "report", "--for", "today", "-r", "h", "--tz", "local"])
+    assert "ap-123" in res.stdout
+
+    # Test --tz with integer offset and hourly resolution
+    res = run_cli_command(["billing", "report", "--for", "last month", "-r", "h", "--tz", "5"])
+    assert "ap-123" in res.stdout
+    # UTC midnight should be displayed as 05:00 with +5 offset
+    assert "2025-01-01T05:00" in res.stdout
+
+    # Test --tz with invalid timezone
+    res = run_cli_command(
+        ["billing", "report", "--start", "2025-01-01", "-r", "h", "--tz", "Not/A/Timezone"],
+        expected_exit_code=2,
+        expected_stderr="Unknown timezone",
+    )

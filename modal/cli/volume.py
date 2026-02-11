@@ -111,7 +111,7 @@ async def get(
     rich_help_panel="Management",
 )
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
     env = ensure_env(env)
     volumes = await _Volume.objects.list(environment_name=env)
     rows = []
@@ -165,7 +165,7 @@ async def ls(
             )
         columns = ["Filename", "Type", "Created/Modified", "Size"]
         title = f"Directory listing of '{path}' in '{volume_name}'"
-        display_table(columns, rows, json, title)
+        display_table(columns, rows, json, title=title)
 
 
 @volume_cli.command(

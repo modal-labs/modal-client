@@ -265,7 +265,16 @@ class RichOutputManager(OutputManager):
         """Add a status row to the current object tree."""
         return RichStatusRow(self._object_tree)
 
-    def print(self, renderable: Any, *, stderr: bool = False, highlight: bool = True, style: str | None = None) -> None:
+    def print(
+        self,
+        renderable: Any,
+        *,
+        stderr: bool = False,
+        highlight: bool = True,
+        style: str | None = None,
+        sep: str = " ",
+        end: str = "\n",
+    ) -> None:
         """Print a renderable to the console.
 
         Args:
@@ -273,13 +282,15 @@ class RichOutputManager(OutputManager):
             stderr: If True, print to stderr instead of stdout.
             highlight: If True, apply syntax highlighting.
             style: Optional Rich style string (e.g., "green", "bold cyan").
+            sep: The separator to use between items.
+            end: The string to use at the end of the output.
         """
         if self._quiet_mode:
             return
         if stderr:
-            self._stderr_console.print(renderable, highlight=highlight, style=style)
+            self._stderr_console.print(renderable, highlight=highlight, style=style, sep=sep, end=end)
         else:
-            self._console.print(renderable, highlight=highlight, style=style)
+            self._console.print(renderable, highlight=highlight, style=style, sep=sep, end=end)
 
     def print_error(self, error_text: str) -> None:
         """Print an error message to stderr in a panel, ignoring quiet mode.
