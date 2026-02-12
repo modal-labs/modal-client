@@ -76,6 +76,7 @@ def run(output_dir: str = None):
 
     base_title_level = "#"
     forced_module_docs = [
+        ("modal.billing", "modal.billing"),
         ("modal.call_graph", "modal.call_graph"),
         ("modal.container_process", "modal.container_process"),
         ("modal.gpu", "modal.gpu"),

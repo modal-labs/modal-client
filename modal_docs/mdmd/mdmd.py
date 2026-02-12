@@ -166,12 +166,20 @@ def object_is_private(name, obj):
 
 
 def default_filter(module, item_name):
-    """Include non-private objects defined in the module itself"""
+    """Include non-private objects defined in the module itself or its private counterpart."""
     item = getattr(module, item_name)
     if object_is_private(item_name, item) or inspect.ismodule(item):
         return False
     member_module = getattr(item, "__module__", type(item).__module__)
-    return member_module == module.__name__
+    if member_module == module.__name__:
+        return True
+    # Also allow items from the corresponding private module (e.g., modal._foo for modal.foo)
+    parts = module.__name__.rsplit(".", 1)
+    if len(parts) == 2:
+        private_module = f"{parts[0]}._{parts[1]}"
+    else:
+        private_module = f"_{parts[0]}"
+    return member_module == private_module
 
 
 def package_filter(module_prefix: str):
