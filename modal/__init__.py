@@ -9,6 +9,7 @@ if sys.version_info[:2] >= (3, 15):
 from modal_version import __version__
 
 try:
+    from . import billing
     from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from ._tunnel import Tunnel, forward
     from .app import App
@@ -79,6 +80,7 @@ __all__ = [
     "Volume",
     "asgi_app",
     "batched",
+    "billing",
     "concurrent",
     "current_function_call_id",
     "current_input_id",
