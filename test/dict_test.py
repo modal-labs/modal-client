@@ -54,6 +54,54 @@ def test_dict_ephemeral(servicer, client):
     assert servicer.n_dict_heartbeats == 2
 
 
+def test_dict_from_id(servicer, client):
+    # Create a dict and get its ID
+    with Dict.ephemeral(client=client) as d:
+        dict_id = d.object_id
+        d["key"] = "test_value"
+
+        # Use from_id to get a reference to the same dict (lazy hydration)
+        d2 = Dict.from_id(dict_id, client=client)
+
+        # Verify we can interact with the dict through the from_id reference
+        # (this triggers lazy hydration)
+        assert d2["key"] == "test_value"
+        d2["another_key"] = "another_value"
+        assert d["another_key"] == "another_value"
+
+        # After hydration, object_id should be available
+        assert d2.object_id == dict_id
+
+
+def test_dict_from_id_named(servicer, client):
+    # Test from_id with a named dict
+    name = "test-dict-from-id"
+    d = Dict.from_name(name, create_if_missing=True, client=client)
+    d.hydrate()
+    dict_id = d.object_id
+
+    # Use from_id to get a reference to the same dict (lazy hydration)
+    d2 = Dict.from_id(dict_id, client=client)
+
+    # Check metadata is populated correctly (triggers lazy hydration)
+    info = d2.info()
+    assert info.name == name
+    assert info.created_by == servicer.default_username
+
+    # After hydration, object_id should be available
+    assert d2.object_id == dict_id
+
+    # Verify operations work
+    d2["foo"] = 42
+    assert d["foo"] == 42
+
+
+def test_dict_from_id_not_found(servicer, client):
+    # Test that from_id raises NotFoundError for non-existent dict
+    with pytest.raises(NotFoundError):
+        Dict.from_id("di-nonexistent", client=client).hydrate()
+
+
 def test_dict_lazy_hydrate_named(client, servicer):
     with servicer.intercept() as ctx:
         d = Dict.from_name("foo", create_if_missing=True, client=client)

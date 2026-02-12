@@ -417,6 +417,48 @@ class _Dict(_Object, type_prefix="di"):
         )
 
     @staticmethod
+    def from_id(
+        dict_id: str,
+        client: Optional[_Client] = None,
+    ) -> "_Dict":
+        """Construct a Dict from an id and look up the Dict metadata.
+
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
+
+        The ID of a Dict object can be accessed using `.object_id`.
+
+        **Example:**
+
+        ```python notest
+        @app.function()
+        def my_worker(dict_id: str):
+            d = modal.Dict.from_id(dict_id)
+            d["key"] = "Hello from remote function!"
+
+        with modal.Dict.ephemeral() as d:
+            # Pass the dict ID to a remote function
+            my_worker.remote(d.object_id)
+            print(d["key"])  # "Hello from remote function!"
+        ```
+        """
+
+        async def _load(self: _Dict, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+            req = api_pb2.DictGetByIdRequest(dict_id=dict_id)
+            response = await load_context.client.stub.DictGetById(req)
+            self._hydrate(response.dict_id, load_context.client, response.metadata)
+
+        rep = f"Dict.from_id({dict_id!r})"
+        return _Dict._from_loader(
+            _load,
+            rep,
+            is_another_app=True,
+            hydrate_lazily=True,
+            load_context_overrides=LoadContext(client=client),
+        )
+
+    @staticmethod
     async def delete(
         name: str,
         *,
