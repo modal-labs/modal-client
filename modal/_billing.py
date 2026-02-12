@@ -40,8 +40,14 @@ async def _workspace_billing_report(
     partial `end` intervals will be excluded.
 
     Additional user-provided metadata can be included in the report if the objects have tags
-    and `tag_names` (i.e., keys) are specified in the request. Note that tags will be attributed
-    to the entire interval even if they were added or removed at some point within it.
+    and `tag_names` (i.e., keys) are specified in the request. Alternatively, pass `tag_names=["*"]`
+    to include all tags in the report. Note that tags will be attributed to the entire interval even
+    if they were added or removed at some point within it. If the tag name was not in use during an
+    interval, it will be absent from the tags dictionary in that output row.
+
+    In most cases, billing data will be available in the database that this API queries within
+    minutes, although there may be collection delays. If completeness is important for your use
+    case, we recommend leaving a buffer after the end of the query interval.
 
     """
     if client is None:

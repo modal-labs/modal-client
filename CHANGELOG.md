@@ -4,6 +4,13 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.3.3 (2026-02-12)
+
+- We've added a new `modal billing report` CLI and promoted the `modal.billing.workspace_billing_report` API to General Availability for all Team and Enterprise plan workspaces.
+- We've added `modal.Queue.from_id()` and `modal.Dict.from_id()` methods to support referencing a Queue or Dict by its object id.
+- Modal's async usage warnings are now enabled by default. These warnings will fire when using a [blocking interface on a Modal object](https://modal.com/docs/guide/async) in an async context. We've aimed to provide detailed and actionable suggestions for how to modify the code, which makes the warnings verbose. While we recommend addressing any warnings that pop up, as they can point to significant performance issues or bugs, we also provide a configuration option to disable them (`MODAL_ASYNC_WARNINGS=0` or `async_warnings = false` in the `.modal.toml`). Please report any apparent false positives or incorrect suggested fixes.
+- We've fixed a bug where the ASGI scope's `state` contents could leak between requests when using `@modal.asgi_app`.
+
 ### 1.3.2 (2026-01-30)
 
 - Modal objects now have a `.get_dashboard_url()` method. This method will return a URL for viewing that object on the Modal dashboard:
@@ -20,7 +27,7 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
   ```
 - You can now pass a Sandbox ID (`sb-xxxxx`) directly to the `modal container logs` CLI.
 - The `modal token info` CLI will now include the token name, if provided at token creation.
-- We fixed an issue where `modal.Cls.with_options()` (or the `with_concurrency()` / `with_batching()` methods) could sometimes use stale argument values when called repeatedly.
+- We've fixed an issue where `modal.Cls.with_options()` (or the `with_concurrency()` / `with_batching()` methods) could sometimes use stale argument values when called repeatedly.
 
 
 ### 1.3.1 (2026-01-22)
