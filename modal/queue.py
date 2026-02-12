@@ -397,6 +397,48 @@ class _Queue(_Object, type_prefix="qu"):
         )
 
     @staticmethod
+    def from_id(
+        queue_id: str,
+        client: Optional[_Client] = None,
+    ) -> "_Queue":
+        """Construct a Queue from an id and look up the Queue metadata.
+
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
+
+        The ID of a Queue object can be accessed using `.object_id`.
+
+        **Example:**
+
+        ```python notest
+        @app.function()
+        def my_consumer(queue_id: str):
+            queue = modal.Queue.from_id(queue_id)
+            queue.put("Hello from remote function!")
+
+        with modal.Queue.ephemeral() as q:
+            # Pass the queue ID to a remote function
+            my_consumer.remote(q.object_id)
+            print(q.get())  # "Hello from remote function!"
+        ```
+        """
+
+        async def _load(self: _Queue, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+            req = api_pb2.QueueGetByIdRequest(queue_id=queue_id)
+            response = await load_context.client.stub.QueueGetById(req)
+            self._hydrate(response.queue_id, load_context.client, response.metadata)
+
+        rep = f"Queue.from_id({queue_id!r})"
+        return _Queue._from_loader(
+            _load,
+            rep,
+            is_another_app=True,
+            hydrate_lazily=True,
+            load_context_overrides=LoadContext(client=client),
+        )
+
+    @staticmethod
     async def delete(name: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
         """mdmd:hidden
         Delete a named Queue.

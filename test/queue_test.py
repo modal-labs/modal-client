@@ -54,6 +54,54 @@ def test_queue_ephemeral(servicer, client):
     assert servicer.n_queue_heartbeats == 2
 
 
+def test_queue_from_id(servicer, client):
+    # Create a queue and get its ID
+    with Queue.ephemeral(client=client) as q:
+        queue_id = q.object_id
+        q.put("test_value")
+
+        # Use from_id to get a reference to the same queue (lazy hydration)
+        q2 = Queue.from_id(queue_id, client=client)
+
+        # Verify we can interact with the queue through the from_id reference
+        # (this triggers lazy hydration)
+        assert q2.get() == "test_value"
+        q2.put("another_value")
+        assert q.get() == "another_value"
+
+        # After hydration, object_id should be available
+        assert q2.object_id == queue_id
+
+
+def test_queue_from_id_named(servicer, client):
+    # Test from_id with a named queue
+    name = "test-queue-from-id"
+    q = Queue.from_name(name, create_if_missing=True, client=client)
+    q.hydrate()
+    queue_id = q.object_id
+
+    # Use from_id to get a reference to the same queue (lazy hydration)
+    q2 = Queue.from_id(queue_id, client=client)
+
+    # Check metadata is populated correctly (triggers lazy hydration)
+    info = q2.info()
+    assert info.name == name
+    assert info.created_by == servicer.default_username
+
+    # After hydration, object_id should be available
+    assert q2.object_id == queue_id
+
+    # Verify operations work
+    q2.put(42)
+    assert q.get() == 42
+
+
+def test_queue_from_id_not_found(servicer, client):
+    # Test that from_id raises NotFoundError for non-existent queue
+    with pytest.raises(NotFoundError):
+        Queue.from_id("qu-nonexistent", client=client).hydrate()
+
+
 @skip_macos("TODO(erikbern): this consistently fails on OSX. Unclear why.")
 @skip_windows("TODO(Jonathon): figure out why timeouts don't occur on Windows.")
 @pytest.mark.parametrize(

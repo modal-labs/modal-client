@@ -1096,6 +1096,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
         metadata = api_pb2.DictMetadata(name=request.deployment_name, creation_info=creation_info)
         await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id, metadata=metadata))
 
+    async def DictGetById(self, stream):
+        request: api_pb2.DictGetByIdRequest = await stream.recv_message()
+        # Look up the dict by ID
+        dict_name = None
+        for (name, _env), did in self.deployed_dicts.items():
+            if did == request.dict_id:
+                dict_name = name
+                break
+
+        if request.dict_id not in self.resource_creation_timestamps:
+            raise GRPCError(Status.NOT_FOUND, f"Dict {request.dict_id!r} not found")
+
+        timestamp = self.resource_creation_timestamps[request.dict_id]
+        creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
+        metadata = api_pb2.DictMetadata(name=dict_name or "", creation_info=creation_info)
+        await stream.send_message(api_pb2.DictGetByIdResponse(dict_id=request.dict_id, metadata=metadata))
+
     async def DictHeartbeat(self, stream):
         await stream.recv_message()
         self.n_dict_heartbeats += 1
@@ -1786,6 +1803,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
         creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
         metadata = api_pb2.QueueMetadata(name=request.deployment_name, creation_info=creation_info)
         await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id, metadata=metadata))
+
+    async def QueueGetById(self, stream):
+        request: api_pb2.QueueGetByIdRequest = await stream.recv_message()
+        # Look up the queue by ID
+        queue_name = None
+        for (name, _env), qid in self.deployed_queues.items():
+            if qid == request.queue_id:
+                queue_name = name
+                break
+
+        if request.queue_id not in self.resource_creation_timestamps:
+            raise GRPCError(Status.NOT_FOUND, f"Queue {request.queue_id!r} not found")
+
+        timestamp = self.resource_creation_timestamps[request.queue_id]
+        creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
+        metadata = api_pb2.QueueMetadata(name=queue_name or "", creation_info=creation_info)
+        await stream.send_message(api_pb2.QueueGetByIdResponse(queue_id=request.queue_id, metadata=metadata))
 
     async def QueueDelete(self, stream):
         request: api_pb2.QueueDeleteRequest = await stream.recv_message()
