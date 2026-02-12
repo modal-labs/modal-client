@@ -1083,6 +1083,12 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def open(
         self,
         path: str,
+    ) -> _FileIO[str]: ...
+
+    @overload
+    async def open(
+        self,
+        path: str,
         mode: "_typeshed.OpenTextMode",
     ) -> _FileIO[str]: ...
 
