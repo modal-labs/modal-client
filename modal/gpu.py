@@ -199,6 +199,9 @@ GPU_T = Union[None, str, _GPUConfig]
 
 
 def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
+    """mdmd:hidden
+    Parses a GPU config into a protobuf representation.
+    """
     if isinstance(value, _GPUConfig):
         return value._to_proto()
     elif isinstance(value, str):
