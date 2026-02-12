@@ -37,6 +37,7 @@ NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
 def network_file_system_mount_protos(
     validated_network_file_systems: list[tuple[str, "_NetworkFileSystem"]],
 ) -> list[api_pb2.SharedVolumeMount]:
+    """mdmd:hidden"""
     network_file_system_mounts = []
     # Relies on dicts being ordered (true as of Python 3.6).
     for path, volume in validated_network_file_systems:
