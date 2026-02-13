@@ -702,7 +702,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self, user_metadata: Optional[Union[str, dict[str, Any]]] = None
     ) -> SandboxConnectCredentials:
         """
-        [Alpha] Create a token for making HTTP connections to the Sandbox.
+        Create a token for making HTTP connections to the Sandbox.
 
         Also accepts an optional user_metadata string or dict to associate with the token. This metadata
         will be added to the headers by the proxy when forwarding requests to the Sandbox."""
