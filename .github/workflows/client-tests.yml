@@ -55,6 +55,8 @@ jobs:
         with:
           version: ${{ matrix.python-version }}
           working-directory: ${{ inputs.working-directory }}
+          no-build-isolation:
+            ${{ matrix.os == 'macos-15' && 'true' || 'false' }}
 
       - name: Build client package (installs all dependencies)
         run: uv pip install -e .
