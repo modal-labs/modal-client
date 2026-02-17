@@ -8,6 +8,11 @@ inputs:
   working-directory:
     required: true
     type: string
+  no-build-isolation:
+    description:
+      Use --no-build-isolation (needed for macOS ARM grpcio-tools builds)
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -30,11 +35,12 @@ runs:
 
     - name: Install Python packages
       shell: bash
-      # Pin setuptools<82: v82.0.0 (2026-02-08) removed pkg_resources,
-      # which is needed at runtime by grpcio-tools (grpc_tools/protoc.py).
-      # --no-build-isolation is required for `grpcio-tools` to use the local venv's
-      # pkg_resources
       run: |
-        uv pip install "setuptools<82"
-        uv pip install -r requirements.dev.txt --no-build-isolation
+        if [ "${{ inputs.no-build-isolation }}" == "true" ]; then
+          uv pip install "setuptools<82"
+          uv pip install -r requirements.dev.txt --no-build-isolation
+
+        else
+          uv pip install -r requirements.dev.txt
+        fi
       working-directory: ${{ inputs.working-directory }}
