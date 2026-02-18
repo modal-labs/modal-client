@@ -628,6 +628,9 @@ class _StreamReader(Generic[T]):
 
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
+# Larger buffer limit for the new exec path via the task command router.
+# This applies only to task_exec_stdin_write; legacy ContainerExec paths keep MAX_BUFFER_SIZE.
+TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE = 16 * 1024 * 1024
 
 
 class _StreamWriterThroughServer:
@@ -721,7 +724,7 @@ class _StreamWriterThroughCommandRouter:
         if isinstance(data, (bytes, bytearray, memoryview, str)):
             if isinstance(data, str):
                 data = data.encode("utf-8")
-            if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
+            if len(self._buffer) + len(data) > TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE:
                 raise BufferError("Buffer size exceed limit. Call drain to flush the buffer.")
             self._buffer.extend(data)
         else:
