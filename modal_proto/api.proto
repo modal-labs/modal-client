@@ -3461,6 +3461,15 @@ message VolumeDeleteRequest {
   string environment_name = 2 [deprecated=true];
 }
 
+message VolumeGetByIdRequest {
+  string volume_id = 1;
+}
+
+message VolumeGetByIdResponse {
+  string volume_id = 1;
+  VolumeMetadata metadata = 2;
+}
+
 message VolumeGetFile2Request {
   string volume_id = 1;
   string path = 2;
@@ -3937,6 +3946,7 @@ service ModalClient {
   rpc VolumeCopyFiles(VolumeCopyFilesRequest) returns (google.protobuf.Empty);
   rpc VolumeCopyFiles2(VolumeCopyFiles2Request) returns (google.protobuf.Empty);
   rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
+  rpc VolumeGetById(VolumeGetByIdRequest) returns (VolumeGetByIdResponse);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
   rpc VolumeGetFile2(VolumeGetFile2Request) returns (VolumeGetFile2Response);
   rpc VolumeGetOrCreate(VolumeGetOrCreateRequest) returns (VolumeGetOrCreateResponse);

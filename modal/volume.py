@@ -486,6 +486,50 @@ class _Volume(_Object, type_prefix="vo"):
             load_context_overrides=LoadContext(client=client, environment_name=environment_name),
         )
 
+    @staticmethod
+    def from_id(
+        volume_id: str,
+        client: Optional[_Client] = None,
+    ) -> "_Volume":
+        """Construct a Volume from an id and look up the Volume metadata.
+
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
+
+        The ID of a Volume object can be accessed using `.object_id`.
+
+        **Example:**
+
+        ```python notest
+        @app.function()
+        def my_worker(volume_id: str):
+            vol = modal.Volume.from_id(volume_id)
+            for entry in vol.listdir("/"):
+                print(entry.path)
+
+        with modal.Volume.ephemeral() as vol:
+            # Pass the volume ID to a remote function
+            my_worker.remote(vol.object_id)
+        ```
+        """
+
+        async def _load(
+            self: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
+            req = api_pb2.VolumeGetByIdRequest(volume_id=volume_id)
+            response = await load_context.client.stub.VolumeGetById(req)
+            self._hydrate(response.volume_id, load_context.client, response.metadata)
+
+        rep = f"Volume.from_id({volume_id!r})"
+        return _Volume._from_loader(
+            _load,
+            rep,
+            is_another_app=True,
+            hydrate_lazily=True,
+            load_context_overrides=LoadContext(client=client),
+        )
+
     @classmethod
     @asynccontextmanager
     async def ephemeral(
