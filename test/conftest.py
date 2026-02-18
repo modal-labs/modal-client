@@ -2299,6 +2299,24 @@ class MockClientServicer(api_grpc.ModalClientBase):
         response = api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id, version=volume_version, metadata=metadata)
         await stream.send_message(response)
 
+    async def VolumeGetById(self, stream):
+        request: api_pb2.VolumeGetByIdRequest = await stream.recv_message()
+        # Look up the volume by ID
+        volume_name = None
+        for (name, _env), vid in self.deployed_volumes.items():
+            if vid == request.volume_id:
+                volume_name = name
+                break
+
+        if request.volume_id not in self.resource_creation_timestamps:
+            raise GRPCError(Status.NOT_FOUND, f"Volume {request.volume_id!r} not found")
+
+        timestamp = self.resource_creation_timestamps[request.volume_id]
+        creation_info = api_pb2.CreationInfo(created_at=timestamp, created_by=self.default_username)
+        volume_version = self.volumes[request.volume_id].version if request.volume_id in self.volumes else None
+        metadata = api_pb2.VolumeMetadata(name=volume_name or "", creation_info=creation_info, version=volume_version)
+        await stream.send_message(api_pb2.VolumeGetByIdResponse(volume_id=request.volume_id, metadata=metadata))
+
     async def VolumeList(self, stream):
         request: api_pb2.VolumeListRequest = await stream.recv_message()
         volumes = []

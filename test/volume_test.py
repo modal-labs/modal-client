@@ -45,6 +45,44 @@ def test_volume_info(servicer, client):
     assert info.created_by == servicer.default_username
 
 
+def test_volume_from_id(servicer, client):
+    # Create a volume and get its ID
+    with modal.Volume.ephemeral(client=client) as vol:
+        volume_id = vol.object_id
+
+        # Use from_id to get a reference to the same volume (lazy hydration)
+        vol2 = modal.Volume.from_id(volume_id, client=client)
+
+        # After hydration, object_id should be available
+        vol2.hydrate()
+        assert vol2.object_id == volume_id
+
+
+def test_volume_from_id_named(servicer, client):
+    # Test from_id with a named volume
+    name = "test-volume-from-id"
+    vol = modal.Volume.from_name(name, create_if_missing=True, client=client)
+    vol.hydrate()
+    volume_id = vol.object_id
+
+    # Use from_id to get a reference to the same volume (lazy hydration)
+    vol2 = modal.Volume.from_id(volume_id, client=client)
+
+    # Check metadata is populated correctly (triggers lazy hydration)
+    info = vol2.info()
+    assert info.name == name
+    assert info.created_by == servicer.default_username
+
+    # After hydration, object_id should be available
+    assert vol2.object_id == volume_id
+
+
+def test_volume_from_id_not_found(servicer, client):
+    # Test that from_id raises NotFoundError for non-existent volume
+    with pytest.raises(NotFoundError):
+        modal.Volume.from_id("vo-nonexistent", client=client).hydrate()
+
+
 @pytest.mark.parametrize("read_only", [True, False])
 @pytest.mark.parametrize("version", VERSIONS)
 def test_volume_mount(client, servicer, version, read_only):
