@@ -35,7 +35,7 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
         async def _load(
             self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
-            # hydration doesn't actually do much apart from validating the existance of the id
+            # hydration doesn't actually do much apart from validating the existence of the id
             # which is implicitly done by trying to start a sandbox from the snapshot as well
             resp: api_pb2.SandboxSnapshotGetResponse = await load_context.client.stub.SandboxSnapshotGet(
                 api_pb2.SandboxSnapshotGetRequest(snapshot_id=sandbox_snapshot_id)
