@@ -192,6 +192,28 @@ async def test_volume_get(client, tmp_path, version, file_contents_size):
             ...
 
 
+@pytest.mark.asyncio
+async def test_volume2_get_block_aligned_trailing_zero_regression(client, tmp_path):
+    await modal.Volume.objects.create.aio("my-vol", client=client, version=api_pb2.VOLUME_FS_VERSION_V2)
+    vol = await modal.Volume.from_name("my-vol").hydrate.aio(client=client)
+
+    file_contents_size = 2 * BLOCK_SIZE
+    file_contents = b"A" * (file_contents_size - 2) + b"B\0"
+    file_path = "foo.bin"
+    local_file_path = tmp_path / file_path
+    local_file_path.write_bytes(file_contents)
+
+    async with vol.batch_upload() as batch:
+        batch.put_file(local_file_path, file_path)
+
+    data = b""
+    async for chunk in vol.read_file.aio(file_path):
+        data += chunk
+
+    assert len(data) == file_contents_size
+    assert data == file_contents
+
+
 def test_volume_reload(client, servicer):
     with modal.Volume.ephemeral(client=client) as vol:
         # Note that in practice this will not work unless run in a task.

@@ -2551,10 +2551,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 if block_data is not None and valid_put_response:
                     assert len(block_data) <= BLOCK_SIZE
 
-                    if block_index == len(file.blocks) - 1:
-                        expanded_data = block_data.ljust(file.size % BLOCK_SIZE, b"\0")
-                    else:
-                        expanded_data = block_data.ljust(BLOCK_SIZE, b"\0")
+                    # `block_data` may be rstripped when gathering block digests.
+                    # Re-expand every block to its expected logical size.
+                    block_start = block_index * BLOCK_SIZE
+                    expected_block_len = min(BLOCK_SIZE, max(0, file.size - block_start))
+                    expanded_data = block_data.ljust(expected_block_len, b"\0")
 
                     blocks.append(expanded_data)
                 else:
