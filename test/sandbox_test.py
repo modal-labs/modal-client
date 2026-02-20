@@ -888,7 +888,6 @@ detach_error_funcs = {
     "snapshot_filesystem": lambda sb: sb.snapshot_filesystem(),
     "_experimental_mount_image": lambda sb: sb._experimental_mount_image("/mnt", None),
     "_experimental_snapshot_directory": lambda sb: sb._experimental_snapshot_directory("/tmp"),
-    "wait": lambda sb: sb.wait(),
     "tunnels": lambda sb: sb.tunnels(),
     "create_connect_token": lambda sb: sb.create_connect_token(),
     "reload_volumes": lambda sb: sb.reload_volumes(),
@@ -905,6 +904,7 @@ detach_error_funcs = {
     "stderr": lambda sb: sb.stderr,
     "stdin": lambda sb: sb.stdin,
 }
+ALLOW_AFTER_DETACH = {"detach", "returncode", "wait"}
 
 
 def test_func_map_covers_all_public_methods_and_properties():
@@ -913,8 +913,7 @@ def test_func_map_covers_all_public_methods_and_properties():
         for attr in inspect.classify_class_attrs(modal.sandbox._Sandbox)
         if attr.defining_class == modal.sandbox._Sandbox
         and (
-            not (attr.name.startswith("_") or attr.name in {"detach", "returncode"})
-            or attr.name.startswith("_experimental")
+            not (attr.name.startswith("_") or attr.name in ALLOW_AFTER_DETACH) or attr.name.startswith("_experimental")
         )
         and attr.kind in ("method", "property")
     )
@@ -940,3 +939,13 @@ def test_detach_twice(servicer, client, app):
     sb = Sandbox.create(app=app)
     sb.detach()
     sb.detach()
+
+
+@skip_non_subprocess
+def test_sandbox_wait_allowed_after_detached(app, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 1", app=app)
+    sb.terminate()
+    sb.detach()
+
+    sb.wait()
+    assert sb.returncode != 0
