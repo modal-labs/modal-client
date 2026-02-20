@@ -644,21 +644,57 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return image
 
-    async def _experimental_mount_image(self, path: Union[PurePosixPath, str], image: Optional[_Image]):
-        """Mount an Image at a path in the Sandbox filesystem."""
+    async def mount_image(self, path: Union[PurePosixPath, str], image: _Image):
+        """Mount an Image at a specified path in a running Sandbox.
 
-        image_id = None
+        `path` should be a directory. If it doesn't exist it will be created. If it exists and contains
+        data, the previous directory will be replaced by the mount.
 
-        if image:
-            if not image._object_id:
-                # FIXME
-                raise InvalidError("Image has not been built.")
+        The `image` argument currently only supports Images that are either:
+        - prebuilt using `image.build()`
+        - referenced by image id, e.g. `Image.from_id(...)`
+        - filesystem/directory snapshots e.g. created by `.snapshot_directory()`
+        or `.snapshot_filesystem()`"
+
+        Usage:
+        ```py notest
+        user_project_snapshot: Image = sandbox_session_1.snapshot_directory("/user_project")
+
+        # You can later mount this snapshot to another Sandbox:
+        sandbox_session_2 = modal.Sandbox.create(...)
+        sandbox_session_2.mount_image("/user_project", user_project_snapshot)
+        sandbox_session_2.ls("/user_project")
+        ```
+        """
+
+        if not isinstance(image, _Image):
+            raise TypeError(f"Sandbox.mount_image(image=...) expects an Image object, got {image!r}")
+
+        if image._mount_layers:
+            raise InvalidError(
+                "Sandbox.mount_image() only supports pre-built images. When using `add_local*` methods, "
+                "specify `copy=True` and call `.build()` before passing the image to `mount_image()`:\n\nE.g.\n"
+                'img = modal.Image.debian_slim().add_local_file("foo", "/foo", copy=True).build(app)\n'
+                "sandbox.mount_image(path, img)"
+            )
+        if image._is_empty:
+            image_id = ""
+        elif image._object_id:
             image_id = image._object_id
         else:
-            image_id = ""  # empty string indicates mount an empty dir
+            raise InvalidError(
+                "Sandbox.mount_image() currently only supports Images that are either:\n"
+                "- prebuilt using `image.build()`\n"
+                "- referenced by id, e.g. `Image.from_id()`\n"
+                "- filesystem/directory snapshots e.g. created by `.snapshot_directory()` "
+                "or `.snapshot_filesystem()`\n"
+            )
 
         task_id = await self._get_task_id()
         if (command_router_client := await self._get_command_router_client(task_id)) is None:
+            # It used to be the case that sandboxes could either be controlled through the control
+            # plane or through direct connections, but nowadays they should always use direct control
+            # so this error should be unexpected
             raise InvalidError("Mounting directories requires direct Sandbox control - please contact Modal support.")
 
         posix_path = PurePosixPath(path)
@@ -669,8 +705,29 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskMountDirectoryRequest(task_id=task_id, path=path_bytes, image_id=image_id)
         await command_router_client.mount_image(req)
 
-    async def _experimental_snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
-        """Snapshot local changes to a previously mounted Image, creating a new Image."""
+    async def _experimental_mount_image(self, path: Union[PurePosixPath, str], image: Optional[_Image]):
+        """Deprecated alias for `Sandbox.mount_image()`."""
+        deprecation_warning(
+            (2026, 2, 20),
+            "The `Sandbox._experimental_mount_image()` method is deprecated. Use `Sandbox.mount_image()` instead.",
+        )
+        if image is None:
+            image = _Image._from_scratch()
+        await self.mount_image(path, image)
+
+    async def snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
+        """Snapshot a directory in a running Sandbox, creating a new Image with its content.
+
+        Usage:
+        ```py notest
+        user_project_snapshot: Image = sandbox_session_1.snapshot_directory("/user_project")
+
+        # You can later mount this snapshot to another Sandbox:
+        sandbox_session_2 = modal.Sandbox.create(...)
+        sandbox_session_2.mount_image("/user_project", user_project_snapshot)
+        sandbox_session_2.ls("/user_project")
+        ```
+        """
 
         task_id = await self._get_task_id()
         if (command_router_client := await self._get_command_router_client(task_id)) is None:
@@ -686,6 +743,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskSnapshotDirectoryRequest(task_id=task_id, path=path_bytes)
         res = await command_router_client.snapshot_directory(req)
         return _Image._new_hydrated(res.image_id, self._client, None)
+
+    async def _experimental_snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
+        """Deprecated alias for `Sandbox.snapshot_directory()`."""
+        deprecation_warning(
+            (2026, 2, 20),
+            "The `Sandbox._experimental_snapshot_directory()` method is deprecated. "
+            "Use `Sandbox.snapshot_directory()` instead.",
+        )
+        return await self.snapshot_directory(path)
 
     # Live handle methods
 
