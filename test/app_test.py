@@ -518,3 +518,9 @@ def test_app_set_tags(servicer, client):
 
     request = ctx.pop_request("AppSetTags")
     assert request.tags == tags
+
+
+def test_dashboard_url(client):
+    app = App(include_source=False)
+    with app.run(client=client):
+        assert app.get_dashboard_url() == f"https://modal.com/id/{app.app_id}"

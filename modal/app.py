@@ -324,6 +324,11 @@ class _App:
         app._running_app = RunningApp(response.app_id, interactive=False)
         return app
 
+    async def get_dashboard_url(self) -> str:
+        if self._app_id is None:
+            raise InvalidError("App is not running")
+        return f"https://modal.com/id/{self._app_id}"
+
     def set_description(self, description: str):
         """mdmd:hidden
         Set the description of the App before it starts running.
