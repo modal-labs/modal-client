@@ -21,6 +21,7 @@ from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
 from .._grpc_client import grpc_error_converter
+from .._utils.grpc_utils import PermanentCloseableChannel
 from .async_utils import aclosing
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel
 
@@ -157,7 +158,7 @@ class TaskCommandRouterClient:
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
 
-        channel = grpclib.client.Channel(
+        channel = PermanentCloseableChannel(
             host,
             port,
             ssl=ssl_context,
@@ -165,6 +166,7 @@ class TaskCommandRouterClient:
                 http2_connection_window_size=64 * 1024 * 1024,  # 64 MiB
                 http2_stream_window_size=64 * 1024 * 1024,  # 64 MiB
             ),
+            closed_error_message="Unable to perform operation on a detached sandbox",
         )
 
         await connect_channel(channel)

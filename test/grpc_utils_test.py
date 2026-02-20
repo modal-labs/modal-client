@@ -2,6 +2,7 @@
 import os
 import pytest
 import time
+import urllib.parse
 
 from google.protobuf.any_pb2 import Any
 from grpclib import GRPCError, Status
@@ -11,12 +12,13 @@ from modal import __version__
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
     CustomProtoStatusDetailsCodec,
+    PermanentCloseableChannel,
     Retry,
     connect_channel,
     create_channel,
     get_server_retry_policy,
 )
-from modal.exception import InvalidError
+from modal.exception import ClientClosed, InvalidError
 from modal_proto import api_grpc, api_pb2, task_command_router_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -333,3 +335,27 @@ async def test_retry_transient_errors_grpc_no_retries(servicer, client, monkeypa
         await client.stub.BlobCreate(req)
 
     assert servicer.blob_create_metadata.get("x-throttle-retry-attempt") == "0"
+
+
+@skip_windows_unix_socket
+@pytest.mark.asyncio
+async def test_PermanentCloseableChannel(servicer):
+    error_msg = "Sandbox detached"
+    metadata = {
+        "x-modal-client-type": str(api_pb2.CLIENT_TYPE_CONTAINER),
+        "x-modal-python-version": "3.12.1",
+        "x-modal-client-version": __version__,
+    }
+    assert servicer.container_addr.startswith("unix://")
+    o = urllib.parse.urlparse(servicer.container_addr)
+    channel = PermanentCloseableChannel(path=o.path, closed_error_message=error_msg)
+
+    client_stub = api_grpc.ModalClientStub(channel)
+    req = api_pb2.BlobCreateRequest()
+    resp = await client_stub.BlobCreate(req, metadata=metadata)
+    assert len(resp.blob_ids) > 0
+
+    channel.close()
+
+    with pytest.raises(ClientClosed, match=error_msg):
+        await client_stub.BlobCreate(req, metadata=metadata)
