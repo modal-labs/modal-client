@@ -942,10 +942,22 @@ def test_detach_twice(servicer, client, app):
 
 
 @skip_non_subprocess
+def test_sandbox_terminate_wait(app, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with servicer.intercept() as ctx:
+        exit_code = sb.terminate(wait=True)
+        req = ctx.pop_request("SandboxWait")
+
+    assert req.sandbox_id == sb.object_id
+    assert exit_code != 0
+
+
+@skip_non_subprocess
 def test_sandbox_wait_allowed_after_detached(app, servicer):
-    sb = Sandbox.create("bash", "-c", "sleep 1", app=app)
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
     sb.terminate()
     sb.detach()
 
-    sb.wait()
+    sb.wait(raise_on_termination=False)
     assert sb.returncode != 0

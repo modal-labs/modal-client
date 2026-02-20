@@ -764,12 +764,32 @@ class _Sandbox(_Object, type_prefix="sb"):
             ),
         )
 
-    async def terminate(self) -> None:
+    @overload
+    async def terminate(
+        self,
+        *,
+        wait: Literal[True],
+    ) -> int: ...
+
+    @overload
+    async def terminate(
+        self,
+        *,
+        wait: Literal[False] = False,
+    ) -> None: ...
+
+    async def terminate(
+        self,
+        *,
+        wait: bool = False,  # wait for terminate to complete and return the exit code.
+    ) -> int | None:
         """Terminate Sandbox execution.
 
         This is a no-op if the Sandbox has already finished running."""
-
         await self._client.stub.SandboxTerminate(api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id))
+        if wait:
+            await self.wait(raise_on_termination=False)
+            return self.returncode
 
     async def poll(self) -> Optional[int]:
         """Check if the Sandbox has finished running.
