@@ -23,7 +23,7 @@ from grpclib.encoding.base import StatusDetailsCodecBase
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
-from modal.exception import ConnectionError
+from modal.exception import ClientClosed, ConnectionError
 from modal_proto import api_pb2
 from modal_version import __version__
 
@@ -63,6 +63,22 @@ class Subchannel:
             # AbstractHandler doesn't have connection_lost, but Handler does
             return not self.protocol.handler.connection_lost  # type: ignore
         return True
+
+
+class PermanentCloseableChannel(grpclib.client.Channel):
+    def __init__(self, *args, closed_error_message: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__closed = False
+        self.__closed_error_message = closed_error_message
+
+    async def __connect__(self):
+        if self.__closed:
+            raise ClientClosed(self.__closed_error_message)
+        return await super().__connect__()
+
+    def close(self):
+        self.__closed = True
+        return super().close()
 
 
 RETRYABLE_GRPC_STATUS_CODES = [

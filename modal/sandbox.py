@@ -35,7 +35,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .container_process import _ContainerProcess
-from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
+from .exception import ClientClosed, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
 from .image import _Image
@@ -116,6 +116,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _tunnels: Optional[dict[int, Tunnel]]
     _enable_snapshot: bool
     _command_router_client: Optional[TaskCommandRouterClient]
+    _attached: bool
 
     @staticmethod
     def _default_pty_info() -> api_pb2.PTYInfo:
@@ -515,6 +516,40 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._tunnels = None
         self._enable_snapshot = False
         self._command_router_client = None
+
+    def _initialize_from_other(self, other):
+        super()._initialize_from_other(other)
+        self._attached = other._attached
+
+    def _initialize_from_empty(self):
+        super()._initialize_from_empty()
+        self._attached = True
+
+    async def detach(self):
+        """Disconnects your client from the sandbox and cleans up resources assoicated with the connection.
+
+        Be sure to only call `detach` when you are done interacting with the sandbox. After calling `detach`,
+        any operation using the Sandbox object is not guaranteed to work anymore. If you want to continue interacting
+        with a running sandbox, use `Sandbox.from_id` to get a new Sandbox object.
+        """
+        if not self._attached:
+            return
+        if self._command_router_client is not None:
+            await self._command_router_client.close()
+        self._attached = False
+
+    @property
+    def _client(self):
+        self._ensure_attached()
+        return self.__client
+
+    @_client.setter
+    def _client(self, value):
+        self.__client = value
+
+    def _ensure_attached(self):
+        if not self._attached:
+            raise ClientClosed("Unable to perform operation on a detached sandbox")
 
     @staticmethod
     async def from_name(
@@ -1153,7 +1188,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         [`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stdout stream.
         """
-
+        self._ensure_attached()
         return self._stdout
 
     @property
@@ -1161,7 +1196,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         """[`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the Sandbox's stderr stream.
         """
-
+        self._ensure_attached()
         return self._stderr
 
     @property
@@ -1170,7 +1205,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         [`StreamWriter`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamwriter) for
         the Sandbox's stdin stream.
         """
-
+        self._ensure_attached()
         return self._stdin
 
     @property

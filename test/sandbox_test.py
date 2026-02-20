@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import hashlib
+import inspect
 import pytest
 import time
 import typing
@@ -7,6 +8,7 @@ from collections import deque
 from pathlib import Path
 from unittest import mock
 
+import modal
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal._utils.async_utils import synchronizer
 from modal.container_process import ContainerProcess, _ContainerProcess
@@ -878,3 +880,63 @@ def test_experimental_snapshot_directory(servicer, client, exec_backend, app):
         sb._experimental_snapshot_directory("relative/path")
 
     sb.terminate()
+
+
+detach_error_funcs = {
+    "get_tags": lambda sb: sb.get_tags(),
+    "set_tags": lambda sb: sb.set_tags({"hello": "world"}),
+    "snapshot_filesystem": lambda sb: sb.snapshot_filesystem(),
+    "_experimental_mount_image": lambda sb: sb._experimental_mount_image("/mnt", None),
+    "_experimental_snapshot_directory": lambda sb: sb._experimental_snapshot_directory("/tmp"),
+    "wait": lambda sb: sb.wait(),
+    "tunnels": lambda sb: sb.tunnels(),
+    "create_connect_token": lambda sb: sb.create_connect_token(),
+    "reload_volumes": lambda sb: sb.reload_volumes(),
+    "terminate": lambda sb: sb.terminate(),
+    "poll": lambda sb: sb.poll(),
+    "exec": lambda sb: sb.exec("echo", "hello"),
+    "_experimental_snapshot": lambda sb: sb._experimental_snapshot(),
+    "open": lambda sb: sb.open("/hello.txt"),
+    "ls": lambda sb: sb.ls("/mnt"),
+    "mkdir": lambda sb: sb.mkdir("/world"),
+    "rm": lambda sb: sb.rm("/world"),
+    "watch": lambda sb: next(sb.watch("/world")),
+    "stdout": lambda sb: sb.stdout,
+    "stderr": lambda sb: sb.stderr,
+    "stdin": lambda sb: sb.stdin,
+}
+
+
+def test_func_map_covers_all_public_methods_and_properties():
+    attributes_to_raise_on_detached = set(
+        attr.name
+        for attr in inspect.classify_class_attrs(modal.sandbox._Sandbox)
+        if attr.defining_class == modal.sandbox._Sandbox
+        and (
+            not (attr.name.startswith("_") or attr.name in {"detach", "returncode"})
+            or attr.name.startswith("_experimental")
+        )
+        and attr.kind in ("method", "property")
+    )
+    assert set(detach_error_funcs) == attributes_to_raise_on_detached
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("name", detach_error_funcs)
+def test_detach_errors(servicer, client, app, name):
+    """Check that detached sandbox actually raise."""
+    sb = Sandbox.create(app=app)
+    sb.detach()
+
+    func = detach_error_funcs[name]
+
+    with pytest.raises(modal.exception.ClientClosed):
+        func(sb)
+
+
+@skip_non_subprocess
+def test_detach_twice(servicer, client, app):
+    """Calling detach twice does **not** raise errors."""
+    sb = Sandbox.create(app=app)
+    sb.detach()
+    sb.detach()
