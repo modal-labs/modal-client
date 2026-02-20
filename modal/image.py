@@ -418,6 +418,7 @@ class _Image(_Object, type_prefix="im"):
     ]  # added as mounts on any container referencing the Image, see `def _mount_layers`
     _added_python_source_set: frozenset[str]  # used to warn about missing mounts during auto-mount deprecation
     _metadata: Optional[api_pb2.ImageMetadata] = None  # set on hydration, private for now
+    _is_empty: bool
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
@@ -425,6 +426,7 @@ class _Image(_Object, type_prefix="im"):
         self._deferred_mounts = ()
         self._added_python_source_set = frozenset()
         self.force_build = False
+        self._is_empty = False
 
     def _initialize_from_other(self, other: "_Image"):
         self.inside_exceptions = other.inside_exceptions
@@ -432,6 +434,7 @@ class _Image(_Object, type_prefix="im"):
         self._serve_mounts = other._serve_mounts
         self._deferred_mounts = other._deferred_mounts
         self._added_python_source_set = other._added_python_source_set
+        self._is_empty = other._is_empty
 
     def _get_metadata(self) -> Optional[Message]:
         return self._metadata
@@ -720,6 +723,12 @@ class _Image(_Object, type_prefix="im"):
             frozenset(), *(base._added_python_source_set for base in base_images.values())
         )
         return obj
+
+    @staticmethod
+    def _from_scratch() -> "_Image":
+        image = _Image.from_registry("scratch")
+        image._is_empty = True
+        return image
 
     def _copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """mdmd:hidden

@@ -12,7 +12,7 @@ import modal
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal._utils.async_utils import synchronizer
 from modal.container_process import ContainerProcess, _ContainerProcess
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
 
@@ -829,7 +829,7 @@ def test_sandbox_stdout_read_incremental_iter(servicer, client, by_line, text):
 
 @skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_experimental_mount_image(servicer, client, exec_backend, app, monkeypatch):
+def test_mount_image(servicer, client, exec_backend, app, monkeypatch):
     """Test mounting an image at a path in the sandbox."""
     captured_requests = []
     original = FakeTaskCommandRouterClient.mount_image
@@ -840,44 +840,125 @@ def test_experimental_mount_image(servicer, client, exec_backend, app, monkeypat
 
     monkeypatch.setattr(FakeTaskCommandRouterClient, "mount_image", _mount_image, raising=True)
 
-    image = Image.debian_slim()
-    sb = Sandbox.create(image=image, app=app)
+    sb = Sandbox.create(app=app)
 
-    # Test mounting an actual image
-    sb._experimental_mount_image("/cache", image)
+    # Test mounting a prebuilt image
+    prebuilt_image = Image.debian_slim().run_commands("echo prebuilt").build(app)
+    sb.mount_image("/prebuilt", prebuilt_image)
 
     assert len(captured_requests) == 1
-    assert captured_requests[0].path == b"/cache"
-    assert captured_requests[0].image_id == image.object_id
+    assert captured_requests[0].path == b"/prebuilt"
+    assert captured_requests[0].image_id == prebuilt_image.object_id
 
-    # Test mounting an empty directory (image=None)
-    sb._experimental_mount_image("/empty", None)
+    # Test mounting an image referenced by id
+    image_from_id = Image.from_id(prebuilt_image.object_id, client=client)
+    sb.mount_image("/from-id", image_from_id)
 
     assert len(captured_requests) == 2
-    assert captured_requests[1].path == b"/empty"
-    assert captured_requests[1].image_id == ""  # empty string for empty dir
+    assert captured_requests[1].path == b"/from-id"
+    assert captured_requests[1].image_id == prebuilt_image.object_id
+
+    # Test mounting a snapshot image from the current session
+    snapshot_source = Sandbox.create(app=app)
+    snapshot_image = snapshot_source.snapshot_filesystem()
+    snapshot_source.terminate()
+
+    sb.mount_image("/snapshot", snapshot_image)
+
+    assert len(captured_requests) == 3
+    assert captured_requests[2].path == b"/snapshot"
+    assert captured_requests[2].image_id == snapshot_image.object_id
+
+    # Test validation: image created with non-copy add_local_file should raise
+    image_with_mount_layer = prebuilt_image.add_local_file(Path(__file__), "/tmp/sandbox_test.py")
+    sb_with_mount_layer = Sandbox.create(image=image_with_mount_layer, app=app)
+    sb_with_mount_layer.terminate()
+
+    with pytest.raises(InvalidError) as exc_info:
+        sb.mount_image("/mount-layer", image_with_mount_layer)
+
+    assert "add_local*" in str(exc_info.value)
+    assert "copy=True" in str(exc_info.value)
+    assert ".build()" in str(exc_info.value)
+    assert len(captured_requests) == 3
+
+    # Test validation: unbuilt images should raise with guidance
+    unbuilt_image = Image.debian_slim()
+    with pytest.raises(InvalidError) as exc_info:
+        sb.mount_image("/unbuilt", unbuilt_image)
+    assert "currently only supports Images that are either" in str(exc_info.value)
+    assert len(captured_requests) == 3
+
+    # Test validation: argument must be an Image instance
+    with pytest.raises(TypeError, match="expects an Image"):
+        sb.mount_image("/none", None)
+    with pytest.raises(TypeError, match="expects an Image"):
+        sb.mount_image("/bad-type", "not-an-image")  # type: ignore[arg-type]
+    assert len(captured_requests) == 3
+
+    # Deprecated alias should proxy to mount_image with a warning.
+    with pytest.warns(DeprecationError, match="_experimental_mount_image"):
+        sb._experimental_mount_image("/deprecated-alias", prebuilt_image)
+    assert len(captured_requests) == 4
+    assert captured_requests[3].path == b"/deprecated-alias"
+    assert captured_requests[3].image_id == prebuilt_image.object_id
+
+    # Deprecated alias should preserve backward compatibility for `image=None`.
+    with pytest.warns(DeprecationError, match="_experimental_mount_image"):
+        sb._experimental_mount_image("/deprecated-alias-none", None)
+    assert len(captured_requests) == 5
+    assert captured_requests[4].path == b"/deprecated-alias-none"
+    assert captured_requests[4].image_id == ""
 
     # Test validation: non-absolute path should raise
     with pytest.raises(InvalidError, match="must be absolute"):
-        sb._experimental_mount_image("relative/path", None)
+        sb.mount_image("relative/path", prebuilt_image)
 
     sb.terminate()
 
 
 @skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_experimental_snapshot_directory(servicer, client, exec_backend, app):
+def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, exec_backend, app, monkeypatch):
+    """Test mounting an explicit empty image via private Image._from_scratch()."""
+    captured_requests = []
+    original = FakeTaskCommandRouterClient.mount_image
+
+    async def _mount_image(self, request):
+        captured_requests.append(request)
+        return await original(self, request)
+
+    monkeypatch.setattr(FakeTaskCommandRouterClient, "mount_image", _mount_image, raising=True)
+
+    sb = Sandbox.create(app=app)
+    sb.mount_image("/empty", Image._from_scratch())
+
+    assert len(captured_requests) == 1
+    assert captured_requests[0].path == b"/empty"
+    assert captured_requests[0].image_id == ""
+
+    sb.terminate()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_snapshot_directory(servicer, client, exec_backend, app):
     """Test snapshotting a directory to create a new image."""
     sb = Sandbox.create(app=app)
 
     # Create and snapshot a directory
-    image = sb._experimental_snapshot_directory("/tmp")
+    image = sb.snapshot_directory("/tmp")
 
     assert image.object_id == "im-snapshot-123"  # From mock
 
+    # Deprecated alias should proxy to snapshot_directory with a warning.
+    with pytest.warns(DeprecationError, match="_experimental_snapshot_directory"):
+        alias_image = sb._experimental_snapshot_directory("/tmp")
+    assert alias_image.object_id == "im-snapshot-123"
+
     # Test validation: non-absolute path should raise
     with pytest.raises(InvalidError, match="must be absolute"):
-        sb._experimental_snapshot_directory("relative/path")
+        sb.snapshot_directory("relative/path")
 
     sb.terminate()
 
@@ -888,12 +969,14 @@ detach_error_funcs = {
     "snapshot_filesystem": lambda sb: sb.snapshot_filesystem(),
     "_experimental_mount_image": lambda sb: sb._experimental_mount_image("/mnt", None),
     "_experimental_snapshot_directory": lambda sb: sb._experimental_snapshot_directory("/tmp"),
+    "snapshot_directory": lambda sb: sb.snapshot_directory("/tmp"),
     "tunnels": lambda sb: sb.tunnels(),
     "create_connect_token": lambda sb: sb.create_connect_token(),
     "reload_volumes": lambda sb: sb.reload_volumes(),
     "terminate": lambda sb: sb.terminate(),
     "poll": lambda sb: sb.poll(),
     "exec": lambda sb: sb.exec("echo", "hello"),
+    "mount_image": lambda sb: sb.mount_image("/mnt", modal.image._Image._from_scratch()),
     "_experimental_snapshot": lambda sb: sb._experimental_snapshot(),
     "open": lambda sb: sb.open("/hello.txt"),
     "ls": lambda sb: sb.ls("/mnt"),
@@ -922,6 +1005,7 @@ def test_func_map_covers_all_public_methods_and_properties():
 
 @skip_non_subprocess
 @pytest.mark.parametrize("name", detach_error_funcs)
+@pytest.mark.filterwarnings("ignore::modal.exception.DeprecationError")
 def test_detach_errors(servicer, client, app, name):
     """Check that detached sandbox actually raise."""
     sb = Sandbox.create(app=app)
