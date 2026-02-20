@@ -694,7 +694,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         while True:
             req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
-            resp = await self._client.stub.SandboxWait(req)
+            # Use the private __client to allow `wait` to work with a detached sandbox
+            resp = await self.__client.stub.SandboxWait(req)
             if resp.result.status:
                 logger.debug(f"Sandbox {self.object_id} wait completed with status {resp.result.status}")
                 self._result = resp.result
