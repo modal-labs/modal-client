@@ -1,0 +1,11 @@
+"""Build configuration for client proto files"""
+
+# Export all proto files as a filegroup to preserve directory structure
+filegroup(
+    name = "proto_files",
+    srcs = glob(["*.proto"]),
+    visibility = ["//visibility:public"],
+)
+
+# Also export individual files for selective use
+exports_files(glob(["*.proto"]))
