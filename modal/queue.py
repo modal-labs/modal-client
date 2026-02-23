@@ -244,7 +244,7 @@ class _Queue(_Object, type_prefix="qu"):
         # Set custom 10s expiration time on "foo" partition.
         my_queue.put(3, partition="foo", partition_ttl=10)
 
-        # (beta feature) Iterate through items in place (read immutably)
+        # Iterate through items in place (read immutably)
         my_queue.put(1)
         assert [v for v in my_queue.iterate()] == [0, 1]
 
@@ -256,7 +256,7 @@ class _Queue(_Object, type_prefix="qu"):
 
     For more examples, see the [guide](https://modal.com/docs/guide/dicts-and-queues#modal-queues).
 
-    **Queue partitions (beta)**
+    **Queue partitions**
 
     Specifying partition keys gives access to other independent FIFO partitions within the same `Queue` object.
     Across any two partitions, puts and gets are completely independent.
@@ -694,7 +694,7 @@ class _Queue(_Object, type_prefix="qu"):
     async def iterate(
         self, *, partition: Optional[str] = None, item_poll_timeout: float = 0.0
     ) -> AsyncGenerator[Any, None]:
-        """(Beta feature) Iterate through items in the queue without mutation.
+        """Iterate through items in the queue without mutation.
 
         Specify `item_poll_timeout` to control how long the iterator should wait for the next time before giving up.
         """
