@@ -718,6 +718,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
         """Snapshot a directory in a running Sandbox, creating a new Image with its content.
 
+        Directory snapshots are currently persisted for 30 days after they were last created or used.
+
         Usage:
         ```py notest
         user_project_snapshot: Image = sandbox_session_1.snapshot_directory("/user_project")
