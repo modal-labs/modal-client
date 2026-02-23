@@ -4,6 +4,22 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.3.4 (2026-02-23)
+
+- We're introducing "Directory Snapshots": a new beta feature for persisting specific directories past the lifetime of an individual Sandbox. Using the new methods `modal.Sandbox.snapshot_directory()` and `modal.Sandbox.mount_image()`, you can capture the state of a directory and then later include it in a different Sandbox:
+  ```python notest
+  sb = modal.Sandbox.create(app=app)
+  snapshot = sb.snapshot_directory("/project")
+
+  sb2 = modal.Sandbox.create(app=app)
+  sb2.mount_image("/project", snapshot)
+  ```
+  This feature can be useful for separating the lifecycle of application code in the Sandbox's main Image from project code that changes in each Sandbox session. Files in the mounted snapshot also benefit from several optimizations that allow them to be read faster. See the [Sandbox Snapshot guide](https://modal.com/docs/guide/sandbox-snapshots) for more information.
+- We've added a new `modal.Sandbox.detach()` method that we recommend calling after you are done interacting with a Sandbox. This method disconnects your local client from the Sandbox and cleans up resources associated with the connection. After calling `detach`, operations on the Sandbox object may raise and are otherwise not guaranteed to work.
+- The `modal.Sandbox.terminate()` method now accepts a `wait` parameter. With `wait=True`, `terminate` will block until the Sandbox is finished and return the exit code. The default `wait=False` maintains the previous behavior.
+- Throughput for writing to the `stdin` of a `modal.Sandbox.exec` process has been increased by 8x.
+- We've added a new `modal.Volume.from_id()` method for referencing a Volume by its object id.
+
 ### 1.3.3 (2026-02-12)
 
 - We've added a new `modal billing report` CLI and promoted the `modal.billing.workspace_billing_report` API to General Availability for all Team and Enterprise plan workspaces.
