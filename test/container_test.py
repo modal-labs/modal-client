@@ -1686,7 +1686,7 @@ def test_container_heartbeat_survives_grpc_deadlines(
     assert "Traceback" not in caplog.text  # should not print a full traceback - don't scare users!
     assert (
         loop_iteration_failures > 1
-    )  # one occurence per failing `retry_transient_errors()`, so fewer than the number of failing requests!
+    )  # one occurrence per failing `retry_transient_errors()`, so fewer than the number of failing requests!
     assert loop_iteration_failures < num_heartbeats
     assert num_heartbeats > 4  # more than the default number of retries per heartbeat attempt + 1
 
