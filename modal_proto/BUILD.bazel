@@ -1,5 +1,7 @@
 """Build configuration for client proto files"""
 
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+
 # Export all proto files as a filegroup to preserve directory structure
 filegroup(
     name = "proto_files",
@@ -9,3 +11,20 @@ filegroup(
 
 # Also export individual files for selective use
 exports_files(glob(["*.proto"]))
+
+# proto_library for the main client API proto.
+# strip_import_prefix = "/client" makes the file importable as "modal_proto/api.proto"
+# which matches the import statements in the server proto files.
+proto_library(
+    name = "api_proto",
+    srcs = ["api.proto"],
+    strip_import_prefix = "/client",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@protobuf//:any_proto",
+        "@protobuf//:empty_proto",
+        "@protobuf//:struct_proto",
+        "@protobuf//:timestamp_proto",
+        "@protobuf//:wrappers_proto",
+    ],
+)

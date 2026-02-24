@@ -7,10 +7,10 @@ PYTHON_VERSION=$2
 
 cd "$WORKING_DIRECTORY"
 
-python -m venv venv
+python -m venv .venv
 
 # shellcheck source=/dev/null
-source venv/bin/activate
+source .venv/bin/activate
 
 # Pin setuptools<82: v82.0.0 removed pkg_resources, which is needed at runtime
 # by grpcio-tools (grpc_tools/protoc.py).
