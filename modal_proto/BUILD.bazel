@@ -1,6 +1,7 @@
 """Build configuration for client proto files"""
 
 load("@protobuf//bazel:proto_library.bzl", "proto_library")
+load("//bazel:python.bzl", "py_proto_gen_library")
 
 # Export all proto files as a filegroup to preserve directory structure
 filegroup(
@@ -26,5 +27,34 @@ proto_library(
         "@protobuf//:struct_proto",
         "@protobuf//:timestamp_proto",
         "@protobuf//:wrappers_proto",
+    ],
+)
+
+# Generated Python proto bindings for client protos.
+# Generates pb2, grpcio, grpclib, and mypy stub files from api.proto and
+# task_command_router.proto, plus the custom modal_api_grpc.py wrapper via
+# the Modal protoc plugin.
+py_proto_gen_library(
+    name = "modal_proto",
+    proto_srcs = [
+        "api.proto",
+        "task_command_router.proto",
+    ],
+    proto_includes = ["client"],
+    proto_path_prefix = "modal_proto",
+    custom_plugins = [
+        {
+            "name": "modal-grpclib-python",
+            "script": "//client/protoc_plugin:plugin.py",
+            "outs": ["modal_api_grpc.py"],
+        },
+    ],
+    static_srcs = ["__init__.py"],
+    imports = [".."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@pip//grpcio:pkg",
+        "@pip//grpclib:pkg",
+        "@pip//protobuf:pkg",
     ],
 )

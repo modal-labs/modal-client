@@ -1,0 +1,35 @@
+"""Build configuration for the modal client library."""
+
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "modal",
+    srcs = glob(["**/*.py"]),
+    data = [
+        "py.typed",
+    ] + glob([
+        "builder/*.md",
+        "builder/*.txt",
+        "builder/*.json",
+    ]),
+    imports = [".."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//client/modal_proto:modal_proto",
+        "//client/modal_version:modal_version",
+        "@pip//aiohttp:pkg",
+        "@pip//cbor2:pkg",
+        "@pip//certifi:pkg",
+        "@pip//click:pkg",
+        "@pip//grpclib:pkg",
+        "@pip//protobuf:pkg",
+        "@pip//rich:pkg",
+        "@pip//synchronicity:pkg",
+        "@pip//toml:pkg",
+        "@pip//typer:pkg",
+        "@pip//types_certifi:pkg",
+        "@pip//types_toml:pkg",
+        "@pip//typing_extensions:pkg",
+        "@pip//watchfiles:pkg",
+    ],
+)
