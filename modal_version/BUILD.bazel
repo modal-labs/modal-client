@@ -1,0 +1,10 @@
+"""Build configuration for the modal_version package."""
+
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "modal_version",
+    srcs = glob(["*.py"]),
+    imports = [".."],
+    visibility = ["//visibility:public"],
+)

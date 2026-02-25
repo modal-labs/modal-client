@@ -1,0 +1,10 @@
+"""Build configuration for the Modal custom protoc plugin."""
+
+# plugin.py is a protoc plugin script. It is not built as a py_binary because
+# protoc plugins need careful PYTHONPATH setup for namespace packages (google.*).
+# Instead, it is exported as a source file and invoked by the py_proto_gen tool
+# with the correct environment.
+exports_files(
+    ["plugin.py"],
+    visibility = ["//visibility:public"],
+)
