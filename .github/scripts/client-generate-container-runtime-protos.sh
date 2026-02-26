@@ -25,7 +25,8 @@ pip install grpcio-tools==1.66.2 grpclib==0.4.7;
 elif [ "$PYTHON_VERSION" == "3.14" ]; then
 pip install grpcio-tools==1.76.0 grpclib==0.4.9;
 fi
-python -m grpc_tools.protoc --python_out=. --grpclib_python_out=. --grpc_python_out=. -I . modal_proto/api.proto modal_proto/task_command_router.proto
-python -m grpc_tools.protoc --plugin=protoc-gen-modal-grpclib-python=protoc_plugin/plugin.py --modal-grpclib-python_out=. -I . modal_proto/api.proto
+
+python -m grpc_tools.protoc --python_out=. --grpclib_python_out=. --grpc_python_out=. -I .. modal_proto/api.proto modal_proto/task_command_router.proto
+python -m grpc_tools.protoc --plugin=protoc-gen-modal-grpclib-python=protoc_plugin/plugin.py --modal-grpclib-python_out=. -I .. modal_proto/api.proto
 
 deactivate

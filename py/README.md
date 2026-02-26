@@ -1,13 +1,4 @@
-# Modal SDKs
-
-## Documentation
-
-See the [online documentation](https://modal.com/docs/guide) for many
-[example applications](https://modal.com/docs/examples),
-a [user guide](https://modal.com/docs/guide), and the detailed
-[API reference](https://modal.com/docs/reference).
-
-## Python SDK
+# Modal Python SDK
 
 [![PyPI Version](https://img.shields.io/pypi/v/modal.svg)](https://pypi.org/project/modal/)
 [![License](https://img.shields.io/badge/license-apache_2.0-darkviolet.svg)](https://github.com/modal-labs/modal-client/blob/master/LICENSE)
@@ -17,9 +8,16 @@ a [user guide](https://modal.com/docs/guide), and the detailed
 The [Modal](https://modal.com/) Python SDK provides convenient, on-demand
 access to serverless cloud compute from Python scripts on your local computer.
 
-**This library requires Python 3.10 – 3.14.**
+## Documentation
 
-### Installation
+See the [online documentation](https://modal.com/docs/guide) for many
+[example applications](https://modal.com/docs/examples),
+a [user guide](https://modal.com/docs/guide), and the detailed
+[API reference](https://modal.com/docs/reference).
+
+## Installation
+
+**This library requires Python 3.10 – 3.14.**
 
 Install the package with `uv` or `pip`:
 

@@ -20,18 +20,18 @@ jobs:
   check:
     uses: ./.github/workflows/client-check.yml
     with:
-      working-directory: "."
+      working-directory: "py"
       python-version: "3.10"
 
   docs-test:
     uses: ./.github/workflows/client-docs.yml
     with:
-      working-directory: "."
+      working-directory: "py"
 
   client-test:
     uses: ./.github/workflows/client-tests.yml
     with:
-      working-directory: "."
+      working-directory: "py"
     secrets:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}

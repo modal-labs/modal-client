@@ -65,7 +65,7 @@ def protoc(ctx, skip_mypy: bool = False):
         py_protoc = f"{py_protoc} --mypy_out=. --mypy_grpc_out=."
     print(py_protoc)
     # generate grpcio and grpclib proto files:
-    ctx.run(f"{py_protoc} -I . {client_proto_files} {task_command_router_proto_file}", env=protoc_env)
+    ctx.run(f"{py_protoc} -I .. {client_proto_files} {task_command_router_proto_file}", env=protoc_env)
 
     # generate modal-specific wrapper around grpclib api stub using custom plugin:
     grpc_plugin_pyfile = Path("protoc_plugin/plugin.py")
@@ -73,7 +73,7 @@ def protoc(ctx, skip_mypy: bool = False):
     with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
         ctx.run(
             f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
-            + f" --modal-grpclib-python_out=. -I . {client_proto_files}",
+            + f" --modal-grpclib-python_out=. -I .. {client_proto_files}",
             env=protoc_env,
         )
 
@@ -141,8 +141,8 @@ def lint_protos(ctx):
 
     Ensures imports/enums/messages/services are ordered correctly and RPCs are alphabetized.
     """
-    lint_protos_impl(ctx, "modal_proto/api.proto")
-    lint_protos_impl(ctx, "modal_proto/task_command_router.proto")
+    lint_protos_impl(ctx, "../modal_proto/api.proto")
+    lint_protos_impl(ctx, "../modal_proto/task_command_router.proto")
 
 
 @task
