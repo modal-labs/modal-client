@@ -21,14 +21,15 @@ jobs:
       contents: write
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
+      GH_REPO: ${{ github.repository }}
 
     steps:
       - name: Auto-approve PR
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr review $PR_NUMBER --approve
+        run: gh pr --repo $GH_REPO review $PR_NUMBER --approve
 
       - name: Enable auto-merge
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr merge $PR_NUMBER --auto --rebase
+        run: gh pr --repo $GH_REPO merge $PR_NUMBER --auto --rebase
