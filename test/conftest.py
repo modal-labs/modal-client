@@ -2047,6 +2047,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.secrets.pop(request.secret_id)
         await stream.send_message(Empty())
 
+    async def SecretUpdate(self, stream):
+        request: api_pb2.SecretUpdateRequest = await stream.recv_message()
+        env_dict = dict(self.secrets.get(request.secret_id, {}))
+        for update in request.updates:
+            if update.HasField("value"):
+                env_dict[update.key] = update.value
+            else:
+                env_dict.pop(update.key, None)
+        self.secrets[request.secret_id] = env_dict
+        await stream.send_message(Empty())
+
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, self.get_environment(request.environment_name))

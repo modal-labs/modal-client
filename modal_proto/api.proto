@@ -3142,6 +3142,15 @@ message SecretMetadata {
   CreationInfo creation_info = 2;
 }
 
+message SecretUpdateRequest {
+  message Update {
+    string key = 1;
+    optional string value = 2; // If not set, the key is removed.
+  }
+  string secret_id = 1;
+  repeated Update updates = 2;
+}
+
 message ServiceUserIdentity {
   string service_user_id = 1;
   string service_user_name = 2;
@@ -3913,6 +3922,7 @@ service ModalClient {
   rpc SecretDelete(SecretDeleteRequest) returns (google.protobuf.Empty);
   rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
+  rpc SecretUpdate(SecretUpdateRequest) returns (google.protobuf.Empty);
 
   // SharedVolumes
   rpc SharedVolumeDelete(SharedVolumeDeleteRequest) returns (google.protobuf.Empty);

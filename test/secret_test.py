@@ -162,3 +162,29 @@ def test_secret_create(servicer, client):
     Secret.objects.create(name="test-secret-create", env_dict=env_dict, allow_existing=True, client=client)
     with pytest.raises(InvalidError, match="Invalid Secret name"):
         Secret.objects.create(name="has space", env_dict=env_dict, client=client)
+
+
+def test_secret_update(servicer, client):
+    # Create a secret first
+    Secret.objects.create(name="test-secret-update", env_dict={"FOO": "123", "BAR": "456"}, client=client)
+    secret = Secret.from_name("test-secret-update")
+    secret.hydrate(client)
+
+    # Verify initial state
+    assert servicer.secrets[secret.object_id] == {"FOO": "123", "BAR": "456"}
+
+    # Update: overwrite one key, add a new key
+    secret.update({"FOO": "new-value", "BAZ": "789"})
+
+    # BAR should be unchanged, FOO overwritten, BAZ added
+    assert servicer.secrets[secret.object_id] == {"FOO": "new-value", "BAR": "456", "BAZ": "789"}
+
+    # Validate types at runtime
+    with pytest.raises(InvalidError):
+        secret.update("not-a-dict")  # type: ignore
+
+    with pytest.raises(InvalidError):
+        secret.update({1: "val"})  # type: ignore
+
+    with pytest.raises(InvalidError):
+        secret.update({"key": 123})  # type: ignore

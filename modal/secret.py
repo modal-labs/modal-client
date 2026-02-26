@@ -470,5 +470,23 @@ class _Secret(_Object, type_prefix="st"):
             created_by=creation_info.created_by or None,
         )
 
+    @live_method
+    async def update(self, env_dict: dict[str, str]) -> None:
+        """Update this Secret, adding or overwriting key-value pairs.
+
+        Like dict.update(), this merges `env_dict` into the existing Secret.
+        Keys not mentioned in `env_dict` are left unchanged.
+        """
+        err = "The `env_dict` argument to `Secret.update` must be a dict[str, str]"
+        if not isinstance(env_dict, dict):
+            raise InvalidError(err)
+        if not all(isinstance(k, str) for k in env_dict.keys()):
+            raise InvalidError(err)
+        if not all(isinstance(v, str) for v in env_dict.values()):
+            raise InvalidError(err)
+        updates = [api_pb2.SecretUpdateRequest.Update(key=k, value=v) for k, v in env_dict.items()]
+        req = api_pb2.SecretUpdateRequest(secret_id=self.object_id, updates=updates)
+        await self._client.stub.SecretUpdate(req)
+
 
 Secret = synchronize_api(_Secret)
