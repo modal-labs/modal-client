@@ -1,0 +1,34 @@
+name: Approve and enable auto-merge on copybara PRs
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+    branches:
+      - main
+
+jobs:
+  approve-copybara:
+    name: Approve and enable auto-merge
+    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.user.login == 'modal-copybara-client[bot]' }}
+
+    environment: auto-approve
+    permissions:
+      pull-requests: write
+      contents: write
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Auto-approve PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr review $PR_NUMBER --approve
+
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge $PR_NUMBER --auto --rebase
