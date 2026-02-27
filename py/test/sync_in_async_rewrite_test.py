@@ -69,6 +69,10 @@ def __getitem__():
     pass
 
 
+def spawn():
+    pass
+
+
 def test_rewrite_simple_call():
     """Test rewriting a simple method call."""
     code = "obj.method()"
@@ -302,3 +306,11 @@ def test_rewrite_async_gen_with_args():
     success, result = rewrite_sync_to_async(code, async_gen_func)
     assert success is True
     assert result == "async for x in collection.async_gen_func(limit=10, offset=0):"
+
+
+def test_rewrite_call_on_instantiation():
+    """Test rewriting a method call on a class instantiation expression."""
+    code = "SomeClass().some_method.spawn(q)"
+    success, result = rewrite_sync_to_async(code, spawn)
+    assert success is True
+    assert result == "await SomeClass().some_method.spawn.aio(q)"

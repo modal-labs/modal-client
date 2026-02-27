@@ -49,6 +49,10 @@ def rewrite_sync_to_async(code_line: str, original_func: Callable) -> tuple[bool
     """
     Rewrite a blocking call to use async/await syntax.
 
+    Uses Python's ast module for method calls and property access to reliably
+    parse complex expressions (e.g. chained calls like SomeClass().method.spawn(q))
+    and determine exact positions for inserting `await` and `.aio`.
+
     Handles four patterns:
     1. __aiter__: for x in obj -> async for x in obj
     2. __aenter__: with obj as x -> async with obj as x
@@ -64,6 +68,7 @@ def rewrite_sync_to_async(code_line: str, original_func: Callable) -> tuple[bool
         - success: True if the pattern was found and rewritten, False if falling back to generic
         - rewritten_code: The rewritten code or a generic suggestion
     """
+    import ast
     import re
 
     func_name = original_func.__name__  # type: ignore
@@ -118,83 +123,82 @@ def rewrite_sync_to_async(code_line: str, original_func: Callable) -> tuple[bool
             suggestion = code_line.replace("for ", "async for ", 1)
             return (True, suggestion)
 
-    # Handle regular method calls and property access
-    # First check if it's a property access (no parentheses after the name)
-    property_pattern = rf"\.{re.escape(func_name)}(?!\s*\()"
-    property_match = re.search(property_pattern, code_line)
+    # Use Python's ast module for method calls and property access.
+    # This correctly handles complex expressions like SomeClass().method.spawn(q)
+    # without needing fragile backward-walking or regex matching.
+    stripped = code_line.lstrip()
+    indent = code_line[: len(code_line) - len(stripped)]
 
-    if property_match:
-        # This is a property access, rewrite to use await without .aio()
-        # Find the start of the expression (skip statement keywords and assignments)
-        statement_start = 0
-        prefix_match = re.match(r"^(\s*(?:\w+\s*=|return|yield|raise)\s+)", code_line)
-        if prefix_match:
-            statement_start = len(prefix_match.group(1))
-
-        before_expr = code_line[:statement_start]
-        after_prefix = code_line[statement_start:]
-
-        # Just add await before the expression for properties
-        suggestion = before_expr + "await " + after_prefix.lstrip()
-        return (True, suggestion)
-
-    # Try to find a method call (with parentheses)
-    method_pattern = rf"\.{re.escape(func_name)}\s*\("
-    method_match = re.search(method_pattern, code_line)
-
-    if not method_match:
-        # Can't find the function call or property
+    try:
+        tree = ast.parse(stripped, mode="exec")
+    except SyntaxError:
         return (False, f"await ...{func_name}.aio(...)")
 
-    # Safety check: don't attempt rewrite for complex expressions
-    unsafe_keywords = ["if", "elif", "while", "and", "or", "not", "in", "is", "for"]
+    if not tree.body:
+        return (False, f"await ...{func_name}.aio(...)")
 
-    # Check if line contains control flow keywords (might be too complex)
-    for keyword in unsafe_keywords:
-        if re.search(rf"\b{keyword}\b", code_line):
-            # Fall back to generic suggestion for complex expressions
+    stmt = tree.body[0]
+
+    # Bail out for control flow statements that are too complex to rewrite safely
+    if isinstance(stmt, (ast.If, ast.While, ast.For)):
+        return (False, f"await ...{func_name}.aio(...)")
+
+    # Walk the AST to find Call nodes and Attribute nodes matching func_name
+    target_call = None
+    call_func_ids: set[int] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            call_func_ids.add(id(node.func))
+            if node.func.attr == func_name and target_call is None:
+                target_call = node
+
+    # If no matching Call found, check for property access (Attribute not used as a Call's func)
+    if target_call is None:
+        target_attr = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == func_name and id(node) not in call_func_ids:
+                target_attr = node
+                break
+
+        if target_attr is None:
             return (False, f"await ...{func_name}.aio(...)")
 
-    # Find the start of the object expression that leads to the method call
-    # We need to find where the object/chain starts, e.g., in "2 * foo.bar.method()" we want "foo"
-    # Work backwards from the method match to find the start of the identifier chain
-    method_start = method_match.start()
+        # Property access: insert "await" before the start of the attribute expression
+        expr_start = target_attr.col_offset
+        result = stripped[:expr_start] + "await " + stripped[expr_start:]
+        return (True, indent + result)
 
-    # Find the start of the identifier chain (the object being called)
-    # Walk backwards to find identifiers and dots that form the chain
-    expr_start = method_start
-    i = method_start - 1
-    while i >= 0:
-        c = code_line[i]
-        if c.isalnum() or c == "_" or c == ".":
-            expr_start = i
-            i -= 1
-        elif c.isspace():
-            # Skip whitespace within the chain (though unusual)
-            i -= 1
-        else:
-            # Found a non-identifier character, stop
-            break
+    # Check if the target Call is inside a BoolOp (and/or) - bail out for safety
+    for node in ast.walk(tree):
+        if isinstance(node, ast.BoolOp):
+            for descendant in ast.walk(node):
+                if descendant is target_call:
+                    return (False, f"await ...{func_name}.aio(...)")
 
-    # Now expr_start points to the start of the object chain (e.g., "foo" in "foo.method()")
-    # But we need to check if the identifier we found is actually a keyword like return/yield/raise
-    # In that case, skip over it and find the actual object
-    before_obj = code_line[:expr_start]
-    obj_and_rest = code_line[expr_start:]
+    # Method call: insert .aio after the method name and await before the expression
+    func_attr = target_call.func
+    attr_end = func_attr.end_col_offset
 
-    # Check if what we found starts with a statement keyword
-    keyword_match = re.match(r"^(return|yield|raise)\s+", obj_and_rest)
-    if keyword_match:
-        # The "object" we found is actually a keyword, adjust to skip it
-        keyword_len = len(keyword_match.group(0))
-        before_obj = code_line[: expr_start + keyword_len]
-        obj_and_rest = code_line[expr_start + keyword_len :]
+    if attr_end is None:
+        return (False, f"await ...{func_name}.aio(...)")
 
-    # Add .aio() after the method name and await before the object
-    rewritten_expr = re.sub(rf"(\.{re.escape(func_name)})\s*\(", r"\1.aio(", obj_and_rest, count=1)
-    suggestion = before_obj + "await " + rewritten_expr
+    # Find the opening parenthesis (skip any whitespace between method name and paren)
+    paren_pos = attr_end
+    while paren_pos < len(stripped) and stripped[paren_pos] != "(":
+        paren_pos += 1
 
-    return (True, suggestion)
+    if paren_pos >= len(stripped):
+        return (False, f"await ...{func_name}.aio(...)")
+
+    # Insert .aio, collapsing any whitespace between method name and (
+    modified = stripped[:attr_end] + ".aio" + stripped[paren_pos:]
+
+    # Insert await before the call expression (ast gives us the exact start position)
+    call_start = target_call.col_offset
+    modified = modified[:call_start] + "await " + modified[call_start:]
+
+    return (True, indent + modified)
 
 
 @dataclass
