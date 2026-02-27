@@ -45,7 +45,7 @@ py_proto_gen_library(
     custom_plugins = [
         {
             "name": "modal-grpclib-python",
-            "script": "//client/protoc_plugin:plugin.py",
+            "script": "//client/py/protoc_plugin:plugin.py",
             "outs": ["modal_api_grpc.py"],
         },
     ],

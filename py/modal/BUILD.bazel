@@ -16,7 +16,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//client/modal_proto:modal_proto",
-        "//client/modal_version:modal_version",
+        "//client/py/modal_version:modal_version",
         "@pip//aiohttp:pkg",
         "@pip//cbor2:pkg",
         "@pip//certifi:pkg",
