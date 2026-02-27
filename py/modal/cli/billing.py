@@ -46,23 +46,28 @@ async def report(
     The report range can be provided by setting `--start` / `--end` dates (`--end` defaults to 'now')
     or by requesting a date range using `--for` (e.g., `--for today`, `--for 'last month'`).
 
-    Note that, as with the Billing API, the start date is inclusive and the end date is exclusive.
+    This command provides a CLI frontend for the
+    [`modal.billing.workspace_billing_report`](https://modal.com/docs/reference/modal.billing) API.
+
+    Note that, as with the API, the start date is inclusive and the end date is exclusive.
     Data will be reported for full intervals only. Using `--for` is a convenient way to define a
     complete interval.
 
     Examples:
 
-        modal billing report --start 2025-12-01 --end 2026-01-01
+    ```bash
+    modal billing report --start 2025-12-01 --end 2026-01-01
 
-        modal billing report --for "last month" --tag-names team,project
+    modal billing report --for "last month" --tag-names team,project
 
-        modal billing report --for today --resolution h
+    modal billing report --for today --resolution h
 
-        modal billing report --for yesterday -r h --tz local
+    modal billing report --for yesterday -r h --tz local
 
-        modal billing report --for "last month" --csv > report.csv
+    modal billing report --for "last month" --csv > report.csv
 
-        modal billing report --start 2025-12-01 --json > report.json
+    modal billing report --start 2025-12-01 --json > report.json
+    ```
 
     """
     # Validate mutually exclusive output formats
