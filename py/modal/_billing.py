@@ -49,6 +49,10 @@ async def _workspace_billing_report(
     minutes, although there may be collection delays. If completeness is important for your use
     case, we recommend leaving a buffer after the end of the query interval.
 
+    It's also possible to generate reports using the
+    [`modal billing report`](https://modal.com/docs/reference/cli/billing) CLI command. The CLI
+    has a few convenience features for generating reports across relative time ranges.
+
     """
     if client is None:
         client = await _Client.from_env()
