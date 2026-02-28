@@ -2842,6 +2842,11 @@ message Sandbox {
 
   // If set, connections to this sandbox will be subdomains of this domain rather than the default.
   string custom_domain = 36;
+
+  // If set, the sandbox will receive a MODAL_IDENTITY_TOKEN env var,
+  // similar to how modal Function containers do. This can be used
+  // for OIDC-based authentication (e.g. to AWS, GCP).
+  bool include_oidc_identity_token = 37;
 }
 
 message SandboxCreateConnectTokenRequest {
