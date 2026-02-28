@@ -2,6 +2,7 @@
 import asyncio
 import enum
 import io
+from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, TypeVar, Union, cast
 
@@ -108,12 +109,12 @@ class _FileIO(Generic[T]):
     _task_id: str = ""
     _file_descriptor: str = ""
     _client: _Client
-    _watch_output_buffer: list[Union[Optional[bytes], Exception]] = []
+    _watch_output_buffer: deque[Union[Optional[bytes], Exception]]
 
     def __init__(self, client: _Client, task_id: str) -> None:
         self._client = client
         self._task_id = task_id
-        self._watch_output_buffer = []
+        self._watch_output_buffer: deque[Union[Optional[bytes], Exception]] = deque()
 
     def _validate_mode(self, mode: str) -> None:
         if not any(char in mode for char in "rwax"):
@@ -436,7 +437,7 @@ class _FileIO(Generic[T]):
             item_buffer = io.BytesIO()
             while True:
                 if len(self._watch_output_buffer) > 0:
-                    item = self._watch_output_buffer.pop(0)
+                    item = self._watch_output_buffer.popleft()
                     if item is None:
                         break
                     if isinstance(item, Exception):
