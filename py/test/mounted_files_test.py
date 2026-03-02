@@ -9,6 +9,7 @@ from modal.file_pattern_matcher import FilePatternMatcher, _AbstractPatternMatch
 from modal.mount import Mount, _MountDir
 
 from . import helpers
+from .supports.skip import skip_bazel
 
 
 @pytest.fixture
@@ -37,6 +38,7 @@ def serialized_function_no_automount(servicer, credentials, supports_dir, server
     assert files == {}
 
 
+@skip_bazel("requires 'modal' CLI not available in Bazel sandbox")
 def test_mounted_files_package(supports_dir, servicer, server_url_env, token_env):
     p = subprocess.run(["modal", "run", "pkg_a.package"], cwd=supports_dir)
     assert p.returncode == 0
@@ -55,6 +57,7 @@ def test_mounted_files_package(supports_dir, servicer, server_url_env, token_env
     }
 
 
+@skip_bazel("requires 'modal' CLI not available in Bazel sandbox")
 def test_mounted_files_config(servicer, supports_dir, server_url_env, token_env):
     p = subprocess.run(["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ})
     assert p.returncode == 0
@@ -86,6 +89,7 @@ def foo():
     pass
 
 
+@skip_bazel("__file__ paths in Bazel sandbox differ from mounted file paths")
 def test_image_mounts_are_not_traversed_on_declaration(supports_dir, monkeypatch, client, server_url_env):
     return_values = []
     original = modal.mount._MountDir.get_files_to_upload
@@ -202,6 +206,7 @@ def test_directory_pruning_behavior(mock_dir, ignore_config, expected_can_prune,
         assert file_paths == expected_included
 
 
+@skip_bazel("dynamic file creation in runfiles tree affects mount deduplication logic")
 def test_mount_dedupe_explicit(servicer, credentials, supports_dir, server_url_env):
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)

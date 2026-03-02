@@ -2,6 +2,7 @@
 import asyncio
 import contextlib
 import subprocess
+import sys
 import threading
 import time
 from typing import Sequence
@@ -206,7 +207,7 @@ def fastapi_app():
 @app.function()
 @web_server(8765, startup_timeout=1)
 def non_blocking_web_server():
-    subprocess.Popen(["python", "-m", "http.server", "-b", "0.0.0.0", "8765"])
+    subprocess.Popen([sys.executable, "-m", "http.server", "-b", "0.0.0.0", "8765"])
 
 
 lifespan_global_asgi_app_func: list[str] = []

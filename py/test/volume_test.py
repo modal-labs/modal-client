@@ -611,7 +611,9 @@ async def test_open_files_error_annotation(tmp_path):
         if os.readlink(f"/proc/{proc.pid}/cwd") == tmp_path.as_posix():
             break
         await asyncio.sleep(0.05)
-    assert re.match(f"^cwd of '{sys.executable} -c .*' is inside volume$", _open_files_error_annotation(tmp_path))
+    assert re.match(
+        f"^cwd of '{re.escape(sys.executable)} -c .*' is inside volume$", _open_files_error_annotation(tmp_path)
+    )
     proc.kill()
     await proc.wait()
     assert _open_files_error_annotation(tmp_path) is None

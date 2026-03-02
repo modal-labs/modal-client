@@ -9,6 +9,11 @@ def skip_windows(msg: str):
     return pytest.mark.skipif(platform.system() == "Windows", reason=msg)
 
 
+def skip_bazel(msg: str):
+    """Skip a test when running inside a Bazel sandbox (TEST_SRCDIR is set)."""
+    return pytest.mark.skipif(bool(os.environ.get("TEST_SRCDIR")), reason=f"Skipped in Bazel: {msg}")
+
+
 def skip_macos(msg: str):
     return pytest.mark.skipif(platform.system() == "Darwin", reason=msg)
 

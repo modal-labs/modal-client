@@ -2,6 +2,8 @@
 import pytest
 from pathlib import Path
 
+from .supports.skip import skip_bazel
+
 
 @pytest.fixture
 def notebook_runner(servicer, credentials):
@@ -47,6 +49,7 @@ Inspect the output notebook: {output_notebook_path}
     return runner
 
 
+@skip_bazel("requires Jupyter kernel not available in Bazel sandbox")
 def test_notebook_outputs_status(notebook_runner, test_dir):
     input_notebook_path = test_dir / "supports" / "notebooks" / "simple.notebook.py"
     tagged_cells = notebook_runner(input_notebook_path)
@@ -56,6 +59,7 @@ def test_notebook_outputs_status(notebook_runner, test_dir):
     assert "App completed." in combined_output
 
 
+@skip_bazel("requires Jupyter kernel not available in Bazel sandbox")
 def test_is_interactive_ipython_in_real_notebook(notebook_runner, test_dir):
     """Integration test: Run actual notebook to verify is_interactive_ipython returns True."""
     notebook_path = test_dir / "supports" / "notebooks" / "ipython_detection.notebook.py"

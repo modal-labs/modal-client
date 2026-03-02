@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import os
 import platform
 import pytest
 
@@ -19,7 +20,8 @@ def test_get_module_mount_info():
     assert len(res) == 1
     assert res[0][0] == False
 
-    if platform.system() != "Windows":
-        # TODO This assertion fails on windows; I assume that compiled file formats are different there?
+    if platform.system() != "Windows" and not os.environ.get("TEST_SRCDIR"):
+        # This assertion fails on windows and in Bazel (where aiohttp is installed
+        # as a pure-Python wheel without binary extensions).
         with pytest.raises(ModuleNotMountable, match="aiohttp can't be mounted because it contains binary file"):
             get_module_mount_info("aiohttp")

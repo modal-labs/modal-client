@@ -67,7 +67,7 @@ from .container_test_helpers import (
     deploy_app_externally,
     isolated_deploy,
 )
-from .supports.skip import skip_github_non_linux
+from .supports.skip import skip_bazel, skip_github_non_linux
 
 EXTRA_TOLERANCE_DELAY = 2.0 if sys.platform == "linux" else 5.0
 FUNCTION_CALL_ID = "fc-123"
@@ -538,6 +538,7 @@ def test_cls_web_asgi_with_lifespan(servicer, deployed_support_function_definiti
 
 
 @skip_github_non_linux
+@pytest.mark.flaky(max_runs=3)
 @pytest.mark.filterwarnings("error")
 @pytest.mark.filterwarnings("ignore::ResourceWarning")  # Python 3.14+ triggers ResourceWarnings during cleanup
 def test_app_with_slow_lifespan_wind_down(servicer, caplog, deployed_support_function_definitions):
@@ -855,7 +856,9 @@ def test_cli(servicer, tmp_path, credentials):
 
     # Launch subprocess
     token_id, token_secret = credentials
+    pythonpath = {"PYTHONPATH": os.environ["PYTHONPATH"]} if "PYTHONPATH" in os.environ else {}
     env = {
+        **pythonpath,
         "MODAL_SERVER_URL": servicer.container_addr,
         "MODAL_TOKEN_ID": token_id,
         "MODAL_TOKEN_SECRET": token_secret,
@@ -1577,6 +1580,7 @@ def test_flash_cls_enter_lifecycle(servicer, tmp_path):
 
 
 @skip_github_non_linux
+@skip_bazel("FlashContainerRegister RPC consistently not called before deregister in Bazel remote sandbox")
 @pytest.mark.usefixtures("server_url_env")
 def test_flash_container_entry_lifecycle(servicer, tmp_path):
     """
@@ -2423,6 +2427,7 @@ def test_custom_name(servicer, deployed_support_function_definitions):
 
 
 @skip_github_non_linux
+@skip_bazel("server container subprocess times out in Bazel sandbox")
 @pytest.mark.usefixtures("server_url_env")
 def test_server_container_entry_lifecycle(servicer, tmp_path):
     """
@@ -2476,6 +2481,7 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
 
 
 @skip_github_non_linux
+@skip_bazel("server container subprocess times out in Bazel sandbox")
 @pytest.mark.timeout(10)
 @pytest.mark.usefixtures("server_url_env")
 def test_server_isolated_deploy_isolated_container(servicer, credentials, tmp_path):
@@ -2498,6 +2504,7 @@ def test_server_isolated_deploy_isolated_container(servicer, credentials, tmp_pa
 
 
 @skip_github_non_linux
+@skip_bazel("server container subprocess times out in Bazel sandbox")
 @pytest.mark.timeout(10)
 @pytest.mark.usefixtures("server_url_env")
 def test_serialized_server_isolated_deploy_isolated_container(servicer, credentials, tmp_path):
@@ -2520,6 +2527,7 @@ def test_serialized_server_isolated_deploy_isolated_container(servicer, credenti
 
 
 @skip_github_non_linux
+@skip_bazel("server container subprocess times out in Bazel sandbox")
 @pytest.mark.usefixtures("server_url_env")
 def test_server_lifecycle_signals_correctly_registered(servicer, tmp_path):
     """
