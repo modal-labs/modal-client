@@ -29,8 +29,14 @@ def deploy_app_externally(
         }  # windows apparently needs a bunch of env vars to start python...
 
     token_id, token_secret = credentials
+    # Include PYTHONPATH from the parent env if set. This is needed when running
+    # under Bazel: pytest_runner.py sets PYTHONPATH so subprocesses can find
+    # Bazel-managed packages, but deploy_app_externally builds a fresh env dict
+    # that would otherwise drop it.
+    pythonpath = {"PYTHONPATH": os.environ["PYTHONPATH"]} if "PYTHONPATH" in os.environ else {}
     env = {
         **windows_support,
+        **pythonpath,
         "MODAL_SERVER_URL": servicer.client_addr,
         "MODAL_TOKEN_ID": token_id,
         "MODAL_TOKEN_SECRET": token_secret,

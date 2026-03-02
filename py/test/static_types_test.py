@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2024
+import os
 import pytest
 import subprocess
 import sys
@@ -8,6 +9,8 @@ from test.supports.skip import skip_windows
 
 @pytest.fixture(scope="module")
 def generate_type_stubs():
+    if os.environ.get("TEST_SRCDIR"):
+        pytest.skip("type-stubs generation requires 'inv' tool, not available in Bazel sandbox")
     subprocess.check_call(["inv", "type-stubs"])
 
 

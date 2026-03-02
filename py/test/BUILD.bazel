@@ -1,0 +1,51 @@
+load("//bazel:python.bzl", "pytest_test")
+
+pytest_test(
+    name = "tests",
+    size = "large",
+    srcs = glob(["**/*.py"]),
+    args = [
+        "client/py/test/",
+        "--rootdir=client/py/",
+        "-p",
+        "no:cacheprovider",
+    ],
+    data = ["//client/py:pyproject.toml"] + glob(
+        [
+            "supports/**",
+            "mdmd_data/**",
+        ],
+        exclude = ["supports/**/*.py"],
+    ),
+    env = {
+        "MODAL_INTERNAL_ENV": "test",
+    },
+    imports = [".."],
+    shard_count = 32,
+    deps = [
+        "//client/modal_proto",
+        "//client/py/modal",
+        "//client/py/modal_docs",
+        "@pip//aiohttp:pkg",
+        "@pip//fastapi:pkg",
+        "@pip//flaky:pkg",
+        "@pip//freezegun:pkg",
+        "@pip//grpclib:pkg",
+        "@pip//httpx:pkg",
+        "@pip//jupytext:pkg",
+        "@pip//nbclient:pkg",
+        "@pip//nbformat:pkg",
+        "@pip//nest_asyncio:pkg",
+        "@pip//packaging:pkg",
+        "@pip//protobuf:pkg",
+        "@pip//psutil:pkg",
+        "@pip//pyjwt:pkg",
+        "@pip//pytest_asyncio:pkg",
+        "@pip//pytest_benchmark:pkg",
+        "@pip//pytest_env:pkg",
+        "@pip//pytest_freezegun:pkg",
+        "@pip//pytest_timeout:pkg",
+        "@pip//python_dotenv:pkg",
+        "@pip//python_json_logger:pkg",
+    ],
+)

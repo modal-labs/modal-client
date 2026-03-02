@@ -12,7 +12,7 @@ from modal import Client
 from modal.exception import AuthError, ConflictError, ConnectionError, InvalidError, ServerWarning
 from modal_proto import api_pb2
 
-from .supports.skip import skip_windows, skip_windows_unix_socket
+from .supports.skip import skip_bazel, skip_windows, skip_windows_unix_socket
 
 TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
 
@@ -70,6 +70,7 @@ def no_retry_connect_channel(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
+@skip_bazel("DNS resolution for .invalid TLD times out in Bazel sandbox")
 async def test_client_dns_failure(no_retry_connect_channel):
     with pytest.raises(ConnectionError) as excinfo:
         async with Client("https://xyz.invalid", api_pb2.CLIENT_TYPE_CONTAINER, None):

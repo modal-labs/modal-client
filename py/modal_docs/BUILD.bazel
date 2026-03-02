@@ -1,0 +1,13 @@
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "modal_docs",
+    srcs = glob(["**/*.py"]),
+    imports = [".."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//client/py/modal",
+        "@pip//click:pkg",
+        "@pip//synchronicity:pkg",
+    ],
+)
