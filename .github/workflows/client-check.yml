@@ -30,6 +30,8 @@ jobs:
 
       - run: inv lint-protos
 
+      - run: inv lint-changelog
+
   type-check:
     name: Static type checks
     runs-on: ubuntu-24.04

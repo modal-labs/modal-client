@@ -146,6 +146,95 @@ def lint_protos(ctx):
 
 
 @task
+def lint_changelog(ctx):
+    """Validate the structure of CHANGELOG.md.
+
+    Checks heading format, version ordering, date ordering, and section grouping."""
+    from packaging.version import Version
+
+    changelog_path = "CHANGELOG.md"
+    with open(changelog_path) as f:
+        lines = f.readlines()
+
+    errors: list[str] = []
+    entry_re = re.compile(r"^### (\d+\.\d+\.\d+) \((\d{4}-\d{2}-\d{2})\)\s*$")
+    section_re = re.compile(r"^## (.+)\s*$")
+
+    current_section: str | None = None
+    prev_version: Version | None = None
+    prev_date: str | None = None
+
+    for lineno_0, line in enumerate(lines):
+        lineno = lineno_0 + 1
+
+        # Check section headers (## ...)
+        section_match = section_re.match(line)
+        if section_match:
+            section_label = section_match.group(1).strip()
+            if section_label == "Latest":
+                current_section = "Latest"
+            elif re.fullmatch(r"\d+\.\d+", section_label):
+                current_section = section_label
+            else:
+                errors.append(
+                    f"L{lineno}: unexpected section header '## {section_label}' (expected '## Latest' or '## X.Y')"
+                )
+            continue
+
+        # Check entry headers (### ...)
+        if line.startswith("### "):
+            m = entry_re.match(line)
+            if not m:
+                errors.append(
+                    f"L{lineno}: malformed entry header: {line.rstrip()!r} (expected '### X.Y.Z (YYYY-MM-DD)')"
+                )
+                continue
+
+            version_str, date_str = m.group(1), m.group(2)
+            version = Version(version_str)
+
+            # Validate date format
+            try:
+                datetime.date.fromisoformat(date_str)
+            except ValueError:
+                errors.append(f"L{lineno}: invalid date {date_str!r} for version {version_str}")
+
+            # Versions must be strictly decreasing
+            if prev_version is not None and version >= prev_version:
+                errors.append(
+                    f"L{lineno}: version {version_str} is not strictly less than previous version {prev_version}"
+                )
+
+            # Dates must be non-increasing (same day is ok for multiple releases)
+            if prev_date is not None and date_str > prev_date:
+                errors.append(f"L{lineno}: date {date_str} for {version_str} is after previous entry date {prev_date}")
+
+            # Check that entry belongs in the current section
+            minor_prefix = f"{version.major}.{version.minor}"
+            if current_section == "Latest":
+                pass  # Latest section holds the current minor series, no constraint needed
+            elif current_section is not None and current_section != minor_prefix:
+                errors.append(
+                    f"L{lineno}: version {version_str} is under '## {current_section}' "
+                    f"but belongs under '## {minor_prefix}'"
+                )
+
+            prev_version = version
+            prev_date = date_str
+
+    if errors:
+        from rich.console import Console
+
+        console = Console()
+        console.print(f"[bold red]CHANGELOG.md has {len(errors)} error(s):[/bold red]")
+        for error in errors:
+            console.print(f"  {error}")
+        sys.exit(1)
+    else:
+        print(f"CHANGELOG.md OK ({prev_version} ... latest)")
+
+
+@task
 def type_stubs(ctx):
     """Generate type stub files (.pyi) for synchronicity-wrapped Modal modules.
 
