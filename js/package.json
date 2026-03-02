@@ -1,14 +1,14 @@
 {
   "name": "modal",
-  "version": "0.7.2",
+  "version": "0.7.3-dev.0",
   "description": "Modal SDK for JavaScript/TypeScript",
   "license": "Apache-2.0",
   "homepage": "https://modal.com/docs/guide/sdk-javascript-go",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/modal-labs/libmodal.git"
+    "url": "git+https://github.com/modal-labs/modal-client.git"
   },
-  "bugs": "https://github.com/modal-labs/libmodal/issues",
+  "bugs": "https://github.com/modal-labs/modal-client/issues",
   "type": "module",
   "sideEffects": false,
   "files": [
