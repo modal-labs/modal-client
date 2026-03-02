@@ -36,12 +36,6 @@ proto_library(
 # the Modal protoc plugin.
 py_proto_gen_library(
     name = "modal_proto",
-    proto_srcs = [
-        "api.proto",
-        "task_command_router.proto",
-    ],
-    proto_includes = ["client"],
-    proto_path_prefix = "modal_proto",
     custom_plugins = [
         {
             "name": "modal-grpclib-python",
@@ -49,8 +43,14 @@ py_proto_gen_library(
             "outs": ["modal_api_grpc.py"],
         },
     ],
-    static_srcs = ["__init__.py"],
     imports = [".."],
+    proto_includes = ["client"],
+    proto_path_prefix = "modal_proto",
+    proto_srcs = [
+        "api.proto",
+        "task_command_router.proto",
+    ],
+    static_srcs = ["__init__.py"],
     visibility = ["//visibility:public"],
     deps = [
         "@pip//grpcio:pkg",
