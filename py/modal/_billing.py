@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2025
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Optional, TypedDict
+from typing import Optional, TypedDict
 
 from modal_proto import api_pb2
 
@@ -25,7 +25,7 @@ async def _workspace_billing_report(
     resolution: str = "d",  # Resolution, e.g. "d" for daily or "h" for hourly
     tag_names: Optional[list[str]] = None,  # Optional additional metadata to include
     client: Optional[_Client] = None,
-) -> list[dict[str, Any]]:
+) -> list[WorkspaceBillingReportItem]:
     """Generate a tabular report of workspace usage by object and time.
 
     The result will be a list of dictionaries for each interval (determined by `resolution`)
@@ -81,7 +81,7 @@ async def _workspace_billing_report(
 
     rows = []
     async for pb_item in client.stub.WorkspaceBillingReport.unary_stream(request):
-        item = {
+        item: WorkspaceBillingReportItem = {
             "object_id": pb_item.object_id,
             "description": pb_item.description,
             "environment_name": pb_item.environment_name,
