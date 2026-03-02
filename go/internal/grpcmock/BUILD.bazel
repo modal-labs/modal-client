@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "grpcmock",
+    srcs = ["mock.go"],
+    importpath = "github.com/modal-labs/libmodal/modal-go/internal/grpcmock",
+    visibility = ["//libmodal/modal-go:__subpackages__"],
+    deps = [
+        "//libmodal/modal-go",
+        "//libmodal/modal-go/proto/modal_proto",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_protobuf//proto",
+    ],
+)

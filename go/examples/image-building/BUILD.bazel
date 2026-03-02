@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "image-building_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/modal-labs/libmodal/modal-go/examples/image-building",
+    visibility = ["//visibility:private"],
+    deps = ["//libmodal/modal-go"],
+)
+
+go_binary(
+    name = "image-building",
+    embed = [":image-building_lib"],
+    visibility = ["//visibility:public"],
+)

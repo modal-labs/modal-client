@@ -1,0 +1,86 @@
+load("@rules_go//go:def.bzl", "go_test")
+
+# Exclude integration_test.go: it runs shell scripts via `go test` which require
+# the full Go module filesystem structure (replace directives etc.) and cannot
+# run inside a Bazel sandbox. Run it manually outside Bazel instead.
+# gazelle:exclude integration_test.go
+
+# Exclude credential-requiring test files from the default test target.
+# They are compiled into the separate :test_integration_test target below,
+# which is tagged requires-modal-token and skipped in default test runs.
+# gazelle:exclude cls_test.go
+# gazelle:exclude function_call_test.go
+# gazelle:exclude function_test.go
+# gazelle:exclude image_test.go
+# gazelle:exclude proxy_test.go
+# gazelle:exclude queue_test.go
+# gazelle:exclude sandbox_directory_snapshot_test.go
+# gazelle:exclude sandbox_filesystem_snapshot_test.go
+# gazelle:exclude sandbox_filesystem_test.go
+# gazelle:exclude sandbox_test.go
+# gazelle:exclude secret_test.go
+# gazelle:exclude volume_test.go
+
+go_test(
+    name = "test_test",
+    srcs = [
+        "auth_token_manager_test.go",
+        "cls_with_options_test.go",
+        "grpc_test.go",
+        "main_test.go",
+        "retries_test.go",
+        "testutils_test.go",
+    ],
+    deps = [
+        "//libmodal/modal-go",
+        "//libmodal/modal-go/internal/grpcmock",
+        "//libmodal/modal-go/proto/modal_proto",
+        "@com_github_golang_jwt_jwt_v5//:jwt",
+        "@com_github_onsi_gomega//:gomega",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//connectivity",
+        "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//status",
+        "@org_golang_google_grpc//test/bufconn",
+        "@org_uber_go_goleak//:goleak",
+    ],
+)
+
+# Tests that require a Modal API token. Run with --test_tag_filters=requires-modal-token.
+go_test(
+    name = "test_integration_test",
+    srcs = [
+        # keep
+        "cls_test.go",
+        "function_call_test.go",
+        "function_test.go",
+        "image_test.go",
+        "main_test.go",
+        "proxy_test.go",
+        "queue_test.go",
+        "sandbox_directory_snapshot_test.go",
+        "sandbox_filesystem_snapshot_test.go",
+        "sandbox_filesystem_test.go",
+        "sandbox_test.go",
+        "secret_test.go",
+        "testutils_test.go",
+        "volume_test.go",
+    ],
+    tags = ["requires-modal-token"],  # keep
+    deps = [
+        "//libmodal/modal-go",
+        "//libmodal/modal-go/internal/grpcmock",
+        "//libmodal/modal-go/proto/modal_proto",
+        "@com_github_golang_jwt_jwt_v5//:jwt",
+        "@com_github_onsi_gomega//:gomega",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//connectivity",
+        "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//status",
+        "@org_golang_google_grpc//test/bufconn",
+        "@org_golang_google_protobuf//types/known/emptypb",
+        "@org_uber_go_goleak//:goleak",
+    ],
+)

@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "function-current-stats_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/modal-labs/libmodal/modal-go/examples/function-current-stats",
+    visibility = ["//visibility:private"],
+    deps = ["//libmodal/modal-go"],
+)
+
+go_binary(
+    name = "function-current-stats",
+    embed = [":function-current-stats_lib"],
+    visibility = ["//visibility:public"],
+)

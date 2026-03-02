@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "sandbox-connect-token_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/modal-labs/libmodal/modal-go/examples/sandbox-connect-token",
+    visibility = ["//visibility:private"],
+    deps = ["//libmodal/modal-go"],
+)
+
+go_binary(
+    name = "sandbox-connect-token",
+    embed = [":sandbox-connect-token_lib"],
+    visibility = ["//visibility:public"],
+)

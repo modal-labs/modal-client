@@ -1,0 +1,21 @@
+version = "2"
+
+[linters]
+enable = [
+  "errcheck",
+  "govet",
+  "ineffassign",
+  "sloglint",
+  "staticcheck",
+  "unused",
+  "usetesting",
+]
+
+[linters.settings.staticcheck]
+checks = ["all"]
+
+[linters.settings.sloglint]
+context = "all"
+
+[formatters]
+enable = ["gofmt", "goimports"]
