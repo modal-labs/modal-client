@@ -2,6 +2,7 @@
 """mdmd - MoDal MarkDown"""
 
 import inspect
+import typing
 import warnings
 from enum import Enum, EnumMeta
 from types import ModuleType
@@ -36,11 +37,51 @@ def function_str(name: str, func) -> str:
     return decl + docstring
 
 
+def _is_typeddict(obj) -> bool:
+    """Check if a class is a TypedDict."""
+    if hasattr(typing, "is_typeddict"):
+        return typing.is_typeddict(obj)
+    # Fallback: TypedDicts have these special attributes
+    return (
+        inspect.isclass(obj)
+        and issubclass(obj, dict)
+        and hasattr(obj, "__required_keys__")
+        and hasattr(obj, "__optional_keys__")
+    )
+
+
+def _typeddict_str(name, obj) -> str:
+    """Generate documentation for a TypedDict class."""
+    hints = typing.get_type_hints(obj)
+    optional_keys: frozenset[str] = getattr(obj, "__optional_keys__", frozenset())
+
+    # Build the class declaration showing fields
+    lines = [f"class {name}(TypedDict):"]
+    for field_name, field_type in hints.items():
+        type_str = inspect.formatannotation(field_type)
+        if field_name in optional_keys:
+            lines.append(f"    {field_name}: NotRequired[{type_str}]")
+        else:
+            lines.append(f"    {field_name}: {type_str}")
+
+    decl = "```python\n" + "\n".join(lines) + "\n```\n\n"
+
+    parts = [decl]
+    docstring = format_docstring(obj.__doc__)
+    if docstring:
+        parts.append(docstring + "\n")
+
+    return "".join(parts)
+
+
 def class_str(name, obj, title_level="##"):
     def qual_name(cls):
         if cls.__module__ == "builtins":
             return cls.__name__
         return f"{cls.__module__}.{cls.__name__}"
+
+    if _is_typeddict(obj):
+        return _typeddict_str(name, obj)
 
     bases = [qual_name(b) for b in obj.__bases__]
     bases_str = f"({', '.join(bases)})" if bases else ""
