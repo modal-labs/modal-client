@@ -11,6 +11,7 @@ from modal.output import OutputManager
 from . import run, shell as shell_module
 from .app import app_cli
 from .billing import billing_cli
+from .changelog import changelog
 from .cluster import cluster_cli
 from .config import config_cli
 from .container import container_cli
@@ -141,6 +142,7 @@ entrypoint_cli_typer.add_typer(token_cli, rich_help_panel="Configuration")
 
 # Observability
 entrypoint_cli_typer.add_typer(billing_cli, rich_help_panel="Observability")
+entrypoint_cli_typer.command("changelog", rich_help_panel="Observability")(changelog)
 entrypoint_cli_typer.command("dashboard", rich_help_panel="Observability")(dashboard)
 
 # Hide setup from help as it's redundant with modal token new, but nicer for onboarding
