@@ -1,0 +1,93 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+"""Go SDK for Modal — github.com/modal-labs/libmodal/modal-go."""
+
+# gazelle:prefix github.com/modal-labs/libmodal/modal-go
+# gazelle:go_generate_proto false
+
+# Exclude client_test.go from the default test target: it requires a Modal API
+# token. It is compiled into the separate :modal-go_client_test target below.
+# gazelle:exclude client_test.go
+
+go_library(
+    name = "modal-go",
+    srcs = [
+        "app.go",
+        "auth_token_manager.go",
+        "client.go",
+        "cloud_bucket_mount.go",
+        "cls.go",
+        "config.go",
+        "doc.go",
+        "ephemeral.go",
+        "errors.go",
+        "function.go",
+        "function_call.go",
+        "image.go",
+        "invocation.go",
+        "logger.go",
+        "proxy.go",
+        "queue.go",
+        "retries.go",
+        "sandbox.go",
+        "sandbox_filesystem.go",
+        "secret.go",
+        "task_command_router_client.go",
+        "volume.go",
+    ],
+    importpath = "github.com/modal-labs/libmodal/modal-go",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//libmodal/modal-go/proto/modal_proto",
+        "@com_github_djherbis_buffer//:buffer",
+        "@com_github_djherbis_nio_v3//:nio",
+        "@com_github_fxamacker_cbor_v2//:cbor",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_kisielk_og_rek//:og-rek",
+        "@com_github_pelletier_go_toml_v2//:go-toml",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//credentials",
+        "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//keepalive",
+        "@org_golang_google_grpc//metadata",
+        "@org_golang_google_grpc//status",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//types/known/emptypb",
+        "@org_golang_x_sync//singleflight",
+    ],
+)
+
+go_test(
+    name = "modal-go_test",
+    srcs = [
+        "app_test.go",
+        "cloud_bucket_mount_test.go",
+        "cls_test.go",
+        "config_test.go",
+        "logger_test.go",
+        "sandbox_test.go",
+        "secret_test.go",
+        "serialization_test.go",
+        "task_command_router_client_test.go",
+    ],
+    embed = [":modal-go"],
+    deps = [
+        "//libmodal/modal-go/proto/modal_proto",
+        "@com_github_onsi_gomega//:gomega",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//status",
+    ],
+)
+
+# Tests that require a Modal API token. Run with --test_tag_filters=requires-modal-token.
+go_test(
+    name = "modal-go_client_test",
+    srcs = ["client_test.go"],  # keep
+    embed = [":modal-go"],
+    tags = ["requires-modal-token"],  # keep
+    deps = [
+        "@com_github_onsi_gomega//:gomega",
+        "@org_golang_google_grpc//:grpc",
+    ],
+)

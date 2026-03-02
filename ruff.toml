@@ -1,0 +1,15 @@
+exclude = [
+    '.venv',
+    '.git',
+    '__pycache__',
+]
+line-length = 120
+lint.ignore = ['E741']
+lint.select = ['E', 'F', 'W', 'I']
+
+[lint.isort]
+combine-as-imports = true
+known-first-party = [
+    "modal",
+]
+extra-standard-library = ["pytest"]

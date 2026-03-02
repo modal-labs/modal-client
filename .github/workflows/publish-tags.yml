@@ -1,0 +1,60 @@
+name: Tag SDK Releases
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  tag-go-js-release-commits:
+    name: Tag Go & JS release commits
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            js/package.json
+            .github/scripts/tag-go-js-releases.sh
+          fetch-tags: true
+
+      - name: Config git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Tag and push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMITS: ${{ join(github.event.commits.*.id, ' ') }}
+        run: bash .github/scripts/tag-go-js-releases.sh
+
+
+  tag-py-release-commits:
+    name: Tag Python release commits
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            py/modal_version/__init__.py
+            .github/scripts/tag-py-releases.sh
+          fetch-tags: true
+
+      - name: Config git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Tag and push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMITS: ${{ join(github.event.commits.*.id, ' ') }}
+        run: bash .github/scripts/tag-py-releases.sh

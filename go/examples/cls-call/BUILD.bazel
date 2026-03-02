@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "cls-call_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/modal-labs/libmodal/modal-go/examples/cls-call",
+    visibility = ["//visibility:private"],
+    deps = ["//libmodal/modal-go"],
+)
+
+go_binary(
+    name = "cls-call",
+    embed = [":cls-call_lib"],
+    visibility = ["//visibility:public"],
+)

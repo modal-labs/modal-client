@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "telemetry_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/modal-labs/libmodal/modal-go/examples/telemetry",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//libmodal/modal-go",
+        "@org_golang_google_grpc//:grpc",
+    ],
+)
+
+go_binary(
+    name = "telemetry",
+    embed = [":telemetry_lib"],
+    visibility = ["//visibility:public"],
+)

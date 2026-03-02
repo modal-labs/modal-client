@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "function-spawn_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/modal-labs/libmodal/modal-go/examples/function-spawn",
+    visibility = ["//visibility:private"],
+    deps = ["//libmodal/modal-go"],
+)
+
+go_binary(
+    name = "function-spawn",
+    embed = [":function-spawn_lib"],
+    visibility = ["//visibility:public"],
+)
