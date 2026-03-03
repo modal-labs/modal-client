@@ -4,6 +4,13 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.3.5 (2026-03-03)
+
+- We've added a `modal changelog` CLI for retrieving changelog entries with a flexible query interface (e.g. `modal changelog --since=1.2`, `modal changelog --since=2025-12-01`, `modal changelog --newer`). We expect that this will be a useful way to surface information about new features to coding agents.
+- We've added a new `modal.Secret.update` method, which allows you to programmatically modify the environment variables within a Secret. This method has the semantics of Python's `dict.update`: Secret contents can be overwritten or extended when using it. Note that Secret updates will take effect only for containers that start up after the modification.
+- The dataclass returned by `modal.Function.get_current_stats()` now includes a `num_running_inputs` field that reports the number of inputs the Function is currently handling.
+
+
 ### 1.3.4 (2026-02-23)
 
 - We're introducing "Directory Snapshots": a new beta feature for persisting specific directories past the lifetime of an individual Sandbox. Using the new methods `modal.Sandbox.snapshot_directory()` and `modal.Sandbox.mount_image()`, you can capture the state of a directory and then later include it in a different Sandbox:
