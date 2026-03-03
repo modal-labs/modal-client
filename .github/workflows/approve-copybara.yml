@@ -24,12 +24,23 @@ jobs:
       GH_REPO: ${{ github.repository }}
 
     steps:
+      # Use the github bot user to approve the PR, because the copybara client app was the author.
       - name: Auto-approve PR
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh pr --repo $GH_REPO review $PR_NUMBER --approve
 
+      - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        id: app-token-client
+        with:
+          app-id: ${{ vars.MODAL_COPYBARA_CLIENT_APP_ID }}
+          private-key: ${{ secrets.MODAL_COPYBARA_CLIENT_PRIVATE_KEY }}
+          owner: modal-labs
+          repositories: |
+            modal-client
+
+      # Use the copybara client app to enable automerge, so that workflows on `main` can trigger on merge.
       - name: Enable auto-merge
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token-client.outputs.token }}
         run: gh pr --repo $GH_REPO merge $PR_NUMBER --auto --rebase
