@@ -1,16 +1,16 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
-"""Go SDK for Modal — github.com/modal-labs/libmodal/modal-go."""
+"""Go SDK for Modal — github.com/modal-labs/modal/client/go."""
 
-# gazelle:prefix github.com/modal-labs/libmodal/modal-go
+# gazelle:prefix github.com/modal-labs/modal/client/go
 # gazelle:go_generate_proto false
 
 # Exclude client_test.go from the default test target: it requires a Modal API
-# token. It is compiled into the separate :modal-go_client_test target below.
+# token. It is compiled into the separate :go_client_test target below.
 # gazelle:exclude client_test.go
 
 go_library(
-    name = "modal-go",
+    name = "go",
     srcs = [
         "app.go",
         "auth_token_manager.go",
@@ -35,10 +35,10 @@ go_library(
         "task_command_router_client.go",
         "volume.go",
     ],
-    importpath = "github.com/modal-labs/libmodal/modal-go",
+    importpath = "github.com/modal-labs/modal/client/go",
     visibility = ["//visibility:public"],
     deps = [
-        "//libmodal/modal-go/proto/modal_proto",
+        "//client/go/proto/modal_proto",
         "@com_github_djherbis_buffer//:buffer",
         "@com_github_djherbis_nio_v3//:nio",
         "@com_github_fxamacker_cbor_v2//:cbor",
@@ -59,7 +59,7 @@ go_library(
 )
 
 go_test(
-    name = "modal-go_test",
+    name = "go_test",
     srcs = [
         "app_test.go",
         "cloud_bucket_mount_test.go",
@@ -71,9 +71,9 @@ go_test(
         "serialization_test.go",
         "task_command_router_client_test.go",
     ],
-    embed = [":modal-go"],
+    embed = [":go"],
     deps = [
-        "//libmodal/modal-go/proto/modal_proto",
+        "//client/go/proto/modal_proto",
         "@com_github_onsi_gomega//:gomega",
         "@org_golang_google_grpc//codes",
         "@org_golang_google_grpc//status",
@@ -82,9 +82,9 @@ go_test(
 
 # Tests that require a Modal API token. Run with --test_tag_filters=requires-modal-token.
 go_test(
-    name = "modal-go_client_test",
+    name = "go_client_test",
     srcs = ["client_test.go"],  # keep
-    embed = [":modal-go"],
+    embed = [":go"],
     tags = ["requires-modal-token"],  # keep
     deps = [
         "@com_github_onsi_gomega//:gomega",

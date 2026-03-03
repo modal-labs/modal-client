@@ -1,15 +1,15 @@
 load("@rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
-    name = "function-spawn_lib",
+    name = "version-tracking_lib",
     srcs = ["main.go"],
-    importpath = "github.com/modal-labs/modal/client/go/examples/function-spawn",
+    importpath = "github.com/modal-labs/modal/client/go/test/integration/version-tracking",
     visibility = ["//visibility:private"],
     deps = ["//client/go"],
 )
 
 go_binary(
-    name = "function-spawn",
-    embed = [":function-spawn_lib"],
+    name = "version-tracking",
+    embed = [":version-tracking_lib"],
     visibility = ["//visibility:public"],
 )

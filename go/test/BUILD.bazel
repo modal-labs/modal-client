@@ -32,9 +32,9 @@ go_test(
         "testutils_test.go",
     ],
     deps = [
-        "//libmodal/modal-go",
-        "//libmodal/modal-go/internal/grpcmock",
-        "//libmodal/modal-go/proto/modal_proto",
+        "//client/go",
+        "//client/go/internal/grpcmock",
+        "//client/go/proto/modal_proto",
         "@com_github_golang_jwt_jwt_v5//:jwt",
         "@com_github_onsi_gomega//:gomega",
         "@org_golang_google_grpc//:grpc",
@@ -69,9 +69,9 @@ go_test(
     ],
     tags = ["requires-modal-token"],  # keep
     deps = [
-        "//libmodal/modal-go",
-        "//libmodal/modal-go/internal/grpcmock",
-        "//libmodal/modal-go/proto/modal_proto",
+        "//client/go",
+        "//client/go/internal/grpcmock",
+        "//client/go/proto/modal_proto",
         "@com_github_golang_jwt_jwt_v5//:jwt",
         "@com_github_onsi_gomega//:gomega",
         "@org_golang_google_grpc//:grpc",
