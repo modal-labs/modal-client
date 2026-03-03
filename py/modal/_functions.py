@@ -550,6 +550,7 @@ class FunctionStats:
 
     backlog: int
     num_total_runners: int
+    num_running_inputs: int
 
 
 def _parse_retries(
@@ -1917,7 +1918,9 @@ Use the `Function.get_web_url()` method instead.
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
             retry=Retry(total_timeout=10.0),
         )
-        return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
+        return FunctionStats(
+            backlog=resp.backlog, num_total_runners=resp.num_total_tasks, num_running_inputs=resp.num_running_inputs
+        )
 
     @live_method
     async def _get_schema(self) -> api_pb2.FunctionSchema:

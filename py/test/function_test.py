@@ -2331,3 +2331,24 @@ async def test_function_call_from_id_is_not_async(monkeypatch):
     forbidden_calls.assert_not_called()
     # there should also be no warnings about sync usage in async contexts:
     assert len(record) == 0
+
+
+def test_function_get_current_stats(client, servicer):
+    f = Function.from_name("dummy-app", "func", client=client)
+    function_id = "fu-1"
+    function_stats_msg = api_pb2.FunctionStats(backlog=1, num_total_tasks=2, num_running_inputs=3)
+
+    async def get_current_stats(servicer, stream):
+        msg = await stream.recv_message()
+        assert msg.function_id == function_id
+        await stream.send_message(function_stats_msg)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGetCurrentStats", get_current_stats)
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id=function_id))
+
+        function_stats = f.get_current_stats()
+
+    assert function_stats.backlog == function_stats_msg.backlog
+    assert function_stats.num_total_runners == function_stats_msg.num_total_tasks
+    assert function_stats.num_running_inputs == function_stats_msg.num_running_inputs
