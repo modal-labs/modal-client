@@ -1,6 +1,6 @@
 {
   "name": "modal",
-  "version": "0.7.3-dev.0",
+  "version": "0.7.3-dev.1",
   "description": "Modal SDK for JavaScript/TypeScript",
   "license": "Apache-2.0",
   "homepage": "https://modal.com/docs/guide/sdk-javascript-go",
