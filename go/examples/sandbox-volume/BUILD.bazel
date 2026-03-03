@@ -3,9 +3,9 @@ load("@rules_go//go:def.bzl", "go_binary", "go_library")
 go_library(
     name = "sandbox-volume_lib",
     srcs = ["main.go"],
-    importpath = "github.com/modal-labs/libmodal/modal-go/examples/sandbox-volume",
+    importpath = "github.com/modal-labs/modal/client/go/examples/sandbox-volume",
     visibility = ["//visibility:private"],
-    deps = ["//libmodal/modal-go"],
+    deps = ["//client/go"],
 )
 
 go_binary(
