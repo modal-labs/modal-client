@@ -60,6 +60,7 @@ go_library(
 
 go_test(
     name = "go_test",
+    size = "small",
     srcs = [
         "app_test.go",
         "cloud_bucket_mount_test.go",
