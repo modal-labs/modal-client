@@ -23,6 +23,7 @@ load("@rules_go//go:def.bzl", "go_test")
 
 go_test(
     name = "test_test",
+    size = "small",
     srcs = [
         "auth_token_manager_test.go",
         "cls_with_options_test.go",
