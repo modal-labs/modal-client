@@ -10,6 +10,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
+from ._utils.deprecation import deprecation_warning
 from .client import _Client
 from .exception import AlreadyExistsError, InvalidError, RemoteError, ServiceError
 
@@ -29,6 +30,14 @@ class Tunnel:
     @property
     def url(self) -> str:
         """Get the public HTTPS URL of the forwarded port."""
+        if self.unencrypted_host:
+            deprecation_warning(
+                (2026, 3, 5),
+                "`.url` on unencrypted tunnels will be deprecated in a future release. "
+                "For HTTPS, use an encrypted tunnel instead: with `forward()`, call "
+                "`forward(port)` without `unencrypted=True`; with sandboxes, declare the port "
+                "in `encrypted_ports` instead of `unencrypted_ports`.",
+            )
         value = f"https://{self.host}"
         if self.port != 443:
             value += f":{self.port}"
