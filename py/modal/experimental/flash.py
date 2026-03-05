@@ -149,7 +149,7 @@ class _FlashManager:
                         timeout=10,
                         retry=None,
                     )
-                    logger.info(f"Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}")
+                    logger.warning(f"Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}")
                     return True
             except asyncio.CancelledError:
                 logger.warning("Waited too long for port to start accepting connections. Shutting down...")
