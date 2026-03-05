@@ -2,7 +2,14 @@ load("@rules_python//python:defs.bzl", "py_library")
 
 py_library(
     name = "modal_docs",
-    srcs = glob(["**/*.py"]),
+    srcs = [
+        "__init__.py",
+        "gen_cli_docs.py",
+        "gen_reference_docs.py",
+        "mdmd/__init__.py",
+        "mdmd/mdmd.py",
+        "mdmd/signatures.py",
+    ],
     imports = [".."],
     visibility = ["//visibility:public"],
     deps = [
