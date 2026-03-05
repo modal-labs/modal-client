@@ -81,12 +81,12 @@ go_test(
     ],
 )
 
-# Tests that require a Modal API token. Run with --test_tag_filters=requires-modal-token.
+# Tests that require a Modal API token. Run manually: bazel test //client/go:go_client_test
 go_test(
     name = "go_client_test",
     srcs = ["client_test.go"],  # keep
     embed = [":go"],
-    tags = ["requires-modal-token"],  # keep
+    tags = ["manual"],  # requires Modal API token; run manually
     deps = [
         "@com_github_onsi_gomega//:gomega",
         "@org_golang_google_grpc//:grpc",
