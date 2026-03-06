@@ -373,8 +373,8 @@ def check_copyright(ctx, fix=False):
             )
         ]
         for fn in fns:
-            first_line = open(fn).readline()
-            if not first_line.startswith(copyright_header_start):
+            head = open(fn).readlines()[:2]
+            if not any(line.startswith(copyright_header_start) for line in head):
                 if fix:
                     print(f"Fixing {fn}...")
                     content = copyright_header_full + "\n" + open(fn).read()

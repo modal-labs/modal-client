@@ -986,6 +986,7 @@ detach_error_funcs = {
     "stdout": lambda sb: sb.stdout,
     "stderr": lambda sb: sb.stderr,
     "stdin": lambda sb: sb.stdin,
+    "filesystem": lambda sb: sb.filesystem,
 }
 ALLOW_AFTER_DETACH = {"detach", "returncode", "wait"}
 
