@@ -42,6 +42,7 @@ from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .proxy import _Proxy
+from .sandbox_fs import _SandboxFilesystem
 from .secret import _Secret
 from .snapshot import _SandboxSnapshot
 from .stream_type import StreamType
@@ -117,6 +118,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _enable_snapshot: bool
     _command_router_client: Optional[TaskCommandRouterClient]
     _attached: bool
+    _filesystem: Optional[_SandboxFilesystem]
 
     @staticmethod
     def _default_pty_info() -> api_pb2.PTYInfo:
@@ -516,6 +518,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._tunnels = None
         self._enable_snapshot = False
         self._command_router_client = None
+        self._filesystem = None
 
     def _initialize_from_other(self, other):
         super()._initialize_from_other(other)
@@ -1243,6 +1246,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         """
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
+
+    @property
+    def filesystem(self) -> _SandboxFilesystem:
+        """Namespace for filesystem APIs."""
+        self._ensure_attached()
+        if self._filesystem is None:
+            self._filesystem = _SandboxFilesystem(self)
+        return self._filesystem
 
     async def ls(self, path: str) -> builtins.list[str]:
         """[Alpha] List the contents of a directory in the Sandbox."""
