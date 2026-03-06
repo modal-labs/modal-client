@@ -2,7 +2,7 @@ load("//bazel:python.bzl", "pytest_test")
 
 pytest_test(
     name = "tests",
-    size = "large",
+    size = "medium",
     srcs = glob(["**/*.py"]),
     args = [
         "client/py/test/",
