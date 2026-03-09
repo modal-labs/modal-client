@@ -1,4 +1,6 @@
 name: setup-cached-python-client
+description:
+  Create a Python environment with cached dependencies for the client.
 
 inputs:
   version:
@@ -6,8 +8,8 @@ inputs:
     required: true
     default: "3.10"
   working-directory:
+    description: The working directory
     required: true
-    type: string
   no-build-isolation:
     description:
       Use --no-build-isolation (needed for macOS ARM grpcio-tools builds)
