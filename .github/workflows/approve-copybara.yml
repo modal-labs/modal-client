@@ -30,7 +30,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh pr --repo $GH_REPO review $PR_NUMBER --approve
 
-      - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+      - uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2
         id: app-token-client
         with:
           app-id: ${{ vars.MODAL_COPYBARA_CLIENT_APP_ID }}
