@@ -23,16 +23,25 @@ def _random_bytes(size: int, *, seed: int) -> bytes:
 
 
 @pytest.fixture
-def sandbox_fs_tools(monkeypatch):
+def sandbox_fs_tools(monkeypatch, tmp_path):
     """Points the sandbox filesystem tools path at the mock script.
 
     The mock exec backend ("router") runs commands as local subprocesses,
     so this script is executed directly on the host. It emulates the Rust
     binary's behavior for ReadFile, including structured JSON error
     payloads on stderr.
+
+    We wrap the Python script in a shell script that explicitly calls the
+    current test interpreter (sys.executable). This avoids inheriting the
+    Bazel PYTHONPATH when the subprocess runs via the shebang's `env python3`,
+    which would otherwise cause import hook version mismatches (e.g. ddtrace).
     """
-    _MOCK_SANDBOX_FS_TOOLS_PATH.chmod(0o755)
-    monkeypatch.setattr("modal.sandbox_fs._SANDBOX_FS_TOOLS_PATH", str(_MOCK_SANDBOX_FS_TOOLS_PATH))
+    import sys
+
+    wrapper = tmp_path / "mock_sandbox_fs_tools"
+    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{_MOCK_SANDBOX_FS_TOOLS_PATH}" "$@"\n')
+    wrapper.chmod(0o755)
+    monkeypatch.setattr("modal.sandbox_fs._SANDBOX_FS_TOOLS_PATH", str(wrapper))
 
 
 @pytest.fixture
