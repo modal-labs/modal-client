@@ -23,13 +23,13 @@ container_cli = typer.Typer(name="container", help="Manage and connect to runnin
 
 @container_cli.command("list")
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: bool = False, app_id: str = ""):
     """List all containers that are currently running."""
     env = ensure_env(env)
     client = await _Client.from_env()
     environment_name = _get_environment_name(env)
     res: api_pb2.TaskListResponse = await client.stub.TaskList(
-        api_pb2.TaskListRequest(environment_name=environment_name)
+        api_pb2.TaskListRequest(environment_name=environment_name, app_id=app_id)
     )
 
     column_names: list[Union[Column, str]] = [

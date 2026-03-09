@@ -14,6 +14,7 @@ import platform
 import re
 from collections.abc import Generator
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Callable
 
 from rich.console import Console, Group, RenderableType
@@ -321,7 +322,11 @@ class RichOutputManager(OutputManager):
         default Python warning display.
         """
         # For non-Modal warnings, fall back to the default display
-        if not issubclass(category, (DeprecationError, PendingDeprecationError, ServerWarning)):
+        import modal
+
+        is_modal_warning = issubclass(category, (DeprecationError, PendingDeprecationError, ServerWarning))
+        filename_in_modal = modal.__path__ and Path(filename).is_relative_to(modal.__path__[0])
+        if not is_modal_warning and not filename_in_modal:
             base_showwarning(warning, category, filename, lineno, file=None, line=None)
             return
 
@@ -334,20 +339,21 @@ class RichOutputManager(OutputManager):
             date = ""
             message = content
 
-        # Try to add source context
-        try:
-            with open(filename, encoding="utf-8", errors="replace") as code_file:
-                source = code_file.readlines()[lineno - 1].strip()
-            message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
-        except OSError:
-            # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows
-            pass
+        # Try to add source context for non-Modal file sources
+        if not filename_in_modal:
+            try:
+                with open(filename, encoding="utf-8", errors="replace") as code_file:
+                    source = code_file.readlines()[lineno - 1].strip()
+                message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
+            except OSError:
+                # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows
+                pass
 
         # Build title
-        if issubclass(category, ServerWarning):
-            title = "Modal Warning"
-        else:
+        if issubclass(category, (DeprecationError, PendingDeprecationError)):
             title = "Modal Deprecation Warning"
+        else:
+            title = "Modal Warning"
         if date:
             title += f" ({date})"
 

@@ -5,6 +5,8 @@ import time
 import typing
 from unittest import mock
 
+from grpclib import GRPCError, Status
+
 import modal
 from modal._resolver import Resolver
 from modal.client import Client
@@ -182,3 +184,95 @@ def test_run_app_interactive_no_spinner(servicer, client):
             with run_app(app, client=client, interactive=False):
                 pass
         mock_spinner.return_value.__enter__.assert_called_once()
+
+
+@pytest.mark.parametrize("mode", ["deploy", "run"])
+def test_run_app_restart_deployment(servicer, client, monkeypatch, mode):
+    monkeypatch.setattr(modal.runner, "WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL", 0.01)
+    task_list_calls = 0
+
+    async def task_list(servicer, stream):
+        nonlocal task_list_calls
+        await stream.recv_message()
+
+        if task_list_calls <= 1:
+            resp = api_pb2.TaskListResponse(
+                tasks=[
+                    api_pb2.TaskStats(task_id="ta-123", enqueued_at=123),
+                    api_pb2.TaskStats(task_id="ta-321", enqueued_at=321),
+                ]
+            )
+        elif task_list_calls == 2:
+            resp = api_pb2.TaskListResponse(tasks=[api_pb2.TaskStats(task_id="ta-123", enqueued_at=123)])
+        else:
+            resp = api_pb2.TaskListResponse(tasks=[])
+
+        task_list_calls += 1
+        await stream.send_message(resp)
+
+    dummy_app = modal.App("my-app")
+    with servicer.intercept() as ctx:
+        ctx.set_responder("TaskList", task_list)
+        if mode == "deploy":
+            dummy_app.deploy(client=client, strategy="restart")
+        else:
+            # Test the `modal serve` case since it uses run_app
+            with run_app(dummy_app, client=client, deployment_strategy="restart"):
+                pass
+
+    assert task_list_calls == 4
+
+    task_ids = set(servicer.container_stop_ids)
+    assert task_ids == set(["ta-123", "ta-321"])
+
+
+def test_run_app_restart_deployment_timeout(servicer, client, monkeypatch):
+    monkeypatch.setattr(modal.runner, "WAIT_FOR_CONTAINER_STOP_TIMEOUT", 0.1)
+
+    async def task_list(servicer, stream):
+        await stream.recv_message()
+        resp = api_pb2.TaskListResponse(
+            tasks=[
+                api_pb2.TaskStats(task_id="ta-123", enqueued_at=123),
+                api_pb2.TaskStats(task_id="ta-321", enqueued_at=321),
+            ]
+        )
+        await stream.send_message(resp)
+
+    dummy_app = modal.App("my-app")
+
+    msg = "App updated successfully, but containers did not all restart."
+    with pytest.warns(UserWarning, match=msg):
+        with servicer.intercept() as ctx:
+            ctx.set_responder("TaskList", task_list)
+            dummy_app.deploy(client=client, strategy="restart")
+
+    task_ids = set(servicer.container_stop_ids)
+    assert task_ids == set(["ta-123", "ta-321"])
+
+
+def test_run_app_restart_deployment_stop_fails(servicer, client, monkeypatch):
+    monkeypatch.setattr(modal.runner, "WAIT_FOR_CONTAINER_STOP_TIMEOUT", 1.0)
+
+    async def task_list(servicer, stream):
+        await stream.recv_message()
+        resp = api_pb2.TaskListResponse(
+            tasks=[
+                api_pb2.TaskStats(task_id="ta-123", enqueued_at=123),
+                api_pb2.TaskStats(task_id="ta-321", enqueued_at=321),
+            ]
+        )
+        await stream.send_message(resp)
+
+    async def container_stop(servicer, stream):
+        await stream.recv_message()
+        raise GRPCError(Status.NOT_FOUND, "Unable to stop containers")
+
+    dummy_app = modal.App("my-app")
+
+    msg = "App updated successfully, but containers did not all restart. Unable to stop containers"
+    with pytest.warns(UserWarning, match=msg):
+        with servicer.intercept() as ctx:
+            ctx.set_responder("TaskList", task_list)
+            ctx.set_responder("ContainerStop", container_stop)
+            dummy_app.deploy(client=client, strategy="restart")
