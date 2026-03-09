@@ -455,6 +455,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.container_heartbeat_response = None
         self.container_heartbeat_abort = threading.Event()
+        self.container_stop_ids = []
 
         self.image_join_sleep_duration = None
 
@@ -797,9 +798,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if request.app_state == api_pb2.AppState.APP_STATE_DEPLOYED:
             app_key = (self.app_environments[request.app_id], request.name)
             self.deployed_apps[app_key] = request.app_id
-            await stream.send_message(api_pb2.AppPublishResponse(url="http://test.modal.com/foo/bar"))
+            await stream.send_message(
+                api_pb2.AppPublishResponse(
+                    url="http://test.modal.com/foo/bar",
+                    deployed_at=datetime.datetime.now(datetime.timezone.utc).timestamp(),
+                )
+            )
         else:
-            await stream.send_message(api_pb2.AppPublishResponse())
+            await stream.send_message(
+                api_pb2.AppPublishResponse(deployed_at=datetime.datetime.now(datetime.timezone.utc).timestamp())
+            )
 
         if current_history := self.app_deployment_history[request.app_id]:
             current_version = current_history[-1]["version"]
@@ -1069,6 +1077,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ContainerHello(self, stream):
         await stream.recv_message()
         await stream.send_message(Empty())
+
+    async def ContainerStop(self, stream):
+        req: api_pb2.ContainerStopRequest = await stream.recv_message()
+        self.container_stop_ids.append(req.task_id)
+        await stream.send_message(api_pb2.ContainerStopResponse())
 
     ### Dict
 
@@ -2020,6 +2033,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # unless the exec_backend is "router".
         _request: api_pb2.TaskGetCommandRouterAccessRequest = await stream.recv_message()
         raise GRPCError(Status.FAILED_PRECONDITION, "Command router access not enabled in tests")
+
+    async def TaskList(self, stream):
+        _request: api_pb2.TaskListRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.TaskListResponse())
 
     async def SandboxGetTaskId(self, stream):
         # only used for `modal shell` / `modal container exec`

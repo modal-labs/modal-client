@@ -21,7 +21,7 @@ from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
 from ..functions import Function
 from ..output import OutputManager
-from ..runner import deploy_app, run_app
+from ..runner import DEPLOYMENT_STRATEGY_TYPE, deploy_app, run_app
 from ..serving import serve_app
 from .import_refs import (
     CLICommand,
@@ -504,6 +504,7 @@ def deploy(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
     timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line."),
+    strategy: DEPLOYMENT_STRATEGY_TYPE = typer.Option("rolling", help="Deployment strategy"),
 ):
     """Deploy a Modal application.
 
@@ -530,7 +531,7 @@ def deploy(
             "modal deploy ... --name=some-name"
         )
 
-    res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
+    res = deploy_app(app, name=name, environment_name=env or "", tag=tag, deployment_strategy=strategy)
 
     if stream_logs:
         stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url, show_timestamps=timestamps)

@@ -439,6 +439,13 @@ class _App:
         environment_name: Optional[str] = None,  # Environment to deploy the App in
         tag: str = "",  # Optional metadata that is specific to this deployment
         client: Optional[_Client] = None,  # Alternate client to use for communication with the server
+        # Deployment strategy:
+        # - 'rolling' (default): Traffic shifts to the new deployment by starting
+        #   new containers gradually. Old containers will continue to process inputs while new
+        #   containers start up.
+        # - 'restart': As part of the deployment, all running containers are terminated. New inputs
+        #   will start new containers.
+        strategy: str = "rolling",
     ) -> typing_extensions.Self:
         """Deploy the App so that it is available persistently.
 
@@ -482,7 +489,10 @@ class _App:
         ```
 
         """
-        from .runner import _deploy_app  # Defer import of runner.py, which imports a lot from Rich
+        from .runner import (  # Defer import of runner.py, which imports a lot from Rich
+            _deploy_app,
+            _validate_deployment_strategy,
+        )
 
         if name is None and self._name is None:
             raise InvalidError(
@@ -493,7 +503,10 @@ class _App:
                 "or\n"
                 'app = modal.App("some-name")'
             )
-        result = await _deploy_app(self, name=name, environment_name=environment_name, tag=tag, client=client)
+        strategy = _validate_deployment_strategy(strategy)
+        result = await _deploy_app(
+            self, name=name, environment_name=environment_name, tag=tag, client=client, deployment_strategy=strategy
+        )
         self._app_id = result.app_id
         return self
 

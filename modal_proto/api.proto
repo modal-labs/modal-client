@@ -462,6 +462,7 @@ message AppPublishRequest {
 message AppPublishResponse {
   string url = 1;
   repeated Warning server_warnings = 3;
+  double deployed_at = 4;
 }
 
 message AppRollbackRequest {
@@ -3298,6 +3299,7 @@ message TaskInfo {
 
 message TaskListRequest {
   string environment_name = 1;
+  string app_id = 2;
 }
 
 message TaskListResponse {
@@ -3345,6 +3347,7 @@ message TaskStats {
   string app_id = 2;
   string app_description = 3;
   double started_at = 4;
+  double enqueued_at = 5;
 }
 
 message TaskTemplate {

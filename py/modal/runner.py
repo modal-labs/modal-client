@@ -8,10 +8,11 @@ import asyncio
 import dataclasses
 import os
 import time
+import warnings
 from collections.abc import AsyncGenerator
 from contextlib import nullcontext
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, Optional, TypeVar
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -34,7 +35,13 @@ from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .cls import _Cls
 from .config import config, logger
 from .environments import _get_environment_cached
-from .exception import ConnectionError, InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
+from .exception import (
+    ConnectionError,
+    InteractiveTimeoutError,
+    InvalidError,
+    RemoteError,
+    _CliUserExecutionError,
+)
 from .output import OutputManager
 from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
@@ -46,6 +53,10 @@ if TYPE_CHECKING:
 
 
 V = TypeVar("V")
+
+DEPLOYMENT_STRATEGY_TYPE = Literal["rolling", "restart"]
+WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL = 1
+WAIT_FOR_CONTAINER_STOP_TIMEOUT = 40
 
 
 async def _heartbeat(client: _Client, app_id: str) -> None:
@@ -189,6 +200,59 @@ async def _create_all_objects(
         await asyncio.gather(*[tc.create_task(_load(tag, obj)) for tag, obj in indexed_objects.items()])
 
 
+async def _stop_and_wait_for_containers(
+    client: _Client,
+    app_id: str,
+    deployed_at: float,
+    environment_name: str,
+):
+    async def get_old_container_ids() -> list[str]:
+        res = await client.stub.TaskList(api_pb2.TaskListRequest(environment_name=environment_name, app_id=app_id))
+        return [
+            container.task_id
+            for container in res.tasks
+            if container.enqueued_at and container.enqueued_at < deployed_at
+        ]
+
+    async def stop_containers(container_ids: list[str]):
+        sem = asyncio.Semaphore(32)
+
+        async def stop_one_container(tid: str):
+            async with sem:
+                await client.stub.ContainerStop(api_pb2.ContainerStopRequest(task_id=tid))
+
+        results = await asyncio.gather(*[stop_one_container(tid) for tid in container_ids], return_exceptions=True)
+        exceptions = [r for r in results if isinstance(r, BaseException)]
+        if exceptions:
+            raise exceptions[0]
+
+    async def poll_until_stopped(initial_ids: list[str]):
+        await stop_containers(initial_ids)
+        await asyncio.sleep(WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL)
+
+        while ids := await get_old_container_ids():
+            await stop_containers(ids)
+            await asyncio.sleep(WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL)
+
+    ids = await get_old_container_ids()
+    if not ids:
+        return
+
+    output = OutputManager.get()
+    output.print("♻️ Restarting containers...")
+
+    try:
+        await asyncio.wait_for(poll_until_stopped(ids), timeout=WAIT_FOR_CONTAINER_STOP_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise asyncio.TimeoutError(f"Containers did not restart in under {WAIT_FOR_CONTAINER_STOP_TIMEOUT} seconds.")
+
+
+def _validate_deployment_strategy(strategy: str) -> DEPLOYMENT_STRATEGY_TYPE:
+    if strategy == "rolling" or strategy == "restart":
+        return strategy
+    raise InvalidError(f"Deployment strategy must be 'rolling' or 'restart', not {strategy!r}")
+
+
 async def _publish_app(
     client: _Client,
     running_app: RunningApp,
@@ -197,8 +261,12 @@ async def _publish_app(
     name: str = "",
     deployment_tag: str = "",  # Only relevant for deployments
     commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
+    deployment_strategy: str = "rolling",
+    environment_name: Optional[str] = None,
 ) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
+    deployment_strategy = _validate_deployment_strategy(deployment_strategy)
+
     functions = app_local_state.functions
     definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in functions.values()}  # type: ignore
 
@@ -213,9 +281,23 @@ async def _publish_app(
         class_ids=running_app.class_ids,
         definition_ids=definition_ids,
     )
-
     response = await client.stub.AppPublish(request)
     print_server_warnings(response.server_warnings)
+
+    if deployment_strategy == "restart":
+        try:
+            await _stop_and_wait_for_containers(
+                client,
+                running_app.app_id,
+                response.deployed_at,
+                environment_name or "",
+            )
+        except Exception as exc:
+            warnings.warn(
+                f"App updated successfully, but containers did not all restart. {exc}",
+                UserWarning,
+            )
+
     return response.url, response.server_warnings
 
 
@@ -269,6 +351,7 @@ async def _run_app(
     detach: bool = False,
     environment_name: Optional[str] = None,
     interactive: bool = False,
+    deployment_strategy: str = "rolling",
 ) -> AsyncGenerator["modal.app._App", None]:
     """mdmd:hidden"""
     load_context = await app._root_load_context.reset().in_place_upgrade(
@@ -343,7 +426,14 @@ async def _run_app(
             await _create_all_objects(running_app, local_app_state, load_context)
 
             # Publish the app
-            await _publish_app(load_context.client, running_app, app_state, local_app_state)
+            await _publish_app(
+                load_context.client,
+                running_app,
+                app_state,
+                local_app_state,
+                deployment_strategy=deployment_strategy,
+                environment_name=load_context.environment_name,
+            )
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             OutputManager.get().print("Aborting app initialization...\n")
@@ -451,6 +541,8 @@ async def _serve_update(
             running_app,
             app_state=api_pb2.APP_STATE_UNSPECIFIED,
             app_local_state=local_app_state,
+            environment_name=load_context.environment_name,
+            deployment_strategy="restart",
         )
 
         # Communicate to the parent process
@@ -477,6 +569,7 @@ async def _deploy_app(
     client: Optional[_Client] = None,
     environment_name: Optional[str] = None,
     tag: str = "",
+    deployment_strategy: str = "rolling",
 ) -> DeployResult:
     """Internal function for deploying an App.
 
@@ -551,6 +644,8 @@ async def _deploy_app(
                 name=name,
                 deployment_tag=tag,
                 commit_info=commit_info,
+                environment_name=root_load_context.environment_name,
+                deployment_strategy=deployment_strategy,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
