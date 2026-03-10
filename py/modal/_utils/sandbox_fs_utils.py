@@ -14,6 +14,7 @@ from ..exception import (
     NotFoundError,
     SandboxFilesystemError,
     SandboxFilesystemIsADirectoryError,
+    SandboxFilesystemNotADirectoryError,
     SandboxFilesystemNotFoundError,
     SandboxFilesystemPermissionError,
     ServiceError,
@@ -98,6 +99,32 @@ def translate_exec_unexpected_error(operation: str, path: str, exc: Exception) -
         else "please contact support@modal.com"
     )
     return SandboxFilesystemError(f"An unexpected error occurred, {support_suffix}")
+
+
+def raise_write_file_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+    if payload := try_parse_error_payload(stderr):
+        if payload.error_kind == "NotDirectory" or payload.error_kind == "AlreadyExists":
+            raise SandboxFilesystemNotADirectoryError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "IsDirectory":
+            raise SandboxFilesystemIsADirectoryError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "PermissionDenied":
+            raise SandboxFilesystemPermissionError(f"{payload.message}: {remote_path}")
+        raise SandboxFilesystemError(payload.message)
+
+    if stderr_text := _stderr_to_text(stderr):
+        logger.debug(f"Unstructured modal-sandbox-fs-tools stderr: {stderr_text}")
+    raise SandboxFilesystemError(f"Operation on '{remote_path}' failed with exit code {returncode}")
+
+
+def make_write_file_command(remote_path: str) -> str:
+    """Build the JSON command string for a WriteFile operation.
+
+    The returned JSON must match the `Command` enum in the modal-sandbox-fs-tools
+    Rust crate (crates/modal-sandbox-fs-tools/src/lib.rs). Treat changes to
+    this schema like protobuf changes: fields must not be removed or renamed,
+    only added with backwards-compatible defaults.
+    """
+    return json.dumps({"WriteFile": {"path": remote_path}})
 
 
 def make_read_file_command(remote_path: str) -> str:
