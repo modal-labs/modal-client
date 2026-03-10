@@ -291,6 +291,30 @@ enum WebhookType {
   WEBHOOK_TYPE_WEB_SERVER = 4;
 }
 
+message AppCountLogsRequest {
+  string app_id = 1;
+  string task_id = 2;
+  string function_id = 3;
+  string function_call_id = 4;
+  string sandbox_id = 5;
+  string search_text = 6;
+  google.protobuf.Timestamp since = 7;
+  google.protobuf.Timestamp until = 8;
+  uint32 bucket_secs = 9;
+  FileDescriptor source = 10;
+}
+
+message AppCountLogsResponse {
+  message LogBucket {
+    google.protobuf.Timestamp bucket_start_at = 1;
+    uint64 stdout_logs = 2;
+    uint64 stderr_logs = 3;
+    uint64 system_logs = 4;
+  }
+  string app_id = 1;
+  repeated LogBucket buckets = 2;
+}
+
 message AppClientDisconnectRequest {
   string app_id = 1;
   AppDisconnectReason reason = 2;
@@ -343,6 +367,23 @@ message AppDeploymentHistoryRequest {
 
 message AppDeploymentHistoryResponse {
   repeated AppDeploymentHistory app_deployment_histories = 1;
+}
+
+message AppFetchLogsRequest {
+  string app_id = 1;
+  google.protobuf.Timestamp since = 2;
+  google.protobuf.Timestamp until = 3;
+  uint32 limit = 4;
+  FileDescriptor source = 5;
+  string function_id = 6;
+  string function_call_id = 7;
+  string task_id = 8;
+  string sandbox_id = 9;
+  string search_text = 10;
+}
+
+message AppFetchLogsResponse {
+  repeated TaskLogsBatch batches = 1;
 }
 
 message AppGetByDeploymentNameRequest {
@@ -3753,9 +3794,11 @@ message WorkspaceNameLookupResponse {
 service ModalClient {
   // Apps
   rpc AppClientDisconnect(AppClientDisconnectRequest) returns (google.protobuf.Empty);
+  rpc AppCountLogs(AppCountLogsRequest) returns (AppCountLogsResponse);
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
   rpc AppDeploymentHistory(AppDeploymentHistoryRequest) returns (AppDeploymentHistoryResponse);
+  rpc AppFetchLogs(AppFetchLogsRequest) returns (AppFetchLogsResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppGetLayout(AppGetLayoutRequest) returns (AppGetLayoutResponse);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
