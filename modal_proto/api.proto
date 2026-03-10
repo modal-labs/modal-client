@@ -291,6 +291,12 @@ enum WebhookType {
   WEBHOOK_TYPE_WEB_SERVER = 4;
 }
 
+message AppClientDisconnectRequest {
+  string app_id = 1;
+  AppDisconnectReason reason = 2;
+  string exception = 3;
+}
+
 message AppCountLogsRequest {
   string app_id = 1;
   string task_id = 2;
@@ -313,12 +319,6 @@ message AppCountLogsResponse {
   }
   string app_id = 1;
   repeated LogBucket buckets = 2;
-}
-
-message AppClientDisconnectRequest {
-  string app_id = 1;
-  AppDisconnectReason reason = 2;
-  string exception = 3;
 }
 
 message AppCreateRequest {
