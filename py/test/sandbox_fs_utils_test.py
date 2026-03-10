@@ -8,7 +8,11 @@ from modal._utils.sandbox_fs_utils import (
     translate_exec_unexpected_error,
     try_parse_error_payload,
 )
-from modal.exception import InternalError, NotFoundError, SandboxFilesystemError
+from modal.exception import (
+    InternalError,
+    NotFoundError,
+    SandboxFilesystemError,
+)
 
 
 def test_translate_exec_unexpected_error_includes_backend_error_code():

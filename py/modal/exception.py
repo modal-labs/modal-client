@@ -353,6 +353,12 @@ class SandboxFilesystemIsADirectoryError(SandboxFilesystemError):
     pass
 
 
+class SandboxFilesystemNotADirectoryError(SandboxFilesystemError):
+    """Raised when a path component in the sandbox is not a directory."""
+
+    pass
+
+
 class SandboxFilesystemPermissionError(SandboxFilesystemError):
     """Raised when permission is denied for a file operation in the sandbox."""
 

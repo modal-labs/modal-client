@@ -2,8 +2,8 @@
 # Copyright Modal Labs 2026
 """Mock modal-sandbox-fs-tools binary for unit tests.
 
-Emulates the Rust binary's behavior for ReadFile, including structured
-JSON error payloads on stderr. Accepts a single JSON argument.
+Emulates the Rust binary's behavior for ReadFile and WriteFile, including
+structured JSON error payloads on stderr. Accepts a single JSON argument.
 """
 
 import json
@@ -34,6 +34,31 @@ if "ReadFile" in command:
         with open(source, "rb") as src:
             sys.stdout.buffer.write(src.read())
         sys.stdout.flush()
+    except PermissionError:
+        _error_payload("PermissionDenied", "permission denied")
+    raise SystemExit(0)
+
+if "WriteFile" in command:
+    target = command["WriteFile"]["path"]
+    if os.path.isdir(target):
+        _error_payload("IsDirectory", "expected a file path")
+    parent = os.path.dirname(target)
+    if parent:
+        if os.path.exists(parent) and not os.path.isdir(parent):
+            _error_payload("AlreadyExists", "a component of the path is not a directory")
+        try:
+            os.makedirs(parent, exist_ok=True)
+        except NotADirectoryError:
+            _error_payload("NotDirectory", "a component of the path is not a directory")
+        except PermissionError:
+            _error_payload("PermissionDenied", "permission denied")
+    try:
+        with open(target, "wb") as dst:
+            while True:
+                chunk = sys.stdin.buffer.read(65536)
+                if not chunk:
+                    break
+                dst.write(chunk)
     except PermissionError:
         _error_payload("PermissionDenied", "permission denied")
     raise SystemExit(0)
