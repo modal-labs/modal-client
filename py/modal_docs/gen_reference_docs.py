@@ -163,7 +163,6 @@ def make_markdown_docs(items: list[DocItem], output_dir: str = None):
             return
 
         filename = os.path.join(output_dir, rel_path)
-        print("Writing to", filename)
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, "w") as fp:
             fp.write(data)
