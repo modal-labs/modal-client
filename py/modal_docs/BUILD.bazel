@@ -1,4 +1,4 @@
-load("@rules_python//python:defs.bzl", "py_library")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 py_library(
     name = "modal_docs",
@@ -17,4 +17,20 @@ py_library(
         "@pip//click:pkg",
         "@pip//synchronicity:pkg",
     ],
+)
+
+py_binary(
+    name = "gen_cli_docs_bin",
+    srcs = ["gen_cli_docs_main.py"],
+    main = "gen_cli_docs_main.py",
+    visibility = ["//visibility:public"],
+    deps = [":modal_docs"],
+)
+
+py_binary(
+    name = "gen_reference_docs_bin",
+    srcs = ["gen_reference_docs_main.py"],
+    main = "gen_reference_docs_main.py",
+    visibility = ["//visibility:public"],
+    deps = [":modal_docs"],
 )

@@ -1,1 +1,4 @@
-exports_files(["pyproject.toml"])
+exports_files([
+    "pyproject.toml",
+    "CHANGELOG.md",
+])
