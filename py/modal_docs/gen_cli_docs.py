@@ -107,7 +107,6 @@ def run(output_dirname: Optional[str]) -> None:
             output_dir = Path(output_dirname)
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / f"{command}.md"
-            print("Writing to", output_file)
             output_file.write_text(docs)
         else:
             print(docs)
