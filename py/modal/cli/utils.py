@@ -2,6 +2,7 @@
 import asyncio
 import io
 from collections.abc import Sequence
+from contextlib import nullcontext
 from csv import writer as csv_writer
 from json import dumps
 from typing import Optional, Union
@@ -27,6 +28,7 @@ async def stream_app_logs(
     sandbox_id: Optional[str] = None,
     app_logs_url: Optional[str] = None,
     show_timestamps: bool = False,
+    follow: bool = False,
 ):
     client = await _Client.from_env()
     output_mgr = OutputManager.get()
@@ -34,14 +36,24 @@ async def stream_app_logs(
 
     # Determine the display ID for the status message
     display_id = app_id or sandbox_id or task_id
-    status_text = f"Tailing logs for {display_id}..." if display_id else "Tailing logs..."
+
+    if follow:
+        status_text = f"Following logs for {display_id}..." if display_id else "Following logs..."
+        log_context = output_mgr.show_status_spinner(status_text)
+    else:
+        log_context = nullcontext()
 
     try:
-        with output_mgr.show_status_spinner(status_text):
-            await get_app_logs_loop(client, output_mgr, app_id=app_id, task_id=task_id, sandbox_id=sandbox_id)
-    except asyncio.CancelledError:
-        pass
-    except KeyboardInterrupt:
+        with log_context:
+            await get_app_logs_loop(
+                client,
+                output_mgr,
+                app_id=app_id,
+                task_id=task_id,
+                sandbox_id=sandbox_id,
+                follow=follow,
+            )
+    except (asyncio.CancelledError, KeyboardInterrupt):
         pass
 
 

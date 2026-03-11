@@ -658,7 +658,6 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
 
 
 def test_logs_spinner_text(servicer, server_url_env, set_env_client, mock_dir):
-    """Test that modal app logs shows 'Tailing logs for <app_id>' in the status spinner."""
     from unittest import mock
 
     from modal._output.rich import RichOutputManager
@@ -673,17 +672,18 @@ def test_logs_spinner_text(servicer, server_url_env, set_env_client, mock_dir):
         with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
             run_cli_command(["deploy", "myapp.py", "--name", "my-app"])
 
-        # Patch show_status_spinner to capture the status_text argument
         original_show_status_spinner = RichOutputManager.show_status_spinner
+        spinner_texts = []
 
         def capture_spinner_text(self, status_text="Running app..."):
-            # Verify the spinner text contains "Tailing logs for"
-            assert "Tailing logs for" in status_text
-            # Call the original to maintain functionality
+            spinner_texts.append(status_text)
             return original_show_status_spinner(self, status_text)
 
         with mock.patch.object(RichOutputManager, "show_status_spinner", capture_spinner_text):
-            run_cli_command(["app", "logs", "my-app"])
+            run_cli_command(["app", "logs", "my-app", "--follow"])
+
+        assert len(spinner_texts) == 1
+        assert "Following logs for" in spinner_texts[0]
 
 
 def test_run_timestamps(servicer, server_url_env, set_env_client, test_dir, monkeypatch):
