@@ -53,8 +53,8 @@ py_proto_gen_library(
     static_srcs = ["__init__.py"],
     visibility = ["//visibility:public"],
     deps = [
-        "@pip//grpcio:pkg",
-        "@pip//grpclib:pkg",
-        "@pip//protobuf:pkg",
+        "@pip//grpcio",
+        "@pip//grpclib",
+        "@pip//protobuf",
     ],
 )
