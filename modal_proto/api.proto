@@ -2892,6 +2892,16 @@ message Sandbox {
   bool include_oidc_identity_token = 37;
 }
 
+message SandboxCreateRequest {
+  string app_id = 1;
+  Sandbox definition = 2;
+  string environment_name = 3; // *DEPRECATED* 7/16/2025
+}
+
+message SandboxCreateResponse {
+  string sandbox_id = 1;
+}
+
 message SandboxCreateConnectTokenRequest {
   string sandbox_id = 1;
   string user_metadata = 2;
@@ -2902,14 +2912,14 @@ message SandboxCreateConnectTokenResponse {
   string token = 2;
 }
 
-message SandboxCreateRequest {
+message SandboxCreateV2Request {
   string app_id = 1;
   Sandbox definition = 2;
-  string environment_name = 3; // *DEPRECATED* 7/16/2025
 }
 
-message SandboxCreateResponse {
+message SandboxCreateV2Response {
   string sandbox_id = 1;
+  repeated TunnelData tunnels = 2;
 }
 
 message SandboxGetFromNameRequest {
@@ -3951,6 +3961,7 @@ service ModalClient {
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
+  rpc SandboxCreateV2(SandboxCreateV2Request) returns (SandboxCreateV2Response);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
