@@ -13,6 +13,7 @@ from ..exception import (
     InvalidError,
     NotFoundError,
     SandboxFilesystemError,
+    SandboxFilesystemFileTooLargeError,
     SandboxFilesystemIsADirectoryError,
     SandboxFilesystemNotADirectoryError,
     SandboxFilesystemNotFoundError,
@@ -61,6 +62,8 @@ def raise_read_file_error(returncode: int, stderr: Union[str, bytes], remote_pat
             raise SandboxFilesystemIsADirectoryError(f"{payload.message}: {remote_path}")
         if payload.error_kind == "PermissionDenied":
             raise SandboxFilesystemPermissionError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "FileTooLarge":
+            raise SandboxFilesystemFileTooLargeError(f"{payload.message}: {remote_path}")
         raise SandboxFilesystemError(payload.message)
 
     if stderr_text := _stderr_to_text(stderr):

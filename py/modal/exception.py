@@ -363,3 +363,9 @@ class SandboxFilesystemPermissionError(SandboxFilesystemError):
     """Raised when permission is denied for a file operation in the sandbox."""
 
     pass
+
+
+class SandboxFilesystemFileTooLargeError(SandboxFilesystemError):
+    """Raised when a file exceeds the maximum allowed size for a read operation in the sandbox."""
+
+    pass
