@@ -36,7 +36,7 @@ from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .container_process import _ContainerProcess
 from .exception import ClientClosed, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
-from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
+from .file_io import FileWatchEvent, FileWatchEventType, _FileIO, ls, mkdir, rm, watch
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -1233,6 +1233,9 @@ class _Sandbox(_Object, type_prefix="sb"):
     ):
         """[Alpha] Open a file in the Sandbox and return a FileIO handle.
 
+        .. deprecated:: 2026-03-09
+            Use the `Sandbox.filesystem` APIs instead.
+
         See the [`FileIO`](https://modal.com/docs/reference/modal.file_io#modalfile_iofileio) docs for more information.
 
         **Usage**
@@ -1244,6 +1247,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         f.close()
         ```
         """
+        deprecation_warning(
+            (2026, 3, 9),
+            "`Sandbox.open()` is deprecated. Use the `Sandbox.filesystem` APIs instead.",
+            pending=True,
+        )
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
 
@@ -1258,17 +1266,17 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def ls(self, path: str) -> builtins.list[str]:
         """[Alpha] List the contents of a directory in the Sandbox."""
         task_id = await self._get_task_id()
-        return await _FileIO.ls(path, self._client, task_id)
+        return await ls(path, self._client, task_id)
 
     async def mkdir(self, path: str, parents: bool = False) -> None:
         """[Alpha] Create a new directory in the Sandbox."""
         task_id = await self._get_task_id()
-        return await _FileIO.mkdir(path, self._client, task_id, parents)
+        return await mkdir(path, self._client, task_id, parents)
 
     async def rm(self, path: str, recursive: bool = False) -> None:
         """[Alpha] Remove a file or directory in the Sandbox."""
         task_id = await self._get_task_id()
-        return await _FileIO.rm(path, self._client, task_id, recursive)
+        return await rm(path, self._client, task_id, recursive)
 
     async def watch(
         self,
@@ -1279,7 +1287,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> AsyncIterator[FileWatchEvent]:
         """[Alpha] Watch a file or directory in the Sandbox for changes."""
         task_id = await self._get_task_id()
-        async for event in _FileIO.watch(path, self._client, task_id, filter, recursive, timeout):
+        async for event in watch(path, self._client, task_id, filter, recursive, timeout):
             yield event
 
     @property
