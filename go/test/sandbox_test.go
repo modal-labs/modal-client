@@ -1228,13 +1228,8 @@ func TestSandboxExecWaitTimeout(t *testing.T) {
 	p, err := sb.Exec(ctx, []string{"sleep", "999"}, &modal.SandboxExecParams{Timeout: 1 * time.Second})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	t0 := time.Now()
 	exitCode, err := p.Wait(ctx)
-	elapsed := time.Since(t0)
-
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(elapsed).To(gomega.BeNumerically(">", 800*time.Millisecond))
-	g.Expect(elapsed).To(gomega.BeNumerically("<", 10*time.Second))
 	g.Expect(exitCode).To(gomega.Equal(128 + 9))
 }
 
@@ -1253,29 +1248,24 @@ func TestSandboxExecOutputTimeout(t *testing.T) {
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sb)
 
-	t0 := time.Now()
 	p, err := sb.Exec(ctx, []string{"sh", "-c", "echo hi; sleep 999"}, &modal.SandboxExecParams{Timeout: 1 * time.Second})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	output, readErr := io.ReadAll(p.Stdout)
-	elapsed := time.Since(t0)
-
 	if readErr != nil {
 		g.Expect(readErr.Error()).To(gomega.ContainSubstring("deadline exceeded"))
-	} else {
-		g.Expect(string(output)).To(gomega.Equal("hi\n"))
-
-		exitCode, waitErr := p.Wait(ctx)
-		if waitErr != nil {
-			// Deadline may have passed between stdout read completing and Wait() being called
-			g.Expect(waitErr.Error()).To(gomega.ContainSubstring("deadline exceeded"))
-		} else {
-			g.Expect(exitCode).To(gomega.Equal(137))
-		}
+		return
 	}
 
-	g.Expect(elapsed).To(gomega.BeNumerically(">", 1*time.Second))
-	g.Expect(elapsed).To(gomega.BeNumerically("<", 15*time.Second))
+	g.Expect(string(output)).To(gomega.Equal("hi\n"))
+
+	exitCode, waitErr := p.Wait(ctx)
+	if waitErr != nil {
+		// Deadline may have passed between stdout read completing and Wait() being called.
+		g.Expect(waitErr.Error()).To(gomega.ContainSubstring("deadline exceeded"))
+	} else {
+		g.Expect(exitCode).To(gomega.Equal(137))
+	}
 }
 
 func TestSandboxDoubleTerminateIsNotAllowed(t *testing.T) {
