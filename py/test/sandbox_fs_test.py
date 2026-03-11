@@ -6,6 +6,7 @@ import random
 from modal import App, Sandbox
 from modal.exception import (
     InvalidError,
+    SandboxFilesystemFileTooLargeError,
     SandboxFilesystemIsADirectoryError,
     SandboxFilesystemNotADirectoryError,
     SandboxFilesystemNotFoundError,
@@ -126,6 +127,19 @@ def test_sandbox_fs_read_text_errors_when_remote_path_is_directory(
         sandbox.filesystem.read_text(remote_dir)
 
 
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_read_text_errors_when_file_too_large(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, monkeypatch
+):
+    monkeypatch.setenv("_MODAL_TEST_MAX_READ_FILE_SIZE", "5")
+    remote_path = str(tmp_path / "read-text-large.txt")
+    (tmp_path / "read-text-large.txt").write_text("more than five bytes", encoding="utf-8")
+
+    with pytest.raises(SandboxFilesystemFileTooLargeError):
+        sandbox.filesystem.read_text(remote_path)
+
+
 # ---------------------------------------------------------------------------
 # read_bytes
 # ---------------------------------------------------------------------------
@@ -182,6 +196,19 @@ def test_sandbox_fs_read_bytes_errors_when_remote_path_is_directory(
 
     with pytest.raises(SandboxFilesystemIsADirectoryError):
         sandbox.filesystem.read_bytes(remote_dir)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_read_bytes_errors_when_file_too_large(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, monkeypatch
+):
+    monkeypatch.setenv("_MODAL_TEST_MAX_READ_FILE_SIZE", "5")
+    remote_path = str(tmp_path / "read-bytes-large.bin")
+    (tmp_path / "read-bytes-large.bin").write_bytes(b"more than five bytes")
+
+    with pytest.raises(SandboxFilesystemFileTooLargeError):
+        sandbox.filesystem.read_bytes(remote_path)
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +340,22 @@ def test_sandbox_fs_copy_to_local_errors_when_remote_path_is_directory(
 
     with pytest.raises(SandboxFilesystemIsADirectoryError):
         sandbox.filesystem.copy_to_local(remote_dir, tmp_path / "unused.bin")
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_copy_to_local_errors_when_file_too_large(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, monkeypatch
+):
+    monkeypatch.setenv("_MODAL_TEST_MAX_READ_FILE_SIZE", "5")
+    src = tmp_path / "copy-large.bin"
+    src.write_bytes(b"more than five bytes")
+    local_path = tmp_path / "copy-large-out.bin"
+
+    with pytest.raises(SandboxFilesystemFileTooLargeError):
+        sandbox.filesystem.copy_to_local(str(src), local_path)
+
+    assert not local_path.exists()
 
 
 # ---------------------------------------------------------------------------

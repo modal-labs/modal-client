@@ -24,6 +24,9 @@ if len(sys.argv) != 2:
 
 command = json.loads(sys.argv[1])
 
+# Allow override via env var for testing with small files.
+_MAX_READ_FILE_SIZE = int(os.environ.get("_MODAL_TEST_MAX_READ_FILE_SIZE", 5 * 1024 * 1024 * 1024))
+
 if "ReadFile" in command:
     source = command["ReadFile"]["path"]
     if not os.path.exists(source):
@@ -31,6 +34,12 @@ if "ReadFile" in command:
     if os.path.isdir(source):
         _error_payload("IsDirectory", "expected a file path")
     try:
+        size = os.path.getsize(source)
+        if size > _MAX_READ_FILE_SIZE:
+            _error_payload(
+                "FileTooLarge",
+                f"file is {size} bytes, which exceeds the {_MAX_READ_FILE_SIZE} byte limit",
+            )
         with open(source, "rb") as src:
             sys.stdout.buffer.write(src.read())
         sys.stdout.flush()
