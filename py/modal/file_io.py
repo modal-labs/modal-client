@@ -17,7 +17,7 @@ from modal.exception import ClientClosed
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import deprecation_error
+from ._utils.deprecation import deprecation_error, deprecation_warning
 from .client import _Client
 from .exception import FilesystemExecutionError, InternalError, ServiceError
 
@@ -73,10 +73,83 @@ class FileWatchEvent:
     type: FileWatchEventType
 
 
+async def _consume_output(client: _Client, exec_id: str) -> AsyncIterator[Union[Optional[bytes], Exception]]:
+    req = api_pb2.ContainerFilesystemExecGetOutputRequest(
+        exec_id=exec_id,
+        timeout=55,
+    )
+    async for batch in client.stub.ContainerFilesystemExecGetOutput.unary_stream(req):
+        if batch.eof:
+            yield None
+            break
+        if batch.HasField("error"):
+            error_class = ERROR_MAPPING.get(batch.error.error_code, FilesystemExecutionError)
+            yield error_class(batch.error.error_message)
+        for message in batch.output:
+            yield message
+
+
+async def _wait(client: _Client, exec_id: str) -> bytes:
+    # The logic here is similar to how output is read from `exec`
+    output_buffer = io.BytesIO()
+    completed = False
+    retries_remaining = 10
+    while not completed:
+        try:
+            async for data in _consume_output(client, exec_id):
+                if data is None:
+                    completed = True
+                    break
+                if isinstance(data, Exception):
+                    raise data
+                output_buffer.write(data)
+        except (ServiceError, InternalError, StreamTerminatedError) as exc:
+            if retries_remaining > 0:
+                retries_remaining -= 1
+                if isinstance(exc, (ServiceError, InternalError)):
+                    await asyncio.sleep(1.0)
+                    continue
+                elif isinstance(exc, StreamTerminatedError):
+                    continue
+            raise
+    return output_buffer.getvalue()
+
+
+async def _consume_watch_output(
+    client: _Client,
+    exec_id: str,
+    buffer: list[Union[Optional[bytes], Exception]],
+) -> None:
+    completed = False
+    retries_remaining = 10
+    while not completed:
+        try:
+            async for message in _consume_output(client, exec_id):
+                buffer.append(message)
+                if message is None:
+                    completed = True
+                    break
+
+        except (ServiceError, InternalError, StreamTerminatedError, ClientClosed) as exc:
+            if retries_remaining > 0:
+                retries_remaining -= 1
+                if isinstance(exc, (ServiceError, InternalError)):
+                    await asyncio.sleep(1.0)
+                    continue
+                elif isinstance(exc, StreamTerminatedError):
+                    continue
+                elif isinstance(exc, ClientClosed):
+                    # If the client was closed, the user has triggered a cleanup.
+                    break
+            raise exc
+
+
 # The FileIO class is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
 class _FileIO(Generic[T]):
     """[Alpha] FileIO handle, used in the Sandbox filesystem API.
+
+    Deprecated on 2026-03-09. Use the `Sandbox.filesystem` APIs instead.
 
     The API is designed to mimic Python's io.FileIO.
 
@@ -108,12 +181,10 @@ class _FileIO(Generic[T]):
     _task_id: str = ""
     _file_descriptor: str = ""
     _client: _Client
-    _watch_output_buffer: list[Union[Optional[bytes], Exception]] = []
 
     def __init__(self, client: _Client, task_id: str) -> None:
         self._client = client
         self._task_id = task_id
-        self._watch_output_buffer = []
 
     def _validate_mode(self, mode: str) -> None:
         if not any(char in mode for char in "rwax"):
@@ -138,85 +209,6 @@ class _FileIO(Generic[T]):
                 raise ValueError(f"Invalid file mode: {mode}")
             seen_chars.add(char)
 
-    async def _consume_output(self, exec_id: str) -> AsyncIterator[Union[Optional[bytes], Exception]]:
-        req = api_pb2.ContainerFilesystemExecGetOutputRequest(
-            exec_id=exec_id,
-            timeout=55,
-        )
-        async for batch in self._client.stub.ContainerFilesystemExecGetOutput.unary_stream(req):
-            if batch.eof:
-                yield None
-                break
-            if batch.HasField("error"):
-                error_class = ERROR_MAPPING.get(batch.error.error_code, FilesystemExecutionError)
-                yield error_class(batch.error.error_message)
-            for message in batch.output:
-                yield message
-
-    async def _consume_watch_output(self, exec_id: str) -> None:
-        completed = False
-        retries_remaining = 10
-        while not completed:
-            try:
-                iterator = self._consume_output(exec_id)
-                async for message in iterator:
-                    self._watch_output_buffer.append(message)
-                    if message is None:
-                        completed = True
-                        break
-
-            except (ServiceError, InternalError, StreamTerminatedError, ClientClosed) as exc:
-                if retries_remaining > 0:
-                    retries_remaining -= 1
-                    if isinstance(exc, (ServiceError, InternalError)):
-                        await asyncio.sleep(1.0)
-                        continue
-                    elif isinstance(exc, StreamTerminatedError):
-                        continue
-                    elif isinstance(exc, ClientClosed):
-                        # If the client was closed, the user has triggered a cleanup.
-                        break
-                raise exc
-
-    async def _parse_watch_output(self, event: bytes) -> Optional[FileWatchEvent]:
-        try:
-            event_json = json.loads(event.decode())
-            return FileWatchEvent(type=FileWatchEventType(event_json["event_type"]), paths=event_json["paths"])
-        except (json.JSONDecodeError, KeyError, ValueError):
-            # skip invalid events
-            return None
-
-    async def _wait(self, exec_id: str) -> bytes:
-        # The logic here is similar to how output is read from `exec`
-        output_buffer = io.BytesIO()
-        completed = False
-        retries_remaining = 10
-        while not completed:
-            try:
-                async for data in self._consume_output(exec_id):
-                    if data is None:
-                        completed = True
-                        break
-                    if isinstance(data, Exception):
-                        raise data
-                    output_buffer.write(data)
-            except (ServiceError, InternalError, StreamTerminatedError) as exc:
-                if retries_remaining > 0:
-                    retries_remaining -= 1
-                    if isinstance(exc, (ServiceError, InternalError)):
-                        await asyncio.sleep(1.0)
-                        continue
-                    elif isinstance(exc, StreamTerminatedError):
-                        continue
-                raise
-        return output_buffer.getvalue()
-
-    def _validate_type(self, data: Union[bytes, str]) -> None:
-        if self._binary and isinstance(data, str):
-            raise TypeError("Expected bytes when in binary mode")
-        if not self._binary and isinstance(data, bytes):
-            raise TypeError("Expected str when in text mode")
-
     async def _open_file(self, path: str, mode: str) -> None:
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
@@ -227,7 +219,7 @@ class _FileIO(Generic[T]):
         if not resp.HasField("file_descriptor"):
             raise FilesystemExecutionError("Failed to open file")
         self._file_descriptor = resp.file_descriptor
-        await self._wait(resp.exec_id)
+        await _wait(self._client, resp.exec_id)
 
     @classmethod
     async def create(
@@ -247,10 +239,17 @@ class _FileIO(Generic[T]):
                 task_id=self._task_id,
             ),
         )
-        return await self._wait(resp.exec_id)
+        return await _wait(self._client, resp.exec_id)
 
     async def read(self, n: Optional[int] = None) -> T:
         """Read n bytes from the current position, or the entire remaining file if n is None."""
+        deprecation_warning(
+            (2026, 3, 9),
+            "`FileIO.read()` is deprecated."
+            " Use `Sandbox.filesystem.read_text()`, `Sandbox.filesystem.read_bytes()`,"
+            " or `Sandbox.filesystem.copy_to_local()` instead.",
+            pending=True,
+        )
         self._check_closed()
         self._check_readable()
         if n is not None and n > READ_FILE_SIZE_LIMIT:
@@ -262,6 +261,13 @@ class _FileIO(Generic[T]):
 
     async def readline(self) -> T:
         """Read a single line from the current position."""
+        deprecation_warning(
+            (2026, 3, 9),
+            "`FileIO.readline()` is deprecated."
+            " Use `Sandbox.filesystem.read_text()`, `Sandbox.filesystem.read_bytes()`,"
+            " or `Sandbox.filesystem.copy_to_local()` instead.",
+            pending=True,
+        )
         self._check_closed()
         self._check_readable()
         resp = await self._client.stub.ContainerFilesystemExec(
@@ -270,13 +276,20 @@ class _FileIO(Generic[T]):
                 task_id=self._task_id,
             ),
         )
-        output = await self._wait(resp.exec_id)
+        output = await _wait(self._client, resp.exec_id)
         if self._binary:
             return cast(T, output)
         return cast(T, output.decode("utf-8"))
 
     async def readlines(self) -> Sequence[T]:
         """Read all lines from the current position."""
+        deprecation_warning(
+            (2026, 3, 9),
+            "`FileIO.readlines()` is deprecated."
+            " Use `Sandbox.filesystem.read_text()`, `Sandbox.filesystem.read_bytes()`,"
+            " or `Sandbox.filesystem.copy_to_local()` instead.",
+            pending=True,
+        )
         self._check_closed()
         self._check_readable()
         output = await self._make_read_request(None)
@@ -296,6 +309,13 @@ class _FileIO(Generic[T]):
         can be done manually with `flush()` or automatically when the file is
         closed.
         """
+        deprecation_warning(
+            (2026, 3, 9),
+            "`FileIO.write()` is deprecated."
+            " Use `Sandbox.filesystem.write_text()`, `Sandbox.filesystem.write_bytes()`,"
+            " or `Sandbox.filesystem.copy_from_local()` instead.",
+            pending=True,
+        )
         self._check_closed()
         self._check_writable()
         self._validate_type(data)
@@ -314,10 +334,17 @@ class _FileIO(Generic[T]):
                     task_id=self._task_id,
                 ),
             )
-            await self._wait(resp.exec_id)
+            await _wait(self._client, resp.exec_id)
 
     async def flush(self) -> None:
         """Flush the buffer to disk."""
+        deprecation_warning(
+            (2026, 3, 9),
+            "`FileIO.flush()` is deprecated."
+            " Use `Sandbox.filesystem.write_text()`, `Sandbox.filesystem.write_bytes()`,"
+            " or `Sandbox.filesystem.copy_from_local()` instead.",
+            pending=True,
+        )
         self._check_closed()
         self._check_writable()
         resp = await self._client.stub.ContainerFilesystemExec(
@@ -326,7 +353,7 @@ class _FileIO(Generic[T]):
                 task_id=self._task_id,
             ),
         )
-        await self._wait(resp.exec_id)
+        await _wait(self._client, resp.exec_id)
 
     def _get_whence(self, whence: int):
         if whence == 0:
@@ -344,6 +371,13 @@ class _FileIO(Generic[T]):
         `whence` defaults to 0 (absolute file positioning); other values are 1
         (relative to the current position) and 2 (relative to the file's end).
         """
+        deprecation_warning(
+            (2026, 3, 9),
+            "`FileIO.seek()` is deprecated. Use the `Sandbox.filesystem` APIs instead."
+            " If you specifically need the ability to write to specific offsets in a file,"
+            " please contact support@modal.com.",
+            pending=True,
+        )
         self._check_closed()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
@@ -355,47 +389,37 @@ class _FileIO(Generic[T]):
                 task_id=self._task_id,
             ),
         )
-        await self._wait(resp.exec_id)
+        await _wait(self._client, resp.exec_id)
 
     @classmethod
     async def ls(cls, path: str, client: _Client, task_id: str) -> list[str]:
         """List the contents of the provided directory."""
-        self = _FileIO(client, task_id)
-        resp = await self._client.stub.ContainerFilesystemExec(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
-                task_id=task_id,
-            ),
+        deprecation_warning(
+            (2026, 3, 9),
+            "`FileIO.ls()` is deprecated. Use `Sandbox.ls()` instead.",
+            pending=True,
         )
-        output = await self._wait(resp.exec_id)
-        try:
-            return json.loads(output.decode("utf-8"))["paths"]
-        except json.JSONDecodeError:
-            raise FilesystemExecutionError("failed to parse list output")
+        return await ls(path, client, task_id)
 
     @classmethod
     async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
         """Create a new directory."""
-        self = _FileIO(client, task_id)
-        resp = await self._client.stub.ContainerFilesystemExec(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, make_parents=parents),
-                task_id=self._task_id,
-            ),
+        deprecation_warning(
+            (2026, 3, 9),
+            "`FileIO.mkdir()` is deprecated. Use `Sandbox.mkdir()` instead.",
+            pending=True,
         )
-        await self._wait(resp.exec_id)
+        await mkdir(path, client, task_id, parents)
 
     @classmethod
     async def rm(cls, path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
         """Remove a file or directory in the Sandbox."""
-        self = _FileIO(client, task_id)
-        resp = await self._client.stub.ContainerFilesystemExec(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
-                task_id=self._task_id,
-            ),
+        deprecation_warning(
+            (2026, 3, 9),
+            "`FileIO.rm()` is deprecated. Use `Sandbox.rm()` instead.",
+            pending=True,
         )
-        await self._wait(resp.exec_id)
+        await rm(path, client, task_id, recursive)
 
     @classmethod
     async def watch(
@@ -407,58 +431,13 @@ class _FileIO(Generic[T]):
         recursive: bool = False,
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
-        self = _FileIO(client, task_id)
-        resp = await self._client.stub.ContainerFilesystemExec(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_watch_request=api_pb2.ContainerFileWatchRequest(
-                    path=path,
-                    recursive=recursive,
-                    timeout_secs=timeout,
-                ),
-                task_id=self._task_id,
-            ),
+        deprecation_warning(
+            (2026, 3, 9),
+            "`FileIO.watch()` is deprecated. Use `Sandbox.watch()` instead.",
+            pending=True,
         )
-
-        def end_of_event(item: bytes, buffer: io.BytesIO, boundary_token: bytes) -> bool:
-            if not item.endswith(b"\n"):
-                return False
-            boundary_token_size = len(boundary_token)
-            if buffer.tell() < boundary_token_size:
-                return False
-            buffer.seek(-boundary_token_size, io.SEEK_END)
-            if buffer.read(boundary_token_size) == boundary_token:
-                return True
-            return False
-
-        async with TaskContext() as tc:
-            tc.create_task(self._consume_watch_output(resp.exec_id))
-
-            item_buffer = io.BytesIO()
-            while True:
-                if len(self._watch_output_buffer) > 0:
-                    item = self._watch_output_buffer.pop(0)
-                    if item is None:
-                        break
-                    if isinstance(item, Exception):
-                        raise item
-                    item_buffer.write(item)
-                    assert isinstance(item, bytes)
-                    # Single events may span multiple messages so we need to check for a special event boundary token
-                    if end_of_event(item, item_buffer, boundary_token=b"\n\n"):
-                        try:
-                            event_json = json.loads(item_buffer.getvalue().strip().decode())
-                            event = FileWatchEvent(
-                                type=FileWatchEventType(event_json["event_type"]),
-                                paths=event_json["paths"],
-                            )
-                            if not filter or event.type in filter:
-                                yield event
-                        except (json.JSONDecodeError, KeyError, ValueError):
-                            # skip invalid events
-                            pass
-                        item_buffer = io.BytesIO()
-                else:
-                    await asyncio.sleep(0.1)
+        async for event in watch(path, client, task_id, filter, recursive, timeout):
+            yield event
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
@@ -469,7 +448,7 @@ class _FileIO(Generic[T]):
             ),
         )
         self._closed = True
-        await self._wait(resp.exec_id)
+        await _wait(self._client, resp.exec_id)
 
     async def close(self) -> None:
         """Flush the buffer and close the file."""
@@ -490,11 +469,119 @@ class _FileIO(Generic[T]):
         if self._closed:
             raise ValueError("I/O operation on closed file")
 
+    def _validate_type(self, data: Union[bytes, str]) -> None:
+        if self._binary and isinstance(data, str):
+            raise TypeError("Expected bytes when in binary mode")
+        if not self._binary and isinstance(data, bytes):
+            raise TypeError("Expected str when in text mode")
+
     async def __aenter__(self) -> "_FileIO":
         return self
 
     async def __aexit__(self, exc_type, exc_value, traceback) -> None:
         await self._close()
+
+
+async def ls(path: str, client: _Client, task_id: str) -> list[str]:
+    """List the contents of the provided directory."""
+    resp = await client.stub.ContainerFilesystemExec(
+        api_pb2.ContainerFilesystemExecRequest(
+            file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
+            task_id=task_id,
+        ),
+    )
+    output = await _wait(client, resp.exec_id)
+    try:
+        return json.loads(output.decode("utf-8"))["paths"]
+    except json.JSONDecodeError:
+        raise FilesystemExecutionError("failed to parse list output")
+
+
+async def mkdir(path: str, client: _Client, task_id: str, parents: bool = False) -> None:
+    """Create a new directory."""
+    resp = await client.stub.ContainerFilesystemExec(
+        api_pb2.ContainerFilesystemExecRequest(
+            file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, make_parents=parents),
+            task_id=task_id,
+        ),
+    )
+    await _wait(client, resp.exec_id)
+
+
+async def rm(path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
+    """Remove a file or directory in the Sandbox."""
+    resp = await client.stub.ContainerFilesystemExec(
+        api_pb2.ContainerFilesystemExecRequest(
+            file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
+            task_id=task_id,
+        ),
+    )
+    await _wait(client, resp.exec_id)
+
+
+def _end_of_watch_event(item: bytes, buffer: io.BytesIO, boundary_token: bytes) -> bool:
+    if not item.endswith(b"\n"):
+        return False
+    boundary_token_size = len(boundary_token)
+    if buffer.tell() < boundary_token_size:
+        return False
+    buffer.seek(-boundary_token_size, io.SEEK_END)
+    if buffer.read(boundary_token_size) == boundary_token:
+        return True
+    return False
+
+
+async def watch(
+    path: str,
+    client: _Client,
+    task_id: str,
+    filter: Optional[list[FileWatchEventType]] = None,
+    recursive: bool = False,
+    timeout: Optional[int] = None,
+) -> AsyncIterator[FileWatchEvent]:
+    """Watch a file or directory for changes."""
+    resp = await client.stub.ContainerFilesystemExec(
+        api_pb2.ContainerFilesystemExecRequest(
+            file_watch_request=api_pb2.ContainerFileWatchRequest(
+                path=path,
+                recursive=recursive,
+                timeout_secs=timeout,
+            ),
+            task_id=task_id,
+        ),
+    )
+
+    output_buffer: list[Union[Optional[bytes], Exception]] = []
+
+    async with TaskContext() as tc:
+        tc.create_task(_consume_watch_output(client, resp.exec_id, output_buffer))
+
+        item_buffer = io.BytesIO()
+        while True:
+            if len(output_buffer) > 0:
+                item = output_buffer.pop(0)
+                if item is None:
+                    break
+                if isinstance(item, Exception):
+                    raise item
+                item_buffer.write(item)
+                assert isinstance(item, bytes)
+                # Single events may span multiple messages so we need to check for a special event boundary token
+                if _end_of_watch_event(item, item_buffer, boundary_token=b"\n\n"):
+                    try:
+                        event_json = json.loads(item_buffer.getvalue().strip().decode())
+                        event = FileWatchEvent(
+                            type=FileWatchEventType(event_json["event_type"]),
+                            paths=event_json["paths"],
+                        )
+                        if not filter or event.type in filter:
+                            yield event
+                    except (json.JSONDecodeError, KeyError, ValueError):
+                        # skip invalid events
+                        pass
+                    item_buffer = io.BytesIO()
+            else:
+                await asyncio.sleep(0.1)
 
 
 delete_bytes = synchronize_api(_delete_bytes)
