@@ -84,9 +84,10 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
 @app_cli.command("logs", no_args_is_help=True)
 def logs(
     app_identifier: str = APP_IDENTIFIER,
+    follow: bool = typer.Option(False, "-f", "--follow", help="Stream log output until App stops"),
+    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line"),
     *,
     env: Optional[str] = ENV_OPTION,
-    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line"),
 ):
     """Show App logs, streaming while active.
 
@@ -106,7 +107,7 @@ def logs(
 
     """
     app_id = get_app_id(app_identifier, env)
-    stream_app_logs(app_id, show_timestamps=timestamps)
+    stream_app_logs(app_id, show_timestamps=timestamps, follow=follow)
 
 
 @app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})

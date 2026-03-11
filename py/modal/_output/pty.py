@@ -70,6 +70,7 @@ async def get_app_logs_loop(
     app_id: Optional[str] = None,
     task_id: Optional[str] = None,
     sandbox_id: Optional[str] = None,
+    follow: bool = True,
 ):
     last_log_batch_entry_id = ""
 
@@ -124,7 +125,7 @@ async def get_app_logs_loop(
             app_id=app_id or "",
             task_id=task_id or "",
             sandbox_id=sandbox_id or "",
-            timeout=55,
+            timeout=55 if follow else 0,
             last_entry_id=last_log_batch_entry_id,
         )
         log_batch: api_pb2.TaskLogsBatch
@@ -192,7 +193,7 @@ async def get_app_logs_loop(
                     continue
             raise
 
-        if last_log_batch_entry_id is None:
+        if last_log_batch_entry_id is None or not follow:
             break
 
     await stop_pty_shell()

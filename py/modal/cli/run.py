@@ -534,7 +534,12 @@ def deploy(
     res = deploy_app(app, name=name, environment_name=env or "", tag=tag, deployment_strategy=strategy)
 
     if stream_logs:
-        stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url, show_timestamps=timestamps)
+        stream_app_logs(
+            app_id=res.app_id,
+            app_logs_url=res.app_logs_url,
+            show_timestamps=timestamps,
+            follow=True,
+        )
 
 
 def serve(

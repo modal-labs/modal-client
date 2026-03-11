@@ -56,6 +56,7 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False, app_id: str
 @container_cli.command("logs")
 def logs(
     container_id: str = typer.Argument(help="Container ID"),
+    follow: bool = typer.Option(False, "-f", "--follow", help="Stream log output until Container stops"),
     timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line"),
 ):
     """Show logs for a specific container, streaming while active."""
@@ -66,7 +67,7 @@ def logs(
         task_id = container_id
     else:
         raise InvalidError(f"Invalid container ID: {container_id}")
-    stream_app_logs(task_id=task_id, sandbox_id=sandbox_id, show_timestamps=timestamps)
+    stream_app_logs(task_id=task_id, sandbox_id=sandbox_id, show_timestamps=timestamps, follow=follow)
 
 
 @container_cli.command("exec")
