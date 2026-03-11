@@ -2892,16 +2892,6 @@ message Sandbox {
   bool include_oidc_identity_token = 37;
 }
 
-message SandboxCreateRequest {
-  string app_id = 1;
-  Sandbox definition = 2;
-  string environment_name = 3; // *DEPRECATED* 7/16/2025
-}
-
-message SandboxCreateResponse {
-  string sandbox_id = 1;
-}
-
 message SandboxCreateConnectTokenRequest {
   string sandbox_id = 1;
   string user_metadata = 2;
@@ -2910,6 +2900,16 @@ message SandboxCreateConnectTokenRequest {
 message SandboxCreateConnectTokenResponse {
   string url = 1;
   string token = 2;
+}
+
+message SandboxCreateRequest {
+  string app_id = 1;
+  Sandbox definition = 2;
+  string environment_name = 3; // *DEPRECATED* 7/16/2025
+}
+
+message SandboxCreateResponse {
+  string sandbox_id = 1;
 }
 
 message SandboxCreateV2Request {
