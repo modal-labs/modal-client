@@ -14,8 +14,8 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//client/py/modal",
-        "@pip//click:pkg",
-        "@pip//synchronicity:pkg",
+        "@pip//click",
+        "@pip//synchronicity",
     ],
 )
 
