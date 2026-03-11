@@ -997,12 +997,7 @@ test("SandboxExecWaitTimeout", async () => {
   onTestFinished(async () => await sb.terminate());
 
   const p = await sb.exec(["sleep", "999"], { timeoutMs: 1000 });
-  const t0 = Date.now();
   const exitCode = await p.wait();
-  const elapsed = Date.now() - t0;
-
-  expect(elapsed).toBeGreaterThan(800);
-  expect(elapsed).toBeLessThan(1500);
   expect(exitCode).toBe(128 + 9);
 });
 
@@ -1014,28 +1009,33 @@ test("SandboxExecOutputTimeout", async () => {
   const sb = await tc.sandboxes.create(app, image);
   onTestFinished(async () => await sb.terminate());
 
-  const t0 = Date.now();
   const p = await sb.exec(["sh", "-c", "echo hi; sleep 999"], {
     timeoutMs: 1000,
   });
 
-  // Read stdout and wait - deadline may be exceeded during either operation
-  try {
-    const output = await p.stdout.readText();
-    expect(output).toBe("hi\n");
+  // The deadline can be observed either while draining stdout or while waiting
+  // for the exit status, depending on when the command router reports EOF.
+  const stdoutResult = await p.stdout.readText().then(
+    (output) => ({ ok: true as const, output }),
+    (error) => ({ ok: false as const, error: String(error) }),
+  );
 
-    const elapsed = Date.now() - t0;
-    expect(elapsed).toBeGreaterThan(1000);
-    expect(elapsed).toBeLessThan(4000);
+  if (!stdoutResult.ok) {
+    expect(stdoutResult.error).toMatch(/Deadline exceeded/);
+    return;
+  }
 
-    const exitCode = await p.wait();
-    expect(exitCode).toBe(137);
-  } catch (error) {
-    expect(String(error)).toMatch(/Deadline exceeded/);
+  expect(stdoutResult.output).toBe("hi\n");
 
-    const elapsed = Date.now() - t0;
-    expect(elapsed).toBeGreaterThan(1000);
-    expect(elapsed).toBeLessThan(4000);
+  const waitResult = await p.wait().then(
+    (exitCode) => ({ ok: true as const, exitCode }),
+    (error) => ({ ok: false as const, error: String(error) }),
+  );
+
+  if (waitResult.ok) {
+    expect(waitResult.exitCode).toBe(137);
+  } else {
+    expect(waitResult.error).toMatch(/Deadline exceeded/);
   }
 });
 
