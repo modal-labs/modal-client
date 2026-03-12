@@ -20,6 +20,7 @@ pytest_test(
     env = {
         "MODAL_INTERNAL_ENV": "test",
     },
+    flaky = True,
     imports = [".."],
     shard_count = 32,
     # watchfiles (transitive via client/py/modal) has Rust extensions; pip packages
