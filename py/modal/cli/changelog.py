@@ -118,15 +118,17 @@ def changelog(
 
     Examples:
 
-        modal changelog --since 1.2.0  # Show updates added after a specific version
+    ```bash
+    modal changelog --since 1.2.0  # Show updates added after a specific version
 
-        modal changelog --since 2026-01-01  # Show updates added after a specific date
+    modal changelog --since 2026-01-01  # Show updates added after a specific date
 
-        modal changelog --newer  # Show updates released after the currently installed version
+    modal changelog --newer  # Show updates released after the currently installed version
 
-        modal changelog --last 3  # Show updates included in the 3 most recent releases
+    modal changelog --last 3  # Show updates included in the 3 most recent releases
 
-        modal changelog --for 1.3.1  # Show the changelog for a specific release
+    modal changelog --for 1.3.1  # Show the changelog for a specific release
+    ```
 
     Note: when using `--since` or `--last`, only changes up to the currently installed version are shown.
 
