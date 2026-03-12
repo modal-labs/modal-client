@@ -4,6 +4,10 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
+No unreleased changes.
+
+## js/v0.7.3, go/v0.7.3
+
 - Migrated SDKs from `github.com/modal-labs/libmodal` to `github.com/modal-labs/modal-client`.
 
 ## modal-js/v0.7.2, modal-go/v0.7.2
