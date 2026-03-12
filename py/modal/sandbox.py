@@ -153,6 +153,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         enable_snapshot: bool = False,
         verbose: bool = False,
         custom_domain: Optional[str] = None,
+        include_oidc_identity_token: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -263,6 +264,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 name=name,
                 experimental_options=experimental_options,
                 custom_domain=custom_domain,
+                include_oidc_identity_token=include_oidc_identity_token,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
@@ -313,6 +315,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         custom_domain: Optional[str] = None,
         # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: Optional[_Proxy] = None,
+        # If True, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth.
+        include_oidc_identity_token: bool = False,
         # Enable verbose logging for sandbox operations.
         verbose: bool = False,
         experimental_options: Optional[dict[str, bool]] = None,
@@ -379,6 +383,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             proxy=proxy,
             experimental_options=experimental_options,
             _experimental_enable_snapshot=_experimental_enable_snapshot,
+            include_oidc_identity_token=include_oidc_identity_token,
             client=client,
             verbose=verbose,
             pty_info=pty_info,
@@ -411,6 +416,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
         proxy: Optional[_Proxy] = None,
+        include_oidc_identity_token: bool = False,
         experimental_options: Optional[dict[str, bool]] = None,
         _experimental_enable_snapshot: bool = False,
         client: Optional[_Client] = None,
@@ -466,6 +472,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             enable_snapshot=_experimental_enable_snapshot,
             verbose=verbose,
             custom_domain=custom_domain,
+            include_oidc_identity_token=include_oidc_identity_token,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
