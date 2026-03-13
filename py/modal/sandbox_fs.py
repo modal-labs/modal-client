@@ -23,9 +23,11 @@ _SANDBOX_FS_TOOLS_PATH = "/__modal/.bin/modal-sandbox-fs-tools"
 
 
 class _SandboxFilesystem:
-    """Namespace for Sandbox filesystem APIs."""
+    """mdmd:namespace
+    Namespace for Sandbox filesystem APIs."""
 
     def __init__(self, sandbox):
+        """mdmd:hidden"""
         from modal.sandbox import _Sandbox
 
         # inv type-stubs does not work with importing _Sandbox with TYPE_CHECKING,
@@ -43,7 +45,6 @@ class _SandboxFilesystem:
         - `SandboxFilesystemNotFoundError`: the path does not exist.
         - `SandboxFilesystemIsADirectoryError`: the path points to a directory.
         - `SandboxFilesystemPermissionError`: read permission is denied.
-        - `SandboxFilesystemFileTooLargeError`: the file exceeds the 5 GiB size limit.
         - `SandboxFilesystemError`: the command fails for any other reason.
         """
         validate_absolute_remote_path(remote_path, "read_bytes")
@@ -69,7 +70,6 @@ class _SandboxFilesystem:
         - `SandboxFilesystemNotFoundError`: the path does not exist.
         - `SandboxFilesystemIsADirectoryError`: the path points to a directory.
         - `SandboxFilesystemPermissionError`: read permission is denied.
-        - `SandboxFilesystemFileTooLargeError`: the file exceeds the 5 GiB size limit.
         - `SandboxFilesystemError`: the command fails for any other reason.
         """
         validate_absolute_remote_path(remote_path, "read_text")
@@ -97,7 +97,6 @@ class _SandboxFilesystem:
         - `SandboxFilesystemNotFoundError`: the remote path does not exist.
         - `SandboxFilesystemIsADirectoryError`: the remote path points to a directory.
         - `SandboxFilesystemPermissionError`: read permission is denied in the Sandbox.
-        - `SandboxFilesystemFileTooLargeError`: the file exceeds the 5 GiB size limit.
         - `SandboxFilesystemError`: the command fails for any other reason.
         - `IsADirectoryError`: `local_path` points to a directory.
         - `NotADirectoryError`: a component of the `local_path` parent is not a directory.

@@ -19,7 +19,7 @@ def format_docstring(docstring: Optional[str]) -> str:
     else:
         docstring = inspect.cleandoc(docstring)
 
-    docstring = "\n".join(l for l in docstring.split("\n") if "mdmd:line-hidden" not in l)
+    docstring = "\n".join(l for l in docstring.split("\n") if "mdmd:line-hidden" not in l and "mdmd:namespace" not in l)
 
     if docstring and not docstring.endswith("\n"):
         docstring += "\n"
@@ -135,7 +135,22 @@ class {name}{bases_str}
             # get the original function definition instead of the descriptor object
             member = getattr(obj, member_name)
         elif isinstance(member, property):
-            member = member.fget
+            # Check if this property returns a namespace class (marked with mdmd:namespace)
+            # that should be documented inline (e.g., Sandbox.filesystem -> _SandboxFilesystem)
+            fget = member.fget
+            try:
+                return_type = typing.get_type_hints(fget).get("return") if fget else None
+            except Exception:
+                return_type = None
+            if (
+                return_type is not None
+                and inspect.isclass(return_type)
+                and (return_type.__doc__ or "").lstrip().startswith("mdmd:namespace")
+            ):
+                parts.append(f"{member_title_level} {member_name}\n\n")
+                parts.append(class_str(member_name, return_type, title_level=title_level + "#"))
+                continue
+            member = fget
         elif isinstance(member, (synchronicity.synchronizer.FunctionWithAio, synchronicity.synchronizer.MethodWithAio)):
             member = member._func
 
