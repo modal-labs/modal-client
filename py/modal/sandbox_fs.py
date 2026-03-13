@@ -3,12 +3,14 @@ import asyncio
 import os
 import random
 import string
+import time
 import weakref
 from contextlib import suppress
 from pathlib import Path
 from typing import Union, cast
 
 from ._utils.async_utils import synchronize_api
+from ._utils.logger import logger
 from ._utils.sandbox_fs_utils import (
     make_read_file_command,
     make_write_file_command,
@@ -20,6 +22,14 @@ from ._utils.sandbox_fs_utils import (
 from .io_streams import TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE
 
 _SANDBOX_FS_TOOLS_PATH = "/__modal/.bin/modal-sandbox-fs-tools"
+
+_BYTES_PER_MIB = 1024 * 1024
+
+
+def _log_throughput(op: str, size_bytes: int, dur_s: float) -> None:
+    size_mib = size_bytes / _BYTES_PER_MIB
+    throughput_mib_s = size_mib / dur_s
+    logger.debug(f"sandbox {op}: {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s, total {dur_s:.2f}s)")
 
 
 class _SandboxFilesystem:
@@ -46,9 +56,18 @@ class _SandboxFilesystem:
         - `SandboxFilesystemIsADirectoryError`: the path points to a directory.
         - `SandboxFilesystemPermissionError`: read permission is denied.
         - `SandboxFilesystemError`: the command fails for any other reason.
+
+        **Usage**
+
+        ```python fixture:sandbox
+        sandbox.filesystem.write_bytes(b"Hello, world!\n", "/tmp/hello.bin")
+        contents = sandbox.filesystem.read_bytes("/tmp/hello.bin")
+        print(contents.decode("utf-8"))
+        ```
         """
         validate_absolute_remote_path(remote_path, "read_bytes")
 
+        t0 = time.monotonic()
         with translate_exec_errors("read_bytes", remote_path):
             process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_read_file_command(remote_path), text=False)
             stdout, stderr, returncode = await asyncio.gather(
@@ -58,6 +77,8 @@ class _SandboxFilesystem:
         if returncode != 0:
             raise_read_file_error(returncode, stderr, remote_path)
 
+        dur_s = max(time.monotonic() - t0, 0.001)
+        _log_throughput(f"read_bytes {remote_path}", len(stdout), dur_s)
         return stdout
 
     async def read_text(self, remote_path: str) -> str:
@@ -71,9 +92,18 @@ class _SandboxFilesystem:
         - `SandboxFilesystemIsADirectoryError`: the path points to a directory.
         - `SandboxFilesystemPermissionError`: read permission is denied.
         - `SandboxFilesystemError`: the command fails for any other reason.
+
+        **Usage**
+
+        ```python fixture:sandbox
+        sandbox.filesystem.write_text("Hello, world!\n", "/tmp/hello.txt")
+        contents = sandbox.filesystem.read_text("/tmp/hello.txt")
+        print(contents)
+        ```
         """
         validate_absolute_remote_path(remote_path, "read_text")
 
+        t0 = time.monotonic()
         with translate_exec_errors("read_text", remote_path):
             process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_read_file_command(remote_path))
             stdout, stderr, returncode = await asyncio.gather(
@@ -83,6 +113,10 @@ class _SandboxFilesystem:
         if returncode != 0:
             raise_read_file_error(returncode, stderr, remote_path)
 
+        dur_s = max(time.monotonic() - t0, 0.001)
+        # len(stdout) is character count, not byte count — close enough for
+        # debug logging and avoids re-encoding the entire string.
+        _log_throughput(f"read_text {remote_path}", len(stdout), dur_s)
         return stdout
 
     async def copy_to_local(self, remote_path: str, local_path: Union[str, os.PathLike]) -> None:
@@ -101,6 +135,13 @@ class _SandboxFilesystem:
         - `IsADirectoryError`: `local_path` points to a directory.
         - `NotADirectoryError`: a component of the `local_path` parent is not a directory.
         - `PermissionError`: writing `local_path` is not permitted.
+
+        **Usage**
+
+        ```python fixture:sandbox
+        sandbox.filesystem.write_text("Hello, world!\n", "/tmp/hello.txt")
+        sandbox.filesystem.copy_to_local("/tmp/hello.txt", "/tmp/local-hello.txt")
+        ```
         """
         validate_absolute_remote_path(remote_path, "copy_to_local")
         local_path_obj = Path(local_path)
@@ -111,23 +152,30 @@ class _SandboxFilesystem:
         # when the remote read fails.
         suffix = "".join(random.choices(string.ascii_letters + string.digits, k=6))
         tmp_path = local_path_obj.parent / f".modal-sandbox-fs-tmp-{suffix}"
+        t0 = time.monotonic()
         try:
             with translate_exec_errors("copy_to_local", remote_path):
                 process = await self._sandbox.exec(
                     _SANDBOX_FS_TOOLS_PATH, make_read_file_command(remote_path), text=False
                 )
 
-                async def stream_stdout_to_file():
+                async def stream_stdout_to_file() -> int:
+                    total = 0
                     with open(tmp_path, "wb") as file_obj:
                         async for chunk in process.stdout:
                             file_obj.write(chunk)
+                            total += len(chunk)
+                    return total
 
-                _, stderr, returncode = await asyncio.gather(
+                total_bytes, stderr, returncode = await asyncio.gather(
                     stream_stdout_to_file(), process.stderr.read(), process.wait()
                 )
 
             if returncode != 0:
                 raise_read_file_error(returncode, stderr, remote_path)
+
+            dur_s = max(time.monotonic() - t0, 0.001)
+            _log_throughput(f"copy_to_local {remote_path} -> {local_path}", total_bytes, dur_s)
 
             # Rename the temporary file into its target location.
             tmp_path.replace(local_path_obj)
@@ -148,11 +196,18 @@ class _SandboxFilesystem:
         - `SandboxFilesystemIsADirectoryError`: `remote_path` points to a directory.
         - `SandboxFilesystemPermissionError`: write permission is denied.
         - `SandboxFilesystemError`: the command fails for any other reason.
+
+        **Usage**
+
+        ```python fixture:sandbox
+        sandbox.filesystem.write_bytes(b"Hello, world!\n", "/tmp/hello.bin")
+        ```
         """
         validate_absolute_remote_path(remote_path, "write_bytes")
         if not isinstance(data, (bytes, bytearray, memoryview)):
             raise TypeError("data must be bytes-like")
 
+        t0 = time.monotonic()
         with translate_exec_errors("write_bytes", remote_path):
             process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
             for offset in range(0, max(len(data), 1), TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE):
@@ -164,6 +219,9 @@ class _SandboxFilesystem:
 
         if returncode != 0:
             raise_write_file_error(returncode, stderr, remote_path)
+
+        dur_s = max(time.monotonic() - t0, 0.001)
+        _log_throughput(f"write_bytes {remote_path}", len(data), dur_s)
 
     async def write_text(self, data: str, remote_path: str) -> None:
         """Write UTF-8 text to a file in the Sandbox.
@@ -178,6 +236,12 @@ class _SandboxFilesystem:
         - `SandboxFilesystemIsADirectoryError`: `remote_path` points to a directory.
         - `SandboxFilesystemPermissionError`: write permission is denied.
         - `SandboxFilesystemError`: the command fails for any other reason.
+
+        **Usage**
+
+        ```python fixture:sandbox
+        sandbox.filesystem.write_text("Hello, world!\n", "/tmp/hello.txt")
+        ```
         """
         validate_absolute_remote_path(remote_path, "write_text")
         if not isinstance(data, str):
@@ -200,9 +264,22 @@ class _SandboxFilesystem:
         - `FileNotFoundError`: `local_path` does not exist.
         - `IsADirectoryError`: `local_path` is a directory.
         - `PermissionError`: reading `local_path` is not permitted.
+
+        **Usage**
+
+        ```python fixture:sandbox
+        import tempfile
+        from pathlib import Path
+
+        local_path = Path(tempfile.mktemp())
+        local_path.write_text("Hello, world!\n")
+        sandbox.filesystem.copy_from_local(local_path, "/tmp/hello.txt")
+        ```
         """
         validate_absolute_remote_path(remote_path, "copy_from_local")
 
+        t0 = time.monotonic()
+        total_bytes = 0
         with open(local_path, "rb") as file_obj:
             with translate_exec_errors("copy_from_local", remote_path):
                 process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
@@ -217,6 +294,7 @@ class _SandboxFilesystem:
                         raise
                     if not chunk:
                         break
+                    total_bytes += len(chunk)
                     process.stdin.write(chunk)
                     await process.stdin.drain()
                 process.stdin.write_eof()
@@ -225,6 +303,9 @@ class _SandboxFilesystem:
 
             if returncode != 0:
                 raise_write_file_error(returncode, stderr, remote_path)
+
+        dur_s = max(time.monotonic() - t0, 0.001)
+        _log_throughput(f"copy_from_local {local_path} -> {remote_path}", total_bytes, dur_s)
 
 
 SandboxFilesystem = synchronize_api(_SandboxFilesystem)
