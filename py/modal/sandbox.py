@@ -1213,6 +1213,14 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise ExecutionError(resp.task_result.exception)
         return sandbox
 
+    @property
+    def filesystem(self) -> _SandboxFilesystem:
+        """Namespace for filesystem APIs."""
+        self._ensure_attached()
+        if self._filesystem is None:
+            self._filesystem = _SandboxFilesystem(self)
+        return self._filesystem
+
     @overload
     async def open(
         self,
@@ -1261,14 +1269,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
-
-    @property
-    def filesystem(self) -> _SandboxFilesystem:
-        """Namespace for filesystem APIs."""
-        self._ensure_attached()
-        if self._filesystem is None:
-            self._filesystem = _SandboxFilesystem(self)
-        return self._filesystem
 
     async def ls(self, path: str) -> builtins.list[str]:
         """[Alpha] List the contents of a directory in the Sandbox."""

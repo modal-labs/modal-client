@@ -642,6 +642,21 @@ def test_sandbox_fs_copy_from_local_copies_empty_file(
 
 @skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_copy_from_local_copies_file_opened_in_text_mode(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    src = tmp_path / "text-mode.txt"
+    with open(src, "w") as f:
+        f.write("written in text mode\n")
+    remote_path = str(tmp_path / "copied-text-mode.txt")
+
+    sandbox.filesystem.copy_from_local(src, remote_path)
+
+    assert (tmp_path / "copied-text-mode.txt").read_text(encoding="utf-8") == "written in text mode\n"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_from_local_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox, tmp_path):
     src = tmp_path / "source.bin"
     src.write_bytes(b"data")
