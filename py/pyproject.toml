@@ -8,7 +8,7 @@ description = "Python client library for Modal"
 readme = "README.md"
 dynamic = ["version"]
 requires-python = ">=3.10,<3.15"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
 
 authors = [
     { name = "Modal Labs", email = "support@modal.com" }
@@ -34,7 +34,6 @@ keywords = ["modal", "client", "cloud", "serverless", "infrastructure"]
 classifiers = [
     "Topic :: System :: Distributed Computing",
     "Operating System :: OS Independent",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3"
 ]
 
