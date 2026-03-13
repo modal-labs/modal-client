@@ -9,7 +9,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -463,33 +463,22 @@ def publish_base_images(
 
 
 @task()
-def bump_dev_version(ctx, dry_run: bool = False):
-    """Automatically increment the modal version, handling dev releases (but not other pre-releases)."""
-
-    from packaging.version import Version
-
-    from modal_version import __version__
-
-    v = Version(__version__)
-
-    if v.is_prerelease:
-        if not v.is_devrelease:
-            raise RuntimeError("We only know how to auto-bump dev versions")
-        # For dev releases, increment the dev suffix
-        next_version = f"{v.major}.{v.minor}.{v.micro}.dev{v.dev + 1}"
-    else:
-        # If the most recent commit was *not* a dev release, start the next cycle
-        next_version = f"{v.major}.{v.minor}.{v.micro + 1}.dev0"
+def prepare_with_version(ctx, version: str, dry_run: bool = False):
+    """Overrides modal_version/__init__.py with version."""
+    if not version:
+        print("version must be specified")
+        sys.exit(1)
 
     version_file = "modal_version/__init__.py"
     with open(version_file) as f:
         current_file_contents = f.read()
 
     version_pattern = r'__version__\s*=\s*["\']([^"\']+)["\']'
-    updated_file_contents = re.sub(version_pattern, f'__version__ = "{next_version}"', current_file_contents)
 
-    if updated_file_contents == current_file_contents:
+    if not re.search(version_pattern, current_file_contents):
         raise RuntimeError(f"Unable to find the line defining __version__ in {version_file}")
+
+    updated_file_contents = re.sub(version_pattern, f'__version__ = "{version}"', current_file_contents)
 
     if dry_run:
         print(f"Would update {version_file} to the following:")
@@ -498,6 +487,53 @@ def bump_dev_version(ctx, dry_run: bool = False):
 
     with open(version_file, "w") as f:
         f.write(updated_file_contents)
+
+
+def get_next_dev_version(ctx) -> str:
+    """Bumpbs the dev release based on the tags for `sdk-py/*`."""
+    from packaging.version import Version
+
+    from modal_version import __version__
+
+    v = Version(__version__)
+
+    if v.is_prerelease:
+        if not v.is_devrelease:
+            raise RuntimeError("We only know how to handle dev versions")
+        # Already a dev release so we keep the version
+        next_version = f"{v.major}.{v.minor}.{v.micro}"
+    else:
+        # Not a dev release so we bump the micro version
+        next_version = f"{v.major}.{v.minor}.{v.micro + 1}"
+
+    # Find any existing dev tags for next_version and bump to the next dev number.
+    # ls-remote queries the remote tags directly
+    result = ctx.run(f"git ls-remote --tags origin 'refs/tags/sdk-py/v{next_version}.dev*'", hide=True)
+
+    max_dev = -1
+    for line in result.stdout.splitlines():
+        # Each line is "<sha>\trefs/tags/<tag>"; skip peeled tag entries (^{})
+        ref = line.split("\t", 1)[-1]
+        if ref.endswith("^{}"):
+            continue
+        tag_version = ref.removeprefix("refs/tags/sdk-py/v")
+        with suppress(Exception):
+            tag_v = Version(tag_version)
+            if tag_v.dev is not None:
+                max_dev = max(max_dev, tag_v.dev)
+
+    return f"{next_version}.dev{max_dev + 1}"
+
+
+@task()
+def version(ctx, dev: bool = False):
+    """Print version for current release or dev release."""
+    if dev:
+        print(get_next_dev_version(ctx))
+    else:
+        from modal_version import __version__
+
+        print(__version__)
 
 
 @task
