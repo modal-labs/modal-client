@@ -31,6 +31,70 @@ enum TaskExecStdoutConfig {
   TASK_EXEC_STDOUT_CONFIG_PIPE = 1;
 }
 
+message TaskContainerCreateRequest {
+  string task_id = 1;
+  // Logical container name.
+  string container_name = 2;
+  string image_id = 3;
+  repeated string args = 5;
+  map<string, string> env = 6;
+  string workdir = 7;
+  // Secret IDs to inject into the container as environment variables.
+  repeated string secret_ids = 8;
+}
+
+message TaskContainerCreateResponse {
+  // Fully qualified container ID (for example, ctr-<ulid>).
+  string container_id = 1;
+  // Logical container name associated with this container.
+  string container_name = 2;
+}
+
+message TaskContainerGetRequest {
+  string task_id = 1;
+  string container_name = 2;
+  // Include the latest terminated container if the name is no longer active.
+  bool include_terminated = 3;
+}
+
+message TaskContainerGetResponse {
+  TaskContainerInfo container = 1;
+}
+
+message TaskContainerInfo {
+  string container_id = 1;
+  string container_name = 2;
+  string status = 3;
+  modal.client.GenericResult result = 4;
+}
+
+message TaskContainerListRequest {
+  string task_id = 1;
+  // Include all tracked terminated containers in addition to active ones.
+  bool include_terminated = 2;
+}
+
+message TaskContainerListResponse {
+  repeated TaskContainerInfo containers = 1;
+}
+
+message TaskContainerTerminateRequest {
+  string task_id = 1;
+  string container_id = 2;
+}
+
+message TaskContainerTerminateResponse {}
+
+message TaskContainerWaitRequest {
+  string task_id = 1;
+  string container_id = 2;
+  float timeout = 3;
+}
+
+message TaskContainerWaitResponse {
+  modal.client.GenericResult result = 1;
+}
+
 message TaskExecPollRequest {
   // The ID of the task running the exec'd command.
   string task_id = 1;
@@ -76,6 +140,8 @@ message TaskExecStartRequest {
   // Enable debugging capabilities on the container runtime. Used only for
   // internal debugging.
   bool runtime_debug = 10;
+  // Fully qualified target container ID. Empty targets the main container.
+  string container_id = 11;
 }
 
 message TaskExecStartResponse { }
@@ -116,7 +182,7 @@ message TaskExecStdioReadResponse {
 message TaskExecWaitRequest {
   // The ID of the task running the exec'd command.
   string task_id = 1;
-  // The execution ID of the command to wait on. 
+  // The execution ID of the command to wait on.
   string exec_id = 2;
 }
 
@@ -147,11 +213,21 @@ message TaskSnapshotDirectoryResponse {
 }
 
 service TaskCommandRouter {
+  // Create an additional container for a task.
+  rpc TaskContainerCreate(TaskContainerCreateRequest) returns (TaskContainerCreateResponse);
+  // Get the latest container associated with a logical name.
+  rpc TaskContainerGet(TaskContainerGetRequest) returns (TaskContainerGetResponse);
+  // List containers associated with the task.
+  rpc TaskContainerList(TaskContainerListRequest) returns (TaskContainerListResponse);
+  // Terminate or release a tracked container.
+  rpc TaskContainerTerminate(TaskContainerTerminateRequest) returns (TaskContainerTerminateResponse);
+  // Wait for a tracked container to reach a terminal result.
+  rpc TaskContainerWait(TaskContainerWaitRequest) returns (TaskContainerWaitResponse);
   // Poll for the exit status of an exec'd command.
   rpc TaskExecPoll(TaskExecPollRequest) returns (TaskExecPollResponse);
   // Execute a command in the task.
   rpc TaskExecStart(TaskExecStartRequest) returns (TaskExecStartResponse);
- // Write to the stdin stream of an exec'd command.
+  // Write to the stdin stream of an exec'd command.
   rpc TaskExecStdinWrite(TaskExecStdinWriteRequest) returns (TaskExecStdinWriteResponse);
   // Get a stream of output from the stdout or stderr stream of an exec'd command.
   rpc TaskExecStdioRead(TaskExecStdioReadRequest) returns (stream TaskExecStdioReadResponse);

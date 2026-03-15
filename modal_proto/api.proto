@@ -3366,6 +3366,8 @@ message TaskLogs {
   string function_call_id = 10;
   string input_id = 11;
   uint64 timestamp_ns = 12;
+  string container_id = 13;
+  string container_name = 14;
 }
 
 message TaskLogsBatch {
