@@ -811,6 +811,48 @@ test("testSandboxExperimentalDockerMock", async () => {
   mock.assertExhausted();
 });
 
+test("testSandboxEphemeralDiskMock", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxCreate", (req: any): SandboxCreateResponse => {
+    expect(req.definition?.resources?.ephemeralDiskMb).toBe(20_480);
+    return { sandboxId: "sb-1234" };
+  });
+
+  mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
+    return { appId: "ap-1234" };
+  });
+
+  const app = await mc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+
+  mock.handleUnary("ImageGetOrCreate", (_: any): ImageGetOrCreateResponse => {
+    return {
+      imageId: "im-123",
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exception: "",
+        exitcode: 0,
+        traceback: "",
+        serializedTb: new Uint8Array(0),
+        tbLineCache: new Uint8Array(0),
+        propagationReason: "",
+      },
+      metadata: undefined,
+    };
+  });
+
+  const image = mc.images.fromRegistry("alpine:3.21");
+
+  const sb = await mc.sandboxes.create(app, image, {
+    ephemeralDiskMiB: 20_480,
+  });
+  expect(sb.sandboxId).toEqual("sb-1234");
+
+  mock.assertExhausted();
+});
+
 test("SandboxGetTaskIdPolling", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
