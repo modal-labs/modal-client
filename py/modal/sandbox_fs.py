@@ -5,7 +5,6 @@ import random
 import string
 import time
 import weakref
-from contextlib import suppress
 from pathlib import Path
 from typing import Union, cast
 
@@ -284,14 +283,11 @@ class _SandboxFilesystem:
             with translate_exec_errors("copy_from_local", remote_path):
                 process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
                 while True:
-                    try:
-                        chunk = file_obj.read(TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE)
-                    except Exception:
-                        # Best-effort EOF so the container process doesn't hang.
-                        with suppress(Exception):
-                            process.stdin.write_eof()
-                            await process.stdin.drain()
-                        raise
+                    # TODO(saltzm): If this fails, the ContainerProcess will remain alive indefinitely since
+                    # stdin will remain open. Unfortunately we can't just call write_eof either, since that
+                    # would lead to a partially written file being persisted. We should catch exceptions
+                    # from this and kill the ContainerProcess when we have a way to do this.
+                    chunk = file_obj.read(TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE)
                     if not chunk:
                         break
                     total_bytes += len(chunk)
