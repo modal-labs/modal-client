@@ -587,6 +587,15 @@ test("buildSandboxCreateRequestProto with Memory and MemoryLimit", async () => {
   expect(resources.memoryMbMax).toBe(2048);
 });
 
+test("buildSandboxCreateRequestProto with EphemeralDisk", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    ephemeralDiskMiB: 20_480,
+  });
+
+  const resources = req.definition!.resources!;
+  expect(resources.ephemeralDiskMb).toBe(20_480);
+});
+
 test("buildSandboxCreateRequestProto MemoryLimit lower than Memory", async () => {
   await expect(
     buildSandboxCreateRequestProto("app-123", "img-456", {
@@ -620,6 +629,14 @@ test("buildSandboxCreateRequestProto negative Memory", async () => {
   await expect(
     buildSandboxCreateRequestProto("app-123", "img-456", {
       memoryMiB: -100,
+    }),
+  ).rejects.toThrow("must be a positive number");
+});
+
+test("buildSandboxCreateRequestProto negative EphemeralDisk", async () => {
+  await expect(
+    buildSandboxCreateRequestProto("app-123", "img-456", {
+      ephemeralDiskMiB: -100,
     }),
   ).rejects.toThrow("must be a positive number");
 });

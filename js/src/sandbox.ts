@@ -95,6 +95,9 @@ export type SandboxCreateParams = {
   /** Hard limit of memory in MiB. */
   memoryLimitMiB?: number;
 
+  /** Reservation of ephemeral disk in MiB. */
+  ephemeralDiskMiB?: number;
+
   /** GPU reservation for the Sandbox (e.g. "A100", "T4:2", "A100-80GB:4"). */
   gpu?: string;
 
@@ -333,6 +336,15 @@ export async function buildSandboxCreateRequestProto(
       memoryMbMax = params.memoryLimitMiB;
     }
   }
+  let ephemeralDiskMb: number | undefined = undefined;
+  if (params.ephemeralDiskMiB !== undefined) {
+    if (params.ephemeralDiskMiB <= 0) {
+      throw new Error(
+        `the ephemeralDiskMiB request (${params.ephemeralDiskMiB}) must be a positive number`,
+      );
+    }
+    ephemeralDiskMb = params.ephemeralDiskMiB;
+  }
 
   // The public interface uses Record<string, any> so that we can add support for any experimental
   // option type in the future. Currently, the proto only supports Record<string, boolean> so we validate
@@ -371,6 +383,7 @@ export async function buildSandboxCreateRequestProto(
         milliCpuMax,
         memoryMb,
         memoryMbMax,
+        ephemeralDiskMb,
         gpuConfig,
       }),
       volumeMounts,
