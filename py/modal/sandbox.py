@@ -35,7 +35,7 @@ from ._utils.name_utils import check_object_name
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .container_process import _ContainerProcess
-from .exception import ClientClosed, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
+from .exception import ClientClosed, Error, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO, ls, mkdir, rm, watch
 from .gpu import GPU_T
 from .image import _Image
@@ -549,7 +549,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._attached = False
 
     @property
-    def _client(self):
+    def _client(self) -> _Client:
         self._ensure_attached()
         return self.__client
 
@@ -883,9 +883,15 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self.returncode
 
-    async def _get_task_id(self) -> str:
+    async def _get_task_id(self, raise_if_task_complete=False) -> str:
         while not self._task_id:
             resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
+            # If the sandbox is terminated before it gets scheduled it can have a task result without a task_id
+            if not resp.task_id and raise_if_task_complete and resp.HasField("task_result"):
+                # When task_result is set, the task has finished, which could be any GenericResult.
+                # For now, we'll raise a generic Error and not be specific about the error type
+                msg = resp.task_result.exception or "Sandbox already finished"
+                raise Error(msg)
             self._task_id = resp.task_id
             if not self._task_id:
                 await asyncio.sleep(0.5)
@@ -1017,7 +1023,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         secret_coros = [secret.hydrate(client=self._client) for secret in secrets]
         await TaskContext.gather(*secret_coros)
 
-        task_id = await self._get_task_id()
+        task_id = await self._get_task_id(raise_if_task_complete=True)
         kwargs = {
             "task_id": task_id,
             "pty_info": pty_info,

@@ -12,7 +12,7 @@ import modal
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal._utils.async_utils import synchronizer
 from modal.container_process import ContainerProcess, _ContainerProcess
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import DeprecationError, Error, InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
 
@@ -961,6 +961,26 @@ def test_snapshot_directory(servicer, client, exec_backend, app):
         sb.snapshot_directory("relative/path")
 
     sb.terminate()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_exec_on_terminate_sandbox_raises(servicer, client, exec_backend, app):
+    sb = Sandbox.create(app=app)
+    sb.terminate()
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "SandboxGetTaskId",
+            api_pb2.SandboxGetTaskIdResponse(
+                task_result=api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED,
+                    exception="Sandbox was cancelled by user",
+                ),
+            ),
+        )
+        with pytest.raises(Error):
+            sb.exec("echo", "hello")
 
 
 detach_error_funcs = {
