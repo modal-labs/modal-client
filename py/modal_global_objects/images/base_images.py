@@ -8,7 +8,6 @@ import rich
 from rich.table import Table
 
 import modal
-from modal.experimental import notebook_base_image
 from modal.image import SUPPORTED_PYTHON_SERIES, ImageBuilderVersion
 
 
@@ -22,13 +21,10 @@ async def build_images(app: modal.App, constructor: Any, python_versions: list[s
 if __name__ == "__main__":
     _, name = sys.argv
 
-    constructor: Any  # todo: notebook_base_image has messed up type inference
-    if name in ("debian_slim", "micromamba"):
-        constructor = getattr(modal.Image, name)
-    elif name == "notebook":
-        constructor = notebook_base_image
-    else:
+    if name not in ("debian_slim", "micromamba"):
         raise ValueError(f"Unknown base image type: {name}")
+
+    constructor = getattr(modal.Image, name)
 
     builder_version = os.environ.get("MODAL_IMAGE_BUILDER_VERSION")
     assert builder_version, "Script requires MODAL_IMAGE_BUILDER_VERSION environment variable"
