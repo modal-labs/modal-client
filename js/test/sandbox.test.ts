@@ -17,7 +17,8 @@ import {
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
 
-test("CreateOneSandbox", async () => {
+// Live sandbox lifecycle operations can exceed Vitest's default 20s timeout.
+test("CreateOneSandbox", { timeout: 60_000 }, async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
   });
@@ -28,7 +29,7 @@ test("CreateOneSandbox", async () => {
   expect(await sb.terminate({ wait: true })).toBe(137);
 });
 
-test("CreateOneSandboxTerminateWaitWorks", async () => {
+test("CreateOneSandboxTerminateWaitWorks", { timeout: 60_000 }, async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
   });
