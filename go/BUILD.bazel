@@ -1,6 +1,6 @@
-load("@rules_go//go:def.bzl", "go_library", "go_test")
-
 """Go SDK for Modal — github.com/modal-labs/modal/client/go."""
+
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 # gazelle:prefix github.com/modal-labs/modal/client/go
 # gazelle:go_generate_proto false
