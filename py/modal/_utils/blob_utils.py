@@ -58,7 +58,7 @@ MULTIPART_UPLOAD_THRESHOLD = 1024**3
 BLOCK_SIZE: int = 8 * 1024 * 1024
 
 
-@retry(n_attempts=3, base_delay=0.3, timeout=None)
+@retry(n_attempts=3, base_delay=0.3, attempt_timeout=None)
 async def _upload_to_s3_url(
     upload_url,
     payload: "BytesIOSegmentPayload",
@@ -310,7 +310,7 @@ async def blob_upload_file(
     return blob_id
 
 
-@retry(n_attempts=5, base_delay=0.1, timeout=None)
+@retry(n_attempts=5, base_delay=0.1, attempt_timeout=None)
 async def _download_from_url(download_url: str) -> bytes:
     async with ClientSessionRegistry.get_session().get(download_url) as s3_resp:
         # S3 signal to slow down request rate.
