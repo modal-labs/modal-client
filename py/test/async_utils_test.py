@@ -88,6 +88,23 @@ async def test_retry():
 
 
 @pytest.mark.asyncio
+async def test_retry_timeout_factor():
+    """Attempt 1 should time out (0.5s < 0.8s sleep), attempt 2 should succeed (1.0s > 0.8s sleep)."""
+    call_count = 0
+
+    @retry(n_attempts=3, attempt_timeout=0.5, attempt_timeout_factor=2)
+    async def slow_then_ok():
+        nonlocal call_count
+        call_count += 1
+        await asyncio.sleep(0.8)
+        return "ok"
+
+    result = await slow_then_ok()
+    assert result == "ok"
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_task_context():
     async with TaskContext() as task_context:
         t = task_context.create_task(asyncio.sleep(0.1))

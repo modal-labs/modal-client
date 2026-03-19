@@ -345,11 +345,23 @@ def synchronize_api(obj, target_module=None):
 RETRY_N_ATTEMPTS_OVERRIDE: Optional[int] = None
 
 
-def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout=90):
+def retry(
+    direct_fn=None,
+    *,
+    n_attempts=3,
+    base_delay=0,
+    delay_factor=2,
+    attempt_timeout: Optional[float] = 90,
+    attempt_timeout_factor=1,
+):
     """Decorator that calls an async function multiple times, with a given timeout.
 
     If a `base_delay` is provided, the function is given an exponentially
     increasing delay on each run, up until the maximum number of attempts.
+
+    If `attempt_timeout_factor` is set to a value > 1, the per-attempt timeout
+    increases exponentially (starting from `attempt_timeout`, multiplied by
+    `attempt_timeout_factor` after each failed attempt).
 
     Usage:
 
@@ -375,10 +387,11 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
                 local_n_attempts = n_attempts
 
             delay = base_delay
+            current_attempt_timeout = attempt_timeout
             for i in range(local_n_attempts):
                 t0 = time.time()
                 try:
-                    return await asyncio.wait_for(fn(*args, **kwargs), timeout=timeout)
+                    return await asyncio.wait_for(fn(*args, **kwargs), timeout=current_attempt_timeout)
                 except asyncio.CancelledError:
                     logger.debug(f"Function {fn} was cancelled")
                     raise
@@ -392,6 +405,8 @@ def retry(direct_fn=None, *, n_attempts=3, base_delay=0, delay_factor=2, timeout
                     )
                 await asyncio.sleep(delay)
                 delay *= delay_factor
+                if current_attempt_timeout is not None:
+                    current_attempt_timeout *= attempt_timeout_factor
 
         return f_wrapped
 

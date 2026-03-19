@@ -740,7 +740,7 @@ class _Volume(_Object, type_prefix="vo"):
         except modal.exception.NotFoundError as exc:
             raise FileNotFoundError(exc.args[0])
 
-        @retry(n_attempts=5, base_delay=0.1, timeout=None)
+        @retry(n_attempts=5, base_delay=0.1, attempt_timeout=None)
         async def read_block(block_url: str) -> bytes:
             async with ClientSessionRegistry.get_session().get(block_url) as get_response:
                 get_response.raise_for_status()
@@ -806,7 +806,7 @@ class _Volume(_Object, type_prefix="vo"):
         write_lock = asyncio.Lock()
         start_pos = fileobj.tell()
 
-        @retry(n_attempts=5, base_delay=0.1, timeout=None)
+        @retry(n_attempts=5, base_delay=0.1, attempt_timeout=None)
         async def download_block(idx, url) -> int:
             block_start_pos = start_pos + idx * BLOCK_SIZE
             num_bytes_written = 0
@@ -1369,7 +1369,7 @@ async def _put_missing_blocks(
         file_progress.pending_blocks.add(missing_block.block_index)
         task_progress_cb = functools.partial(progress_cb, task_id=file_progress.task_id)
 
-        @retry(n_attempts=11, base_delay=0.5, timeout=None)
+        @retry(n_attempts=11, base_delay=0.5, attempt_timeout=None)
         async def put_missing_block_attempt(payload: BytesIOSegmentPayload) -> bytes:
             with payload.reset_on_error(subtract_progress=True):
                 async with ClientSessionRegistry.get_session().put(
