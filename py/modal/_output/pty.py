@@ -64,6 +64,30 @@ async def stream_pty_shell_input(client: "_Client", exec_id: str, finish_event: 
         await finish_event.wait()
 
 
+_PREFIX_FIELD_GETTERS = {
+    "fu": lambda batch, log: batch.function_id,
+    "ta": lambda batch, log: batch.task_id,
+    "fc": lambda batch, log: log.function_call_id,
+}
+
+
+def _build_log_prefix(batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs, prefix_fields: list[str]) -> str:
+    """Build a prefix string from batch/log fields based on requested prefix types.
+
+    The order of prefix_fields controls the order of the output.
+    """
+    if not prefix_fields:
+        return ""
+    parts = []
+    for field in prefix_fields:
+        getter = _PREFIX_FIELD_GETTERS.get(field)
+        if getter:
+            value = getter(batch, log)
+            if value:
+                parts.append(value)
+    return " ".join(parts)
+
+
 async def get_app_logs_loop(
     client: "_Client",
     output_mgr: "OutputManager",
@@ -71,8 +95,15 @@ async def get_app_logs_loop(
     task_id: Optional[str] = None,
     sandbox_id: Optional[str] = None,
     follow: bool = True,
+    last_entry_id: str = "",
+    prefix_fields: Optional[list[str]] = None,
+    file_descriptor: "api_pb2.FileDescriptor.ValueType" = api_pb2.FILE_DESCRIPTOR_UNSPECIFIED,
+    function_id: str = "",
+    function_call_id: str = "",
+    search_text: str = "",
 ):
-    last_log_batch_entry_id = ""
+    last_log_batch_entry_id = last_entry_id
+    _prefixes = prefix_fields or []
 
     pty_shell_finish_event: Optional[asyncio.Event] = None
     pty_shell_task_id: Optional[str] = None
@@ -112,10 +143,15 @@ async def get_app_logs_loop(
             else:  # Ensure forward-compatible with new types.
                 logger.debug(f"Received unrecognized progress type: {log.task_progress.progress_type}")
         elif log.data:
+            # Client-side search filter for Redis streaming (AppGetLogs
+            # doesn't support server-side search)
+            if search_text and search_text not in log.data:
+                return
             if pty_shell_finish_event:
                 await output_mgr.put_pty_content(log)
             else:
-                await output_mgr.put_log_content(log)
+                log_prefix = _build_log_prefix(log_batch, log, _prefixes)
+                await output_mgr.put_streaming_log(log, prefix=log_prefix)
 
     async def _get_logs():
         nonlocal last_log_batch_entry_id
@@ -127,6 +163,9 @@ async def get_app_logs_loop(
             sandbox_id=sandbox_id or "",
             timeout=55 if follow else 0,
             last_entry_id=last_log_batch_entry_id,
+            file_descriptor=file_descriptor,
+            function_id=function_id,
+            function_call_id=function_call_id,
         )
         log_batch: api_pb2.TaskLogsBatch
         async for log_batch in client.stub.AppGetLogs.unary_stream(request):

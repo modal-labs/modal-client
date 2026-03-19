@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
 import rich
@@ -16,8 +17,9 @@ from modal.client import _Client
 from modal.environments import ensure_env
 from modal_proto import api_pb2
 
-from .._utils.time_utils import timestamp_to_localized_str
-from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs
+from .._logs import _FETCH_LIMIT, _MAX_FETCH_RANGE, LogsFilters
+from .._utils.time_utils import locale_tz, timestamp_to_localized_str
+from .utils import ENV_OPTION, display_table, fetch_app_logs, get_app_id_from_name, stream_app_logs, tail_app_logs
 
 APP_IDENTIFIER = Argument("", help="App name or ID")
 NAME_OPTION = typer.Option("", "-n", "--name", help="Deprecated: Pass App name as a positional argument")
@@ -81,33 +83,206 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
     display_table(columns, rows, json, title=f"Apps{env_part}")
 
 
+_RELATIVE_TIME_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def _parse_time_arg(value: Optional[str], default: datetime) -> datetime:
+    """Parse a time argument that can be a relative duration (e.g. '2h', '30m') or ISO 8601 datetime.
+
+    Naive datetime values are interpreted in the user's local timezone.
+    Relative durations are always UTC-relative.
+    """
+    if value is None:
+        return default
+
+    # Try relative duration: digits followed by a unit letter
+    if len(value) >= 2 and value[-1] in _RELATIVE_TIME_UNITS and value[:-1].isdigit():
+        seconds = int(value[:-1]) * _RELATIVE_TIME_UNITS[value[-1]]
+        return datetime.now(timezone.utc) - timedelta(seconds=seconds)
+
+    # Try ISO 8601 datetime
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            # Interpret naive datetimes in the user's local timezone
+            dt = dt.replace(tzinfo=locale_tz())
+        return dt
+    except ValueError:
+        raise UsageError(f"Invalid time format: '{value}'. Use a relative duration (e.g. '2h') or ISO 8601 datetime.")
+
+
+_DEFAULT_LOGS_TAIL = 100
+
+
+_SOURCE_OPTIONS = {
+    "stdout": api_pb2.FILE_DESCRIPTOR_STDOUT,
+    "stderr": api_pb2.FILE_DESCRIPTOR_STDERR,
+    "system": api_pb2.FILE_DESCRIPTOR_INFO,
+}
+
+
 @app_cli.command("logs", no_args_is_help=True)
 def logs(
     app_identifier: str = APP_IDENTIFIER,
     follow: bool = typer.Option(False, "-f", "--follow", help="Stream log output until App stops"),
-    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line"),
+    since: Optional[str] = typer.Option(
+        None,
+        "--since",
+        help=(
+            "Start of time range. Accepts ISO 8601 datetime or relative time, e.g. '1d' (1 day ago), '2h', '30m', etc."
+        ),
+    ),
+    until: Optional[str] = typer.Option(
+        None,
+        "--until",
+        help="End of time range; accepts same argument types as --since",
+    ),
+    search: Optional[str] = typer.Option(None, "--search", help="Filter by search text"),
+    function_id: Optional[str] = typer.Option("", "--function", help="Filter by Function ID (fu-*)"),
+    function_call_id: Optional[str] = typer.Option("", "--function-call", help="Filter by FunctionCall ID (fc-*)"),
+    source: Optional[str] = typer.Option(
+        None, "--source", "-s", help="Filter by source: 'stdout', 'stderr', or 'system'"
+    ),
+    tail: Optional[int] = typer.Option(None, "--tail", "-n", help="Show only the last N log entries"),
+    timestamps: bool = typer.Option(False, "--timestamps", help="Prefix each line with its timestamp"),
+    show_function_id: bool = typer.Option(False, "--show-function-id", help="Prefix each line with its Function ID"),
+    show_function_call_id: bool = typer.Option(
+        False, "--show-function-call-id", help="Prefix each line with its FunctionCall ID"
+    ),
+    show_container_id: bool = typer.Option(False, "--show-container-id", help="Prefix each line with its Container ID"),
     *,
     env: Optional[str] = ENV_OPTION,
 ):
-    """Show App logs, streaming while active.
+    """Fetch or stream App logs.
+
+    By default, this command fetches the last 100 log entries and exits. Use ``-f`` to
+    live-stream logs from a running App instead. Fetch and follow are mutually exclusive.
 
     **Examples:**
 
-    Get the logs based on an app ID:
+    Get recent logs based on an app ID:
 
     ```
-    modal app logs ap-123456
+    modal app logs ap-123456 --tail 100
     ```
 
-    Get the logs for a currently deployed App based on its name:
+    Get recent logs for a currently deployed App based on its name:
 
     ```
     modal app logs my-app
     ```
 
+    Follow (stream) logs from a running App:
+
+    ```
+    modal app logs my-app -f
+    ```
+
+    Fetch logs from the last 2 hours:
+
+    ```
+    modal app logs my-app --since 2h
+    ```
+
+    Fetch logs in a specific time range:
+
+    ```
+    modal app logs my-app --since 2026-03-01T05:00:00 --until 2026-03-01T08:00:00
+    ```
+
+    Filter the logs by source and function:
+
+    ```
+    modal app logs my-app --source stderr --function fu-abc123
+    ```
+
+    Include timestamps along with Function and Container IDs on each line:
+
+    ```
+    modal app logs my-app --timestamps --show-function-id --show-container-id
+    ```
+
     """
+    if not app_identifier:
+        raise UsageError("Either an App ID or name must be provided.")
+
+    if follow and (since or until or tail):
+        raise UsageError("--follow cannot be combined with --since, --until, or --tail.")
+
+    if tail is not None and tail <= 0:
+        raise UsageError("--tail value must be positive.")
+
+    if tail is not None and tail > _FETCH_LIMIT:
+        raise UsageError(f"--tail value must not exceed {_FETCH_LIMIT}.")
+
     app_id = get_app_id(app_identifier, env)
-    stream_app_logs(app_id, show_timestamps=timestamps, follow=follow)
+
+    if source is not None:
+        if source not in _SOURCE_OPTIONS:
+            raise UsageError(f"Invalid source: '{source}'. Must be 'stdout', 'stderr', or 'system'.")
+        source_fd = _SOURCE_OPTIONS[source]
+    else:
+        source_fd = api_pb2.FILE_DESCRIPTOR_UNSPECIFIED
+
+    prefix_fields: list[str] = []
+    if show_function_id:
+        prefix_fields.append("fu")
+    if show_function_call_id:
+        prefix_fields.append("fc")
+    if show_container_id:
+        prefix_fields.append("ta")
+
+    log_filters = LogsFilters(
+        source=source_fd,
+        function_id=function_id or "",
+        function_call_id=function_call_id or "",
+        search_text=search or "",
+    )
+
+    if follow:
+        stream_app_logs(
+            app_id,
+            show_timestamps=timestamps,
+            follow=True,
+            prefix_fields=prefix_fields,
+            filters=log_filters,
+        )
+    else:
+        now = datetime.now(timezone.utc)
+        since_dt = _parse_time_arg(since, default=now) if since else None
+        until_dt = _parse_time_arg(until, default=now) if until else None
+
+        if since_dt is not None and until_dt is not None and since_dt >= until_dt:
+            raise UsageError("--since must be before --until.")
+
+        if since_dt is not None:
+            effective_until = until_dt or now
+            if effective_until - since_dt > _MAX_FETCH_RANGE:
+                raise UsageError(f"Log fetch time range cannot exceed {_MAX_FETCH_RANGE.days} days.")
+
+        if since and tail is None:
+            # Range mode: --since without --tail fetches everything in the range.
+            fetch_app_logs(
+                app_id,
+                since_dt,
+                until_dt or now,
+                show_timestamps=timestamps,
+                prefix_fields=prefix_fields,
+                filters=log_filters,
+            )
+        else:
+            # Tail mode: single fetch with limit.
+            # --since is a hard floor, --until shifts the anchor.
+            effective_tail = tail if tail is not None else _DEFAULT_LOGS_TAIL
+            tail_app_logs(
+                app_id,
+                effective_tail,
+                show_timestamps=timestamps,
+                since=since_dt,
+                until=until_dt,
+                prefix_fields=prefix_fields,
+                filters=log_filters,
+            )
 
 
 @app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})
