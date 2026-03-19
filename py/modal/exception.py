@@ -206,6 +206,10 @@ class VolumeUploadTimeoutError(TimeoutError):
     """Raised when a Volume upload times out."""
 
 
+class LogsFetchError(Error):
+    """Raised when trying to fetch too many logs."""
+
+
 class InteractiveTimeoutError(TimeoutError):
     """Raised when interactive frontends time out while trying to connect to a container."""
 

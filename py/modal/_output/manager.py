@@ -298,13 +298,31 @@ class OutputManager(ABC):
         ...
 
     @abstractmethod
-    async def put_log_content(self, log: "api_pb2.TaskLogs") -> None:
-        """Process and display log content.
+    async def put_streaming_log(self, log: "api_pb2.TaskLogs", prefix: str = "") -> None:
+        """Process and display log content with immediate output.
+
+        Use this for streaming paths (--follow, image logs) where logs arrive
+        in real time and should be displayed immediately.
 
         Note: In RichOutputManager, log output is always displayed even when quiet mode
         is enabled. This is intentional - quiet mode suppresses progress indicators and
         status messages, but not actual log output from running functions/images.
         In contrast, DisabledOutputManager suppresses all output including logs.
+
+        prefix: optional string to prepend to each log line (e.g. object IDs).
+        """
+        ...
+
+    @abstractmethod
+    async def put_fetched_log(self, log: "api_pb2.TaskLogs", prefix: str = "") -> None:
+        """Process and display log content with batched output.
+
+        Use this for bulk historical log fetching where thousands of entries
+        are processed in a tight loop. Output is buffered internally and
+        flushed periodically to avoid per-line stdout overhead. Call
+        flush_lines() after the loop to drain any remaining buffered output.
+
+        prefix: optional string to prepend to each log line (e.g. object IDs).
         """
         ...
 
@@ -382,7 +400,7 @@ class OutputManager(ABC):
         - All print() output is suppressed, including stderr
         - Progress indicators (spinners, progress bars) are suppressed
         - Warnings (via show_warning) are still displayed
-        - Log output (via put_log_content) is still displayed
+        - Log output (via put_streaming_log) is still displayed
         - Interactive/raw PTY content (via put_pty_content) is still forwarded to stdout
         - Error output (via print_error) is still displayed
 
@@ -516,7 +534,10 @@ class DisabledOutputManager(OutputManager):
     ) -> None:
         pass
 
-    async def put_log_content(self, log: "api_pb2.TaskLogs") -> None:
+    async def put_streaming_log(self, log: "api_pb2.TaskLogs", prefix: str = "") -> None:
+        pass
+
+    async def put_fetched_log(self, log: "api_pb2.TaskLogs", prefix: str = "") -> None:
         pass
 
     def flush_lines(self) -> None:

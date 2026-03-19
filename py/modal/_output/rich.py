@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import io
 import platform
 import re
-from collections.abc import Generator
+import sys
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Generator, NamedTuple
 
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
@@ -96,18 +97,36 @@ class LineBufferedOutput:
     def __init__(self, callback: Callable[[str], None], show_timestamps: bool):
         self._callback = callback
         self._buf = ""
+        self._buf_prefix = ""
         self._show_timestamps = show_timestamps
 
-    def write(self, log: api_pb2.TaskLogs):
+    def write(self, log: api_pb2.TaskLogs, prefix: str = ""):
+        line_prefix = ""
+        if self._show_timestamps:
+            ts_str = timestamp_to_localized_str(log.timestamp)
+            if ts_str:
+                line_prefix = f"{ts_str} "
+        if prefix:
+            line_prefix = f"{line_prefix}{prefix} "
+
+        # If the new prefix differs from the buffered remainder's prefix,
+        # flush the old remainder as its own line so it isn't emitted under
+        # the wrong prefix. This is rare — it means a previous log entry
+        # wrote partial output without a trailing newline, and a log from a
+        # different source arrived on the same fd.
+        if self._buf and line_prefix != self._buf_prefix:
+            self._callback(f"{self._buf_prefix}{self._buf}\n")
+            self._buf = ""
+
         chunks = self.LINE_REGEX.split(self._buf + log.data)
 
         # re.split("(<exp>)") returns the matched groups, and also the separators.
         # e.g. re.split("(+)", "a+b") returns ["a", "+", "b"].
         # This means that chunks is guaranteed to be odd in length.
 
-        if self._show_timestamps:
+        if line_prefix:
             for i in range(0, len(chunks) - 1, 2):
-                chunks[i] = f"{timestamp_to_localized_str(log.timestamp)} {chunks[i]}"
+                chunks[i] = f"{line_prefix}{chunks[i]}"
 
         completed_lines = "".join(chunks[:-1])
         remainder = chunks[-1]
@@ -123,14 +142,16 @@ class LineBufferedOutput:
 
         self._callback(completed_lines)
         self._buf = remainder
+        self._buf_prefix = line_prefix
 
     def flush(self):
         pass
 
     def finalize(self):
         if self._buf:
-            self._callback(self._buf)
+            self._callback(f"{self._buf_prefix}{self._buf}")
             self._buf = ""
+            self._buf_prefix = ""
 
 
 class _RichStatusContext(StatusContext):
@@ -180,6 +201,22 @@ class RichStatusRow(StatusRow):
             self._step_node.label = f"🔨 {message}"
 
 
+_LOG_FLUSH_THRESHOLD = 32768  # 32KB — flush batched log output roughly every ~400 lines
+
+
+class AnsiColor(NamedTuple):
+    name: str
+    code: str
+
+
+_FD_COLORS: dict[int, AnsiColor] = {
+    api_pb2.FILE_DESCRIPTOR_STDOUT: AnsiColor("blue", "\033[34m"),
+    api_pb2.FILE_DESCRIPTOR_STDERR: AnsiColor("red", "\033[31m"),
+    api_pb2.FILE_DESCRIPTOR_INFO: AnsiColor("yellow", "\033[33m"),
+}
+_ANSI_RESET = "\033[0m"
+
+
 class RichOutputManager(OutputManager):
     """Rich-based implementation of OutputManager.
 
@@ -195,7 +232,9 @@ class RichOutputManager(OutputManager):
     _function_progress: Progress | None
     _function_queueing_progress: Progress | None
     _snapshot_progress: Progress | None
-    _line_buffers: dict[int, LineBufferedOutput]
+    _line_buffers: dict[tuple[int, str], LineBufferedOutput]
+    _log_buffer: io.StringIO
+    _use_ansi_color: bool
     _status_spinner: Spinner | None
     _app_page_url: str | None
     __show_image_logs: bool
@@ -228,6 +267,9 @@ class RichOutputManager(OutputManager):
         self._function_queueing_progress = None
         self._snapshot_progress = None
         self._line_buffers = {}
+        self._log_buffer = io.StringIO()
+        # Respect Rich's color detection (TTY, NO_COLOR, FORCE_COLOR, etc.)
+        self._use_ansi_color = self._console.color_system is not None and not self._console.no_color
         self._status_spinner: Spinner | None = None
         self._app_page_url = None
         self.__show_image_logs = False
@@ -453,17 +495,27 @@ class RichOutputManager(OutputManager):
 
         return update_counts
 
-    def _print_log(self, fd: int, data: str) -> None:
-        if fd == api_pb2.FILE_DESCRIPTOR_STDOUT:
-            style = "blue"
-        elif fd == api_pb2.FILE_DESCRIPTOR_STDERR:
-            style = "red"
-        elif fd == api_pb2.FILE_DESCRIPTOR_INFO:
-            style = "yellow"
-        else:
-            raise Exception(f"Weird file descriptor {fd} for log output")
+    def _styled_log_text(self, fd: int, data: str) -> str:
+        """Wrap log text in ANSI color codes, bypassing Rich's rendering pipeline."""
+        if self._use_ansi_color:
+            color = _FD_COLORS.get(fd)
+            if color is None:
+                logger.debug(f"Unknown file descriptor {fd} as log_source")
+                return data
+            return f"{color.code}{data}{_ANSI_RESET}"
+        return data
 
-        self._console.out(data, style=style, end="")
+    def _print_log_buffered(self, fd: int, data: str) -> None:
+        """Append styled log text to the output buffer for batched flushing."""
+        self._log_buffer.write(self._styled_log_text(fd, data))
+
+    def _flush_log_buffer(self) -> None:
+        """Write buffered log output to stdout."""
+        if self._log_buffer.tell() > 0:
+            sys.stdout.write(self._log_buffer.getvalue())
+            sys.stdout.flush()
+            self._log_buffer.seek(0)
+            self._log_buffer.truncate()
 
     def update_app_page_url(self, app_page_url: str) -> None:
         self._app_page_url = app_page_url
@@ -542,22 +594,56 @@ class RichOutputManager(OutputManager):
             progress_task_id = self._function_queueing_progress_bar.add_task(task_desc, start=True, total=None)
             self._task_progress_items[task_key] = progress_task_id
 
-    async def put_log_content(self, log: api_pb2.TaskLogs) -> None:
-        """Process and display log content.
+    def _get_line_buffer(self, fd: int, mode: str, callback: Callable[[str], None]) -> LineBufferedOutput:
+        """Get or create a LineBufferedOutput for the given file descriptor and mode.
+
+        mode should be "streaming" or "fetched" — this ensures the two output
+        paths maintain separate buffers even for the same file descriptor.
+        """
+        key = (fd, mode)
+        stream = self._line_buffers.get(key)
+        if stream is None:
+            stream = LineBufferedOutput(callback, self._show_timestamps)
+            self._line_buffers[key] = stream
+        return stream
+
+    def _console_print_log(self, fd: int, data: str) -> None:
+        """Write log text via Rich Console, cooperating with any active Live context."""
+        color = _FD_COLORS.get(fd)
+        if color is None:
+            logger.debug(f"Unknown file descriptor {fd} as log_source")
+            color = AnsiColor("white", "\033[37m")
+        self._console.out(data, style=color.name, end="")
+
+    async def put_streaming_log(self, log: api_pb2.TaskLogs, prefix: str = "") -> None:
+        """Process and display log content with immediate output.
+
+        Uses Rich Console.out() which cooperates with any active Live context
+        (e.g. the status spinner in --follow mode).
 
         Note: Log output is always displayed even when quiet mode is enabled.
         Quiet mode suppresses progress indicators and status messages, but not
         actual log output from running functions/images.
         """
-        stream = self._line_buffers.get(log.file_descriptor)
-        if stream is None:
-            stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor), self._show_timestamps)
-            self._line_buffers[log.file_descriptor] = stream
-        stream.write(log)
+        callback = functools.partial(self._console_print_log, log.file_descriptor)
+        self._get_line_buffer(log.file_descriptor, "streaming", callback).write(log, prefix=prefix)
+
+    async def put_fetched_log(self, log: api_pb2.TaskLogs, prefix: str = "") -> None:
+        """Process and display log content with batched output.
+
+        Bypasses Rich's rendering pipeline and buffers ANSI-colored text,
+        flushing periodically. Use this for bulk historical log fetching
+        where thousands of entries are processed in a tight loop.
+        """
+        callback = functools.partial(self._print_log_buffered, log.file_descriptor)
+        self._get_line_buffer(log.file_descriptor, "fetched", callback).write(log, prefix=prefix)
+        if self._log_buffer.tell() >= _LOG_FLUSH_THRESHOLD:
+            self._flush_log_buffer()
 
     def flush_lines(self) -> None:
         for stream in self._line_buffers.values():
             stream.finalize()
+        self._flush_log_buffer()
 
     @contextlib.contextmanager
     def transfer_progress(self, type: str) -> Generator[TransferProgressContext, None, None]:

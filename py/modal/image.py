@@ -388,7 +388,7 @@ async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.I
                     assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
                     output_mgr.update_snapshot_progress(image_id, task_log.task_progress)
                 elif task_log.data:
-                    await output_mgr.put_log_content(task_log)
+                    await output_mgr.put_streaming_log(task_log)
         OutputManager.get().flush_lines()
 
     # Handle up to n exceptions while fetching logs

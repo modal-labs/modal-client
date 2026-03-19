@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from pickle import dumps
 from unittest.mock import MagicMock
@@ -646,6 +647,17 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
         with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
             res = run_cli_command(["deploy", "myapp.py", "--name", "my-app", "--stream-logs"])
             assert res.stdout.rstrip().endswith("hello")
+
+        # Default `app logs` uses the tail path (single AppFetchLogs, no count)
+        now = datetime.now(timezone.utc).timestamp()
+        log = api_pb2.TaskLogs(data="hello\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT, timestamp=now)
+        fetch_resp = api_pb2.AppFetchLogsResponse(batches=[api_pb2.TaskLogsBatch(items=[log])])
+
+        async def fetch_handler(self, stream):
+            await stream.recv_message()
+            await stream.send_message(fetch_resp)
+
+        ctx.set_responder("AppFetchLogs", fetch_handler)
 
         res = run_cli_command(["app", "logs", "my-app"])
         assert res.stdout.strip() == "hello"
