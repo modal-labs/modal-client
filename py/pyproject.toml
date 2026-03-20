@@ -28,7 +28,7 @@ dependencies = [
     "types-certifi",
     "types-toml",
     "watchfiles",
-    "typing_extensions~=4.6"
+    "typing_extensions~=4.6",
 ]
 keywords = ["modal", "client", "cloud", "serverless", "infrastructure"]
 classifiers = [
@@ -36,6 +36,51 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3"
 ]
+
+[dependency-groups]
+dev = [
+    "cbor2==5.7.0",
+    "fastapi~=0.125",
+    "flaky~=3.8",
+    "grpclib==0.4.9",
+    "invoke~=2.2",
+    "httpx~=0.27.2",
+    "pyjwt~=2.10.1",
+    "pre-commit>=2.21,<4",
+    "mypy~=1.18.2",
+    "packaging>=23.1",
+    "pytest~=8.4.0",
+    "pytest-asyncio @ git+https://github.com/modal-labs/pytest-asyncio.git@af3f2d721b842309749cd26e5bbdd210e17d80c8",
+    "pytest-env~=1.1.5",
+    "pytest-markdown-docs==0.9.1",
+    "pytest-timeout~=2.4.0",
+    "python-dotenv~=1.0.0",
+    "requests~=2.32.4",
+    "ruff~=0.9.6",
+    "setuptools<82", # Required by grpcio-tools for pkg_resources (v82+ removed pkg_resources)"
+    "types-croniter~=1.0.8",
+    "types-python-dateutil~=2.8.10",
+    "types-requests~=2.31.0",
+    "types-setuptools~=57.4.11",
+    "types-six~=1.16.21",
+    "types-toml~=0.10.4",
+    "wheel~=0.38.1",
+    "nbclient~=0.10.2",
+    "notebook~=7.5.4",
+    "jupytext~=1.19.1",
+    "pyright~=1.1.351",
+    "console-ctrl~=0.1.0",
+    "zstandard~=0.25.0",
+    "synchronicity[compile]==0.11.1",
+    "python-json-logger==2.0.7",
+    "build~=1.3.0",
+
+    "mypy-protobuf",
+    "grpcio-tools",
+]
+
+[tool.uv.extra-build-dependencies]
+grpcio-tools = ["setuptools<82"]
 
 [project.urls]
 Homepage = "https://modal.com"
@@ -122,6 +167,7 @@ extend-select = ['PLR1702']
 "modal_docs/**" = ['T201']
 "modal_global_objects/**" = ['T201']
 "tasks.py" = ['T201']
+"compile_protos.py" = ['T201']
 "modal/__init__.py" = ['T201']
 "modal/experimental/ipython.py" = ['T201']
 

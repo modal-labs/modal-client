@@ -8,11 +8,9 @@ import pkgutil
 import re
 import subprocess
 import sys
-from collections.abc import Generator
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from datetime import date
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
 from invoke import call, task
 
@@ -27,55 +25,33 @@ copyright_header_start = "# Copyright Modal Labs"
 copyright_header_full = f"{copyright_header_start} {year}"
 
 
-@contextmanager
-def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
-    if sys.platform == "win32":
-        # windows can't just run shebang:ed python files, so we create a .bat file that calls it
-        src = f"""@echo off
-{sys.executable} {path}
-"""
-        with NamedTemporaryFile(mode="w", suffix=".bat", encoding="ascii", delete=False) as f:
-            f.write(src)
-
-        try:
-            yield Path(f.name)
-        finally:
-            Path(f.name).unlink()
-    else:
-        yield path
-
-
 @task(
     help={
         "skip_mypy": "skip generating MyPy files",
+        "isolated": "generate with the same environment as testing",
     },
 )
-def protoc(ctx, skip_mypy: bool = False):
+def protoc(ctx, skip_mypy: bool = False, isolated: bool = False):
     """Compile protocol buffer files for gRPC and Modal-specific wrappers.
 
     Generates Python stubs for api.proto."""
-    # Suppress pkg_resources deprecation warning from grpcio-tools
-    # See: https://github.com/grpc/grpc/issues/33570
-    protoc_env = {"PYTHONWARNINGS": "ignore:pkg_resources is deprecated"}
-    protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
-    client_proto_files = "modal_proto/api.proto"
-    task_command_router_proto_file = "modal_proto/task_command_router.proto"
-    py_protoc = protoc_cmd + " --python_out=. --grpclib_python_out=. --grpc_python_out=."
-    if not skip_mypy:
-        py_protoc = f"{py_protoc} --mypy_out=. --mypy_grpc_out=."
-    print(py_protoc)
-    # generate grpcio and grpclib proto files:
-    ctx.run(f"{py_protoc} -I .. {client_proto_files} {task_command_router_proto_file}", env=protoc_env)
 
-    # generate modal-specific wrapper around grpclib api stub using custom plugin:
-    grpc_plugin_pyfile = Path("protoc_plugin/plugin.py")
-
-    with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
+    if isolated:
+        print("Generating protos in isolated environment from requirements.protos.txt")
+        major = sys.version_info.major
+        minor = sys.version_info.minor
+        skip_mypy_flag = " --skip-mypy" if skip_mypy else ""
         ctx.run(
-            f"{protoc_cmd} --plugin=protoc-gen-modal-grpclib-python={grpc_plugin_executable}"
-            + f" --modal-grpclib-python_out=. -I .. {client_proto_files}",
-            env=protoc_env,
+            f"uv run --python {major}.{minor} --with-requirements requirements.protos.txt "
+            f"compile_protos.py{skip_mypy_flag}",
+            echo=True,
         )
+    else:
+        print("Generating protos in the current environment")
+        cmd = f"{sys.executable} compile_protos.py"
+        if skip_mypy:
+            cmd = f"{cmd} --skip-mypy"
+        ctx.run(cmd, echo=True)
 
 
 @task(

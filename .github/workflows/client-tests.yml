@@ -19,9 +19,7 @@ env:
 
 jobs:
   client-test:
-    name:
-      Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }}
-      (protobuf=${{ matrix.proto-version }})
+    name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }}
     timeout-minutes: 30
 
     strategy:
@@ -29,20 +27,13 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         os: ["ubuntu-24.04"]
-        proto-version: ["latest"]
         include:
           - os: "macos-15-intel" # x86-64
             python-version: "3.10"
-            proto-version: "latest"
           - os: "macos-15" # ARM64 (M1)
             python-version: "3.10"
-            proto-version: "latest"
           - os: "windows-latest"
             python-version: "3.10"
-            proto-version: "latest"
-          - os: "ubuntu-24.04"
-            python-version: "3.10"
-            proto-version: "3.20"
 
     runs-on: ${{ matrix.os }}
     defaults:
@@ -57,13 +48,6 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           no-build-isolation:
             ${{ matrix.os == 'macos-15' && 'true' || 'false' }}
-
-      - name: Build client package (installs all dependencies)
-        run: uv pip install -e .
-
-      - if: matrix.proto-version != 'latest'
-        name: Install specific protobuf version (override lock file)
-        run: uv pip install protobuf==${{ matrix.proto-version }}
 
       - name: Build protobuf
         run: inv protoc
@@ -117,11 +101,15 @@ jobs:
           pip install -r modal/builder/${{ matrix.image-builder-version }}.txt
           pip install synchronicity
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
+        with:
+          version: "0.10.9"
+
       - name: Compile protos
         run:
-          .github/scripts/client-generate-container-runtime-protos.sh ${{
-          inputs.working-directory }} ${{ matrix.python-version }}
-        working-directory: "."
+          uv run --python ${{ matrix.python-version }} --with-requirements
+          requirements.protos.txt compile_protos.py --skip-mypy
 
       - name: Check entrypoint import
         run: |
