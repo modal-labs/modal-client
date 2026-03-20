@@ -18,6 +18,7 @@ from ..mount import _Mount
 from ..runner import interactive_shell
 from ..sandbox import Sandbox
 from ..secret import Secret
+from ..stream_type import StreamType
 from ..volume import Volume
 from .container import exec
 from .import_refs import (
@@ -64,26 +65,75 @@ def _is_valid_modal_id(ref: str, prefix: str) -> bool:
     return ref.startswith(prefix) and len(ref[len(prefix) :]) > 0 and ref[len(prefix) :].isalnum()
 
 
+def _parse_sandbox_container_ref(ref: str) -> tuple[str, Optional[str]]:
+    """Parse a sandbox:container reference into (sandbox_id, container_name).
+
+    Supports the pattern `sb-xyz:container_name` for accessing sandbox containers.
+    Returns (ref, None) if no container name is specified.
+    """
+    if _is_valid_modal_id(ref, "sb-"):
+        return ref, None
+
+    if ":" in ref:
+        parts = ref.split(":", 1)
+        sandbox_id, container_name = parts[0], parts[1]
+        if _is_valid_modal_id(sandbox_id, "sb-") and container_name:
+            return sandbox_id, container_name
+
+    return ref, None
+
+
 def _is_running_container_ref(ref: Optional[str]) -> bool:
     if ref is None:
         return False
-    return _is_valid_modal_id(ref, "sb-") or _is_valid_modal_id(ref, "ta-")
+    sandbox_id, _ = _parse_sandbox_container_ref(ref)
+    return _is_valid_modal_id(sandbox_id, "sb-") or _is_valid_modal_id(ref, "ta-")
+
+
+def _start_shell_in_sandbox_container(sandbox_id: str, container_name: str, cmd: str, pty: bool) -> None:
+    """Shell into a named container within a sandbox."""
+    try:
+        sandbox = Sandbox.from_id(sandbox_id)
+    except NotFoundError:
+        raise ClickException(f"Sandbox '{sandbox_id}' not found (is it still running?)")
+    except Exception as e:
+        raise ClickException(f"Error connecting to Sandbox '{sandbox_id}': {str(e)}")
+
+    try:
+        sandbox_container = sandbox._experimental_containers.get(name=container_name)
+        if pty:
+            process = sandbox_container.exec(*shlex.split(cmd), pty=pty)
+            process.attach()
+        else:
+            process = sandbox_container.exec(
+                *shlex.split(cmd), pty=pty, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT
+            )
+            process.wait()
+    except NotFoundError:
+        raise ClickException(f"Container '{container_name}' not found in Sandbox '{sandbox_id}'.")
+    except Exception as e:
+        raise ClickException(f"Error exec-ing into container '{container_name}' in Sandbox '{sandbox_id}': {str(e)}")
 
 
 def _start_shell_in_running_container(ref: str, cmd: str, pty: bool) -> None:
-    if _is_valid_modal_id(ref, "sb-"):
+    sandbox_id, container_name = _parse_sandbox_container_ref(ref)
+
+    if container_name is not None:
+        return _start_shell_in_sandbox_container(sandbox_id, container_name, cmd, pty)
+
+    if _is_valid_modal_id(sandbox_id, "sb-"):
         try:
-            sandbox = Sandbox.from_id(ref)
+            sandbox = Sandbox.from_id(sandbox_id)
             ref = sandbox._get_task_id()
-        except NotFoundError as e:
-            raise ClickException(f"Sandbox '{ref}' not found (is it still running?)")
+        except NotFoundError:
+            raise ClickException(f"Sandbox '{sandbox_id}' not found (is it still running?)")
         except Exception as e:
-            raise ClickException(f"Error connecting to Sandbox '{ref}': {str(e)}")
+            raise ClickException(f"Error connecting to Sandbox '{sandbox_id}': {str(e)}")
 
     assert _is_valid_modal_id(ref, "ta-")
     try:
         exec(container_id=ref, command=shlex.split(cmd), pty=pty)
-    except NotFoundError as e:
+    except NotFoundError:
         raise ClickException(f"Container '{ref}' not found (is it still running?)")
     except Exception as e:
         raise ClickException(f"Error connecting to container '{ref}': {str(e)}")

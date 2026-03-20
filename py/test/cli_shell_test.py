@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import typer
 
-from modal.cli.shell import _params_from_signature, _passed_forbidden_args, shell
+from modal.cli.shell import _params_from_signature, _parse_sandbox_container_ref, _passed_forbidden_args, shell
 
 from .conftest import run_cli_command
 from .supports.skip import skip_windows
@@ -195,6 +195,23 @@ def test_passed_forbidden_args_with_predicate():
     assert _pfa(param_objs, {"image": None, "cpu": None}, allowed=lambda _: False) == []
 
 
+@pytest.mark.parametrize(
+    "ref,expected_sandbox_id,expected_container_name",
+    [
+        ("sb-abc123", "sb-abc123", None),
+        ("sb-abc123:redis", "sb-abc123", "redis"),
+        ("sb-abc123:my-container", "sb-abc123", "my-container"),
+        ("ta-abc123", "ta-abc123", None),
+        ("im-abc123", "im-abc123", None),
+        ("app.py::my_func", "app.py::my_func", None),
+    ],
+)
+def test_parse_sandbox_container_ref(ref, expected_sandbox_id, expected_container_name):
+    sandbox_id, container_name = _parse_sandbox_container_ref(ref)
+    assert sandbox_id == expected_sandbox_id
+    assert container_name == expected_container_name
+
+
 @pytest.fixture
 def mock_shell_routing(monkeypatch):
     mocks = {}
@@ -220,6 +237,7 @@ def mock_shell_routing(monkeypatch):
     [
         "sb-abc123",
         "ta-abc123",
+        "sb-abc123:mycontainer",
     ],
 )
 def test_shell_sb_ta_ref_routes_to_running_container(servicer, set_env_client, mock_shell_routing, ref):

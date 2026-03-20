@@ -8,11 +8,15 @@ from collections import deque
 from pathlib import Path
 from unittest import mock
 
+from grpclib import GRPCError
+
 import modal
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal._utils.async_utils import synchronizer
+from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.container_process import ContainerProcess, _ContainerProcess
 from modal.exception import DeprecationError, Error, InvalidError
+from modal.sandbox import SandboxContainer
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
 
@@ -1003,6 +1007,7 @@ detach_error_funcs = {
     "mkdir": lambda sb: sb.mkdir("/world"),
     "rm": lambda sb: sb.rm("/world"),
     "watch": lambda sb: next(sb.watch("/world")),
+    "_experimental_containers": lambda sb: sb._experimental_containers,
     "stdout": lambda sb: sb.stdout,
     "stderr": lambda sb: sb.stderr,
     "stdin": lambda sb: sb.stdin,
@@ -1056,6 +1061,218 @@ def test_sandbox_terminate_wait(app, servicer):
 
     assert req.sandbox_id == sb.object_id
     assert exit_code != 0
+
+
+@skip_non_subprocess
+def test_sandbox_container_terminate_wait(app, servicer, monkeypatch):
+    async def _mk_router(cls, server_client, task_id):
+        return FakeTaskCommandRouterClient(server_client)
+
+    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    container = sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
+
+    assert container.poll() is None
+
+    exit_code = container.terminate(wait=True)
+    assert exit_code == 137
+    assert container.poll() == 137
+
+    with pytest.raises(modal.exception.SandboxTerminatedError):
+        container.wait()
+
+    container.wait(raise_on_termination=False)
+    assert container.poll() == 137
+    terminated = sb._experimental_containers.list(include_terminated=True)
+    assert all(isinstance(listed_container, SandboxContainer) for listed_container in terminated)
+    assert any(
+        listed_container.name == "worker"
+        and listed_container.object_id == container.object_id
+        and listed_container.poll() == 137
+        for listed_container in terminated
+    )
+
+
+@skip_non_subprocess
+def test_sandbox_container_wait_after_natural_exit(app, servicer, monkeypatch):
+    async def _mk_router(cls, server_client, task_id):
+        return FakeTaskCommandRouterClient(server_client)
+
+    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    container = sb._experimental_containers.create("bash", "-c", "exit 42", name="oneshot", image=image)
+    container.wait()
+    container.wait()
+    assert container.poll() == 42
+
+    with pytest.raises((modal.exception.NotFoundError, GRPCError)):
+        sb._experimental_containers.get(name="oneshot")
+    assert sb._experimental_containers.get(name="oneshot", include_terminated=True).object_id == container.object_id
+
+    replacement = sb._experimental_containers.create("bash", "-c", "sleep 100", name="oneshot", image=image)
+    assert replacement.object_id != container.object_id
+    terminated = sb._experimental_containers.list(include_terminated=True)
+    assert all(isinstance(listed_container, SandboxContainer) for listed_container in terminated)
+    assert any(
+        listed_container.name == "oneshot"
+        and listed_container.object_id == container.object_id
+        and listed_container.poll() == 42
+        for listed_container in terminated
+    )
+    assert any(
+        listed_container.name == "oneshot"
+        and listed_container.object_id == replacement.object_id
+        and listed_container.poll() is None
+        for listed_container in terminated
+    )
+
+    container.terminate(wait=True)
+    assert container.poll() == 42
+    assert sb._experimental_containers.get(name="oneshot").object_id == replacement.object_id
+    assert sb._experimental_containers.get(name="oneshot", include_terminated=True).object_id == replacement.object_id
+
+
+@skip_non_subprocess
+def test_sandbox_container_get_and_list_forward_include_terminated(app, servicer, monkeypatch):
+    router_client = FakeTaskCommandRouterClient(None)
+    get_request: tcr_pb2.TaskContainerGetRequest | None = None
+    list_request: tcr_pb2.TaskContainerListRequest | None = None
+
+    async def _mk_router(cls, server_client, task_id):
+        return router_client
+
+    original_get = FakeTaskCommandRouterClient.container_get
+    original_list = FakeTaskCommandRouterClient.container_list
+
+    async def _container_get(self, request):
+        nonlocal get_request
+        get_request = request
+        return await original_get(self, request)
+
+    async def _container_list(self, request):
+        nonlocal list_request
+        list_request = request
+        return await original_list(self, request)
+
+    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+    monkeypatch.setattr(FakeTaskCommandRouterClient, "container_get", _container_get, raising=True)
+    monkeypatch.setattr(FakeTaskCommandRouterClient, "container_list", _container_list, raising=True)
+
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+    container = sb._experimental_containers.create("bash", "-c", "exit 0", name="oneshot", image=image)
+    container.wait()
+
+    sb._experimental_containers.get(name="oneshot", include_terminated=True)
+    containers = sb._experimental_containers.list(include_terminated=True)
+
+    assert get_request is not None
+    assert get_request.include_terminated is True
+    assert list_request is not None
+    assert list_request.include_terminated is True
+    assert all(isinstance(container, SandboxContainer) for container in containers)
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_accepts_prebuilt_image(app, servicer, monkeypatch):
+    router_client = FakeTaskCommandRouterClient(None)
+
+    async def _mk_router(cls, server_client, task_id):
+        return router_client
+
+    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
+
+    assert router_client.last_container_create_request is not None
+    assert router_client.last_container_create_request.image_id == image.object_id
+    assert list(router_client.last_container_create_request.secret_ids) == []
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer, monkeypatch):
+    router_client = FakeTaskCommandRouterClient(None)
+
+    async def _mk_router(cls, server_client, task_id):
+        return router_client
+
+    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+    secret = Secret.from_dict({"API_KEY": "secret-value"})
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    sb._experimental_containers.create(
+        "bash",
+        "-c",
+        "sleep 100",
+        name="worker",
+        image=image,
+        env={"API_KEY": "override", "PLAIN_ENV": "plain"},
+        secrets=[secret],
+    )
+
+    assert router_client.last_container_create_request is not None
+    assert router_client.last_container_create_request.image_id == image.object_id
+    assert dict(router_client.last_container_create_request.env) == {"API_KEY": "override", "PLAIN_ENV": "plain"}
+    assert list(router_client.last_container_create_request.secret_ids) == [secret.object_id]
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_rejects_image_with_mount_layers(app):
+    image = mock.Mock()
+    image._mount_layers = [mock.Mock()]
+    image._object_id = None
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with pytest.raises(InvalidError, match=r"only supports pre-built images"):
+        sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_rejects_unhydrated_image(app):
+    image = Image.debian_slim()
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+
+    with pytest.raises(InvalidError, match=r"currently only supports Images that are either"):
+        sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
+
+
+@skip_non_subprocess
+def test_sandbox_container_create_rejects_mounts_kwarg(app):
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
+    create = typing.cast(typing.Any, sb._experimental_containers.create)
+
+    with pytest.raises(TypeError):
+        create(name="worker", image=image, mounts=())
 
 
 @skip_non_subprocess
