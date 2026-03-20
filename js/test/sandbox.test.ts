@@ -17,7 +17,8 @@ import {
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
 
-test("CreateOneSandbox", async () => {
+// Live sandbox lifecycle operations can exceed Vitest's default 20s timeout.
+test("CreateOneSandbox", { timeout: 60_000 }, async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
   });
@@ -28,7 +29,7 @@ test("CreateOneSandbox", async () => {
   expect(await sb.terminate({ wait: true })).toBe(137);
 });
 
-test("CreateOneSandboxTerminateWaitWorks", async () => {
+test("CreateOneSandboxTerminateWaitWorks", { timeout: 60_000 }, async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
   });
@@ -587,6 +588,15 @@ test("buildSandboxCreateRequestProto with Memory and MemoryLimit", async () => {
   expect(resources.memoryMbMax).toBe(2048);
 });
 
+test("buildSandboxCreateRequestProto with EphemeralDisk", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    ephemeralDiskMiB: 20_480,
+  });
+
+  const resources = req.definition!.resources!;
+  expect(resources.ephemeralDiskMb).toBe(20_480);
+});
+
 test("buildSandboxCreateRequestProto MemoryLimit lower than Memory", async () => {
   await expect(
     buildSandboxCreateRequestProto("app-123", "img-456", {
@@ -620,6 +630,14 @@ test("buildSandboxCreateRequestProto negative Memory", async () => {
   await expect(
     buildSandboxCreateRequestProto("app-123", "img-456", {
       memoryMiB: -100,
+    }),
+  ).rejects.toThrow("must be a positive number");
+});
+
+test("buildSandboxCreateRequestProto negative EphemeralDisk", async () => {
+  await expect(
+    buildSandboxCreateRequestProto("app-123", "img-456", {
+      ephemeralDiskMiB: -100,
     }),
   ).rejects.toThrow("must be a positive number");
 });
@@ -788,6 +806,48 @@ test("testSandboxExperimentalDockerMock", async () => {
 
   const sb = await mc.sandboxes.create(app, image, {
     experimentalOptions: options,
+  });
+  expect(sb.sandboxId).toEqual("sb-1234");
+
+  mock.assertExhausted();
+});
+
+test("testSandboxEphemeralDiskMock", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxCreate", (req: any): SandboxCreateResponse => {
+    expect(req.definition?.resources?.ephemeralDiskMb).toBe(20_480);
+    return { sandboxId: "sb-1234" };
+  });
+
+  mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
+    return { appId: "ap-1234" };
+  });
+
+  const app = await mc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+
+  mock.handleUnary("ImageGetOrCreate", (_: any): ImageGetOrCreateResponse => {
+    return {
+      imageId: "im-123",
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exception: "",
+        exitcode: 0,
+        traceback: "",
+        serializedTb: new Uint8Array(0),
+        tbLineCache: new Uint8Array(0),
+        propagationReason: "",
+      },
+      metadata: undefined,
+    };
+  });
+
+  const image = mc.images.fromRegistry("alpine:3.21");
+
+  const sb = await mc.sandboxes.create(app, image, {
+    ephemeralDiskMiB: 20_480,
   });
   expect(sb.sandboxId).toEqual("sb-1234");
 
