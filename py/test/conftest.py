@@ -68,6 +68,14 @@ class FakeTaskCommandRouterClient:
     def __init__(self, server_client):
         self._procs: dict[str, asyncio.subprocess.Process] = {}
         self._stdin_offsets: dict[str, int] = {}
+        self._container_procs: dict[str, asyncio.subprocess.Process] = {}
+        self._container_names: dict[str, str] = {}
+        self._container_name_to_id: dict[str, str] = {}
+        self._latest_container_name_to_id: dict[str, str] = {}
+        self._container_results: dict[str, api_pb2.GenericResult] = {}
+        self._container_termination_requested: set[str] = set()
+        self._next_container_id = 0
+        self.last_container_create_request: sr_pb2.TaskContainerCreateRequest | None = None
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
         # Mimic task_command_router behavior - we should remove this proto variant though.
@@ -174,6 +182,129 @@ class FakeTaskCommandRouterClient:
             self._snapshot_requests = []
         self._snapshot_requests.append(request)
         return sr_pb2.TaskSnapshotDirectoryResponse(image_id="im-snapshot-123")
+
+    def _container_result(self, container_id: str) -> api_pb2.GenericResult | None:
+        if container_id in self._container_results:
+            return self._container_results[container_id]
+
+        proc = self._container_procs[container_id]
+        if proc.returncode is None:
+            return None
+
+        if container_id in self._container_termination_requested:
+            result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+        elif proc.returncode == 0:
+            result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+        else:
+            result = api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                exitcode=proc.returncode,
+            )
+        self._container_results[container_id] = result
+        self._release_container_name_if_current(container_id)
+        return result
+
+    def _release_container_name_if_current(self, container_id: str) -> None:
+        container_name = self._container_names[container_id]
+        if self._container_name_to_id.get(container_name) == container_id:
+            self._container_name_to_id.pop(container_name, None)
+
+    def _container_status(self, container_id: str) -> str:
+        result = self._container_result(container_id)
+        if result is not None:
+            if result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                return "success"
+            if result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+                return "terminated"
+            return "failure"
+        if container_id in self._container_termination_requested:
+            return "stopping"
+        return "running"
+
+    async def container_create(self, request: sr_pb2.TaskContainerCreateRequest) -> sr_pb2.TaskContainerCreateResponse:
+        if request.container_name in self._container_name_to_id:
+            raise GRPCError(Status.INVALID_ARGUMENT, "container name already in use")
+        self.last_container_create_request = request
+
+        self._next_container_id += 1
+        container_id = f"ctr-test-{self._next_container_id:06d}"
+        proc = await asyncio.subprocess.create_subprocess_exec(
+            *list(request.args),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+            stdin=asyncio.subprocess.DEVNULL,
+            cwd=(request.workdir or None),
+        )
+        self._container_procs[container_id] = proc
+        self._container_names[container_id] = request.container_name
+        self._container_name_to_id[request.container_name] = container_id
+        self._latest_container_name_to_id[request.container_name] = container_id
+        return sr_pb2.TaskContainerCreateResponse(
+            container_id=container_id,
+            container_name=request.container_name,
+        )
+
+    async def container_get(self, request: sr_pb2.TaskContainerGetRequest) -> sr_pb2.TaskContainerGetResponse:
+        container_ids = self._latest_container_name_to_id if request.include_terminated else self._container_name_to_id
+        container_id = container_ids.get(request.container_name)
+        if container_id is None:
+            raise GRPCError(Status.NOT_FOUND, "container not found")
+
+        result = self._container_result(container_id)
+        container = sr_pb2.TaskContainerInfo(
+            container_id=container_id,
+            container_name=request.container_name,
+            status=self._container_status(container_id),
+        )
+        if result is not None:
+            container.result.CopyFrom(result)
+        return sr_pb2.TaskContainerGetResponse(container=container)
+
+    async def container_list(self, request: sr_pb2.TaskContainerListRequest) -> sr_pb2.TaskContainerListResponse:
+        containers = []
+        for container_id, container_name in self._container_names.items():
+            if not request.include_terminated and self._container_name_to_id.get(container_name) != container_id:
+                continue
+            result = self._container_result(container_id)
+            container = sr_pb2.TaskContainerInfo(
+                container_id=container_id,
+                container_name=container_name,
+                status=self._container_status(container_id),
+            )
+            if result is not None:
+                container.result.CopyFrom(result)
+            containers.append(container)
+        return sr_pb2.TaskContainerListResponse(containers=containers)
+
+    async def container_terminate(
+        self,
+        request: sr_pb2.TaskContainerTerminateRequest,
+    ) -> sr_pb2.TaskContainerTerminateResponse:
+        container_id = request.container_id
+        if container_id not in self._container_procs:
+            raise GRPCError(Status.NOT_FOUND, "container not found")
+
+        self._container_termination_requested.add(container_id)
+        proc = self._container_procs[container_id]
+        if proc.returncode is None:
+            proc.terminate()
+        else:
+            self._release_container_name_if_current(container_id)
+        return sr_pb2.TaskContainerTerminateResponse()
+
+    async def container_wait(self, request: sr_pb2.TaskContainerWaitRequest) -> sr_pb2.TaskContainerWaitResponse:
+        container_id = request.container_id
+        if container_id not in self._container_procs:
+            raise GRPCError(Status.NOT_FOUND, "container not found")
+
+        deadline = time.monotonic() + request.timeout
+        while True:
+            result = self._container_result(container_id)
+            if result is not None:
+                return sr_pb2.TaskContainerWaitResponse(result=result)
+            if request.timeout == 0 or time.monotonic() >= deadline:
+                return sr_pb2.TaskContainerWaitResponse()
+            await asyncio.sleep(0.05)
 
 
 @pytest.fixture

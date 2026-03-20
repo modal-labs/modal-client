@@ -35,7 +35,14 @@ from ._utils.name_utils import check_object_name
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
 from .container_process import _ContainerProcess
-from .exception import ClientClosed, Error, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
+from .exception import (
+    ClientClosed,
+    Error,
+    ExecutionError,
+    InvalidError,
+    SandboxTerminatedError,
+    SandboxTimeoutError,
+)
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO, ls, mkdir, rm, watch
 from .gpu import GPU_T
 from .image import _Image
@@ -66,6 +73,16 @@ CONTAINER_EXEC_TIMEOUT_BUFFER = 5
 
 if TYPE_CHECKING:
     import modal.app
+
+
+def _result_returncode(result: Optional[api_pb2.GenericResult]) -> Optional[int]:
+    if result is None or result.status == api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:
+        return None
+    if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+        return 124
+    if result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+        return 137
+    return result.exitcode
 
 
 def _validate_exec_args(args: Sequence[str]) -> None:
@@ -904,6 +921,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             self._command_router_client = await TaskCommandRouterClient.try_init(self._client, task_id)
         return self._command_router_client
 
+    @property
+    def _experimental_containers(self) -> "_SandboxContainerManager":
+        """Manage additional containers running in this Sandbox."""
+        self._ensure_attached()
+        return _SandboxContainerManager(self)
+
     @overload
     async def exec(
         self,
@@ -1006,6 +1029,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Optional[Collection[_Secret]] = None,
         text: bool = True,
         bufsize: Literal[-1, 1] = -1,
+        container_id: Optional[str] = None,
     ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
         """Private method used internally.
 
@@ -1035,6 +1059,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             "text": text,
             "bufsize": bufsize,
             "runtime_debug": config.get("function_runtime_debug"),
+            "container_id": container_id,
         }
         # NB: This must come after the task ID is set, since the sandbox must be
         # scheduled before we can create a router client.
@@ -1057,8 +1082,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         text: bool = True,
         bufsize: Literal[-1, 1] = -1,
         runtime_debug: bool = False,
+        container_id: Optional[str] = None,
     ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
         """Execute a command through the Modal server."""
+        if container_id:
+            raise RuntimeError("Internal error: additional container exec requires task command router support")
         req = api_pb2.ContainerExecRequest(
             task_id=task_id,
             command=args,
@@ -1097,6 +1125,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         text: bool = True,
         bufsize: Literal[-1, 1] = -1,
         runtime_debug: bool = False,
+        container_id: Optional[str] = None,
     ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
         """Execute a command through a task command router running on the Modal worker."""
 
@@ -1134,6 +1163,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             secret_ids=secret_ids,
             pty_info=pty_info,
             runtime_debug=runtime_debug,
+            container_id=container_id or "",
         )
         _ = await command_router_client.exec_start(start_req)
 
@@ -1332,17 +1362,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def returncode(self) -> Optional[int]:
         """Return code of the Sandbox process if it has finished running, else `None`."""
-        if self._result is None or self._result.status == api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:
-            return None
-
-        # Statuses are converted to exitcodes so we can conform to subprocess API.
-        # TODO: perhaps there should be a separate property that returns an enum directly?
-        elif self._result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
-            return 124
-        elif self._result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
-            return 137
-        else:
-            return self._result.exitcode
+        return _result_returncode(self._result)
 
     @staticmethod
     async def list(
@@ -1382,4 +1402,224 @@ class _Sandbox(_Object, type_prefix="sb"):
             before_timestamp = resp.sandboxes[-1].created_at
 
 
+class _SandboxContainer:
+    """Handle to an additional container running in a Sandbox."""
+
+    _result: Optional[api_pb2.GenericResult]
+
+    def __init__(
+        self,
+        sandbox: _Sandbox,
+        container_id: str,
+        container_name: str,
+        result: Optional[api_pb2.GenericResult] = None,
+    ) -> None:
+        self._sandbox = sandbox
+        self._container_id = container_id
+        self._container_name = container_name
+        self._result = result
+
+    @property
+    def object_id(self) -> str:
+        return self._container_id
+
+    @property
+    def name(self) -> str:
+        return self._container_name
+
+    @staticmethod
+    def _from_container_info(sandbox: "_Sandbox", container_info: sr_pb2.TaskContainerInfo) -> "_SandboxContainer":
+        result = container_info.result if container_info.HasField("result") else None
+        return _SandboxContainer(sandbox, container_info.container_id, container_info.container_name, result)
+
+    async def _get_command_router(self) -> tuple[str, "TaskCommandRouterClient"]:
+        """Get task ID and command router client, raising if unavailable."""
+        task_id = await self._sandbox._get_task_id()
+        command_router_client = await self._sandbox._get_command_router_client(task_id)
+        if command_router_client is None:
+            raise RuntimeError("Internal error: additional container operations require task command router support")
+        return task_id, command_router_client
+
+    async def exec(
+        self,
+        *args: str,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
+        text: bool = True,
+        bufsize: Literal[-1, 1] = -1,
+        pty: bool = False,
+    ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
+        pty_info = self._sandbox._default_pty_info() if pty else None
+        return await self._sandbox._exec(
+            *args,
+            pty_info=pty_info,
+            stdout=stdout,
+            stderr=stderr,
+            timeout=timeout,
+            workdir=workdir,
+            env=env,
+            secrets=secrets,
+            text=text,
+            bufsize=bufsize,
+            container_id=self._container_id,
+        )
+
+    async def wait(self, raise_on_termination: bool = True) -> None:
+        if self._result is not None and self._result.status != api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:
+            if self._result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED and raise_on_termination:
+                raise SandboxTerminatedError()
+            return
+
+        task_id, command_router_client = await self._get_command_router()
+        while True:
+            resp = await command_router_client.container_wait(
+                sr_pb2.TaskContainerWaitRequest(
+                    task_id=task_id,
+                    container_id=self._container_id,
+                    timeout=10,
+                )
+            )
+            if resp.result.status:
+                self._result = resp.result
+                if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED and raise_on_termination:
+                    raise SandboxTerminatedError()
+                return
+
+    async def poll(self) -> Optional[int]:
+        if self._result is not None and self._result.status != api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:
+            return _result_returncode(self._result)
+
+        task_id, command_router_client = await self._get_command_router()
+        resp = await command_router_client.container_wait(
+            sr_pb2.TaskContainerWaitRequest(
+                task_id=task_id,
+                container_id=self._container_id,
+                timeout=0,
+            )
+        )
+        if resp.result.status:
+            self._result = resp.result
+        return _result_returncode(self._result)
+
+    @overload
+    async def terminate(
+        self,
+        *,
+        wait: Literal[True],
+    ) -> int: ...
+
+    @overload
+    async def terminate(
+        self,
+        *,
+        wait: Literal[False] = False,
+    ) -> None: ...
+
+    async def terminate(
+        self,
+        *,
+        wait: bool = False,
+    ) -> int | None:
+        task_id, command_router_client = await self._get_command_router()
+        await command_router_client.container_terminate(
+            sr_pb2.TaskContainerTerminateRequest(
+                task_id=task_id,
+                container_id=self._container_id,
+            )
+        )
+        if wait:
+            await self.wait(raise_on_termination=False)
+            return _result_returncode(self._result)
+
+
+class _SandboxContainerManager:
+    """Creates and manages additional containers in a Sandbox."""
+
+    def __init__(self, sandbox: _Sandbox) -> None:
+        self._sandbox = sandbox
+
+    async def _get_command_router(self) -> tuple[str, "TaskCommandRouterClient"]:
+        """Get task ID and command router client, raising if unavailable."""
+        task_id = await self._sandbox._get_task_id()
+        command_router_client = await self._sandbox._get_command_router_client(task_id)
+        if command_router_client is None:
+            raise RuntimeError("Internal error: additional container operations require task command router support")
+        return task_id, command_router_client
+
+    async def create(
+        self,
+        *args: str,
+        name: str,
+        image: _Image,
+        env: Optional[dict[str, str]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
+        workdir: Optional[str] = None,
+    ) -> _SandboxContainer:
+        if workdir is not None and not workdir.startswith("/"):
+            raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
+        _validate_exec_args(args)
+
+        if image._mount_layers:
+            raise InvalidError(
+                "Sandbox._experimental_containers.create(image=...) only supports pre-built images. "
+                "When using `add_local*` methods, specify `copy=True` and call `.build()` before passing "
+                "the image to `._experimental_containers.create()`:\n\nE.g.\n"
+                'img = modal.Image.debian_slim().add_local_file("foo", "/foo", copy=True).build(app)\n'
+                'sandbox._experimental_containers.create(name="worker", image=img)'
+            )
+        if not image._object_id:
+            raise InvalidError(
+                "Sandbox._experimental_containers.create(image=...) currently only supports Images that are "
+                "either:\n"
+                "- prebuilt using `image.build()`\n"
+                "- referenced by id, e.g. `Image.from_id()`\n"
+                "- filesystem/directory snapshots e.g. created by `.snapshot_directory()` "
+                "or `.snapshot_filesystem()`\n"
+            )
+
+        secrets = secrets or []
+        secret_coros = [secret.hydrate(client=self._sandbox._client) for secret in secrets]
+        await TaskContext.gather(*secret_coros)
+
+        task_id, command_router_client = await self._get_command_router()
+
+        create_req = sr_pb2.TaskContainerCreateRequest(
+            task_id=task_id,
+            container_name=name,
+            image_id=image.object_id,
+            args=list(args),
+            env=env or {},
+            workdir=workdir or "",
+            secret_ids=[secret.object_id for secret in secrets],
+        )
+        create_resp = await command_router_client.container_create(create_req)
+        container_id = create_resp.container_id
+        container_name = create_resp.container_name or name
+        return _SandboxContainer(self._sandbox, container_id, container_name)
+
+    async def get(self, *, name: str, include_terminated: bool = False) -> "_SandboxContainer":
+        task_id, command_router_client = await self._get_command_router()
+        resp = await command_router_client.container_get(
+            sr_pb2.TaskContainerGetRequest(
+                task_id=task_id,
+                container_name=name,
+                include_terminated=include_terminated,
+            )
+        )
+        return _SandboxContainer._from_container_info(self._sandbox, resp.container)
+
+    async def list(self, include_terminated: bool = False) -> builtins.list[_SandboxContainer]:
+        task_id, command_router_client = await self._get_command_router()
+        resp = await command_router_client.container_list(
+            sr_pb2.TaskContainerListRequest(task_id=task_id, include_terminated=include_terminated)
+        )
+        return [_SandboxContainer._from_container_info(self._sandbox, container) for container in resp.containers]
+
+
+SandboxContainer = synchronize_api(_SandboxContainer)
+SandboxContainerManager = synchronize_api(_SandboxContainerManager)
 Sandbox = synchronize_api(_Sandbox)

@@ -242,6 +242,44 @@ class TaskCommandRouterClient:
                 lambda: self._call_with_auth_retry(self._stub.TaskExecStart, request)
             )
 
+    async def container_create(self, request: sr_pb2.TaskContainerCreateRequest) -> sr_pb2.TaskContainerCreateResponse:
+        """Create an additional container via task command router."""
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskContainerCreate, request)
+            )
+
+    async def container_terminate(
+        self,
+        request: sr_pb2.TaskContainerTerminateRequest,
+    ) -> sr_pb2.TaskContainerTerminateResponse:
+        """Terminate an additional container via task command router."""
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskContainerTerminate, request)
+            )
+
+    async def container_wait(self, request: sr_pb2.TaskContainerWaitRequest) -> sr_pb2.TaskContainerWaitResponse:
+        """Wait for an additional container via task command router."""
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskContainerWait, request)
+            )
+
+    async def container_get(self, request: sr_pb2.TaskContainerGetRequest) -> sr_pb2.TaskContainerGetResponse:
+        """Get the latest tracked container for a logical name via task command router."""
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskContainerGet, request)
+            )
+
+    async def container_list(self, request: sr_pb2.TaskContainerListRequest) -> sr_pb2.TaskContainerListResponse:
+        """List sandbox containers via task command router."""
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskContainerList, request)
+            )
+
     async def exec_stdio_read(
         self,
         task_id: str,

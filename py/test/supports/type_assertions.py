@@ -6,6 +6,7 @@ from typing_extensions import assert_type
 
 import modal
 from modal.partial_function import method
+from modal.sandbox import SandboxContainer
 from modal.volume import AbstractVolumeUploadContextManager
 
 app = modal.App()
@@ -89,6 +90,18 @@ assert_type(cmd2.stdout.read(), bytes)
 
 for line_bytes in cmd2.stdout:
     assert_type(line_bytes, bytes)
+
+containers = sandbox._experimental_containers.list()
+assert_type(containers, list[SandboxContainer])
+
+for container in containers:
+    assert_type(container, SandboxContainer)
+
+
+async def async_sandbox_block() -> None:
+    async_containers = await sandbox._experimental_containers.list.aio()
+    assert_type(async_containers, list[SandboxContainer])
+
 
 # check file_io
 file_io = sandbox.open("foo", "w")
