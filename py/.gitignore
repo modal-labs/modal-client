@@ -12,7 +12,7 @@ venv/
 build/
 *.pyi
 **/*.txt
-!requirements.dev.txt
+!requirements.protos.txt
 !modal/builder/*.txt
 !test/supports/**/*.txt
 

@@ -32,17 +32,17 @@ runs:
         activate-environment: "true"
         python-version: ${{ inputs.version }}
         cache-dependency-glob: |
-          ${{ inputs.working-directory }}/requirements.dev.txt
+          ${{ inputs.working-directory }}/requirements.protos.txt
           ${{ inputs.working-directory }}/pyproject.toml
 
     - name: Install Python packages
       shell: bash
       run: |
         if [ "${{ inputs.no-build-isolation }}" == "true" ]; then
-          uv pip install "setuptools<82"
-          uv pip install -r requirements.dev.txt --no-build-isolation
-
+          # Install setuptools and build requirements first so that --no-build-isolation works
+          uv pip install -e . --group dev
+          uv pip install -r requirements.protos.txt --no-build-isolation
         else
-          uv pip install -r requirements.dev.txt
+          uv pip install -e . --group dev --overrides requirements.protos.txt
         fi
       working-directory: ${{ inputs.working-directory }}

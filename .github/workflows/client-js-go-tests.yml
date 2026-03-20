@@ -31,10 +31,6 @@ jobs:
           version: "3.11"
           working-directory: ${{ inputs.working-directory }}/py
 
-      - name: Build client package (installs all dependencies)
-        run: uv pip install -e .
-        working-directory: ${{ inputs.working-directory }}/py
-
       - name: Build protobuf
         run: inv protoc
         working-directory: ${{ inputs.working-directory }}/py
