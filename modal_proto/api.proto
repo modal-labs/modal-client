@@ -3336,6 +3336,15 @@ message TaskGetCommandRouterAccessResponse {
   string url = 2;
 }
 
+message TaskGetInfoRequest {
+  string task_id = 1;
+}
+
+message TaskGetInfoResponse {
+  string app_id = 1;
+  TaskInfo info = 2;
+}
+
 message TaskInfo {
   string id = 1;
   double started_at = 2;
@@ -4008,6 +4017,7 @@ service ModalClient {
   rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
   rpc TaskGetCommandRouterAccess(TaskGetCommandRouterAccessRequest) returns (TaskGetCommandRouterAccessResponse);
+  rpc TaskGetInfo(TaskGetInfoRequest) returns (TaskGetInfoResponse);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
 
