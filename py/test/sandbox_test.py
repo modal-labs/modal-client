@@ -946,7 +946,7 @@ def test_mount_image(servicer, client, exec_backend, app, monkeypatch):
 @skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, exec_backend, app, monkeypatch):
-    """Test mounting an explicit empty image via private Image._from_scratch()."""
+    """Test mounting an explicit empty image via Image.from_scratch()."""
     captured_requests = []
     original = FakeTaskCommandRouterClient.mount_image
 
@@ -957,7 +957,7 @@ def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, exec_bac
     monkeypatch.setattr(FakeTaskCommandRouterClient, "mount_image", _mount_image, raising=True)
 
     sb = Sandbox.create(app=app)
-    sb.mount_image("/empty", Image._from_scratch())
+    sb.mount_image("/empty", Image.from_scratch())
 
     assert len(captured_requests) == 1
     assert captured_requests[0].path == b"/empty"
@@ -1022,7 +1022,7 @@ detach_error_funcs = {
     "terminate": lambda sb: sb.terminate(),
     "poll": lambda sb: sb.poll(),
     "exec": lambda sb: sb.exec("echo", "hello"),
-    "mount_image": lambda sb: sb.mount_image("/mnt", modal.image._Image._from_scratch()),
+    "mount_image": lambda sb: sb.mount_image("/mnt", modal.image._Image.from_scratch()),
     "_experimental_snapshot": lambda sb: sb._experimental_snapshot(),
     "open": lambda sb: sb.open("/hello.txt"),
     "ls": lambda sb: sb.ls("/mnt"),
