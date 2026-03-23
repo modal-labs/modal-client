@@ -59,6 +59,11 @@ def dummy():
     pass  # not actually used in test (servicer returns sum of square of all args)
 
 
+def plain_function_for_volume_test():
+    """Plain function (not decorated) for testing volume mounts."""
+    return "test"
+
+
 @app.function(experimental_options={"input_plane_region": "us-east"})
 def input_plane_func():
     return "DEADBEEF"
@@ -2352,3 +2357,22 @@ def test_function_get_current_stats(client, servicer):
     assert function_stats.backlog == function_stats_msg.backlog
     assert function_stats.num_total_runners == function_stats_msg.num_total_tasks
     assert function_stats.num_running_inputs == function_stats_msg.num_running_inputs
+
+
+def test_function_duplicate_volume_mounts(client, servicer):
+    """Regression test: same volume from_name called twice creates different objects."""
+    test_app = modal.App()
+    vol_a = modal.Volume.from_name("test-vol", create_if_missing=True)
+    vol_b = modal.Volume.from_name("test-vol", create_if_missing=True)
+
+    # These are different Python objects but represent the same volume
+    assert vol_a is not vol_b
+
+    # Use existing global `foo` function, add volumes via app.function
+    func = test_app.function(volumes={"/a": vol_a, "/b": vol_b})(plain_function_for_volume_test)
+
+    # Decoration succeeds, but should raise an error at load time (when app runs)
+    # when the volumes are hydrated and we discover they have the same object_id
+    with pytest.raises(InvalidError, match="same.*[Vv]olume.*multiple"):
+        with test_app.run(client=client):
+            pass  # Error should occur during function load

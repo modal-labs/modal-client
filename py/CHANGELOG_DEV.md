@@ -9,3 +9,4 @@
 - `Sandbox.exec` no longer hangs when running on a sandbox that was immediately terminated after creation.
 - Added new SandboxFilesystem namespace with functionality for reading data from and writing data to files in the Sandbox's filesystem.
 - `Sandbox.create` now accepts an `include_oidc_identity_token` parameter. When set to `True`, a `MODAL_IDENTITY_TOKEN` environment variable is injected into the sandbox, enabling OIDC-based authentication (e.g., for AWS federation). See the [OIDC integration guide](https://modal.com/docs/guide/oidc-integration) for more details.
+- An exception is now raised if *the same* Volume or CloudBucketMount is mounted at multiple paths in the same container.

@@ -1519,6 +1519,8 @@ def test_with_batching_is_lazy(client):
 
 def test_cls_with_options_creates_new_options_instance(client, servicer):
     """Test that with_options creates a new _options instance instead of modifying in place."""
+    from modal_proto import api_pb2
+
     SomeClass = modal.Cls.from_name("some_app", "SomeClass", client=client)
 
     # Need to translate_in to access _options
@@ -1551,6 +1553,44 @@ def test_cls_with_options_creates_new_options_instance(client, servicer):
     # Options should still be correct after hydration
     child_options_after = synchronizer._translate_in(ChildClass)._options  # type: ignore
     assert child_options_after.resources.milli_cpu == 10_000, "with_options options should be preserved after hydration"
+
+
+def test_cls_duplicate_volume_mounts_with_options(client, servicer):
+    """Test that duplicate volumes are detected in class with_options."""
+    from modal_proto import api_pb2
+
+    vol_a = modal.Volume.from_name("test-vol", create_if_missing=True)
+    vol_b = modal.Volume.from_name("test-vol", create_if_missing=True)
+
+    # These are different Python objects but represent the same volume
+    assert vol_a is not vol_b
+
+    # Use Cls.from_name like test_with_options_from_name
+    with servicer.intercept() as ctx:
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    method_handle_metadata={
+                        "some_method": api_pb2.FunctionHandleMetadata(
+                            use_function_id="fu-123",
+                            use_method_name="some_method",
+                            function_name="SomeClass.some_method",
+                        )
+                    }
+                ),
+            ),
+        )
+
+        SomeClass = modal.Cls.from_name("some_app", "SomeClass", client=client)
+        OptionedClass = SomeClass.with_options(volumes={"/a": vol_a, "/b": vol_b})
+        inst = OptionedClass(x=10)
+
+        # Should raise an error when calling a method (which triggers _bind_parameters)
+        with pytest.raises(InvalidError, match="same.*[Vv]olume.*multiple"):
+            inst.some_method.remote()
 
 
 def test_cls_with_concurrency_creates_new_options_instance(client, servicer):

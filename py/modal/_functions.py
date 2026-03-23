@@ -56,7 +56,7 @@ from ._utils.function_utils import (
     is_async,
 )
 from ._utils.grpc_utils import Retry, RetryWarningMessage
-from ._utils.mount_utils import validate_network_file_systems, validate_volumes
+from ._utils.mount_utils import validate_network_file_systems, validate_volumes, validate_volumes_by_object_id
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
@@ -966,6 +966,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 if image._metadata is not None:
                     mount_client_dependencies = image._metadata.image_builder_version > "2024.10"
 
+                # Validate that the same volume (by object_id) isn't mounted at multiple paths
+                # This validation happens here (at load time) because volumes need to be hydrated
+                # to have their object_id set.
+                validate_volumes_by_object_id(validated_volumes_no_cloud_buckets)
+
                 # Relies on dicts being ordered (true as of Python 3.6).
                 volume_mounts = [
                     api_pb2.VolumeMount(
@@ -1235,6 +1240,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert parent is not None and parent.is_hydrated
 
             if options:
+                # Validate that the same volume (by object_id) isn't mounted at multiple paths
+                validate_volumes_by_object_id(options.validated_volumes)
+
                 volume_mounts = [
                     api_pb2.VolumeMount(
                         mount_path=path,

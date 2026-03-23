@@ -101,3 +101,23 @@ def validate_only_modal_volumes(
         raise InvalidError(f"{caller_name} only supports volumes that are modal.Volume")
 
     return validated_volumes
+
+
+def validate_volumes_by_object_id(validated_volumes: Sequence[tuple[str, _Volume]]) -> None:
+    """Validate that the same volume (by object_id) is not mounted at multiple paths.
+
+    This validation happens at load time after volumes are hydrated and have object_ids.
+    """
+    object_id_to_paths: dict[str, list[str]] = {}
+    for path, volume in validated_volumes:
+        if not volume.is_hydrated:
+            # This should never happen since this function is only called at load time
+            raise RuntimeError(f"Internal error: Volume at '{path}' is not hydrated when validating mounts")
+        object_id_to_paths.setdefault(volume.object_id, []).append(path)
+
+    for object_id, paths in object_id_to_paths.items():
+        if len(paths) > 1:
+            conflicting = ", ".join(sorted(paths))
+            raise InvalidError(
+                f"The same Volume cannot be mounted in multiple locations for the same function: {conflicting}"
+            )
