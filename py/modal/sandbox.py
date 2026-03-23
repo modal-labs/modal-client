@@ -30,7 +30,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_warning
-from ._utils.mount_utils import validate_network_file_systems, validate_volumes
+from ._utils.mount_utils import validate_network_file_systems, validate_volumes, validate_volumes_by_object_id
 from ._utils.name_utils import check_object_name
 from ._utils.task_command_router_client import TaskCommandRouterClient
 from .client import _Client
@@ -214,6 +214,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         async def _load(
             self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
         ):
+            # Validate that the same volume (by object_id) isn't mounted at multiple paths
+            validate_volumes_by_object_id(validated_volumes)
+
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
                 api_pb2.VolumeMount(

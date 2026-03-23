@@ -54,6 +54,28 @@ def test_sandbox(app, servicer):
     assert sb.poll() == 42
 
 
+def test_sandbox_duplicate_volumes(client, servicer):
+    """Test that duplicate volumes are detected in sandboxes."""
+    app = App()
+    vol_a = Volume.from_name("test-vol", create_if_missing=True)
+    vol_b = Volume.from_name("test-vol", create_if_missing=True)
+
+    # These are different Python objects but represent the same volume
+    assert vol_a is not vol_b
+
+    # Should raise an error when creating sandbox with duplicate volumes
+    with pytest.raises(InvalidError, match="same.*[Vv]olume.*multiple"):
+        with app.run(client=client):
+            Sandbox.create(
+                "bash",
+                "-c",
+                "echo hi",
+                timeout=600,
+                volumes={"/a": vol_a, "/b": vol_b},
+                app=app,
+            )
+
+
 @skip_non_subprocess
 def test_sandbox_mount_layer(app, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")

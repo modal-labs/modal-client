@@ -2132,3 +2132,25 @@ def test_debian_slim_free_threading_not_supported(servicer, client):
         with servicer.intercept():
             with app.run(client=client):
                 image.build(app)
+
+
+def test_image_duplicate_volumes(client, servicer):
+    """Test that duplicate volumes are detected in image run_commands."""
+    from modal import Volume
+
+    vol_a = Volume.from_name("test-vol", create_if_missing=True)
+    vol_b = Volume.from_name("test-vol", create_if_missing=True)
+
+    # These are different Python objects but represent the same volume
+    assert vol_a is not vol_b
+
+    # Should raise an error when building image with duplicate volumes
+    image = modal.Image.debian_slim().run_commands(
+        "echo hi",
+        volumes={"/a": vol_a, "/b": vol_b},
+    )
+
+    app = App()
+    with pytest.raises(InvalidError, match="same.*[Vv]olume.*multiple"):
+        with app.run(client=client):
+            image.build(app)

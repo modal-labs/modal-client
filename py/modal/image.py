@@ -40,7 +40,7 @@ from ._utils.docker_utils import (
     find_dockerignore_file,
 )
 from ._utils.function_utils import FunctionInfo
-from ._utils.mount_utils import validate_only_modal_volumes
+from ._utils.mount_utils import validate_only_modal_volumes, validate_volumes_by_object_id
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
@@ -625,6 +625,9 @@ class _Image(_Object, type_prefix="im"):
             else:
                 build_function_id = ""
                 _build_function = None
+
+            # Validate that the same volume (by object_id) isn't mounted at multiple paths
+            validate_volumes_by_object_id(validated_volumes)
 
             # Relies on dicts being ordered (true as of Python 3.6).
             volume_mounts = [
