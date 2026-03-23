@@ -137,13 +137,14 @@ def logs(
         "--until",
         help="End of time range; accepts same argument types as --since",
     ),
+    tail: Optional[int] = typer.Option(None, "--tail", "-n", help="Show only the last N log entries"),
     search: Optional[str] = typer.Option(None, "--search", help="Filter by search text"),
     function_id: Optional[str] = typer.Option("", "--function", help="Filter by Function ID (fu-*)"),
     function_call_id: Optional[str] = typer.Option("", "--function-call", help="Filter by FunctionCall ID (fc-*)"),
+    container_id: Optional[str] = typer.Option("", "--container", help="Filter by Container ID (ta-*)"),
     source: Optional[str] = typer.Option(
         None, "--source", "-s", help="Filter by source: 'stdout', 'stderr', or 'system'"
     ),
-    tail: Optional[int] = typer.Option(None, "--tail", "-n", help="Show only the last N log entries"),
     timestamps: bool = typer.Option(False, "--timestamps", help="Prefix each line with its timestamp"),
     show_function_id: bool = typer.Option(False, "--show-function-id", help="Prefix each line with its Function ID"),
     show_function_call_id: bool = typer.Option(
@@ -236,12 +237,14 @@ def logs(
         source=source_fd,
         function_id=function_id or "",
         function_call_id=function_call_id or "",
+        task_id=container_id or "",
         search_text=search or "",
     )
 
     if follow:
         stream_app_logs(
             app_id,
+            task_id=container_id or "",
             show_timestamps=timestamps,
             follow=True,
             prefix_fields=prefix_fields,
