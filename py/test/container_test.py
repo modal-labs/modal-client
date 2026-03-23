@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import warnings
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -88,6 +89,19 @@ def unload_support_modules():
     yield
     for mod in modules_to_unload:
         sys.modules.pop(mod)
+
+
+@pytest.fixture(autouse=True)
+def patch_python_path_with_test_supports(monkeypatch):
+    # Running the container entrypoint references test/supports/functions.py by module name:
+    # test.supports.functions. We place the Python client's root into the PYTHONPATH,
+    # so the module can be found.
+    support_function_path = str(Path(__file__).parent.parent)
+    if current_python_path := os.getenv("PYTHONPATH"):
+        new_python_path = f"{current_python_path}:{support_function_path}"
+    else:
+        new_python_path = support_function_path
+    monkeypatch.setenv("PYTHONPATH", new_python_path)
 
 
 @pytest.fixture(scope="package")
