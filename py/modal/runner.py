@@ -214,23 +214,32 @@ async def _stop_and_wait_for_containers(
             if container.enqueued_at and container.enqueued_at < deployed_at
         ]
 
+    stopped_ids = set()
+
     async def stop_containers(container_ids: list[str]):
         sem = asyncio.Semaphore(32)
 
         async def stop_one_container(tid: str):
+            if tid in stopped_ids:
+                return
+
             async with sem:
                 await client.stub.ContainerStop(api_pb2.ContainerStopRequest(task_id=tid))
+                stopped_ids.add(tid)
 
-        results = await asyncio.gather(*[stop_one_container(tid) for tid in container_ids], return_exceptions=True)
+        stop_tasks = [stop_one_container(tid) for tid in container_ids if tid not in stopped_ids]
+        if not stop_tasks:
+            return
+
+        results = await asyncio.gather(*stop_tasks, return_exceptions=True)
         exceptions = [r for r in results if isinstance(r, BaseException)]
         if exceptions:
             raise exceptions[0]
 
-    async def poll_until_stopped(initial_ids: list[str]):
-        await stop_containers(initial_ids)
-        await asyncio.sleep(WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL)
-
+    async def poll_until_stopped():
         while ids := await get_old_container_ids():
+            # Just in case there are new ids from `get_old_container_ids`, we call `stop_containers` again,
+            # which will no-op for containers that was already stopped.
             await stop_containers(ids)
             await asyncio.sleep(WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL)
 
@@ -239,12 +248,13 @@ async def _stop_and_wait_for_containers(
         return
 
     output = OutputManager.get()
-    output.print("♻️ Restarting containers...")
+    output.print("🧹 Terminating running containers")
+    await stop_containers(ids)
 
     try:
-        await asyncio.wait_for(poll_until_stopped(ids), timeout=WAIT_FOR_CONTAINER_STOP_TIMEOUT)
+        await asyncio.wait_for(poll_until_stopped(), timeout=WAIT_FOR_CONTAINER_STOP_TIMEOUT)
     except asyncio.TimeoutError:
-        raise asyncio.TimeoutError(f"Containers did not restart in under {WAIT_FOR_CONTAINER_STOP_TIMEOUT} seconds.")
+        raise asyncio.TimeoutError(f"Containers did not terminate in under {WAIT_FOR_CONTAINER_STOP_TIMEOUT} seconds.")
 
 
 def _validate_deployment_strategy(strategy: str) -> DEPLOYMENT_STRATEGY_TYPE:
@@ -294,7 +304,7 @@ async def _publish_app(
             )
         except Exception as exc:
             warnings.warn(
-                f"App updated successfully, but containers did not all restart. {exc}",
+                f"App updated successfully, but containers did not all terminate. {exc}",
                 UserWarning,
             )
 

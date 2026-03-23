@@ -241,7 +241,7 @@ def test_run_app_restart_deployment_timeout(servicer, client, monkeypatch):
 
     dummy_app = modal.App("my-app")
 
-    msg = "App updated successfully, but containers did not all restart."
+    msg = "App updated successfully, but containers did not all terminate."
     with pytest.warns(UserWarning, match=msg):
         with servicer.intercept() as ctx:
             ctx.set_responder("TaskList", task_list)
@@ -270,7 +270,7 @@ def test_run_app_restart_deployment_stop_fails(servicer, client, monkeypatch):
 
     dummy_app = modal.App("my-app")
 
-    msg = "App updated successfully, but containers did not all restart. Unable to stop containers"
+    msg = "App updated successfully, but containers did not all terminate."
     with pytest.warns(UserWarning, match=msg):
         with servicer.intercept() as ctx:
             ctx.set_responder("TaskList", task_list)
