@@ -290,6 +290,7 @@ func TestSandboxCreateRequestProto_DefaultValues(t *testing.T) {
 	g.Expect(def.GetSecretIds()).To(gomega.BeEmpty())
 	g.Expect(def.GetOpenPorts().GetPorts()).To(gomega.BeEmpty())
 	g.Expect(def.GetName()).To(gomega.Equal(""))
+	g.Expect(def.GetIncludeOidcIdentityToken()).To(gomega.BeFalse())
 }
 
 func TestSandboxCreateRequestProto_CustomDomain(t *testing.T) {
@@ -303,4 +304,17 @@ func TestSandboxCreateRequestProto_CustomDomain(t *testing.T) {
 
 	def := req.GetDefinition()
 	g.Expect(def.GetCustomDomain()).To(gomega.Equal("example.com"))
+}
+
+func TestSandboxCreateRequestProto_IncludeOidcIdentityToken(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		IncludeOidcIdentityToken: true,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	def := req.GetDefinition()
+	g.Expect(def.GetIncludeOidcIdentityToken()).To(gomega.BeTrue())
 }

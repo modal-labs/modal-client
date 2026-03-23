@@ -89,7 +89,11 @@ test("ImageDelete", async () => {
     createIfMissing: true,
   });
 
-  const image = await tc.images.fromRegistry("alpine:3.13").build(app);
+  const baseImage = await tc.images.fromRegistry("alpine:3.13").build(app);
+  const image = await baseImage
+    .dockerfileCommands(["RUN touch dummy.txt"])
+    .build(app);
+  expect(baseImage.imageId).toBeTruthy();
   expect(image.imageId).toBeTruthy();
   expect(image.imageId).toMatch(/^im-/);
 
@@ -98,6 +102,7 @@ test("ImageDelete", async () => {
 
   await tc.images.delete(image.imageId);
 
+  await tc.images.fromId(baseImage.imageId); // should not throw
   await expect(tc.images.fromId(image.imageId)).rejects.toThrow(
     "Could not find image with ID",
   );

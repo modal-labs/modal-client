@@ -21,9 +21,11 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	ModalClient_AppClientDisconnect_FullMethodName              = "/modal.client.ModalClient/AppClientDisconnect"
+	ModalClient_AppCountLogs_FullMethodName                     = "/modal.client.ModalClient/AppCountLogs"
 	ModalClient_AppCreate_FullMethodName                        = "/modal.client.ModalClient/AppCreate"
 	ModalClient_AppDeploy_FullMethodName                        = "/modal.client.ModalClient/AppDeploy"
 	ModalClient_AppDeploymentHistory_FullMethodName             = "/modal.client.ModalClient/AppDeploymentHistory"
+	ModalClient_AppFetchLogs_FullMethodName                     = "/modal.client.ModalClient/AppFetchLogs"
 	ModalClient_AppGetByDeploymentName_FullMethodName           = "/modal.client.ModalClient/AppGetByDeploymentName"
 	ModalClient_AppGetLayout_FullMethodName                     = "/modal.client.ModalClient/AppGetLayout"
 	ModalClient_AppGetLogs_FullMethodName                       = "/modal.client.ModalClient/AppGetLogs"
@@ -66,6 +68,7 @@ const (
 	ModalClient_DictContents_FullMethodName                     = "/modal.client.ModalClient/DictContents"
 	ModalClient_DictDelete_FullMethodName                       = "/modal.client.ModalClient/DictDelete"
 	ModalClient_DictGet_FullMethodName                          = "/modal.client.ModalClient/DictGet"
+	ModalClient_DictGetById_FullMethodName                      = "/modal.client.ModalClient/DictGetById"
 	ModalClient_DictGetOrCreate_FullMethodName                  = "/modal.client.ModalClient/DictGetOrCreate"
 	ModalClient_DictHeartbeat_FullMethodName                    = "/modal.client.ModalClient/DictHeartbeat"
 	ModalClient_DictLen_FullMethodName                          = "/modal.client.ModalClient/DictLen"
@@ -128,6 +131,7 @@ const (
 	ModalClient_QueueClear_FullMethodName                       = "/modal.client.ModalClient/QueueClear"
 	ModalClient_QueueDelete_FullMethodName                      = "/modal.client.ModalClient/QueueDelete"
 	ModalClient_QueueGet_FullMethodName                         = "/modal.client.ModalClient/QueueGet"
+	ModalClient_QueueGetById_FullMethodName                     = "/modal.client.ModalClient/QueueGetById"
 	ModalClient_QueueGetOrCreate_FullMethodName                 = "/modal.client.ModalClient/QueueGetOrCreate"
 	ModalClient_QueueHeartbeat_FullMethodName                   = "/modal.client.ModalClient/QueueHeartbeat"
 	ModalClient_QueueLen_FullMethodName                         = "/modal.client.ModalClient/QueueLen"
@@ -136,11 +140,14 @@ const (
 	ModalClient_QueuePut_FullMethodName                         = "/modal.client.ModalClient/QueuePut"
 	ModalClient_SandboxCreate_FullMethodName                    = "/modal.client.ModalClient/SandboxCreate"
 	ModalClient_SandboxCreateConnectToken_FullMethodName        = "/modal.client.ModalClient/SandboxCreateConnectToken"
+	ModalClient_SandboxCreateV2_FullMethodName                  = "/modal.client.ModalClient/SandboxCreateV2"
 	ModalClient_SandboxGetFromName_FullMethodName               = "/modal.client.ModalClient/SandboxGetFromName"
 	ModalClient_SandboxGetLogs_FullMethodName                   = "/modal.client.ModalClient/SandboxGetLogs"
 	ModalClient_SandboxGetResourceUsage_FullMethodName          = "/modal.client.ModalClient/SandboxGetResourceUsage"
 	ModalClient_SandboxGetTaskId_FullMethodName                 = "/modal.client.ModalClient/SandboxGetTaskId"
+	ModalClient_SandboxGetTaskIdV2_FullMethodName               = "/modal.client.ModalClient/SandboxGetTaskIdV2"
 	ModalClient_SandboxGetTunnels_FullMethodName                = "/modal.client.ModalClient/SandboxGetTunnels"
+	ModalClient_SandboxGetTunnelsV2_FullMethodName              = "/modal.client.ModalClient/SandboxGetTunnelsV2"
 	ModalClient_SandboxList_FullMethodName                      = "/modal.client.ModalClient/SandboxList"
 	ModalClient_SandboxRestore_FullMethodName                   = "/modal.client.ModalClient/SandboxRestore"
 	ModalClient_SandboxSnapshot_FullMethodName                  = "/modal.client.ModalClient/SandboxSnapshot"
@@ -153,10 +160,13 @@ const (
 	ModalClient_SandboxTagsGet_FullMethodName                   = "/modal.client.ModalClient/SandboxTagsGet"
 	ModalClient_SandboxTagsSet_FullMethodName                   = "/modal.client.ModalClient/SandboxTagsSet"
 	ModalClient_SandboxTerminate_FullMethodName                 = "/modal.client.ModalClient/SandboxTerminate"
+	ModalClient_SandboxTerminateV2_FullMethodName               = "/modal.client.ModalClient/SandboxTerminateV2"
 	ModalClient_SandboxWait_FullMethodName                      = "/modal.client.ModalClient/SandboxWait"
+	ModalClient_SandboxWaitV2_FullMethodName                    = "/modal.client.ModalClient/SandboxWaitV2"
 	ModalClient_SecretDelete_FullMethodName                     = "/modal.client.ModalClient/SecretDelete"
 	ModalClient_SecretGetOrCreate_FullMethodName                = "/modal.client.ModalClient/SecretGetOrCreate"
 	ModalClient_SecretList_FullMethodName                       = "/modal.client.ModalClient/SecretList"
+	ModalClient_SecretUpdate_FullMethodName                     = "/modal.client.ModalClient/SecretUpdate"
 	ModalClient_SharedVolumeDelete_FullMethodName               = "/modal.client.ModalClient/SharedVolumeDelete"
 	ModalClient_SharedVolumeGetFile_FullMethodName              = "/modal.client.ModalClient/SharedVolumeGetFile"
 	ModalClient_SharedVolumeGetOrCreate_FullMethodName          = "/modal.client.ModalClient/SharedVolumeGetOrCreate"
@@ -180,6 +190,7 @@ const (
 	ModalClient_VolumeCopyFiles_FullMethodName                  = "/modal.client.ModalClient/VolumeCopyFiles"
 	ModalClient_VolumeCopyFiles2_FullMethodName                 = "/modal.client.ModalClient/VolumeCopyFiles2"
 	ModalClient_VolumeDelete_FullMethodName                     = "/modal.client.ModalClient/VolumeDelete"
+	ModalClient_VolumeGetById_FullMethodName                    = "/modal.client.ModalClient/VolumeGetById"
 	ModalClient_VolumeGetFile_FullMethodName                    = "/modal.client.ModalClient/VolumeGetFile"
 	ModalClient_VolumeGetFile2_FullMethodName                   = "/modal.client.ModalClient/VolumeGetFile2"
 	ModalClient_VolumeGetOrCreate_FullMethodName                = "/modal.client.ModalClient/VolumeGetOrCreate"
@@ -194,6 +205,7 @@ const (
 	ModalClient_VolumeRemoveFile2_FullMethodName                = "/modal.client.ModalClient/VolumeRemoveFile2"
 	ModalClient_VolumeRename_FullMethodName                     = "/modal.client.ModalClient/VolumeRename"
 	ModalClient_WorkspaceBillingReport_FullMethodName           = "/modal.client.ModalClient/WorkspaceBillingReport"
+	ModalClient_WorkspaceDashboardUrlGet_FullMethodName         = "/modal.client.ModalClient/WorkspaceDashboardUrlGet"
 	ModalClient_WorkspaceNameLookup_FullMethodName              = "/modal.client.ModalClient/WorkspaceNameLookup"
 )
 
@@ -203,9 +215,11 @@ const (
 type ModalClientClient interface {
 	// Apps
 	AppClientDisconnect(ctx context.Context, in *AppClientDisconnectRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	AppCountLogs(ctx context.Context, in *AppCountLogsRequest, opts ...grpc.CallOption) (*AppCountLogsResponse, error)
 	AppCreate(ctx context.Context, in *AppCreateRequest, opts ...grpc.CallOption) (*AppCreateResponse, error)
 	AppDeploy(ctx context.Context, in *AppDeployRequest, opts ...grpc.CallOption) (*AppDeployResponse, error)
 	AppDeploymentHistory(ctx context.Context, in *AppDeploymentHistoryRequest, opts ...grpc.CallOption) (*AppDeploymentHistoryResponse, error)
+	AppFetchLogs(ctx context.Context, in *AppFetchLogsRequest, opts ...grpc.CallOption) (*AppFetchLogsResponse, error)
 	AppGetByDeploymentName(ctx context.Context, in *AppGetByDeploymentNameRequest, opts ...grpc.CallOption) (*AppGetByDeploymentNameResponse, error)
 	AppGetLayout(ctx context.Context, in *AppGetLayoutRequest, opts ...grpc.CallOption) (*AppGetLayoutResponse, error)
 	AppGetLogs(ctx context.Context, in *AppGetLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskLogsBatch], error)
@@ -256,6 +270,7 @@ type ModalClientClient interface {
 	DictContents(ctx context.Context, in *DictContentsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DictEntry], error)
 	DictDelete(ctx context.Context, in *DictDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DictGet(ctx context.Context, in *DictGetRequest, opts ...grpc.CallOption) (*DictGetResponse, error)
+	DictGetById(ctx context.Context, in *DictGetByIdRequest, opts ...grpc.CallOption) (*DictGetByIdResponse, error)
 	DictGetOrCreate(ctx context.Context, in *DictGetOrCreateRequest, opts ...grpc.CallOption) (*DictGetOrCreateResponse, error)
 	DictHeartbeat(ctx context.Context, in *DictHeartbeatRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DictLen(ctx context.Context, in *DictLenRequest, opts ...grpc.CallOption) (*DictLenResponse, error)
@@ -328,6 +343,7 @@ type ModalClientClient interface {
 	QueueClear(ctx context.Context, in *QueueClearRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	QueueDelete(ctx context.Context, in *QueueDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	QueueGet(ctx context.Context, in *QueueGetRequest, opts ...grpc.CallOption) (*QueueGetResponse, error)
+	QueueGetById(ctx context.Context, in *QueueGetByIdRequest, opts ...grpc.CallOption) (*QueueGetByIdResponse, error)
 	QueueGetOrCreate(ctx context.Context, in *QueueGetOrCreateRequest, opts ...grpc.CallOption) (*QueueGetOrCreateResponse, error)
 	QueueHeartbeat(ctx context.Context, in *QueueHeartbeatRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	QueueLen(ctx context.Context, in *QueueLenRequest, opts ...grpc.CallOption) (*QueueLenResponse, error)
@@ -337,11 +353,14 @@ type ModalClientClient interface {
 	// Sandboxes
 	SandboxCreate(ctx context.Context, in *SandboxCreateRequest, opts ...grpc.CallOption) (*SandboxCreateResponse, error)
 	SandboxCreateConnectToken(ctx context.Context, in *SandboxCreateConnectTokenRequest, opts ...grpc.CallOption) (*SandboxCreateConnectTokenResponse, error)
+	SandboxCreateV2(ctx context.Context, in *SandboxCreateV2Request, opts ...grpc.CallOption) (*SandboxCreateV2Response, error)
 	SandboxGetFromName(ctx context.Context, in *SandboxGetFromNameRequest, opts ...grpc.CallOption) (*SandboxGetFromNameResponse, error)
 	SandboxGetLogs(ctx context.Context, in *SandboxGetLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskLogsBatch], error)
 	SandboxGetResourceUsage(ctx context.Context, in *SandboxGetResourceUsageRequest, opts ...grpc.CallOption) (*SandboxGetResourceUsageResponse, error)
 	SandboxGetTaskId(ctx context.Context, in *SandboxGetTaskIdRequest, opts ...grpc.CallOption) (*SandboxGetTaskIdResponse, error)
+	SandboxGetTaskIdV2(ctx context.Context, in *SandboxGetTaskIdRequest, opts ...grpc.CallOption) (*SandboxGetTaskIdResponse, error)
 	SandboxGetTunnels(ctx context.Context, in *SandboxGetTunnelsRequest, opts ...grpc.CallOption) (*SandboxGetTunnelsResponse, error)
+	SandboxGetTunnelsV2(ctx context.Context, in *SandboxGetTunnelsRequest, opts ...grpc.CallOption) (*SandboxGetTunnelsResponse, error)
 	SandboxList(ctx context.Context, in *SandboxListRequest, opts ...grpc.CallOption) (*SandboxListResponse, error)
 	SandboxRestore(ctx context.Context, in *SandboxRestoreRequest, opts ...grpc.CallOption) (*SandboxRestoreResponse, error)
 	SandboxSnapshot(ctx context.Context, in *SandboxSnapshotRequest, opts ...grpc.CallOption) (*SandboxSnapshotResponse, error)
@@ -354,11 +373,14 @@ type ModalClientClient interface {
 	SandboxTagsGet(ctx context.Context, in *SandboxTagsGetRequest, opts ...grpc.CallOption) (*SandboxTagsGetResponse, error)
 	SandboxTagsSet(ctx context.Context, in *SandboxTagsSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SandboxTerminate(ctx context.Context, in *SandboxTerminateRequest, opts ...grpc.CallOption) (*SandboxTerminateResponse, error)
+	SandboxTerminateV2(ctx context.Context, in *SandboxTerminateRequest, opts ...grpc.CallOption) (*SandboxTerminateResponse, error)
 	SandboxWait(ctx context.Context, in *SandboxWaitRequest, opts ...grpc.CallOption) (*SandboxWaitResponse, error)
+	SandboxWaitV2(ctx context.Context, in *SandboxWaitRequest, opts ...grpc.CallOption) (*SandboxWaitResponse, error)
 	// Secrets
 	SecretDelete(ctx context.Context, in *SecretDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SecretGetOrCreate(ctx context.Context, in *SecretGetOrCreateRequest, opts ...grpc.CallOption) (*SecretGetOrCreateResponse, error)
 	SecretList(ctx context.Context, in *SecretListRequest, opts ...grpc.CallOption) (*SecretListResponse, error)
+	SecretUpdate(ctx context.Context, in *SecretUpdateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// SharedVolumes
 	SharedVolumeDelete(ctx context.Context, in *SharedVolumeDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SharedVolumeGetFile(ctx context.Context, in *SharedVolumeGetFileRequest, opts ...grpc.CallOption) (*SharedVolumeGetFileResponse, error)
@@ -387,6 +409,7 @@ type ModalClientClient interface {
 	VolumeCopyFiles(ctx context.Context, in *VolumeCopyFilesRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	VolumeCopyFiles2(ctx context.Context, in *VolumeCopyFiles2Request, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	VolumeDelete(ctx context.Context, in *VolumeDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	VolumeGetById(ctx context.Context, in *VolumeGetByIdRequest, opts ...grpc.CallOption) (*VolumeGetByIdResponse, error)
 	VolumeGetFile(ctx context.Context, in *VolumeGetFileRequest, opts ...grpc.CallOption) (*VolumeGetFileResponse, error)
 	VolumeGetFile2(ctx context.Context, in *VolumeGetFile2Request, opts ...grpc.CallOption) (*VolumeGetFile2Response, error)
 	VolumeGetOrCreate(ctx context.Context, in *VolumeGetOrCreateRequest, opts ...grpc.CallOption) (*VolumeGetOrCreateResponse, error)
@@ -402,6 +425,7 @@ type ModalClientClient interface {
 	VolumeRename(ctx context.Context, in *VolumeRenameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Workspaces
 	WorkspaceBillingReport(ctx context.Context, in *WorkspaceBillingReportRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WorkspaceBillingReportItem], error)
+	WorkspaceDashboardUrlGet(ctx context.Context, in *WorkspaceDashboardUrlRequest, opts ...grpc.CallOption) (*WorkspaceDashboardUrlResponse, error)
 	WorkspaceNameLookup(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WorkspaceNameLookupResponse, error)
 }
 
@@ -417,6 +441,16 @@ func (c *modalClientClient) AppClientDisconnect(ctx context.Context, in *AppClie
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, ModalClient_AppClientDisconnect_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) AppCountLogs(ctx context.Context, in *AppCountLogsRequest, opts ...grpc.CallOption) (*AppCountLogsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AppCountLogsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_AppCountLogs_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -447,6 +481,16 @@ func (c *modalClientClient) AppDeploymentHistory(ctx context.Context, in *AppDep
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AppDeploymentHistoryResponse)
 	err := c.cc.Invoke(ctx, ModalClient_AppDeploymentHistory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) AppFetchLogs(ctx context.Context, in *AppFetchLogsRequest, opts ...grpc.CallOption) (*AppFetchLogsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AppFetchLogsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_AppFetchLogs_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -903,6 +947,16 @@ func (c *modalClientClient) DictGet(ctx context.Context, in *DictGetRequest, opt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DictGetResponse)
 	err := c.cc.Invoke(ctx, ModalClient_DictGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) DictGetById(ctx context.Context, in *DictGetByIdRequest, opts ...grpc.CallOption) (*DictGetByIdResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DictGetByIdResponse)
+	err := c.cc.Invoke(ctx, ModalClient_DictGetById_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1556,6 +1610,16 @@ func (c *modalClientClient) QueueGet(ctx context.Context, in *QueueGetRequest, o
 	return out, nil
 }
 
+func (c *modalClientClient) QueueGetById(ctx context.Context, in *QueueGetByIdRequest, opts ...grpc.CallOption) (*QueueGetByIdResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QueueGetByIdResponse)
+	err := c.cc.Invoke(ctx, ModalClient_QueueGetById_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) QueueGetOrCreate(ctx context.Context, in *QueueGetOrCreateRequest, opts ...grpc.CallOption) (*QueueGetOrCreateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QueueGetOrCreateResponse)
@@ -1636,6 +1700,16 @@ func (c *modalClientClient) SandboxCreateConnectToken(ctx context.Context, in *S
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxCreateV2(ctx context.Context, in *SandboxCreateV2Request, opts ...grpc.CallOption) (*SandboxCreateV2Response, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxCreateV2Response)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxCreateV2_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxGetFromName(ctx context.Context, in *SandboxGetFromNameRequest, opts ...grpc.CallOption) (*SandboxGetFromNameResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SandboxGetFromNameResponse)
@@ -1685,10 +1759,30 @@ func (c *modalClientClient) SandboxGetTaskId(ctx context.Context, in *SandboxGet
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxGetTaskIdV2(ctx context.Context, in *SandboxGetTaskIdRequest, opts ...grpc.CallOption) (*SandboxGetTaskIdResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxGetTaskIdResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxGetTaskIdV2_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxGetTunnels(ctx context.Context, in *SandboxGetTunnelsRequest, opts ...grpc.CallOption) (*SandboxGetTunnelsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SandboxGetTunnelsResponse)
 	err := c.cc.Invoke(ctx, ModalClient_SandboxGetTunnels_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) SandboxGetTunnelsV2(ctx context.Context, in *SandboxGetTunnelsRequest, opts ...grpc.CallOption) (*SandboxGetTunnelsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxGetTunnelsResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxGetTunnelsV2_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1815,10 +1909,30 @@ func (c *modalClientClient) SandboxTerminate(ctx context.Context, in *SandboxTer
 	return out, nil
 }
 
+func (c *modalClientClient) SandboxTerminateV2(ctx context.Context, in *SandboxTerminateRequest, opts ...grpc.CallOption) (*SandboxTerminateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxTerminateResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxTerminateV2_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) SandboxWait(ctx context.Context, in *SandboxWaitRequest, opts ...grpc.CallOption) (*SandboxWaitResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SandboxWaitResponse)
 	err := c.cc.Invoke(ctx, ModalClient_SandboxWait_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) SandboxWaitV2(ctx context.Context, in *SandboxWaitRequest, opts ...grpc.CallOption) (*SandboxWaitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxWaitResponse)
+	err := c.cc.Invoke(ctx, ModalClient_SandboxWaitV2_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1849,6 +1963,16 @@ func (c *modalClientClient) SecretList(ctx context.Context, in *SecretListReques
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SecretListResponse)
 	err := c.cc.Invoke(ctx, ModalClient_SecretList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) SecretUpdate(ctx context.Context, in *SecretUpdateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_SecretUpdate_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2094,6 +2218,16 @@ func (c *modalClientClient) VolumeDelete(ctx context.Context, in *VolumeDeleteRe
 	return out, nil
 }
 
+func (c *modalClientClient) VolumeGetById(ctx context.Context, in *VolumeGetByIdRequest, opts ...grpc.CallOption) (*VolumeGetByIdResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VolumeGetByIdResponse)
+	err := c.cc.Invoke(ctx, ModalClient_VolumeGetById_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) VolumeGetFile(ctx context.Context, in *VolumeGetFileRequest, opts ...grpc.CallOption) (*VolumeGetFileResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(VolumeGetFileResponse)
@@ -2261,6 +2395,16 @@ func (c *modalClientClient) WorkspaceBillingReport(ctx context.Context, in *Work
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ModalClient_WorkspaceBillingReportClient = grpc.ServerStreamingClient[WorkspaceBillingReportItem]
 
+func (c *modalClientClient) WorkspaceDashboardUrlGet(ctx context.Context, in *WorkspaceDashboardUrlRequest, opts ...grpc.CallOption) (*WorkspaceDashboardUrlResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkspaceDashboardUrlResponse)
+	err := c.cc.Invoke(ctx, ModalClient_WorkspaceDashboardUrlGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) WorkspaceNameLookup(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WorkspaceNameLookupResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WorkspaceNameLookupResponse)
@@ -2277,9 +2421,11 @@ func (c *modalClientClient) WorkspaceNameLookup(ctx context.Context, in *emptypb
 type ModalClientServer interface {
 	// Apps
 	AppClientDisconnect(context.Context, *AppClientDisconnectRequest) (*emptypb.Empty, error)
+	AppCountLogs(context.Context, *AppCountLogsRequest) (*AppCountLogsResponse, error)
 	AppCreate(context.Context, *AppCreateRequest) (*AppCreateResponse, error)
 	AppDeploy(context.Context, *AppDeployRequest) (*AppDeployResponse, error)
 	AppDeploymentHistory(context.Context, *AppDeploymentHistoryRequest) (*AppDeploymentHistoryResponse, error)
+	AppFetchLogs(context.Context, *AppFetchLogsRequest) (*AppFetchLogsResponse, error)
 	AppGetByDeploymentName(context.Context, *AppGetByDeploymentNameRequest) (*AppGetByDeploymentNameResponse, error)
 	AppGetLayout(context.Context, *AppGetLayoutRequest) (*AppGetLayoutResponse, error)
 	AppGetLogs(*AppGetLogsRequest, grpc.ServerStreamingServer[TaskLogsBatch]) error
@@ -2330,6 +2476,7 @@ type ModalClientServer interface {
 	DictContents(*DictContentsRequest, grpc.ServerStreamingServer[DictEntry]) error
 	DictDelete(context.Context, *DictDeleteRequest) (*emptypb.Empty, error)
 	DictGet(context.Context, *DictGetRequest) (*DictGetResponse, error)
+	DictGetById(context.Context, *DictGetByIdRequest) (*DictGetByIdResponse, error)
 	DictGetOrCreate(context.Context, *DictGetOrCreateRequest) (*DictGetOrCreateResponse, error)
 	DictHeartbeat(context.Context, *DictHeartbeatRequest) (*emptypb.Empty, error)
 	DictLen(context.Context, *DictLenRequest) (*DictLenResponse, error)
@@ -2402,6 +2549,7 @@ type ModalClientServer interface {
 	QueueClear(context.Context, *QueueClearRequest) (*emptypb.Empty, error)
 	QueueDelete(context.Context, *QueueDeleteRequest) (*emptypb.Empty, error)
 	QueueGet(context.Context, *QueueGetRequest) (*QueueGetResponse, error)
+	QueueGetById(context.Context, *QueueGetByIdRequest) (*QueueGetByIdResponse, error)
 	QueueGetOrCreate(context.Context, *QueueGetOrCreateRequest) (*QueueGetOrCreateResponse, error)
 	QueueHeartbeat(context.Context, *QueueHeartbeatRequest) (*emptypb.Empty, error)
 	QueueLen(context.Context, *QueueLenRequest) (*QueueLenResponse, error)
@@ -2411,11 +2559,14 @@ type ModalClientServer interface {
 	// Sandboxes
 	SandboxCreate(context.Context, *SandboxCreateRequest) (*SandboxCreateResponse, error)
 	SandboxCreateConnectToken(context.Context, *SandboxCreateConnectTokenRequest) (*SandboxCreateConnectTokenResponse, error)
+	SandboxCreateV2(context.Context, *SandboxCreateV2Request) (*SandboxCreateV2Response, error)
 	SandboxGetFromName(context.Context, *SandboxGetFromNameRequest) (*SandboxGetFromNameResponse, error)
 	SandboxGetLogs(*SandboxGetLogsRequest, grpc.ServerStreamingServer[TaskLogsBatch]) error
 	SandboxGetResourceUsage(context.Context, *SandboxGetResourceUsageRequest) (*SandboxGetResourceUsageResponse, error)
 	SandboxGetTaskId(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error)
+	SandboxGetTaskIdV2(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error)
 	SandboxGetTunnels(context.Context, *SandboxGetTunnelsRequest) (*SandboxGetTunnelsResponse, error)
+	SandboxGetTunnelsV2(context.Context, *SandboxGetTunnelsRequest) (*SandboxGetTunnelsResponse, error)
 	SandboxList(context.Context, *SandboxListRequest) (*SandboxListResponse, error)
 	SandboxRestore(context.Context, *SandboxRestoreRequest) (*SandboxRestoreResponse, error)
 	SandboxSnapshot(context.Context, *SandboxSnapshotRequest) (*SandboxSnapshotResponse, error)
@@ -2428,11 +2579,14 @@ type ModalClientServer interface {
 	SandboxTagsGet(context.Context, *SandboxTagsGetRequest) (*SandboxTagsGetResponse, error)
 	SandboxTagsSet(context.Context, *SandboxTagsSetRequest) (*emptypb.Empty, error)
 	SandboxTerminate(context.Context, *SandboxTerminateRequest) (*SandboxTerminateResponse, error)
+	SandboxTerminateV2(context.Context, *SandboxTerminateRequest) (*SandboxTerminateResponse, error)
 	SandboxWait(context.Context, *SandboxWaitRequest) (*SandboxWaitResponse, error)
+	SandboxWaitV2(context.Context, *SandboxWaitRequest) (*SandboxWaitResponse, error)
 	// Secrets
 	SecretDelete(context.Context, *SecretDeleteRequest) (*emptypb.Empty, error)
 	SecretGetOrCreate(context.Context, *SecretGetOrCreateRequest) (*SecretGetOrCreateResponse, error)
 	SecretList(context.Context, *SecretListRequest) (*SecretListResponse, error)
+	SecretUpdate(context.Context, *SecretUpdateRequest) (*emptypb.Empty, error)
 	// SharedVolumes
 	SharedVolumeDelete(context.Context, *SharedVolumeDeleteRequest) (*emptypb.Empty, error)
 	SharedVolumeGetFile(context.Context, *SharedVolumeGetFileRequest) (*SharedVolumeGetFileResponse, error)
@@ -2461,6 +2615,7 @@ type ModalClientServer interface {
 	VolumeCopyFiles(context.Context, *VolumeCopyFilesRequest) (*emptypb.Empty, error)
 	VolumeCopyFiles2(context.Context, *VolumeCopyFiles2Request) (*emptypb.Empty, error)
 	VolumeDelete(context.Context, *VolumeDeleteRequest) (*emptypb.Empty, error)
+	VolumeGetById(context.Context, *VolumeGetByIdRequest) (*VolumeGetByIdResponse, error)
 	VolumeGetFile(context.Context, *VolumeGetFileRequest) (*VolumeGetFileResponse, error)
 	VolumeGetFile2(context.Context, *VolumeGetFile2Request) (*VolumeGetFile2Response, error)
 	VolumeGetOrCreate(context.Context, *VolumeGetOrCreateRequest) (*VolumeGetOrCreateResponse, error)
@@ -2476,6 +2631,7 @@ type ModalClientServer interface {
 	VolumeRename(context.Context, *VolumeRenameRequest) (*emptypb.Empty, error)
 	// Workspaces
 	WorkspaceBillingReport(*WorkspaceBillingReportRequest, grpc.ServerStreamingServer[WorkspaceBillingReportItem]) error
+	WorkspaceDashboardUrlGet(context.Context, *WorkspaceDashboardUrlRequest) (*WorkspaceDashboardUrlResponse, error)
 	WorkspaceNameLookup(context.Context, *emptypb.Empty) (*WorkspaceNameLookupResponse, error)
 	mustEmbedUnimplementedModalClientServer()
 }
@@ -2490,6 +2646,9 @@ type UnimplementedModalClientServer struct{}
 func (UnimplementedModalClientServer) AppClientDisconnect(context.Context, *AppClientDisconnectRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppClientDisconnect not implemented")
 }
+func (UnimplementedModalClientServer) AppCountLogs(context.Context, *AppCountLogsRequest) (*AppCountLogsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AppCountLogs not implemented")
+}
 func (UnimplementedModalClientServer) AppCreate(context.Context, *AppCreateRequest) (*AppCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppCreate not implemented")
 }
@@ -2498,6 +2657,9 @@ func (UnimplementedModalClientServer) AppDeploy(context.Context, *AppDeployReque
 }
 func (UnimplementedModalClientServer) AppDeploymentHistory(context.Context, *AppDeploymentHistoryRequest) (*AppDeploymentHistoryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppDeploymentHistory not implemented")
+}
+func (UnimplementedModalClientServer) AppFetchLogs(context.Context, *AppFetchLogsRequest) (*AppFetchLogsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AppFetchLogs not implemented")
 }
 func (UnimplementedModalClientServer) AppGetByDeploymentName(context.Context, *AppGetByDeploymentNameRequest) (*AppGetByDeploymentNameResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppGetByDeploymentName not implemented")
@@ -2624,6 +2786,9 @@ func (UnimplementedModalClientServer) DictDelete(context.Context, *DictDeleteReq
 }
 func (UnimplementedModalClientServer) DictGet(context.Context, *DictGetRequest) (*DictGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DictGet not implemented")
+}
+func (UnimplementedModalClientServer) DictGetById(context.Context, *DictGetByIdRequest) (*DictGetByIdResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DictGetById not implemented")
 }
 func (UnimplementedModalClientServer) DictGetOrCreate(context.Context, *DictGetOrCreateRequest) (*DictGetOrCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DictGetOrCreate not implemented")
@@ -2811,6 +2976,9 @@ func (UnimplementedModalClientServer) QueueDelete(context.Context, *QueueDeleteR
 func (UnimplementedModalClientServer) QueueGet(context.Context, *QueueGetRequest) (*QueueGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method QueueGet not implemented")
 }
+func (UnimplementedModalClientServer) QueueGetById(context.Context, *QueueGetByIdRequest) (*QueueGetByIdResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method QueueGetById not implemented")
+}
 func (UnimplementedModalClientServer) QueueGetOrCreate(context.Context, *QueueGetOrCreateRequest) (*QueueGetOrCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method QueueGetOrCreate not implemented")
 }
@@ -2835,6 +3003,9 @@ func (UnimplementedModalClientServer) SandboxCreate(context.Context, *SandboxCre
 func (UnimplementedModalClientServer) SandboxCreateConnectToken(context.Context, *SandboxCreateConnectTokenRequest) (*SandboxCreateConnectTokenResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxCreateConnectToken not implemented")
 }
+func (UnimplementedModalClientServer) SandboxCreateV2(context.Context, *SandboxCreateV2Request) (*SandboxCreateV2Response, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxCreateV2 not implemented")
+}
 func (UnimplementedModalClientServer) SandboxGetFromName(context.Context, *SandboxGetFromNameRequest) (*SandboxGetFromNameResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxGetFromName not implemented")
 }
@@ -2847,8 +3018,14 @@ func (UnimplementedModalClientServer) SandboxGetResourceUsage(context.Context, *
 func (UnimplementedModalClientServer) SandboxGetTaskId(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxGetTaskId not implemented")
 }
+func (UnimplementedModalClientServer) SandboxGetTaskIdV2(context.Context, *SandboxGetTaskIdRequest) (*SandboxGetTaskIdResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxGetTaskIdV2 not implemented")
+}
 func (UnimplementedModalClientServer) SandboxGetTunnels(context.Context, *SandboxGetTunnelsRequest) (*SandboxGetTunnelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxGetTunnels not implemented")
+}
+func (UnimplementedModalClientServer) SandboxGetTunnelsV2(context.Context, *SandboxGetTunnelsRequest) (*SandboxGetTunnelsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxGetTunnelsV2 not implemented")
 }
 func (UnimplementedModalClientServer) SandboxList(context.Context, *SandboxListRequest) (*SandboxListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxList not implemented")
@@ -2886,8 +3063,14 @@ func (UnimplementedModalClientServer) SandboxTagsSet(context.Context, *SandboxTa
 func (UnimplementedModalClientServer) SandboxTerminate(context.Context, *SandboxTerminateRequest) (*SandboxTerminateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxTerminate not implemented")
 }
+func (UnimplementedModalClientServer) SandboxTerminateV2(context.Context, *SandboxTerminateRequest) (*SandboxTerminateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxTerminateV2 not implemented")
+}
 func (UnimplementedModalClientServer) SandboxWait(context.Context, *SandboxWaitRequest) (*SandboxWaitResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SandboxWait not implemented")
+}
+func (UnimplementedModalClientServer) SandboxWaitV2(context.Context, *SandboxWaitRequest) (*SandboxWaitResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxWaitV2 not implemented")
 }
 func (UnimplementedModalClientServer) SecretDelete(context.Context, *SecretDeleteRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SecretDelete not implemented")
@@ -2897,6 +3080,9 @@ func (UnimplementedModalClientServer) SecretGetOrCreate(context.Context, *Secret
 }
 func (UnimplementedModalClientServer) SecretList(context.Context, *SecretListRequest) (*SecretListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SecretList not implemented")
+}
+func (UnimplementedModalClientServer) SecretUpdate(context.Context, *SecretUpdateRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method SecretUpdate not implemented")
 }
 func (UnimplementedModalClientServer) SharedVolumeDelete(context.Context, *SharedVolumeDeleteRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SharedVolumeDelete not implemented")
@@ -2967,6 +3153,9 @@ func (UnimplementedModalClientServer) VolumeCopyFiles2(context.Context, *VolumeC
 func (UnimplementedModalClientServer) VolumeDelete(context.Context, *VolumeDeleteRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method VolumeDelete not implemented")
 }
+func (UnimplementedModalClientServer) VolumeGetById(context.Context, *VolumeGetByIdRequest) (*VolumeGetByIdResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method VolumeGetById not implemented")
+}
 func (UnimplementedModalClientServer) VolumeGetFile(context.Context, *VolumeGetFileRequest) (*VolumeGetFileResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method VolumeGetFile not implemented")
 }
@@ -3009,6 +3198,9 @@ func (UnimplementedModalClientServer) VolumeRename(context.Context, *VolumeRenam
 func (UnimplementedModalClientServer) WorkspaceBillingReport(*WorkspaceBillingReportRequest, grpc.ServerStreamingServer[WorkspaceBillingReportItem]) error {
 	return status.Error(codes.Unimplemented, "method WorkspaceBillingReport not implemented")
 }
+func (UnimplementedModalClientServer) WorkspaceDashboardUrlGet(context.Context, *WorkspaceDashboardUrlRequest) (*WorkspaceDashboardUrlResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WorkspaceDashboardUrlGet not implemented")
+}
 func (UnimplementedModalClientServer) WorkspaceNameLookup(context.Context, *emptypb.Empty) (*WorkspaceNameLookupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method WorkspaceNameLookup not implemented")
 }
@@ -3047,6 +3239,24 @@ func _ModalClient_AppClientDisconnect_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).AppClientDisconnect(ctx, req.(*AppClientDisconnectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_AppCountLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AppCountLogsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).AppCountLogs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_AppCountLogs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).AppCountLogs(ctx, req.(*AppCountLogsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3101,6 +3311,24 @@ func _ModalClient_AppDeploymentHistory_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).AppDeploymentHistory(ctx, req.(*AppDeploymentHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_AppFetchLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AppFetchLogsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).AppFetchLogs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_AppFetchLogs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).AppFetchLogs(ctx, req.(*AppFetchLogsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3829,6 +4057,24 @@ func _ModalClient_DictGet_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).DictGet(ctx, req.(*DictGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_DictGetById_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DictGetByIdRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).DictGetById(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_DictGetById_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).DictGetById(ctx, req.(*DictGetByIdRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -4928,6 +5174,24 @@ func _ModalClient_QueueGet_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_QueueGetById_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueueGetByIdRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).QueueGetById(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_QueueGetById_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).QueueGetById(ctx, req.(*QueueGetByIdRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_QueueGetOrCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(QueueGetOrCreateRequest)
 	if err := dec(in); err != nil {
@@ -5072,6 +5336,24 @@ func _ModalClient_SandboxCreateConnectToken_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxCreateV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxCreateV2Request)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxCreateV2(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxCreateV2_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxCreateV2(ctx, req.(*SandboxCreateV2Request))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxGetFromName_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxGetFromNameRequest)
 	if err := dec(in); err != nil {
@@ -5137,6 +5419,24 @@ func _ModalClient_SandboxGetTaskId_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxGetTaskIdV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxGetTaskIdRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxGetTaskIdV2(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxGetTaskIdV2_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxGetTaskIdV2(ctx, req.(*SandboxGetTaskIdRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxGetTunnels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxGetTunnelsRequest)
 	if err := dec(in); err != nil {
@@ -5151,6 +5451,24 @@ func _ModalClient_SandboxGetTunnels_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).SandboxGetTunnels(ctx, req.(*SandboxGetTunnelsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_SandboxGetTunnelsV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxGetTunnelsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxGetTunnelsV2(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxGetTunnelsV2_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxGetTunnelsV2(ctx, req.(*SandboxGetTunnelsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -5371,6 +5689,24 @@ func _ModalClient_SandboxTerminate_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_SandboxTerminateV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxTerminateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxTerminateV2(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxTerminateV2_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxTerminateV2(ctx, req.(*SandboxTerminateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_SandboxWait_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SandboxWaitRequest)
 	if err := dec(in); err != nil {
@@ -5385,6 +5721,24 @@ func _ModalClient_SandboxWait_Handler(srv interface{}, ctx context.Context, dec 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).SandboxWait(ctx, req.(*SandboxWaitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_SandboxWaitV2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxWaitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SandboxWaitV2(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SandboxWaitV2_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SandboxWaitV2(ctx, req.(*SandboxWaitRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -5439,6 +5793,24 @@ func _ModalClient_SecretList_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).SecretList(ctx, req.(*SecretListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_SecretUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SecretUpdateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).SecretUpdate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_SecretUpdate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).SecretUpdate(ctx, req.(*SecretUpdateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -5850,6 +6222,24 @@ func _ModalClient_VolumeDelete_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_VolumeGetById_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VolumeGetByIdRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).VolumeGetById(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_VolumeGetById_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).VolumeGetById(ctx, req.(*VolumeGetByIdRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_VolumeGetFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(VolumeGetFileRequest)
 	if err := dec(in); err != nil {
@@ -6081,6 +6471,24 @@ func _ModalClient_WorkspaceBillingReport_Handler(srv interface{}, stream grpc.Se
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ModalClient_WorkspaceBillingReportServer = grpc.ServerStreamingServer[WorkspaceBillingReportItem]
 
+func _ModalClient_WorkspaceDashboardUrlGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkspaceDashboardUrlRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WorkspaceDashboardUrlGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WorkspaceDashboardUrlGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WorkspaceDashboardUrlGet(ctx, req.(*WorkspaceDashboardUrlRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_WorkspaceNameLookup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -6111,6 +6519,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_AppClientDisconnect_Handler,
 		},
 		{
+			MethodName: "AppCountLogs",
+			Handler:    _ModalClient_AppCountLogs_Handler,
+		},
+		{
 			MethodName: "AppCreate",
 			Handler:    _ModalClient_AppCreate_Handler,
 		},
@@ -6121,6 +6533,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AppDeploymentHistory",
 			Handler:    _ModalClient_AppDeploymentHistory_Handler,
+		},
+		{
+			MethodName: "AppFetchLogs",
+			Handler:    _ModalClient_AppFetchLogs_Handler,
 		},
 		{
 			MethodName: "AppGetByDeploymentName",
@@ -6273,6 +6689,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DictGet",
 			Handler:    _ModalClient_DictGet_Handler,
+		},
+		{
+			MethodName: "DictGetById",
+			Handler:    _ModalClient_DictGetById_Handler,
 		},
 		{
 			MethodName: "DictGetOrCreate",
@@ -6511,6 +6931,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_QueueGet_Handler,
 		},
 		{
+			MethodName: "QueueGetById",
+			Handler:    _ModalClient_QueueGetById_Handler,
+		},
+		{
 			MethodName: "QueueGetOrCreate",
 			Handler:    _ModalClient_QueueGetOrCreate_Handler,
 		},
@@ -6543,6 +6967,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_SandboxCreateConnectToken_Handler,
 		},
 		{
+			MethodName: "SandboxCreateV2",
+			Handler:    _ModalClient_SandboxCreateV2_Handler,
+		},
+		{
 			MethodName: "SandboxGetFromName",
 			Handler:    _ModalClient_SandboxGetFromName_Handler,
 		},
@@ -6555,8 +6983,16 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_SandboxGetTaskId_Handler,
 		},
 		{
+			MethodName: "SandboxGetTaskIdV2",
+			Handler:    _ModalClient_SandboxGetTaskIdV2_Handler,
+		},
+		{
 			MethodName: "SandboxGetTunnels",
 			Handler:    _ModalClient_SandboxGetTunnels_Handler,
+		},
+		{
+			MethodName: "SandboxGetTunnelsV2",
+			Handler:    _ModalClient_SandboxGetTunnelsV2_Handler,
 		},
 		{
 			MethodName: "SandboxList",
@@ -6607,8 +7043,16 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_SandboxTerminate_Handler,
 		},
 		{
+			MethodName: "SandboxTerminateV2",
+			Handler:    _ModalClient_SandboxTerminateV2_Handler,
+		},
+		{
 			MethodName: "SandboxWait",
 			Handler:    _ModalClient_SandboxWait_Handler,
+		},
+		{
+			MethodName: "SandboxWaitV2",
+			Handler:    _ModalClient_SandboxWaitV2_Handler,
 		},
 		{
 			MethodName: "SecretDelete",
@@ -6621,6 +7065,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SecretList",
 			Handler:    _ModalClient_SecretList_Handler,
+		},
+		{
+			MethodName: "SecretUpdate",
+			Handler:    _ModalClient_SecretUpdate_Handler,
 		},
 		{
 			MethodName: "SharedVolumeDelete",
@@ -6711,6 +7159,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_VolumeDelete_Handler,
 		},
 		{
+			MethodName: "VolumeGetById",
+			Handler:    _ModalClient_VolumeGetById_Handler,
+		},
+		{
 			MethodName: "VolumeGetFile",
 			Handler:    _ModalClient_VolumeGetFile_Handler,
 		},
@@ -6753,6 +7205,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "VolumeRename",
 			Handler:    _ModalClient_VolumeRename_Handler,
+		},
+		{
+			MethodName: "WorkspaceDashboardUrlGet",
+			Handler:    _ModalClient_WorkspaceDashboardUrlGet_Handler,
 		},
 		{
 			MethodName: "WorkspaceNameLookup",

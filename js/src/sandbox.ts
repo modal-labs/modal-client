@@ -165,6 +165,9 @@ export type SandboxCreateParams = {
    * This requires prior manual setup by Modal and is only available for Enterprise customers.
    */
   customDomain?: string;
+
+  /** If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP). */
+  includeOidcIdentityToken?: boolean;
 };
 
 export async function buildSandboxCreateRequestProto(
@@ -385,6 +388,7 @@ export async function buildSandboxCreateRequestProto(
       name: params.name,
       experimentalOptions: protoExperimentalOptions,
       customDomain: params.customDomain,
+      includeOidcIdentityToken: params.includeOidcIdentityToken ?? false,
     },
   });
 }
