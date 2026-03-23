@@ -208,6 +208,14 @@ def test_image_base(builder_version, servicer, client, test_dir):
             assert "modal_requirements.txt" not in commands
 
 
+def test_from_scratch(builder_version, servicer, client):
+    image = Image.from_scratch()
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    assert len(layers) == 1
+    assert layers[0].dockerfile_commands == ["FROM scratch"]
+
+
 @pytest.mark.parametrize("python_version", [None, "3.10", "3.11.4"])
 def test_python_version(builder_version, servicer, client, python_version):
     local_python = "{}.{}".format(*sys.version_info)

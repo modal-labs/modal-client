@@ -21,28 +21,45 @@ async def build_images(app: modal.App, constructor: Any, python_versions: list[s
 if __name__ == "__main__":
     _, name = sys.argv
 
-    if name not in ("debian_slim", "micromamba"):
+    constructor: Any  # todo: notebook_base_image has messed up type inference
+    if name in ("debian_slim", "micromamba"):
+        constructor = getattr(modal.Image, name)
+    elif name == "from_scratch":
+        constructor = None
+    else:
         raise ValueError(f"Unknown base image type: {name}")
-
-    constructor = getattr(modal.Image, name)
 
     builder_version = os.environ.get("MODAL_IMAGE_BUILDER_VERSION")
     assert builder_version, "Script requires MODAL_IMAGE_BUILDER_VERSION environment variable"
-    python_versions = SUPPORTED_PYTHON_SERIES[cast(ImageBuilderVersion, builder_version)]
-
-    # Filter out unsupported free-threaded Python for base images.
-    python_versions = [v for v in python_versions if not v.endswith("t")]
 
     app = modal.App(f"build-{name.replace('_', '-')}-image")
-    with app.run(), modal.enable_output():  # Image.build needs these in reverse of normal order to avoid duplicate logs
-        images = asyncio.run(build_images(app, constructor, python_versions))
 
-    table = Table(title=f"Images for {name} ({builder_version})")
-    table.add_column("Python version")
-    table.add_column("Image ID")
+    if name == "from_scratch":
+        image = modal.Image.from_scratch()
+        with app.run(), modal.enable_output():
+            image.build(app)
 
-    for v, image in images.items():
-        table.add_row(v, image.object_id)
+        table = Table(title=f"Image for {name} ({builder_version})")
+        table.add_column("Image ID")
+        table.add_row(image.object_id)
+    else:
+        python_versions = SUPPORTED_PYTHON_SERIES[cast(ImageBuilderVersion, builder_version)]
+
+        # Filter out unsupported free-threaded Python for base images.
+        python_versions = [v for v in python_versions if not v.endswith("t")]
+
+        with (
+            app.run(),
+            modal.enable_output(),
+        ):  # Image.build needs these in reverse of normal order to avoid duplicate logs
+            images = asyncio.run(build_images(app, constructor, python_versions))
+
+        table = Table(title=f"Images for {name} ({builder_version})")
+        table.add_column("Python version")
+        table.add_column("Image ID")
+
+        for v, image in images.items():
+            table.add_row(v, image.object_id)
 
     rich.print()
     rich.print(table)

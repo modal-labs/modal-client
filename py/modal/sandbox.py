@@ -742,7 +742,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             "The `Sandbox._experimental_mount_image()` method is deprecated. Use `Sandbox.mount_image()` instead.",
         )
         if image is None:
-            image = _Image._from_scratch()
+            image = _Image.from_scratch()
         await self.mount_image(path, image)
 
     async def snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:

@@ -434,7 +434,7 @@ class _Image(_Object, type_prefix="im"):
         self._serve_mounts = other._serve_mounts
         self._deferred_mounts = other._deferred_mounts
         self._added_python_source_set = other._added_python_source_set
-        self._is_empty = other._is_empty
+        self._is_empty = False
 
     def _get_metadata(self) -> Optional[Message]:
         return self._metadata
@@ -726,12 +726,6 @@ class _Image(_Object, type_prefix="im"):
             frozenset(), *(base._added_python_source_set for base in base_images.values())
         )
         return obj
-
-    @staticmethod
-    def _from_scratch() -> "_Image":
-        image = _Image.from_registry("scratch")
-        image._is_empty = True
-        return image
 
     def _copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """mdmd:hidden
@@ -2181,6 +2175,36 @@ class _Image(_Object, type_prefix="im"):
             context_mount_function=add_python_mount,
             force_build=force_build,
         )
+
+    @staticmethod
+    def from_scratch(force_build: bool = False) -> "_Image":
+        """Create an empty Image, equivalent to `FROM scratch` in Docker.
+
+        The resulting Image has no operating system, shell, or package manager. It is
+        primarily useful as a lightweight filesystem to mount into a Sandbox via
+        `Sandbox.mount_image`.
+
+        Note that since this Image doesn't contain Python or other standard OS utilities,
+        higher-level Image build steps like `pip_install` cannot be chained onto it. It also
+        cannot be used for `modal.Function` execution, which requires a Python interpreter.
+
+        **Example**
+
+        ```python notest
+        image = modal.Image.from_scratch().add_local_file(local_path, "/bin/my_binary", copy=True)
+        ```
+        """
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            return DockerfileSpec(commands=["FROM scratch"], context_files={})
+
+        image = _Image._from_args(
+            dockerfile_function=build_dockerfile,
+            force_build=force_build,
+            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+        )
+        image._is_empty = True
+        return image
 
     @staticmethod
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
