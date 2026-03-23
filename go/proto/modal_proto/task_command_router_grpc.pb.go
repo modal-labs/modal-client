@@ -20,19 +20,34 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TaskCommandRouter_TaskExecPoll_FullMethodName          = "/modal.task_command_router.TaskCommandRouter/TaskExecPoll"
-	TaskCommandRouter_TaskExecStart_FullMethodName         = "/modal.task_command_router.TaskCommandRouter/TaskExecStart"
-	TaskCommandRouter_TaskExecStdinWrite_FullMethodName    = "/modal.task_command_router.TaskCommandRouter/TaskExecStdinWrite"
-	TaskCommandRouter_TaskExecStdioRead_FullMethodName     = "/modal.task_command_router.TaskCommandRouter/TaskExecStdioRead"
-	TaskCommandRouter_TaskExecWait_FullMethodName          = "/modal.task_command_router.TaskCommandRouter/TaskExecWait"
-	TaskCommandRouter_TaskMountDirectory_FullMethodName    = "/modal.task_command_router.TaskCommandRouter/TaskMountDirectory"
-	TaskCommandRouter_TaskSnapshotDirectory_FullMethodName = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotDirectory"
+	TaskCommandRouter_TaskContainerCreate_FullMethodName    = "/modal.task_command_router.TaskCommandRouter/TaskContainerCreate"
+	TaskCommandRouter_TaskContainerGet_FullMethodName       = "/modal.task_command_router.TaskCommandRouter/TaskContainerGet"
+	TaskCommandRouter_TaskContainerList_FullMethodName      = "/modal.task_command_router.TaskCommandRouter/TaskContainerList"
+	TaskCommandRouter_TaskContainerTerminate_FullMethodName = "/modal.task_command_router.TaskCommandRouter/TaskContainerTerminate"
+	TaskCommandRouter_TaskContainerWait_FullMethodName      = "/modal.task_command_router.TaskCommandRouter/TaskContainerWait"
+	TaskCommandRouter_TaskExecPoll_FullMethodName           = "/modal.task_command_router.TaskCommandRouter/TaskExecPoll"
+	TaskCommandRouter_TaskExecStart_FullMethodName          = "/modal.task_command_router.TaskCommandRouter/TaskExecStart"
+	TaskCommandRouter_TaskExecStdinWrite_FullMethodName     = "/modal.task_command_router.TaskCommandRouter/TaskExecStdinWrite"
+	TaskCommandRouter_TaskExecStdioRead_FullMethodName      = "/modal.task_command_router.TaskCommandRouter/TaskExecStdioRead"
+	TaskCommandRouter_TaskExecWait_FullMethodName           = "/modal.task_command_router.TaskCommandRouter/TaskExecWait"
+	TaskCommandRouter_TaskMountDirectory_FullMethodName     = "/modal.task_command_router.TaskCommandRouter/TaskMountDirectory"
+	TaskCommandRouter_TaskSnapshotDirectory_FullMethodName  = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotDirectory"
 )
 
 // TaskCommandRouterClient is the client API for TaskCommandRouter service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TaskCommandRouterClient interface {
+	// Create an additional container for a task.
+	TaskContainerCreate(ctx context.Context, in *TaskContainerCreateRequest, opts ...grpc.CallOption) (*TaskContainerCreateResponse, error)
+	// Get the latest container associated with a logical name.
+	TaskContainerGet(ctx context.Context, in *TaskContainerGetRequest, opts ...grpc.CallOption) (*TaskContainerGetResponse, error)
+	// List containers associated with the task.
+	TaskContainerList(ctx context.Context, in *TaskContainerListRequest, opts ...grpc.CallOption) (*TaskContainerListResponse, error)
+	// Terminate or release a tracked container.
+	TaskContainerTerminate(ctx context.Context, in *TaskContainerTerminateRequest, opts ...grpc.CallOption) (*TaskContainerTerminateResponse, error)
+	// Wait for a tracked container to reach a terminal result.
+	TaskContainerWait(ctx context.Context, in *TaskContainerWaitRequest, opts ...grpc.CallOption) (*TaskContainerWaitResponse, error)
 	// Poll for the exit status of an exec'd command.
 	TaskExecPoll(ctx context.Context, in *TaskExecPollRequest, opts ...grpc.CallOption) (*TaskExecPollResponse, error)
 	// Execute a command in the task.
@@ -55,6 +70,56 @@ type taskCommandRouterClient struct {
 
 func NewTaskCommandRouterClient(cc grpc.ClientConnInterface) TaskCommandRouterClient {
 	return &taskCommandRouterClient{cc}
+}
+
+func (c *taskCommandRouterClient) TaskContainerCreate(ctx context.Context, in *TaskContainerCreateRequest, opts ...grpc.CallOption) (*TaskContainerCreateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskContainerCreateResponse)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_TaskContainerCreate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *taskCommandRouterClient) TaskContainerGet(ctx context.Context, in *TaskContainerGetRequest, opts ...grpc.CallOption) (*TaskContainerGetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskContainerGetResponse)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_TaskContainerGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *taskCommandRouterClient) TaskContainerList(ctx context.Context, in *TaskContainerListRequest, opts ...grpc.CallOption) (*TaskContainerListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskContainerListResponse)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_TaskContainerList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *taskCommandRouterClient) TaskContainerTerminate(ctx context.Context, in *TaskContainerTerminateRequest, opts ...grpc.CallOption) (*TaskContainerTerminateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskContainerTerminateResponse)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_TaskContainerTerminate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *taskCommandRouterClient) TaskContainerWait(ctx context.Context, in *TaskContainerWaitRequest, opts ...grpc.CallOption) (*TaskContainerWaitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskContainerWaitResponse)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_TaskContainerWait_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *taskCommandRouterClient) TaskExecPoll(ctx context.Context, in *TaskExecPollRequest, opts ...grpc.CallOption) (*TaskExecPollResponse, error) {
@@ -140,6 +205,16 @@ func (c *taskCommandRouterClient) TaskSnapshotDirectory(ctx context.Context, in 
 // All implementations must embed UnimplementedTaskCommandRouterServer
 // for forward compatibility.
 type TaskCommandRouterServer interface {
+	// Create an additional container for a task.
+	TaskContainerCreate(context.Context, *TaskContainerCreateRequest) (*TaskContainerCreateResponse, error)
+	// Get the latest container associated with a logical name.
+	TaskContainerGet(context.Context, *TaskContainerGetRequest) (*TaskContainerGetResponse, error)
+	// List containers associated with the task.
+	TaskContainerList(context.Context, *TaskContainerListRequest) (*TaskContainerListResponse, error)
+	// Terminate or release a tracked container.
+	TaskContainerTerminate(context.Context, *TaskContainerTerminateRequest) (*TaskContainerTerminateResponse, error)
+	// Wait for a tracked container to reach a terminal result.
+	TaskContainerWait(context.Context, *TaskContainerWaitRequest) (*TaskContainerWaitResponse, error)
 	// Poll for the exit status of an exec'd command.
 	TaskExecPoll(context.Context, *TaskExecPollRequest) (*TaskExecPollResponse, error)
 	// Execute a command in the task.
@@ -164,6 +239,21 @@ type TaskCommandRouterServer interface {
 // pointer dereference when methods are called.
 type UnimplementedTaskCommandRouterServer struct{}
 
+func (UnimplementedTaskCommandRouterServer) TaskContainerCreate(context.Context, *TaskContainerCreateRequest) (*TaskContainerCreateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TaskContainerCreate not implemented")
+}
+func (UnimplementedTaskCommandRouterServer) TaskContainerGet(context.Context, *TaskContainerGetRequest) (*TaskContainerGetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TaskContainerGet not implemented")
+}
+func (UnimplementedTaskCommandRouterServer) TaskContainerList(context.Context, *TaskContainerListRequest) (*TaskContainerListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TaskContainerList not implemented")
+}
+func (UnimplementedTaskCommandRouterServer) TaskContainerTerminate(context.Context, *TaskContainerTerminateRequest) (*TaskContainerTerminateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TaskContainerTerminate not implemented")
+}
+func (UnimplementedTaskCommandRouterServer) TaskContainerWait(context.Context, *TaskContainerWaitRequest) (*TaskContainerWaitResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TaskContainerWait not implemented")
+}
 func (UnimplementedTaskCommandRouterServer) TaskExecPoll(context.Context, *TaskExecPollRequest) (*TaskExecPollResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskExecPoll not implemented")
 }
@@ -204,6 +294,96 @@ func RegisterTaskCommandRouterServer(s grpc.ServiceRegistrar, srv TaskCommandRou
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&TaskCommandRouter_ServiceDesc, srv)
+}
+
+func _TaskCommandRouter_TaskContainerCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskContainerCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).TaskContainerCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_TaskContainerCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).TaskContainerCreate(ctx, req.(*TaskContainerCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TaskCommandRouter_TaskContainerGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskContainerGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).TaskContainerGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_TaskContainerGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).TaskContainerGet(ctx, req.(*TaskContainerGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TaskCommandRouter_TaskContainerList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskContainerListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).TaskContainerList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_TaskContainerList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).TaskContainerList(ctx, req.(*TaskContainerListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TaskCommandRouter_TaskContainerTerminate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskContainerTerminateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).TaskContainerTerminate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_TaskContainerTerminate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).TaskContainerTerminate(ctx, req.(*TaskContainerTerminateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TaskCommandRouter_TaskContainerWait_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskContainerWaitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).TaskContainerWait(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_TaskContainerWait_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).TaskContainerWait(ctx, req.(*TaskContainerWaitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _TaskCommandRouter_TaskExecPoll_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -332,6 +512,26 @@ var TaskCommandRouter_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "modal.task_command_router.TaskCommandRouter",
 	HandlerType: (*TaskCommandRouterServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "TaskContainerCreate",
+			Handler:    _TaskCommandRouter_TaskContainerCreate_Handler,
+		},
+		{
+			MethodName: "TaskContainerGet",
+			Handler:    _TaskCommandRouter_TaskContainerGet_Handler,
+		},
+		{
+			MethodName: "TaskContainerList",
+			Handler:    _TaskCommandRouter_TaskContainerList_Handler,
+		},
+		{
+			MethodName: "TaskContainerTerminate",
+			Handler:    _TaskCommandRouter_TaskContainerTerminate_Handler,
+		},
+		{
+			MethodName: "TaskContainerWait",
+			Handler:    _TaskCommandRouter_TaskContainerWait_Handler,
+		},
 		{
 			MethodName: "TaskExecPoll",
 			Handler:    _TaskCommandRouter_TaskExecPoll_Handler,

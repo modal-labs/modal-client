@@ -362,6 +362,39 @@ test("SandboxExecSecret", async () => {
   expect(secretText).toBe("hello world\n3\n");
 });
 
+test("SandboxModalIdentityTokenUnsetByDefault", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = tc.images.fromRegistry("alpine:3.21");
+
+  const sb = await tc.sandboxes.create(app, image, {
+    command: ["sh", "-c", "echo ${MODAL_IDENTITY_TOKEN:-UNSET}"],
+  });
+  onTestFinished(async () => await sb.terminate());
+
+  expect((await sb.stdout.readText()).trim()).toBe("UNSET");
+  expect(await sb.wait()).toBe(0);
+});
+
+test("SandboxIncludeOidcIdentityTokenSetsModalIdentityTokenEnv", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = tc.images.fromRegistry("alpine:3.21");
+
+  const sb = await tc.sandboxes.create(app, image, {
+    command: ["sh", "-c", "echo ${MODAL_IDENTITY_TOKEN:-UNSET}"],
+    includeOidcIdentityToken: true,
+  });
+  onTestFinished(async () => await sb.terminate());
+
+  const token = (await sb.stdout.readText()).trim();
+  expect(token).not.toBe("UNSET");
+  expect(token.length).toBeGreaterThan(0);
+  expect(await sb.wait()).toBe(0);
+});
+
 test("SandboxFromId", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
@@ -624,6 +657,13 @@ test("buildSandboxCreateRequestProto negative Memory", async () => {
   ).rejects.toThrow("must be a positive number");
 });
 
+test("buildSandboxCreateRequestProto includeOidcIdentityToken", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    includeOidcIdentityToken: true,
+  });
+  expect(req.definition!.includeOidcIdentityToken).toBe(true);
+});
+
 test("ConnectToken", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
@@ -664,6 +704,7 @@ test("buildSandboxCreateRequestProto_defaults", async () => {
   expect(def.secretIds).toEqual([]);
   expect(def.openPorts?.ports).toEqual([]);
   expect(def.name).toBeUndefined();
+  expect(def.includeOidcIdentityToken).toBe(false);
 });
 
 test("sandboxInvalidTimeouts", async () => {

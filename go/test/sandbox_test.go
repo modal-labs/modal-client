@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -478,6 +479,61 @@ func TestSandboxExecSecret(t *testing.T) {
 	buf, err := io.ReadAll(p.Stdout)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(string(buf)).Should(gomega.Equal("hello world\n3\n"))
+}
+
+func TestSandboxModalIdentityTokenUnsetByDefault(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	image := tc.Images.FromRegistry("alpine:3.21", nil)
+
+	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Command: []string{"sh", "-c", "echo ${MODAL_IDENTITY_TOKEN:-UNSET}"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb)
+
+	output, err := io.ReadAll(sb.Stdout)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(strings.TrimSpace(string(output))).To(gomega.Equal("UNSET"))
+
+	exitCode, err := sb.Wait(ctx)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(exitCode).To(gomega.Equal(0))
+}
+
+func TestSandboxIncludeOidcIdentityTokenSetsModalIdentityTokenEnv(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	image := tc.Images.FromRegistry("alpine:3.21", nil)
+
+	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Command:                  []string{"sh", "-c", "echo ${MODAL_IDENTITY_TOKEN:-UNSET}"},
+		IncludeOidcIdentityToken: true,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb)
+
+	output, err := io.ReadAll(sb.Stdout)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	token := strings.TrimSpace(string(output))
+	g.Expect(token).NotTo(gomega.Equal("UNSET"))
+	g.Expect(token).NotTo(gomega.BeEmpty())
+
+	exitCode, err := sb.Wait(ctx)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(exitCode).To(gomega.Equal(0))
 }
 
 func TestSandboxFromId(t *testing.T) {

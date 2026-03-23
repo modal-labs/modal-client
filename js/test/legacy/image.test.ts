@@ -146,7 +146,11 @@ test("ImageDelete", async () => {
   const app = await App.lookup("libmodal-test", { createIfMissing: true });
   expect(app.appId).toBeTruthy();
 
-  const image = await Image.fromRegistry("alpine:3.13").build(app);
+  const baseImage = await Image.fromRegistry("alpine:3.13").build(app);
+  const image = await baseImage
+    .dockerfileCommands(["RUN touch dummy.txt"])
+    .build(app);
+  expect(baseImage.imageId).toBeTruthy();
   expect(image.imageId).toBeTruthy();
   expect(image.imageId).toMatch(/^im-/);
 
@@ -155,6 +159,7 @@ test("ImageDelete", async () => {
 
   await Image.delete(image.imageId);
 
+  await Image.fromId(baseImage.imageId); // should still exist
   await expect(Image.fromId(image.imageId)).rejects.toThrow(
     "Could not find image with ID",
   );

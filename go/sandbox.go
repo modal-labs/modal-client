@@ -32,32 +32,33 @@ type sandboxServiceImpl struct{ client *Client }
 
 // SandboxCreateParams are options for creating a Modal Sandbox.
 type SandboxCreateParams struct {
-	CPU                 float64                      // CPU request in fractional, physical cores.
-	CPULimit            float64                      // Hard limit in fractional, physical CPU cores. Zero means no limit.
-	MemoryMiB           int                          // Memory request in MiB.
-	MemoryLimitMiB      int                          // Hard memory limit in MiB. Zero means no limit.
-	GPU                 string                       // GPU reservation for the Sandbox (e.g. "A100", "T4:2", "A100-80GB:4").
-	Timeout             time.Duration                // Maximum lifetime of the Sandbox. Defaults to 5 minutes. If you pass zero you get the default 5 minutes.
-	IdleTimeout         time.Duration                // The amount of time that a Sandbox can be idle before being terminated.
-	Workdir             string                       // Working directory of the Sandbox.
-	Command             []string                     // Command to run in the Sandbox on startup.
-	Env                 map[string]string            // Environment variables to set in the Sandbox.
-	Secrets             []*Secret                    // Secrets to inject into the Sandbox as environment variables.
-	Volumes             map[string]*Volume           // Mount points for Volumes.
-	CloudBucketMounts   map[string]*CloudBucketMount // Mount points for cloud buckets.
-	PTY                 bool                         // Enable a PTY for the Sandbox.
-	EncryptedPorts      []int                        // List of encrypted ports to tunnel into the Sandbox, with TLS encryption.
-	H2Ports             []int                        // List of encrypted ports to tunnel into the Sandbox, using HTTP/2.
-	UnencryptedPorts    []int                        // List of ports to tunnel into the Sandbox without encryption.
-	BlockNetwork        bool                         // Whether to block all network access from the Sandbox.
-	CIDRAllowlist       []string                     // List of CIDRs the Sandbox is allowed to access. Cannot be used with BlockNetwork.
-	Cloud               string                       // Cloud provider to run the Sandbox on.
-	Regions             []string                     // Region(s) to run the Sandbox on.
-	Verbose             bool                         // Enable verbose logging.
-	Proxy               *Proxy                       // Reference to a Modal Proxy to use in front of this Sandbox.
-	Name                string                       // Optional name for the Sandbox. Unique within an App.
-	ExperimentalOptions map[string]any               // Experimental options
-	CustomDomain        string                       // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
+	CPU                      float64                      // CPU request in fractional, physical cores.
+	CPULimit                 float64                      // Hard limit in fractional, physical CPU cores. Zero means no limit.
+	MemoryMiB                int                          // Memory request in MiB.
+	MemoryLimitMiB           int                          // Hard memory limit in MiB. Zero means no limit.
+	GPU                      string                       // GPU reservation for the Sandbox (e.g. "A100", "T4:2", "A100-80GB:4").
+	Timeout                  time.Duration                // Maximum lifetime of the Sandbox. Defaults to 5 minutes. If you pass zero you get the default 5 minutes.
+	IdleTimeout              time.Duration                // The amount of time that a Sandbox can be idle before being terminated.
+	Workdir                  string                       // Working directory of the Sandbox.
+	Command                  []string                     // Command to run in the Sandbox on startup.
+	Env                      map[string]string            // Environment variables to set in the Sandbox.
+	Secrets                  []*Secret                    // Secrets to inject into the Sandbox as environment variables.
+	Volumes                  map[string]*Volume           // Mount points for Volumes.
+	CloudBucketMounts        map[string]*CloudBucketMount // Mount points for cloud buckets.
+	PTY                      bool                         // Enable a PTY for the Sandbox.
+	EncryptedPorts           []int                        // List of encrypted ports to tunnel into the Sandbox, with TLS encryption.
+	H2Ports                  []int                        // List of encrypted ports to tunnel into the Sandbox, using HTTP/2.
+	UnencryptedPorts         []int                        // List of ports to tunnel into the Sandbox without encryption.
+	BlockNetwork             bool                         // Whether to block all network access from the Sandbox.
+	CIDRAllowlist            []string                     // List of CIDRs the Sandbox is allowed to access. Cannot be used with BlockNetwork.
+	Cloud                    string                       // Cloud provider to run the Sandbox on.
+	Regions                  []string                     // Region(s) to run the Sandbox on.
+	Verbose                  bool                         // Enable verbose logging.
+	Proxy                    *Proxy                       // Reference to a Modal Proxy to use in front of this Sandbox.
+	Name                     string                       // Optional name for the Sandbox. Unique within an App.
+	ExperimentalOptions      map[string]any               // Experimental options
+	CustomDomain             string                       // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
+	IncludeOidcIdentityToken bool                         // If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP).
 }
 
 // buildSandboxCreateRequestProto builds a SandboxCreateRequest proto from options.
@@ -263,25 +264,26 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 	return pb.SandboxCreateRequest_builder{
 		AppId: appID,
 		Definition: pb.Sandbox_builder{
-			EntrypointArgs:      params.Command,
-			ImageId:             imageID,
-			SecretIds:           secretIds,
-			TimeoutSecs:         timeoutSecs,
-			IdleTimeoutSecs:     idleTimeoutSecs,
-			Workdir:             workdir,
-			NetworkAccess:       networkAccess,
-			Resources:           resourcesBuilder.Build(),
-			VolumeMounts:        volumeMounts,
-			CloudBucketMounts:   cloudBucketMounts,
-			PtyInfo:             ptyInfo,
-			OpenPorts:           portSpecs,
-			CloudProviderStr:    params.Cloud,
-			SchedulerPlacement:  schedulerPlacement,
-			Verbose:             params.Verbose,
-			ProxyId:             proxyID,
-			Name:                &params.Name,
-			ExperimentalOptions: protoExperimentalOptions,
-			CustomDomain:        params.CustomDomain,
+			EntrypointArgs:           params.Command,
+			ImageId:                  imageID,
+			SecretIds:                secretIds,
+			TimeoutSecs:              timeoutSecs,
+			IdleTimeoutSecs:          idleTimeoutSecs,
+			Workdir:                  workdir,
+			NetworkAccess:            networkAccess,
+			Resources:                resourcesBuilder.Build(),
+			VolumeMounts:             volumeMounts,
+			CloudBucketMounts:        cloudBucketMounts,
+			PtyInfo:                  ptyInfo,
+			OpenPorts:                portSpecs,
+			CloudProviderStr:         params.Cloud,
+			SchedulerPlacement:       schedulerPlacement,
+			Verbose:                  params.Verbose,
+			ProxyId:                  proxyID,
+			Name:                     &params.Name,
+			ExperimentalOptions:      protoExperimentalOptions,
+			CustomDomain:             params.CustomDomain,
+			IncludeOidcIdentityToken: params.IncludeOidcIdentityToken,
 		}.Build(),
 	}.Build(), nil
 }
