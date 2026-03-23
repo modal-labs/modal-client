@@ -2165,6 +2165,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
         _request: api_pb2.TaskGetCommandRouterAccessRequest = await stream.recv_message()
         raise GRPCError(Status.FAILED_PRECONDITION, "Command router access not enabled in tests")
 
+    async def TaskGetInfo(self, stream):
+        _request: api_pb2.TaskGetInfoRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.TaskGetInfoResponse(
+                app_id="ap-test-container-app",
+                info=api_pb2.TaskInfo(
+                    id=_request.task_id,
+                    started_at=1700000000.0,
+                    finished_at=1700003600.0,
+                ),
+            )
+        )
+
     async def TaskList(self, stream):
         _request: api_pb2.TaskListRequest = await stream.recv_message()
         await stream.send_message(api_pb2.TaskListResponse())

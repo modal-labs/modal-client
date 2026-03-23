@@ -1082,6 +1082,48 @@ def test_logs_follow_function_filter(servicer, server_url_env, set_env_client, m
         assert get_logs_requests[0].function_id == "fu-abc123"
 
 
+def test_logs_follow_container_filter(servicer, server_url_env, set_env_client, mock_dir):
+    _deploy_app(mock_dir)
+
+    get_logs_requests = []
+
+    async def capture_get_logs(self, stream):
+        req = await stream.recv_message()
+        get_logs_requests.append(req)
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppGetLogs", capture_get_logs)
+
+        run_cli_command(["app", "logs", "my-app", "-f", "--container", "ta-abc123"])
+        assert len(get_logs_requests) == 1
+        assert get_logs_requests[0].task_id == "ta-abc123"
+
+
+def test_logs_fetch_container_filter(servicer, server_url_env, set_env_client, mock_dir):
+    _deploy_app(mock_dir)
+
+    with servicer.intercept() as ctx:
+        count_requests = []
+
+        async def count_handler(self, stream):
+            req = await stream.recv_message()
+            count_requests.append(req)
+            await stream.send_message(_make_count_response())
+
+        async def fetch_handler(self, stream):
+            await stream.recv_message()
+            await stream.send_message(_make_fetch_response())
+
+        ctx.set_responder("AppCountLogs", count_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        args = ["app", "logs", "my-app", "--since", _SINCE_ARG, "--until", _UNTIL_ARG, "--container", "ta-abc123"]
+        run_cli_command(args)
+        assert len(count_requests) == 1
+        assert count_requests[0].task_id == "ta-abc123"
+
+
 def test_logs_follow_search_filter(servicer, server_url_env, set_env_client, mock_dir):
     _deploy_app(mock_dir)
 
@@ -1254,3 +1296,252 @@ def test_logs_follow_incompatible_with_range(servicer, server_url_env, set_env_c
             expected_exit_code=2,
         )
         assert "cannot be combined" in res.stderr
+
+
+# ===========================================================================
+# `modal container logs` tests
+# ===========================================================================
+
+
+def _make_task_get_info_responder(app_id="ap-test123", started_at=_TEST_TIMESTAMP - 3600, finished_at=_TEST_TIMESTAMP):
+    async def handler(self, stream):
+        req = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.TaskGetInfoResponse(
+                app_id=app_id,
+                info=api_pb2.TaskInfo(
+                    id=req.task_id,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                ),
+            )
+        )
+
+    return handler
+
+
+def _setup_container_log_responders(ctx, count_resp=None, fetch_resp=None, task_info_resp=None):
+    ctx.set_responder("TaskGetInfo", task_info_resp or _make_task_get_info_responder())
+    _setup_fetch_responders(ctx, count_resp=count_resp, fetch_resp=fetch_resp)
+
+
+def _make_multi_line_fetch_response(n, task_id="ta-test1"):
+    logs = [
+        api_pb2.TaskLogs(data=f"line-{i}\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT, timestamp=_TEST_TIMESTAMP)
+        for i in range(n)
+    ]
+    batch = api_pb2.TaskLogsBatch(items=logs, function_id="fu-test1", task_id=task_id)
+    return api_pb2.AppFetchLogsResponse(batches=[batch])
+
+
+def test_container_logs_default_tail(servicer, server_url_env, set_env_client):
+    """Default `container logs ta-xxx` fetches last 100 entries (tail mode)."""
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_multi_line_fetch_response(100))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("TaskGetInfo", _make_task_get_info_responder())
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        res = run_cli_command(["container", "logs", "ta-test1"])
+        assert "line-0" in res.stdout
+        assert len(fetch_requests) == 1
+        assert fetch_requests[0].limit == 100
+        assert fetch_requests[0].task_id == "ta-test1"
+
+
+def test_container_logs_tail(servicer, server_url_env, set_env_client):
+    """--tail N fetches the last N entries."""
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_multi_line_fetch_response(25))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("TaskGetInfo", _make_task_get_info_responder())
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        res = run_cli_command(["container", "logs", "ta-test1", "--tail", "25"])
+        assert "line-0" in res.stdout
+        assert len(fetch_requests) == 1
+        assert fetch_requests[0].limit == 25
+
+
+def test_container_logs_since(servicer, server_url_env, set_env_client):
+    """--since without --tail uses range mode (count-then-fetch)."""
+    with servicer.intercept() as ctx:
+        count_requests = []
+
+        async def count_handler(self, stream):
+            req = await stream.recv_message()
+            count_requests.append(req)
+            await stream.send_message(_make_count_response())
+
+        async def fetch_handler(self, stream):
+            await stream.recv_message()
+            await stream.send_message(_make_fetch_response())
+
+        ctx.set_responder("TaskGetInfo", _make_task_get_info_responder())
+        ctx.set_responder("AppCountLogs", count_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        res = run_cli_command(["container", "logs", "ta-test1", "--since", _SINCE_ARG, "--until", _UNTIL_ARG])
+        assert "hello" in res.stdout
+        assert len(count_requests) == 1
+        assert count_requests[0].task_id == "ta-test1"
+
+
+def test_container_logs_all(servicer, server_url_env, set_env_client):
+    """--all fetches range from started_at to finished_at via TaskGetInfo."""
+    with servicer.intercept() as ctx:
+        count_requests = []
+
+        async def count_handler(self, stream):
+            req = await stream.recv_message()
+            count_requests.append(req)
+            await stream.send_message(_make_count_response())
+
+        async def fetch_handler(self, stream):
+            await stream.recv_message()
+            await stream.send_message(_make_fetch_response())
+
+        ctx.set_responder("TaskGetInfo", _make_task_get_info_responder())
+        ctx.set_responder("AppCountLogs", count_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        res = run_cli_command(["container", "logs", "ta-test1", "--all"])
+        assert "hello" in res.stdout
+        # --all uses range mode (count-then-fetch)
+        assert len(count_requests) == 1
+
+
+def test_container_logs_follow(servicer, server_url_env, set_env_client):
+    """--follow streams logs via AppGetLogs."""
+    get_logs_requests = []
+
+    async def capture_get_logs(self, stream):
+        req = await stream.recv_message()
+        get_logs_requests.append(req)
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("AppGetLogs", capture_get_logs)
+
+        run_cli_command(["container", "logs", "ta-test1", "-f"])
+        assert len(get_logs_requests) == 1
+        assert get_logs_requests[0].task_id == "ta-test1"
+
+
+def test_container_logs_follow_incompatible_with_range(servicer, server_url_env, set_env_client):
+    for extra_args in [["--since", "1h"], ["--until", "1h"], ["--tail", "10"]]:
+        res = run_cli_command(
+            ["container", "logs", "ta-test1", "-f", *extra_args],
+            expected_exit_code=2,
+        )
+        assert "cannot be combined" in res.stderr
+
+
+def test_container_logs_all_incompatible_with_flags(servicer, server_url_env, set_env_client):
+    for extra_args in [["--since", "1h"], ["--until", "1h"], ["--tail", "10"]]:
+        res = run_cli_command(
+            ["container", "logs", "ta-test1", "--all", *extra_args],
+            expected_exit_code=2,
+        )
+        assert "cannot be combined" in res.stderr
+
+
+def test_container_logs_all_incompatible_with_follow(servicer, server_url_env, set_env_client):
+    res = run_cli_command(
+        ["container", "logs", "ta-test1", "--all", "-f"],
+        expected_exit_code=2,
+    )
+    assert "cannot be combined" in res.stderr
+
+
+def test_container_logs_invalid_id(servicer, server_url_env, set_env_client):
+    res = run_cli_command(
+        ["container", "logs", "invalid-id"],
+        expected_exit_code=1,
+        expected_error="Invalid container ID",
+    )
+
+
+def test_container_logs_source_filter(servicer, server_url_env, set_env_client):
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_multi_line_fetch_response(100))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("TaskGetInfo", _make_task_get_info_responder())
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        run_cli_command(["container", "logs", "ta-test1", "--source", "stderr"])
+        assert len(fetch_requests) == 1
+        assert fetch_requests[0].source == api_pb2.FILE_DESCRIPTOR_STDERR
+
+
+def test_container_logs_sandbox_id(servicer, server_url_env, set_env_client):
+    """Passing sb- ID resolves task_id via SandboxGetTaskId, then fetches logs."""
+    sandbox_get_task_requests = []
+    task_get_info_requests = []
+    fetch_requests = []
+
+    async def sandbox_get_task_handler(self, stream):
+        req = await stream.recv_message()
+        sandbox_get_task_requests.append(req)
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="ta-from-sandbox"))
+
+    async def task_get_info_handler(self, stream):
+        req = await stream.recv_message()
+        task_get_info_requests.append(req)
+        await stream.send_message(
+            api_pb2.TaskGetInfoResponse(
+                app_id="ap-sandbox-app",
+                info=api_pb2.TaskInfo(id=req.task_id, started_at=_TEST_TIMESTAMP - 3600, finished_at=_TEST_TIMESTAMP),
+            )
+        )
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_multi_line_fetch_response(100, task_id="ta-from-sandbox"))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetTaskId", sandbox_get_task_handler)
+        ctx.set_responder("TaskGetInfo", task_get_info_handler)
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        res = run_cli_command(["container", "logs", "sb-test1"])
+        assert "line-0" in res.stdout
+        # Verify the full resolution chain
+        assert len(sandbox_get_task_requests) == 1
+        assert sandbox_get_task_requests[0].sandbox_id == "sb-test1"
+        assert len(task_get_info_requests) == 1
+        assert task_get_info_requests[0].task_id == "ta-from-sandbox"
+        assert len(fetch_requests) == 1
+        assert fetch_requests[0].app_id == "ap-sandbox-app"
+
+
+def test_container_logs_search(servicer, server_url_env, set_env_client):
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_multi_line_fetch_response(100))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("TaskGetInfo", _make_task_get_info_responder())
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        res = run_cli_command(["container", "logs", "ta-test1", "--search", "matched"])
+        assert fetch_requests[0].search_text == "matched"
