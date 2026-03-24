@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
 V = TypeVar("V")
 
-DEPLOYMENT_STRATEGY_TYPE = Literal["rolling", "restart"]
+DEPLOYMENT_STRATEGY_TYPE = Literal["rolling", "recreate"]
 WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL = 1
 WAIT_FOR_CONTAINER_STOP_TIMEOUT = 40
 
@@ -257,9 +257,9 @@ async def _stop_and_wait_for_containers(
 
 
 def _validate_deployment_strategy(strategy: str) -> DEPLOYMENT_STRATEGY_TYPE:
-    if strategy == "rolling" or strategy == "restart":
+    if strategy == "rolling" or strategy == "recreate":
         return strategy
-    raise InvalidError(f"Deployment strategy must be 'rolling' or 'restart', not {strategy!r}")
+    raise InvalidError(f"Deployment strategy must be 'rolling' or 'recreate', not {strategy!r}")
 
 
 async def _publish_app(
@@ -293,7 +293,7 @@ async def _publish_app(
     response = await client.stub.AppPublish(request)
     print_server_warnings(response.server_warnings)
 
-    if deployment_strategy == "restart":
+    if deployment_strategy == "recreate":
         try:
             await _stop_and_wait_for_containers(
                 client,
@@ -551,7 +551,7 @@ async def _serve_update(
             app_state=api_pb2.APP_STATE_UNSPECIFIED,
             app_local_state=local_app_state,
             environment_name=load_context.environment_name,
-            deployment_strategy="restart",
+            deployment_strategy="recreate",
         )
 
         # Communicate to the parent process

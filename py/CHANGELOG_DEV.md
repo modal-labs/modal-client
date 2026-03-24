@@ -4,7 +4,7 @@
 
 - The `modal app logs` and `modal container logs` CLIs will no longer follow logs by default. It's now necessary to opt-into following by passing `--follow` or `-f`.
 - The logging CLIs also have many new features.
-- Added a `--strategy restart` CLI option to `modal deploy` and `app.deploy(strategy="restart")` to restart containers that are older than the latest deployment. The `restart` strategy replaces your old containers faster compared to the default `rolling` strategy. With the `restart` strategy, you may experience higher latency as new containers start up.
+- Added a `--strategy recreate` CLI option to `modal deploy` and `app.deploy(strategy="recreate")` to terminate containers that are older than the latest deployment. With the `recreate` strategy, you may experience higher latency as new containers start up.
 - `modal container list` now accepts a `--app-id` to return containers for a specific app.
 - `modal serve` will restart running containers when your code gets hot-reloaded.
 - `Sandbox.exec` no longer hangs when running on a sandbox that was immediately terminated after creation.
