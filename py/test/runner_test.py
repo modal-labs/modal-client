@@ -166,7 +166,7 @@ def test_run_app_interactive_no_spinner(servicer, client):
 
 
 @pytest.mark.parametrize("mode", ["deploy", "run"])
-def test_run_app_restart_deployment(servicer, client, monkeypatch, mode):
+def test_run_app_recreate_deployment(servicer, client, monkeypatch, mode):
     monkeypatch.setattr(modal.runner, "WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL", 0.01)
     task_list_calls = 0
 
@@ -193,10 +193,10 @@ def test_run_app_restart_deployment(servicer, client, monkeypatch, mode):
     with servicer.intercept() as ctx:
         ctx.set_responder("TaskList", task_list)
         if mode == "deploy":
-            dummy_app.deploy(client=client, strategy="restart")
+            dummy_app.deploy(client=client, strategy="recreate")
         else:
             # Test the `modal serve` case since it uses run_app
-            with run_app(dummy_app, client=client, deployment_strategy="restart"):
+            with run_app(dummy_app, client=client, deployment_strategy="recreate"):
                 pass
 
     assert task_list_calls == 4
@@ -205,7 +205,7 @@ def test_run_app_restart_deployment(servicer, client, monkeypatch, mode):
     assert task_ids == set(["ta-123", "ta-321"])
 
 
-def test_run_app_restart_deployment_timeout(servicer, client, monkeypatch):
+def test_run_app_recreate_deployment_timeout(servicer, client, monkeypatch):
     monkeypatch.setattr(modal.runner, "WAIT_FOR_CONTAINER_STOP_TIMEOUT", 0.1)
 
     async def task_list(servicer, stream):
@@ -224,13 +224,13 @@ def test_run_app_restart_deployment_timeout(servicer, client, monkeypatch):
     with pytest.warns(UserWarning, match=msg):
         with servicer.intercept() as ctx:
             ctx.set_responder("TaskList", task_list)
-            dummy_app.deploy(client=client, strategy="restart")
+            dummy_app.deploy(client=client, strategy="recreate")
 
     task_ids = set(servicer.container_stop_ids)
     assert task_ids == set(["ta-123", "ta-321"])
 
 
-def test_run_app_restart_deployment_stop_fails(servicer, client, monkeypatch):
+def test_run_app_recreate_deployment_stop_fails(servicer, client, monkeypatch):
     monkeypatch.setattr(modal.runner, "WAIT_FOR_CONTAINER_STOP_TIMEOUT", 1.0)
 
     async def task_list(servicer, stream):
@@ -254,4 +254,4 @@ def test_run_app_restart_deployment_stop_fails(servicer, client, monkeypatch):
         with servicer.intercept() as ctx:
             ctx.set_responder("TaskList", task_list)
             ctx.set_responder("ContainerStop", container_stop)
-            dummy_app.deploy(client=client, strategy="restart")
+            dummy_app.deploy(client=client, strategy="recreate")

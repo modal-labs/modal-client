@@ -101,7 +101,7 @@ async def _serve_app(
 
     client = await _Client.from_env()
 
-    async with _run_app(app, client=client, environment_name=environment_name, deployment_strategy="restart"):
+    async with _run_app(app, client=client, environment_name=environment_name, deployment_strategy="recreate"):
         if _watcher is not None:
             watcher = _watcher  # Only used by tests
         else:

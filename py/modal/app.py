@@ -441,7 +441,7 @@ class _App:
         # - 'rolling' (default): Traffic shifts to the new deployment by starting
         #   new containers gradually. Old containers will continue to process inputs while new
         #   containers start up.
-        # - 'restart': As part of the deployment, all running containers are terminated. New inputs
+        # - 'recreate': As part of the deployment, all running containers are terminated. New inputs
         #   will start new containers.
         strategy: str = "rolling",
     ) -> typing_extensions.Self:
