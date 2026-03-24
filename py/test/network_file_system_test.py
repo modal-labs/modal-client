@@ -5,6 +5,9 @@ from io import BytesIO
 from unittest import mock
 
 import modal
+from modal._load_context import LoadContext
+from modal._resolver import Resolver
+from modal._utils.async_utils import TaskContext, synchronizer
 from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
@@ -146,6 +149,29 @@ def test_nfs_lazy_hydration_from_name(client):
     nfs = modal.NetworkFileSystem.from_name("nfs", create_if_missing=True, client=client)
     bio = BytesIO(b"content")
     nfs.write_file("blah", bio)
+
+
+def test_nfs_from_name_double_resolve(client, servicer):
+    name = "my-nfs"
+    modal.NetworkFileSystem.create_deployed(name, client=client)
+    nfs = modal.NetworkFileSystem.from_name(name)
+
+    @synchronizer.wrap
+    async def wrapped_test(nfs, client):
+        resolver = Resolver()
+        async with TaskContext() as tc:
+            load_context = LoadContext(client=client, task_context=tc)
+            await resolver.load(nfs, load_context)
+        return nfs.object_id
+
+    with servicer.intercept() as ctx:
+        wrapped_test(nfs, client)  # type: ignore
+        req = ctx.pop_request("SharedVolumeGetOrCreate")
+        assert req.deployment_name == name
+        assert req.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
+        ctx.calls.clear()
+        wrapped_test(nfs, client)  # type: ignore
+        assert len(ctx.calls) == 0
 
 
 @pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])

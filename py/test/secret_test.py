@@ -7,6 +7,9 @@ import time
 from unittest import mock
 
 from modal import App, Sandbox, Secret
+from modal._load_context import LoadContext
+from modal._resolver import Resolver
+from modal._utils.async_utils import TaskContext, synchronizer
 from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
@@ -120,6 +123,34 @@ def test_secret_from_name(servicer, client):
     with pytest.raises(NotFoundError):
         Secret.from_name("my-secret").hydrate(client)
     Secret.objects.delete("my-secret", client=client, allow_missing=True)
+
+
+def test_secret_from_name_double_resolve(client, servicer):
+    # Checks that Resolver logic is set up to *not* re-lookup
+    # secrets that are defined by name, since those are unlikely
+    # to change their id ("is_another_app")
+    name = "my-secret"
+    secret_orig = Secret.objects.create(name, {"FOO": "123"}, client=client)
+    secret = Secret.from_name(name)
+
+    @synchronizer.wrap
+    async def wrapped_test(secret, client):
+        assert secret.name == name
+
+        resolver = Resolver()
+        async with TaskContext() as tc:
+            load_context = LoadContext(client=client, task_context=tc)
+            await resolver.load(secret, load_context)
+        return secret.object_id
+
+    with servicer.intercept() as ctx:
+        wrapped_test(secret, client)  # type: ignore
+        req = ctx.pop_request("SecretGetOrCreate")
+        assert req.deployment_name == name
+        assert req.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
+        ctx.calls.clear()
+        wrapped_test(secret, client)  # type: ignore
+        assert len(ctx.calls) == 0
 
 
 def test_secret_namespace_deprecated(servicer, client):

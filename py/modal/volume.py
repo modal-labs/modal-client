@@ -481,6 +481,7 @@ class _Volume(_Object, type_prefix="vo"):
         return _Volume._from_loader(
             _load,
             rep,
+            is_another_app=True,
             hydrate_lazily=True,
             name=name,
             load_context_overrides=LoadContext(client=client, environment_name=environment_name),
