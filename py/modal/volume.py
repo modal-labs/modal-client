@@ -61,7 +61,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
-from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
+from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import Retry
 from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
@@ -437,7 +437,6 @@ class _Volume(_Object, type_prefix="vo"):
     def from_name(
         name: str,
         *,
-        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
@@ -461,7 +460,6 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
         check_object_name(name, "Volume")
-        warn_if_passing_namespace(namespace, "modal.Volume.from_name")
 
         async def _load(
             self: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
@@ -592,14 +590,12 @@ class _Volume(_Object, type_prefix="vo"):
     @staticmethod
     async def _create_deployed(
         deployment_name: str,
-        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "Volume")
-        warn_if_passing_namespace(namespace, "modal.Volume.create_deployed")
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.VolumeGetOrCreateRequest(

@@ -8,7 +8,7 @@ import modal
 from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
-from modal.exception import DeprecationError, InvalidError, NotFoundError
+from modal.exception import InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 
@@ -188,21 +188,3 @@ def test_attempt_mount_volume(client, servicer):
     with pytest.raises(InvalidError, match="already exists as a Volume"):
         with app.run(client=client):
             f.remote()
-
-
-def test_network_file_system_namespace_deprecated(servicer, client):
-    # Test from_name with namespace parameter warns
-    with pytest.warns(
-        DeprecationError, match="The `namespace` parameter for `modal.NetworkFileSystem.from_name` is deprecated"
-    ):
-        modal.NetworkFileSystem.from_name("test-nfs", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
-
-    # Test that from_name without namespace parameter doesn't warn about namespace
-    import warnings
-
-    with warnings.catch_warnings(record=True) as record:
-        warnings.simplefilter("always")
-        modal.NetworkFileSystem.from_name("test-nfs")
-    # Filter out any unrelated warnings
-    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
-    assert len(namespace_warnings) == 0

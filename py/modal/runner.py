@@ -28,7 +28,6 @@ from ._output.pty import get_app_logs_loop, get_pty_info
 from ._resolver import Resolver
 from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
-from ._utils.deprecation import warn_if_passing_namespace
 from ._utils.git_utils import get_git_commit_info
 from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
@@ -575,17 +574,16 @@ class DeployResult:
 async def _deploy_app(
     app: "modal.app._App",
     name: Optional[str] = None,
-    namespace: Any = None,  # mdmd:line-hidden
-    client: Optional[_Client] = None,
+    *,
     environment_name: Optional[str] = None,
     tag: str = "",
     deployment_strategy: str = "rolling",
+    client: Optional[_Client] = None,
 ) -> DeployResult:
     """Internal function for deploying an App.
 
     Users should prefer the `modal deploy` CLI or the `App.deploy` method.
     """
-    warn_if_passing_namespace(namespace, "modal.runner.deploy_app")
 
     name = name or app.name or ""
     if not name:

@@ -10,7 +10,7 @@ from modal import App, Sandbox, Secret
 from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
-from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError
+from modal.exception import AlreadyExistsError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_old_py, skip_windows
@@ -151,25 +151,6 @@ def test_secret_from_name_double_resolve(client, servicer):
         ctx.calls.clear()
         wrapped_test(secret, client)  # type: ignore
         assert len(ctx.calls) == 0
-
-
-def test_secret_namespace_deprecated(servicer, client):
-    with pytest.warns(
-        DeprecationError,
-        match="The `namespace` parameter for `modal.Secret.from_name` is deprecated",
-    ):
-        Secret.from_name("my-secret", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
-
-    with pytest.warns(
-        DeprecationError,
-        match="The `namespace` parameter for `modal.Secret.create_deployed` is deprecated",
-    ):
-        Secret._create_deployed(
-            "my-secret", {"FOO": "123"}, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client=client
-        )
-
-    with pytest.warns(DeprecationError, match="The `namespace` parameter"):
-        Secret.from_name("my-secret", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
 
 
 def test_secret_list(servicer, client):

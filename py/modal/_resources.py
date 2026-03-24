@@ -3,19 +3,18 @@ from typing import Optional, Union
 
 from modal_proto import api_pb2
 
+from ._utils.function_utils import parse_gpu_config
 from .exception import InvalidError
-from .gpu import GPU_T, parse_gpu_config
 
 
 def convert_fn_config_to_resources_config(
     *,
     cpu: Optional[Union[float, tuple[float, float]]],
     memory: Optional[Union[int, tuple[int, int]]],
-    gpu: GPU_T,
+    gpu: Optional[str],
     ephemeral_disk: Optional[int],
     rdma: Optional[bool] = None,
 ) -> api_pb2.Resources:
-    gpu_config = parse_gpu_config(gpu)
     if cpu and isinstance(cpu, tuple):
         if not cpu[0]:
             raise InvalidError("CPU request must be a positive number")
@@ -45,7 +44,7 @@ def convert_fn_config_to_resources_config(
     return api_pb2.Resources(
         milli_cpu=milli_cpu,
         milli_cpu_max=milli_cpu_max,
-        gpu_config=gpu_config,
+        gpu_config=parse_gpu_config(gpu),
         memory_mb=memory_mb,
         memory_mb_max=memory_mb_max,
         ephemeral_disk_mb=ephemeral_disk,

@@ -44,7 +44,6 @@ from .exception import (
     SandboxTimeoutError,
 )
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO, ls, mkdir, rm, watch
-from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
@@ -150,7 +149,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         timeout: int = 300,
         idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,
-        gpu: GPU_T = None,
+        gpu: Optional[str] = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,
         cpu: Optional[float] = None,
@@ -308,7 +307,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         # The amount of time in seconds that a sandbox can be idle before being terminated.
         idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,  # Working directory of the sandbox.
-        gpu: GPU_T = None,
+        gpu: Optional[str] = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
         # Specify, in fractional CPU cores, how many CPU cores to request.
@@ -423,7 +422,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         timeout: int = 300,
         idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,
-        gpu: GPU_T = None,
+        gpu: Optional[str] = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,
         cpu: Optional[Union[float, tuple[float, float]]] = None,
@@ -735,16 +734,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskMountDirectoryRequest(task_id=task_id, path=path_bytes, image_id=image_id)
         await command_router_client.mount_image(req)
 
-    async def _experimental_mount_image(self, path: Union[PurePosixPath, str], image: Optional[_Image]):
-        """Deprecated alias for `Sandbox.mount_image()`."""
-        deprecation_warning(
-            (2026, 2, 20),
-            "The `Sandbox._experimental_mount_image()` method is deprecated. Use `Sandbox.mount_image()` instead.",
-        )
-        if image is None:
-            image = _Image.from_scratch()
-        await self.mount_image(path, image)
-
     async def snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
         """Snapshot a directory in a running Sandbox, creating a new Image with its content.
 
@@ -775,15 +764,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskSnapshotDirectoryRequest(task_id=task_id, path=path_bytes)
         res = await command_router_client.snapshot_directory(req)
         return _Image._new_hydrated(res.image_id, self._client, None)
-
-    async def _experimental_snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
-        """Deprecated alias for `Sandbox.snapshot_directory()`."""
-        deprecation_warning(
-            (2026, 2, 20),
-            "The `Sandbox._experimental_snapshot_directory()` method is deprecated. "
-            "Use `Sandbox.snapshot_directory()` instead.",
-        )
-        return await self.snapshot_directory(path)
 
     # Live handle methods
 

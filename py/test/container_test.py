@@ -2294,8 +2294,6 @@ def test_cls_self_doesnt_call_bind(servicer, credentials):
         # hydrated:
         assert not ctx.get_requests("FunctionBindParams")
 
-        # TODO: add test for using self.keep_warm()
-
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")

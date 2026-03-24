@@ -15,7 +15,7 @@ from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot
 from modal._utils.async_utils import synchronizer
 from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.container_process import ContainerProcess, _ContainerProcess
-from modal.exception import DeprecationError, Error, InvalidError
+from modal.exception import Error, InvalidError
 from modal.sandbox import SandboxContainer
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
@@ -922,20 +922,6 @@ def test_mount_image(servicer, client, exec_backend, app, monkeypatch):
         sb.mount_image("/bad-type", "not-an-image")  # type: ignore[arg-type]
     assert len(captured_requests) == 3
 
-    # Deprecated alias should proxy to mount_image with a warning.
-    with pytest.warns(DeprecationError, match="_experimental_mount_image"):
-        sb._experimental_mount_image("/deprecated-alias", prebuilt_image)
-    assert len(captured_requests) == 4
-    assert captured_requests[3].path == b"/deprecated-alias"
-    assert captured_requests[3].image_id == prebuilt_image.object_id
-
-    # Deprecated alias should preserve backward compatibility for `image=None`.
-    with pytest.warns(DeprecationError, match="_experimental_mount_image"):
-        sb._experimental_mount_image("/deprecated-alias-none", None)
-    assert len(captured_requests) == 5
-    assert captured_requests[4].path == b"/deprecated-alias-none"
-    assert captured_requests[4].image_id == ""
-
     # Test validation: non-absolute path should raise
     with pytest.raises(InvalidError, match="must be absolute"):
         sb.mount_image("relative/path", prebuilt_image)
@@ -977,11 +963,6 @@ def test_snapshot_directory(servicer, client, exec_backend, app):
 
     assert image.object_id == "im-snapshot-123"  # From mock
 
-    # Deprecated alias should proxy to snapshot_directory with a warning.
-    with pytest.warns(DeprecationError, match="_experimental_snapshot_directory"):
-        alias_image = sb._experimental_snapshot_directory("/tmp")
-    assert alias_image.object_id == "im-snapshot-123"
-
     # Test validation: non-absolute path should raise
     with pytest.raises(InvalidError, match="must be absolute"):
         sb.snapshot_directory("relative/path")
@@ -1013,8 +994,6 @@ detach_error_funcs = {
     "get_tags": lambda sb: sb.get_tags(),
     "set_tags": lambda sb: sb.set_tags({"hello": "world"}),
     "snapshot_filesystem": lambda sb: sb.snapshot_filesystem(),
-    "_experimental_mount_image": lambda sb: sb._experimental_mount_image("/mnt", None),
-    "_experimental_snapshot_directory": lambda sb: sb._experimental_snapshot_directory("/tmp"),
     "snapshot_directory": lambda sb: sb.snapshot_directory("/tmp"),
     "tunnels": lambda sb: sb.tunnels(),
     "create_connect_token": lambda sb: sb.create_connect_token(),

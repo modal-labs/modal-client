@@ -1257,7 +1257,7 @@ def test_autoscaler_settings(client, servicer):
 def test_autoscaler_settings_deprecations(new, old):
     app = App(include_source=False)
 
-    with pytest.warns(DeprecationError, match=f"{old} -> {new}"):
+    with pytest.raises(DeprecationError, match=f"'{old}' parameter has been renamed to '{new}'"):
         app.function(**{old: 10})(dummy)  # type: ignore
 
 
@@ -1732,9 +1732,8 @@ def test_batching_config(client, servicer):
             raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
 
 
-def test_concurrency_config_migration(client, servicer):
-    with pytest.warns(DeprecationError, match="@modal.concurrent"):
-        from test.supports.concurrency_config import CONFIG_VALS, app
+def test_concurrency_config(client, servicer):
+    from test.supports.concurrency_config import CONFIG_VALS, app
 
     with servicer.intercept() as ctx:
         with app.run(client=client):
@@ -1743,23 +1742,33 @@ def test_concurrency_config_migration(client, servicer):
     function_create_requests = ctx.get_requests("FunctionCreate")
     for request in function_create_requests:
         if request.function.function_name in {
-            "has_new_config",
-            "HasNewConfig.*",
-            "has_new_config_and_fastapi_endpoint",
-            "has_fastapi_endpoint_and_new_config",
-            "HasNewConfigAndFastapiEndpoint.*",
+            "has_concurrent_config",
+            "HasConcurrentConfig.*",
+            "has_concurrent_config_and_fastapi_endpoint",
+            "has_fastapi_endpoint_and_concurrent_config",
+            "HasConcurrentConfigAndFastapiEndpoint.*",
         }:
-            assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW_MAX"]
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["MAX"]
             assert request.function.target_concurrent_inputs == CONFIG_VALS["TARGET"]
             assert request.function.webhook_config is not None
-        elif request.function.function_name in {"has_old_config", "HasOldConfig.*"}:
-            assert request.function.max_concurrent_inputs == CONFIG_VALS["OLD_MAX"]
-            assert request.function.target_concurrent_inputs == 0
         elif request.function.function_name in {"has_no_config", "HasNoConfig.*"}:
             assert request.function.max_concurrent_inputs == 0
             assert request.function.target_concurrent_inputs == 0
         else:
             raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
+
+    with pytest.raises(InvalidError, match="`target_inputs` parameter cannot be greater than `max_inputs`"):
+
+        @app.function()
+        @modal.concurrent(max_inputs=CONFIG_VALS["MAX"], target_inputs=CONFIG_VALS["MAX"] + 1)
+        def has_target_inputs_greater_than_max_inputs_config():
+            pass
+
+    with pytest.raises(DeprecationError, match="@modal.concurrent"):
+
+        @app.function(allow_concurrent_inputs=CONFIG_VALS["MAX"])  # type: ignore
+        def has_allow_concurrent_inputs_config():
+            pass
 
 
 def test_function_schema_recording(client, servicer):
@@ -2186,25 +2195,6 @@ def test_max_inputs(client, servicer):
 
     with pytest.raises(InvalidError, match="`max_inputs=1`"):
         app.function(max_inputs=2)
-
-
-def test_function_namespace_deprecated(servicer, client):
-    # Test from_name with namespace parameter warns
-    with pytest.warns(
-        DeprecationError,
-        match="The `namespace` parameter for `modal.Function.from_name` is deprecated",
-    ):
-        Function.from_name("test-app", "test-function", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
-
-    # Test that from_name without namespace parameter doesn't warn about namespace
-    import warnings
-
-    with warnings.catch_warnings(record=True) as record:
-        warnings.simplefilter("always")
-        Function.from_name("test-app", "test-function")
-    # Filter out any unrelated warnings
-    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
-    assert len(namespace_warnings) == 0
 
 
 # These test and the two below it pass on their own but fail with this error when all the tests are run:

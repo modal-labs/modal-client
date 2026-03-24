@@ -48,8 +48,13 @@ def deploy_app_externally(
 
     app_ref = file_or_module if app_variable is None else f"{file_or_module}::{app_variable}"
 
+    if file_or_module.endswith(".py"):
+        app_ref_args = [app_ref]
+    else:
+        app_ref_args = ["-m", app_ref]
+
     p = subprocess.Popen(
-        [sys.executable, "-m", "modal.cli.entry_point", "deploy", app_ref, "--name", deployment_name],
+        [sys.executable, "-m", "modal.cli.entry_point", "deploy", *app_ref_args, "--name", deployment_name],
         cwd=cwd,
         env=env,
         stderr=subprocess.STDOUT,

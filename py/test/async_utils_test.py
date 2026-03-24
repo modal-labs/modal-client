@@ -1578,30 +1578,6 @@ async def test_sync_in_async_warning(client):
 
 
 @pytest.mark.asyncio
-async def test_sync_in_async_property_warning(client):
-    import warnings
-
-    import modal
-    from modal._utils.async_utils import AsyncUsageWarning
-
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        f = modal.Function.from_name("test", "f")
-        with pytest.raises(Exception):
-            f.web_url  # expected to raise due to failing hydration
-
-        # Verify the warning was emitted
-        assert len(w) == 1
-        assert issubclass(w[0].category, AsyncUsageWarning)
-
-        warning_message = str(w[0].message)
-        print(warning_message)
-        # Verify the warning contains key information
-        assert "A blocking Modal interface is being used in " in warning_message
-        assert "await f.web_url" in warning_message
-
-
-@pytest.mark.asyncio
 async def test_sync_in_async_warning_iteration(servicer, client, set_env_client):
     """Test that using blocking function call from async context emits a warning."""
     import warnings

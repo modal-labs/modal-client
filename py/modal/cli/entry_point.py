@@ -119,7 +119,7 @@ async def setup(profile: Optional[str] = None):
 entrypoint_cli_typer.command("deploy", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
 entrypoint_cli_typer.command("shell")(shell_module.shell)
-entrypoint_cli_typer.add_typer(launch_cli)
+entrypoint_cli_typer.add_typer(launch_cli, hidden=True)
 
 # Deployments
 entrypoint_cli_typer.add_typer(app_cli, rich_help_panel="Deployments")

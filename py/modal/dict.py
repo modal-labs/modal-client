@@ -23,7 +23,7 @@ from ._object import (
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
+from ._utils.deprecation import deprecation_warning
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -291,7 +291,7 @@ class _Dict(_Object, type_prefix="di"):
     _name: Optional[str] = None
     _metadata: Optional[api_pb2.DictMetadata] = None
 
-    def __init__(self, data={}):
+    def __init__(self):
         """mdmd:hidden"""
         raise RuntimeError(
             "`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead"
@@ -319,7 +319,7 @@ class _Dict(_Object, type_prefix="di"):
     @asynccontextmanager
     async def ephemeral(
         cls: type["_Dict"],
-        data: Optional[dict] = None,  # DEPRECATED
+        *,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
@@ -341,16 +341,9 @@ class _Dict(_Object, type_prefix="di"):
         """
         if client is None:
             client = await _Client.from_env()
-        if data:
-            deprecation_warning(
-                (2025, 5, 6),
-                "Passing data to `modal.Dict.ephemeral` is deprecated and will stop working in a future release.",
-            )
-        serialized = _serialize_dict(data if data is not None else {})
         request = api_pb2.DictGetOrCreateRequest(
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
             environment_name=_get_environment_name(environment_name),
-            data=serialized,
         )
         response = await client.stub.DictGetOrCreate(request, retry=Retry(total_timeout=10.0))
         async with TaskContext() as tc:
@@ -367,9 +360,7 @@ class _Dict(_Object, type_prefix="di"):
     @staticmethod
     def from_name(
         name: str,
-        data: Optional[dict] = None,  # DEPRECATED, mdmd:line-hidden
         *,
-        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
         client: Optional[_Client] = None,
@@ -386,21 +377,12 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
         check_object_name(name, "Dict")
-        warn_if_passing_namespace(namespace, "modal.Dict.from_name")
-
-        if data:
-            deprecation_warning(
-                (2025, 5, 6),
-                "Passing data to `modal.Dict.from_name` is deprecated and will stop working in a future release.",
-            )
 
         async def _load(self: _Dict, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
-            serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=load_context.environment_name,
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
-                data=serialized,
             )
             response = await load_context.client.stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")

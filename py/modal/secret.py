@@ -15,7 +15,7 @@ from ._object import _get_environment_name, _Object, live_method
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
+from ._utils.deprecation import deprecation_warning
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -371,18 +371,11 @@ class _Secret(_Object, type_prefix="st"):
     def from_name(
         name: str,
         *,
-        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
-        required_keys: list[
-            str
-        ] = [],  # Optionally, a list of required environment variables (will be asserted server-side)
+        required_keys: list[str] = [],  # Optional list of required environment variables (asserted server-side)
         client: Optional[_Client] = None,
     ) -> "_Secret":
         """Reference a Secret by its name.
-
-        In contrast to most other Modal objects, named Secrets must be provisioned
-        from the Dashboard. See other methods for alternate ways of creating a new
-        Secret from code.
 
         ```python
         secret = modal.Secret.from_name("my-secret")
@@ -392,7 +385,6 @@ class _Secret(_Object, type_prefix="st"):
            ...
         ```
         """
-        warn_if_passing_namespace(namespace, "modal.Secret.from_name")
 
         async def _load(
             self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
@@ -436,13 +428,11 @@ class _Secret(_Object, type_prefix="st"):
     async def _create_deployed(
         deployment_name: str,
         env_dict: dict[str, str],
-        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         overwrite: bool = False,
     ) -> str:
         """mdmd:hidden"""
-        warn_if_passing_namespace(namespace, "modal.Secret.create_deployed")
 
         check_object_name(deployment_name, "Secret")
         if client is None:
