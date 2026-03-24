@@ -2544,6 +2544,19 @@ message PortSpecs {
   repeated PortSpec ports = 1;
 }
 
+message Probe {
+  message ExecCommand {
+    // Command and args to execute directly (argv form, not shell-parsed).
+    repeated string argv = 1;
+  }
+
+  oneof probe_oneof {
+    uint32 tcp_port = 1;
+    ExecCommand exec_command = 2;
+  }
+  optional uint32 interval_ms = 3;
+}
+
 message Proxy {
   string name = 1;
   double created_at = 2;
@@ -2815,7 +2828,7 @@ message Sandbox {
 
   bool runtime_debug = 10; // For internal debugging use only.
 
-  bool block_network = 11;
+  bool block_network = 11; // deprecated, use network_access instead
 
   repeated S3Mount s3_mounts = 12;
   repeated CloudBucketMount cloud_bucket_mounts = 14;
@@ -2890,6 +2903,9 @@ message Sandbox {
   // similar to how modal Function containers do. This can be used
   // for OIDC-based authentication (e.g. to AWS, GCP).
   bool include_oidc_identity_token = 37;
+
+  // Probe used to determine when the sandbox has become ready.
+  optional Probe readiness_probe = 38;
 }
 
 message SandboxCreateConnectTokenRequest {
@@ -2988,6 +3004,7 @@ message SandboxInfo {
   repeated string regions = 10;
   uint32 timeout_secs = 11;
   optional uint32 idle_timeout_secs = 12;
+  optional double ready_at = 13;
 }
 
 
@@ -3113,6 +3130,15 @@ message SandboxWaitRequest {
 
 message SandboxWaitResponse {
   GenericResult result = 1;
+}
+
+message SandboxWaitUntilReadyRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxWaitUntilReadyResponse {
+  double ready_at = 1;
 }
 
 message Schedule {
@@ -3994,6 +4020,7 @@ service ModalClient {
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxTerminateV2(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
+  rpc SandboxWaitUntilReady(SandboxWaitUntilReadyRequest) returns (SandboxWaitUntilReadyResponse);
   rpc SandboxWaitV2(SandboxWaitRequest) returns (SandboxWaitResponse);
 
   // Secrets
