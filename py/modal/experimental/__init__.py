@@ -13,14 +13,6 @@ from .._utils.async_utils import synchronize_api, synchronizer
 from ..app import _App
 from ..client import _Client
 from ..cls import _Cls
-from ..exception import InvalidError as InvalidError
-from ..image import (
-    DockerfileSpec as DockerfileSpec,
-    ImageBuilderVersion as ImageBuilderVersion,
-    _Image as _Image,
-    _ImageRegistryConfig as _ImageRegistryConfig,
-)
-from ..secret import _Secret as _Secret
 from .flash import (  # noqa: F401
     flash_forward,
     flash_get_containers,
