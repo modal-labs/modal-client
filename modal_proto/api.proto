@@ -2936,6 +2936,7 @@ message SandboxCreateV2Request {
 message SandboxCreateV2Response {
   string sandbox_id = 1;
   repeated TunnelData tunnels = 2;
+  string task_id = 3;
 }
 
 message SandboxGetFromNameRequest {
