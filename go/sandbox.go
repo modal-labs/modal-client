@@ -45,7 +45,10 @@ type SandboxCreateParams struct {
 	Secrets                  []*Secret                    // Secrets to inject into the Sandbox as environment variables.
 	Volumes                  map[string]*Volume           // Mount points for Volumes.
 	CloudBucketMounts        map[string]*CloudBucketMount // Mount points for cloud buckets.
-	PTY                      bool                         // Enable a PTY for the Sandbox.
+	// PTY enables a pseudo-terminal for the Sandbox. When true, the stderr
+	// stream of the returned Sandbox will be effectively empty; all output
+	// (both stdout and stderr) is multiplexed into the stdout stream.
+	PTY bool
 	EncryptedPorts           []int                        // List of encrypted ports to tunnel into the Sandbox, with TLS encryption.
 	H2Ports                  []int                        // List of encrypted ports to tunnel into the Sandbox, using HTTP/2.
 	UnencryptedPorts         []int                        // List of ports to tunnel into the Sandbox without encryption.
@@ -473,7 +476,9 @@ type SandboxExecParams struct {
 	Env map[string]string
 	// Secrets to inject as environment variables for the command.
 	Secrets []*Secret
-	// PTY defines whether to enable a PTY for the command.
+	// PTY enables a pseudo-terminal for the command. When true, the stderr
+	// stream of the returned ContainerProcess will be effectively empty;
+	// all output (both stdout and stderr) is multiplexed into the stdout stream.
 	PTY bool
 }
 

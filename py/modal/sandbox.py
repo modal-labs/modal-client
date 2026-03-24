@@ -359,6 +359,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         print(sandbox.stdout.read())
         sandbox.wait()
         ```
+
+        **Parameters**
+
+        pty: When set to True, a PTY (pseudo-terminal) is enabled. When using a PTY, the stderr stream
+            of the returned Sandbox will be effectively empty; all output (both stdout and stderr from
+            the process) is multiplexed into the stdout stream.
         """
         if environment_name is not None:
             deprecation_warning(
@@ -996,6 +1002,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         for line in process.stdout:
             print(line)
         ```
+
+        **Parameters**
+
+        pty: When set to True, a PTY (pseudo-terminal) is enabled. When using a PTY, the stderr stream
+            of the returned ContainerProcess will be effectively empty; all output (both stdout and stderr
+            from the process) is multiplexed into the stdout stream.
         """
         if pty_info is not None or _pty_info is not None:
             deprecation_warning(
