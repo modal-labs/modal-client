@@ -13,6 +13,9 @@ from pathlib import Path
 from unittest import mock
 
 import modal
+from modal._load_context import LoadContext
+from modal._resolver import Resolver
+from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.blob_utils import BLOCK_SIZE
 from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.volume import _open_files_error_annotation
@@ -575,6 +578,29 @@ def test_ephemeral(servicer, client):
 def test_lazy_hydration_from_named(client):
     vol = modal.Volume.from_name("my-vol", create_if_missing=True, client=client)
     assert vol.listdir("/") == []
+
+
+def test_volume_from_name_double_resolve(client, servicer):
+    name = "my-vol"
+    modal.Volume.objects.create(name, client=client)
+    vol = modal.Volume.from_name(name)
+
+    @synchronizer.wrap
+    async def wrapped_test(vol, client):
+        resolver = Resolver()
+        async with TaskContext() as tc:
+            load_context = LoadContext(client=client, task_context=tc)
+            await resolver.load(vol, load_context)
+        return vol.object_id
+
+    with servicer.intercept() as ctx:
+        wrapped_test(vol, client)  # type: ignore
+        req = ctx.pop_request("VolumeGetOrCreate")
+        assert req.deployment_name == name
+        assert req.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
+        ctx.calls.clear()
+        wrapped_test(vol, client)  # type: ignore
+        assert len(ctx.calls) == 0
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="needs /proc")

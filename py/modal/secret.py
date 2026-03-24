@@ -412,6 +412,7 @@ class _Secret(_Object, type_prefix="st"):
             hydrate_lazily=True,
             name=name,
             load_context_overrides=LoadContext(environment_name=environment_name, client=client),
+            is_another_app=True,
         )
 
     @staticmethod

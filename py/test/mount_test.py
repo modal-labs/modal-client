@@ -8,8 +8,12 @@ from pathlib import Path, PurePosixPath
 
 import modal
 from modal import App, FilePatternMatcher
+from modal._load_context import LoadContext
+from modal._resolver import Resolver
+from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.mount import Mount, client_mount_name, module_mount_condition, module_mount_ignore_condition
+from modal_proto import api_pb2
 
 
 @pytest.mark.asyncio
@@ -69,6 +73,32 @@ def test_create_mount(servicer, client):
     assert sha256_hex in servicer.files_sha2data
     assert servicer.files_sha2data[sha256_hex]["data"] == open(__file__, "rb").read()
     assert repr(Path(local_dir)) in repr(m)
+
+
+def test_mount_from_name_double_resolve(servicer, client, tmp_path):
+    name = "my-mount"
+    local_file_path = tmp_path / "data.txt"
+    local_file_path.write_text("hello")
+    Mount._from_local_file(local_file_path, remote_path="/data.txt")._deploy(name, client=client)
+    mount = Mount.from_name(name)
+
+    @synchronizer.wrap
+    async def wrapped_test(mount, client):
+        resolver = Resolver()
+        async with TaskContext() as tc:
+            load_context = LoadContext(client=client, task_context=tc)
+            await resolver.load(mount, load_context)
+        return mount.object_id
+
+    with servicer.intercept() as ctx:
+        wrapped_test(mount, client)  # type: ignore
+        req = ctx.pop_request("MountGetOrCreate")
+        assert req.deployment_name == name
+        assert req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE
+        assert req.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
+        ctx.calls.clear()
+        wrapped_test(mount, client)  # type: ignore
+        assert len(ctx.calls) == 0
 
 
 def test_create_mount_file_errors(servicer, tmp_path, client):
