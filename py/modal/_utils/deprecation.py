@@ -89,55 +89,34 @@ def renamed_parameter(
     return decorator
 
 
-def warn_on_renamed_autoscaler_settings(func: Callable[P, R]) -> Callable[P, R]:
-    name_map = {
-        "keep_warm": "min_containers",
-        "concurrency_limit": "max_containers",
-        "_experimental_buffer_containers": "buffer_containers",
-        "container_idle_timeout": "scaledown_window",
-    }
+def handle_deprecated_parameters(func: Callable[P, R]) -> Callable[P, R]:
+    """Meta-decorator for modal.Function decorators that errors when deprecated parameters are passed.
+
+    We use this for a select parameters that might still be suggested by LLMs.
+    """
 
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        mut_kwargs: dict[str, Any] = locals()["kwargs"]  # Avoid referencing kwargs directly due to bug in sigtools
+        _kwargs: dict[str, Any] = locals()["kwargs"]  # Avoid referencing kwargs directly due to bug in sigtools
 
-        substitutions = []
-        old_params_used = name_map.keys() & mut_kwargs.keys()
-        for old_param, new_param in name_map.items():
-            if old_param in old_params_used:
-                new_param = name_map[old_param]
-                mut_kwargs[new_param] = mut_kwargs.pop(old_param)
-                substitutions.append(f"- {old_param} -> {new_param}")
+        # Basic autoscaler parameters
+        autoscaler_settings = {
+            "keep_warm": "min_containers",
+            "concurrency_limit": "max_containers",
+            "container_idle_timeout": "scaledown_window",
+        }
 
-        if substitutions:
-            substitution_string = "\n".join(substitutions)
-            message = (
-                "We have renamed several parameters related to autoscaling."
-                " Please update your code to use the following new names:"
-                f"\n\n{substitution_string}"
-                "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more details."
+        for old_name, new_name in autoscaler_settings.items():
+            if old_name in _kwargs:
+                deprecation_error((2025, 2, 24), f"The '{old_name}' parameter has been renamed to '{new_name}'.")
+
+        # Input concurrency
+        if "allow_concurrent_inputs" in _kwargs:
+            deprecation_error(
+                (2025, 4, 9),
+                "The 'allow_concurrent_inputs' parameter is deprecated. Use the '@modal.concurrent' decorator instead.",
             )
-            deprecation_warning((2025, 2, 24), message, show_source=True)
 
         return func(*args, **kwargs)
 
     return wrapper
-
-
-def warn_if_passing_namespace(
-    namespace: Any,
-    resource_name: str,
-) -> None:
-    """Issue deprecation warning for namespace parameter if non-None value is passed.
-
-    Args:
-        namespace: The namespace parameter value (may be None or actual value)
-        resource_name: Name of the resource type for the warning message
-    """
-    if namespace is not None:
-        deprecation_warning(
-            (2025, 6, 30),
-            f"The `namespace` parameter for `{resource_name}` is deprecated and will be"
-            " removed in a future release. It is no longer needed, so can be removed"
-            " from your code.",
-        )

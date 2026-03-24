@@ -2,7 +2,6 @@
 import asyncio
 import dataclasses
 import inspect
-import textwrap
 import time
 import typing
 import warnings
@@ -44,7 +43,6 @@ from ._utils.async_utils import (
     warn_if_generator_is_not_consumed,
 )
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
-from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -54,6 +52,7 @@ from ._utils.function_utils import (
     _stream_function_call_data,
     get_function_type,
     is_async,
+    parse_gpu_config,
 )
 from ._utils.grpc_utils import Retry, RetryWarningMessage
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes, validate_volumes_by_object_id
@@ -67,7 +66,6 @@ from .exception import (
     NotFoundError,
     OutputExpiredError,
 )
-from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
@@ -587,7 +585,7 @@ class _FunctionSpec:
     network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem]
     volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
     # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
-    gpus: Union[GPU_T, list[GPU_T]]
+    gpus: Optional[str | list[str]]
     cloud: Optional[str]
     cpu: Optional[Union[float, tuple[float, float]]]
     memory: Optional[Union[int, tuple[int, int]]]
@@ -666,7 +664,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         secrets: Optional[Collection[_Secret]] = None,
         schedule: Optional[Schedule] = None,
         is_generator: bool = False,
-        gpu: Union[GPU_T, list[GPU_T]] = None,
+        gpu: Optional[str | list[str]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
@@ -703,7 +701,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         include_source: bool = True,
         experimental_options: Optional[dict[str, str]] = None,
         _experimental_proxy_ip: Optional[str] = None,
-        _experimental_custom_scaling_factor: Optional[float] = None,
         restrict_output: bool = False,
         http_config: Optional[api_pb2.HTTPConfig] = None,
     ) -> "_Function":
@@ -798,11 +795,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         f"`{field}` ({value}) must be a multiple of `cluster_size` ({cluster_size}) "
                         f"for clustered Functions"
                     )
-
-        if _experimental_custom_scaling_factor is not None and (
-            _experimental_custom_scaling_factor < 0 or _experimental_custom_scaling_factor > 1
-        ):
-            raise InvalidError("`_experimental_custom_scaling_factor` must be between 0.0 and 1.0 inclusive.")
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
@@ -1050,7 +1042,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,
                     _experimental_proxy_ip=_experimental_proxy_ip,
-                    _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
                     # --- These are deprecated in favor of autoscaler_settings
                     warm_pool_size=min_containers or 0,
                     concurrency_limit=max_containers or 0,
@@ -1122,8 +1113,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_data.ranked_functions.extend(ranked_functions)
                     function_definition = None  # function_definition is not used in this case
                 else:
-                    # TODO(irfansharif): Assert on this specific type once we get rid of python 3.9.
-                    # assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
                     function_definition.resources.CopyFrom(
                         convert_fn_config_to_resources_config(
                             cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk, rdma=rdma
@@ -1170,7 +1159,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._webhook_config = webhook_config  # only set locally
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
-        gpus: list[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
+        gpus: list[str] = gpu if isinstance(gpu, list) else [gpu] if gpu else []
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
             gpu_config=repr([parse_gpu_config(_gpu) for _gpu in gpus]),
@@ -1358,43 +1347,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # One idea would be for FunctionUpdateScheduleParams to return the current (coalesced) settings
         # and then we could return them here (would need some ad hoc dataclass, which I don't love)
 
-    @live_method
-    async def keep_warm(self, warm_pool_size: int) -> None:
-        """mdmd:hidden
-        Set the warm pool size for the Function.
-
-        DEPRECATED: Please adapt your code to use the more general `update_autoscaler` method instead:
-
-        ```python notest
-        f = modal.Function.from_name("my-app", "function")
-
-        # Old pattern (deprecated)
-        f.keep_warm(2)
-
-        # New pattern
-        f.update_autoscaler(min_containers=2)
-        ```
-        """
-        if self._is_method:
-            raise InvalidError(
-                textwrap.dedent(
-                    """
-                The `.keep_warm()` method can not be used on Modal class *methods*.
-
-                Call `.keep_warm()` on the class *instance* instead. All methods of a class are run by the same
-                container pool, and this method applies to the size of that container pool.
-            """
-                )
-            )
-
-        deprecation_warning(
-            (2025, 5, 5),
-            "The .keep_warm() method has been deprecated in favor of the more general "
-            ".update_autoscaler(min_containers=...) method.",
-            show_source=True,
-        )
-        await self.update_autoscaler(min_containers=warm_pool_size)
-
     @classmethod
     def _from_name(
         cls,
@@ -1444,7 +1396,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         app_name: str,
         name: str,
         *,
-        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         client: Optional[_Client] = None,
     ) -> "_Function":
@@ -1459,17 +1410,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ```
         """
         if "." in name:
-            class_name, method_name = name.split(".", 1)
-            deprecation_warning(
-                (2025, 2, 11),
-                "Looking up class methods using Function.from_name will be deprecated"
-                " in a future version of Modal.\nUse modal.Cls.from_name instead, e.g.\n\n"
-                f'{class_name} = modal.Cls.from_name("{app_name}", "{class_name}")\n'
-                f"instance = {class_name}(...)\n"
-                f"instance.{method_name}.remote(...)\n",
+            raise InvalidError(
+                f"Invalid Function name: {name!r}. "
+                "If you are trying to look up a class method, use `modal.Cls.from_name` instead."
             )
 
-        warn_if_passing_namespace(namespace, "modal.Function.from_name")
         return cls._from_name(
             app_name, name, load_context_overrides=LoadContext(environment_name=environment_name, client=client)
         )
@@ -1586,21 +1531,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"Invoke this function via its web url '{self._web_url}' "
                 + f"or call it locally: {self._function_name}.local()"
             )
-
-    # TODO (live_method on properties is not great, since it could be blocking the event loop from async contexts)
-    @property
-    @live_method
-    async def web_url(self) -> Optional[str]:
-        """mdmd:hidden
-        Deprecated. Use the `Function.get_web_url()` method instead.
-
-        URL of a Function running as a web endpoint.
-        """
-        deprecation_msg = """The Function.web_url property will be removed in a future version of Modal.
-Use the `Function.get_web_url()` method instead.
-"""
-        deprecation_warning((2025, 5, 6), deprecation_msg, pending=True)
-        return self._web_url
 
     @live_method
     async def get_web_url(self) -> Optional[str]:
@@ -2110,13 +2040,3 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         except Exception as exc:
             # TODO: kill all running function calls
             raise exc
-
-
-async def _gather(*function_calls: _FunctionCall[T]) -> typing.Sequence[T]:
-    """mdmd:hidden
-    Deprecated: Please use `modal.FunctionCall.gather()` instead."""
-    deprecation_warning(
-        (2025, 2, 24),
-        "`modal.functions.gather()` is deprecated; please use `modal.FunctionCall.gather()` instead.",
-    )
-    return await _FunctionCall.gather(*function_calls)

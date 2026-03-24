@@ -5,7 +5,7 @@ import time
 
 from modal import Dict
 from modal._serialization import serialize
-from modal.exception import AlreadyExistsError, DeprecationError, DeserializationError, InvalidError, NotFoundError
+from modal.exception import AlreadyExistsError, DeserializationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 
@@ -130,25 +130,6 @@ def test_dict_put_skip_if_exists(client):
         assert not d.put("foo", 2, skip_if_exists=True)
         items = list(d.items())
         assert items == [("foo", 1)]
-
-
-def test_dict_namespace_deprecated(servicer, client):
-    # Test from_name with namespace parameter warns
-    with pytest.warns(
-        DeprecationError,
-        match="The `namespace` parameter for `modal.Dict.from_name` is deprecated",
-    ):
-        Dict.from_name("test-dict", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
-
-    # Test that from_name without namespace parameter doesn't warn about namespace
-    import warnings
-
-    with warnings.catch_warnings(record=True) as record:
-        warnings.simplefilter("always")
-        Dict.from_name("test-dict")
-    # Filter out any unrelated warnings
-    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
-    assert len(namespace_warnings) == 0
 
 
 def test_dict_list(servicer, client):

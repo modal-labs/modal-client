@@ -17,7 +17,7 @@ from modal_proto import api_pb2
 
 from ._functions import _Function
 from ._utils.async_utils import synchronizer
-from ._utils.deprecation import deprecation_warning
+from ._utils.deprecation import deprecation_error
 from ._utils.function_utils import callable_has_non_self_params
 from .config import config
 from .exception import InvalidError
@@ -310,7 +310,7 @@ def _method(
     def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
         flags = _PartialFunctionFlags.CALLABLE_INTERFACE
 
-        nonlocal is_generator  # TODO(michael): we are likely to deprecate the explicit is_generator param
+        nonlocal is_generator
         if is_generator is None:
             callable = obj.raw_f if isinstance(obj, _PartialFunction) else obj
             is_generator = inspect.isgeneratorfunction(callable) or inspect.isasyncgenfunction(callable)
@@ -403,71 +403,15 @@ def _fastapi_endpoint(
 
 def _web_endpoint(
     _warn_parentheses_missing=None,  # mdmd:line-hidden
-    *,
-    method: str = "GET",  # REST method for the created endpoint.
-    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-    docs: bool = False,  # Whether to enable interactive documentation for this endpoint at /docs.
-    custom_domains: Optional[
-        Iterable[str]
-    ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
-    requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
-) -> Callable[
-    [Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]]],
-    _PartialFunction[P, ReturnType, ReturnType],
-]:
-    """Register a basic web endpoint with this application.
-
+    *args,
+    **kwargs,
+) -> None:
+    """mdmd:hidden
     DEPRECATED: This decorator has been renamed to `@modal.fastapi_endpoint`.
-
-    This is the simple way to create a web endpoint on Modal. The function
-    behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
-    return a response object to the caller.
-
-    Endpoints created with `@modal.web_endpoint` are meant to be simple, single
-    request handlers and automatically have
-    [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
-    For more flexibility, use `@modal.asgi_app`.
-
-    To learn how to use Modal with popular web frameworks, see the
-    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
     """
-    if isinstance(_warn_parentheses_missing, str):
-        # Probably passing the method string as a positional argument.
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@modal.web_endpoint(method="GET")`.')
-    elif _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.web_endpoint()`."
-        )
-
-    deprecation_warning(
+    deprecation_error(
         (2025, 3, 5), "The `@modal.web_endpoint` decorator has been renamed to `@modal.fastapi_endpoint`."
     )
-
-    webhook_config = api_pb2.WebhookConfig(
-        type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-        method=method,
-        web_endpoint_docs=docs,
-        requested_suffix=label or "",
-        ephemeral_suffix=config.get("dev_suffix"),
-        async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
-        custom_domains=_parse_custom_domains(custom_domains),
-        requires_proxy_auth=requires_proxy_auth,
-    )
-
-    flags = _PartialFunctionFlags.WEB_INTERFACE
-    params = _PartialFunctionParams(webhook_config=webhook_config)
-
-    def wrapper(
-        obj: Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]],
-    ) -> _PartialFunction[P, ReturnType, ReturnType]:
-        if isinstance(obj, _PartialFunction):
-            pf = obj.stack(flags, params)
-        else:
-            pf = _PartialFunction(obj, flags, params)
-        pf.validate_obj_compatibility("web_endpoint")
-        return pf
-
-    return wrapper
 
 
 def _asgi_app(

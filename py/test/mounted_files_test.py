@@ -39,7 +39,7 @@ def serialized_function_no_automount(servicer, credentials, supports_dir, server
 
 
 def test_mounted_files_package(supports_dir, servicer, server_url_env, token_env):
-    p = subprocess.run([sys.executable, "-m", "modal", "run", "pkg_a.package"], cwd=supports_dir)
+    p = subprocess.run([sys.executable, "-m", "modal", "run", "-m", "pkg_a.package"], cwd=supports_dir)
     assert p.returncode == 0
 
     files = set(servicer.files_name2sha.keys())

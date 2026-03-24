@@ -17,7 +17,7 @@ from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.blob_utils import BLOCK_SIZE
-from modal.exception import AlreadyExistsError, DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
@@ -669,25 +669,6 @@ def unset_main_thread_event_loop():
 def test_lock_is_py39_safe(client):
     vol = modal.Volume.from_name("my_vol", create_if_missing=True, client=client)
     vol.reload()
-
-
-def test_volume_namespace_deprecated(servicer, client):
-    # Test from_name with namespace parameter warns
-    with pytest.warns(
-        DeprecationError,
-        match="The `namespace` parameter for `modal.Volume.from_name` is deprecated",
-    ):
-        modal.Volume.from_name("test-volume", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
-
-    # Test that from_name without namespace parameter doesn't warn about namespace
-    import warnings
-
-    with warnings.catch_warnings(record=True) as record:
-        warnings.simplefilter("always")
-        modal.Volume.from_name("test-volume")
-    # Filter out any unrelated warnings
-    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
-    assert len(namespace_warnings) == 0
 
 
 def test_remove_file_not_found(client):

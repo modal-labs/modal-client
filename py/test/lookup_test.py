@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import App, Function, Volume, fastapi_endpoint, web_endpoint
-from modal.exception import DeprecationError, ExecutionError, NotFoundError, ServerWarning
+from modal import App, Function, Volume, fastapi_endpoint
+from modal.exception import ExecutionError, NotFoundError, ServerWarning
 from modal.runner import deploy_app
 from modal_proto import api_pb2
 
@@ -49,16 +49,6 @@ def test_lookup_function(servicer, client):
 def test_fastapi_endpoint_lookup(servicer, client):
     app = App(include_source=False)
     app.function()(fastapi_endpoint(method="POST")(square))
-    deploy_app(app, "my-webhook", client=client)
-
-    f = Function.from_name("my-webhook", "square").hydrate(client)
-    assert f.get_web_url()
-
-
-def test_web_endpoint_legacy_lookup(servicer, client):
-    app = App()
-    with pytest.warns(DeprecationError, match="web_endpoint"):
-        app.function()(web_endpoint(method="POST")(square))
     deploy_app(app, "my-webhook", client=client)
 
     f = Function.from_name("my-webhook", "square").hydrate(client)

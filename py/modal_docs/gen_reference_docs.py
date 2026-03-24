@@ -79,7 +79,6 @@ def run(output_dir: str = None):
         ("modal.billing", "modal.billing"),
         ("modal.call_graph", "modal.call_graph"),
         ("modal.container_process", "modal.container_process"),
-        ("modal.gpu", "modal.gpu"),
         ("modal.io_streams", "modal.io_streams"),
         ("modal.file_io", "modal.file_io"),
     ]

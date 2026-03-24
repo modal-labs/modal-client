@@ -21,7 +21,6 @@ from typing import Optional, Union, cast
 import click
 from rich.markdown import Markdown
 
-from modal._utils.deprecation import deprecation_warning
 from modal.app import App, LocalEntrypoint
 from modal.cls import Cls
 from modal.exception import InvalidError, _CliUserExecutionError
@@ -65,11 +64,9 @@ def import_file_or_module(import_ref: ImportRef, base_cmd: str = ""):
 
     if not import_ref.file_or_module.endswith(".py") or import_ref.use_module_mode:
         if not import_ref.use_module_mode:
-            deprecation_warning(
-                (2025, 2, 6),
-                f"Using Python module paths will require using the -m flag in a future version of Modal.\n"
+            raise InvalidError(
+                "Python module paths must be specified with the -m flag. "
                 f"Use `{base_cmd} -m {import_ref.file_or_module}` instead.",
-                show_source=False,
             )
         try:
             module = importlib.import_module(import_ref.file_or_module)

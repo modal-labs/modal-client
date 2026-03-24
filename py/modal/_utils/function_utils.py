@@ -602,3 +602,20 @@ async def _create_input(
             ),
             idx=idx,
         )
+
+
+def parse_gpu_config(value: Optional[str]) -> api_pb2.GPUConfig:
+    if value is None:
+        return api_pb2.GPUConfig()
+    elif isinstance(value, str):
+        count = 1
+        if ":" in value:
+            value, count_str = value.split(":", 1)
+            try:
+                count = int(count_str)
+            except ValueError:
+                raise InvalidError(f"Invalid GPU count: {count_str}. Value must be an integer.")
+        gpu_type = value.upper()
+        return api_pb2.GPUConfig(gpu_type=gpu_type, count=count)
+    else:
+        raise InvalidError(f"Invalid GPU config: {value!r}. Value must be a string or `None`")

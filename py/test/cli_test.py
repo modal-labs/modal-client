@@ -20,7 +20,7 @@ import toml
 from modal import App, Sandbox
 from modal._serialization import PICKLE_PROTOCOL, serialize
 from modal._utils.grpc_testing import InterceptionContext
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 from . import helpers
@@ -224,20 +224,16 @@ def test_run(servicer, set_env_client, supports_dir, monkeypatch, run_command, e
         )
 
 
-def test_run_warns_without_module_flag(
+def test_run_errors_without_module_flag(
     servicer,
     set_env_client,
     supports_dir,
-    recwarn,
     monkeypatch,
 ):
     monkeypatch.chdir(supports_dir)
-    run_cli_command(["run", "-m", f"{app_module}::foo"])
-    deprecation_warnings = [w.message for w in recwarn if issubclass(w.category, DeprecationError)]
-    assert not deprecation_warnings
 
-    with pytest.warns(match=" -m "):
-        run_cli_command(["run", f"{app_module}::foo"])
+    res = run_cli_command(["run", f"{app_module}::foo"], expected_exit_code=1)
+    assert f"-m {app_module}" in str(res.exception)
 
 
 def test_run_async(servicer, set_env_client, test_dir):
@@ -347,23 +343,20 @@ def test_run_write_result(servicer, set_env_client, test_dir):
 
 
 @pytest.mark.parametrize(
-    ["args", "success", "expected_warning"],
+    ["args", "success"],
     [
-        (["--name=deployment_name", str(app_file)], True, ""),
-        (["--name=deployment_name", app_module], True, f"modal deploy -m {app_module}"),
-        (["--name=deployment_name", "-m", app_module], True, ""),
+        (["--name=deployment_name", str(app_file)], True),
+        (["--name=deployment_name", app_module], False),
+        (["--name=deployment_name", "-m", app_module], True),
     ],
 )
-def test_deploy(servicer, set_env_client, supports_dir, monkeypatch, args, success, expected_warning, recwarn):
+def test_deploy(servicer, set_env_client, supports_dir, monkeypatch, args, success):
     monkeypatch.chdir(supports_dir)
     run_cli_command(["deploy"] + args, expected_exit_code=0 if success else 1)
     if success:
         assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
     else:
         assert api_pb2.APP_STATE_DEPLOYED not in servicer.app_state_history["ap-1"]
-    if expected_warning:
-        assert len(recwarn) == 1
-        assert expected_warning in str(recwarn[0].message)
 
 
 def test_run_custom_app(servicer, set_env_client, test_dir):

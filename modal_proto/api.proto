@@ -1215,7 +1215,7 @@ message DictGetOrCreateRequest {
   reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
-  repeated DictEntry data = 5;
+  repeated DictEntry data = 5;  // Unused after 1.4.0
 }
 
 message DictGetOrCreateResponse {

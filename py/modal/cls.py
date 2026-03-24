@@ -27,14 +27,12 @@ from ._type_manager import parameter_serde_registry
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.deprecation import (
     deprecation_warning,
-    warn_if_passing_namespace,
-    warn_on_renamed_autoscaler_settings,
+    handle_deprecated_parameters,
 )
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .exception import ExecutionError, InvalidError, NotFoundError
-from .gpu import GPU_T
 from .retries import Retries
 from .secret import _Secret
 from .volume import _Volume
@@ -310,32 +308,6 @@ class _Obj:
             scaledown_window=scaledown_window,
             buffer_containers=buffer_containers,
         )
-
-    async def keep_warm(self, warm_pool_size: int) -> None:
-        """mdmd:hidden
-        Set the warm pool size for the class containers
-
-        DEPRECATED: Please adapt your code to use the more general `update_autoscaler` method instead:
-
-        ```python notest
-        Model = modal.Cls.from_name("my-app", "Model")
-        model = Model()  # This method is called on an *instance* of the class
-
-        # Old pattern (deprecated)
-        model.keep_warm(2)
-
-        # New pattern
-        model.update_autoscaler(min_containers=2)
-        ```
-
-        """
-        deprecation_warning(
-            (2025, 5, 5),
-            "The .keep_warm() method has been deprecated in favor of the more general "
-            ".update_autoscaler(min_containers=...) method.",
-            show_source=True,
-        )
-        await self._cached_service_function().update_autoscaler(min_containers=warm_pool_size)
 
     def _cached_user_cls_instance(self):
         """Get or construct the local object
@@ -627,7 +599,6 @@ More information on class parameterization can be found here: https://modal.com/
         app_name: str,
         name: str,
         *,
-        namespace: Any = None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         client: Optional["_Client"] = None,
     ) -> "_Cls":
@@ -641,7 +612,6 @@ More information on class parameterization can be found here: https://modal.com/
         Model = modal.Cls.from_name("other-app", "Model")
         ```
         """
-        warn_if_passing_namespace(namespace, "modal.Cls.from_name")
 
         async def _load_remote(
             self: _Cls, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
@@ -687,13 +657,13 @@ More information on class parameterization can be found here: https://modal.com/
         cls._name = name
         return cls
 
-    @warn_on_renamed_autoscaler_settings
+    @handle_deprecated_parameters
     def with_options(
         self: "_Cls",
         *,
         cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
-        gpu: GPU_T = None,
+        gpu: Optional[str] = None,
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
@@ -704,10 +674,6 @@ More information on class parameterization can be found here: https://modal.com/
         timeout: Optional[int] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        # The following parameters are deprecated
-        concurrency_limit: Optional[int] = None,  # Now called `max_containers`
-        container_idle_timeout: Optional[int] = None,  # Now called `scaledown_window`
-        allow_concurrent_inputs: Optional[int] = None,  # See `.with_concurrency`
     ) -> "_Cls":
         """Override the static Function configuration at runtime.
 
@@ -742,13 +708,6 @@ More information on class parameterization can be found here: https://modal.com/
         else:
             resources = None
 
-        if allow_concurrent_inputs is not None:
-            deprecation_warning(
-                (2025, 5, 9),
-                "The `allow_concurrent_inputs` argument is deprecated;"
-                " please use the `.with_concurrency` method instead.",
-            )
-
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
@@ -775,10 +734,6 @@ More information on class parameterization can be found here: https://modal.com/
             timeout_secs=timeout,
             scheduler_placement=scheduler_placement,
             cloud=cloud,
-            # Note: set both for backwards / forwards compatibility
-            # But going forward `.with_concurrency` is the preferred method with distinct parameterization
-            max_concurrent_inputs=allow_concurrent_inputs,
-            target_concurrent_inputs=allow_concurrent_inputs,
         )
 
         combined_options = self._options.merge_options(new_options)

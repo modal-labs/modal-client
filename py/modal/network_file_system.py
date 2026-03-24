@@ -22,7 +22,6 @@ from ._object import (
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
-from ._utils.deprecation import warn_if_passing_namespace
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -94,7 +93,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     def from_name(
         name: str,
         *,
-        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
         client: Optional[_Client] = None,
@@ -114,7 +112,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ```
         """
         check_object_name(name, "NetworkFileSystem")
-        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.from_name")
 
         async def _load(
             self: _NetworkFileSystem, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
@@ -184,13 +181,11 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     @staticmethod
     async def create_deployed(
         deployment_name: str,
-        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "NetworkFileSystem")
-        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.create_deployed")
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(

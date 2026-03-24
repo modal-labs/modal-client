@@ -1,8 +1,6 @@
 # Copyright Modal Labs 2025
-import os
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import Optional, Union
 
 from modal_proto import api_pb2
 
@@ -15,9 +13,14 @@ from .._utils.async_utils import synchronize_api, synchronizer
 from ..app import _App
 from ..client import _Client
 from ..cls import _Cls
-from ..exception import InvalidError
-from ..image import DockerfileSpec, ImageBuilderVersion, _Image, _ImageRegistryConfig
-from ..secret import _Secret
+from ..exception import InvalidError as InvalidError
+from ..image import (
+    DockerfileSpec as DockerfileSpec,
+    ImageBuilderVersion as ImageBuilderVersion,
+    _Image as _Image,
+    _ImageRegistryConfig as _ImageRegistryConfig,
+)
+from ..secret import _Secret as _Secret
 from .flash import (  # noqa: F401
     flash_forward,
     flash_get_containers,
@@ -145,87 +148,6 @@ async def get_app_objects(
         app_objects[func_name] = _Function.from_name(app_name, func_name, environment_name=environment_name)
 
     return app_objects
-
-
-@synchronizer.create_blocking
-async def raw_dockerfile_image(
-    path: Union[str, Path],
-    force_build: bool = False,
-) -> _Image:
-    """
-    Build a Modal Image from a local Dockerfile recipe without any changes.
-
-    Unlike for `modal.Image.from_dockerfile`, the provided recipe will not be embellished with
-    steps to install dependencies for the Modal client package. As a consequence, the resulting
-    Image cannot be used with a modal Function unless those dependencies are already included
-    as part of the base Dockerfile recipe or are added in a subsequent layer. The Image _can_ be
-    directly used with a modal Sandbox, which does not need the Modal client.
-
-    We expect to support this experimental function until the `2025.04` Modal Image Builder is
-    stable, at which point Modal Image recipes will no longer install the client dependencies
-    by default. At that point, users can upgrade their Image Builder Version and migrate to
-    `modal.Image.from_dockerfile` for usecases supported by this function.
-
-    """
-
-    def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-        with open(os.path.expanduser(path)) as f:
-            commands = f.read().split("\n")
-        return DockerfileSpec(commands=commands, context_files={})
-
-    return _Image._from_args(
-        dockerfile_function=build_dockerfile,
-        force_build=force_build,
-    )
-
-
-@synchronizer.create_blocking
-async def raw_registry_image(
-    tag: str,
-    registry_secret: Optional[_Secret] = None,
-    credential_type: Literal["static", "aws", "gcp", None] = None,
-    force_build: bool = False,
-) -> _Image:
-    """
-    Build a Modal Image from a public or private image registry without any changes.
-
-    Unlike for `modal.Image.from_registry`, the provided recipe will not be embellished with
-    steps to install dependencies for the Modal client package. As a consequence, the resulting
-    Image cannot be used with a modal Function unless those dependencies are already included
-    as part of the registry Image or are added in a subsequent layer. The Image _can_ be
-    directly used with a modal Sandbox, which does not need the Modal client.
-
-    We expect to support this experimental function until the `2025.04` Modal Image Builder is
-    stable, at which point Modal Image recipes will no longer install the client dependencies
-    by default. At that point, users can upgrade their Image Builder Version and migrate to
-    `modal.Image.from_registry` for usecases supported by this function.
-
-    """
-
-    def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-        commands = [f"FROM {tag}"]
-        return DockerfileSpec(commands=commands, context_files={})
-
-    if registry_secret:
-        if credential_type is None:
-            raise InvalidError("credential_type must be provided when using a registry_secret")
-        elif credential_type == "static":
-            auth_type = api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS
-        elif credential_type == "aws":
-            auth_type = api_pb2.REGISTRY_AUTH_TYPE_AWS
-        elif credential_type == "gcp":
-            auth_type = api_pb2.REGISTRY_AUTH_TYPE_GCP
-        else:
-            raise InvalidError(f"Invalid credential_type: {credential_type!r}")
-        registry_config = _ImageRegistryConfig(auth_type, registry_secret)
-    else:
-        registry_config = None
-
-    return _Image._from_args(
-        dockerfile_function=build_dockerfile,
-        image_registry_config=registry_config,
-        force_build=force_build,
-    )
 
 
 @synchronizer.create_blocking
