@@ -37,6 +37,7 @@ pytest_test(
         "@pip//freezegun",
         "@pip//grpclib",
         "@pip//httpx",
+        "@pip//ipykernel",
         "@pip//jupytext",
         "@pip//nbclient",
         "@pip//nbformat",

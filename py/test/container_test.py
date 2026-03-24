@@ -1594,7 +1594,7 @@ def test_flash_cls_enter_lifecycle(servicer, tmp_path):
 
 
 @skip_github_non_linux
-@skip_bazel("FlashContainerRegister RPC consistently not called before deregister in Bazel remote sandbox")
+@skip_bazel("container entrypoint subprocess hangs in Bazel sandbox")
 @pytest.mark.usefixtures("server_url_env")
 def test_flash_container_entry_lifecycle(servicer, tmp_path):
     """
@@ -2441,7 +2441,7 @@ def test_custom_name(servicer, deployed_support_function_definitions):
 
 
 @skip_github_non_linux
-@skip_bazel("server container subprocess times out in Bazel sandbox")
+@skip_bazel("container entrypoint subprocess hangs in Bazel sandbox")
 @pytest.mark.usefixtures("server_url_env")
 def test_server_container_entry_lifecycle(servicer, tmp_path):
     """
@@ -2495,7 +2495,7 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
 
 
 @skip_github_non_linux
-@skip_bazel("server container subprocess times out in Bazel sandbox")
+@skip_bazel("container entrypoint subprocess hangs in Bazel sandbox")
 @pytest.mark.timeout(10)
 @pytest.mark.usefixtures("server_url_env")
 def test_server_isolated_deploy_isolated_container(servicer, credentials, tmp_path):
@@ -2518,7 +2518,7 @@ def test_server_isolated_deploy_isolated_container(servicer, credentials, tmp_pa
 
 
 @skip_github_non_linux
-@skip_bazel("server container subprocess times out in Bazel sandbox")
+@skip_bazel("container entrypoint subprocess hangs in Bazel sandbox")
 @pytest.mark.timeout(10)
 @pytest.mark.usefixtures("server_url_env")
 def test_serialized_server_isolated_deploy_isolated_container(servicer, credentials, tmp_path):
@@ -2541,7 +2541,7 @@ def test_serialized_server_isolated_deploy_isolated_container(servicer, credenti
 
 
 @skip_github_non_linux
-@skip_bazel("server container subprocess times out in Bazel sandbox")
+@skip_bazel("container entrypoint subprocess hangs in Bazel sandbox")
 @pytest.mark.usefixtures("server_url_env")
 def test_server_lifecycle_signals_correctly_registered(servicer, tmp_path):
     """
