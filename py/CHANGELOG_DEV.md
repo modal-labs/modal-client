@@ -2,15 +2,3 @@
 
 **When releasing, move these changelog items to `CHANGELOG.md`.**
 
-- The `modal app logs` and `modal container logs` CLIs will no longer follow logs by default. It's now necessary to opt-into following by passing `--follow` or `-f`.
-- The logging CLIs also have many new features.
-- Added a `--strategy recreate` CLI option to `modal deploy` and `app.deploy(strategy="recreate")` to terminate containers that are older than the latest deployment. With the `recreate` strategy, you may experience higher latency as new containers start up.
-- `modal container list` now accepts a `--app-id` to return containers for a specific app.
-- `modal serve` will restart running containers when your code gets hot-reloaded.
-- `Sandbox.exec` no longer hangs when running on a sandbox that was immediately terminated after creation.
-- Added new SandboxFilesystem namespace with functionality for reading data from and writing data to files in the Sandbox's filesystem.
-- Exceptions returned by `modal.Function.map()` are no longer wrapped in a `UserCodeException` type, and we're deprecating the transitional `wrap_returned_exceptions=` parameter.
-- `Sandbox.create` now accepts an `include_oidc_identity_token` parameter. When set to `True`, a `MODAL_IDENTITY_TOKEN` environment variable is injected into the sandbox, enabling OIDC-based authentication (e.g., for AWS federation). See the [OIDC integration guide](https://modal.com/docs/guide/oidc-integration) for more details.
-- An exception is now raised if *the same* Volume or CloudBucketMount is mounted at multiple paths in the same container.
-- The `modal.enable_output()` context manager no longer yields a value; this had briefly leaked an internal type.
-- Added `modal.Image.from_scratch()`, which creates an empty Image equivalent to `FROM scratch` in Docker. This is primarily useful as a lightweight filesystem to mount into a Sandbox via `Sandbox.mount_image`.

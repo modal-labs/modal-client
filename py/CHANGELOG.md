@@ -4,6 +4,50 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.4.0 (2026-03-25)
+
+We've made significant CLI enhancements so that Modal logs can be more accessible to coding agents:
+
+- The `modal app logs` and `modal container logs` commands now have the ability to fetch historical logs using counting (e.g. `--tail 1000`) or time-based (e.g., `--since 4h`, `--until 2026-03-15`, etc.) configuration. Note that historical log access is subject to plan-level retention limits.
+- The `modal container logs` command also accepts `--all` to fetch the complete set of logs for that Container or Sandbox.
+- Both CLI commands now accept a `--search` filter, and they can also filter by `--source` (`stdout`/`stderr`/`system`).
+- The `modal app logs` command additionally accepts `--function`, `--function-call`, and `--container` filters.
+- The `modal app logs` command can prefix each line with the ID of the Function, FunctionCall, or Container where it originated (e.g. `--show-function-id`).
+- Note that the default behavior of these commands has changed. Previously, they would follow (i.e., stream) logs by default, but you now must pass `--follow` to get this behavior. The new default will always show the most recent 100 log entries.
+
+We're releasing a new [Sandbox filesystem API](https://modal.com/docs/guide/sandbox-files) (currently in Beta) with significantly improved reliability and ergonomics:
+
+- Use `sb.filesystem.copy_from_local` / `sb.filesystem.copy_to_local` to transfer file contents between your local filesystem and the Sandbox filesystem.
+- Use `sb.filesystem.write_text` / `sb.filesystem.read_text` or `sb.filesystem.write_bytes` / `sb.filesystem.read_bytes` to transfer file contents between local memory and the Sandbox filesystem.
+- These new APIs replace the `modal.Sandbox.open` method and the `modal.file_io.FileIO` type that it returns; the old APIs are now deprecated.
+
+We're introducing the concept of "deployment strategies" to give you more flexibility over what happens when redeploying your App:
+
+- By passing `modal deploy --strategy recreate` (or `app.deploy(strategy="recreate")` in the SDK), you can immediately terminate any containers that are running when the deployment completes. This is most useful for development workflows, as it guarantees that any subsequent input will be handled by containers running the new version of the App. This trades off some downtime for certainty about when the new version will be in use.
+- The disruptive "recreate" strategy is also useful when your App runs at its `max_containers` limit, as otherwise we are unable to bring up replacement capacity.
+- The `modal serve` command now uses a "recreate" strategy during code updates.
+- The default "rolling" strategy is unchanged. This strategy prioritizes uptime, but means that old containers may still continue handling inputs for some time.
+
+We've also included a number of smaller new features and improvements:
+
+- Sandboxes now accept an `include_oidc_identity_token` parameter in `modal.Sandbox.create`. When set to `True`, a `MODAL_IDENTITY_TOKEN` environment variable will be injected into the Sandbox, enabling OIDC-based authentication (e.g., for AWS federation). See the [OIDC integration guide](https://modal.com/docs/guide/oidc-integration) for more details.
+- The new `modal.Image.from_scratch()` constructor creates an empty Image, equivalent to `FROM scratch` in Docker. This is primarily useful as a lightweight filesystem to mount into a Sandbox via `modal.Sandbox.mount_image`.
+- The `modal container list` command now accepts an `--app-id` filter to return containers for a specific App.
+- We've addressed an issue where `modal.Sandbox.exec` could hang if the Sandbox had terminated immediately after creation.
+- An exception is now raised if the *same* Volume or CloudBucketMount is mounted at multiple paths in a container.
+- The client will now error faster (≈60s) if it cannot establish an initial connection the Modal servers.
+
+Finally, we are introducing a small number of breaking changes and enforcing some deprecations of pre-1.0 APIs:
+
+- Exceptions returned by `modal.Function.map()` are no longer wrapped in a `UserCodeException` type, and we're deprecating the transitional `wrap_returned_exceptions=` parameter.
+- The `modal.enable_output()` context manager no longer yields a value; this had briefly leaked an internal type.
+- We've removed unused `namespace` parameters from a number of APIs.
+- It's now required to pass `-m` on the CLI when using a module path spelling of the Function reference (e.g. `modal deploy -m project.app`)
+- We've removed backwards compatibility for the old autoscaler configuration (`keep_warm`, `concurrency_limit`, etc.).
+- It's no longer possible to look up a specific method on a Cls using `modal.Function.from_name`; use `modal.Cls.from_name` instead.
+
+## 1.3
+
 ### 1.3.5 (2026-03-03)
 
 - We've added a `modal changelog` CLI for retrieving changelog entries with a flexible query interface (e.g. `modal changelog --since=1.2`, `modal changelog --since=2025-12-01`, `modal changelog --newer`). We expect that this will be a useful way to surface information about new features to coding agents.

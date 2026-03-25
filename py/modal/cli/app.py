@@ -164,7 +164,7 @@ def logs(
     Get recent logs based on an app ID:
 
     ```
-    modal app logs ap-123456 --tail 100
+    modal app logs ap-123456
     ```
 
     Get recent logs for a currently deployed App based on its name:
@@ -177,6 +177,12 @@ def logs(
 
     ```
     modal app logs my-app -f
+    ```
+
+    Fetch the last 1000 entries:
+
+    ```
+    modal app logs my-app --tail 1000
     ```
 
     Fetch logs from the last 2 hours:
