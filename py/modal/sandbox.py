@@ -323,7 +323,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         volumes: dict[
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
-        pty: bool = False,  # Enable a PTY for the Sandbox
+        # Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr
+        # from the process) is multiplexed into stdout, and the stderr stream is effectively empty.
+        pty: bool = False,
         # List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
         encrypted_ports: Sequence[int] = [],
         # List of encrypted ports to tunnel into the sandbox, using HTTP/2.
@@ -960,7 +962,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Control line-buffered output.
         # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
         bufsize: Literal[-1, 1] = -1,
-        pty: bool = False,  # Enable a PTY for the command
+        # Enable a PTY for the command. When enabled, all output (stdout and stderr from the
+        # process) is multiplexed into stdout, and the stderr stream is effectively empty.
+        pty: bool = False,
         _pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
         pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
     ):
@@ -1434,6 +1438,8 @@ class _SandboxContainer:
         secrets: Optional[Collection[_Secret]] = None,
         text: bool = True,
         bufsize: Literal[-1, 1] = -1,
+        # Enable a PTY for the command. When enabled, all output (stdout and stderr from the
+        # process) is multiplexed into stdout, and the stderr stream is effectively empty.
         pty: bool = False,
     ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
         pty_info = self._sandbox._default_pty_info() if pty else None
