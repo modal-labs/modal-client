@@ -512,6 +512,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.resource_creation_timestamps = {}
 
         self.task_result = None
+        self.task_list_calls = 0
 
         self.nfs_files: dict[str, dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
         self.volumes: dict[str, Volume] = {}
@@ -566,6 +567,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_get_logs_initial_count = 0
         self.app_set_objects_count = 0
         self.app_publish_count = 0
+        self.app_publish_is_noop = False
 
         self.volume_counter = 0
         # Volume-id -> commit/reload count
@@ -924,22 +926,31 @@ class MockClientServicer(api_grpc.ModalClientBase):
             assert val.startswith("de-")
         # TODO(michael) add some other assertions once we make the mock server represent real RPCs more accurately
         self.app_publish_count += 1
-        self.app_objects[request.app_id] = {**request.function_ids, **request.class_ids}
-        self.app_state_history[request.app_id].append(request.app_state)
+
         if request.app_state == api_pb2.AppState.APP_STATE_DEPLOYED:
             app_key = (self.app_environments[request.app_id], request.name)
             self.deployed_apps[app_key] = request.app_id
+            if self.app_publish_is_noop:
+                deployed_at = 0.0
+            else:
+                deployed_at = datetime.datetime.now(datetime.timezone.utc).timestamp()
+
             await stream.send_message(
                 api_pb2.AppPublishResponse(
                     url="http://test.modal.com/foo/bar",
-                    deployed_at=datetime.datetime.now(datetime.timezone.utc).timestamp(),
+                    deployed_at=deployed_at,
                 )
             )
+            if self.app_publish_is_noop:
+                # Early exit for noop deployment
+                return
         else:
             await stream.send_message(
                 api_pb2.AppPublishResponse(deployed_at=datetime.datetime.now(datetime.timezone.utc).timestamp())
             )
 
+        self.app_objects[request.app_id] = {**request.function_ids, **request.class_ids}
+        self.app_state_history[request.app_id].append(request.app_state)
         if current_history := self.app_deployment_history[request.app_id]:
             current_version = current_history[-1]["version"]
         else:
@@ -2180,6 +2191,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def TaskList(self, stream):
         _request: api_pb2.TaskListRequest = await stream.recv_message()
+        self.task_list_calls += 1
         await stream.send_message(api_pb2.TaskListResponse())
 
     async def SandboxGetTaskId(self, stream):
