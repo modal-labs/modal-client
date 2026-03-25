@@ -147,6 +147,11 @@ async def get_app_logs_loop(
             # doesn't support server-side search)
             if search_text and search_text not in log.data:
                 return
+            # Search results may lack trailing newlines; ensure each
+            # match is a complete line so the LineBufferedOutput buffer
+            # doesn't merge it with the next match.
+            if search_text and not log.data.endswith("\n"):
+                log.data += "\n"
             if pty_shell_finish_event:
                 await output_mgr.put_pty_content(log)
             else:
