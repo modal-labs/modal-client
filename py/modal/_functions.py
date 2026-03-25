@@ -1562,7 +1562,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         input_queue: _SynchronizedQueue,
         order_outputs: bool,
         return_exceptions: bool,
-        wrap_returned_exceptions: bool,
     ) -> AsyncGenerator[Any, None]:
         """mdmd:hidden
 
@@ -1588,7 +1587,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     self.client,
                     order_outputs,
                     return_exceptions,
-                    wrap_returned_exceptions,
                     count_update_callback,
                 )
             ) as stream:
@@ -1602,7 +1600,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     self.client,
                     order_outputs,
                     return_exceptions,
-                    wrap_returned_exceptions,
                     count_update_callback,
                     api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
                 )

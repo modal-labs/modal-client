@@ -11,7 +11,6 @@ from contextlib import contextmanager, nullcontext
 from unittest.mock import MagicMock
 
 from grpclib import Status
-from synchronicity.exceptions import UserCodeException
 
 import modal
 import modal.experimental
@@ -880,16 +879,19 @@ def test_map_exceptions(client, servicer):
             list(custom_function_modal.map(range(6)))
         assert "bad" in str(excinfo.value)
 
-        with pytest.warns(DeprecationError) as warnings:
-            res = list(custom_function_modal.map(range(6), return_exceptions=True))
-            assert len(warnings) == 1
-            assert "f.map(..., return_exceptions=True, wrap_returned_exceptions=False)" in str(warnings[0].message)
-        assert res[:4] == [0, 1, 4, 9] and res[5] == 25
-        assert type(res[4]) is UserCodeException and "bad" in str(res[4])
-
-        res = list(custom_function_modal.map(range(6), return_exceptions=True, wrap_returned_exceptions=False))
+        # Default behavior: return_exceptions returns unwrapped exceptions
+        res = list(custom_function_modal.map(range(6), return_exceptions=True))
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
         assert type(res[4]) is CustomException and "bad" in str(res[4])
+
+        # Explicitly passing wrap_returned_exceptions warns about deprecation but is a no-op
+        for value in (True, False):
+            with pytest.warns(DeprecationError) as warnings:
+                res = list(custom_function_modal.map(range(6), return_exceptions=True, wrap_returned_exceptions=value))
+                assert len(warnings) == 1
+                assert "wrap_returned_exceptions" in str(warnings[0].message)
+            assert res[:4] == [0, 1, 4, 9] and res[5] == 25
+            assert type(res[4]) is CustomException and "bad" in str(res[4])
 
 
 def test_map_exceptions_input_plane(client, servicer):
@@ -907,36 +909,45 @@ def test_map_exceptions_input_plane(client, servicer):
             list(custom_function_modal.map(range(6)))
         assert "bad" in str(excinfo.value)
 
-        with pytest.warns(DeprecationError) as warnings:
-            res = list(custom_function_modal.map(range(6), return_exceptions=True))
-            assert len(warnings) == 1
-            assert "f.map(..., return_exceptions=True, wrap_returned_exceptions=False)" in str(warnings[0].message)
-        assert res[:4] == [0, 1, 4, 9] and res[5] == 25
-        assert type(res[4]) is UserCodeException and "bad" in str(res[4])
-
-        res = list(custom_function_modal.map(range(6), return_exceptions=True, wrap_returned_exceptions=False))
+        # Default behavior: return_exceptions returns unwrapped exceptions
+        res = list(custom_function_modal.map(range(6), return_exceptions=True))
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
         assert type(res[4]) is CustomException and "bad" in str(res[4])
 
+        # Explicitly passing wrap_returned_exceptions warns about deprecation but is a no-op
+        for value in (True, False):
+            with pytest.warns(DeprecationError) as warnings:
+                res = list(custom_function_modal.map(range(6), return_exceptions=True, wrap_returned_exceptions=value))
+                assert len(warnings) == 1
+                assert "wrap_returned_exceptions" in str(warnings[0].message)
+            assert res[:4] == [0, 1, 4, 9] and res[5] == 25
+            assert type(res[4]) is CustomException and "bad" in str(res[4])
+
 
 @pytest.mark.asyncio
-async def test_async_map_wrapped_exception_warning(client, servicer):
+async def test_async_map_wrap_exceptions_deprecation_warning(client, servicer):
     app = App(include_source=False)
 
     servicer.function_body(custom_exception_function)
     custom_function_modal = app.function()(custom_exception_function)
 
     async with app.run(client=client):
+        # No warning when wrap_returned_exceptions is not passed
+        async for _ in custom_function_modal.map.aio(range(6), return_exceptions=True):
+            pass
+
+        # Warning when explicitly passing wrap_returned_exceptions
         with pytest.warns(DeprecationError) as warnings:
-            async for _ in custom_function_modal.map.aio(range(6), return_exceptions=True):
+            async for _ in custom_function_modal.map.aio(
+                range(6), return_exceptions=True, wrap_returned_exceptions=False
+            ):
                 pass
             assert len(warnings) == 1
-            assert "f.map.aio(..., return_exceptions=True, wrap_returned_exceptions=False)" in str(warnings[0].message)
+            assert "wrap_returned_exceptions" in str(warnings[0].message)
 
 
-# This test is somewhat redundant, but it's good to have when we remove the old python server.
 @pytest.mark.asyncio
-async def test_async_map_wrapped_exception_warning_input_plane(client, servicer):
+async def test_async_map_wrap_exceptions_deprecation_warning_input_plane(client, servicer):
     app = App(include_source=False)
 
     servicer.function_body(custom_exception_function)
@@ -945,11 +956,18 @@ async def test_async_map_wrapped_exception_warning_input_plane(client, servicer)
     )
 
     async with app.run(client=client):
+        # No warning when wrap_returned_exceptions is not passed
+        async for _ in custom_function_modal.map.aio(range(6), return_exceptions=True):
+            pass
+
+        # Warning when explicitly passing wrap_returned_exceptions
         with pytest.warns(DeprecationError) as warnings:
-            async for _ in custom_function_modal.map.aio(range(6), return_exceptions=True):
+            async for _ in custom_function_modal.map.aio(
+                range(6), return_exceptions=True, wrap_returned_exceptions=False
+            ):
                 pass
             assert len(warnings) == 1
-            assert "f.map.aio(..., return_exceptions=True, wrap_returned_exceptions=False)" in str(warnings[0].message)
+            assert "wrap_returned_exceptions" in str(warnings[0].message)
 
 
 def import_failure():
