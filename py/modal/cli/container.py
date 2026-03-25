@@ -27,7 +27,11 @@ container_cli = typer.Typer(name="container", help="Manage and connect to runnin
 
 @container_cli.command("list")
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = ENV_OPTION, json: bool = False, app_id: str = ""):
+async def list_(
+    app_id: str = typer.Option("", "--app-id", help="List containers running for a specific App."),
+    env: Optional[str] = ENV_OPTION,
+    json: bool = False,
+):
     """List all containers that are currently running."""
     env = ensure_env(env)
     client = await _Client.from_env()
@@ -111,6 +115,12 @@ async def logs(
 
     ```
     modal container logs ta-123456 --since 2026-03-01T05:00:00 --until 2026-03-01T08:00:00
+    ```
+
+    Fetch the last 1000 entries:
+
+    ```
+    modal container logs ta-123456 --tail 1000
     ```
 
     Fetch all container logs:
