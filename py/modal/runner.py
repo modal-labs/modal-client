@@ -205,6 +205,10 @@ async def _stop_and_wait_for_containers(
     deployed_at: float,
     environment_name: str,
 ):
+    # falsy deployed_at means this was a noop deployment
+    if not deployed_at:
+        return
+
     async def get_old_container_ids() -> list[str]:
         res = await client.stub.TaskList(api_pb2.TaskListRequest(environment_name=environment_name, app_id=app_id))
         return [
@@ -272,7 +276,7 @@ async def _publish_app(
     commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
     deployment_strategy: str = "rolling",
     environment_name: Optional[str] = None,
-) -> tuple[str, list[api_pb2.Warning]]:
+) -> tuple[str, list[api_pb2.Warning], float]:
     """Wrapper for AppPublish RPC."""
     deployment_strategy = _validate_deployment_strategy(deployment_strategy)
 
@@ -307,7 +311,7 @@ async def _publish_app(
                 UserWarning,
             )
 
-    return response.url, response.server_warnings
+    return response.url, response.server_warnings, response.deployed_at
 
 
 async def _disconnect(
@@ -644,7 +648,7 @@ async def _deploy_app(
             except Exception as e:
                 logger.debug("Failed to get git commit info", exc_info=e)
 
-            app_url, warnings = await _publish_app(
+            app_url, warnings, deployed_at = await _publish_app(
                 client,
                 running_app,
                 api_pb2.APP_STATE_DEPLOYED,
@@ -662,7 +666,13 @@ async def _deploy_app(
 
     output_mgr = OutputManager.get()
     t = time.time() - t0
-    output_mgr.step_completed(f"App deployed in {t:.3f}s! 🎉")
+
+    # falsy deployed_at means this was a noop deployment
+    if not deployed_at:
+        output_mgr.step_completed("Deployment skipped: no changes detected! ⏭️")
+    else:
+        output_mgr.step_completed(f"App deployed in {t:.3f}s! 🎉")
+
     output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(
         app_id=running_app.app_id,

@@ -205,6 +205,17 @@ def test_run_app_recreate_deployment(servicer, client, monkeypatch, mode):
     assert task_ids == set(["ta-123", "ta-321"])
 
 
+def test_run_app_recreate_deployment_no_op_deployment(servicer, client, monkeypatch):
+    monkeypatch.setattr(modal.runner, "WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL", 0.01)
+
+    dummy_app = modal.App("my-app")
+    servicer.app_publish_is_noop = True
+    with servicer.intercept():
+        dummy_app.deploy(client=client, strategy="recreate")
+
+    assert servicer.task_list_calls == 0
+
+
 def test_run_app_recreate_deployment_timeout(servicer, client, monkeypatch):
     monkeypatch.setattr(modal.runner, "WAIT_FOR_CONTAINER_STOP_TIMEOUT", 0.1)
 
