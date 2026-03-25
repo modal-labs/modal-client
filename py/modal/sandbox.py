@@ -135,6 +135,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _command_router_client: Optional[TaskCommandRouterClient]
     _attached: bool
     _filesystem: Optional[_SandboxFilesystem]
+    _is_v2: bool = False
 
     @staticmethod
     def _default_pty_info() -> api_pb2.PTYInfo:
@@ -533,6 +534,164 @@ class _Sandbox(_Object, type_prefix="sb"):
             await resolver.load(obj, load_context)
         return obj
 
+    @staticmethod
+    async def _experimental_create(
+        *args: str,
+        app: Optional["modal.app._App"] = None,
+        name: Optional[str] = None,
+        image: Optional[_Image] = None,
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
+        timeout: int = 300,
+        idle_timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        cpu: Optional[float] = None,
+        cloud: Optional[str] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,
+        block_network: bool = False,
+        cidr_allowlist: Optional[Sequence[str]] = None,
+        pty: bool = False,
+        encrypted_ports: Sequence[int] = [],
+        h2_ports: Sequence[int] = [],
+        unencrypted_ports: Sequence[int] = [],
+        include_oidc_identity_token: bool = False,
+        verbose: bool = False,
+        client: Optional[_Client] = None,
+    ) -> "_Sandbox":
+        """Create a sandbox using the V2 backend.
+
+        Only CPU is configurable; memory is derived as a fixed ratio of CPU.
+        Features like tags, snapshots, exec, volumes, network file systems,
+        GPUs, custom domains, and proxies are not supported.
+        """
+        from .app import _App
+
+        _validate_exec_args(args)
+        if name is not None:
+            check_object_name(name, "Sandbox")
+
+        if workdir is not None and not workdir.startswith("/"):
+            raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
+
+        if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
+            raise InvalidError("Cannot specify open ports when `block_network` is enabled")
+
+        secrets = secrets or []
+        if env:
+            secrets = [*secrets, _Secret.from_dict(env)]
+
+        image = image or _default_image
+
+        scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+        if region:
+            regions = [region] if isinstance(region, str) else list(region)
+            scheduler_placement = api_pb2.SchedulerPlacement(regions=regions)
+
+        pty_info: Optional[api_pb2.PTYInfo] = None
+        if pty:
+            pty_info = _Sandbox._default_pty_info()
+
+        open_ports = [api_pb2.PortSpec(port=port, unencrypted=False) for port in encrypted_ports]
+        open_ports.extend([api_pb2.PortSpec(port=port, unencrypted=True) for port in unencrypted_ports])
+        open_ports.extend(
+            [api_pb2.PortSpec(port=port, unencrypted=False, tunnel_type=api_pb2.TUNNEL_TYPE_H2) for port in h2_ports]
+        )
+
+        if block_network:
+            if cidr_allowlist is not None:
+                raise InvalidError("`cidr_allowlist` cannot be used when `block_network` is enabled")
+            network_access = api_pb2.NetworkAccess(
+                network_access_type=api_pb2.NetworkAccess.NetworkAccessType.BLOCKED,
+            )
+        elif cidr_allowlist is None:
+            network_access = api_pb2.NetworkAccess(
+                network_access_type=api_pb2.NetworkAccess.NetworkAccessType.OPEN,
+            )
+        else:
+            network_access = api_pb2.NetworkAccess(
+                network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
+                allowed_cidrs=cidr_allowlist,
+            )
+
+        def _deps() -> list[_Object]:
+            return [image] + list(secrets)
+
+        async def _load(
+            self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
+        ):
+            definition = api_pb2.Sandbox(
+                entrypoint_args=args,
+                image_id=image.object_id,
+                mount_ids=[mount.object_id for mount in image._mount_layers],
+                secret_ids=[secret.object_id for secret in secrets],
+                timeout_secs=timeout,
+                idle_timeout_secs=idle_timeout,
+                workdir=workdir,
+                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=0, gpu=None, ephemeral_disk=None),
+                cloud_provider_str=cloud if cloud else None,
+                runtime=config.get("function_runtime"),
+                runtime_debug=config.get("function_runtime_debug"),
+                pty_info=pty_info,
+                scheduler_placement=scheduler_placement,
+                worker_id=config.get("worker_id"),
+                open_ports=api_pb2.PortSpecs(ports=open_ports),
+                network_access=network_access,
+                verbose=verbose,
+                name=name,
+                include_oidc_identity_token=include_oidc_identity_token,
+            )
+
+            create_req = api_pb2.SandboxCreateV2Request(app_id=load_context.app_id, definition=definition)
+            assert load_context.client._auth_token_manager
+            auth_token = await load_context.client._auth_token_manager.get_token()
+            create_resp = await load_context.client.stub.SandboxCreateV2(
+                create_req, metadata=[("x-modal-auth-token", auth_token)]
+            )
+            sandbox_id = create_resp.sandbox_id
+            self._hydrate(sandbox_id, load_context.client, None)
+            self._is_v2 = True
+            self._task_id = create_resp.task_id
+            self._tunnels = {
+                t.container_port: Tunnel(t.host, t.port, t.unencrypted_host, t.unencrypted_port)
+                for t in create_resp.tunnels
+            }
+
+        obj = _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_context_overrides=LoadContext.empty())
+
+        app_id: Optional[str] = None
+        app_client: Optional[_Client] = None
+
+        if app is not None:
+            if app.app_id is None:
+                raise ValueError(
+                    "App has not been initialized yet. To create an App lazily, use `App.lookup`: \n"
+                    "app = modal.App.lookup('my-app', create_if_missing=True)\n"
+                    "modal.Sandbox._experimental_create('echo', 'hi', app=app)\n"
+                    "In order to initialize an existing `App` object, refer to our docs: https://modal.com/docs/guide/apps"
+                )
+            app_id = app.app_id
+            app_client = app._client
+        elif (container_app := _App._get_container_app()) is not None:
+            app_id = container_app.app_id
+            app_client = container_app._client
+        else:
+            raise InvalidError(
+                "Sandboxes require an App when created outside of a Modal container.\n\n"
+                "Run an ephemeral App (`with app.run(): ...`), or reference a deployed App using `App.lookup`:\n\n"
+                "```\n"
+                'app = modal.App.lookup("sandbox-app", create_if_missing=True)\n'
+                "sb = modal.Sandbox._experimental_create(..., app=app)\n"
+                "```",
+            )
+
+        client = client or app_client
+
+        resolver = Resolver()
+        async with TaskContext() as tc:
+            load_context = LoadContext(client=client, app_id=app_id, task_context=tc)
+            await resolver.load(obj, load_context)
+        return obj
+
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         self._stdout = StreamReader(
             api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client, by_line=True
@@ -547,14 +706,17 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._enable_snapshot = False
         self._command_router_client = None
         self._filesystem = None
+        self._is_v2 = False
 
     def _initialize_from_other(self, other):
         super()._initialize_from_other(other)
         self._attached = other._attached
+        self._is_v2 = other._is_v2
 
     def _initialize_from_empty(self):
         super()._initialize_from_empty()
         self._attached = True
+        self._is_v2 = False
 
     async def detach(self):
         """Disconnects your client from the sandbox and cleans up resources assoicated with the connection.
@@ -581,6 +743,10 @@ class _Sandbox(_Object, type_prefix="sb"):
     def _ensure_attached(self):
         if not self._attached:
             raise ClientClosed("Unable to perform operation on a detached sandbox")
+
+    def _ensure_v1(self, method_name: str):
+        if self._is_v2:
+            raise InvalidError(f"Sandbox.{method_name}() is not supported for V2 sandboxes")
 
     @staticmethod
     async def from_name(
@@ -624,6 +790,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def get_tags(self) -> dict[str, str]:
         """Fetches any tags (key-value pairs) currently attached to this Sandbox from the server."""
+        self._ensure_v1("get_tags")
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
         resp = await self._client.stub.SandboxTagsGet(req)
 
@@ -631,6 +798,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None) -> None:
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
+        self._ensure_v1("set_tags")
         environment_name = _get_environment_name()
         if client is not None:
             deprecation_warning(
@@ -654,6 +822,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
         can be used to spawn a new Sandbox with the same filesystem.
         """
+        self._ensure_v1("snapshot_filesystem")
         await self._get_task_id()  # Ensure the sandbox has started
         req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout)
         resp = await self._client.stub.SandboxSnapshotFs(req)
@@ -697,6 +866,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         sandbox_session_2.ls("/user_project")
         ```
         """
+        self._ensure_v1("mount_image")
 
         if not isinstance(image, _Image):
             raise TypeError(f"Sandbox.mount_image(image=...) expects an Image object, got {image!r}")
@@ -751,6 +921,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         sandbox_session_2.ls("/user_project")
         ```
         """
+        self._ensure_v1("snapshot_directory")
 
         task_id = await self._get_task_id()
         if (command_router_client := await self._get_command_router_client(task_id)) is None:
@@ -775,7 +946,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         while True:
             req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
             # Use the private __client to allow `wait` to work with a detached sandbox
-            resp = await self.__client.stub.SandboxWait(req)
+            stub = self.__client.stub
+            resp = await (stub.SandboxWaitV2(req) if self._is_v2 else stub.SandboxWait(req))
             if resp.result.status:
                 logger.debug(f"Sandbox {self.object_id} wait completed with status {resp.result.status}")
                 self._result = resp.result
@@ -801,7 +973,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             return self._tunnels
 
         req = api_pb2.SandboxGetTunnelsRequest(sandbox_id=self.object_id, timeout=timeout)
-        resp = await self._client.stub.SandboxGetTunnels(req)
+        stub = self._client.stub
+        resp = await (stub.SandboxGetTunnelsV2(req) if self._is_v2 else stub.SandboxGetTunnels(req))
 
         # If we couldn't get the tunnels in time, report the timeout.
         if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
@@ -822,6 +995,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         Also accepts an optional user_metadata string or dict to associate with the token. This metadata
         will be added to the headers by the proxy when forwarding requests to the Sandbox."""
+        self._ensure_v1("create_connect_token")
         if user_metadata is not None and isinstance(user_metadata, dict):
             try:
                 user_metadata = json.dumps(user_metadata)
@@ -837,6 +1011,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         Added in v1.1.0.
         """
+        self._ensure_v1("reload_volumes")
         task_id = await self._get_task_id()
         await self._client.stub.ContainerReloadVolumes(
             api_pb2.ContainerReloadVolumesRequest(
@@ -866,7 +1041,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Terminate Sandbox execution.
 
         This is a no-op if the Sandbox has already finished running."""
-        await self._client.stub.SandboxTerminate(api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id))
+        req = api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
+        stub = self._client.stub
+        await (stub.SandboxTerminateV2(req) if self._is_v2 else stub.SandboxTerminate(req))
         if wait:
             await self.wait(raise_on_termination=False)
             return self.returncode
@@ -878,7 +1055,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         """
 
         req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=0)
-        resp = await self._client.stub.SandboxWait(req)
+        stub = self._client.stub
+        resp = await (stub.SandboxWaitV2(req) if self._is_v2 else stub.SandboxWait(req))
 
         if resp.result.status:
             self._result = resp.result
@@ -887,11 +1065,10 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def _get_task_id(self, raise_if_task_complete=False) -> str:
         while not self._task_id:
-            resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
-            # If the sandbox is terminated before it gets scheduled it can have a task result without a task_id
+            req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id)
+            stub = self._client.stub
+            resp = await (stub.SandboxGetTaskIdV2(req) if self._is_v2 else stub.SandboxGetTaskId(req))
             if not resp.task_id and raise_if_task_complete and resp.HasField("task_result"):
-                # When task_result is set, the task has finished, which could be any GenericResult.
-                # For now, we'll raise a generic Error and not be specific about the error type
                 msg = resp.task_result.exception or "Sandbox already finished"
                 raise Error(msg)
             self._task_id = resp.task_id
@@ -981,6 +1158,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             print(line)
         ```
         """
+        self._ensure_v1("exec")
         if pty_info is not None or _pty_info is not None:
             deprecation_warning(
                 (2025, 9, 12),
@@ -1167,6 +1345,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
+        self._ensure_v1("_experimental_snapshot")
         await self._get_task_id()
         snap_req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.object_id)
         snap_resp = await self._client.stub.SandboxSnapshot(snap_req)
@@ -1239,6 +1418,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def filesystem(self) -> _SandboxFilesystem:
         """Namespace for filesystem APIs."""
+        self._ensure_v1("filesystem")
         self._ensure_attached()
         if self._filesystem is None:
             self._filesystem = _SandboxFilesystem(self)
@@ -1285,6 +1465,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         f.close()
         ```
         """
+        self._ensure_v1("open")
         deprecation_warning(
             (2026, 3, 9),
             "`Sandbox.open()` is deprecated. Use the `Sandbox.filesystem` APIs instead.",
@@ -1295,16 +1476,19 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def ls(self, path: str) -> builtins.list[str]:
         """[Alpha] List the contents of a directory in the Sandbox."""
+        self._ensure_v1("ls")
         task_id = await self._get_task_id()
         return await ls(path, self._client, task_id)
 
     async def mkdir(self, path: str, parents: bool = False) -> None:
         """[Alpha] Create a new directory in the Sandbox."""
+        self._ensure_v1("mkdir")
         task_id = await self._get_task_id()
         return await mkdir(path, self._client, task_id, parents)
 
     async def rm(self, path: str, recursive: bool = False) -> None:
         """[Alpha] Remove a file or directory in the Sandbox."""
+        self._ensure_v1("rm")
         task_id = await self._get_task_id()
         return await rm(path, self._client, task_id, recursive)
 
@@ -1316,6 +1500,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
         """[Alpha] Watch a file or directory in the Sandbox for changes."""
+        self._ensure_v1("watch")
         task_id = await self._get_task_id()
         async for event in watch(path, self._client, task_id, filter, recursive, timeout):
             yield event
