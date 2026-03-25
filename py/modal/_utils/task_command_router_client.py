@@ -11,7 +11,6 @@ from typing import AsyncGenerator, Optional
 
 import grpclib.client
 import grpclib.config
-import grpclib.events
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 
@@ -22,8 +21,26 @@ from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
 from .._grpc_client import grpc_error_converter
 from .._utils.grpc_utils import PermanentCloseableChannel
-from .async_utils import aclosing
-from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel
+from .async_utils import aclosing, retry
+from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
+
+
+@retry(n_attempts=34, base_delay=1, max_delay=10, attempt_timeout=10)
+async def _connect_channel(channel: grpclib.client.Channel):
+    """Connect to the command router channel.
+
+    Uses a longer retry budget than grpc_utils.connect_channel. In rare cases the sandbox
+    may take a long time to start on the worker after scheduling.
+
+    Retries with exponential backoff (1, 2, 4, 8, 10, 10, ...) capped at 10s per delay.
+    Total sleep between attempts: 1 + 2 + 4 + 8 + 10*29 = 305s (~5 min).
+
+    If every attempt hits the 10s timeout, worst-case wall-clock time is
+    34*10 + 305 = 645s (~11 min). In practice, retries are often handling ConnectionResetError
+    from a TLS handshake failure (the worker accepted the TCP connection but the gRPC/TLS
+    service isn't ready yet), which fails immediately rather than timing out.
+    """
+    await channel.__connect__()
 
 
 def _b64url_decode(data: str) -> bytes:
@@ -169,7 +186,7 @@ class TaskCommandRouterClient:
             closed_error_message="Unable to perform operation on a detached sandbox",
         )
 
-        await connect_channel(channel)
+        await _connect_channel(channel)
         loop = asyncio.get_running_loop()
         jwt_refresh_lock = asyncio.Lock()
 

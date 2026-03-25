@@ -351,6 +351,7 @@ def retry(
     n_attempts=3,
     base_delay=0,
     delay_factor=2,
+    max_delay: Optional[float] = None,
     attempt_timeout: Optional[float] = 90,
     attempt_timeout_factor=1,
 ):
@@ -358,6 +359,8 @@ def retry(
 
     If a `base_delay` is provided, the function is given an exponentially
     increasing delay on each run, up until the maximum number of attempts.
+
+    If `max_delay` is set, the delay between attempts is capped at this value.
 
     If `attempt_timeout_factor` is set to a value > 1, the per-attempt timeout
     increases exponentially (starting from `attempt_timeout`, multiplied by
@@ -405,6 +408,8 @@ def retry(
                     )
                 await asyncio.sleep(delay)
                 delay *= delay_factor
+                if max_delay is not None:
+                    delay = min(delay, max_delay)
                 if current_attempt_timeout is not None:
                     current_attempt_timeout *= attempt_timeout_factor
 

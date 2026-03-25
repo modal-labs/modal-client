@@ -105,6 +105,37 @@ async def test_retry_timeout_factor():
 
 
 @pytest.mark.asyncio
+async def test_retry_max_delay():
+    """With base_delay=1, delay_factor=2, max_delay=2, delays should be 1, 2, 2, 2 (capped)."""
+    delays = []
+    call_count = 0
+
+    @retry(n_attempts=5, base_delay=1, delay_factor=2, max_delay=2, attempt_timeout=None)
+    async def fail_and_track():
+        nonlocal call_count
+        call_count += 1
+        if call_count < 5:
+            raise SampleException("fail")
+        return "ok"
+
+    original_sleep = asyncio.sleep
+
+    async def mock_sleep(d):
+        delays.append(d)
+        await original_sleep(0)
+
+    import unittest.mock
+
+    with unittest.mock.patch("modal._utils.async_utils.asyncio.sleep", mock_sleep):
+        result = await fail_and_track()
+
+    assert result == "ok"
+    assert call_count == 5
+    # Delays: 1, 2 (1*2), 2 (capped), 2 (capped)
+    assert delays == [1, 2, 2, 2]
+
+
+@pytest.mark.asyncio
 async def test_task_context():
     async with TaskContext() as task_context:
         t = task_context.create_task(asyncio.sleep(0.1))
