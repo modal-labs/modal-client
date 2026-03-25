@@ -9,6 +9,7 @@ import subprocess
 import sys
 import textwrap
 import time
+import unittest.mock
 import warnings
 from typing import Any
 
@@ -88,23 +89,6 @@ async def test_retry():
 
 
 @pytest.mark.asyncio
-async def test_retry_timeout_factor():
-    """Attempt 1 should time out (0.5s < 0.8s sleep), attempt 2 should succeed (1.0s > 0.8s sleep)."""
-    call_count = 0
-
-    @retry(n_attempts=3, attempt_timeout=0.5, attempt_timeout_factor=2)
-    async def slow_then_ok():
-        nonlocal call_count
-        call_count += 1
-        await asyncio.sleep(0.8)
-        return "ok"
-
-    result = await slow_then_ok()
-    assert result == "ok"
-    assert call_count == 2
-
-
-@pytest.mark.asyncio
 async def test_retry_max_delay():
     """With base_delay=1, delay_factor=2, max_delay=2, delays should be 1, 2, 2, 2 (capped)."""
     delays = []
@@ -124,8 +108,6 @@ async def test_retry_max_delay():
         delays.append(d)
         await original_sleep(0)
 
-    import unittest.mock
-
     with unittest.mock.patch("modal._utils.async_utils.asyncio.sleep", mock_sleep):
         result = await fail_and_track()
 
@@ -133,6 +115,25 @@ async def test_retry_max_delay():
     assert call_count == 5
     # Delays: 1, 2 (1*2), 2 (capped), 2 (capped)
     assert delays == [1, 2, 2, 2]
+
+
+@pytest.mark.asyncio
+async def test_retry_total_timeout():
+    """total_timeout reduces the per-attempt timeout as elapsed time grows."""
+
+    call_count = 0
+
+    @retry(n_attempts=10, base_delay=0.1, total_timeout=3.0, delay_factor=2)
+    async def always_fail():
+        nonlocal call_count
+        call_count += 1
+        raise SampleException("fail")
+
+    with pytest.raises(SampleException):
+        await always_fail()
+
+    # 0.1 (1 + 2 + 4 + 8) = 1.5
+    assert call_count == 4
 
 
 @pytest.mark.asyncio

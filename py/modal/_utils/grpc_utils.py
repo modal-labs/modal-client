@@ -90,8 +90,6 @@ RETRYABLE_GRPC_STATUS_CODES = [
 ]
 SERVER_RETRY_WARNING_TIME_INTERVAL = 30.0
 # Initial per-attempt timeout for TCP/TLS handshake in connect_channel.
-# Doubles each attempt (attempt_timeout_factor=2): 0.5 + 1 + 2 + 4 + 8 = 15.5s + ~1.5s inter-attempt delays.
-CONNECT_TIMEOUT = 0.5
 DEFAULT_MAX_RETRIES = 3
 
 
@@ -225,7 +223,8 @@ def create_channel(
     return channel
 
 
-@retry(n_attempts=5, base_delay=0.1, attempt_timeout=CONNECT_TIMEOUT, attempt_timeout_factor=2)
+# With 18 attempts, the max delays between calls is: 0.1 + 0.2 + 0.4 + 0.8 + 1.6 + 3.2 + 5*11 ~ 62
+@retry(n_attempts=18, base_delay=0.1, attempt_timeout=10.0, max_delay=5.0, total_timeout=63.0)
 async def connect_channel(channel: grpclib.client.Channel):
     """Connect to socket and raise exceptions when there is a connection issue."""
     await channel.__connect__()
