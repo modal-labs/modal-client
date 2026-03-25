@@ -125,7 +125,8 @@ export type SandboxCreateParams = {
   /** Mount points for {@link CloudBucketMount}s. */
   cloudBucketMounts?: Record<string, CloudBucketMount>;
 
-  /** Enable a PTY for the Sandbox. */
+  /** Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and
+   * stderr from the process) is multiplexed into stdout, and the stderr stream is effectively empty. */
   pty?: boolean;
 
   /** List of ports to tunnel into the Sandbox. Encrypted ports are tunneled with TLS. */
@@ -578,7 +579,8 @@ export type SandboxExecParams = {
   env?: Record<string, string>;
   /** {@link Secret}s to inject as environment variables for the commmand.*/
   secrets?: Secret[];
-  /** Enable a PTY for the command. */
+  /** Enable a PTY for the command. When enabled, all output (stdout and stderr from the
+   * process) is multiplexed into stdout, and the stderr stream is effectively empty. */
   pty?: boolean;
 };
 
