@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 MAX_OBJECT_SIZE_BYTES = 2 * 1024 * 1024  # 2 MiB
 
 # Max size for async function inputs and outputs.
-MAX_ASYNC_OBJECT_SIZE_BYTES = 8 * 1024  # 8 KiB
+MAX_ASYNC_OBJECT_SIZE_BYTES = 200 * 1024  # 200 KiB
 
 #  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
 #  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
