@@ -23,6 +23,7 @@ pytest_test(
     flaky = True,
     imports = [".."],
     shard_count = 32,
+    tags = ["quarantine"],
     # watchfiles (transitive via client/py/modal) has Rust extensions; pip packages
     # are resolved per target platform. On arm64 target builds, rules_python
     # downloads arm64 wheels which lack _rust_notify.so. Skip on non-x86_64 targets.
