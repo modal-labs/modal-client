@@ -699,16 +699,18 @@ Mount = synchronize_api(_Mount)
 
 def _create_client_mount():
     # TODO(erikbern): make this a static method on the Mount class
+    import importlib
+
     import synchronicity
 
-    import modal
-
-    # Get the base_path because it also contains `modal_proto`.
-    modal_parent_dir, _ = os.path.split(modal.__path__[0])
     client_mount = _Mount._new()
 
     for pkg_name in MODAL_PACKAGES:
-        package_base_path = Path(modal_parent_dir) / pkg_name
+        # Look up each package's actual install path via importlib rather than
+        # assuming all packages are siblings of `modal`. In Bazel runfiles,
+        # modal and modal_proto live in different directories.
+        pkg_module = importlib.import_module(pkg_name)
+        package_base_path = Path(pkg_module.__path__[0])
         client_mount = client_mount.add_local_dir(
             package_base_path,
             remote_path=f"/pkg/{pkg_name}",
