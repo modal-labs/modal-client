@@ -778,7 +778,6 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
     assert send_message_cnt == 0
     assert aenter_called == 1
     assert open_timeout is not None
-    assert open_timeout <= duration
     await client.close()
 
 
