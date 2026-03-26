@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import warnings
 from datetime import datetime, timezone
 from typing import Optional, Union
 
@@ -185,19 +186,39 @@ async def logs(
         task_info_resp = await client.stub.TaskGetInfo(api_pb2.TaskGetInfoRequest(task_id=task_id))
         app_id = task_info_resp.app_id
 
+        if not task_info_resp.info.started_at:
+            # Unlikely race or Modal backend issue, don't treat as a usage exception
+            return
+        container_started_dt = datetime.fromtimestamp(task_info_resp.info.started_at, timezone.utc)
+
         now = datetime.now(timezone.utc)
         if all_logs:
-            since_dt = datetime.fromtimestamp(task_info_resp.info.started_at, timezone.utc)
+            since_dt = container_started_dt
             if task_info_resp.info.finished_at:
                 until_dt = datetime.fromtimestamp(task_info_resp.info.finished_at, timezone.utc)
             else:
                 until_dt = now
         else:
-            since_dt = _parse_time_arg(since, default=now) if since else None
-            until_dt = _parse_time_arg(until, default=now) if until else None
+            since_dt = _parse_time_arg(since, default=container_started_dt)
+            if task_info_resp.info.finished_at:
+                default_until_dt = datetime.fromtimestamp(task_info_resp.info.finished_at, timezone.utc)
+            else:
+                default_until_dt = now
+            until_dt = _parse_time_arg(until, default=default_until_dt)
 
-        if since_dt is not None and until_dt is not None and since_dt >= until_dt:
+        if since is not None and until is not None and since_dt >= until_dt:
+            # User provided both --since and --until, but did so incorrectly
             raise UsageError("--since must be before --until.")
+
+        if since is not None and until is None and since_dt >= until_dt:
+            # User provided only --since and it is after the container finished
+            warnings.warn("--since time is after the Container finished, no logs to fetch.", UserWarning)
+            return
+
+        if until is not None and since is None and since_dt >= until_dt:
+            # User provided only --until and it is before the Container started
+            warnings.warn("--until time is before the Container started, no logs to fetch.", UserWarning)
+            return
 
         if since_dt is not None:
             effective_until = until_dt or now
