@@ -1354,6 +1354,48 @@ def test_container_logs_default_tail(servicer, server_url_env, set_env_client):
         assert fetch_requests[0].task_id == "ta-test1"
 
 
+def test_container_logs_tightens_bounds_from_task_info(servicer, server_url_env, set_env_client):
+    """When since/until are not specified, bounds are tightened to task lifetime."""
+    started_at = _TEST_TIMESTAMP - 3600
+    finished_at = _TEST_TIMESTAMP
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_multi_line_fetch_response(100))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("TaskGetInfo", _make_task_get_info_responder(started_at=started_at, finished_at=finished_at))
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        run_cli_command(["container", "logs", "ta-test1"])
+        assert len(fetch_requests) == 1
+        assert fetch_requests[0].since.seconds == int(started_at)
+        assert fetch_requests[0].until.seconds == int(finished_at)
+
+
+def test_container_logs_no_tighten_until_when_running(servicer, server_url_env, set_env_client):
+    """When a task is still running (finished_at=0), until is not tightened to 0."""
+    started_at = _TEST_TIMESTAMP - 3600
+    fetch_requests = []
+
+    async def fetch_handler(self, stream):
+        req = await stream.recv_message()
+        fetch_requests.append(req)
+        await stream.send_message(_make_multi_line_fetch_response(100))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("TaskGetInfo", _make_task_get_info_responder(started_at=started_at, finished_at=0))
+        ctx.set_responder("AppFetchLogs", fetch_handler)
+
+        run_cli_command(["container", "logs", "ta-test1"])
+        assert len(fetch_requests) == 1
+        assert fetch_requests[0].since.seconds == int(started_at)
+        # until should NOT be 0; it should default to ~now
+        assert fetch_requests[0].until.seconds > int(_TEST_TIMESTAMP)
+
+
 def test_container_logs_tail(servicer, server_url_env, set_env_client):
     """--tail N fetches the last N entries."""
     fetch_requests = []
