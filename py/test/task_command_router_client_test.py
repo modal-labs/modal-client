@@ -7,6 +7,7 @@ import asyncio
 import pytest
 import time
 from typing import List, Optional
+from unittest.mock import AsyncMock
 
 from grpclib import GRPCError, Status
 from grpclib.client import Channel
@@ -581,6 +582,8 @@ async def test_exec_stdio_read_deadline_respected_on_attribute_error(monkeypatch
         stream_stdio_retry_delay_secs=0.2,  # longer than remaining time
     )
 
+    send_message_cnt = 0
+
     class _Stream:
         async def __aenter__(self):
             return self
@@ -589,6 +592,8 @@ async def test_exec_stdio_read_deadline_respected_on_attribute_error(monkeypatch
             return False
 
         async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
+            nonlocal send_message_cnt
+            send_message_cnt += 1
             return None
 
         def __aiter__(self):
@@ -602,15 +607,16 @@ async def test_exec_stdio_read_deadline_respected_on_attribute_error(monkeypatch
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
+    mock_sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", mock_sleep)
+
     # Set deadline less than retry delay so a retry would exceed it
     deadline = time.monotonic() + 0.05
-    start = time.monotonic()
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
-    elapsed_secs = time.monotonic() - start
-    # Should not sleep the full retry delay (0.2s); expect prompt timeout (< 0.15s).
-    assert elapsed_secs < 0.15
+    assert send_message_cnt == 1
+    mock_sleep.assert_not_called()
     await client.close()
 
 
@@ -627,6 +633,8 @@ async def test_exec_stdio_read_deadline_respected_on_stream_terminated_error(mon
         stream_stdio_retry_delay_secs=0.2,
     )
 
+    send_message_cnt = 0
+
     class _Stream:
         async def __aenter__(self):
             return self
@@ -635,6 +643,8 @@ async def test_exec_stdio_read_deadline_respected_on_stream_terminated_error(mon
             return False
 
         async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
+            nonlocal send_message_cnt
+            send_message_cnt += 1
             return None
 
         def __aiter__(self):
@@ -646,15 +656,17 @@ async def test_exec_stdio_read_deadline_respected_on_stream_terminated_error(mon
     def _open(timeout: Optional[float] = None):
         return _Stream()
 
+    mock_sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", mock_sleep)
+
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
     deadline = time.monotonic() + 0.05
-    start = time.monotonic()
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
-    elapsed_secs = time.monotonic() - start
-    assert elapsed_secs < 0.15
+    assert send_message_cnt == 1
+    mock_sleep.assert_not_called()
     await client.close()
 
 
@@ -671,6 +683,8 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(monkeypatch):
         stream_stdio_retry_delay_secs=0.2,
     )
 
+    send_message_cnt = 0
+
     class _Stream:
         async def __aenter__(self):
             return self
@@ -679,6 +693,8 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(monkeypatch):
             return False
 
         async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
+            nonlocal send_message_cnt
+            send_message_cnt += 1
             return None
 
         def __aiter__(self):
@@ -692,13 +708,15 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(monkeypatch):
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
+    mock_sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", mock_sleep)
+
     deadline = time.monotonic() + 0.05
-    start = time.monotonic()
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
-    elapsed_secs = time.monotonic() - start
-    assert elapsed_secs < 0.15
+    assert send_message_cnt == 1
+    mock_sleep.assert_not_called()
     await client.close()
 
 
@@ -714,6 +732,10 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
         jwt_refresh_lock=asyncio.Lock(),
     )
 
+    send_message_cnt = 0
+    aenter_called = 0
+    open_timeout = None
+
     class _Stream:
         def __init__(self, timeout: Optional[float]):
             self._timeout = timeout
@@ -721,6 +743,8 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
         async def __aenter__(self):
             # Simulate grpclib honoring per-RPC timeout during open
             assert self._timeout is not None
+            nonlocal aenter_called
+            aenter_called += 1
             await asyncio.sleep(self._timeout + 0.05)
             raise asyncio.TimeoutError()
 
@@ -728,6 +752,8 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
             return False
 
         async def send_message(self, req: sr_pb2.TaskExecStdioReadRequest, end: bool = True):  # noqa: ARG002
+            nonlocal send_message_cnt
+            send_message_cnt += 1
             return None
 
         def __aiter__(self):
@@ -737,19 +763,22 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
             raise StopAsyncIteration
 
     def _open(timeout: Optional[float] = None):
+        nonlocal open_timeout
+        open_timeout = timeout
         return _Stream(timeout)
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
     # Set a small deadline; expect prompt ExecTimeoutError.
-    deadline = time.monotonic() + 0.05
-    start = time.monotonic()
+    duration = 0.05
+    deadline = time.monotonic() + duration
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
-    elapsed_secs = time.monotonic() - start
-    # Should not significantly exceed the deadline (allow small overhead)
-    assert elapsed_secs < 0.2
+    assert send_message_cnt == 0
+    assert aenter_called == 1
+    assert open_timeout is not None
+    assert open_timeout <= duration
     await client.close()
 
 
