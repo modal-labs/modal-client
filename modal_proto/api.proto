@@ -415,6 +415,7 @@ message AppGetLogsRequest {
   string function_call_id = 9;
   FileDescriptor file_descriptor = 8;
   string sandbox_id = 10;
+  string search_text = 12;
 }
 
 message AppGetObjectsItem {
