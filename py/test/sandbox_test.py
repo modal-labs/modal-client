@@ -8,14 +8,14 @@ from collections import deque
 from pathlib import Path
 from unittest import mock
 
-from grpclib import GRPCError
+from grpclib import GRPCError, Status
 
 import modal
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal._utils.async_utils import synchronizer
 from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.container_process import ContainerProcess, _ContainerProcess
-from modal.exception import Error, InvalidError
+from modal.exception import Error, InvalidError, TimeoutError
 from modal.sandbox import SandboxContainer
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
@@ -31,6 +31,50 @@ def app(client):
     app = App()
     with app.run(client=client):
         yield app
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"port": "8080"}, "expects an integer"),
+        ({"port": 0}, "expects `port` in \\[1, 65535\\]"),
+        ({"port": 65536}, "expects `port` in \\[1, 65535\\]"),
+        ({"port": 8080, "interval_ms": "100"}, "expects an integer"),
+        ({"port": 8080, "interval_ms": 0}, "expects `interval_ms` > 0"),
+    ],
+)
+def test_probe_tcp_bad_values_raise_invalid_error(kwargs, match):
+    with pytest.raises(InvalidError, match=match):
+        modal.Probe.with_tcp(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("args", "kwargs", "match"),
+    [
+        ((), {}, "requires at least one argument"),
+        (("echo", 1), {}, "expects all arguments to be strings"),
+        (("echo",), {"interval_ms": "100"}, "expects an integer"),
+        (("echo",), {"interval_ms": 0}, "expects `interval_ms` > 0"),
+    ],
+)
+def test_probe_exec_bad_values(args, kwargs, match):
+    with pytest.raises(InvalidError, match=match):
+        modal.Probe.with_exec(*args, **kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({}, "Probe must be created with"),
+        (
+            {"tcp_port": 8080, "exec_argv": ("echo", "ok")},
+            "Probe must be created with",
+        ),
+    ],
+)
+def test_probe_rejects_invalid_raw_configuration(kwargs, match):
+    with pytest.raises(InvalidError, match=match):
+        modal.Probe(**kwargs)
 
 
 @skip_non_subprocess
@@ -999,6 +1043,7 @@ detach_error_funcs = {
     "create_connect_token": lambda sb: sb.create_connect_token(),
     "reload_volumes": lambda sb: sb.reload_volumes(),
     "terminate": lambda sb: sb.terminate(),
+    "wait_until_ready": lambda sb: sb.wait_until_ready(),
     "poll": lambda sb: sb.poll(),
     "exec": lambda sb: sb.exec("echo", "hello"),
     "mount_image": lambda sb: sb.mount_image("/mnt", modal.image._Image.from_scratch()),
@@ -1284,3 +1329,85 @@ def test_sandbox_wait_allowed_after_detached(app, servicer):
 
     sb.wait(raise_on_termination=False)
     assert sb.returncode != 0
+
+
+@skip_non_subprocess
+def test_sandbox_wait_until_ready(app, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app, readiness_probe=modal.Probe.with_tcp(8080))
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("SandboxWaitUntilReady", api_pb2.SandboxWaitUntilReadyResponse(ready_at=123.456))
+        sb.wait_until_ready(timeout=5)
+        req = ctx.pop_request("SandboxWaitUntilReady")
+
+    assert req.sandbox_id == sb.object_id
+    assert 0 < req.timeout <= 5
+
+    sb.terminate()
+
+
+@skip_non_subprocess
+def test_sandbox_wait_until_ready_retries_deadline_exceeded(app, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app, readiness_probe=modal.Probe.with_tcp(8080))
+    requests: list[api_pb2.SandboxWaitUntilReadyRequest] = []
+
+    async def handle_wait_until_ready_request(servicer, stream):
+        req: api_pb2.SandboxWaitUntilReadyRequest = await stream.recv_message()
+        requests.append(req)
+        if len(requests) == 1:
+            # Pretend the first request timed out
+            raise GRPCError(Status.DEADLINE_EXCEEDED)
+        await stream.send_message(api_pb2.SandboxWaitUntilReadyResponse(ready_at=123.456))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxWaitUntilReady", handle_wait_until_ready_request)
+        sb.wait_until_ready(timeout=5)
+        assert len(requests) == 2
+        assert requests[0].sandbox_id == sb.object_id
+        assert requests[1].sandbox_id == sb.object_id
+        assert 0 < requests[0].timeout <= 5
+        assert 0 < requests[1].timeout <= 5
+
+    sb.terminate()
+
+
+@skip_non_subprocess
+def test_sandbox_wait_until_ready_times_out_on_repeated_deadline_exceeded(app, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app, readiness_probe=modal.Probe.with_tcp(8080))
+    requests: list[api_pb2.SandboxWaitUntilReadyRequest] = []
+
+    async def handle_wait_until_ready_request(servicer, stream):
+        req: api_pb2.SandboxWaitUntilReadyRequest = await stream.recv_message()
+        requests.append(req)
+        await stream.send_message(api_pb2.SandboxWaitUntilReadyResponse(ready_at=0))
+
+    try:
+        with servicer.intercept() as ctx:
+            ctx.set_responder("SandboxWaitUntilReady", handle_wait_until_ready_request)
+            with pytest.raises(TimeoutError):
+                sb.wait_until_ready(timeout=1)
+            assert len(requests) >= 1
+            assert all(0 < req.timeout <= 1 for req in requests)
+    finally:
+        sb.terminate()
+
+
+@skip_non_subprocess
+def test_sandbox_wait_until_ready_retries_empty_ready_at(app, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 100", app=app, readiness_probe=modal.Probe.with_tcp(8080))
+    requests: list[api_pb2.SandboxWaitUntilReadyRequest] = []
+
+    async def handle_wait_until_ready_request(servicer, stream):
+        req: api_pb2.SandboxWaitUntilReadyRequest = await stream.recv_message()
+        requests.append(req)
+        if len(requests) == 1:
+            await stream.send_message(api_pb2.SandboxWaitUntilReadyResponse(ready_at=0))
+        else:
+            await stream.send_message(api_pb2.SandboxWaitUntilReadyResponse(ready_at=123.456))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxWaitUntilReady", handle_wait_until_ready_request)
+        sb.wait_until_ready(timeout=5)
+        assert len(requests) == 2
+
+    sb.terminate()
