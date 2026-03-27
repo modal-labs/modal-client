@@ -38,7 +38,7 @@ try:
     from .proxy import Proxy
     from .queue import Queue
     from .retries import Retries
-    from .sandbox import Sandbox
+    from .sandbox import Probe, Sandbox
     from .schedule import Cron, Period
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
@@ -68,6 +68,7 @@ __all__ = [
     "Image",
     "NetworkFileSystem",
     "Period",
+    "Probe",
     "Proxy",
     "Queue",
     "Retries",

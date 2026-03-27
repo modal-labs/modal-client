@@ -42,6 +42,7 @@ from .exception import (
     InvalidError,
     SandboxTerminatedError,
     SandboxTimeoutError,
+    TimeoutError,
 )
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO, ls, mkdir, rm, watch
 from .image import _Image
@@ -118,6 +119,73 @@ class SandboxConnectCredentials:
     token: str
 
 
+@dataclass(frozen=True)
+class Probe:
+    """Probe configuration for the Sandbox Readiness Probe.
+
+    Usage:
+        ```py notest
+        # Wait until a file exists.
+        readiness_probe = modal.Probe.with_exec(
+            "sh", "-c", "test -f /tmp/ready",
+        )
+
+        # Wait until a TCP port is accepting connections.
+        readiness_probe = modal.Probe.with_tcp(8080)
+
+        app = modal.App.lookup('sandbox-readiness-probe', create_if_missing=True)
+        sandbox = modal.Sandbox.create(
+            "python3", "-m", "http.server", "8080",
+            readiness_probe=readiness_probe,
+            app=app,
+        )
+        sandbox.wait_until_ready()
+        ```
+    """
+
+    tcp_port: Optional[int] = None
+    exec_argv: Optional[tuple[str, ...]] = None
+    interval_ms: int = 100
+
+    def __post_init__(self):
+        if (self.tcp_port is None) == (self.exec_argv is None):
+            raise InvalidError("Probe must be created with Probe.with_tcp(...) or Probe.with_exec(...)")
+
+    @classmethod
+    def with_tcp(cls, port: int, *, interval_ms: int = 100) -> "Probe":
+        if not isinstance(port, int):
+            raise InvalidError("Probe.with_tcp() expects an integer `port`")
+        if port <= 0 or port > 65535:
+            raise InvalidError(f"Probe.with_tcp() expects `port` in [1, 65535], got {port}")
+        if not isinstance(interval_ms, int):
+            raise InvalidError("Probe.with_tcp() expects an integer `interval_ms`")
+        if interval_ms <= 0:
+            raise InvalidError(f"Probe.with_tcp() expects `interval_ms` > 0, got {interval_ms}")
+        return cls(tcp_port=port, interval_ms=interval_ms)
+
+    @classmethod
+    def with_exec(cls, *argv: str, interval_ms: int = 100) -> "Probe":
+        if len(argv) == 0:
+            raise InvalidError("Probe.with_exec() requires at least one argument")
+        if not all(isinstance(arg, str) for arg in argv):
+            raise InvalidError("Probe.with_exec() expects all arguments to be strings")
+        if not isinstance(interval_ms, int):
+            raise InvalidError("Probe.with_exec() expects an integer `interval_ms`")
+        if interval_ms <= 0:
+            raise InvalidError(f"Probe.with_exec() expects `interval_ms` > 0, got {interval_ms}")
+        return cls(exec_argv=tuple(argv), interval_ms=interval_ms)
+
+    def _to_proto(self) -> api_pb2.Probe:
+        if self.tcp_port is not None:
+            return api_pb2.Probe(tcp_port=self.tcp_port, interval_ms=self.interval_ms)
+        if self.exec_argv is not None:
+            return api_pb2.Probe(
+                exec_command=api_pb2.Probe.ExecCommand(argv=list(self.exec_argv)),
+                interval_ms=self.interval_ms,
+            )
+        raise InvalidError("Probe must be created with Probe.with_tcp(...) or Probe.with_exec(...)")
+
+
 class _Sandbox(_Object, type_prefix="sb"):
     """A `Sandbox` object lets you interact with a running sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
@@ -166,6 +234,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
         proxy: Optional[_Proxy] = None,
+        readiness_probe: Optional[Probe] = None,
         experimental_options: Optional[dict[str, bool]] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
@@ -279,6 +348,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
                 proxy_id=(proxy.object_id if proxy else None),
+                readiness_probe=(readiness_probe._to_proto() if readiness_probe else None),
                 enable_snapshot=enable_snapshot,
                 verbose=verbose,
                 name=name,
@@ -339,6 +409,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         # If True, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth.
         include_oidc_identity_token: bool = False,
+        # Probe used to determine when the sandbox has become ready.
+        readiness_probe: Optional[Probe] = None,
         # Enable verbose logging for sandbox operations.
         verbose: bool = False,
         experimental_options: Optional[dict[str, bool]] = None,
@@ -403,6 +475,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             h2_ports=h2_ports,
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
+            readiness_probe=readiness_probe,
             experimental_options=experimental_options,
             _experimental_enable_snapshot=_experimental_enable_snapshot,
             include_oidc_identity_token=include_oidc_identity_token,
@@ -439,6 +512,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         proxy: Optional[_Proxy] = None,
         include_oidc_identity_token: bool = False,
+        readiness_probe: Optional[Probe] = None,
         experimental_options: Optional[dict[str, bool]] = None,
         _experimental_enable_snapshot: bool = False,
         client: Optional[_Client] = None,
@@ -490,6 +564,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             h2_ports=h2_ports,
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
+            readiness_probe=readiness_probe,
             experimental_options=experimental_options,
             enable_snapshot=_experimental_enable_snapshot,
             verbose=verbose,
@@ -957,6 +1032,39 @@ class _Sandbox(_Object, type_prefix="sb"):
                 elif resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED and raise_on_termination:
                     raise SandboxTerminatedError()
                 break
+
+    async def wait_until_ready(self, *, timeout: int = 300) -> None:
+        """Wait for the Sandbox readiness probe to report that the Sandbox is ready.
+
+        The Sandbox must be configured with a `readiness_probe` in order to use this method.
+
+        Usage:
+        ```py notest
+        app = modal.App.lookup('sandbox-wait-until-ready', create_if_missing=True)
+        sandbox = modal.Sandbox.create(
+            "python3", "-m", "http.server", "8080",
+            readiness_probe=modal.Probe.with_tcp(8080),
+            app=app,
+        )
+        sandbox.wait_until_ready()
+        ```
+        """
+        if timeout <= 0:
+            raise InvalidError(f"`timeout` must be positive, got: {timeout}")
+
+        deadline = time.monotonic() + timeout
+        remaining_timeout = deadline - time.monotonic()
+        while remaining_timeout > 0:
+            req = api_pb2.SandboxWaitUntilReadyRequest(
+                sandbox_id=self.object_id,
+                timeout=min(remaining_timeout, 50.0),
+            )
+            resp = await self._client.stub.SandboxWaitUntilReady(req)
+            if resp.ready_at > 0:
+                return
+
+            remaining_timeout = deadline - time.monotonic()
+        raise TimeoutError()
 
     async def tunnels(self, timeout: int = 50) -> dict[int, Tunnel]:
         """Get Tunnel metadata for the sandbox.
