@@ -7,7 +7,7 @@ import sys
 import time
 import typing
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, get_args
 
 import click
 import typer
@@ -504,7 +504,9 @@ def deploy(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
     timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line."),
-    strategy: DEPLOYMENT_STRATEGY_TYPE = typer.Option("rolling", help="Deployment strategy"),
+    strategy: str = typer.Option(
+        "rolling", help="Deployment strategy", click_type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE))
+    ),
 ):
     """Deploy a Modal application.
 
