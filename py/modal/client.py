@@ -22,7 +22,7 @@ from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.auth_token_manager import _AuthTokenManager
 from ._utils.grpc_utils import ConnectionManager
-from .config import _check_config, _is_remote, config, logger
+from .config import _agent_environment, _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
@@ -56,6 +56,9 @@ def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], vers
                 "x-modal-token-secret": token_secret,
             }
         )
+    agent_env = _agent_environment()
+    if agent_env:
+        metadata["x-modal-agent-harness"] = urllib.parse.quote(agent_env)
     return metadata
 
 
