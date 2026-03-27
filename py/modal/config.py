@@ -121,6 +121,36 @@ def _is_remote() -> bool:
     return os.environ.get("MODAL_IS_REMOTE") == "1"
 
 
+def _agent_environment() -> Optional[str]:
+    """Detect if the current process is running inside an AI agent harness.
+
+    Returns the agent name if detected, or None otherwise.
+
+    Checks the emerging `AGENT` standard variable first, then falls back to
+    tool-specific environment variables used by known agent harnesses.
+    """
+    # Emerging standard: AGENT=<name>
+    if agent := os.environ.get("AGENT"):
+        return agent
+
+    # Tool-specific environment variables
+    _TOOL_SPECIFIC_ENV_VARS: list[tuple[str, str]] = [
+        ("CLAUDECODE", "claude-code"),
+        ("GEMINI_CLI", "gemini-cli"),
+        ("CURSOR_AGENT", "cursor"),
+        ("CLINE_ACTIVE", "cline"),
+        ("AUGMENT_AGENT", "augment"),
+        ("OPENCODE_CLIENT", "opencode"),
+        ("GOOSE_TERMINAL", "goose"),
+        ("TRAE_AI_SHELL_ID", "trae"),
+    ]
+    for env_var, agent_name in _TOOL_SPECIFIC_ENV_VARS:
+        if os.environ.get(env_var):
+            return agent_name
+
+    return None
+
+
 def _read_user_config():
     config_data = {}
     if not _is_remote() and os.path.exists(user_config_path):
