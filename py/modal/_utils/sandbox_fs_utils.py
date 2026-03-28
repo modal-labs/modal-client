@@ -28,6 +28,7 @@ _EXEC_SANDBOX_UNAVAILABLE_ERROR_TYPES = (NotFoundError, ServiceError, Connection
 class ErrorPayload:
     error_kind: str
     message: str
+    detail: str = ""
 
 
 def _stderr_to_text(stderr: Union[str, bytes]) -> str:
@@ -51,11 +52,18 @@ def try_parse_error_payload(stderr: Union[str, bytes]) -> Optional[ErrorPayload]
         return None
     if not isinstance(message, str) or not message.strip():
         return None
-    return ErrorPayload(error_kind=error_kind, message=message)
+    detail = payload.get("detail", "")
+    if not isinstance(detail, str):
+        detail = ""
+    return ErrorPayload(error_kind=error_kind, message=message, detail=detail)
 
 
 def raise_read_file_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
     if payload := try_parse_error_payload(stderr):
+        logger.debug(
+            f"sandbox-fs-tools read error: path={remote_path}, "
+            f"error_kind={payload.error_kind}, message={payload.message}, detail={payload.detail}"
+        )
         if payload.error_kind == "NotFound":
             raise SandboxFilesystemNotFoundError(f"{payload.message}: {remote_path}")
         if payload.error_kind == "IsDirectory":
@@ -106,6 +114,10 @@ def translate_exec_unexpected_error(operation: str, path: str, exc: Exception) -
 
 def raise_write_file_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
     if payload := try_parse_error_payload(stderr):
+        logger.debug(
+            f"sandbox-fs-tools write error: path={remote_path}, "
+            f"error_kind={payload.error_kind}, message={payload.message}, detail={payload.detail}"
+        )
         if payload.error_kind == "NotDirectory" or payload.error_kind == "AlreadyExists":
             raise SandboxFilesystemNotADirectoryError(f"{payload.message}: {remote_path}")
         if payload.error_kind == "IsDirectory":

@@ -37,13 +37,13 @@ def test_translate_exec_errors_converts_general_modal_error():
 def test_try_parse_error_payload_returns_payload_for_valid_json():
     stderr = json.dumps({"error_kind": "NotFound", "message": "file not found"})
     result = try_parse_error_payload(stderr)
-    assert result == ErrorPayload(error_kind="NotFound", message="file not found")
+    assert result == ErrorPayload(error_kind="NotFound", message="file not found", detail="")
 
 
 def test_try_parse_error_payload_accepts_bytes():
     stderr = json.dumps({"error_kind": "PermissionDenied", "message": "access denied"}).encode("utf-8")
     result = try_parse_error_payload(stderr)
-    assert result == ErrorPayload(error_kind="PermissionDenied", message="access denied")
+    assert result == ErrorPayload(error_kind="PermissionDenied", message="access denied", detail="")
 
 
 def test_try_parse_error_payload_returns_none_for_empty_stderr():
@@ -77,3 +77,17 @@ def test_try_parse_error_payload_returns_none_for_non_string_message():
 
 def test_try_parse_error_payload_returns_none_for_blank_message():
     assert try_parse_error_payload(json.dumps({"error_kind": "NotFound", "message": "  "})) is None
+
+
+def test_try_parse_error_payload_includes_detail_when_present():
+    stderr = json.dumps(
+        {"error_kind": "Io", "message": "I/O error", "detail": "No such file or directory (os error 2)"}
+    )
+    result = try_parse_error_payload(stderr)
+    assert result == ErrorPayload(error_kind="Io", message="I/O error", detail="No such file or directory (os error 2)")
+
+
+def test_try_parse_error_payload_ignores_non_string_detail():
+    stderr = json.dumps({"error_kind": "Io", "message": "I/O error", "detail": 42})
+    result = try_parse_error_payload(stderr)
+    assert result == ErrorPayload(error_kind="Io", message="I/O error", detail="")
