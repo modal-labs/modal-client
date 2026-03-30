@@ -22,7 +22,7 @@ dependencies = [
     "grpclib>=0.4.9,<0.4.10 ; python_version >= '3.14'",
     "protobuf>=3.19,<7.0,!=4.24.0",
     "rich>=12.0.0",
-    "synchronicity~=0.11.1",
+    "synchronicity~=0.12.0",
     "toml",
     "typer>=0.9",
     "types-certifi",
@@ -71,7 +71,7 @@ dev = [
     "pyright~=1.1.351",
     "console-ctrl~=0.1.0",
     "zstandard~=0.25.0",
-    "synchronicity[compile]==0.11.1",
+    "synchronicity[compile]~=0.12.0",
     "python-json-logger==2.0.7",
     "build~=1.3.0",
 

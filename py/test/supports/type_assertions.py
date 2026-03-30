@@ -5,9 +5,12 @@ from importlib.util import find_spec
 from typing_extensions import assert_type
 
 import modal
+from modal.dict import Dict, DictManager
 from modal.partial_function import method
+from modal.queue import Queue, QueueManager
 from modal.sandbox import SandboxContainer
-from modal.volume import AbstractVolumeUploadContextManager
+from modal.secret import Secret, SecretManager
+from modal.volume import AbstractVolumeUploadContextManager, Volume, VolumeManager
 
 app = modal.App()
 
@@ -128,9 +131,28 @@ if find_spec("dotenv"):
     secret = modal.Secret.from_dotenv(filename="non-existing-dotenv")
     assert_type(secret, modal.Secret)
 
+volume_objects = Volume.objects
+assert_type(volume_objects, type[VolumeManager])
+volume_create = volume_objects.create
 
-with modal.Volume.ephemeral() as vol:
-    assert_type(vol, modal.Volume)
+queue_objects = Queue.objects
+assert_type(queue_objects, type[QueueManager])
+queue_create = queue_objects.create
+
+dict_objects = Dict.objects
+assert_type(dict_objects, type[DictManager])
+dict_create = dict_objects.create
+
+secret_objects = Secret.objects
+assert_type(secret_objects, type[SecretManager])
+secret_create = secret_objects.create
+
+# intentional to break typing on instance access of the manager
+# although it works at runtime
+secret_objects = assert_type(secret.objects, None)
+
+with Volume.ephemeral() as vol:
+    assert_type(vol, Volume)
 
     with vol.batch_upload() as upload_context:
         assert_type(upload_context, AbstractVolumeUploadContextManager)

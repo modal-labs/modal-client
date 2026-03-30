@@ -291,7 +291,8 @@ class _Queue(_Object, type_prefix="qu"):
         raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
 
     @classproperty
-    def objects(cls) -> _QueueManager:
+    @classmethod
+    def objects(cls) -> type[_QueueManager]:
         return _QueueManager
 
     @property
