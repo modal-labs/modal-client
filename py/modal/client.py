@@ -56,8 +56,7 @@ def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], vers
                 "x-modal-token-secret": token_secret,
             }
         )
-    agent_env = _agent_environment()
-    if agent_env:
+    if agent_env := _agent_environment():
         metadata["x-modal-agent-harness"] = urllib.parse.quote(agent_env)
     return metadata
 
