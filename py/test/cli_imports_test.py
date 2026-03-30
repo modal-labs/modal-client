@@ -212,22 +212,49 @@ def test_list_cli_commands():
     def non_modal_func():
         pass
 
-    fake_module = {"app": app, "other_app": other_app, "non_modal_func": non_modal_func, "foo": foo, "Cls": Cls}
+    fake_module = {
+        "app": app,
+        "other_app": other_app,
+        "non_modal_func": non_modal_func,
+        "foo": foo,
+        "Cls": Cls,
+        "SimpleServer": SimpleServer,
+    }
 
     res = list_cli_commands(fake_module)
 
+    foo_command = CLICommand(["foo", "app.foo"], foo, False, priority=AutoRunPriority.MODULE_FUNCTION)
+    cls_method_1_command = CLICommand(
+        ["Cls.method_1", "app.Cls.method_1"],
+        MethodReference(Cls, "method_1"),  # type: ignore[arg-type]
+        False,
+        priority=AutoRunPriority.MODULE_FUNCTION,
+    )
+    cls_web_method_command = CLICommand(
+        ["Cls.web_method", "app.Cls.web_method"],
+        MethodReference(Cls, "web_method"),  # type: ignore[arg-type]
+        True,
+        priority=AutoRunPriority.MODULE_FUNCTION,
+    )
+    cls_command = CLICommand(
+        ["app.Cls.*"], app.registered_functions["Cls.*"], False, priority=AutoRunPriority.APP_FUNCTION
+    )
+    simple_server_command = CLICommand(
+        ["app.SimpleServer"], app.registered_functions["SimpleServer"], False, priority=AutoRunPriority.APP_FUNCTION
+    )
+
     assert res == [
-        CLICommand(["foo", "app.foo"], foo, False, priority=AutoRunPriority.MODULE_FUNCTION),  # type: ignore
-        CLICommand(
-            ["Cls.method_1", "app.Cls.method_1"],
-            MethodReference(Cls, "method_1"),  # type: ignore
-            False,
-            priority=AutoRunPriority.MODULE_FUNCTION,
-        ),
-        CLICommand(
-            ["Cls.web_method", "app.Cls.web_method"],
-            MethodReference(Cls, "web_method"),  # type: ignore
-            True,
-            priority=AutoRunPriority.MODULE_FUNCTION,
-        ),
+        foo_command,
+        cls_method_1_command,
+        cls_web_method_command,
+    ]
+
+    res = list_cli_commands(fake_module, include_service_functions=True)
+
+    assert res == [
+        foo_command,
+        cls_command,
+        simple_server_command,
+        cls_method_1_command,
+        cls_web_method_command,
     ]

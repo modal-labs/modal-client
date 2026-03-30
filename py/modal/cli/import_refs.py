@@ -127,6 +127,7 @@ class AutoRunPriority:
 
 def list_cli_commands(
     module_members: dict[str, typing.Any],
+    include_service_functions: bool = False,
 ) -> list[CLICommand]:
     """
     Extracts all runnables found either directly in the input module, or in any of the Apps listed in that module
@@ -149,8 +150,8 @@ def list_cli_commands(
             all_runnables[local_entrypoint].append(f"{app_name}.{name}")
             priorities[local_entrypoint] = AutoRunPriority.APP_LOCAL_ENTRYPOINT
         for name, function in app.registered_functions.items():
-            if function.info.is_service_class():
-                continue  # Skip class and server service functions since they don't have associated cli commands
+            if function.info.is_service_class() and not include_service_functions:
+                continue  # Skip class and server service functions for all commands except `modal shell`.
             all_runnables[function].append(f"{app_name}.{name}")
             priorities[function] = AutoRunPriority.APP_FUNCTION
         for cls_name, cls in app.registered_classes.items():
@@ -322,7 +323,12 @@ def _get_runnable_app(runnable: Runnable) -> App:
 
 
 def import_and_filter(
-    import_ref: ImportRef, *, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
+    import_ref: ImportRef,
+    *,
+    base_cmd: str,
+    accept_local_entrypoint=True,
+    accept_webhook=False,
+    accept_service_functions=False,
 ) -> tuple[Optional[Runnable], list[CLICommand]]:
     """Takes a function ref string and returns a single determined "runnable" to use, and a list of all available
     runnables.
@@ -339,7 +345,10 @@ def import_and_filter(
     """
     # all commands:
     module = import_file_or_module(import_ref, base_cmd)
-    cli_commands = list_cli_commands(dict(inspect.getmembers(module)))
+    cli_commands = list_cli_commands(
+        dict(inspect.getmembers(module)),
+        include_service_functions=accept_service_functions,
+    )
 
     # all commands that satisfy local entrypoint/accept webhook limitations AND object path prefix
 
