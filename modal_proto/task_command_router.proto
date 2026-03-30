@@ -142,6 +142,8 @@ message TaskExecStartRequest {
   bool runtime_debug = 10;
   // Fully qualified target container ID. Empty targets the main container.
   string container_id = 11;
+  // Environment variables to set directly for the exec'd command.
+  map<string, string> env = 12;
 }
 
 message TaskExecStartResponse { }
