@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import json
+import socket
 import ssl
 import time
 import urllib.parse
@@ -181,7 +182,10 @@ class TaskCommandRouterClient:
             closed_error_message="Unable to perform operation on a detached sandbox",
         )
 
-        await _connect_channel(channel)
+        try:
+            await _connect_channel(channel)
+        except socket.gaierror as exc:
+            raise ConnectionError(f"Could not resolve hostname '{host}': {exc}") from exc
         loop = asyncio.get_running_loop()
         jwt_refresh_lock = asyncio.Lock()
 
