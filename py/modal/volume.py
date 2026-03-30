@@ -358,7 +358,8 @@ class _Volume(_Object, type_prefix="vo"):
     _read_only: bool = False
 
     @classproperty
-    def objects(cls) -> _VolumeManager:
+    @classmethod
+    def objects(cls) -> type[_VolumeManager]:
         return _VolumeManager
 
     @property

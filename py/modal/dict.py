@@ -298,7 +298,8 @@ class _Dict(_Object, type_prefix="di"):
         )
 
     @classproperty
-    def objects(cls) -> _DictManager:
+    @classmethod
+    def objects(cls) -> type[_DictManager]:
         return _DictManager
 
     @property

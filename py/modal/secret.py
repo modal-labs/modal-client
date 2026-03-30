@@ -237,7 +237,8 @@ class _Secret(_Object, type_prefix="st"):
     _metadata: Optional[api_pb2.SecretMetadata] = None
 
     @classproperty
-    def objects(cls) -> _SecretManager:
+    @classmethod
+    def objects(cls) -> type[_SecretManager]:
         return _SecretManager
 
     @property
