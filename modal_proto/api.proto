@@ -2940,6 +2940,17 @@ message SandboxCreateV2Response {
   string task_id = 3;
 }
 
+// Used by the sandbox controller to get command router access for V2 sandboxes.
+// For all other use cases, use TaskGetCommandRouterAccess instead.
+message SandboxGetCommandRouterAccessRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetCommandRouterAccessResponse {
+  string jwt = 1;
+  string url = 2;
+}
+
 message SandboxGetFromNameRequest {
   string sandbox_name = 1;
   string environment_name = 2;
@@ -4001,6 +4012,7 @@ service ModalClient {
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxCreateConnectToken(SandboxCreateConnectTokenRequest) returns (SandboxCreateConnectTokenResponse);
   rpc SandboxCreateV2(SandboxCreateV2Request) returns (SandboxCreateV2Response);
+  rpc SandboxGetCommandRouterAccess(SandboxGetCommandRouterAccessRequest) returns (SandboxGetCommandRouterAccessResponse);
   rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
