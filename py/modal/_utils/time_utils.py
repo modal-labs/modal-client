@@ -164,6 +164,61 @@ def parse_date_range(s: str, tz: Optional[tzinfo] = None) -> tuple[datetime, dat
     raise ValueError(f"Unrecognized range: '{s}'. Accepted values: {accepted}")
 
 
+def relative_timestamp(dt: datetime) -> str:
+    """Convert a tz-aware datetime to a human-readable relative time string.
+
+    Examples: "just now", "30 seconds ago", "5 minutes ago", "2 hours ago",
+    "yesterday", "3 days ago", "2 weeks ago", "3 months ago", "1 year ago".
+
+    Raises ValueError if the datetime is naive (no tzinfo).
+    """
+    if dt.tzinfo is None:
+        raise ValueError("datetime must be timezone-aware")
+
+    now = datetime.now(timezone.utc)
+    delta = now - dt
+    total_seconds = int(delta.total_seconds())
+
+    if total_seconds < 0:
+        return "just now"
+
+    if total_seconds < 10:
+        return "just now"
+    if total_seconds < 60:
+        return f"{total_seconds} seconds ago"
+    if total_seconds < 120:
+        return "1 minute ago"
+
+    minutes = total_seconds // 60
+    if minutes < 60:
+        return f"{minutes} minutes ago"
+    if minutes < 120:
+        return "1 hour ago"
+
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} hours ago"
+    if hours < 48:
+        return "yesterday"
+
+    days = hours // 24
+    if days < 14:
+        return f"{days} days ago"
+
+    weeks = days // 7
+    if days < 60:
+        return f"{weeks} weeks ago"
+
+    months = days // 30
+    if days < 365:
+        return f"{months} months ago"
+
+    years = days // 365
+    if years == 1:
+        return "1 year ago"
+    return f"{years} years ago"
+
+
 def locale_tz() -> tzinfo:
     return datetime.now().astimezone().tzinfo
 
