@@ -4,6 +4,23 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.4.1 (2026-03-30)
+
+- We're introducing a concept of "readiness probes" for `modal.Sandbox`. This feature lets you configure a readiness check on a TCP port (`modal.Probe.with_tcp()`) or by executing a process (`modal.Probe.with_exec()`). Calling `sb.wait_until_ready()` will block until the Probe succeeds:
+  ```python notest
+  app = modal.App.lookup('sandbox-app', create_if_missing=True)
+  probe = modal.Probe.with_tcp(8080)
+  sb = modal.Sandbox.create(
+      "python3", "-m", "http.server", "8080",
+      readiness_probe=probe,
+      app=app,
+  )
+  sb.wait_until_ready()
+  ```
+- We fixed a longstanding bug that could cause WebSocket performance to degrade after handling hundreds of connections from the same container.
+- We improved the performance of `modal container logs` when fetching logs for an old container.
+- We fixed a bug introduced in 1.4.0 that made the `modal` CLI crash on `typer<0.19.0`.
+
 ### 1.4.0 (2026-03-25)
 
 We've made significant CLI enhancements so that Modal logs can be more accessible to coding agents:
