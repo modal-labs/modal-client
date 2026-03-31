@@ -123,24 +123,25 @@ class SandboxConnectCredentials:
 class Probe:
     """Probe configuration for the Sandbox Readiness Probe.
 
-    Usage:
-        ```py notest
-        # Wait until a file exists.
-        readiness_probe = modal.Probe.with_exec(
-            "sh", "-c", "test -f /tmp/ready",
-        )
+    **Usage**
 
-        # Wait until a TCP port is accepting connections.
-        readiness_probe = modal.Probe.with_tcp(8080)
+    ```python notest
+    # Wait until a file exists.
+    readiness_probe = modal.Probe.with_exec(
+        "sh", "-c", "test -f /tmp/ready",
+    )
 
-        app = modal.App.lookup('sandbox-readiness-probe', create_if_missing=True)
-        sandbox = modal.Sandbox.create(
-            "python3", "-m", "http.server", "8080",
-            readiness_probe=readiness_probe,
-            app=app,
-        )
-        sandbox.wait_until_ready()
-        ```
+    # Wait until a TCP port is accepting connections.
+    readiness_probe = modal.Probe.with_tcp(8080)
+
+    app = modal.App.lookup('sandbox-readiness-probe', create_if_missing=True)
+    sandbox = modal.Sandbox.create(
+        "python3", "-m", "http.server", "8080",
+        readiness_probe=readiness_probe,
+        app=app,
+    )
+    sandbox.wait_until_ready()
+    ```
     """
 
     tcp_port: Optional[int] = None
