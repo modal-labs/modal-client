@@ -12,6 +12,7 @@ from ..exception import (
     Error as ModalError,
     InvalidError,
     NotFoundError,
+    SandboxFilesystemDirectoryNotEmptyError,
     SandboxFilesystemError,
     SandboxFilesystemFileTooLargeError,
     SandboxFilesystemIsADirectoryError,
@@ -151,6 +152,40 @@ def make_read_file_command(remote_path: str) -> str:
     only added with backwards-compatible defaults.
     """
     return json.dumps({"ReadFile": {"path": remote_path}})
+
+
+def make_remove_command(remote_path: str, recursive: bool) -> str:
+    """Build the JSON command string for a Remove operation.
+
+    The returned JSON must match the `Command` enum in the modal-sandbox-fs-tools
+    Rust crate (crates/modal-sandbox-fs-tools/src/lib.rs). Treat changes to
+    this schema like protobuf changes: fields must not be removed or renamed,
+    only added with backwards-compatible defaults.
+    """
+    return json.dumps({"Remove": {"path": remote_path, "recursive": recursive}})
+
+
+def raise_remove_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+    if payload := try_parse_error_payload(stderr):
+        logger.debug(
+            f"sandbox-fs-tools remove error: path={remote_path}, "
+            f"error_kind={payload.error_kind}, message={payload.message}, detail={payload.detail}"
+        )
+        if payload.error_kind == "NotFound":
+            raise SandboxFilesystemNotFoundError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "DirectoryNotEmpty":
+            raise SandboxFilesystemDirectoryNotEmptyError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "NotSupported":
+            raise InvalidError(
+                f"{payload.message}: {remote_path} - this operation is not supported for CloudBucketMounts"
+            )
+        if payload.error_kind == "PermissionDenied":
+            raise SandboxFilesystemPermissionError(f"{payload.message}: {remote_path}")
+        raise SandboxFilesystemError(payload.message)
+
+    if stderr_text := _stderr_to_text(stderr):
+        logger.debug(f"Unstructured modal-sandbox-fs-tools stderr: {stderr_text}")
+    raise SandboxFilesystemError(f"Operation on '{remote_path}' failed with exit code {returncode}")
 
 
 def validate_absolute_remote_path(remote_path: str, operation: str) -> None:

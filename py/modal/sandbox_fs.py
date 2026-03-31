@@ -12,8 +12,10 @@ from ._utils.async_utils import synchronize_api
 from ._utils.logger import logger
 from ._utils.sandbox_fs_utils import (
     make_read_file_command,
+    make_remove_command,
     make_write_file_command,
     raise_read_file_error,
+    raise_remove_error,
     raise_write_file_error,
     translate_exec_errors,
     validate_absolute_remote_path,
@@ -302,6 +304,52 @@ class _SandboxFilesystem:
 
         dur_s = max(time.monotonic() - t0, 0.001)
         _log_throughput(f"copy_from_local {local_path} -> {remote_path}", total_bytes, dur_s)
+
+    async def remove(self, remote_path: str, *, recursive: bool = False) -> None:
+        """Remove a file or directory in the Sandbox.
+
+        `remote_path` must be an absolute path in the Sandbox.
+
+        When `remote_path` is a directory and `recursive` is `False` (the
+        default), removes it only if it is empty. When `recursive` is `True`,
+        removes the directory and all its contents.
+
+        Recursive directory removal is not supported on all mounts.
+        In particular, `CloudBucketMount` does not support it. An
+        `InvalidError` is raised in that case.
+
+        **Raises**
+
+        - `SandboxFilesystemNotFoundError`: the path does not exist.
+        - `SandboxFilesystemDirectoryNotEmptyError`: `recursive` is `False` and the directory is not empty.
+        - `SandboxFilesystemPermissionError`: removal is not permitted.
+        - `InvalidError`: the operation is not supported by the mount.
+        - `SandboxFilesystemError`: the command fails for any other reason.
+
+        **Usage**
+
+        To remove a file:
+
+        ```python fixture:sandbox
+        sandbox.filesystem.write_bytes(b"Hello, world!\\n", "/tmp/hello.bin")
+        sandbox.filesystem.remove("/tmp/hello.bin")
+        ```
+
+        To remove a directory and all its contents:
+
+        ```python fixture:sandbox
+        sandbox.exec("mkdir", "-p", "/tmp/mydir/subdir").wait()
+        sandbox.filesystem.remove("/tmp/mydir", recursive=True)
+        ```
+        """
+        validate_absolute_remote_path(remote_path, "remove")
+
+        with translate_exec_errors("remove", remote_path):
+            process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_remove_command(remote_path, recursive))
+            stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
+
+        if returncode != 0:
+            raise_remove_error(returncode, stderr, remote_path)
 
 
 SandboxFilesystem = synchronize_api(_SandboxFilesystem)

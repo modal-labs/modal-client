@@ -72,4 +72,29 @@ if "WriteFile" in command:
         _error_payload("PermissionDenied", "permission denied")
     raise SystemExit(0)
 
+if "Remove" in command:
+    target = command["Remove"]["path"]
+    recursive = command["Remove"].get("recursive", False)
+    if not os.path.lexists(target):
+        _error_payload("NotFound", "path does not exist")
+    try:
+        if os.path.islink(target) or not os.path.isdir(target):
+            os.remove(target)
+        elif recursive:
+            import shutil
+
+            shutil.rmtree(target)
+        else:
+            os.rmdir(target)
+    except PermissionError:
+        _error_payload("PermissionDenied", "permission denied")
+    except OSError as e:
+        import errno
+
+        if e.errno == errno.ENOTEMPTY:
+            _error_payload("DirectoryNotEmpty", "directory is not empty")
+        else:
+            _error_payload("Io", str(e))
+    raise SystemExit(0)
+
 raise SystemExit(f"unknown command: {command}")
