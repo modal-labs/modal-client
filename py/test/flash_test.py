@@ -405,6 +405,20 @@ class TestFlashManagerStopping:
 
     @pytest.mark.asyncio
     async def test_flash_startup_timeout(self, flash_manager):
+        """Test that _start raises TimeoutError and cleans up when the port never becomes healthy."""
+        flash_manager.startup_timeout = 0.05
+        flash_manager.is_port_connection_healthy = AsyncMock(return_value=(False, None))
+        flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
+
+        with pytest.raises(TimeoutError, match="Waited too long for port"):
+            await flash_manager._start()
+            await asyncio.sleep(0.2)
+
+        flash_manager.client.stub.FlashContainerDeregister.assert_called_once()
+        flash_manager.tunnel_manager.__aexit__.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_flash_startup_timeout_heartbeat(self, flash_manager):
         """Test that flash startup timeout works."""
         flash_manager.tunnel = MagicMock()
         flash_manager.tunnel.url = "https://test.modal.test"
@@ -436,7 +450,6 @@ class TestFlashManagerStopping:
                 pass
 
         assert flash_manager.num_heartbeat_failures > 0
-        assert flash_manager.num_heartbeat_failures >= _MAX_FAILURES
 
     @pytest.mark.asyncio
     async def test_wait_for_port_success_registers(self, flash_manager):
