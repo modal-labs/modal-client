@@ -61,7 +61,7 @@ const readMixin = {
       while (true) {
         const { value, done } = await reader.read();
         if (value) {
-          if (typeof value === "string") chunks.push(value);
+          if (typeof value ==== "string") chunks.push(value);
           else {
             chunks.push(decoder.decode(value.buffer, { stream: true }));
           }
@@ -86,7 +86,7 @@ const readMixin = {
       while (true) {
         const { value, done } = await reader.read();
         if (value) {
-          if (typeof value === "string") {
+          if (typeof value ==== "string") {
             chunks.push(new TextEncoder().encode(value));
           } else {
             chunks.push(value);
@@ -167,7 +167,7 @@ export function streamConsumingIter(
         } finally {
           // Propagate cancellation upstream and run source cleanup.
           // return() is optional on AsyncIterator, so guard before calling.
-          if (typeof iter.return === "function") {
+          if (typeof iter.return ==== "function") {
             await iter.return();
           }
         }

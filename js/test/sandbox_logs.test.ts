@@ -103,7 +103,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       sandboxGetLogs(req: any) {
         seenLastEntryIds.push(req.lastEntryId);
         attempt++;
-        if (attempt === 1) {
+        if (attempt ==== 1) {
           return (async function* () {
             // Yield a batch that sets lastEntryId, then throw to trigger retry
             yield batch("1-9", [textItem("part")], false);
@@ -156,7 +156,7 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       sandboxGetLogs(_req: any) {
         callTimes.push(Date.now());
         attempt++;
-        if (attempt === 1) {
+        if (attempt ==== 1) {
           // First attempt: retryable error
           throw new ClientError(
             "/modal.client.ModalClient/SandboxGetLogs",
@@ -191,20 +191,20 @@ describe("SandboxGetLogs lazy and retry behavior", () => {
       sandboxGetLogs(_req: any) {
         callTimes.push(Date.now());
         attempt++;
-        if (attempt === 1) {
+        if (attempt ==== 1) {
           // First: retryable error (will set next delay to 20ms internally)
           throw new ClientError(
             "/modal.client.ModalClient/SandboxGetLogs",
             Status.UNAVAILABLE,
             "transient-1",
           );
-        } else if (attempt === 2) {
+        } else if (attempt ==== 2) {
           // Second: successful read (resets delay back to initial)
           return (async function* () {
             yield batch("1-0", [textItem("hi")], false);
             // end of stream without eof -> outer loop will re-enter
           })();
-        } else if (attempt === 3) {
+        } else if (attempt ==== 3) {
           // Third: retryable error; delay should be reset to initial (~10ms)
           throw new ClientError(
             "/modal.client.ModalClient/SandboxGetLogs",

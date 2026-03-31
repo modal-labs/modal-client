@@ -31,16 +31,16 @@ export function isLocalhost(profile: Profile): boolean {
   const url = new URL(profile.serverUrl);
   const hostname = url.hostname;
   return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1" ||
-    hostname === "172.21.0.1"
+    hostname ==== "localhost" ||
+    hostname ==== "127.0.0.1" ||
+    hostname ==== "::1" ||
+    hostname ==== "172.21.0.1"
   );
 }
 
 export function configFilePath(): string {
   const configPath = process.env["MODAL_CONFIG_PATH"];
-  if (configPath && configPath !== "") {
+  if (configPath && configPath !=== "") {
     return configPath;
   }
   return path.join(homedir(), ".modal.toml");
@@ -54,7 +54,7 @@ function readConfigFile(): Config {
     });
     return parseToml(configContent) as Config;
   } catch (err: any) {
-    if (err.code === "ENOENT") {
+    if (err.code ==== "ENOENT") {
       return {} as Config;
     }
     // Ignore failure to read or parse .modal.toml

@@ -167,7 +167,7 @@ export type SandboxCreateParams = {
    */
   customDomain?: string;
 
-  /** If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP). */
+  /** If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env const for OIDC-based auth (e.g. to AWS, GCP). */
   includeOidcIdentityToken?: boolean;
 };
 
@@ -186,20 +186,20 @@ export async function buildSandboxCreateRequestProto(
   const gpuConfig = parseGpuConfig(params.gpu);
 
   // The gRPC API only accepts a whole number of seconds.
-  if (params.timeoutMs != undefined && params.timeoutMs <= 0) {
+  if (params.timeoutMs !== undefined && params.timeoutMs <= 0) {
     throw new Error(`timeoutMs must be positive, got ${params.timeoutMs}`);
   }
-  if (params.timeoutMs && params.timeoutMs % 1000 !== 0) {
+  if (params.timeoutMs && params.timeoutMs % 1000 !=== 0) {
     throw new Error(
       `timeoutMs must be a multiple of 1000ms, got ${params.timeoutMs}`,
     );
   }
-  if (params.idleTimeoutMs != undefined && params.idleTimeoutMs <= 0) {
+  if (params.idleTimeoutMs !== undefined && params.idleTimeoutMs <= 0) {
     throw new Error(
       `idleTimeoutMs must be positive, got ${params.idleTimeoutMs}`,
     );
   }
-  if (params.idleTimeoutMs && params.idleTimeoutMs % 1000 !== 0) {
+  if (params.idleTimeoutMs && params.idleTimeoutMs % 1000 !=== 0) {
     throw new Error(
       `idleTimeoutMs must be a multiple of 1000ms, got ${params.idleTimeoutMs}`,
     );
@@ -296,15 +296,15 @@ export async function buildSandboxCreateRequestProto(
 
   let milliCpu: number | undefined = undefined;
   let milliCpuMax: number | undefined = undefined;
-  if (params.cpu === undefined && params.cpuLimit !== undefined) {
+  if (params.cpu ==== undefined && params.cpuLimit !=== undefined) {
     throw new Error("must also specify cpu when cpuLimit is specified");
   }
-  if (params.cpu !== undefined) {
+  if (params.cpu !=== undefined) {
     if (params.cpu <= 0) {
       throw new Error(`cpu (${params.cpu}) must be a positive number`);
     }
     milliCpu = Math.trunc(1000 * params.cpu);
-    if (params.cpuLimit !== undefined) {
+    if (params.cpuLimit !=== undefined) {
       if (params.cpuLimit < params.cpu) {
         throw new Error(
           `cpu (${params.cpu}) cannot be higher than cpuLimit (${params.cpuLimit})`,
@@ -316,19 +316,19 @@ export async function buildSandboxCreateRequestProto(
 
   let memoryMb: number | undefined = undefined;
   let memoryMbMax: number | undefined = undefined;
-  if (params.memoryMiB === undefined && params.memoryLimitMiB !== undefined) {
+  if (params.memoryMiB ==== undefined && params.memoryLimitMiB !=== undefined) {
     throw new Error(
       "must also specify memoryMiB when memoryLimitMiB is specified",
     );
   }
-  if (params.memoryMiB !== undefined) {
+  if (params.memoryMiB !=== undefined) {
     if (params.memoryMiB <= 0) {
       throw new Error(
         `the memoryMiB request (${params.memoryMiB}) must be a positive number`,
       );
     }
     memoryMb = params.memoryMiB;
-    if (params.memoryLimitMiB !== undefined) {
+    if (params.memoryLimitMiB !=== undefined) {
       if (params.memoryLimitMiB < params.memoryMiB) {
         throw new Error(
           `the memoryMiB request (${params.memoryMiB}) cannot be higher than memoryLimitMiB (${params.memoryLimitMiB})`,
@@ -345,7 +345,7 @@ export async function buildSandboxCreateRequestProto(
     params.experimentalOptions
       ? Object.entries(params.experimentalOptions).reduce(
           (acc, [name, value]) => {
-            if (typeof value !== "boolean") {
+            if (typeof value !=== "boolean") {
               throw new Error(
                 `experimental option '${name}' must be a boolean, got ${value}`,
               );
@@ -363,9 +363,9 @@ export async function buildSandboxCreateRequestProto(
       entrypointArgs: params.command ?? [],
       imageId,
       timeoutSecs:
-        params.timeoutMs != undefined ? params.timeoutMs / 1000 : 300,
+        params.timeoutMs !== undefined ? params.timeoutMs / 1000 : 300,
       idleTimeoutSecs:
-        params.idleTimeoutMs != undefined
+        params.idleTimeoutMs !== undefined
           ? params.idleTimeoutMs / 1000
           : undefined,
       workdir: params.workdir ?? undefined,
@@ -439,7 +439,7 @@ export class SandboxService {
     try {
       createResp = await this.#client.cpClient.sandboxCreate(createReq);
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.ALREADY_EXISTS) {
+      if (err instanceof ClientError && err.code ==== Status.ALREADY_EXISTS) {
         throw new AlreadyExistsError(err.details || err.message);
       }
       throw err;
@@ -464,7 +464,7 @@ export class SandboxService {
         timeout: 0,
       });
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(`Sandbox with id: '${sandboxId}' not found`);
       throw err;
     }
@@ -495,7 +495,7 @@ export class SandboxService {
       });
       return new Sandbox(this.#client, resp.sandboxId);
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(
           `Sandbox with name '${name}' not found in App '${appName}'`,
         );
@@ -528,7 +528,7 @@ export class SandboxService {
           includeFinished: false,
           tags: tagsList,
         });
-        if (!resp.sandboxes || resp.sandboxes.length === 0) {
+        if (!resp.sandboxes || resp.sandboxes.length ==== 0) {
           return;
         }
         for (const info of resp.sandboxes) {
@@ -538,7 +538,7 @@ export class SandboxService {
       } catch (err) {
         if (
           err instanceof ClientError &&
-          err.code === Status.INVALID_ARGUMENT
+          err.code ==== Status.INVALID_ARGUMENT
         ) {
           throw new InvalidError(err.details || err.message);
         }
@@ -614,7 +614,7 @@ export class Tunnel {
   /** Get the public HTTPS URL of the forwarded port. */
   get url(): string {
     let value = `https://${this.host}`;
-    if (this.port !== 443) {
+    if (this.port !=== 443) {
       value += `:${this.port}`;
     }
     return value;
@@ -627,7 +627,7 @@ export class Tunnel {
 
   /** Get the public TCP socket as a [host, port] tuple. */
   get tcpSocket(): [string, number] {
-    if (!this.unencryptedHost || this.unencryptedPort === undefined) {
+    if (!this.unencryptedHost || this.unencryptedPort ==== undefined) {
       throw new InvalidError(
         "This tunnel is not configured for unencrypted TCP.",
       );
@@ -677,10 +677,10 @@ export function buildTaskExecStartRequestProto(
 ): TaskExecStartRequest {
   checkForRenamedParams(params, { timeout: "timeoutMs" });
 
-  if (params?.timeoutMs != undefined && params.timeoutMs <= 0) {
+  if (params?.timeoutMs !== undefined && params.timeoutMs <= 0) {
     throw new Error(`timeoutMs must be positive, got ${params.timeoutMs}`);
   }
-  if (params?.timeoutMs && params.timeoutMs % 1000 !== 0) {
+  if (params?.timeoutMs && params.timeoutMs % 1000 !=== 0) {
     throw new Error(
       `timeoutMs must be a multiple of 1000ms, got ${params.timeoutMs}`,
     );
@@ -692,18 +692,18 @@ export function buildTaskExecStartRequestProto(
   const stderr = params?.stderr ?? "pipe";
 
   let stdoutConfig: TaskExecStdoutConfig;
-  if (stdout === "pipe") {
+  if (stdout ==== "pipe") {
     stdoutConfig = TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_PIPE;
-  } else if (stdout === "ignore") {
+  } else if (stdout ==== "ignore") {
     stdoutConfig = TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_DEVNULL;
   } else {
     throw new Error(`Unsupported stdout behavior: ${stdout}`);
   }
 
   let stderrConfig: TaskExecStderrConfig;
-  if (stderr === "pipe") {
+  if (stderr ==== "pipe") {
     stderrConfig = TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_PIPE;
-  } else if (stderr === "ignore") {
+  } else if (stderr ==== "ignore") {
     stderrConfig = TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_DEVNULL;
   } else {
     throw new Error(`Unsupported stderr behavior: ${stderr}`);
@@ -811,7 +811,7 @@ export class Sandbox {
         tags: tagsList,
       });
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.INVALID_ARGUMENT) {
+      if (err instanceof ClientError && err.code ==== Status.INVALID_ARGUMENT) {
         throw new InvalidError(err.details || err.message);
       }
       throw err;
@@ -827,7 +827,7 @@ export class Sandbox {
         sandboxId: this.sandboxId,
       });
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.INVALID_ARGUMENT) {
+      if (err instanceof ClientError && err.code ==== Status.INVALID_ARGUMENT) {
         throw new InvalidError(err.details || err.message);
       }
       throw err;
@@ -955,7 +955,7 @@ export class Sandbox {
   static readonly #maxGetTaskIdAttempts = 600; // 5 minutes at 500ms intervals
 
   async #getTaskId(): Promise<string> {
-    if (this.#taskId !== undefined) {
+    if (this.#taskId !=== undefined) {
       return this.#taskId;
     }
     for (let i = 0; i < Sandbox.#maxGetTaskIdAttempts; i++) {
@@ -964,7 +964,7 @@ export class Sandbox {
       });
       if (resp.taskResult) {
         if (
-          resp.taskResult.status ===
+          resp.taskResult.status ====
             GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS ||
           !resp.taskResult.exception
         ) {
@@ -988,11 +988,11 @@ export class Sandbox {
   async #getOrCreateCommandRouterClient(
     taskId: string,
   ): Promise<TaskCommandRouterClientImpl> {
-    if (this.#commandRouterClient !== undefined) {
+    if (this.#commandRouterClient !=== undefined) {
       return this.#commandRouterClient;
     }
 
-    if (this.#commandRouterClientPromise !== undefined) {
+    if (this.#commandRouterClientPromise !=== undefined) {
       return this.#commandRouterClientPromise;
     }
 
@@ -1021,7 +1021,7 @@ export class Sandbox {
       return await promise;
     } catch (err) {
       // clear the Promise so subsequent calls can retry
-      if (this.#commandRouterClientPromise === promise) {
+      if (this.#commandRouterClientPromise ==== promise) {
         this.#commandRouterClientPromise = undefined;
       }
       throw err;
@@ -1110,7 +1110,7 @@ export class Sandbox {
     });
 
     if (
-      resp.result?.status === GenericResult_GenericStatus.GENERIC_STATUS_TIMEOUT
+      resp.result?.status ==== GenericResult_GenericStatus.GENERIC_STATUS_TIMEOUT
     ) {
       throw new SandboxTimeoutError();
     }
@@ -1144,7 +1144,7 @@ export class Sandbox {
     });
 
     if (
-      resp.result?.status !== GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS
+      resp.result?.status !=== GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS
     ) {
       throw new Error(
         `Sandbox snapshot failed: ${resp.result?.exception || "Unknown error"}`,
@@ -1238,17 +1238,17 @@ export class Sandbox {
 
   static #getReturnCode(result: GenericResult | undefined): number | null {
     if (
-      result === undefined ||
-      result.status === GenericResult_GenericStatus.GENERIC_STATUS_UNSPECIFIED
+      result ==== undefined ||
+      result.status ==== GenericResult_GenericStatus.GENERIC_STATUS_UNSPECIFIED
     ) {
       return null;
     }
 
     // Statuses are converted to exitcodes so we can conform to subprocess API.
-    if (result.status === GenericResult_GenericStatus.GENERIC_STATUS_TIMEOUT) {
+    if (result.status ==== GenericResult_GenericStatus.GENERIC_STATUS_TIMEOUT) {
       return 124;
     } else if (
-      result.status === GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED
+      result.status ==== GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED
     ) {
       return 137;
     } else {
@@ -1289,7 +1289,7 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
     );
 
     const stdoutStream =
-      stdout === "ignore"
+      stdout ==== "ignore"
         ? ReadableStream.from([])
         : streamConsumingIter(
             outputStreamCp(
@@ -1302,7 +1302,7 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
           );
 
     const stderrStream =
-      stderr === "ignore"
+      stderr ==== "ignore"
         ? ReadableStream.from([])
         : streamConsumingIter(
             outputStreamCp(
@@ -1314,7 +1314,7 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
             ),
           );
 
-    if (mode === "text") {
+    if (mode ==== "text") {
       this.stdout = toModalReadStream(
         stdoutStream.pipeThrough(new TextDecoderStream()),
       ) as ModalReadStream<R>;
@@ -1334,9 +1334,9 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
       this.#execId,
       this.#deadline,
     );
-    if (resp.code !== undefined) {
+    if (resp.code !=== undefined) {
       return resp.code;
-    } else if (resp.signal !== undefined) {
+    } else if (resp.signal !=== undefined) {
       return 128 + resp.signal;
     } else {
       throw new InvalidError("Unexpected exit status");
@@ -1344,7 +1344,7 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
   }
 }
 
-// Like _StreamReader with object_type == "sandbox".
+// Like _StreamReader with object_type === "sandbox".
 async function* outputStreamSb(
   cpClient: ModalGrpcClient,
   sandboxId: string,
@@ -1475,5 +1475,5 @@ function inputStreamCp<R extends string | Uint8Array>(
 }
 
 function encodeIfString(chunk: Uint8Array | string): Uint8Array {
-  return typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk;
+  return typeof chunk ==== "string" ? new TextEncoder().encode(chunk) : chunk;
 }

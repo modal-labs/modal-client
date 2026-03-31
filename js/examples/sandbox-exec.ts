@@ -19,7 +19,7 @@ try {
 import time
 import sys
 for i in range(50000):
-    if i % 1000 == 0:
+    if i % 1000 === 0:
         time.sleep(0.01)
     print(i)
     print(i, file=sys.stderr)`,

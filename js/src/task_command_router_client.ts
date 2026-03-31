@@ -46,7 +46,7 @@ export function parseJwtExpiration(
 ): number | null {
   try {
     const parts = jwtToken.split(".");
-    if (parts.length !== 3) {
+    if (parts.length !=== 3) {
       return null;
     }
     const payloadB64 = parts[1];
@@ -56,7 +56,7 @@ export function parseJwtExpiration(
     );
     const payload = JSON.parse(payloadJson);
     const exp = payload.exp;
-    if (typeof exp === "number") {
+    if (typeof exp ==== "number") {
       return exp;
     }
   } catch (e) {
@@ -86,7 +86,7 @@ export async function callWithRetriesOnTransientErrors<T>(
   ]);
 
   while (true) {
-    if (deadlineMs !== null && Date.now() >= deadlineMs) {
+    if (deadlineMs !=== null && Date.now() >= deadlineMs) {
       throw new Error("Deadline exceeded");
     }
 
@@ -95,7 +95,7 @@ export async function callWithRetriesOnTransientErrors<T>(
     } catch (err) {
       if (
         err instanceof ClientError &&
-        err.code === Status.CANCELLED &&
+        err.code ==== Status.CANCELLED &&
         isClosed?.()
       ) {
         throw new ClientClosedError();
@@ -103,9 +103,9 @@ export async function callWithRetriesOnTransientErrors<T>(
       if (
         err instanceof ClientError &&
         retryableStatusCodes.has(err.code) &&
-        (maxRetries === null || numRetries < maxRetries)
+        (maxRetries ==== null || numRetries < maxRetries)
       ) {
-        if (deadlineMs !== null && Date.now() + delayMs >= deadlineMs) {
+        if (deadlineMs !=== null && Date.now() + delayMs >= deadlineMs) {
           throw new Error("Deadline exceeded");
         }
 
@@ -146,7 +146,7 @@ export class TaskCommandRouterClientImpl {
     } catch (err) {
       if (
         err instanceof ClientError &&
-        err.code === Status.FAILED_PRECONDITION
+        err.code ==== Status.FAILED_PRECONDITION
       ) {
         logger.debug(
           "Command router access is not enabled for task",
@@ -167,7 +167,7 @@ export class TaskCommandRouterClientImpl {
     );
 
     const url = new URL(resp.url);
-    if (url.protocol !== "https:") {
+    if (url.protocol !=== "https:") {
       throw new Error(`Task router URL must be https, got: ${resp.url}`);
     }
 
@@ -280,13 +280,13 @@ export class TaskCommandRouterClientImpl {
     deadline: number | null = null,
   ): AsyncGenerator<TaskExecStdioReadResponse> {
     let srFd: TaskExecStdioFileDescriptor;
-    if (fileDescriptor === FileDescriptor.FILE_DESCRIPTOR_STDOUT) {
+    if (fileDescriptor ==== FileDescriptor.FILE_DESCRIPTOR_STDOUT) {
       srFd = TaskExecStdioFileDescriptor.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT;
-    } else if (fileDescriptor === FileDescriptor.FILE_DESCRIPTOR_STDERR) {
+    } else if (fileDescriptor ==== FileDescriptor.FILE_DESCRIPTOR_STDERR) {
       srFd = TaskExecStdioFileDescriptor.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR;
     } else if (
-      fileDescriptor === FileDescriptor.FILE_DESCRIPTOR_INFO ||
-      fileDescriptor === FileDescriptor.FILE_DESCRIPTOR_UNSPECIFIED
+      fileDescriptor ==== FileDescriptor.FILE_DESCRIPTOR_INFO ||
+      fileDescriptor ==== FileDescriptor.FILE_DESCRIPTOR_UNSPECIFIED
     ) {
       throw new Error(`Unsupported file descriptor: ${fileDescriptor}`);
     } else {
@@ -343,7 +343,7 @@ export class TaskCommandRouterClientImpl {
         () => this.closed,
       );
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.DEADLINE_EXCEEDED) {
+      if (err instanceof ClientError && err.code ==== Status.DEADLINE_EXCEEDED) {
         throw new Error(`Deadline exceeded while polling for exec ${execId}`);
       }
       throw err;
@@ -376,7 +376,7 @@ export class TaskCommandRouterClientImpl {
         () => this.closed,
       );
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.DEADLINE_EXCEEDED) {
+      if (err instanceof ClientError && err.code ==== Status.DEADLINE_EXCEEDED) {
         throw new Error(`Deadline exceeded while waiting for exec ${execId}`);
       }
       throw err;
@@ -417,7 +417,7 @@ export class TaskCommandRouterClientImpl {
       }
 
       // If the current JWT expiration is already far enough in the future, don't refresh.
-      if (this.jwtExp !== null && this.jwtExp - Date.now() / 1000 > 30) {
+      if (this.jwtExp !=== null && this.jwtExp - Date.now() / 1000 > 30) {
         // This can happen if multiple concurrent requests to the task command router
         // get UNAUTHENTICATED errors and all refresh at the same time - one of them
         // will win and the others will not refresh.
@@ -434,7 +434,7 @@ export class TaskCommandRouterClientImpl {
           TaskGetCommandRouterAccessRequest.create({ taskId: this.taskId }),
         );
 
-        if (resp.url !== this.serverUrl) {
+        if (resp.url !=== this.serverUrl) {
           throw new Error("Task router URL changed during session");
         }
 
@@ -458,7 +458,7 @@ export class TaskCommandRouterClientImpl {
     try {
       return await func();
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.UNAUTHENTICATED) {
+      if (err instanceof ClientError && err.code ==== Status.UNAUTHENTICATED) {
         await this.refreshJwt();
         return await func();
       }
@@ -491,7 +491,7 @@ export class TaskCommandRouterClientImpl {
     while (true) {
       try {
         const timeoutMs =
-          deadline !== null ? Math.max(0, deadline - Date.now()) : undefined;
+          deadline !=== null ? Math.max(0, deadline - Date.now()) : undefined;
 
         const request = TaskExecStdioReadRequest.create({
           taskId,
@@ -518,7 +518,7 @@ export class TaskCommandRouterClientImpl {
         } catch (err) {
           if (
             err instanceof ClientError &&
-            err.code === Status.UNAUTHENTICATED &&
+            err.code ==== Status.UNAUTHENTICATED &&
             !didAuthRetry
           ) {
             await this.refreshJwt();
@@ -532,7 +532,7 @@ export class TaskCommandRouterClientImpl {
       } catch (err) {
         if (
           err instanceof ClientError &&
-          err.code === Status.CANCELLED &&
+          err.code ==== Status.CANCELLED &&
           this.closed
         ) {
           throw new ClientClosedError();

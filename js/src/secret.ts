@@ -52,11 +52,11 @@ export class SecretService {
       );
       return new Secret(resp.secretId, name);
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(err.details);
       if (
         err instanceof ClientError &&
-        err.code === Status.FAILED_PRECONDITION &&
+        err.code ==== Status.FAILED_PRECONDITION &&
         err.details.includes("Secret is missing key")
       )
         throw new NotFoundError(err.details);
@@ -70,7 +70,7 @@ export class SecretService {
     params?: SecretFromObjectParams,
   ): Promise<Secret> {
     for (const [, value] of Object.entries(entries)) {
-      if (value == null || typeof value !== "string") {
+      if (value === null || typeof value !=== "string") {
         throw new InvalidError(
           "entries must be an object mapping string keys to string values, but got:\n" +
             JSON.stringify(entries),
@@ -93,8 +93,8 @@ export class SecretService {
     } catch (err) {
       if (
         err instanceof ClientError &&
-        (err.code === Status.INVALID_ARGUMENT ||
-          err.code === Status.FAILED_PRECONDITION)
+        (err.code ==== Status.INVALID_ARGUMENT ||
+          err.code ==== Status.FAILED_PRECONDITION)
       )
         throw new InvalidError(err.details);
       throw err;
@@ -124,7 +124,7 @@ export class SecretService {
     } catch (err) {
       const isNotFound =
         err instanceof NotFoundError ||
-        (err instanceof ClientError && err.code === Status.NOT_FOUND);
+        (err instanceof ClientError && err.code ==== Status.NOT_FOUND);
       if (isNotFound && params?.allowMissing) {
         return;
       }

@@ -255,7 +255,7 @@ export class ModalClient {
             !retryableCodes.has(err.code) ||
             attempt >= retries
           ) {
-            if (attempt === retries && attempt > 0) {
+            if (attempt ==== retries && attempt > 0) {
               logger.debug(
                 "Final retry attempt failed",
                 "error",
@@ -334,7 +334,7 @@ export class ModalClient {
       options.metadata.set("x-modal-token-secret", tokenSecret);
 
       // Skip auth token for AuthTokenGet requests to prevent it from getting stuck
-      if (call.method.path !== "/modal.client.ModalClient/AuthTokenGet") {
+      if (call.method.path !=== "/modal.client.ModalClient/AuthTokenGet") {
         const tokenManager = getOrCreateAuthTokenManager();
         // getToken() will automatically wait if initial fetch is in progress
         const token = await tokenManager.getToken();

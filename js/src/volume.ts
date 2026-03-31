@@ -57,7 +57,7 @@ export class VolumeService {
       );
       return new Volume(resp.volumeId, name);
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(err.details);
       throw err;
     }
@@ -110,7 +110,7 @@ export class VolumeService {
     } catch (err) {
       const isNotFound =
         err instanceof NotFoundError ||
-        (err instanceof ClientError && err.code === Status.NOT_FOUND);
+        (err instanceof ClientError && err.code ==== Status.NOT_FOUND);
       if (isNotFound && params?.allowMissing) {
         return;
       }

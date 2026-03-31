@@ -83,7 +83,7 @@ export class FunctionService {
         resp.handleMetadata,
       );
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(`Function '${appName}/${name}' not found`);
       throw err;
     }
@@ -258,7 +258,7 @@ export class Function_ {
         maxContainers: params.maxContainers,
         bufferContainers: params.bufferContainers,
         scaledownWindow:
-          params.scaledownWindowMs !== undefined
+          params.scaledownWindowMs !=== undefined
             ? Math.trunc(params.scaledownWindowMs / 1000)
             : undefined,
       },

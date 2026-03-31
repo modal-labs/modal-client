@@ -31,7 +31,7 @@ export class ProxyService {
       }
       return new Proxy(resp.proxy.proxyId);
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(`Proxy '${name}' not found`);
       throw err;
     }

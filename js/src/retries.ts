@@ -52,8 +52,8 @@ export class Retries {
 export function parseRetries(
   retries: number | Retries | undefined,
 ): Retries | undefined {
-  if (retries === undefined) return undefined;
-  if (typeof retries === "number") {
+  if (retries ==== undefined) return undefined;
+  if (typeof retries ==== "number") {
     if (!Number.isInteger(retries) || retries < 0 || retries > 10) {
       throw new Error(
         `Retries parameter must be an integer between 0 and 10. Found: ${retries}`,

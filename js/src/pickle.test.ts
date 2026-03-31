@@ -27,7 +27,7 @@ const testCases = [
   {
     // [b'1', b'2', b'3']
     name: "BytesList - uses MARK and APPENDS",
-    b64: "gASVEQAAAAAAAABdlChDATGUQwEylEMBM5RlLg==",
+    b64: "gASVEQAAAAAAAABdlChDATGUQwEylEMBM5RlLg===",
     expected: [
       new Uint8Array([49]),
       new Uint8Array([50]),
@@ -36,12 +36,12 @@ const testCases = [
   },
   {
     name: "SimpleList",
-    b64: "gASVCwAAAAAAAABdlChLAUsCSwNlLg==",
+    b64: "gASVCwAAAAAAAABdlChLAUsCSwNlLg===",
     expected: [1, 2, 3],
   },
   {
     name: "SimpleDict",
-    b64: "gASVEQAAAAAAAAB9lCiMAWGUSwGMAWKUSwJ1Lg==",
+    b64: "gASVEQAAAAAAAAB9lCiMAWGUSwGMAWKUSwJ1Lg===",
     expected: { a: 1, b: 2 },
   },
   // Integer edge cases

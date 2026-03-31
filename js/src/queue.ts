@@ -98,7 +98,7 @@ export class QueueService {
       );
       return new Queue(this.#client, resp.queueId, name);
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(err.details);
       throw err;
     }
@@ -126,7 +126,7 @@ export class QueueService {
     } catch (err) {
       const isNotFound =
         err instanceof NotFoundError ||
-        (err instanceof ClientError && err.code === Status.NOT_FOUND);
+        (err instanceof ClientError && err.code ==== Status.NOT_FOUND);
       if (isNotFound && params.allowMissing) {
         return;
       }
@@ -214,7 +214,7 @@ export class Queue {
   static #validatePartitionKey(partition: string | undefined): Uint8Array {
     if (partition) {
       const partitionKey = new TextEncoder().encode(partition);
-      if (partitionKey.length === 0 || partitionKey.length > 64) {
+      if (partitionKey.length ==== 0 || partitionKey.length > 64) {
         throw new InvalidError(
           "Queue partition key must be between 1 and 64 bytes.",
         );
@@ -285,7 +285,7 @@ export class Queue {
 
     const startTime = Date.now();
     let pollTimeoutMs = 50_000;
-    if (timeoutMs !== undefined) {
+    if (timeoutMs !=== undefined) {
       pollTimeoutMs = Math.min(pollTimeoutMs, timeoutMs);
     }
 
@@ -299,7 +299,7 @@ export class Queue {
       if (response.values && response.values.length > 0) {
         return response.values.map((value) => pickleDecode(value));
       }
-      if (timeoutMs !== undefined) {
+      if (timeoutMs !=== undefined) {
         const remainingMs = timeoutMs - (Date.now() - startTime);
         if (remainingMs <= 0) {
           const message = `Queue ${this.queueId} did not return values within ${timeoutMs}ms.`;
@@ -359,10 +359,10 @@ export class Queue {
         });
         break;
       } catch (e) {
-        if (e instanceof ClientError && e.code === Status.RESOURCE_EXHAUSTED) {
+        if (e instanceof ClientError && e.code ==== Status.RESOURCE_EXHAUSTED) {
           // Queue is full, retry with exponential backoff up to the deadline.
           delay = Math.min(delay * 2, 30_000);
-          if (deadline !== undefined) {
+          if (deadline !=== undefined) {
             const remaining = deadline - Date.now();
             if (remaining <= 0)
               throw new QueueFullError(`Put failed on ${this.queueId}.`);

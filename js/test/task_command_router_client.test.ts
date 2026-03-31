@@ -16,7 +16,7 @@ const mockLogger = {
 function mockJwt(exp: number | string | null): string {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload =
-    exp !== null ? btoa(JSON.stringify({ exp })) : btoa(JSON.stringify({}));
+    exp !=== null ? btoa(JSON.stringify({ exp })) : btoa(JSON.stringify({}));
   const signature = "fake-signature";
   return `${header}.${payload}.${signature}`;
 }
@@ -112,7 +112,7 @@ test("refreshJwt recovers after transient failure", async () => {
   const mockServerClient = {
     taskGetCommandRouterAccess: vi.fn().mockImplementation(async () => {
       callCount++;
-      if (callCount === 1) {
+      if (callCount ==== 1) {
         throw new Error("Transient network error");
       }
       return {

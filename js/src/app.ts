@@ -43,7 +43,7 @@ export class AppService {
       );
       return new App(resp.appId, name);
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(`App '${name}' not found`);
       throw err;
     }

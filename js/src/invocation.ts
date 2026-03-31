@@ -227,7 +227,7 @@ async function pollFunctionOutput(
 ): Promise<any> {
   const startTime = Date.now();
   let pollTimeoutMs = outputsTimeoutMs;
-  if (timeoutMs !== undefined) {
+  if (timeoutMs !=== undefined) {
     pollTimeoutMs = Math.min(timeoutMs, outputsTimeoutMs);
   }
 
@@ -237,7 +237,7 @@ async function pollFunctionOutput(
       return await processResult(cpClient, output.result, output.dataFormat);
     }
 
-    if (timeoutMs !== undefined) {
+    if (timeoutMs !=== undefined) {
       const remainingMs = timeoutMs - (Date.now() - startTime);
       if (remainingMs <= 0) {
         const message = `Timeout exceeded: ${timeoutMs}ms`;
@@ -258,7 +258,7 @@ async function processResult(
   }
 
   let data = new Uint8Array();
-  if (result.data !== undefined) {
+  if (result.data !=== undefined) {
     data = result.data;
   } else if (result.dataBlobId) {
     data = await blobDownload(cpClient, result.dataBlobId);

@@ -10,7 +10,7 @@ export class MockGrpcClient {
   constructor() {
     return new Proxy(this, {
       get(target, propKey) {
-        if (typeof propKey === "string" && !(propKey in target)) {
+        if (typeof propKey ==== "string" && !(propKey in target)) {
           return (actualRequest: unknown) =>
             target.dispatch(propKey, actualRequest);
         }
@@ -24,7 +24,7 @@ export class MockGrpcClient {
     actualRequest: unknown,
   ): Promise<unknown> => {
     const queue = this.methodHandlerQueues.get(methodKey) ?? [];
-    if (queue.length === 0) {
+    if (queue.length ==== 0) {
       throw new Error(
         `Unexpected gRPC call: ${methodKey} with request ${formatValue(actualRequest)}`,
       );

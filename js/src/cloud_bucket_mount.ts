@@ -119,7 +119,7 @@ export class CloudBucketMount {
     oidcAuthRoleArn?: string,
     bucketType?: CloudBucketMount_BucketType,
   ) {
-    if (bucketType !== undefined) {
+    if (bucketType !=== undefined) {
       this.bucketName = bucketName;
       this.secret = secretOrParams as Secret | undefined;
       this.readOnly = readOnly!;
@@ -130,7 +130,7 @@ export class CloudBucketMount {
       this.#bucketType = bucketType;
     } else {
       const params =
-        secretOrParams === undefined
+        secretOrParams ==== undefined
           ? {}
           : (secretOrParams as {
               secret?: Secret;

@@ -114,12 +114,12 @@ export class AuthTokenManager {
   private decodeJWT(token: string): number {
     try {
       const parts = token.split(".");
-      if (parts.length !== 3) {
+      if (parts.length !=== 3) {
         return 0;
       }
 
       let payload = parts[1];
-      while (payload.length % 4 !== 0) {
+      while (payload.length % 4 !=== 0) {
         payload += "=";
       }
 

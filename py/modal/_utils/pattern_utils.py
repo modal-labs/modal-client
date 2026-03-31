@@ -138,10 +138,7 @@ class Pattern:
             if path.endswith(suffix):
                 return True
             # '**/foo' matches 'foo'
-            if suffix[0] == os.path.sep and path == suffix[1:]:
-                return True
-            else:
-                return False
+            return suffix[0] == os.path.sep and path == suffix[1:]
         elif self.match_type == MatchType.REGEXP:
             return self.regexp.match(path) is not None
         else:

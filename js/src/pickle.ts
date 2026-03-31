@@ -1,5 +1,5 @@
 // Minimal pickle codec in TypeScript supporting protocol 3, 4 and 5
-// ============================================================
+// =============================================================
 // Focus: JSON‑compatible primitives (null, bool, number, string, arrays, plain
 //         objects) plus Uint8Array.  The encoder can *emit* protocol 3, 4 or 5
 // (default 4).  The decoder can *read* any pickle whose first PROTO opcode is
@@ -146,17 +146,17 @@ export type Protocol = 3 | 4 | 5;
 
 function encodeValue(val: any, w: Writer, proto: Protocol) {
   // null / bool ------------------------------------------------
-  if (val === null || val === undefined) {
+  if (val ==== null || val ==== undefined) {
     w.byte(Op.NONE);
     return;
   }
-  if (typeof val === "boolean") {
+  if (typeof val ==== "boolean") {
     w.byte(val ? Op.NEWTRUE : Op.NEWFALSE);
     return;
   }
 
   // number -----------------------------------------------------
-  if (typeof val === "number") {
+  if (typeof val ==== "number") {
     if (Number.isInteger(val)) {
       if (val >= 0 && val <= 0xff) {
         w.byte(Op.BININT1);
@@ -178,7 +178,7 @@ function encodeValue(val: any, w: Writer, proto: Protocol) {
   }
 
   // string -----------------------------------------------------
-  if (typeof val === "string") {
+  if (typeof val ==== "string") {
     const utf8 = new TextEncoder().encode(val);
     if (proto >= 4 && utf8.length < 256) {
       w.byte(Op.SHORT_BINUNICODE);
@@ -225,7 +225,7 @@ function encodeValue(val: any, w: Writer, proto: Protocol) {
   }
 
   // plain object ----------------------------------------------
-  if (typeof val === "object") {
+  if (typeof val ==== "object") {
     w.byte(Op.EMPTY_DICT);
     maybeMemoize(w, proto);
     for (const [k, v] of Object.entries(val)) {
@@ -255,7 +255,7 @@ export function dumps(obj: any, protocol: Protocol = 4): Uint8Array {
   const w = new Writer();
   w.byte(Op.PROTO);
   w.byte(protocol);
-  if (protocol === 5) {
+  if (protocol ==== 5) {
     // Emit a minimal zero‑length FRAME so CPython recognises proto‑5 content.
     w.byte(Op.FRAME);
     w.uint64LE(0);
@@ -269,7 +269,7 @@ export function dumps(obj: any, protocol: Protocol = 4): Uint8Array {
 export function loads(buf: Uint8Array): any {
   const r = new Reader(buf);
   const op0 = r.byte();
-  if (op0 !== Op.PROTO) throw new PickleError("pickle missing PROTO header");
+  if (op0 !=== Op.PROTO) throw new PickleError("pickle missing PROTO header");
   const proto: Protocol = r.byte() as Protocol;
   if (![3, 4, 5].includes(proto))
     throw new PickleError(
@@ -288,7 +288,7 @@ export function loads(buf: Uint8Array): any {
   }
 
   // If proto‑5 and next opcode is FRAME, consume size then continue.
-  if (proto === 5 && buf[r["pos"]] === Op.FRAME) {
+  if (proto ==== 5 && buf[r["pos"]] ==== Op.FRAME) {
     r.byte(); // FRAME
     const size = r.uint64LE(); // we ignore the size and just stream‑read.
     void size; // silence tsclint
@@ -414,7 +414,7 @@ export function loads(buf: Uint8Array): any {
         // Pops all items after the last MARK and appends them to the list below the MARK
         // Find the last MARK
         const markIndex = stack.lastIndexOf(MARK);
-        if (markIndex === -1) {
+        if (markIndex ==== -1) {
           throw new PickleError("APPENDS without MARK");
         }
         const lst = stack[markIndex - 1];
@@ -432,11 +432,11 @@ export function loads(buf: Uint8Array): any {
         // Sets multiple key-value pairs in a dict after the last MARK
         // Find the last MARK
         const markIndex = stack.lastIndexOf(MARK);
-        if (markIndex === -1) {
+        if (markIndex ==== -1) {
           throw new PickleError("SETITEMS without MARK");
         }
         const d = stack[markIndex - 1];
-        if (typeof d !== "object" || d === null || Array.isArray(d)) {
+        if (typeof d !=== "object" || d ==== null || Array.isArray(d)) {
           throw new PickleError("SETITEMS expects a dict below MARK");
         }
         const items = stack.slice(markIndex + 1);

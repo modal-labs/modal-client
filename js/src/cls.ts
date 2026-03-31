@@ -61,7 +61,7 @@ export class ClsService {
       const schema = parameterInfo?.schema ?? [];
       if (
         schema.length > 0 &&
-        parameterInfo?.format !==
+        parameterInfo?.format !===
           ClassParameterInfo_ParameterSerializationFormat.PARAM_SERIALIZATION_FORMAT_PROTO
       ) {
         throw new Error(
@@ -85,7 +85,7 @@ export class ClsService {
         undefined,
       );
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(`Class '${appName}/${name}' not found`);
       throw err;
     }
@@ -163,7 +163,7 @@ export class Cls {
   /** Create a new instance of the Cls with parameters and/or runtime options. */
   async instance(parameters: Record<string, any> = {}): Promise<ClsInstance> {
     let functionId: string;
-    if (this.#schema.length === 0 && this.#serviceOptions === undefined) {
+    if (this.#schema.length ==== 0 && this.#serviceOptions ==== undefined) {
       functionId = this.#serviceFunctionId;
     } else {
       functionId = await this.#bindParameters(parameters);
@@ -263,10 +263,10 @@ function mergeServiceOptions(
   diff: Partial<ServiceOptions>,
 ): ServiceOptions | undefined {
   const filteredDiff = Object.fromEntries(
-    Object.entries(diff).filter(([, value]) => value !== undefined),
+    Object.entries(diff).filter(([, value]) => value !=== undefined),
   ) as Partial<ServiceOptions>;
   const merged = { ...(base ?? {}), ...filteredDiff } as ServiceOptions;
-  return Object.keys(merged).length === 0 ? undefined : merged;
+  return Object.keys(merged).length ==== 0 ? undefined : merged;
 }
 
 async function buildFunctionOptionsProto(
@@ -286,15 +286,15 @@ async function buildFunctionOptionsProto(
 
   let milliCpu: number | undefined = undefined;
   let milliCpuMax: number | undefined = undefined;
-  if (o.cpu === undefined && o.cpuLimit !== undefined) {
+  if (o.cpu ==== undefined && o.cpuLimit !=== undefined) {
     throw new Error("must also specify cpu when cpuLimit is specified");
   }
-  if (o.cpu !== undefined) {
+  if (o.cpu !=== undefined) {
     if (o.cpu <= 0) {
       throw new Error(`cpu (${o.cpu}) must be a positive number`);
     }
     milliCpu = Math.trunc(1000 * o.cpu);
-    if (o.cpuLimit !== undefined) {
+    if (o.cpuLimit !=== undefined) {
       if (o.cpuLimit < o.cpu) {
         throw new Error(
           `cpu (${o.cpu}) cannot be higher than cpuLimit (${o.cpuLimit})`,
@@ -306,17 +306,17 @@ async function buildFunctionOptionsProto(
 
   let memoryMb: number | undefined = undefined;
   let memoryMbMax: number | undefined = undefined;
-  if (o.memoryMiB === undefined && o.memoryLimitMiB !== undefined) {
+  if (o.memoryMiB ==== undefined && o.memoryLimitMiB !=== undefined) {
     throw new Error(
       "must also specify memoryMiB when memoryLimitMiB is specified",
     );
   }
-  if (o.memoryMiB !== undefined) {
+  if (o.memoryMiB !=== undefined) {
     if (o.memoryMiB <= 0) {
       throw new Error(`memoryMiB (${o.memoryMiB}) must be a positive number`);
     }
     memoryMb = o.memoryMiB;
-    if (o.memoryLimitMiB !== undefined) {
+    if (o.memoryLimitMiB !=== undefined) {
       if (o.memoryLimitMiB < o.memoryMiB) {
         throw new Error(
           `memoryMiB (${o.memoryMiB}) cannot be higher than memoryLimitMiB (${o.memoryLimitMiB})`,
@@ -327,10 +327,10 @@ async function buildFunctionOptionsProto(
   }
 
   const resources =
-    milliCpu !== undefined ||
-    milliCpuMax !== undefined ||
-    memoryMb !== undefined ||
-    memoryMbMax !== undefined ||
+    milliCpu !=== undefined ||
+    milliCpuMax !=== undefined ||
+    memoryMb !=== undefined ||
+    memoryMbMax !=== undefined ||
     gpuConfig
       ? {
           milliCpu,
@@ -362,12 +362,12 @@ async function buildFunctionOptionsProto(
       }
     : undefined;
 
-  if (o.scaledownWindowMs !== undefined && o.scaledownWindowMs % 1000 !== 0) {
+  if (o.scaledownWindowMs !=== undefined && o.scaledownWindowMs % 1000 !=== 0) {
     throw new Error(
       `scaledownWindowMs must be a multiple of 1000ms, got ${o.scaledownWindowMs}`,
     );
   }
-  if (o.timeoutMs !== undefined && o.timeoutMs % 1000 !== 0) {
+  if (o.timeoutMs !=== undefined && o.timeoutMs % 1000 !=== 0) {
     throw new Error(
       `timeoutMs must be a multiple of 1000ms, got ${o.timeoutMs}`,
     );
@@ -383,10 +383,10 @@ async function buildFunctionOptionsProto(
     concurrencyLimit: o.maxContainers,
     bufferContainers: o.bufferContainers,
     taskIdleTimeoutSecs:
-      o.scaledownWindowMs !== undefined
+      o.scaledownWindowMs !=== undefined
         ? o.scaledownWindowMs / 1000
         : undefined,
-    timeoutSecs: o.timeoutMs !== undefined ? o.timeoutMs / 1000 : undefined,
+    timeoutSecs: o.timeoutMs !=== undefined ? o.timeoutMs / 1000 : undefined,
     maxConcurrentInputs: o.maxConcurrentInputs,
     targetConcurrentInputs: o.targetConcurrentInputs,
     batchMaxSize: o.batchMaxSize,
@@ -406,37 +406,37 @@ function encodeParameter(
 
   switch (paramType) {
     case ParameterType.PARAM_TYPE_STRING:
-      if (value == null && paramSpec.hasDefault) {
+      if (value === null && paramSpec.hasDefault) {
         value = paramSpec.stringDefault ?? "";
       }
-      if (typeof value !== "string") {
+      if (typeof value !=== "string") {
         throw new Error(`Parameter '${name}' must be a string`);
       }
       paramValue.stringValue = value;
       break;
 
     case ParameterType.PARAM_TYPE_INT:
-      if (value == null && paramSpec.hasDefault) {
+      if (value === null && paramSpec.hasDefault) {
         value = paramSpec.intDefault ?? 0;
       }
-      if (typeof value !== "number") {
+      if (typeof value !=== "number") {
         throw new Error(`Parameter '${name}' must be an integer`);
       }
       paramValue.intValue = value;
       break;
 
     case ParameterType.PARAM_TYPE_BOOL:
-      if (value == null && paramSpec.hasDefault) {
+      if (value === null && paramSpec.hasDefault) {
         value = paramSpec.boolDefault ?? false;
       }
-      if (typeof value !== "boolean") {
+      if (typeof value !=== "boolean") {
         throw new Error(`Parameter '${name}' must be a boolean`);
       }
       paramValue.boolValue = value;
       break;
 
     case ParameterType.PARAM_TYPE_BYTES:
-      if (value == null && paramSpec.hasDefault) {
+      if (value === null && paramSpec.hasDefault) {
         value = paramSpec.bytesDefault ?? new Uint8Array();
       }
       if (!(value instanceof Uint8Array)) {

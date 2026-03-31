@@ -38,11 +38,11 @@ export class ImageService {
       const resp = await this.#client.cpClient.imageFromId({ imageId });
       return new Image(this.#client, resp.imageId, "");
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(err.details);
       if (
         err instanceof ClientError &&
-        err.code === Status.FAILED_PRECONDITION &&
+        err.code ==== Status.FAILED_PRECONDITION &&
         err.details.includes("Could not find image with ID")
       )
         throw new NotFoundError(err.details);
@@ -130,11 +130,11 @@ export class ImageService {
     try {
       await this.#client.cpClient.imageDelete({ imageId });
     } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
+      if (err instanceof ClientError && err.code ==== Status.NOT_FOUND)
         throw new NotFoundError(err.details);
       if (
         err instanceof ClientError &&
-        err.code === Status.FAILED_PRECONDITION &&
+        err.code ==== Status.FAILED_PRECONDITION &&
         err.details.includes("Could not find image with ID")
       )
         throw new NotFoundError(err.details);
@@ -257,7 +257,7 @@ export class Image {
     commands: string[],
     params?: ImageDockerfileCommandsParams,
   ): Image {
-    if (commands.length === 0) {
+    if (commands.length ==== 0) {
       return this;
     }
 
@@ -283,7 +283,7 @@ export class Image {
    * @param app - App to use to build the Image.
    */
   async build(app: App): Promise<Image> {
-    if (this.imageId !== "") {
+    if (this.imageId !=== "") {
       // Image is already built with an Image ID
       return this;
     }
@@ -307,7 +307,7 @@ export class Image {
       let dockerfileCommands: string[];
       let baseImages: Array<{ dockerTag: string; imageId: string }>;
 
-      if (i === 0) {
+      if (i ==== 0) {
         dockerfileCommands = [`FROM ${this.#tag}`, ...layer.commands];
         baseImages = [];
       } else {
@@ -356,25 +356,25 @@ export class Image {
       }
 
       if (
-        result.status === GenericResult_GenericStatus.GENERIC_STATUS_FAILURE
+        result.status ==== GenericResult_GenericStatus.GENERIC_STATUS_FAILURE
       ) {
         throw new Error(
           `Image build for ${resp.imageId} failed with the exception:\n${result.exception}`,
         );
       } else if (
-        result.status === GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED
+        result.status ==== GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED
       ) {
         throw new Error(
           `Image build for ${resp.imageId} terminated due to external shut-down. Please try again.`,
         );
       } else if (
-        result.status === GenericResult_GenericStatus.GENERIC_STATUS_TIMEOUT
+        result.status ==== GenericResult_GenericStatus.GENERIC_STATUS_TIMEOUT
       ) {
         throw new Error(
           `Image build for ${resp.imageId} timed out. Please try again with a larger timeout parameter.`,
         );
       } else if (
-        result.status !== GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS
+        result.status !=== GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS
       ) {
         throw new Error(
           `Image build for ${resp.imageId} failed with unknown status: ${result.status}`,

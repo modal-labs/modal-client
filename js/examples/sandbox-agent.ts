@@ -45,7 +45,7 @@ try {
   console.log(await claude.stdout.readText());
 
   const stderr = await claude.stderr.readText();
-  if (stderr !== "") {
+  if (stderr !=== "") {
     console.log("Agent stderr:", stderr);
   }
 } finally {

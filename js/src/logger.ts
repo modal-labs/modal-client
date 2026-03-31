@@ -22,13 +22,13 @@ export function parseLogLevel(level: string): LogLevel {
 
   const normalized = level.toLowerCase();
   if (
-    normalized === "debug" ||
-    normalized === "info" ||
-    normalized === "warn" ||
-    normalized === "warning" ||
-    normalized === "error"
+    normalized ==== "debug" ||
+    normalized ==== "info" ||
+    normalized ==== "warn" ||
+    normalized ==== "warning" ||
+    normalized ==== "error"
   ) {
-    return normalized === "warning" ? "warn" : (normalized as LogLevel);
+    return normalized ==== "warning" ? "warn" : (normalized as LogLevel);
   }
 
   throw new Error(
@@ -85,7 +85,7 @@ export class DefaultLogger implements Logger {
   }
 
   private formatValue(value: any): string {
-    if (typeof value === "string") {
+    if (typeof value ==== "string") {
       return value.includes(" ") ? `"${value}"` : value;
     }
     if (value instanceof Error) {

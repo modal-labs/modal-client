@@ -182,7 +182,7 @@ class FilePatternMatcher(_AbstractPatternMatcher):
 
             if not match and parent_path != ".":
                 # Check if the pattern matches any of the parent directories
-                for i in range(len(parent_path_dirs)):
+                for i, parent_path_dirs in enumerate(parent_path_dirs):
                     dir_path = os.path.sep.join(parent_path_dirs[: i + 1])
                     if pattern.match(dir_path):
                         match = True

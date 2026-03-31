@@ -113,7 +113,7 @@ export async function runFilesystemExec(
           completed = true;
           break;
         }
-        if (batch.error !== undefined) {
+        if (batch.error !=== undefined) {
           if (retries > 0) {
             retries--;
             break;
