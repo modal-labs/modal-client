@@ -6,6 +6,7 @@ import random
 from modal import App, Sandbox
 from modal.exception import (
     InvalidError,
+    SandboxFilesystemDirectoryNotEmptyError,
     SandboxFilesystemFileTooLargeError,
     SandboxFilesystemIsADirectoryError,
     SandboxFilesystemNotADirectoryError,
@@ -688,3 +689,100 @@ def test_sandbox_fs_copy_from_local_errors_when_local_path_is_directory(
 
     with pytest.raises(IsADirectoryError):
         sandbox.filesystem.copy_from_local(local_dir, remote_path)
+
+
+# ---------------------------------------------------------------------------
+# remove
+# ---------------------------------------------------------------------------
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_remove_file_removes_a_file(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    file_path = tmp_path / "to-remove.txt"
+    file_path.write_bytes(b"bye")
+
+    sandbox.filesystem.remove(str(file_path), recursive=recursive)
+
+    assert not file_path.exists()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_remove_errors_when_file_missing(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    missing = str(tmp_path / "missing.txt")
+
+    with pytest.raises(SandboxFilesystemNotFoundError):
+        sandbox.filesystem.remove(missing, recursive=recursive)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_remove_removes_empty_directory(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    dir_path = tmp_path / "a-dir"
+    dir_path.mkdir()
+
+    sandbox.filesystem.remove(str(dir_path), recursive=recursive)
+
+    assert not dir_path.exists()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_remove_errors_when_target_is_nonempty_directory_and_not_recursive(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    dir_path = tmp_path / "nonempty-dir"
+    dir_path.mkdir()
+    (dir_path / "file.txt").write_bytes(b"hello")
+
+    with pytest.raises(SandboxFilesystemDirectoryNotEmptyError):
+        sandbox.filesystem.remove(str(dir_path), recursive=False)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_remove_recursive_removes_directory_tree(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    dir_path = tmp_path / "tree"
+    (dir_path / "nested").mkdir(parents=True)
+    (dir_path / "nested" / "file.txt").write_bytes(b"hello")
+
+    sandbox.filesystem.remove(str(dir_path), recursive=True)
+
+    assert not dir_path.exists()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_remove_removes_symlink_without_following_it(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    import os
+
+    target = tmp_path / "target.txt"
+    link = tmp_path / "link.txt"
+    target.write_bytes(b"original")
+    os.symlink(target, link)
+
+    sandbox.filesystem.remove(str(link))
+
+    assert not link.exists()
+    assert target.read_bytes() == b"original"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_remove_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+    with pytest.raises(InvalidError, match="absolute remote_path values"):
+        sandbox.filesystem.remove("relative/path.txt")
