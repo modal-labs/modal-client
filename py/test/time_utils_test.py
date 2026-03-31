@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from modal._utils.time_utils import parse_date, parse_date_range, resolve_timezone
+from modal._utils.time_utils import parse_date, parse_date_range, relative_timestamp, resolve_timezone
 
 FIXED_NOW = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -219,3 +219,58 @@ def test_parse_date_range_with_fixed_offset(mock_now):
     start, end = parse_date_range("today", tz=ist)
     assert start == datetime(2025, 1, 14, 18, 30, 0, tzinfo=timezone.utc)
     assert end == datetime(2025, 1, 15, 18, 30, 0, tzinfo=timezone.utc)
+
+
+# --- relative_timestamp tests ---
+
+
+@pytest.mark.parametrize(
+    "delta,expected",
+    [
+        (timedelta(seconds=0), "just now"),
+        (timedelta(seconds=5), "just now"),
+        (timedelta(seconds=30), "30 seconds ago"),
+        (timedelta(seconds=59), "59 seconds ago"),
+        (timedelta(seconds=60), "1 minute ago"),
+        (timedelta(seconds=90), "1 minute ago"),
+        (timedelta(minutes=5), "5 minutes ago"),
+        (timedelta(minutes=59), "59 minutes ago"),
+        (timedelta(hours=1), "1 hour ago"),
+        (timedelta(hours=1, minutes=30), "1 hour ago"),
+        (timedelta(hours=5), "5 hours ago"),
+        (timedelta(hours=23), "23 hours ago"),
+        (timedelta(hours=24), "yesterday"),
+        (timedelta(hours=47), "yesterday"),
+        (timedelta(days=3), "3 days ago"),
+        (timedelta(days=13), "13 days ago"),
+        (timedelta(days=14), "2 weeks ago"),
+        (timedelta(days=30), "4 weeks ago"),
+        (timedelta(days=60), "2 months ago"),
+        (timedelta(days=200), "6 months ago"),
+        (timedelta(days=365), "1 year ago"),
+        (timedelta(days=730), "2 years ago"),
+    ],
+)
+def test_relative_timestamp(delta, expected):
+    now = datetime.now(timezone.utc)
+    dt = now - delta
+    assert relative_timestamp(dt) == expected
+
+
+def test_relative_timestamp_naive_raises():
+    with pytest.raises(ValueError, match="timezone-aware"):
+        relative_timestamp(datetime(2025, 1, 1))
+
+
+def test_relative_timestamp_non_utc():
+    # Should work with any tz-aware datetime
+    eastern = ZoneInfo("America/New_York")
+    dt = datetime.now(eastern) - timedelta(hours=3)
+    result = relative_timestamp(dt)
+    assert result == "3 hours ago"
+
+
+def test_relative_timestamp_future():
+    # Future datetimes should return "just now"
+    dt = datetime.now(timezone.utc) + timedelta(hours=1)
+    assert relative_timestamp(dt) == "just now"
