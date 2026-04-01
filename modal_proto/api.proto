@@ -3462,6 +3462,18 @@ message TaskTemplate {
   uint32 index = 5;  // pointer into FunctionData, if using that as the underlying definition type
 }
 
+message TemplateListRequest {
+}
+
+message TemplateListResponse {
+  message TemplateListItem {
+    string name = 1;
+    string repo = 2;
+    string ref = 3;
+  }
+  repeated TemplateListItem items = 1;
+}
+
 message TokenFlowCreateRequest {
   string utm_source = 3;
   int32 localhost_port = 4;
@@ -4061,6 +4073,9 @@ service ModalClient {
   rpc TaskGetInfo(TaskGetInfoRequest) returns (TaskGetInfoResponse);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
+
+  // Templates
+  rpc TemplateList(TemplateListRequest) returns (TemplateListResponse);
 
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
