@@ -4,10 +4,11 @@ import inspect
 import logging
 import os
 import pytest
+import threading
 import time
 import typing
 import warnings
-from contextlib import contextmanager, nullcontext
+from contextlib import nullcontext
 from unittest.mock import MagicMock
 
 from grpclib import Status
@@ -36,12 +37,6 @@ from test.conftest import GrpcErrorAndCount, MockClientServicer
 from test.helpers import deploy_app_externally
 
 app = App(include_source=False)
-
-
-if os.environ.get("GITHUB_ACTIONS") == "true":
-    TIME_TOLERANCE = 0.25
-else:
-    TIME_TOLERANCE = 0.05
 
 
 @app.function()
@@ -408,22 +403,11 @@ def _pow2(x: int):
     return x**2
 
 
-@contextmanager
-def synchronicity_loop_delay_tracker():
-    done = False
+async def _get_synchronicity_event_loop_thread_id() -> int:
+    return threading.get_ident()
 
-    async def _track_eventloop_blocking():
-        max_dur = 0.0
-        BLOCK_TIME = 0.01
-        while not done:
-            t0 = time.perf_counter()
-            await asyncio.sleep(BLOCK_TIME)
-            max_dur = max(max_dur, time.perf_counter() - t0)
-        return max_dur - BLOCK_TIME  # if it takes exactly BLOCK_TIME we would have zero delay
 
-    track_eventloop_blocking = synchronize_api(_track_eventloop_blocking)
-    yield track_eventloop_blocking(_future=True)
-    done = True
+_get_synchronicity_event_loop_thread_id_sync = synchronize_api(_get_synchronicity_event_loop_thread_id)
 
 
 @pytest.mark.timeout(5)
@@ -441,46 +425,50 @@ def test_map_empty_input(client):
 
 
 def test_map_blocking_iterator_blocking_synchronicity_loop(client):
+    # Verify the blocking iterator is consumed off the event loop thread,
+    # so that blocking calls in the iterator don't stall the event loop.
     app = App(include_source=False)
-    SLEEP_DUR = 0.5
+    synchronicity_event_loop_thread_id = _get_synchronicity_event_loop_thread_id_sync()  # type: ignore
+    iterator_thread_ids = []
 
     def blocking_iter():
+        iterator_thread_ids.append(threading.get_ident())
         yield 1
-        time.sleep(SLEEP_DUR)
+        iterator_thread_ids.append(threading.get_ident())
         yield 2
 
     pow2 = app.function()(_pow2)
 
     with app.run(client=client):
-        t0 = time.monotonic()
-        with synchronicity_loop_delay_tracker() as max_delay:
-            for _ in pow2.map(blocking_iter()):
-                pass
-        dur = time.monotonic() - t0
-    assert dur >= SLEEP_DUR
-    assert max_delay.result() < TIME_TOLERANCE  # should typically be much smaller than this
+        for _ in pow2.map(blocking_iter()):
+            pass
+
+    assert len(iterator_thread_ids) == 2
+    assert all(tid != synchronicity_event_loop_thread_id for tid in iterator_thread_ids)
 
 
 @pytest.mark.asyncio
 async def test_map_blocking_iterator_blocking_synchronicity_loop_async(client):
+    # Verify the blocking iterator is consumed off the event loop thread,
+    # so that blocking calls in the iterator don't stall the event loop.
     app = App(include_source=False)
-    SLEEP_DUR = 0.5
+    synchronicity_event_loop_thread_id = await _get_synchronicity_event_loop_thread_id_sync.aio()  # type: ignore
+    iterator_thread_ids = []
 
     def blocking_iter():
+        iterator_thread_ids.append(threading.get_ident())
         yield 1
-        time.sleep(SLEEP_DUR)
+        iterator_thread_ids.append(threading.get_ident())
         yield 2
 
     pow2 = app.function()(_pow2)
 
     async with app.run(client=client):
-        t0 = time.monotonic()
-        with synchronicity_loop_delay_tracker() as max_delay:
-            async for _ in pow2.map.aio(blocking_iter()):
-                pass
-        dur = time.monotonic() - t0
-    assert dur >= SLEEP_DUR
-    assert max_delay.result() < TIME_TOLERANCE  # should typically be much smaller than this
+        async for _ in pow2.map.aio(blocking_iter()):
+            pass
+
+    assert len(iterator_thread_ids) == 2
+    assert all(tid != synchronicity_event_loop_thread_id for tid in iterator_thread_ids)
 
 
 _side_effect_count = 0
