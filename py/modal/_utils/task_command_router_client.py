@@ -122,6 +122,15 @@ async def fetch_command_router_access(server_client, task_id: str) -> api_pb2.Ta
     )
 
 
+async def fetch_command_router_access_v2(
+    server_client, sandbox_id: str
+) -> api_pb2.SandboxGetCommandRouterAccessResponse:
+    """Fetch direct command router access info from Modal server for a V2 sandbox."""
+    return await server_client.stub.SandboxGetCommandRouterAccess(
+        api_pb2.SandboxGetCommandRouterAccessRequest(sandbox_id=sandbox_id),
+    )
+
+
 def _finalize_channel(loop, channel):
     if not loop.is_closed():
         # only run if loop has not shut down
@@ -139,27 +148,19 @@ class TaskCommandRouterClient:
     """
 
     @classmethod
-    async def try_init(
+    async def _connect(
         cls,
         server_client,
         task_id: str,
-    ) -> Optional["TaskCommandRouterClient"]:
-        """Attempt to initialize a TaskCommandRouterClient by fetching direct access.
-
-        Returns None if command router access is not enabled (FAILED_PRECONDITION).
-        """
-        try:
-            resp = await fetch_command_router_access(server_client, task_id)
-        except ConflictError:
-            logger.debug(f"Command router access is not enabled for task {task_id}")
-            return None
-
-        logger.debug(f"Using command router access for task {task_id}")
-
-        # Build and connect a channel to the task command router now that we have access info.
-        o = urllib.parse.urlparse(resp.url)
+        url: str,
+        jwt: str,
+        *,
+        sandbox_id: Optional[str] = None,
+    ) -> "TaskCommandRouterClient":
+        """Build a connected client from a jwt and url."""
+        o = urllib.parse.urlparse(url)
         if o.scheme != "https":
-            raise ValueError(f"Task router URL must be https, got: {resp.url}")
+            raise ValueError(f"Task router URL must be https, got: {url}")
 
         host, _, port_str = o.netloc.partition(":")
         port = int(port_str) if port_str else 443
@@ -189,7 +190,38 @@ class TaskCommandRouterClient:
         loop = asyncio.get_running_loop()
         jwt_refresh_lock = asyncio.Lock()
 
-        return cls(server_client, task_id, resp.url, resp.jwt, channel, loop, jwt_refresh_lock)
+        return cls(server_client, task_id, url, jwt, channel, loop, jwt_refresh_lock, sandbox_id=sandbox_id)
+
+    @classmethod
+    async def try_init(
+        cls,
+        server_client,
+        task_id: str,
+    ) -> Optional["TaskCommandRouterClient"]:
+        """Attempt to initialize a TaskCommandRouterClient by fetching direct access.
+
+        Returns None if command router access is not enabled (FAILED_PRECONDITION).
+        """
+        try:
+            resp = await fetch_command_router_access(server_client, task_id)
+        except ConflictError:
+            logger.debug(f"Command router access is not enabled for task {task_id}")
+            return None
+
+        logger.debug(f"Using command router access for task {task_id}")
+        return await cls._connect(server_client, task_id, resp.url, resp.jwt)
+
+    @classmethod
+    async def init_v2(
+        cls,
+        server_client,
+        sandbox_id: str,
+        task_id: str,
+    ) -> "TaskCommandRouterClient":
+        """Initialize a TaskCommandRouterClient for a V2 sandbox."""
+        resp = await fetch_command_router_access_v2(server_client, sandbox_id)
+        logger.debug(f"Using command router access for sandbox {sandbox_id}")
+        return await cls._connect(server_client, task_id, resp.url, resp.jwt, sandbox_id=sandbox_id)
 
     def __init__(
         self,
@@ -201,6 +233,7 @@ class TaskCommandRouterClient:
         loop: asyncio.AbstractEventLoop,
         jwt_refresh_lock: asyncio.Lock,
         *,
+        sandbox_id: Optional[str] = None,
         stream_stdio_retry_delay_secs: float = 0.01,
         stream_stdio_retry_delay_factor: float = 2,
         stream_stdio_max_retries: int = 10,
@@ -213,6 +246,7 @@ class TaskCommandRouterClient:
         # Attach bearer token on all requests to the worker-side router service.
         self._server_client = server_client
         self._task_id = task_id
+        self._sandbox_id = sandbox_id
         self._server_url = server_url
         self._jwt = jwt
         self._channel = channel
@@ -236,6 +270,10 @@ class TaskCommandRouterClient:
         )
 
         self._stub = TaskCommandRouterStub(self._channel)
+
+    @property
+    def _is_v2_sandbox(self) -> bool:
+        return self._sandbox_id is not None
 
     def _get_metadata(self):
         return {"authorization": f"Bearer {self._jwt}"}
@@ -452,14 +490,21 @@ class TaskCommandRouterClient:
                 )
                 return
 
-            logger.debug(f"Refreshing JWT for exec with task ID {self._task_id}")
-            resp = await fetch_command_router_access(self._server_client, self._task_id)
-            logger.debug(f"Finished refreshing JWT for exec with task ID {self._task_id}")
+            if self._is_v2_sandbox:
+                logger.debug(f"Refreshing JWT for exec with sandbox ID {self._sandbox_id}")
+                v2_resp = await fetch_command_router_access_v2(self._server_client, self._sandbox_id)
+                logger.debug(f"Finished refreshing JWT for exec with sandbox ID {self._sandbox_id}")
+                jwt, url = v2_resp.jwt, v2_resp.url
+            else:
+                logger.debug(f"Refreshing JWT for exec with task ID {self._task_id}")
+                v1_resp = await fetch_command_router_access(self._server_client, self._task_id)
+                logger.debug(f"Finished refreshing JWT for exec with task ID {self._task_id}")
+                jwt, url = v1_resp.jwt, v1_resp.url
 
             # Ensure the server URL remains stable for the lifetime of this client.
-            assert resp.url == self._server_url, "Task router URL changed during session"
-            self._jwt = resp.jwt
-            self._jwt_exp = _parse_jwt_expiration(resp.jwt)
+            assert url == self._server_url, "Task router URL changed during session"
+            self._jwt = jwt
+            self._jwt_exp = _parse_jwt_expiration(jwt)
 
     async def _call_with_auth_retry(self, func, *args, **kwargs):
         try:

@@ -1187,9 +1187,13 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def _get_command_router_client(self, task_id: str) -> Optional[TaskCommandRouterClient]:
         if self._command_router_client is None:
-            # Attempt to initialize a router client. Returns None if the new exec path not enabled
-            # for this sandbox.
-            self._command_router_client = await TaskCommandRouterClient.try_init(self._client, task_id)
+            if self._is_v2:
+                self._command_router_client = await TaskCommandRouterClient.init_v2(
+                    self._client, self.object_id, task_id
+                )
+            else:
+                # Returns None if command router access is not enabled for this sandbox.
+                self._command_router_client = await TaskCommandRouterClient.try_init(self._client, task_id)
         return self._command_router_client
 
     @property
@@ -1267,7 +1271,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             print(line)
         ```
         """
-        self._ensure_v1("exec")
         if pty_info is not None or _pty_info is not None:
             deprecation_warning(
                 (2025, 9, 12),
