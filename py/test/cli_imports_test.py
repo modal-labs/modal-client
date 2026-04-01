@@ -13,7 +13,7 @@ from modal.cli.import_refs import (
     list_cli_commands,
     parse_import_ref,
 )
-from modal.exception import InvalidError
+from modal.exception import InvalidError, _CliUserExecutionError
 from modal.functions import Function
 from modal.partial_function import method, web_server
 
@@ -72,6 +72,30 @@ def func():
 
 assert __package__ == ""
 """
+
+python_file_with_relative_import_src = """
+from .helper import helper_func
+
+import modal
+app = modal.App()
+
+@app.function()
+def my_func():
+    return helper_func()
+"""
+
+python_helper_src = """
+def helper_func():
+    return 42
+"""
+
+dir_with_relative_import_package = {
+    "mypkg": {
+        "__init__.py": "",
+        "app.py": python_file_with_relative_import_src,
+        "helper.py": python_helper_src,
+    },
+}
 
 empty_dir_with_python_file = {"mod000.py": python_module_src}
 
@@ -183,6 +207,33 @@ def test_import_package_and_module_names(monkeypatch, supports_dir):
 def test_invalid_source_file_exception():
     with pytest.raises(InvalidError, match="Invalid Modal source filename: 'foo.bar.py'"):
         import_file_or_module(ImportRef("path/to/foo.bar.py", use_module_mode=False))
+
+
+@pytest.mark.parametrize(
+    "command,object_path",
+    [
+        ("modal run", "my_func"),
+        ("modal run", ""),
+        ("modal serve", ""),
+        ("modal deploy", ""),
+    ],
+)
+def test_relative_import_error_guidance(mock_dir, command, object_path):
+    with mock_dir(dir_with_relative_import_package):
+        with pytest.raises(_CliUserExecutionError) as exc_info:
+            import_file_or_module(
+                ImportRef(
+                    "mypkg/app.py",
+                    use_module_mode=False,
+                    object_path=object_path,
+                    command=command,
+                )
+            )
+        cause = exc_info.value.__cause__
+        assert isinstance(cause, InvalidError)
+        assert "relative imports" in str(cause)
+        suffix = f"::{object_path}" if object_path else ""
+        assert f"{command} -m mypkg.app{suffix}" in str(cause)
 
 
 def test_list_cli_commands():

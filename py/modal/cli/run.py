@@ -407,7 +407,7 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
-        import_ref = parse_import_ref(func_ref, use_module_mode=ctx.params["m"])
+        import_ref = parse_import_ref(func_ref, use_module_mode=ctx.params["m"], command="modal run")
         runnable, all_usable_commands = import_and_filter(
             import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False
         )
@@ -517,7 +517,7 @@ def deploy(
     # this ensures that lookups without environment specification use the same env as specified
     env = ensure_env(env)
 
-    import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
+    import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode, command="modal deploy")
 
     OutputManager.get().set_timestamps(timestamps)
     app = import_app_from_ref(import_ref, base_cmd="modal deploy")
@@ -568,7 +568,7 @@ def serve(
 
     """
     env = ensure_env(env)
-    import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
+    import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode, command="modal serve")
 
     OutputManager.get().set_timestamps(timestamps)
     app = import_app_from_ref(import_ref, base_cmd="modal serve")

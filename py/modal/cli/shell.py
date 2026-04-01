@@ -140,7 +140,7 @@ def _start_shell_in_running_container(ref: str, cmd: str, pty: bool) -> None:
 
 
 def _function_spec_from_ref(ref: str, use_module_mode: bool) -> _FunctionSpec:
-    import_ref = parse_import_ref(ref, use_module_mode=use_module_mode)
+    import_ref = parse_import_ref(ref, use_module_mode=use_module_mode, command="modal shell")
     runnable, all_usable_commands = import_and_filter(
         import_ref,
         base_cmd="modal shell",

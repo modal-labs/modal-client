@@ -40,8 +40,11 @@ class ImportRef:
     # app [+ function/entrypoint on that app]
     object_path: str = dataclasses.field(default="")
 
+    # modal command that was invoked, so that we can provide helpful error messages
+    command: str = dataclasses.field(default="")
 
-def parse_import_ref(object_ref: str, use_module_mode: bool = False) -> ImportRef:
+
+def parse_import_ref(object_ref: str, use_module_mode: bool = False, command: str = "") -> ImportRef:
     if object_ref.find("::") > 1:
         file_or_module, object_path = object_ref.split("::", 1)
     elif object_ref.find(":") > 1:
@@ -49,7 +52,7 @@ def parse_import_ref(object_ref: str, use_module_mode: bool = False) -> ImportRe
     else:
         file_or_module, object_path = object_ref, ""
 
-    return ImportRef(file_or_module, use_module_mode, object_path)
+    return ImportRef(file_or_module, use_module_mode, object_path, command)
 
 
 DEFAULT_APP_NAME = "app"
@@ -94,6 +97,22 @@ def import_file_or_module(import_ref: ImportRef, base_cmd: str = ""):
             assert spec.loader
             spec.loader.exec_module(module)
         except Exception as exc:
+            if isinstance(exc, ImportError) and "attempted relative import with no known parent package" in str(exc):
+                if import_ref.file_or_module and import_ref.command and not import_ref.use_module_mode:
+                    file_path = Path(import_ref.file_or_module)
+                    suggested_module_path = ".".join(file_path.parts).removesuffix(".py").lstrip(".")
+                    suffix = f"::{import_ref.object_path}" if import_ref.object_path else ""
+                    new_message = (
+                        "The source file contains relative imports and is therefore written as "
+                        "part of a Python package, but Modal was invoked in script mode "
+                        f"(`{import_ref.command} {import_ref.file_or_module}{suffix}`). "
+                        "Try invoking Modal in module mode instead, i.e. "
+                        f"`{import_ref.command} -m {suggested_module_path}{suffix}`, "
+                        "assuming that your path starts at the root of the package."
+                    )
+                    new_exc = InvalidError(new_message)
+                    new_exc.__traceback__ = exc.__traceback__
+                    raise _CliUserExecutionError(str(full_path)) from new_exc
             raise _CliUserExecutionError(str(full_path)) from exc
 
     return module
