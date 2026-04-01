@@ -404,6 +404,14 @@ message AppGetLayoutResponse {
   AppLayout app_layout = 1;
 }
 
+message AppGetLifecycleRequest {
+  string app_id = 1;
+}
+
+message AppGetLifecycleResponse {
+  AppLifecycle lifecycle = 1;
+}
+
 message AppGetLogsRequest {
   string app_id = 1;
   float timeout = 2;
@@ -459,6 +467,17 @@ message AppLayout {
   repeated Object objects = 1;
   map<string, string> function_ids = 2;  // tag -> function id
   map<string, string> class_ids = 3;  // tag -> class id
+}
+
+message AppLifecycle {
+  AppState app_state = 1;
+  double created_at = 2;
+  string created_by = 3;  // User or service user name
+  double deployed_at = 4; // Most recent deployment event
+  string deployed_by = 5;  // User or service user name
+  int32 version = 6;  // Only meaningful when App is deployed
+  double stopped_at = 7;  // Unset when App is still running
+  string stopped_by = 8;  // User or service user name, null if running or ephemeral App that finished normally
 }
 
 message AppListRequest {
@@ -3883,6 +3902,7 @@ service ModalClient {
   rpc AppFetchLogs(AppFetchLogsRequest) returns (AppFetchLogsResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppGetLayout(AppGetLayoutRequest) returns (AppGetLayoutResponse);
+  rpc AppGetLifecycle(AppGetLifecycleRequest) returns (AppGetLifecycleResponse);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppGetOrCreate(AppGetOrCreateRequest) returns (AppGetOrCreateResponse);
