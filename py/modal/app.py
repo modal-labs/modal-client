@@ -1290,12 +1290,12 @@ class _App:
 
         ```python
         app_a = modal.App("a")
-        @app.function()
+        @app_a.function()
         def foo():
             ...
 
         app_b = modal.App("b")
-        @app.function()
+        @app_b.function()
         def bar():
             ...
 
