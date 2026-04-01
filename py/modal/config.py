@@ -136,12 +136,13 @@ def _agent_environment() -> Optional[str]:
     # Tool-specific environment variables
     _TOOL_SPECIFIC_ENV_VARS: list[tuple[str, str]] = [
         ("CLAUDECODE", "claude-code"),
+        ("CODEX_THREAD_ID", "codex"),
         ("GEMINI_CLI", "gemini-cli"),
         ("CURSOR_AGENT", "cursor"),
         ("CLINE_ACTIVE", "cline"),
         ("AUGMENT_AGENT", "augment"),
         ("OPENCODE_CLIENT", "opencode"),
-        ("GOOSE_TERMINAL", "goose"),
+        ("GOOSE_TERMINAL", "goose"),  # honk
         ("TRAE_AI_SHELL_ID", "trae"),
     ]
     for env_var, agent_name in _TOOL_SPECIFIC_ENV_VARS:
