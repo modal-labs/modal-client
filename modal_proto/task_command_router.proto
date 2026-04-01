@@ -214,6 +214,11 @@ message TaskSnapshotDirectoryResponse {
   string image_id = 1;
 }
 
+message TaskUnmountDirectoryRequest {
+  string task_id = 1;
+  bytes path = 2;
+}
+
 service TaskCommandRouter {
   // Create an additional container for a task.
   rpc TaskContainerCreate(TaskContainerCreateRequest) returns (TaskContainerCreateResponse);
@@ -239,4 +244,6 @@ service TaskCommandRouter {
   rpc TaskMountDirectory(TaskMountDirectoryRequest) returns (google.protobuf.Empty);
   // Snapshot a directory with a mounted image, including any local changes, into a new image.
   rpc TaskSnapshotDirectory(TaskSnapshotDirectoryRequest) returns (TaskSnapshotDirectoryResponse);
+  // Unmount an image previously mounted at a directory in the container.
+  rpc TaskUnmountDirectory(TaskUnmountDirectoryRequest) returns (google.protobuf.Empty);
 }
