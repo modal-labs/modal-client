@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 
 import toml
 
+import modal
 from modal import App, Sandbox
 from modal._serialization import PICKLE_PROTOCOL, serialize
 from modal._utils.grpc_testing import InterceptionContext
@@ -1601,3 +1602,49 @@ def test_billing_report(servicer, set_env_client):
         expected_exit_code=2,
         expected_stderr="Unknown timezone",
     )
+
+
+def test_rollover_recreate(servicer, mock_dir, set_env_client, monkeypatch):
+    monkeypatch.setattr(modal.runner, "WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL", 0.01)
+    task_list_calls = 0
+
+    async def task_list(servicer, stream):
+        nonlocal task_list_calls
+        await stream.recv_message()
+
+        if task_list_calls <= 1:
+            resp = api_pb2.TaskListResponse(
+                tasks=[
+                    api_pb2.TaskStats(task_id="ta-123", enqueued_at=123),
+                    api_pb2.TaskStats(task_id="ta-321", enqueued_at=321),
+                ]
+            )
+        elif task_list_calls == 2:
+            resp = api_pb2.TaskListResponse(tasks=[api_pb2.TaskStats(task_id="ta-123", enqueued_at=123)])
+        else:
+            resp = api_pb2.TaskListResponse(tasks=[])
+
+        task_list_calls += 1
+        await stream.send_message(resp)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("TaskList", task_list)
+
+        with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+            run_cli_command(["deploy", "myapp.py"])
+
+        res = run_cli_command(["app", "rollover", "my_app", "--strategy", "recreate"])
+        assert "View Deployment" in res.stdout
+        assert task_list_calls == 4
+
+    task_ids = set(servicer.container_stop_ids)
+    assert task_ids == set(["ta-123", "ta-321"])
+
+
+def test_rollover_rolling(servicer, mock_dir, set_env_client):
+    with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
+        run_cli_command(["deploy", "myapp.py"])
+
+    res = run_cli_command(["app", "rollover", "my_app"])
+    assert "View Deployment" in res.stdout
+    assert not servicer.task_list_calls

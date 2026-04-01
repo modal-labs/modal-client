@@ -898,12 +898,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def AppRollback(self, stream):
         request: api_pb2.AppRollbackRequest = await stream.recv_message()
-        current_version = self.app_deployment_history[request.app_id][-1]["version"]
+        history = self.app_deployment_history[request.app_id][-1]
+        current_version = history["version"]
         if request.version < 0:
             rollback_version = current_version + request.version
         else:
             rollback_version = request.version
-        rollback_client = self.app_deployment_history[request.app_id][rollback_version - 1]["client_version"]
+
+        rollback_history = self.app_deployment_history[request.app_id][rollback_version - 1]
+        rollback_client = rollback_history["client_version"]
         self.app_deployment_history[request.app_id].append(
             {
                 "app_id": request.app_id,
@@ -913,14 +916,53 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "deployed_by": "foo-user",
                 "tag": "latest",
                 "rollback_version": rollback_version,
+                "definition_ids": rollback_history["definition_ids"],
+                "function_ids": rollback_history["function_ids"],
+                "commit_info": rollback_history.get("commit_info", None),
             }
         )
 
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
         await stream.send_message(Empty())
 
+    async def AppRollover(self, stream):
+        request: api_pb2.AppRolloverRequest = await stream.recv_message()
+
+        # Get app name from app_id for publish call
+        app_name = None
+        for (_, app_name_), app_id in self.deployed_apps.items():
+            if app_id == request.app_id:
+                app_name = app_name_
+                break
+        else:  # no break
+            raise GRPCError(Status.INVALID_ARGUMENT)
+
+        recent_history = self.app_deployment_history[request.app_id][-1]
+        new_publish_request = api_pb2.AppPublishRequest(
+            app_id=request.app_id,
+            name=app_name,
+            deployment_tag=recent_history["tag"],
+            client_version=recent_history["client_version"],
+            app_state=api_pb2.APP_STATE_DEPLOYED,
+            definition_ids=recent_history["definition_ids"],
+            function_ids=recent_history["function_ids"],
+            commit_info=recent_history.get("commit_info", None),
+            rollback_version=recent_history["version"],
+        )
+        publish_response = await self._app_publish(new_publish_request)
+        response = api_pb2.AppRolloverResponse(
+            url=publish_response.url,
+            server_warnings=publish_response.server_warnings,
+            deployed_at=publish_response.deployed_at,
+        )
+        await stream.send_message(response)
+
     async def AppPublish(self, stream):
         request: api_pb2.AppPublishRequest = await stream.recv_message()
+        response = await self._app_publish(request)
+        await stream.send_message(response)
+
+    async def _app_publish(self, request: api_pb2.AppPublishRequest):
         for key, val in request.definition_ids.items():
             assert key.startswith("fu-")
             assert val.startswith("de-")
@@ -935,19 +977,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
             else:
                 deployed_at = datetime.datetime.now(datetime.timezone.utc).timestamp()
 
-            await stream.send_message(
-                api_pb2.AppPublishResponse(
-                    url="http://test.modal.com/foo/bar",
-                    deployed_at=deployed_at,
-                )
+            response = api_pb2.AppPublishResponse(
+                url="http://test.modal.com/foo/bar",
+                deployed_at=deployed_at,
             )
             if self.app_publish_is_noop:
                 # Early exit for noop deployment
-                return
+                return response
         else:
-            await stream.send_message(
-                api_pb2.AppPublishResponse(deployed_at=datetime.datetime.now(datetime.timezone.utc).timestamp())
-            )
+            response = api_pb2.AppPublishResponse(deployed_at=datetime.datetime.now(datetime.timezone.utc).timestamp())
 
         self.app_objects[request.app_id] = {**request.function_ids, **request.class_ids}
         self.app_state_history[request.app_id].append(request.app_state)
@@ -966,8 +1004,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "tag": "latest",
                 "rollback_version": None,
                 "commit_info": request.commit_info,
+                "definition_ids": dict(request.definition_ids),
+                "function_ids": dict(request.function_ids),
             }
         )
+        return response
 
     async def AppGetByDeploymentName(self, stream):
         request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
