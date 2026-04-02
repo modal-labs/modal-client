@@ -242,13 +242,6 @@ export class Image {
     return getDefaultClient().images.fromGcpArtifactRegistry(tag, secret);
   }
 
-  /**
-   * @deprecated Use {@link ImageService#fromScratch client.images.fromScratch()} instead.
-   */
-  static fromScratch(): Image {
-    return getDefaultClient().images.fromScratch();
-  }
-
   private static validateDockerfileCommands(commands: string[]): void {
     for (const command of commands) {
       const trimmed = command.trim().toUpperCase();
