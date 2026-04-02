@@ -52,8 +52,9 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
         if hasattr(field, "is_repeated"):
             is_repeated = field.is_repeated  # type: ignore
         else:
-            is_repeated = field.label == FieldDescriptor.LABEL_REPEATED
+            is_repeated = field.label == FieldDescriptor.LABEL_REPEATED  # type: ignore[attr-defined]
         if is_message:
+            assert field.message_type is not None
             msg_field = getattr(msg, field.name)
             if is_repeated:
                 num = rand.randint(0, 2)
@@ -64,6 +65,7 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
                 _fill(msg_field, field.message_type, rand)
         else:
             if field.type == FieldDescriptor.TYPE_ENUM:
+                assert field.enum_type is not None
                 enum_values = [x.number for x in field.enum_type.values]
                 generator = lambda rand: rand.choice(enum_values)  # noqa: E731
 
