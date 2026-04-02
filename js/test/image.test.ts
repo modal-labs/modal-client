@@ -283,3 +283,30 @@ test("DockerfileCommandsWithOptions", async () => {
 
   mock.assertExhausted();
 });
+
+test("ImageFromScratch", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/ImageGetOrCreate", (req: any) => {
+    expect(req).toMatchObject({
+      appId: "ap-test",
+      image: {
+        dockerfileCommands: ["FROM scratch"],
+        secretIds: [],
+        baseImages: [],
+        gpuConfig: undefined,
+        imageRegistryConfig: undefined,
+      },
+      forceBuild: false,
+    });
+    return { imageId: "im-scratch", result: { status: 1 } };
+  });
+
+  const image = await mc.images
+    .fromScratch()
+    .build(new App("ap-test", "libmodal-test"));
+
+  expect(image.imageId).toBe("im-scratch");
+
+  mock.assertExhausted();
+});

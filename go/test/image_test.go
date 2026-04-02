@@ -382,3 +382,35 @@ func TestDockerfileCommandsWithOptions(t *testing.T) {
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
+
+func TestImageFromScratch(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock, "ImageGetOrCreate",
+		func(req *pb.ImageGetOrCreateRequest) (*pb.ImageGetOrCreateResponse, error) {
+			image := req.GetImage()
+			g.Expect(image.GetDockerfileCommands()).To(gomega.Equal([]string{"FROM scratch"}))
+			g.Expect(image.GetBaseImages()).To(gomega.BeEmpty())
+			g.Expect(image.GetImageRegistryConfig()).To(gomega.BeNil())
+
+			return pb.ImageGetOrCreateResponse_builder{
+				ImageId: "im-scratch",
+				Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+			}.Build(), nil
+		},
+	)
+
+	app := &modal.App{AppID: "ap-test"}
+
+	builtImage, err := mock.Images.FromScratch().Build(ctx, app)
+
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(builtImage.ImageID).To(gomega.Equal("im-scratch"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}

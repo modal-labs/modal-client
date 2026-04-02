@@ -16,6 +16,7 @@ type ImageService interface {
 	FromRegistry(tag string, params *ImageFromRegistryParams) *Image
 	FromAwsEcr(tag string, secret *Secret) *Image
 	FromGcpArtifactRegistry(tag string, secret *Secret) *Image
+	FromScratch() *Image
 	FromID(ctx context.Context, imageID string) (*Image, error)
 	Delete(ctx context.Context, imageID string, params *ImageDeleteParams) error
 }
@@ -112,6 +113,18 @@ func (s *imageServiceImpl) FromGcpArtifactRegistry(tag string, secret *Secret) *
 		tag:                 tag,
 		layers:              []layer{{}},
 		client:              s.client,
+	}
+}
+
+// FromScratch creates an empty Image, equivalent to FROM scratch in Docker.
+// It is primarily useful as a lightweight filesystem to mount into a Sandbox
+// via Sandbox.MountImage.
+func (s *imageServiceImpl) FromScratch() *Image {
+	return &Image{
+		ImageID: "",
+		tag:     "scratch",
+		layers:  []layer{{}},
+		client:  s.client,
 	}
 }
 

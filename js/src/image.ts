@@ -117,6 +117,16 @@ export class ImageService {
   }
 
   /**
+   * Creates an empty {@link Image}, equivalent to `FROM scratch` in Docker.
+   *
+   * It is primarily useful as a lightweight filesystem to mount into a Sandbox
+   * via `sandbox.mountImage()`.
+   */
+  fromScratch(): Image {
+    return new Image(this.#client, "", "scratch");
+  }
+
+  /**
    * Delete an {@link Image} by ID.
    *
    * Deletion is irreversible and will prevent Functions/Sandboxes from using the Image.
@@ -230,6 +240,13 @@ export class Image {
    */
   static fromGcpArtifactRegistry(tag: string, secret: Secret): Image {
     return getDefaultClient().images.fromGcpArtifactRegistry(tag, secret);
+  }
+
+  /**
+   * @deprecated Use {@link ImageService#fromScratch client.images.fromScratch()} instead.
+   */
+  static fromScratch(): Image {
+    return getDefaultClient().images.fromScratch();
   }
 
   private static validateDockerfileCommands(commands: string[]): void {
