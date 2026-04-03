@@ -4,7 +4,12 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
+No unreleased changes.
+
+## js/v0.7.4, go/v0.7.4
+
 - `Sandboxes.Create` (Go) and `sandboxes.create` (JS) now accept an `IncludeOidcIdentityToken` / `includeOidcIdentityToken` parameter. When enabled, a `MODAL_IDENTITY_TOKEN` environment variable is injected into the sandbox, enabling OIDC-based authentication (e.g., for AWS federation).
+- We're introducing a concept of "readiness probes" for `Sandbox`. This feature lets you configure a readiness check on a TCP port, `NewTCPProbe` (Go) or `Probe.withTcp` (JS) or by executing a process `NewExecProbe` (Go) or `Probe.withExec` (JS). Calling `sb.WaitUntilReady()` (Go) or `sb.waitUntilReady()` (JS) will block until the Probe succeeds.
 
 ## js/v0.7.3, go/v0.7.3
 
