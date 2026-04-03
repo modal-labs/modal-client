@@ -40,6 +40,72 @@ func TestSandboxCreateRequestProto_WithPTY(t *testing.T) {
 	g.Expect(ptyInfo.GetPtyType()).To(gomega.Equal(pb.PTYInfo_PTY_TYPE_SHELL))
 }
 
+func TestProbeWithTCPBadValues(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	_, err := NewTCPProbe(0, nil)
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("expects port in [1, 65535]"))
+
+	_, err = NewTCPProbe(8080, &TCPProbeParams{Interval: -1 * time.Millisecond})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("expects interval > 0"))
+
+	_, err = NewTCPProbe(8080, &TCPProbeParams{Interval: 1500 * time.Microsecond})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("whole number of milliseconds"))
+}
+
+func TestProbeWithExecBadValues(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	_, err := NewExecProbe(nil, nil)
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("requires at least one argument"))
+
+	_, err = NewExecProbe([]string{"echo"}, &ExecProbeParams{Interval: -1 * time.Millisecond})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("expects interval > 0"))
+}
+
+func TestSandboxCreateRequestProto_WithReadinessProbeTCP(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	probe, err := NewTCPProbe(8080, &TCPProbeParams{Interval: 250 * time.Millisecond})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		ReadinessProbe: probe,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	readinessProbe := req.GetDefinition().GetReadinessProbe()
+	g.Expect(readinessProbe).ShouldNot(gomega.BeNil())
+	g.Expect(readinessProbe.GetTcpPort()).To(gomega.Equal(uint32(8080)))
+	g.Expect(readinessProbe.GetIntervalMs()).To(gomega.Equal(uint32(250)))
+}
+
+func TestSandboxCreateRequestProto_WithReadinessProbeExec(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	probe, err := NewExecProbe([]string{"sh", "-c", "echo ok"}, &ExecProbeParams{Interval: 300 * time.Millisecond})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		ReadinessProbe: probe,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	readinessProbe := req.GetDefinition().GetReadinessProbe()
+	g.Expect(readinessProbe).ShouldNot(gomega.BeNil())
+	g.Expect(readinessProbe.GetExecCommand().GetArgv()).To(gomega.Equal([]string{"sh", "-c", "echo ok"}))
+	g.Expect(readinessProbe.GetIntervalMs()).To(gomega.Equal(uint32(300)))
+}
+
 func TestTaskExecStartProto_WithoutPTY(t *testing.T) {
 	g := gomega.NewWithT(t)
 	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"bash"}, SandboxExecParams{})

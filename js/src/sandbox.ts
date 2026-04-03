@@ -17,6 +17,7 @@ import {
   PortSpec,
   Resources,
   PortSpecs,
+  Probe as ProbeProto,
 } from "../proto/modal_proto/api";
 import {
   TaskExecStartRequest,
@@ -50,6 +51,7 @@ import {
   InvalidError,
   NotFoundError,
   SandboxTimeoutError,
+  TimeoutError,
   AlreadyExistsError,
   ClientClosedError,
 } from "./errors";
@@ -80,6 +82,100 @@ export type StdioBehavior = "pipe" | "ignore";
  * means the data will be read as raw bytes (Uint8Array).
  */
 export type StreamMode = "text" | "binary";
+
+/** Optional parameters for {@link Probe.withTcp} and {@link Probe.withExec}. */
+export type ProbeParams = {
+  intervalMs: number;
+};
+
+/** Probe configuration for sandbox readiness checks. */
+export class Probe {
+  readonly #tcpPort?: number;
+  readonly #execArgv?: string[];
+  readonly #intervalMs: number;
+
+  private constructor(params: {
+    tcpPort?: number;
+    execArgv?: string[];
+    intervalMs: number;
+  }) {
+    const { tcpPort, execArgv, intervalMs } = params;
+    if ((tcpPort === undefined) === (execArgv === undefined)) {
+      throw new InvalidError(
+        "Probe must be created with Probe.withTcp(...) or Probe.withExec(...)",
+      );
+    }
+    this.#tcpPort = tcpPort;
+    this.#execArgv = execArgv;
+    this.#intervalMs = intervalMs;
+  }
+
+  static withTcp(
+    port: number,
+    params: ProbeParams = { intervalMs: 100 },
+  ): Probe {
+    if (!Number.isInteger(port)) {
+      throw new InvalidError("Probe.withTcp() expects an integer `port`");
+    }
+    if (port <= 0 || port > 65535) {
+      throw new InvalidError(
+        `Probe.withTcp() expects \`port\` in [1, 65535], got ${port}`,
+      );
+    }
+    const { intervalMs } = params;
+    Probe.#validateIntervalMs("Probe.withTcp", intervalMs);
+    return new Probe({ tcpPort: port, intervalMs });
+  }
+
+  static withExec(
+    argv: string[],
+    params: ProbeParams = { intervalMs: 100 },
+  ): Probe {
+    if (!Array.isArray(argv) || argv.length === 0) {
+      throw new InvalidError("Probe.withExec() requires at least one argument");
+    }
+    if (!argv.every((arg) => typeof arg === "string")) {
+      throw new InvalidError(
+        "Probe.withExec() expects all arguments to be strings",
+      );
+    }
+    const { intervalMs } = params;
+    Probe.#validateIntervalMs("Probe.withExec", intervalMs);
+    return new Probe({ execArgv: [...argv], intervalMs });
+  }
+
+  /** @ignore */
+  toProto(): ProbeProto {
+    if (this.#tcpPort !== undefined) {
+      return ProbeProto.create({
+        tcpPort: this.#tcpPort,
+        intervalMs: this.#intervalMs,
+      });
+    }
+    if (this.#execArgv !== undefined) {
+      return ProbeProto.create({
+        execCommand: { argv: this.#execArgv },
+        intervalMs: this.#intervalMs,
+      });
+    }
+    throw new InvalidError(
+      "Probe must be created with Probe.withTcp(...) or Probe.withExec(...)",
+    );
+  }
+
+  static #validateIntervalMs(methodName: string, intervalMs: number) {
+    if (!Number.isInteger(intervalMs)) {
+      throw new InvalidError(
+        `${methodName}() expects an integer \`intervalMs\``,
+      );
+    }
+    if (intervalMs <= 0) {
+      throw new InvalidError(
+        `${methodName}() expects \`intervalMs\` > 0, got ${intervalMs}`,
+      );
+    }
+  }
+}
 
 /** Optional parameters for {@link SandboxService#create client.sandboxes.create()}. */
 export type SandboxCreateParams = {
@@ -155,6 +251,9 @@ export type SandboxCreateParams = {
 
   /** Reference to a Modal {@link Proxy} to use in front of this Sandbox. */
   proxy?: Proxy;
+
+  /** Probe used to determine when the Sandbox has become ready. */
+  readinessProbe?: Probe;
 
   /** Optional name for the Sandbox. Unique within an App. */
   name?: string;
@@ -386,6 +485,7 @@ export async function buildSandboxCreateRequestProto(
       schedulerPlacement,
       verbose: params.verbose ?? false,
       proxyId: params.proxy?.proxyId,
+      readinessProbe: params.readinessProbe?.toProto(),
       name: params.name,
       experimentalOptions: protoExperimentalOptions,
       customDomain: params.customDomain,
@@ -1088,6 +1188,47 @@ export class Sandbox {
           returnCode,
         );
         return returnCode;
+      }
+    }
+  }
+
+  /**
+   * Wait until the Sandbox readiness probe reports the Sandbox is ready.
+   *
+   * This method only works for Sandboxes configured with a readiness probe.
+   *
+   * @param timeoutMs - Maximum total time to wait, in milliseconds.
+   * @returns A promise that resolves once the Sandbox is ready.
+   * @throws {@link TimeoutError} If readiness is not reported before `timeoutMs`.
+   */
+  async waitUntilReady(timeoutMs = 300_000): Promise<void> {
+    this.#ensureAttached();
+    if (timeoutMs <= 0) {
+      throw new InvalidError(`timeoutMs must be positive, got ${timeoutMs}`);
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    while (true) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        throw new TimeoutError("Sandbox operation timed out");
+      }
+      const requestTimeoutMs = Math.min(
+        remainingMs,
+        50_000, // Max request timeout for each gRPC call
+      );
+      try {
+        const resp = await this.#client.cpClient.sandboxWaitUntilReady({
+          sandboxId: this.sandboxId,
+          timeout: requestTimeoutMs / 1000,
+        });
+        if (resp.readyAt > 0) {
+          return;
+        }
+      } catch (err) {
+        if (err instanceof ClientError && err.code === Status.DEADLINE_EXCEEDED)
+          continue;
+        throw err;
       }
     }
   }

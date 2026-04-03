@@ -30,6 +30,108 @@ type SandboxService interface {
 
 type sandboxServiceImpl struct{ client *Client }
 
+const (
+	defaultProbeInterval                = 100 * time.Millisecond
+	maxProbeIntervalMilliseconds uint64 = ^uint64(0) >> 32
+)
+
+// Probe configures a sandbox readiness probe.
+type Probe struct {
+	tcpPort    *uint32
+	execArgv   []string
+	intervalMs uint32
+}
+
+type TCPProbeParams struct {
+	Interval time.Duration
+}
+
+// NewTCPProbe creates a TCP readiness probe.
+func NewTCPProbe(port int, params *TCPProbeParams) (*Probe, error) {
+	if params == nil {
+		params = &TCPProbeParams{}
+	}
+	if params.Interval == 0 {
+		params.Interval = defaultProbeInterval
+	}
+	if port <= 0 || port > 65535 {
+		return nil, InvalidError{Exception: fmt.Sprintf("NewTCPProbe expects port in [1, 65535], got %d", port)}
+	}
+	intervalMs, err := validateProbeIntervalMs(params.Interval, "NewTCPProbe")
+	if err != nil {
+		return nil, err
+	}
+	tcpPort := uint32(port)
+	return &Probe{
+		tcpPort:    &tcpPort,
+		intervalMs: intervalMs,
+	}, nil
+}
+
+type ExecProbeParams struct {
+	Interval time.Duration
+}
+
+// NewExecProbe creates an exec readiness probe.
+func NewExecProbe(argv []string, params *ExecProbeParams) (*Probe, error) {
+	if params == nil {
+		params = &ExecProbeParams{}
+	}
+	if params.Interval == 0 {
+		params.Interval = defaultProbeInterval
+	}
+	if len(argv) == 0 {
+		return nil, InvalidError{Exception: "NewExecProbe requires at least one argument"}
+	}
+	intervalMs, err := validateProbeIntervalMs(params.Interval, "NewExecProbe")
+	if err != nil {
+		return nil, err
+	}
+	return &Probe{
+		execArgv:   append([]string(nil), argv...),
+		intervalMs: intervalMs,
+	}, nil
+}
+
+func validateProbeIntervalMs(interval time.Duration, name string) (uint32, error) {
+	if interval <= 0 {
+		return 0, InvalidError{Exception: fmt.Sprintf("%s expects interval > 0, got %v", name, interval)}
+	}
+	if interval%time.Millisecond != 0 {
+		return 0, InvalidError{Exception: fmt.Sprintf("%s expects interval to be a whole number of milliseconds, got %v", name, interval)}
+	}
+	intervalMs := uint64(interval / time.Millisecond)
+	if intervalMs > maxProbeIntervalMilliseconds {
+		return 0, InvalidError{Exception: fmt.Sprintf("%s interval is too large, got %v", name, interval)}
+	}
+	return uint32(intervalMs), nil
+}
+
+func (p *Probe) toProto() (*pb.Probe, error) {
+	if p == nil {
+		return nil, nil
+	}
+	if (p.tcpPort == nil) == (p.execArgv == nil) {
+		return nil, InvalidError{Exception: "Probe must be created with NewTCPProbe(...) or NewExecProbe(...)"}
+	}
+	if p.intervalMs == 0 {
+		return nil, InvalidError{Exception: "Probe interval must be greater than 0"}
+	}
+
+	intervalMs := p.intervalMs
+	if p.tcpPort != nil {
+		return pb.Probe_builder{
+			TcpPort:    p.tcpPort,
+			IntervalMs: &intervalMs,
+		}.Build(), nil
+	}
+
+	return pb.Probe_builder{
+		ExecCommand: pb.Probe_ExecCommand_builder{Argv: p.execArgv}.Build(),
+		IntervalMs:  &intervalMs,
+	}.Build(), nil
+}
+
 // SandboxCreateParams are options for creating a Modal Sandbox.
 type SandboxCreateParams struct {
 	CPU                      float64                      // CPU request in fractional, physical cores.
@@ -55,6 +157,7 @@ type SandboxCreateParams struct {
 	Regions                  []string                     // Region(s) to run the Sandbox on.
 	Verbose                  bool                         // Enable verbose logging.
 	Proxy                    *Proxy                       // Reference to a Modal Proxy to use in front of this Sandbox.
+	ReadinessProbe           *Probe                       // Probe used to determine when the Sandbox is ready.
 	Name                     string                       // Optional name for the Sandbox. Unique within an App.
 	ExperimentalOptions      map[string]any               // Experimental options
 	CustomDomain             string                       // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
@@ -261,6 +364,11 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 		protoExperimentalOptions[name] = boolValue
 	}
 
+	readinessProbe, err := params.ReadinessProbe.toProto()
+	if err != nil {
+		return nil, err
+	}
+
 	return pb.SandboxCreateRequest_builder{
 		AppId: appID,
 		Definition: pb.Sandbox_builder{
@@ -280,6 +388,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			SchedulerPlacement:       schedulerPlacement,
 			Verbose:                  params.Verbose,
 			ProxyId:                  proxyID,
+			ReadinessProbe:           readinessProbe,
 			Name:                     &params.Name,
 			ExperimentalOptions:      protoExperimentalOptions,
 			CustomDomain:             params.CustomDomain,
@@ -832,6 +941,47 @@ func (sb *Sandbox) Wait(ctx context.Context) (int, error) {
 				return *returnCode, nil
 			}
 			return 0, nil
+		}
+	}
+}
+
+// WaitUntilReady blocks until the Sandbox readiness probe reports ready.
+func (sb *Sandbox) WaitUntilReady(ctx context.Context, timeout time.Duration) error {
+	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
+	if timeout <= 0 {
+		return InvalidError{Exception: fmt.Sprintf("timeout must be positive, got %v", timeout)}
+	}
+
+	deadline := time.Now().Add(timeout)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return TimeoutError{Exception: "Sandbox operation timed out"}
+		}
+
+		requestTimeout := min(
+			remaining,
+			50*time.Second, // Max timeout for a single gRPC call.
+		)
+
+		resp, err := sb.client.cpClient.SandboxWaitUntilReady(ctx, pb.SandboxWaitUntilReadyRequest_builder{
+			SandboxId: sb.SandboxID,
+			Timeout:   float32(requestTimeout.Seconds()),
+		}.Build())
+		if err != nil {
+			if status, ok := status.FromError(err); ok && status.Code() == codes.DeadlineExceeded {
+				continue
+			}
+			return err
+		}
+		if resp.GetReadyAt() > 0 {
+			return nil
 		}
 	}
 }
