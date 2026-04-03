@@ -4,6 +4,7 @@ import {
   buildSandboxCreateRequestProto,
   buildTaskExecStartRequestProto,
   validateExecArgs,
+  Probe,
 } from "../src/sandbox";
 import { expect, test, onTestFinished } from "vitest";
 import {
@@ -581,6 +582,53 @@ test("buildSandboxCreateRequestProto with PTY", async () => {
   expect(ptyInfo.ptyType).toBe(PTYInfo_PTYType.PTY_TYPE_SHELL);
 });
 
+test("Probe.withTcp invalid values", () => {
+  expect(() => Probe.withTcp("8080" as any)).toThrow("expects an integer");
+  expect(() => Probe.withTcp(0)).toThrow("expects `port` in [1, 65535]");
+  expect(() => Probe.withTcp(65536)).toThrow("expects `port` in [1, 65535]");
+  expect(() => Probe.withTcp(8080, { intervalMs: "100" as any })).toThrow(
+    "expects an integer `intervalMs`",
+  );
+  expect(() => Probe.withTcp(8080, { intervalMs: 0 })).toThrow(
+    "expects `intervalMs` > 0",
+  );
+});
+
+test("Probe.withExec invalid values", () => {
+  expect(() => Probe.withExec([])).toThrow("requires at least one argument");
+  expect(() => Probe.withExec(["echo", 1 as any])).toThrow(
+    "expects all arguments to be strings",
+  );
+  expect(() => Probe.withExec(["echo"], { intervalMs: "100" as any })).toThrow(
+    "expects an integer `intervalMs`",
+  );
+  expect(() => Probe.withExec(["echo"], { intervalMs: 0 })).toThrow(
+    "expects `intervalMs` > 0",
+  );
+});
+
+test("buildSandboxCreateRequestProto with TCP readiness probe", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    readinessProbe: Probe.withTcp(8080, { intervalMs: 250 }),
+  });
+  expect(req.definition?.readinessProbe?.tcpPort).toBe(8080);
+  expect(req.definition?.readinessProbe?.intervalMs).toBe(250);
+});
+
+test("buildSandboxCreateRequestProto with exec readiness probe", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    readinessProbe: Probe.withExec(["sh", "-c", "echo ok"], {
+      intervalMs: 300,
+    }),
+  });
+  expect(req.definition?.readinessProbe?.execCommand?.argv).toEqual([
+    "sh",
+    "-c",
+    "echo ok",
+  ]);
+  expect(req.definition?.readinessProbe?.intervalMs).toBe(300);
+});
+
 test("buildSandboxCreateRequestProto with CPU and CPULimit", async () => {
   const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
     cpu: 2.0,
@@ -859,6 +907,37 @@ test("SandboxGetTaskIdTerminated", async () => {
   const sb = await mc.sandboxes.fromId("sb-123");
   await expect(sb.exec(["echo", "hello"])).rejects.toThrow(/already completed/);
 
+  mock.assertExhausted();
+});
+
+test("SandboxWaitUntilReady", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxWait", () => ({}));
+  let seenReq: any = undefined;
+  mock.handleUnary("/SandboxWaitUntilReady", (req: any) => {
+    seenReq = req;
+    return { readyAt: 123.456 };
+  });
+
+  const sb = await mc.sandboxes.fromId("sb-123");
+  await sb.waitUntilReady(5000);
+
+  expect(seenReq.sandboxId).toBe("sb-123");
+  expect(seenReq.timeout).toBeGreaterThan(0);
+  expect(seenReq.timeout).toBeLessThanOrEqual(5);
+  mock.assertExhausted();
+});
+
+test("SandboxWaitUntilReady retries empty readyAt", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxWait", () => ({}));
+  mock.handleUnary("/SandboxWaitUntilReady", () => ({ readyAt: 0 }));
+  mock.handleUnary("/SandboxWaitUntilReady", () => ({ readyAt: 123.456 }));
+
+  const sb = await mc.sandboxes.fromId("sb-123");
+  await sb.waitUntilReady(5000);
   mock.assertExhausted();
 });
 
@@ -1152,4 +1231,5 @@ test("SandboxDetachForbidsAllOperations", async () => {
   await expect(sb.poll()).rejects.toThrow(errorMsg);
   await expect(sb.setTags({})).rejects.toThrow(errorMsg);
   await expect(sb.getTags()).rejects.toThrow(errorMsg);
+  await expect(sb.waitUntilReady()).rejects.toThrow(errorMsg);
 });

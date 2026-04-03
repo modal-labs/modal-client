@@ -101,6 +101,15 @@ func (e SandboxTimeoutError) Error() string {
 	return "SandboxTimeoutError: " + e.Exception
 }
 
+// TimeoutError is returned when an operation exceeds the allowed time limit.
+type TimeoutError struct {
+	Exception string
+}
+
+func (e TimeoutError) Error() string {
+	return "TimeoutError: " + e.Exception
+}
+
 // ClientClosedError is returned when Sandbox operations exceed the allowed time limit.
 type ClientClosedError struct {
 	Exception string

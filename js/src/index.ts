@@ -17,6 +17,7 @@ export {
   type ClsWithBatchingParams,
 } from "./cls";
 export {
+  TimeoutError,
   FunctionTimeoutError,
   RemoteError,
   InternalFailure,
@@ -61,6 +62,7 @@ export {
 } from "./image";
 export { Retries } from "./retries";
 export type {
+  ProbeParams,
   SandboxExecParams,
   SandboxFromNameParams,
   SandboxTerminateParams,
@@ -72,7 +74,7 @@ export type {
   SandboxListParams,
   SandboxCreateParams,
 } from "./sandbox";
-export { ContainerProcess, Sandbox, SandboxService } from "./sandbox";
+export { ContainerProcess, Probe, Sandbox, SandboxService } from "./sandbox";
 export type { ModalReadStream, ModalWriteStream } from "./streams";
 export {
   Secret,

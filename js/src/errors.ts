@@ -1,3 +1,11 @@
+/** An operation exceeds the allowed time limit. */
+export class TimeoutError extends Error {
+  constructor(message: string = "Operation timed out") {
+    super(message);
+    this.name = "TimeoutError";
+  }
+}
+
 /** Function execution exceeds the allowed time limit. */
 export class FunctionTimeoutError extends Error {
   constructor(message: string) {
