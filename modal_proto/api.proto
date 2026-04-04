@@ -393,7 +393,10 @@ message AppGetByDeploymentNameRequest {
 }
 
 message AppGetByDeploymentNameResponse {
-  string app_id = 1;
+  string app_id = 1;  // Null when App with requested name is not deployed
+  string previous_app_id = 2;  // Populated if App with requested name was recently stopped
+  string environment_name = 3;  // Populated because server may resolve default environment
+  AppLifecycle lifecycle = 4;  // Lifecycle of current App or recently stopped App
 }
 
 message AppGetLayoutRequest {
