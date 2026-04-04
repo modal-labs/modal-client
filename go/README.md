@@ -22,7 +22,7 @@ go get -u github.com/modal-labs/modal-client/go
 Import in your application:
 
 ```go
-import "github.com/modal-labs/modal-client/go"
+import modal "github.com/modal-labs/modal-client/go"
 ```
 
 Go package: https://pkg.go.dev/github.com/modal-labs/modal-client/go
