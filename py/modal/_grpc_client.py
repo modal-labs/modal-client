@@ -52,7 +52,8 @@ class grpc_error_converter:
         use_full_traceback = config.get("traceback")
         with suppress_tb_frame():
             if isinstance(exc, GRPCError):
-                modal_exc = _STATUS_TO_EXCEPTION[exc.status](exc.message)
+                exc_cls = _STATUS_TO_EXCEPTION.get(exc.status, WrappedGRPCError)
+                modal_exc = exc_cls(exc.message)
                 modal_exc._grpc_message = exc.message
                 modal_exc._grpc_status = exc.status
                 modal_exc._grpc_details = exc.details
