@@ -130,7 +130,7 @@ def test_secret_from_name_double_resolve(client, servicer):
     # secrets that are defined by name, since those are unlikely
     # to change their id ("is_another_app")
     name = "my-secret"
-    secret_orig = Secret.objects.create(name, {"FOO": "123"}, client=client)
+    Secret.objects.create(name, {"FOO": "123"}, client=client)
     secret = Secret.from_name(name)
 
     @synchronizer.wrap

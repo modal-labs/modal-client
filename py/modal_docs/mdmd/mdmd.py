@@ -74,7 +74,7 @@ def _typeddict_str(name, obj) -> str:
     return "".join(parts)
 
 
-def class_str(name, obj, title_level="##"):
+def class_str(name, obj, title_level="##", decl_override: Optional[str] = None, member_prefix: str = ""):
     def qual_name(cls):
         if cls.__module__ == "builtins":
             return cls.__name__
@@ -83,9 +83,12 @@ def class_str(name, obj, title_level="##"):
     if _is_typeddict(obj):
         return _typeddict_str(name, obj)
 
-    bases = [qual_name(b) for b in obj.__bases__]
-    bases_str = f"({', '.join(bases)})" if bases else ""
-    decl = f"""```python
+    if decl_override is not None:
+        decl = f"```python\n{decl_override}\n```\n\n"
+    else:
+        bases = [qual_name(b) for b in obj.__bases__]
+        bases_str = f"({', '.join(bases)})" if bases else ""
+        decl = f"""```python
 class {name}{bases_str}
 ```\n\n"""
     parts = [decl]
@@ -123,20 +126,25 @@ class {name}{bases_str}
     for member_name, member in entries.items():
         if isinstance(member, synchronicity.synchronizer.classproperty):
             member_obj = getattr(obj, member_name)
-            if not inspect.isclass(member_obj):
-                # A little hacky; right now we are only using classproperty for the .objects manager classes
-                # I'm adding this constraint to avoid refactoring this to support more recursive calling
-                print(f"* Skipping {member_name}; we currnetly assume classproperty is a class")
-                continue
+            member_cls = type(member_obj)
+            decl = f"{member_name}: {member_cls.__name__}"
             parts.append(f"{member_title_level} {member_name}\n\n")
-            parts.append(class_str(member_name, member_obj, title_level=title_level + "#"))
+            parts.append(
+                class_str(
+                    member_name,
+                    member_cls,
+                    title_level=title_level + "#",
+                    decl_override=decl,
+                    member_prefix=f"{member_name}.",
+                )
+            )
             continue
         elif isinstance(member, classmethod) or isinstance(member, staticmethod):
             # get the original function definition instead of the descriptor object
             member = getattr(obj, member_name)
         elif isinstance(member, property):
             # Check if this property returns a namespace class (marked with mdmd:namespace)
-            # that should be documented inline (e.g., Sandbox.filesystem -> _SandboxFilesystem)
+            # that should be documented inline (e.g., Sandbox.filesystem -> SandboxFilesystem)
             fget = member.fget
             try:
                 return_type = typing.get_type_hints(fget).get("return") if fget else None
@@ -147,8 +155,17 @@ class {name}{bases_str}
                 and inspect.isclass(return_type)
                 and (return_type.__doc__ or "").lstrip().startswith("mdmd:namespace")
             ):
+                decl = f"{member_name}: {return_type.__name__.lstrip('_')}"
                 parts.append(f"{member_title_level} {member_name}\n\n")
-                parts.append(class_str(member_name, return_type, title_level=title_level + "#"))
+                parts.append(
+                    class_str(
+                        member_name,
+                        return_type,
+                        title_level=title_level + "#",
+                        decl_override=decl,
+                        member_prefix=f"{member_name}.",
+                    )
+                )
                 continue
             member = fget
         elif isinstance(member, (synchronicity.synchronizer.FunctionWithAio, synchronicity.synchronizer.MethodWithAio)):
@@ -158,7 +175,7 @@ class {name}{bases_str}
             continue
 
         if callable(member):
-            parts.append(f"{member_title_level} {member_name}\n\n")
+            parts.append(f"{member_title_level} {member_prefix}{member_name}\n\n")
             parts.append(function_str(member_name, member))
 
     return "".join(parts)
