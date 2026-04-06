@@ -61,7 +61,7 @@ class _SandboxFilesystem:
         **Usage**
 
         ```python fixture:sandbox
-        sandbox.filesystem.write_bytes(b"Hello, world!\n", "/tmp/hello.bin")
+        sandbox.filesystem.write_bytes(b"Hello, world!\\n", "/tmp/hello.bin")
         contents = sandbox.filesystem.read_bytes("/tmp/hello.bin")
         print(contents.decode("utf-8"))
         ```
@@ -97,7 +97,7 @@ class _SandboxFilesystem:
         **Usage**
 
         ```python fixture:sandbox
-        sandbox.filesystem.write_text("Hello, world!\n", "/tmp/hello.txt")
+        sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
         contents = sandbox.filesystem.read_text("/tmp/hello.txt")
         print(contents)
         ```
@@ -140,7 +140,7 @@ class _SandboxFilesystem:
         **Usage**
 
         ```python fixture:sandbox
-        sandbox.filesystem.write_text("Hello, world!\n", "/tmp/hello.txt")
+        sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
         sandbox.filesystem.copy_to_local("/tmp/hello.txt", "/tmp/local-hello.txt")
         ```
         """
@@ -201,7 +201,7 @@ class _SandboxFilesystem:
         **Usage**
 
         ```python fixture:sandbox
-        sandbox.filesystem.write_bytes(b"Hello, world!\n", "/tmp/hello.bin")
+        sandbox.filesystem.write_bytes(b"Hello, world!\\n", "/tmp/hello.bin")
         ```
         """
         validate_absolute_remote_path(remote_path, "write_bytes")
@@ -241,7 +241,7 @@ class _SandboxFilesystem:
         **Usage**
 
         ```python fixture:sandbox
-        sandbox.filesystem.write_text("Hello, world!\n", "/tmp/hello.txt")
+        sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
         ```
         """
         validate_absolute_remote_path(remote_path, "write_text")
@@ -273,7 +273,7 @@ class _SandboxFilesystem:
         from pathlib import Path
 
         local_path = Path(tempfile.mktemp())
-        local_path.write_text("Hello, world!\n")
+        local_path.write_text("Hello, world!\\n")
         sandbox.filesystem.copy_from_local(local_path, "/tmp/hello.txt")
         ```
         """
