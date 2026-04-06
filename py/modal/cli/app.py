@@ -351,6 +351,65 @@ async def rollback(
     rich.print("[green]✓[/green] Deployment rollback successful!")
 
 
+@app_cli.command("rollover", no_args_is_help=True)
+@synchronizer.create_blocking
+async def rollover(
+    app_identifier: str = APP_IDENTIFIER,
+    *,
+    strategy: str = typer.Option(
+        "rolling",
+        help="Strategy for rollover",
+        click_type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE)),
+    ),
+    env: Optional[str] = ENV_OPTION,
+):
+    """Rollover an App.
+
+    A rollover replaces existing containers with fresh ones built from the same
+    App version — useful for refreshing containers without changing your code.
+    The rollover appears as a new entry in the App's deployment history.
+
+    **Examples:**
+
+    Rollover an App using a rolling deployment. Running containers are now considered
+    outdated and new containers will replace them.
+
+    ```
+    modal app rollover my-app
+    ```
+
+    Rollover an App by termatining all running containers. Inputs on the queue will
+    start new containers.
+
+    ```
+    modal app rollover my-app --strategy recreate
+    ```
+    """
+    env = ensure_env(env)
+    output_mgr = OutputManager.get()
+    output_mgr.print(f"🔨 Starting app rollover with {strategy} strategy")
+    t0 = time.monotonic()
+
+    client = await _Client.from_env()
+    app_id = await get_app_id.aio(app_identifier, env, client)
+
+    req = api_pb2.AppRolloverRequest(app_id=app_id)
+    response = await client.stub.AppRollover(req)
+    print_server_warnings(response.server_warnings)
+
+    if strategy == "recreate":
+        try:
+            await _stop_and_wait_for_containers(client, app_id, response.deployed_at, env)
+        except Exception as exc:
+            warnings.warn(f"App updated successfully, but containers did not all terminate. {exc}", UserWarning)
+            output_mgr.print(f"\nView Deployment: [magenta]{response.url}[/magenta]")
+            sys.exit(1)
+
+    duration = time.monotonic() - t0
+    output_mgr.step_completed(f"Rollover completed in {duration:.3f}s with {strategy} strategy! 🎉")
+    output_mgr.print(f"\nView Deployment: [magenta]{response.url}[/magenta]")
+
+
 @app_cli.command("stop", no_args_is_help=True)
 @synchronizer.create_blocking
 async def stop(
@@ -471,62 +530,3 @@ async def dashboard(
 
     url = f"https://modal.com/id/{app_id}"
     open_url_and_display(url, "App dashboard")
-
-
-@app_cli.command("rollover", no_args_is_help=True, context_settings={"ignore_unknown_options": True})
-@synchronizer.create_blocking
-async def rollover(
-    app_identifier: str = APP_IDENTIFIER,
-    *,
-    strategy: str = typer.Option(
-        "rolling",
-        help="Strategy for rollover",
-        click_type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE)),
-    ),
-    env: Optional[str] = ENV_OPTION,
-):
-    """Rollover an App.
-
-    A rollover replaces existing containers with fresh ones built from the same
-    App version — useful for refreshing containers without changing your code.
-    The rollover appears as a new entry in the App's deployment history.
-
-    **Examples:**
-
-    Rollover an App using a rolling deployment. Running containers are now considered
-    outdated and new containers will replace them.
-
-    ```
-    modal app rollover my-app
-    ```
-
-    Rollover an App by termatining all running containers. Inputs on the queue will
-    start new containers.
-
-    ```
-    modal app rollover my-app --strategy recreate
-    ```
-    """
-    env = ensure_env(env)
-    output_mgr = OutputManager.get()
-    output_mgr.print(f"🔨 Starting app rollover with {strategy} strategy")
-    t0 = time.monotonic()
-
-    client = await _Client.from_env()
-    app_id = await get_app_id.aio(app_identifier, env, client)
-
-    req = api_pb2.AppRolloverRequest(app_id=app_id)
-    response = await client.stub.AppRollover(req)
-    print_server_warnings(response.server_warnings)
-
-    if strategy == "recreate":
-        try:
-            await _stop_and_wait_for_containers(client, app_id, response.deployed_at, env)
-        except Exception as exc:
-            warnings.warn(f"App updated successfully, but containers did not all terminate. {exc}", UserWarning)
-            output_mgr.print(f"\nView Deployment: [magenta]{response.url}[/magenta]")
-            sys.exit(1)
-
-    duration = time.monotonic() - t0
-    output_mgr.step_completed(f"Rollover completed in {duration:.3f}s with {strategy} strategy! 🎉")
-    output_mgr.print(f"\nView Deployment: [magenta]{response.url}[/magenta]")
