@@ -1854,7 +1854,11 @@ message FunctionFinishInputsRequest {
 
 message FunctionGetCallGraphRequest {
   // TODO: use input_id once we switch client submit API to return those.
-  string function_call_id = 2;
+  reserved 1;
+  oneof call_info {
+    string function_call_id = 2;
+    string attempt_token = 3;
+  }
 }
 
 message FunctionGetCallGraphResponse {
