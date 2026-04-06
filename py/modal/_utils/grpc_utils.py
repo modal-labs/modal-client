@@ -216,7 +216,11 @@ def create_channel(
         for k, v in metadata.items():
             event.metadata[k] = v
 
-        logger.debug(f"Sending request to {event.method_name}")
+        idempotency_key = typing.cast(Optional[str], event.metadata.get("x-idempotency-key"))
+        if idempotency_key is None:
+            logger.debug(f"Sending request to {event.method_name}")
+        else:
+            logger.debug(f"Sending request to {event.method_name} ({idempotency_key[:8]})")
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
 
@@ -288,12 +292,14 @@ def process_exception_before_retry(
     n_retries: int,
     delay: float,
     idempotency_key: str,
+    rpc_elapsed: float,
 ):
     """Process exception before retry, used by `_retry_transient_errors`."""
     with suppress_tb_frame():
         if final_attempt:
             logger.debug(
-                f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})"
+                f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} {rpc_elapsed=:0.2f}s "
+                f"for {fn_name} ({idempotency_key[:8]})"
             )
             if isinstance(exc, OSError):
                 raise ConnectionError(str(exc))
@@ -310,7 +316,10 @@ def process_exception_before_retry(
             # we handle in the retry logic once we drop this check!
             raise exc
 
-    logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn_name} ({idempotency_key[:8]})")
+    logger.debug(
+        f"Retryable failure {repr(exc)} {n_retries=} {delay=} {rpc_elapsed=:0.2f}s "
+        f"for {fn_name} ({idempotency_key[:8]})"
+    )
 
 
 async def _retry_transient_errors(
@@ -373,6 +382,7 @@ async def _retry_transient_errors(
         else:
             timeout = None
 
+        attempt_started_at = time.monotonic()
         try:
             with suppress_tb_frame():
                 return await fn_callable(req, metadata=attempt_metadata, timeout=timeout)
@@ -409,7 +419,13 @@ async def _retry_transient_errors(
 
                 with suppress_tb_frame():
                     process_exception_before_retry(
-                        exc, final_attempt, fn.name, n_retries, server_delay, idempotency_key
+                        exc,
+                        final_attempt,
+                        fn.name,
+                        n_retries,
+                        server_delay,
+                        idempotency_key,
+                        time.monotonic() - attempt_started_at,
                     )
 
                 now = time.time()
@@ -438,7 +454,15 @@ async def _retry_transient_errors(
                 final_attempt = False
 
             with suppress_tb_frame():
-                process_exception_before_retry(exc, final_attempt, fn.name, n_retries, delay, idempotency_key)
+                process_exception_before_retry(
+                    exc,
+                    final_attempt,
+                    fn.name,
+                    n_retries,
+                    delay,
+                    idempotency_key,
+                    time.monotonic() - attempt_started_at,
+                )
 
             n_retries += 1
 
