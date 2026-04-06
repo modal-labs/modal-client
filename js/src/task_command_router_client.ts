@@ -435,7 +435,7 @@ export class TaskCommandRouterClientImpl {
         );
 
         if (resp.url !== this.serverUrl) {
-          throw new Error("Task router URL changed during session");
+          this.logger.warn("Task router URL changed during session");
         }
 
         this.jwt = resp.jwt;

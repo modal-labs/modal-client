@@ -502,7 +502,8 @@ class TaskCommandRouterClient:
                 jwt, url = v1_resp.jwt, v1_resp.url
 
             # Ensure the server URL remains stable for the lifetime of this client.
-            assert url == self._server_url, "Task router URL changed during session"
+            if url != self._server_url:
+                logger.warning("Task router URL changed during session")
             self._jwt = jwt
             self._jwt_exp = _parse_jwt_expiration(jwt)
 

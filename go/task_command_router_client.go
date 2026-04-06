@@ -286,7 +286,7 @@ func (c *taskCommandRouterClient) refreshJwt(ctx context.Context) error {
 		}
 
 		if resp.GetUrl() != c.serverURL {
-			return nil, errors.New("task router URL changed during session")
+			c.logger.WarnContext(ctx, "Task router URL changed during session")
 		}
 
 		jwt := resp.GetJwt()
