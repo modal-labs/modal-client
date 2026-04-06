@@ -132,19 +132,19 @@ if find_spec("dotenv"):
     assert_type(secret, modal.Secret)
 
 volume_objects = Volume.objects
-assert_type(volume_objects, type[VolumeManager])
+assert_type(volume_objects, VolumeManager)
 volume_create = volume_objects.create
 
 queue_objects = Queue.objects
-assert_type(queue_objects, type[QueueManager])
+assert_type(queue_objects, QueueManager)
 queue_create = queue_objects.create
 
 dict_objects = Dict.objects
-assert_type(dict_objects, type[DictManager])
+assert_type(dict_objects, DictManager)
 dict_create = dict_objects.create
 
 secret_objects = Secret.objects
-assert_type(secret_objects, type[SecretManager])
+assert_type(secret_objects, SecretManager)
 secret_create = secret_objects.create
 
 # intentional to break typing on instance access of the manager

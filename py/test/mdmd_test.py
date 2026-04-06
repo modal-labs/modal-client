@@ -320,6 +320,67 @@ def foo(
     )
 
 
+def test_classproperty_instance_manager():
+    """Ensure mdmd documents a classproperty that returns a manager *instance* (not a class)."""
+    from synchronicity import Synchronizer, classproperty
+
+    class _MyManager:
+        """Manager docs"""
+
+        async def create(self, name: str) -> None:
+            """Create a thing."""
+
+        async def delete(self, name: str) -> None:
+            """Delete a thing."""
+
+    s = Synchronizer()
+
+    class _MyResource:
+        """Resource docs"""
+
+        @classproperty
+        @classmethod
+        def objects(cls) -> _MyManager:
+            return _MyManager()
+
+    MyResource = s.create_blocking(_MyResource, "MyResource")
+
+    result = mdmd.class_str("MyResource", MyResource)
+    assert "## objects" in result
+    assert "objects: _MyManager" in result
+    assert "class objects" not in result
+    assert "### objects.create" in result
+    assert "### objects.delete" in result
+    assert "Manager docs" in result
+
+
+def test_property_namespace_decl_override():
+    from synchronicity import Synchronizer
+
+    class _FilesystemNamespace:
+        """mdmd:namespace
+        Namespace docs"""
+
+        def read(self, path: str) -> bytes:
+            """Read a file."""
+
+    s = Synchronizer()
+
+    class _Resource:
+        @property
+        def filesystem(self) -> _FilesystemNamespace:
+            return _FilesystemNamespace()
+
+    Resource = s.create_blocking(_Resource, "Resource")
+
+    result = mdmd.class_str("Resource", Resource)
+    assert "## filesystem" in result
+    assert "filesystem: FilesystemNamespace" in result
+    assert "class filesystem" not in result
+    assert "### filesystem.read" in result
+    assert "Namespace docs" in result
+
+
 def test_get_decorators():
     BLA = 1
 

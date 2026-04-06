@@ -49,8 +49,8 @@ class QueueInfo:
 class _QueueManager:
     """Namespace with methods for managing named Queue objects."""
 
-    @staticmethod
     async def create(
+        self,
         name: str,  # Name to use for the new Queue
         *,
         allow_existing: bool = False,  # If True, no-op when the Queue already exists
@@ -102,8 +102,8 @@ class _QueueManager:
             if not allow_existing:
                 raise
 
-    @staticmethod
     async def list(
+        self,
         *,
         max_objects: Optional[int] = None,  # Limit results to this size
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
@@ -170,8 +170,8 @@ class _QueueManager:
         ]
         return queues[:max_objects] if max_objects is not None else queues
 
-    @staticmethod
     async def delete(
+        self,
         name: str,  # Name of the Queue to delete
         *,
         allow_missing: bool = False,  # If True, don't raise an error if the Queue doesn't exist
@@ -292,8 +292,8 @@ class _Queue(_Object, type_prefix="qu"):
 
     @classproperty
     @classmethod
-    def objects(cls) -> type[_QueueManager]:
-        return _QueueManager
+    def objects(cls) -> _QueueManager:
+        return _QueueManager()
 
     @property
     def name(self) -> Optional[str]:

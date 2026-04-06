@@ -39,8 +39,8 @@ class SecretInfo:
 class _SecretManager:
     """Namespace with methods for managing named Secret objects."""
 
-    @staticmethod
     async def create(
+        self,
         name: str,  # Name to use for the new Secret
         env_dict: dict[str, str],  # Key-value pairs to set in the Secret
         *,
@@ -96,8 +96,8 @@ class _SecretManager:
             if not allow_existing:
                 raise
 
-    @staticmethod
     async def list(
+        self,
         *,
         max_objects: Optional[int] = None,  # Limit requests to this size
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
@@ -164,8 +164,8 @@ class _SecretManager:
         ]
         return secrets[:max_objects] if max_objects is not None else secrets
 
-    @staticmethod
     async def delete(
+        self,
         name: str,  # Name of the Secret to delete
         *,
         allow_missing: bool = False,  # If True, don't raise an error if the Secret doesn't exist
@@ -238,8 +238,8 @@ class _Secret(_Object, type_prefix="st"):
 
     @classproperty
     @classmethod
-    def objects(cls) -> type[_SecretManager]:
-        return _SecretManager
+    def objects(cls) -> _SecretManager:
+        return _SecretManager()
 
     @property
     def name(self) -> Optional[str]:

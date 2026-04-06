@@ -141,8 +141,8 @@ class VolumeInfo:
 class _VolumeManager:
     """Namespace with methods for managing named Volume objects."""
 
-    @staticmethod
     async def create(
+        self,
         name: str,  # Name to use for the new Volume
         *,
         version: Optional[int] = None,  # Experimental: Configure the backend VolumeFS version
@@ -202,8 +202,8 @@ class _VolumeManager:
             if not allow_existing:
                 raise
 
-    @staticmethod
     async def list(
+        self,
         *,
         max_objects: Optional[int] = None,  # Limit requests to this size
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
@@ -270,8 +270,8 @@ class _VolumeManager:
         ]
         return volumes[:max_objects] if max_objects is not None else volumes
 
-    @staticmethod
     async def delete(
+        self,
         name: str,  # Name of the Volume to delete
         *,
         allow_missing: bool = False,  # If True, don't raise an error if the Volume doesn't exist
@@ -359,8 +359,8 @@ class _Volume(_Object, type_prefix="vo"):
 
     @classproperty
     @classmethod
-    def objects(cls) -> type[_VolumeManager]:
-        return _VolumeManager
+    def objects(cls) -> _VolumeManager:
+        return _VolumeManager()
 
     @property
     def name(self) -> Optional[str]:

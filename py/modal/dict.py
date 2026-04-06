@@ -84,8 +84,8 @@ class DictInfo:
 class _DictManager:
     """Namespace with methods for managing named Dict objects."""
 
-    @staticmethod
     async def create(
+        self,
         name: str,  # Name to use for the new Dict
         *,
         allow_existing: bool = False,  # If True, no-op when the Dict already exists
@@ -137,8 +137,8 @@ class _DictManager:
             if not allow_existing:
                 raise
 
-    @staticmethod
     async def list(
+        self,
         *,
         max_objects: Optional[int] = None,  # Limit results to this size
         created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
@@ -205,8 +205,8 @@ class _DictManager:
         ]
         return dicts[:max_objects] if max_objects is not None else dicts
 
-    @staticmethod
     async def delete(
+        self,
         name: str,  # Name of the Dict to delete
         *,
         allow_missing: bool = False,  # If True, don't raise an error if the Dict doesn't exist
@@ -299,8 +299,8 @@ class _Dict(_Object, type_prefix="di"):
 
     @classproperty
     @classmethod
-    def objects(cls) -> type[_DictManager]:
-        return _DictManager
+    def objects(cls) -> _DictManager:
+        return _DictManager()
 
     @property
     def name(self) -> Optional[str]:
