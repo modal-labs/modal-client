@@ -14,7 +14,16 @@ from modal._output.pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.app import _DEFAULT_LOGS_TAIL, _SOURCE_OPTIONS, _parse_time_arg
-from modal.cli.utils import ENV_OPTION, display_table, fetch_app_logs, is_tty, stream_app_logs, tail_app_logs
+from modal.cli.utils import (
+    ENV_OPTION,
+    YES_OPTION,
+    confirm_or_suggest_yes,
+    display_table,
+    fetch_app_logs,
+    is_tty,
+    stream_app_logs,
+    tail_app_logs,
+)
 from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
@@ -285,11 +294,20 @@ async def exec(
 
 @container_cli.command("stop")
 @synchronizer.create_blocking
-async def stop(container_id: str = typer.Argument(help="Container ID")):
+async def stop(
+    container_id: str = typer.Argument(help="Container ID"),
+    *,
+    yes: bool = YES_OPTION,
+):
     """Stop a currently-running container and reassign its in-progress inputs.
 
     This will send the container a SIGINT signal that Modal will handle.
     """
     client = await _Client.from_env()
+    resp = await client.stub.TaskGetInfo(api_pb2.TaskGetInfoRequest(task_id=container_id))
+    if resp.info.finished_at:
+        raise SystemExit(f"Container '{container_id}' is already stopped.")
+    if not yes:
+        confirm_or_suggest_yes(f"Are you sure you want to stop container '{container_id}'?")
     request = api_pb2.ContainerStopRequest(task_id=container_id)
     await client.stub.ContainerStop(request)
