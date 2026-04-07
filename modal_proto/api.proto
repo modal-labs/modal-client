@@ -3054,6 +3054,8 @@ message SandboxInfo {
   uint32 timeout_secs = 11;
   optional uint32 idle_timeout_secs = 12;
   optional double ready_at = 13;
+  optional Probe readiness_probe = 14;
+  repeated TunnelData tunnels = 15;
 }
 
 
