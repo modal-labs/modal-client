@@ -964,6 +964,16 @@ def test_image_docker_command_no_copy_commands(builder_version, servicer, client
     assert not servicer.mounts_excluding_published_client()
 
 
+def test_image_dockerfile_commands_build_args(builder_version, servicer, client):
+    image = Image.debian_slim().dockerfile_commands(
+        ["ARG MY_ARG", "RUN echo $MY_ARG"],
+        build_args={"MY_ARG": "hello"},
+    )
+    build_image(image, client)
+    layers = get_image_layers(image.object_id, servicer)
+    assert layers[0].build_args == {"MY_ARG": "hello"}
+
+
 @pytest.fixture()
 def dummy_context_dir(tmp_cwd):
     # create dummy data in current working directory
