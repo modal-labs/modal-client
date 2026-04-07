@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import io
+import sys
 from collections.abc import Sequence
 from contextlib import nullcontext
 from csv import writer as csv_writer
@@ -12,14 +13,11 @@ import typer
 from rich.table import Column, Table
 from rich.text import Text
 
-from modal_proto import api_pb2
-
 from .._logs import LogsFilters, fetch_logs, tail_logs
 from .._output.pty import _build_log_prefix, get_app_logs_loop
 from .._utils.async_utils import synchronizer
 from ..client import _Client
-from ..environments import ensure_env
-from ..exception import InvalidError, NotFoundError
+from ..exception import InvalidError
 from ..output import OutputManager
 
 
@@ -125,19 +123,6 @@ async def fetch_app_logs(
     await _drain_batches(output_mgr, batches, prefix_fields or [], filters.search_text)
 
 
-@synchronizer.create_blocking
-async def get_app_id_from_name(name: str, env: Optional[str], client: Optional[_Client] = None) -> str:
-    if client is None:
-        client = await _Client.from_env()
-    env_name = ensure_env(env)
-    request = api_pb2.AppGetByDeploymentNameRequest(name=name, environment_name=env_name)
-    resp = await client.stub.AppGetByDeploymentName(request)
-    if not resp.app_id:
-        env_comment = f" in the '{env_name}' environment" if env_name else ""
-        raise NotFoundError(f"Could not find a deployed app named '{name}'{env_comment}.")
-    return resp.app_id
-
-
 def _plain(text: Union[Text, str]) -> str:
     return text.plain if isinstance(text, Text) else text
 
@@ -185,3 +170,11 @@ Otherwise, raises an error if the workspace has multiple environments.
 ENV_OPTION = typer.Option(None, "-e", "--env", help=ENV_OPTION_HELP)
 
 YES_OPTION = typer.Option(False, "-y", "--yes", help="Run without pausing for confirmation.")
+
+
+def confirm_or_suggest_yes(msg: str) -> None:
+    """Prompt for confirmation, or abort with a hint to use --yes if stdin is not a TTY."""
+    if not sys.stdin.isatty():
+        typer.echo(f"{msg} [y/N]: ")
+        raise SystemExit("Aborted: no interactive terminal detected. Rerun with --yes (-y) to skip confirmation.")
+    typer.confirm(msg, default=False, abort=True)

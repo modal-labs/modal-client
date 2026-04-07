@@ -1014,7 +1014,22 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
         app_key = (self.get_environment(request.environment_name), request.name)
         app_id = self.deployed_apps.get(app_key)
-        await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=app_id))
+        environment_name = self.get_environment(request.environment_name)
+        lifecycle = api_pb2.AppLifecycle()
+        if app_id and self.app_state_history[app_id]:
+            lifecycle = api_pb2.AppLifecycle(app_state=self.app_state_history[app_id][-1])
+        await stream.send_message(
+            api_pb2.AppGetByDeploymentNameResponse(
+                app_id=app_id, environment_name=environment_name, lifecycle=lifecycle
+            )
+        )
+
+    async def AppGetLifecycle(self, stream):
+        request: api_pb2.AppGetLifecycleRequest = await stream.recv_message()
+        if request.app_id not in self.app_state_history:
+            raise GRPCError(Status.NOT_FOUND, f"App '{request.app_id}' not found")
+        lifecycle = api_pb2.AppLifecycle(app_state=self.app_state_history[request.app_id][-1])
+        await stream.send_message(api_pb2.AppGetLifecycleResponse(lifecycle=lifecycle))
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()

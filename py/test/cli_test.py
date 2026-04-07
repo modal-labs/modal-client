@@ -659,7 +659,7 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
     run_cli_command(
         ["app", "logs", "does-not-exist"],
         expected_exit_code=1,
-        expected_error="Could not find a deployed app named 'does-not-exist'",
+        expected_error="No App with name 'does-not-exist' found in the 'main' environment.",
     )
 
 
@@ -737,7 +737,7 @@ def test_app_stop(servicer, mock_dir, set_env_client):
     res = run_cli_command(["app", "list"])
     assert re.search("my_app .+ deployed", res.stdout)
 
-    run_cli_command(["app", "stop", "my_app"])
+    run_cli_command(["app", "stop", "my_app", "--yes"])
 
     # Note that the mock servicer doesn't report "stopped" app statuses
     # so we just check that it's not reported as deployed
@@ -1080,7 +1080,7 @@ def test_app_history(servicer, mock_dir, set_env_client):
 
     # can't fetch history for stopped apps
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
-        run_cli_command(["app", "stop", "my_app_foo"])
+        run_cli_command(["app", "stop", "my_app_foo", "--yes"])
 
     res = run_cli_command(["app", "history", "my_app_foo", "--json"], expected_exit_code=1)
 
