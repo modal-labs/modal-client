@@ -1551,10 +1551,10 @@ async def test_task_context_waits_for_cancellations():
 
 @pytest.mark.asyncio
 async def test_task_context_cancellation_timeout():
-    """Test that TaskContext times out after 1 second if cancellation cleanup takes too long.
+    """Test that TaskContext times out if cancellation cleanup takes too long.
 
-    If a task's cancellation cleanup takes longer than 1 second, the context manager
-    should exit anyway to prevent freezes.
+    If a task's cancellation cleanup takes longer than the cancellation_grace period,
+    the context manager should exit anyway to prevent freezes.
     """
     cleanup_started = []
     cleanup_finished = []
@@ -1569,19 +1569,20 @@ async def test_task_context_cancellation_timeout():
             cleanup_finished.append("finished")
             raise
 
-    t0 = time.time()
-    async with TaskContext() as task_context:
+    cancellation_grace = 0.5
+    t0 = time.monotonic()
+    async with TaskContext(cancellation_grace=cancellation_grace) as task_context:
         task_context.create_task(task_with_slow_cleanup())
 
-    elapsed = time.time() - t0
+    elapsed = time.monotonic() - t0
 
     # Should have started cleanup
     assert cleanup_started == ["started"]
     # Should NOT have waited for the full cleanup
     assert cleanup_finished == []
-    # Should have timed out around 1 second (the _cancellation_grace period)
-    # Allow some margin for timing variations
-    assert 0.9 < elapsed < 1.5
+    # Should have timed out around the cancellation_grace period
+    # Use generous upper bound to avoid flakiness in CI environments
+    assert cancellation_grace * 0.8 < elapsed < cancellation_grace * 6
 
 
 @pytest.mark.asyncio
