@@ -7,3 +7,4 @@
 - Added Sandbox readiness probe support in the Python SDK: configure `readiness_probe=` on `modal.Sandbox.create()` using `modal.Probe.with_tcp(...)` or `modal.Probe.with_exec(...)`.
 - Added `sandbox.wait_until_ready(timeout=...)` for blocking until a configured Sandbox readiness probe reports ready.
 - Added `SandboxFilesystem.remove()` for deleting files and directories from a Sandbox's filesystem.
+- Added `build_args` parameter to `Image.dockerfile_commands()`, matching existing support in `Image.from_dockerfile()`.

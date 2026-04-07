@@ -1644,6 +1644,7 @@ class _Image(_Object, type_prefix="im"):
         context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
+        build_args: dict[str, str] = {},  # Dockerfile variables to set
     ) -> "_Image":
         """
         Extend an image with arbitrary Dockerfile-like commands.
@@ -1706,6 +1707,7 @@ class _Image(_Object, type_prefix="im"):
                 ignore=ignore, dockerfile_cmds=cmds, context_dir=context_dir
             ),
             force_build=self.force_build or force_build,
+            build_args=build_args,
         )
 
     def entrypoint(
