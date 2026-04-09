@@ -1288,6 +1288,7 @@ type TaskExecStartRequest struct {
 	xxx_hidden_PtyInfo      *PTYInfo               `protobuf:"bytes,9,opt,name=pty_info,json=ptyInfo,proto3,oneof"`
 	xxx_hidden_RuntimeDebug bool                   `protobuf:"varint,10,opt,name=runtime_debug,json=runtimeDebug,proto3"`
 	xxx_hidden_ContainerId  string                 `protobuf:"bytes,11,opt,name=container_id,json=containerId,proto3"`
+	xxx_hidden_Env          map[string]string      `protobuf:"bytes,12,rep,name=env,proto3" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	XXX_raceDetectHookData  protoimpl.RaceDetectHookData
 	XXX_presence            [1]uint32
 	unknownFields           protoimpl.UnknownFields
@@ -1399,6 +1400,13 @@ func (x *TaskExecStartRequest) GetContainerId() string {
 	return ""
 }
 
+func (x *TaskExecStartRequest) GetEnv() map[string]string {
+	if x != nil {
+		return x.xxx_hidden_Env
+	}
+	return nil
+}
+
 func (x *TaskExecStartRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -1421,12 +1429,12 @@ func (x *TaskExecStartRequest) SetStderrConfig(v TaskExecStderrConfig) {
 
 func (x *TaskExecStartRequest) SetTimeoutSecs(v uint32) {
 	x.xxx_hidden_TimeoutSecs = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 11)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 12)
 }
 
 func (x *TaskExecStartRequest) SetWorkdir(v string) {
 	x.xxx_hidden_Workdir = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 11)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 12)
 }
 
 func (x *TaskExecStartRequest) SetSecretIds(v []string) {
@@ -1443,6 +1451,10 @@ func (x *TaskExecStartRequest) SetRuntimeDebug(v bool) {
 
 func (x *TaskExecStartRequest) SetContainerId(v string) {
 	x.xxx_hidden_ContainerId = v
+}
+
+func (x *TaskExecStartRequest) SetEnv(v map[string]string) {
+	x.xxx_hidden_Env = v
 }
 
 func (x *TaskExecStartRequest) HasTimeoutSecs() bool {
@@ -1509,6 +1521,8 @@ type TaskExecStartRequest_builder struct {
 	RuntimeDebug bool
 	// Fully qualified target container ID. Empty targets the main container.
 	ContainerId string
+	// Environment variables to set directly for the exec'd command.
+	Env map[string]string
 }
 
 func (b0 TaskExecStartRequest_builder) Build() *TaskExecStartRequest {
@@ -1521,17 +1535,18 @@ func (b0 TaskExecStartRequest_builder) Build() *TaskExecStartRequest {
 	x.xxx_hidden_StdoutConfig = b.StdoutConfig
 	x.xxx_hidden_StderrConfig = b.StderrConfig
 	if b.TimeoutSecs != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 11)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 12)
 		x.xxx_hidden_TimeoutSecs = *b.TimeoutSecs
 	}
 	if b.Workdir != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 11)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 12)
 		x.xxx_hidden_Workdir = b.Workdir
 	}
 	x.xxx_hidden_SecretIds = b.SecretIds
 	x.xxx_hidden_PtyInfo = b.PtyInfo
 	x.xxx_hidden_RuntimeDebug = b.RuntimeDebug
 	x.xxx_hidden_ContainerId = b.ContainerId
+	x.xxx_hidden_Env = b.Env
 	return m0
 }
 
@@ -2367,6 +2382,80 @@ func (b0 TaskSnapshotDirectoryResponse_builder) Build() *TaskSnapshotDirectoryRe
 	return m0
 }
 
+type TaskUnmountDirectoryRequest struct {
+	state             protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_TaskId string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_Path   []byte                 `protobuf:"bytes,2,opt,name=path,proto3"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *TaskUnmountDirectoryRequest) Reset() {
+	*x = TaskUnmountDirectoryRequest{}
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskUnmountDirectoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskUnmountDirectoryRequest) ProtoMessage() {}
+
+func (x *TaskUnmountDirectoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *TaskUnmountDirectoryRequest) GetTaskId() string {
+	if x != nil {
+		return x.xxx_hidden_TaskId
+	}
+	return ""
+}
+
+func (x *TaskUnmountDirectoryRequest) GetPath() []byte {
+	if x != nil {
+		return x.xxx_hidden_Path
+	}
+	return nil
+}
+
+func (x *TaskUnmountDirectoryRequest) SetTaskId(v string) {
+	x.xxx_hidden_TaskId = v
+}
+
+func (x *TaskUnmountDirectoryRequest) SetPath(v []byte) {
+	if v == nil {
+		v = []byte{}
+	}
+	x.xxx_hidden_Path = v
+}
+
+type TaskUnmountDirectoryRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	TaskId string
+	Path   []byte
+}
+
+func (b0 TaskUnmountDirectoryRequest_builder) Build() *TaskUnmountDirectoryRequest {
+	m0 := &TaskUnmountDirectoryRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_TaskId = b.TaskId
+	x.xxx_hidden_Path = b.Path
+	return m0
+}
+
 var File_modal_proto_task_command_router_proto protoreflect.FileDescriptor
 
 const file_modal_proto_task_command_router_proto_rawDesc = "" +
@@ -2421,7 +2510,7 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x14TaskExecPollResponse\x12\x14\n" +
 	"\x04code\x18\x01 \x01(\x05H\x00R\x04code\x12\x18\n" +
 	"\x06signal\x18\x02 \x01(\x05H\x00R\x06signalB\r\n" +
-	"\vexit_status\"\xa6\x04\n" +
+	"\vexit_status\"\xaa\x05\n" +
 	"\x14TaskExecStartRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x17\n" +
 	"\aexec_id\x18\x02 \x01(\tR\x06execId\x12!\n" +
@@ -2435,7 +2524,11 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\bpty_info\x18\t \x01(\v2\x15.modal.client.PTYInfoH\x02R\aptyInfo\x88\x01\x01\x12#\n" +
 	"\rruntime_debug\x18\n" +
 	" \x01(\bR\fruntimeDebug\x12!\n" +
-	"\fcontainer_id\x18\v \x01(\tR\vcontainerIdB\x0f\n" +
+	"\fcontainer_id\x18\v \x01(\tR\vcontainerId\x12J\n" +
+	"\x03env\x18\f \x03(\v28.modal.task_command_router.TaskExecStartRequest.EnvEntryR\x03env\x1a6\n" +
+	"\bEnvEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
 	"\r_timeout_secsB\n" +
 	"\n" +
 	"\b_workdirB\v\n" +
@@ -2470,7 +2563,10 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\fR\x04path\":\n" +
 	"\x1dTaskSnapshotDirectoryResponse\x12\x19\n" +
-	"\bimage_id\x18\x01 \x01(\tR\aimageId*\x81\x01\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"J\n" +
+	"\x1bTaskUnmountDirectoryRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\fR\x04path*\x81\x01\n" +
 	"\x14TaskExecStderrConfig\x12#\n" +
 	"\x1fTASK_EXEC_STDERR_CONFIG_DEVNULL\x10\x00\x12 \n" +
 	"\x1cTASK_EXEC_STDERR_CONFIG_PIPE\x10\x01\x12\"\n" +
@@ -2480,7 +2576,7 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"&TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR\x10\x01*]\n" +
 	"\x14TaskExecStdoutConfig\x12#\n" +
 	"\x1fTASK_EXEC_STDOUT_CONFIG_DEVNULL\x10\x00\x12 \n" +
-	"\x1cTASK_EXEC_STDOUT_CONFIG_PIPE\x10\x012\xf5\v\n" +
+	"\x1cTASK_EXEC_STDOUT_CONFIG_PIPE\x10\x012\xdd\f\n" +
 	"\x11TaskCommandRouter\x12\x84\x01\n" +
 	"\x13TaskContainerCreate\x125.modal.task_command_router.TaskContainerCreateRequest\x1a6.modal.task_command_router.TaskContainerCreateResponse\x12{\n" +
 	"\x10TaskContainerGet\x122.modal.task_command_router.TaskContainerGetRequest\x1a3.modal.task_command_router.TaskContainerGetResponse\x12~\n" +
@@ -2493,10 +2589,11 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x11TaskExecStdioRead\x123.modal.task_command_router.TaskExecStdioReadRequest\x1a4.modal.task_command_router.TaskExecStdioReadResponse0\x01\x12o\n" +
 	"\fTaskExecWait\x12..modal.task_command_router.TaskExecWaitRequest\x1a/.modal.task_command_router.TaskExecWaitResponse\x12b\n" +
 	"\x12TaskMountDirectory\x124.modal.task_command_router.TaskMountDirectoryRequest\x1a\x16.google.protobuf.Empty\x12\x8a\x01\n" +
-	"\x15TaskSnapshotDirectory\x127.modal.task_command_router.TaskSnapshotDirectoryRequest\x1a8.modal.task_command_router.TaskSnapshotDirectoryResponseB&Z$github.com/modal-labs/modal/go/protob\x06proto3"
+	"\x15TaskSnapshotDirectory\x127.modal.task_command_router.TaskSnapshotDirectoryRequest\x1a8.modal.task_command_router.TaskSnapshotDirectoryResponse\x12f\n" +
+	"\x14TaskUnmountDirectory\x126.modal.task_command_router.TaskUnmountDirectoryRequest\x1a\x16.google.protobuf.EmptyB&Z$github.com/modal-labs/modal/go/protob\x06proto3"
 
 var file_modal_proto_task_command_router_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_modal_proto_task_command_router_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_modal_proto_task_command_router_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_modal_proto_task_command_router_proto_goTypes = []any{
 	(TaskExecStderrConfig)(0),              // 0: modal.task_command_router.TaskExecStderrConfig
 	(TaskExecStdioFileDescriptor)(0),       // 1: modal.task_command_router.TaskExecStdioFileDescriptor
@@ -2525,50 +2622,55 @@ var file_modal_proto_task_command_router_proto_goTypes = []any{
 	(*TaskMountDirectoryRequest)(nil),      // 24: modal.task_command_router.TaskMountDirectoryRequest
 	(*TaskSnapshotDirectoryRequest)(nil),   // 25: modal.task_command_router.TaskSnapshotDirectoryRequest
 	(*TaskSnapshotDirectoryResponse)(nil),  // 26: modal.task_command_router.TaskSnapshotDirectoryResponse
-	nil,                                    // 27: modal.task_command_router.TaskContainerCreateRequest.EnvEntry
-	(*GenericResult)(nil),                  // 28: modal.client.GenericResult
-	(*PTYInfo)(nil),                        // 29: modal.client.PTYInfo
-	(*emptypb.Empty)(nil),                  // 30: google.protobuf.Empty
+	(*TaskUnmountDirectoryRequest)(nil),    // 27: modal.task_command_router.TaskUnmountDirectoryRequest
+	nil,                                    // 28: modal.task_command_router.TaskContainerCreateRequest.EnvEntry
+	nil,                                    // 29: modal.task_command_router.TaskExecStartRequest.EnvEntry
+	(*GenericResult)(nil),                  // 30: modal.client.GenericResult
+	(*PTYInfo)(nil),                        // 31: modal.client.PTYInfo
+	(*emptypb.Empty)(nil),                  // 32: google.protobuf.Empty
 }
 var file_modal_proto_task_command_router_proto_depIdxs = []int32{
-	27, // 0: modal.task_command_router.TaskContainerCreateRequest.env:type_name -> modal.task_command_router.TaskContainerCreateRequest.EnvEntry
+	28, // 0: modal.task_command_router.TaskContainerCreateRequest.env:type_name -> modal.task_command_router.TaskContainerCreateRequest.EnvEntry
 	7,  // 1: modal.task_command_router.TaskContainerGetResponse.container:type_name -> modal.task_command_router.TaskContainerInfo
-	28, // 2: modal.task_command_router.TaskContainerInfo.result:type_name -> modal.client.GenericResult
+	30, // 2: modal.task_command_router.TaskContainerInfo.result:type_name -> modal.client.GenericResult
 	7,  // 3: modal.task_command_router.TaskContainerListResponse.containers:type_name -> modal.task_command_router.TaskContainerInfo
-	28, // 4: modal.task_command_router.TaskContainerWaitResponse.result:type_name -> modal.client.GenericResult
+	30, // 4: modal.task_command_router.TaskContainerWaitResponse.result:type_name -> modal.client.GenericResult
 	2,  // 5: modal.task_command_router.TaskExecStartRequest.stdout_config:type_name -> modal.task_command_router.TaskExecStdoutConfig
 	0,  // 6: modal.task_command_router.TaskExecStartRequest.stderr_config:type_name -> modal.task_command_router.TaskExecStderrConfig
-	29, // 7: modal.task_command_router.TaskExecStartRequest.pty_info:type_name -> modal.client.PTYInfo
-	1,  // 8: modal.task_command_router.TaskExecStdioReadRequest.file_descriptor:type_name -> modal.task_command_router.TaskExecStdioFileDescriptor
-	3,  // 9: modal.task_command_router.TaskCommandRouter.TaskContainerCreate:input_type -> modal.task_command_router.TaskContainerCreateRequest
-	5,  // 10: modal.task_command_router.TaskCommandRouter.TaskContainerGet:input_type -> modal.task_command_router.TaskContainerGetRequest
-	8,  // 11: modal.task_command_router.TaskCommandRouter.TaskContainerList:input_type -> modal.task_command_router.TaskContainerListRequest
-	10, // 12: modal.task_command_router.TaskCommandRouter.TaskContainerTerminate:input_type -> modal.task_command_router.TaskContainerTerminateRequest
-	12, // 13: modal.task_command_router.TaskCommandRouter.TaskContainerWait:input_type -> modal.task_command_router.TaskContainerWaitRequest
-	14, // 14: modal.task_command_router.TaskCommandRouter.TaskExecPoll:input_type -> modal.task_command_router.TaskExecPollRequest
-	16, // 15: modal.task_command_router.TaskCommandRouter.TaskExecStart:input_type -> modal.task_command_router.TaskExecStartRequest
-	18, // 16: modal.task_command_router.TaskCommandRouter.TaskExecStdinWrite:input_type -> modal.task_command_router.TaskExecStdinWriteRequest
-	20, // 17: modal.task_command_router.TaskCommandRouter.TaskExecStdioRead:input_type -> modal.task_command_router.TaskExecStdioReadRequest
-	22, // 18: modal.task_command_router.TaskCommandRouter.TaskExecWait:input_type -> modal.task_command_router.TaskExecWaitRequest
-	24, // 19: modal.task_command_router.TaskCommandRouter.TaskMountDirectory:input_type -> modal.task_command_router.TaskMountDirectoryRequest
-	25, // 20: modal.task_command_router.TaskCommandRouter.TaskSnapshotDirectory:input_type -> modal.task_command_router.TaskSnapshotDirectoryRequest
-	4,  // 21: modal.task_command_router.TaskCommandRouter.TaskContainerCreate:output_type -> modal.task_command_router.TaskContainerCreateResponse
-	6,  // 22: modal.task_command_router.TaskCommandRouter.TaskContainerGet:output_type -> modal.task_command_router.TaskContainerGetResponse
-	9,  // 23: modal.task_command_router.TaskCommandRouter.TaskContainerList:output_type -> modal.task_command_router.TaskContainerListResponse
-	11, // 24: modal.task_command_router.TaskCommandRouter.TaskContainerTerminate:output_type -> modal.task_command_router.TaskContainerTerminateResponse
-	13, // 25: modal.task_command_router.TaskCommandRouter.TaskContainerWait:output_type -> modal.task_command_router.TaskContainerWaitResponse
-	15, // 26: modal.task_command_router.TaskCommandRouter.TaskExecPoll:output_type -> modal.task_command_router.TaskExecPollResponse
-	17, // 27: modal.task_command_router.TaskCommandRouter.TaskExecStart:output_type -> modal.task_command_router.TaskExecStartResponse
-	19, // 28: modal.task_command_router.TaskCommandRouter.TaskExecStdinWrite:output_type -> modal.task_command_router.TaskExecStdinWriteResponse
-	21, // 29: modal.task_command_router.TaskCommandRouter.TaskExecStdioRead:output_type -> modal.task_command_router.TaskExecStdioReadResponse
-	23, // 30: modal.task_command_router.TaskCommandRouter.TaskExecWait:output_type -> modal.task_command_router.TaskExecWaitResponse
-	30, // 31: modal.task_command_router.TaskCommandRouter.TaskMountDirectory:output_type -> google.protobuf.Empty
-	26, // 32: modal.task_command_router.TaskCommandRouter.TaskSnapshotDirectory:output_type -> modal.task_command_router.TaskSnapshotDirectoryResponse
-	21, // [21:33] is the sub-list for method output_type
-	9,  // [9:21] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	31, // 7: modal.task_command_router.TaskExecStartRequest.pty_info:type_name -> modal.client.PTYInfo
+	29, // 8: modal.task_command_router.TaskExecStartRequest.env:type_name -> modal.task_command_router.TaskExecStartRequest.EnvEntry
+	1,  // 9: modal.task_command_router.TaskExecStdioReadRequest.file_descriptor:type_name -> modal.task_command_router.TaskExecStdioFileDescriptor
+	3,  // 10: modal.task_command_router.TaskCommandRouter.TaskContainerCreate:input_type -> modal.task_command_router.TaskContainerCreateRequest
+	5,  // 11: modal.task_command_router.TaskCommandRouter.TaskContainerGet:input_type -> modal.task_command_router.TaskContainerGetRequest
+	8,  // 12: modal.task_command_router.TaskCommandRouter.TaskContainerList:input_type -> modal.task_command_router.TaskContainerListRequest
+	10, // 13: modal.task_command_router.TaskCommandRouter.TaskContainerTerminate:input_type -> modal.task_command_router.TaskContainerTerminateRequest
+	12, // 14: modal.task_command_router.TaskCommandRouter.TaskContainerWait:input_type -> modal.task_command_router.TaskContainerWaitRequest
+	14, // 15: modal.task_command_router.TaskCommandRouter.TaskExecPoll:input_type -> modal.task_command_router.TaskExecPollRequest
+	16, // 16: modal.task_command_router.TaskCommandRouter.TaskExecStart:input_type -> modal.task_command_router.TaskExecStartRequest
+	18, // 17: modal.task_command_router.TaskCommandRouter.TaskExecStdinWrite:input_type -> modal.task_command_router.TaskExecStdinWriteRequest
+	20, // 18: modal.task_command_router.TaskCommandRouter.TaskExecStdioRead:input_type -> modal.task_command_router.TaskExecStdioReadRequest
+	22, // 19: modal.task_command_router.TaskCommandRouter.TaskExecWait:input_type -> modal.task_command_router.TaskExecWaitRequest
+	24, // 20: modal.task_command_router.TaskCommandRouter.TaskMountDirectory:input_type -> modal.task_command_router.TaskMountDirectoryRequest
+	25, // 21: modal.task_command_router.TaskCommandRouter.TaskSnapshotDirectory:input_type -> modal.task_command_router.TaskSnapshotDirectoryRequest
+	27, // 22: modal.task_command_router.TaskCommandRouter.TaskUnmountDirectory:input_type -> modal.task_command_router.TaskUnmountDirectoryRequest
+	4,  // 23: modal.task_command_router.TaskCommandRouter.TaskContainerCreate:output_type -> modal.task_command_router.TaskContainerCreateResponse
+	6,  // 24: modal.task_command_router.TaskCommandRouter.TaskContainerGet:output_type -> modal.task_command_router.TaskContainerGetResponse
+	9,  // 25: modal.task_command_router.TaskCommandRouter.TaskContainerList:output_type -> modal.task_command_router.TaskContainerListResponse
+	11, // 26: modal.task_command_router.TaskCommandRouter.TaskContainerTerminate:output_type -> modal.task_command_router.TaskContainerTerminateResponse
+	13, // 27: modal.task_command_router.TaskCommandRouter.TaskContainerWait:output_type -> modal.task_command_router.TaskContainerWaitResponse
+	15, // 28: modal.task_command_router.TaskCommandRouter.TaskExecPoll:output_type -> modal.task_command_router.TaskExecPollResponse
+	17, // 29: modal.task_command_router.TaskCommandRouter.TaskExecStart:output_type -> modal.task_command_router.TaskExecStartResponse
+	19, // 30: modal.task_command_router.TaskCommandRouter.TaskExecStdinWrite:output_type -> modal.task_command_router.TaskExecStdinWriteResponse
+	21, // 31: modal.task_command_router.TaskCommandRouter.TaskExecStdioRead:output_type -> modal.task_command_router.TaskExecStdioReadResponse
+	23, // 32: modal.task_command_router.TaskCommandRouter.TaskExecWait:output_type -> modal.task_command_router.TaskExecWaitResponse
+	32, // 33: modal.task_command_router.TaskCommandRouter.TaskMountDirectory:output_type -> google.protobuf.Empty
+	26, // 34: modal.task_command_router.TaskCommandRouter.TaskSnapshotDirectory:output_type -> modal.task_command_router.TaskSnapshotDirectoryResponse
+	32, // 35: modal.task_command_router.TaskCommandRouter.TaskUnmountDirectory:output_type -> google.protobuf.Empty
+	23, // [23:36] is the sub-list for method output_type
+	10, // [10:23] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_modal_proto_task_command_router_proto_init() }
@@ -2592,7 +2694,7 @@ func file_modal_proto_task_command_router_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_modal_proto_task_command_router_proto_rawDesc), len(file_modal_proto_task_command_router_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   25,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

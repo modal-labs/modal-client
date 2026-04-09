@@ -49,5 +49,9 @@ console.log(
   await repoLs.stdout.readText(),
 );
 
+// You can also optionally unmount the Image
+await sb2.unmountImage("/repo");
+console.log("Unmounted the snapshot from /repo");
+
 await sb2.terminate();
 await modal.images.delete(repoSnapshot.imageId);

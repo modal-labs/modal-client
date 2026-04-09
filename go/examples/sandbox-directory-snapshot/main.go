@@ -113,6 +113,12 @@ func main() {
 	}
 	fmt.Printf("Contents of /repo directory in new Sandbox sb2:\n%s", output)
 
+	// You can also optionally unmount the Image
+	if err := sb2.UnmountImage(ctx, "/repo"); err != nil {
+		log.Fatalf("Failed to unmount snapshot in sb2: %v", err)
+	}
+	fmt.Println("Unmounted the snapshot from /repo")
+
 	if _, err := sb2.Terminate(ctx, nil); err != nil {
 		log.Fatalf("Failed to terminate sb2: %v", err)
 	}

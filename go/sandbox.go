@@ -1080,6 +1080,28 @@ func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image) er
 	return crClient.MountDirectory(ctx, request)
 }
 
+// UnmountImage removes an image mount from a path in the Sandbox filesystem.
+func (sb *Sandbox) UnmountImage(ctx context.Context, path string) error {
+	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
+	if err := sb.ensureTaskID(ctx); err != nil {
+		return err
+	}
+
+	crClient, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
+	if err != nil {
+		return err
+	}
+
+	request := pb.TaskUnmountDirectoryRequest_builder{
+		TaskId: sb.taskID,
+		Path:   []byte(path),
+	}.Build()
+
+	return crClient.UnmountDirectory(ctx, request)
+}
+
 // SnapshotDirectory snapshots and creates a new image from a directory in the running sandbox.
 func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string) (*Image, error) {
 	if err := sb.ensureAttached(); err != nil {

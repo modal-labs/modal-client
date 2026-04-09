@@ -25,6 +25,7 @@ import {
   TaskMountDirectoryRequest,
   TaskSnapshotDirectoryRequest,
   TaskSnapshotDirectoryResponse,
+  TaskUnmountDirectoryRequest,
 } from "../proto/modal_proto/task_command_router";
 import {
   TaskGetCommandRouterAccessRequest,
@@ -400,6 +401,18 @@ export class TaskCommandRouterClientImpl {
     return await callWithRetriesOnTransientErrors(
       () =>
         this.callWithAuthRetry(() => this.stub.taskSnapshotDirectory(request)),
+      10,
+      2,
+      10,
+      null,
+      () => this.closed,
+    );
+  }
+
+  async unmountDirectory(request: TaskUnmountDirectoryRequest): Promise<void> {
+    await callWithRetriesOnTransientErrors(
+      () =>
+        this.callWithAuthRetry(() => this.stub.taskUnmountDirectory(request)),
       10,
       2,
       10,

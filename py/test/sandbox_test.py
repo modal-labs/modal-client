@@ -1016,6 +1016,32 @@ def test_snapshot_directory(servicer, client, exec_backend, app):
 
 @skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_unmount_image(servicer, client, exec_backend, app, monkeypatch):
+    """Test unmounting an image from a path in the sandbox."""
+    captured_requests = []
+    original = FakeTaskCommandRouterClient.unmount_image
+
+    async def _unmount_image(self, request):
+        captured_requests.append(request)
+        return await original(self, request)
+
+    monkeypatch.setattr(FakeTaskCommandRouterClient, "unmount_image", _unmount_image, raising=True)
+
+    sb = Sandbox.create(app=app)
+
+    sb.unmount_image("/mounted")
+
+    assert len(captured_requests) == 1
+    assert captured_requests[0].path == b"/mounted"
+
+    with pytest.raises(InvalidError, match="must be absolute"):
+        sb.unmount_image("relative/path")
+
+    sb.terminate()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_exec_on_terminate_sandbox_raises(servicer, client, exec_backend, app):
     sb = Sandbox.create(app=app)
     sb.terminate()
@@ -1047,6 +1073,7 @@ detach_error_funcs = {
     "poll": lambda sb: sb.poll(),
     "exec": lambda sb: sb.exec("echo", "hello"),
     "mount_image": lambda sb: sb.mount_image("/mnt", modal.image._Image.from_scratch()),
+    "unmount_image": lambda sb: sb.unmount_image("/mnt"),
     "_experimental_snapshot": lambda sb: sb._experimental_snapshot(),
     "open": lambda sb: sb.open("/hello.txt"),
     "ls": lambda sb: sb.ls("/mnt"),

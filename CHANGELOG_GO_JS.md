@@ -4,7 +4,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
-No unreleased changes.
+- Added `Sandbox.UnmountImage` (Go) and `sandbox.unmountImage` (JS) to remove an image mount from a path in the Sandbox filesystem and reveal the underlying directory again.
 
 ## js/v0.7.4, go/v0.7.4
 
