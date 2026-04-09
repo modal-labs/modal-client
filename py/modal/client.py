@@ -239,6 +239,10 @@ class _Client:
         """
         Constructor based on token credentials; useful for managing Modal on behalf of third-party users.
 
+        Also useful when it's necessary to explicitly manage the lifecycle of the client
+        (e.g. when running Modal in a forked subprocess) — see
+        [troubleshooting](/docs/guide/troubleshooting#connection-issues-in-forked-processes).
+
         **Usage:**
 
         ```python notest
@@ -309,6 +313,9 @@ class _Client:
             return await coro
 
     async def _reset_on_pid_change(self):
+        # Best-effort recovery after os.fork(). The client singleton may be inherited
+        # from the parent with stale gRPC state. For reliable post-fork usage, create
+        # a fresh client via Client.from_credentials() instead of relying on this.
         if self._owner_pid and self._owner_pid != os.getpid():
             # not calling .close() since that would also interact with stale resources
             # just reset the internal state
