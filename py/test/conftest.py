@@ -174,6 +174,13 @@ class FakeTaskCommandRouterClient:
         # Return empty response (no fields in the actual proto)
         return None
 
+    async def unmount_image(self, request: sr_pb2.TaskUnmountDirectoryRequest):
+        """Mock unmount_image for testing - stores requests for verification."""
+        if not hasattr(self, "_unmount_requests"):
+            self._unmount_requests = []
+        self._unmount_requests.append(request)
+        return None
+
     async def snapshot_directory(
         self, request: sr_pb2.TaskSnapshotDirectoryRequest
     ) -> sr_pb2.TaskSnapshotDirectoryResponse:

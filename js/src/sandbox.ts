@@ -25,6 +25,7 @@ import {
   TaskExecStderrConfig,
   TaskMountDirectoryRequest,
   TaskSnapshotDirectoryRequest,
+  TaskUnmountDirectoryRequest,
 } from "../proto/modal_proto/task_command_router";
 import { TaskCommandRouterClientImpl } from "./task_command_router_client";
 import { v4 as uuidv4 } from "uuid";
@@ -1325,6 +1326,25 @@ export class Sandbox {
       imageId,
     });
     await commandRouterClient.mountDirectory(request);
+  }
+
+  /**
+   * Unmounts an {@link Image} previously mounted at a path in the Sandbox filesystem.
+   *
+   * @param path - The mount path to unmount
+   */
+  async unmountImage(path: string): Promise<void> {
+    this.#ensureAttached();
+    const taskId = await this.#getTaskId();
+    const commandRouterClient =
+      await this.#getOrCreateCommandRouterClient(taskId);
+
+    const pathBytes = new TextEncoder().encode(path);
+    const request = TaskUnmountDirectoryRequest.create({
+      taskId,
+      path: pathBytes,
+    });
+    await commandRouterClient.unmountDirectory(request);
   }
 
   /**

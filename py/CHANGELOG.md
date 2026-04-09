@@ -6,6 +6,7 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ### 1.4.1 (2026-03-30)
 
+- Sandboxes now support `sb.unmount_image(path)` to remove a previously mounted Image from a path and reveal the underlying Sandbox filesystem there again.
 - We're introducing a concept of "readiness probes" for `modal.Sandbox`. This feature lets you configure a readiness check on a TCP port (`modal.Probe.with_tcp()`) or by executing a process (`modal.Probe.with_exec()`). Calling `sb.wait_until_ready()` will block until the Probe succeeds:
   ```python notest
   app = modal.App.lookup('sandbox-app', create_if_missing=True)

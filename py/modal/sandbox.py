@@ -983,6 +983,27 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskMountDirectoryRequest(task_id=task_id, path=path_bytes, image_id=image_id)
         await command_router_client.mount_image(req)
 
+    async def unmount_image(self, path: Union[PurePosixPath, str]):
+        """Unmount a previously mounted Image from a running Sandbox.
+
+        `path` must be the exact mount point that was passed to `.mount_image()`.
+        After unmounting, the underlying Sandbox filesystem at that path becomes
+        visible again.
+        """
+        self._ensure_v1("unmount_image")
+
+        task_id = await self._get_task_id()
+        if (command_router_client := await self._get_command_router_client(task_id)) is None:
+            raise InvalidError("Unmounting directories requires direct Sandbox control - please contact Modal support.")
+
+        posix_path = PurePosixPath(path)
+        if not posix_path.is_absolute():
+            raise InvalidError(f"Unmount path must be absolute; got: {posix_path}")
+        path_bytes = posix_path.as_posix().encode("utf8")
+
+        req = sr_pb2.TaskUnmountDirectoryRequest(task_id=task_id, path=path_bytes)
+        await command_router_client.unmount_image(req)
+
     async def snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
         """Snapshot a directory in a running Sandbox, creating a new Image with its content.
 

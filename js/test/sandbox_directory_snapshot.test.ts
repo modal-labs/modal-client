@@ -48,6 +48,31 @@ test("SandboxMountDirectoryWithImage", async () => {
   expect(output).toBe("mounted content");
 });
 
+test("SandboxUnmountDirectory", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const baseImage = tc.images.fromRegistry("debian:12-slim");
+
+  const sb = await tc.sandboxes.create(app, baseImage);
+  onTestFinished(async () => await sb.terminate());
+
+  await (await sb.exec(["mkdir", "-p", "/mnt/data"])).wait();
+  await sb.mountImage("/mnt/data");
+
+  const writeProc = await sb.exec([
+    "sh",
+    "-c",
+    "echo -n 'sandbox data' > /mnt/data/present.txt",
+  ]);
+  await writeProc.wait();
+
+  await sb.unmountImage("/mnt/data");
+
+  const checkProc = await sb.exec(["test", "!", "-e", "/mnt/data/present.txt"]);
+  expect(await checkProc.wait()).toBe(0);
+});
+
 test("SandboxSnapshotDirectory", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,

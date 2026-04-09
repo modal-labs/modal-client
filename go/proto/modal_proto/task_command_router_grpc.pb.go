@@ -32,6 +32,7 @@ const (
 	TaskCommandRouter_TaskExecWait_FullMethodName           = "/modal.task_command_router.TaskCommandRouter/TaskExecWait"
 	TaskCommandRouter_TaskMountDirectory_FullMethodName     = "/modal.task_command_router.TaskCommandRouter/TaskMountDirectory"
 	TaskCommandRouter_TaskSnapshotDirectory_FullMethodName  = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotDirectory"
+	TaskCommandRouter_TaskUnmountDirectory_FullMethodName   = "/modal.task_command_router.TaskCommandRouter/TaskUnmountDirectory"
 )
 
 // TaskCommandRouterClient is the client API for TaskCommandRouter service.
@@ -62,6 +63,8 @@ type TaskCommandRouterClient interface {
 	TaskMountDirectory(ctx context.Context, in *TaskMountDirectoryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Snapshot a directory with a mounted image, including any local changes, into a new image.
 	TaskSnapshotDirectory(ctx context.Context, in *TaskSnapshotDirectoryRequest, opts ...grpc.CallOption) (*TaskSnapshotDirectoryResponse, error)
+	// Unmount an image previously mounted at a directory in the container.
+	TaskUnmountDirectory(ctx context.Context, in *TaskUnmountDirectoryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type taskCommandRouterClient struct {
@@ -201,6 +204,16 @@ func (c *taskCommandRouterClient) TaskSnapshotDirectory(ctx context.Context, in 
 	return out, nil
 }
 
+func (c *taskCommandRouterClient) TaskUnmountDirectory(ctx context.Context, in *TaskUnmountDirectoryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_TaskUnmountDirectory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TaskCommandRouterServer is the server API for TaskCommandRouter service.
 // All implementations must embed UnimplementedTaskCommandRouterServer
 // for forward compatibility.
@@ -229,6 +242,8 @@ type TaskCommandRouterServer interface {
 	TaskMountDirectory(context.Context, *TaskMountDirectoryRequest) (*emptypb.Empty, error)
 	// Snapshot a directory with a mounted image, including any local changes, into a new image.
 	TaskSnapshotDirectory(context.Context, *TaskSnapshotDirectoryRequest) (*TaskSnapshotDirectoryResponse, error)
+	// Unmount an image previously mounted at a directory in the container.
+	TaskUnmountDirectory(context.Context, *TaskUnmountDirectoryRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedTaskCommandRouterServer()
 }
 
@@ -274,6 +289,9 @@ func (UnimplementedTaskCommandRouterServer) TaskMountDirectory(context.Context, 
 }
 func (UnimplementedTaskCommandRouterServer) TaskSnapshotDirectory(context.Context, *TaskSnapshotDirectoryRequest) (*TaskSnapshotDirectoryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskSnapshotDirectory not implemented")
+}
+func (UnimplementedTaskCommandRouterServer) TaskUnmountDirectory(context.Context, *TaskUnmountDirectoryRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method TaskUnmountDirectory not implemented")
 }
 func (UnimplementedTaskCommandRouterServer) mustEmbedUnimplementedTaskCommandRouterServer() {}
 func (UnimplementedTaskCommandRouterServer) testEmbeddedByValue()                           {}
@@ -505,6 +523,24 @@ func _TaskCommandRouter_TaskSnapshotDirectory_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TaskCommandRouter_TaskUnmountDirectory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskUnmountDirectoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).TaskUnmountDirectory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_TaskUnmountDirectory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).TaskUnmountDirectory(ctx, req.(*TaskUnmountDirectoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TaskCommandRouter_ServiceDesc is the grpc.ServiceDesc for TaskCommandRouter service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -555,6 +591,10 @@ var TaskCommandRouter_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TaskSnapshotDirectory",
 			Handler:    _TaskCommandRouter_TaskSnapshotDirectory_Handler,
+		},
+		{
+			MethodName: "TaskUnmountDirectory",
+			Handler:    _TaskCommandRouter_TaskUnmountDirectory_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

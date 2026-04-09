@@ -330,6 +330,16 @@ func (c *taskCommandRouterClient) MountDirectory(ctx context.Context, request *p
 	return err
 }
 
+// UnmountDirectory unmounts a directory in the container.
+func (c *taskCommandRouterClient) UnmountDirectory(ctx context.Context, request *pb.TaskUnmountDirectoryRequest) error {
+	_, err := callWithRetriesOnTransientErrors(ctx, func() (*emptypb.Empty, error) {
+		return callWithAuthRetry(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {
+			return c.stub.TaskUnmountDirectory(authCtx, request)
+		})
+	}, defaultRetryOptions(), &c.closed)
+	return err
+}
+
 // SnapshotDirectory snapshots a directory into a new image.
 func (c *taskCommandRouterClient) SnapshotDirectory(ctx context.Context, request *pb.TaskSnapshotDirectoryRequest) (*pb.TaskSnapshotDirectoryResponse, error) {
 	return callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskSnapshotDirectoryResponse, error) {

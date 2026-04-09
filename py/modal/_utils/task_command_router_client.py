@@ -617,6 +617,12 @@ class TaskCommandRouterClient:
                 lambda: self._call_with_auth_retry(self._stub.TaskMountDirectory, request)
             )
 
+    async def unmount_image(self, request: sr_pb2.TaskUnmountDirectoryRequest):
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskUnmountDirectory, request)
+            )
+
     async def snapshot_directory(
         self, request: sr_pb2.TaskSnapshotDirectoryRequest
     ) -> sr_pb2.TaskSnapshotDirectoryResponse:
