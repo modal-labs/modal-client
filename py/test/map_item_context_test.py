@@ -31,7 +31,8 @@ def retry_queue():
     return TimestampPriorityQueue()
 
 
-def test_ctx_initial_state():
+@pytest.mark.asyncio
+async def test_ctx_initial_state():
     ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     assert_context_is(ctx, _MapItemState.SENDING, 0, None, None, input_data.args)
 
