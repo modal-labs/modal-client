@@ -1,7 +1,7 @@
 """Build configuration for client proto files"""
 
 load("@protobuf//bazel:proto_library.bzl", "proto_library")
-load("//bazel:python.bzl", "py_proto_gen_library")
+load("//bazel:py_proto_gen.bzl", "py_proto_gen_library")
 
 # Export all proto files as a filegroup to preserve directory structure
 filegroup(
