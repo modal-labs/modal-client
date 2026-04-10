@@ -1,4 +1,4 @@
-load("//bazel:python.bzl", "pytest_test")
+load("//bazel:pytest.bzl", "pytest_test")
 
 pytest_test(
     name = "tests",
