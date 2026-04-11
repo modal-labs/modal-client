@@ -700,7 +700,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ephemeral_disk: Optional[int] = None,
         include_source: bool = True,
         experimental_options: Optional[dict[str, str]] = None,
-        _experimental_proxy_ip: Optional[str] = None,
         restrict_output: bool = False,
         http_config: Optional[api_pb2.HTTPConfig] = None,
     ) -> "_Function":
@@ -1041,7 +1040,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     # ---
                     _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,
-                    _experimental_proxy_ip=_experimental_proxy_ip,
                     # --- These are deprecated in favor of autoscaler_settings
                     warm_pool_size=min_containers or 0,
                     concurrency_limit=max_containers or 0,
@@ -1084,7 +1082,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         _experimental_group_size=function_definition._experimental_group_size,
                         _experimental_buffer_containers=function_definition._experimental_buffer_containers,
                         _experimental_custom_scaling=function_definition._experimental_custom_scaling,
-                        _experimental_proxy_ip=function_definition._experimental_proxy_ip,
                         snapshot_debug=function_definition.snapshot_debug,
                         runtime_perf_record=function_definition.runtime_perf_record,
                         function_schema=function_schema,

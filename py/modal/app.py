@@ -753,7 +753,6 @@ class _App:
         include_source: Optional[bool] = None,
         experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
-        _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_restrict_output: bool = False,  # Don't use pickle for return values
         # Parameters below here are deprecated. Please update your code as suggested
         max_inputs: Optional[int] = None,  # Replaced with `single_use_containers`
@@ -914,7 +913,6 @@ class _App:
                 rdma=rdma,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
-                _experimental_proxy_ip=_experimental_proxy_ip,
                 restrict_output=_experimental_restrict_output,
             )
 
@@ -968,7 +966,6 @@ class _App:
         include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
         experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
-        _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_restrict_output: bool = False,  # Don't use pickle for return values
         # Parameters below here are deprecated. Please update your code as suggested
         max_inputs: Optional[int] = None,  # Replaced with `single_use_containers`
@@ -1115,7 +1112,6 @@ class _App:
                 rdma=rdma,
                 include_source=include_source if include_source is not None else local_state.include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
-                _experimental_proxy_ip=_experimental_proxy_ip,
                 restrict_output=_experimental_restrict_output,
             )
 
