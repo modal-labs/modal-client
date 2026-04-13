@@ -75,12 +75,14 @@ class FakeTaskCommandRouterClient:
         self._container_results: dict[str, api_pb2.GenericResult] = {}
         self._container_termination_requested: set[str] = set()
         self._next_container_id = 0
+        self.last_exec_start_request: sr_pb2.TaskExecStartRequest | None = None
         self.last_container_create_request: sr_pb2.TaskContainerCreateRequest | None = None
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
         # Mimic task_command_router behavior - we should remove this proto variant though.
         # TODO(saltzm): Remove the proto variant.
         assert request.stderr_config != sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_STDOUT
+        self.last_exec_start_request = request
         # Spawn the command locally.
         proc = await asyncio.subprocess.create_subprocess_exec(
             *list(request.command_args),
@@ -88,6 +90,7 @@ class FakeTaskCommandRouterClient:
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE,
             cwd=(request.workdir or None),
+            env={**os.environ, **dict(request.env)},
         )
         self._procs[request.exec_id] = proc
         self._stdin_offsets[request.exec_id] = 0

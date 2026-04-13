@@ -820,6 +820,39 @@ def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
     assert pty_info.no_terminate_on_idle_stdin is True
 
 
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
+def test_sandbox_exec_env_routing(app, servicer, exec_backend, monkeypatch):
+    if exec_backend == "server":
+        with servicer.intercept() as ctx:
+            sb = Sandbox.create("sleep", "infinity", app=app)
+            sb.exec("bash", "-c", "echo hello", env={"KEEP": "value", "DROP": None})
+            req = ctx.pop_request("ContainerExec")
+            assert list(req.secret_ids) != []
+    else:
+        router_client = FakeTaskCommandRouterClient(None)
+
+        async def _mk_router(cls, server_client, task_id):
+            return router_client
+
+        monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+
+        secret = Secret.from_dict({"KEEP": "secret", "SECRET_ONLY": "present"})
+        sb = Sandbox.create("sleep", "infinity", app=app)
+        cp = sb.exec(
+            "bash",
+            "-c",
+            'printf "%s|%s|%s" "${KEEP:-missing}" "${PLAIN:-missing}" "${DROP:-missing}"',
+            env={"KEEP": "value", "PLAIN": "plain", "DROP": None},
+            secrets=[secret],
+        )
+
+        assert cp.stdout.read() == "value|plain|missing"
+        assert router_client.last_exec_start_request is not None
+        assert dict(router_client.last_exec_start_request.env) == {"KEEP": "value", "PLAIN": "plain"}
+        assert list(router_client.last_exec_start_request.secret_ids) == [secret.object_id]
+
+
 @synchronizer.wrap
 async def makeprocess(client, text, by_line):
     return _ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)

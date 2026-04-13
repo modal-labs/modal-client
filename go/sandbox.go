@@ -664,6 +664,7 @@ func buildTaskExecStartRequestProto(taskID, execID string, command []string, par
 		SecretIds:    secretIds,
 		PtyInfo:      ptyInfo,
 		RuntimeDebug: false,
+		Env:          params.Env,
 	}
 
 	if params.Workdir != "" {
@@ -696,22 +697,13 @@ func (sb *Sandbox) Exec(ctx context.Context, command []string, params *SandboxEx
 		return nil, err
 	}
 
-	mergedSecrets, err := mergeEnvIntoSecrets(ctx, sb.client, &params.Env, &params.Secrets)
-	if err != nil {
-		return nil, err
-	}
-
-	mergedParams := *params
-	mergedParams.Secrets = mergedSecrets
-	mergedParams.Env = nil // nil'ing Env just to clarify it's not needed anymore
-
 	commandRouterClient, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
 	if err != nil {
 		return nil, err
 	}
 
 	execID := uuid.New().String()
-	req, err := buildTaskExecStartRequestProto(sb.taskID, execID, command, mergedParams)
+	req, err := buildTaskExecStartRequestProto(sb.taskID, execID, command, *params)
 	if err != nil {
 		return nil, err
 	}
@@ -727,12 +719,12 @@ func (sb *Sandbox) Exec(ctx context.Context, command []string, params *SandboxEx
 		"command", command)
 
 	var deadline *time.Time
-	if mergedParams.Timeout > 0 {
-		d := time.Now().Add(mergedParams.Timeout)
+	if params.Timeout > 0 {
+		d := time.Now().Add(params.Timeout)
 		deadline = &d
 	}
 
-	return newContainerProcess(commandRouterClient, sb.client.logger, sb.taskID, execID, mergedParams, deadline), nil
+	return newContainerProcess(commandRouterClient, sb.client.logger, sb.taskID, execID, *params, deadline), nil
 }
 
 // SandboxCreateConnectTokenParams are optional parameters for CreateConnectToken.

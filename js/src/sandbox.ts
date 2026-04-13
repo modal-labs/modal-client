@@ -824,6 +824,7 @@ export function buildTaskExecStartRequestProto(
     timeoutSecs: params?.timeoutMs ? params.timeoutMs / 1000 : undefined,
     workdir: params?.workdir,
     secretIds,
+    env: params?.env ?? {},
     ptyInfo,
     runtimeDebug: false,
   });
@@ -1000,17 +1001,6 @@ export class Sandbox {
     validateExecArgs(command);
     const taskId = await this.#getTaskId();
 
-    const mergedSecrets = await mergeEnvIntoSecrets(
-      this.#client,
-      params?.env,
-      params?.secrets,
-    );
-    const mergedParams = {
-      ...params,
-      secrets: mergedSecrets,
-      env: undefined, // setting env to undefined just to clarify it's not needed anymore
-    };
-
     const commandRouterClient =
       await this.#getOrCreateCommandRouterClient(taskId);
 
@@ -1019,7 +1009,7 @@ export class Sandbox {
       taskId,
       execId,
       command,
-      mergedParams,
+      params,
     );
 
     await commandRouterClient.execStart(request);
@@ -1034,15 +1024,13 @@ export class Sandbox {
       command,
     );
 
-    const deadline = mergedParams?.timeoutMs
-      ? Date.now() + mergedParams.timeoutMs
-      : null;
+    const deadline = params?.timeoutMs ? Date.now() + params.timeoutMs : null;
 
     return new ContainerProcess(
       taskId,
       execId,
       commandRouterClient,
-      mergedParams,
+      params,
       deadline,
     );
   }
