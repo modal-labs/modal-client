@@ -126,8 +126,11 @@ async def fetch_command_router_access_v2(
     server_client, sandbox_id: str
 ) -> api_pb2.SandboxGetCommandRouterAccessResponse:
     """Fetch direct command router access info from Modal server for a V2 sandbox."""
+    assert server_client._auth_token_manager
+    auth_token = await server_client._auth_token_manager.get_token()
     return await server_client.stub.SandboxGetCommandRouterAccess(
         api_pb2.SandboxGetCommandRouterAccessRequest(sandbox_id=sandbox_id),
+        metadata=[("x-modal-auth-token", auth_token)],
     )
 
 

@@ -1045,7 +1045,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
             # Use the private __client to allow `wait` to work with a detached sandbox
             stub = self.__client.stub
-            resp = await (stub.SandboxWaitV2(req) if self._is_v2 else stub.SandboxWait(req))
+            if self._is_v2:
+                assert self.__client._auth_token_manager
+                auth_token = await self.__client._auth_token_manager.get_token()
+                resp = await stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            else:
+                resp = await stub.SandboxWait(req)
             if resp.result.status:
                 logger.debug(f"Sandbox {self.object_id} wait completed with status {resp.result.status}")
                 self._result = resp.result
@@ -1187,7 +1192,12 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=0)
         stub = self._client.stub
-        resp = await (stub.SandboxWaitV2(req) if self._is_v2 else stub.SandboxWait(req))
+        if self._is_v2:
+            assert self._client._auth_token_manager
+            auth_token = await self._client._auth_token_manager.get_token()
+            resp = await stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
+        else:
+            resp = await stub.SandboxWait(req)
 
         if resp.result.status:
             self._result = resp.result
