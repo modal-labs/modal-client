@@ -1338,11 +1338,10 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
         _validate_exec_args(args)
 
-        secrets = secrets or []
-        if env:
-            secrets = [*secrets, _Secret.from_dict(env)]
+        secrets = list(secrets or [])
+        env_dict = {k: v for k, v in (env or {}).items() if v is not None}
 
-        # Force secret resolution so we can pass the secret IDs to the backend.
+        # Force explicit secret resolution so we can pass the secret IDs to the backend.
         secret_coros = [secret.hydrate(client=self._client) for secret in secrets]
         await TaskContext.gather(*secret_coros)
 
@@ -1355,6 +1354,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             "timeout": timeout,
             "workdir": workdir,
             "secret_ids": [secret.object_id for secret in secrets],
+            "env": env_dict,
             "text": text,
             "bufsize": bufsize,
             "runtime_debug": config.get("function_runtime_debug"),
@@ -1366,6 +1366,11 @@ class _Sandbox(_Object, type_prefix="sb"):
             kwargs["command_router_client"] = command_router_client
             return await self._exec_through_command_router(*args, **kwargs)
         else:
+            if env_dict:
+                env_secret = _Secret.from_dict(env)
+                await env_secret.hydrate(client=self._client)
+                kwargs["secret_ids"] = [*kwargs["secret_ids"], env_secret.object_id]
+            kwargs.pop("env", None)
             return await self._exec_through_server(*args, **kwargs)
 
     async def _exec_through_server(
@@ -1421,6 +1426,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         secret_ids: Optional[Collection[str]] = None,
+        env: Optional[dict[str, str]] = None,
         text: bool = True,
         bufsize: Literal[-1, 1] = -1,
         runtime_debug: bool = False,
@@ -1463,6 +1469,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             pty_info=pty_info,
             runtime_debug=runtime_debug,
             container_id=container_id or "",
+            env=env or {},
         )
         _ = await command_router_client.exec_start(start_req)
 

@@ -142,6 +142,7 @@ func TestTaskExecStartRequestProto_DefaultValues(t *testing.T) {
 	g.Expect(req.GetWorkdir()).To(gomega.BeEmpty())
 	g.Expect(req.HasTimeoutSecs()).To(gomega.BeFalse())
 	g.Expect(req.GetSecretIds()).To(gomega.BeEmpty())
+	g.Expect(req.GetEnv()).To(gomega.BeEmpty())
 	g.Expect(req.GetPtyInfo()).To(gomega.BeNil())
 	g.Expect(req.GetStdoutConfig()).To(gomega.Equal(pb.TaskExecStdoutConfig_TASK_EXEC_STDOUT_CONFIG_PIPE))
 	g.Expect(req.GetStderrConfig()).To(gomega.Equal(pb.TaskExecStderrConfig_TASK_EXEC_STDERR_CONFIG_PIPE))
@@ -193,6 +194,17 @@ func TestTaskExecStartRequestProto_WithTimeout(t *testing.T) {
 
 	g.Expect(req.HasTimeoutSecs()).To(gomega.BeTrue())
 	g.Expect(req.GetTimeoutSecs()).To(gomega.Equal(uint32(30)))
+}
+
+func TestTaskExecStartRequestProto_WithEnv(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"env"}, SandboxExecParams{
+		Env: map[string]string{"FOO": "bar"},
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+
+	g.Expect(req.GetEnv()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
 }
 
 func TestTaskExecStartRequestProto_InvalidTimeoutNegative(t *testing.T) {

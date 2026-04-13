@@ -966,6 +966,7 @@ test("buildTaskExecStartRequestProto defaults", () => {
   expect(req.timeoutSecs).toBeUndefined();
   expect(req.workdir).toBeUndefined();
   expect(req.secretIds).toEqual([]);
+  expect(req.env).toEqual({});
   expect(req.ptyInfo).toBeUndefined();
   expect(req.runtimeDebug).toBe(false);
 });
@@ -1011,6 +1012,14 @@ test("buildTaskExecStartRequestProto with timeoutMs", () => {
   );
 
   expect(req.timeoutSecs).toBe(5);
+});
+
+test("buildTaskExecStartRequestProto with env", () => {
+  const req = buildTaskExecStartRequestProto("task-123", "exec-456", ["env"], {
+    env: { FOO: "bar" },
+  });
+
+  expect(req.env).toEqual({ FOO: "bar" });
 });
 
 test.each([
