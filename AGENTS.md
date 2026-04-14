@@ -39,7 +39,7 @@ Before making a pull request, the following checks must pass:
 
 **Synchronicity Wrappers**: When adding new async methods, ensure they're properly wrapped for sync API generation.
 
-**Protocol Buffers**: Changes to `.proto` files require running `inv protoc` to regenerate Python stubs.
+**Protocol Buffers**: Changes to `.proto` files require running `inv protoc` to regenerate Python stubs. Proto files must be organized into sections ordered as: `import`, `enum`, `message`, `service`. Within each section, definitions must be lexicographically sorted by name. Verify with `inv lint-protos`.
 
 **Type stubs**: All `*.pyi` files are auto-generated and should never be manually edited.
 
