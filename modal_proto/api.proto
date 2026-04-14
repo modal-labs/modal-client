@@ -121,6 +121,12 @@ enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_GLOBAL = 3;
 }
 
+enum EnvironmentRole {
+  ENVIRONMENT_ROLE_UNSPECIFIED = 0;
+  ENVIRONMENT_ROLE_VIEWER = 1;
+  ENVIRONMENT_ROLE_CONTRIBUTOR = 2;
+}
+
 enum ExecOutputOption {
   EXEC_OUTPUT_OPTION_UNSPECIFIED = 0;
   EXEC_OUTPUT_OPTION_DEVNULL = 1;
@@ -162,6 +168,20 @@ enum GPUType {
   GPU_TYPE_H100 = 10;
   GPU_TYPE_L40S = 11;
   GPU_TYPE_H200 = 12;
+}
+
+enum IdentityProviderType {
+  IDENTITY_PROVIDER_TYPE_UNSPECIFIED = 0;
+  IDENTITY_PROVIDER_TYPE_GITHUB = 1;
+  IDENTITY_PROVIDER_TYPE_OKTA = 2;
+  IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH = 3;
+}
+
+enum MemberRole {
+  MEMBER_ROLE_UNSPECIFIED = 0;
+  MEMBER_ROLE_USER = 1;
+  MEMBER_ROLE_MANAGER = 2;
+  MEMBER_ROLE_OWNER = 3;
 }
 
 enum ObjectCreationType {
@@ -1359,6 +1379,30 @@ message EnvironmentCreateRequest {
 message EnvironmentDeleteRequest {
   string name = 1;
 }
+
+message EnvironmentGetManagedRequest {
+  string environment_id = 1;
+}
+
+message EnvironmentGetManagedResponse {
+  message PrincipalEnvRole {
+    string user_id = 1;
+    string service_user_id = 2;
+    string email = 3;
+    string avatar_url = 4;
+    string service_user_name = 5;
+    EnvironmentRole role = 6;
+    MemberRole member_role = 7;
+    string user_name = 8;
+  }
+
+  string environment_id = 1;
+  string name = 2;
+  double created_at = 3;
+  repeated PrincipalEnvRole principal_roles = 4;
+  repeated PrincipalEnvRole additional_roles = 5;
+}
+
 message EnvironmentGetOrCreateRequest {
   string deployment_name = 1;
   ObjectCreationType object_creation_type = 2;
@@ -1389,6 +1433,18 @@ message EnvironmentListResponse {
 message EnvironmentMetadata{
   string name = 1;
   EnvironmentSettings settings = 2;
+}
+
+message EnvironmentRoleSetRequest {
+  string environment_id = 1;
+  string user_id = 2;
+  string service_user_id = 3;
+  EnvironmentRole role = 4;
+}
+
+message EnvironmentSetManagedRequest {
+  string environment_id = 1;
+  bool managed = 2;
 }
 
 // Environment-scoped settings, with workspace-level defaults.
@@ -3282,10 +3338,24 @@ message SecretUpdateRequest {
   repeated Update updates = 2;
 }
 
+message ServiceUser {
+  string name = 1;
+  string token_id = 2;
+  string created_by = 3;
+  double created_at = 4;
+  double last_used_at = 5;
+  string created_by_avatar_url = 6;
+  string service_user_id = 7;
+}
+
 message ServiceUserIdentity {
   string service_user_id = 1;
   string service_user_name = 2;
   UserIdentity created_by = 3;
+}
+
+message ServiceUserListResponse {
+  repeated ServiceUser service_users = 1;
 }
 
 // SharedVolume in the backend corresponds to NetworkFileSystem in the current API
@@ -3890,6 +3960,23 @@ message WorkspaceDashboardUrlResponse {
   string url = 1;
 }
 
+message WorkspaceMembersListItem {
+  string member_id = 1;
+  string member_displayname = 2;
+  MemberRole member_role = 3;
+  double joined_at = 4;
+  double last_active_at = 5;
+  reserved 6;
+  double deleted_at = 7;
+  string user_id = 8;
+  IdentityProviderType identity_provider_type = 9;
+  string email = 10;
+  string avatar_url = 11;
+}
+
+message WorkspaceMembersListResponse {
+  repeated WorkspaceMembersListItem members = 1;
+}
 
 message WorkspaceNameLookupResponse {
   string workspace_name = 1 [deprecated=true];
@@ -3981,8 +4068,11 @@ service ModalClient {
   // Environments
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
   rpc EnvironmentDelete(EnvironmentDeleteRequest) returns (google.protobuf.Empty);
+  rpc EnvironmentGetManaged(EnvironmentGetManagedRequest) returns (EnvironmentGetManagedResponse);
   rpc EnvironmentGetOrCreate(EnvironmentGetOrCreateRequest) returns (EnvironmentGetOrCreateResponse);
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
+  rpc EnvironmentRoleSet(EnvironmentRoleSetRequest) returns (google.protobuf.Empty);
+  rpc EnvironmentSetManaged(EnvironmentSetManagedRequest) returns (google.protobuf.Empty);
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
 
   // Modal Flash (experimental)
@@ -4091,6 +4181,9 @@ service ModalClient {
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
   rpc SecretUpdate(SecretUpdateRequest) returns (google.protobuf.Empty);
 
+  // Service users
+  rpc ServiceUserList(google.protobuf.Empty) returns (ServiceUserListResponse);
+
   // SharedVolumes
   rpc SharedVolumeDelete(SharedVolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc SharedVolumeGetFile(SharedVolumeGetFileRequest) returns (SharedVolumeGetFileResponse);
@@ -4145,5 +4238,6 @@ service ModalClient {
   // Workspaces
   rpc WorkspaceBillingReport(WorkspaceBillingReportRequest) returns (stream WorkspaceBillingReportItem);
   rpc WorkspaceDashboardUrlGet(WorkspaceDashboardUrlRequest) returns (WorkspaceDashboardUrlResponse);
+  rpc WorkspaceMembersList(google.protobuf.Empty) returns (WorkspaceMembersListResponse);
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
 }
