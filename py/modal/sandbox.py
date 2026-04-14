@@ -1110,7 +1110,12 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         req = api_pb2.SandboxGetTunnelsRequest(sandbox_id=self.object_id, timeout=timeout)
         stub = self._client.stub
-        resp = await (stub.SandboxGetTunnelsV2(req) if self._is_v2 else stub.SandboxGetTunnels(req))
+        if self._is_v2:
+            assert self._client._auth_token_manager
+            auth_token = await self._client._auth_token_manager.get_token()
+            resp = await stub.SandboxGetTunnelsV2(req, metadata=[("x-modal-auth-token", auth_token)])
+        else:
+            resp = await stub.SandboxGetTunnels(req)
 
         # If we couldn't get the tunnels in time, report the timeout.
         if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
@@ -1179,7 +1184,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         This is a no-op if the Sandbox has already finished running."""
         req = api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
         stub = self._client.stub
-        await (stub.SandboxTerminateV2(req) if self._is_v2 else stub.SandboxTerminate(req))
+        if self._is_v2:
+            assert self._client._auth_token_manager
+            auth_token = await self._client._auth_token_manager.get_token()
+            await stub.SandboxTerminateV2(req, metadata=[("x-modal-auth-token", auth_token)])
+        else:
+            await stub.SandboxTerminate(req)
         if wait:
             await self.wait(raise_on_termination=False)
             return self.returncode
@@ -1208,7 +1218,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         while not self._task_id:
             req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id)
             stub = self._client.stub
-            resp = await (stub.SandboxGetTaskIdV2(req) if self._is_v2 else stub.SandboxGetTaskId(req))
+            if self._is_v2:
+                assert self._client._auth_token_manager
+                auth_token = await self._client._auth_token_manager.get_token()
+                resp = await stub.SandboxGetTaskIdV2(req, metadata=[("x-modal-auth-token", auth_token)])
+            else:
+                resp = await stub.SandboxGetTaskId(req)
             if not resp.task_id and raise_if_task_complete and resp.HasField("task_result"):
                 msg = resp.task_result.exception or "Sandbox already finished"
                 raise Error(msg)
