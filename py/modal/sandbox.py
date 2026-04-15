@@ -1647,14 +1647,30 @@ class _Sandbox(_Object, type_prefix="sb"):
         return await ls(path, self._client, task_id)
 
     async def mkdir(self, path: str, parents: bool = False) -> None:
-        """[Alpha] Create a new directory in the Sandbox."""
+        """[Alpha] Create a new directory in the Sandbox.
+
+        .. deprecated:: 2026-04-15
+        """
         self._ensure_v1("mkdir")
+        deprecation_warning(
+            (2026, 4, 15),
+            "`Sandbox.mkdir()` is deprecated. Use the `Sandbox.filesystem` APIs instead.",
+            pending=True,
+        )
         task_id = await self._get_task_id()
         return await mkdir(path, self._client, task_id, parents)
 
     async def rm(self, path: str, recursive: bool = False) -> None:
-        """[Alpha] Remove a file or directory in the Sandbox."""
+        """[Alpha] Remove a file or directory in the Sandbox.
+
+        .. deprecated:: 2026-04-15
+        """
         self._ensure_v1("rm")
+        deprecation_warning(
+            (2026, 4, 15),
+            "`Sandbox.rm()` is deprecated. Use the `Sandbox.filesystem` APIs instead.",
+            pending=True,
+        )
         task_id = await self._get_task_id()
         return await rm(path, self._client, task_id, recursive)
 
