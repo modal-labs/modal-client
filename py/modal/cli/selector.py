@@ -19,6 +19,13 @@ def _cbreak_terminal():
     old_settings = termios.tcgetattr(fd)
     try:
         tty.setcbreak(fd, termios.TCSADRAIN)
+        # Disable ISIG so Ctrl-C is delivered as \x03 to os.read() rather than
+        # generating an asynchronous SIGINT. This lets _input_loop raise
+        # KeyboardInterrupt synchronously, ensuring context-manager cleanup
+        # (cursor visibility, terminal echo) completes without interruption.
+        attrs = termios.tcgetattr(fd)
+        attrs[3] &= ~termios.ISIG
+        termios.tcsetattr(fd, termios.TCSADRAIN, attrs)
         yield
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
@@ -44,10 +51,10 @@ class Selector:
     exiting.
     """
 
-    def __init__(self, options: list[str], title: str = "Select an option"):
+    def __init__(self, options: list[str], title: str = "Select an option", highlight_style: str = "bold green"):
         if not options:
             raise ValueError("options must not be empty")
-        if not sys.stdin.isatty() or not sys.stdout.isatty():
+        if not sys.stdin.isatty() or not sys.stdout.isatty() or Console().is_dumb_terminal:
             raise RuntimeError("Interactive selection requires a TTY")
         # Fail fast on platforms without termios (e.g. Windows).
         import termios  # noqa: F401
@@ -55,6 +62,7 @@ class Selector:
         self.options = options
         self.title = title
         self.selected = 0
+        self.highlight_style = highlight_style
 
     # -- state manipulation ---------------------------------------------------
 
@@ -75,8 +83,8 @@ class Selector:
         text.append(f"{self.title}\n\n", style="bold")
         for i, opt in enumerate(self.options):
             if i == self.selected:
-                text.append("  > ", style="bold green")
-                text.append(f"{opt}\n", style="bold green")
+                text.append("  > ", style=self.highlight_style)
+                text.append(f"{opt}\n", style=self.highlight_style)
             else:
                 text.append(f"    {opt}\n")
         return text
