@@ -18,6 +18,7 @@ from ..exception import (
     SandboxFilesystemIsADirectoryError,
     SandboxFilesystemNotADirectoryError,
     SandboxFilesystemNotFoundError,
+    SandboxFilesystemPathAlreadyExistsError,
     SandboxFilesystemPermissionError,
     ServiceError,
 )
@@ -181,6 +182,42 @@ def raise_remove_error(returncode: int, stderr: Union[str, bytes], remote_path: 
             )
         if payload.error_kind == "PermissionDenied":
             raise SandboxFilesystemPermissionError(f"{payload.message}: {remote_path}")
+        raise SandboxFilesystemError(payload.message)
+
+    if stderr_text := _stderr_to_text(stderr):
+        logger.debug(f"Unstructured modal-sandbox-fs-tools stderr: {stderr_text}")
+    raise SandboxFilesystemError(f"Operation on '{remote_path}' failed with exit code {returncode}")
+
+
+def make_make_directory_command(remote_path: str, create_parents: bool) -> str:
+    """Build the JSON command string for a MakeDirectory operation.
+
+    The returned JSON must match the `Command` enum in the modal-sandbox-fs-tools
+    Rust crate (crates/modal-sandbox-fs-tools/src/lib.rs). Treat changes to
+    this schema like protobuf changes: fields must not be removed or renamed,
+    only added with backwards-compatible defaults.
+    """
+    return json.dumps({"MakeDirectory": {"path": remote_path, "parents": create_parents}})
+
+
+def raise_make_directory_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+    if payload := try_parse_error_payload(stderr):
+        logger.debug(
+            f"sandbox-fs-tools make_directory error: path={remote_path}, "
+            f"error_kind={payload.error_kind}, message={payload.message}, detail={payload.detail}"
+        )
+        if payload.error_kind == "NotFound":
+            raise SandboxFilesystemNotFoundError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "PathAlreadyExists":
+            raise SandboxFilesystemPathAlreadyExistsError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "NotDirectory":
+            raise SandboxFilesystemNotADirectoryError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "PermissionDenied":
+            raise SandboxFilesystemPermissionError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "NotSupported":
+            raise InvalidError(
+                f"{payload.message}: {remote_path} - this operation is not supported for CloudBucketMounts"
+            )
         raise SandboxFilesystemError(payload.message)
 
     if stderr_text := _stderr_to_text(stderr):

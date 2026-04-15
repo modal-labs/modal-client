@@ -97,4 +97,22 @@ if "Remove" in command:
             _error_payload("Io", str(e))
     raise SystemExit(0)
 
+if "MakeDirectory" in command:
+    target = command["MakeDirectory"]["path"]
+    create_parents = command["MakeDirectory"].get("parents", True)
+    try:
+        if create_parents:
+            os.makedirs(target, exist_ok=True)
+        else:
+            os.mkdir(target)
+    except FileExistsError:
+        _error_payload("PathAlreadyExists", "path already exists")
+    except FileNotFoundError:
+        _error_payload("NotFound", "parent directory does not exist")
+    except NotADirectoryError:
+        _error_payload("NotDirectory", "a component of the path is not a directory")
+    except PermissionError:
+        _error_payload("PermissionDenied", "permission denied")
+    raise SystemExit(0)
+
 raise SystemExit(f"unknown command: {command}")

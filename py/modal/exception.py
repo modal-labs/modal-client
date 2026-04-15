@@ -379,3 +379,9 @@ class SandboxFilesystemFileTooLargeError(SandboxFilesystemError):
     """Raised when a file exceeds the maximum allowed size for a read operation in the sandbox."""
 
     pass
+
+
+class SandboxFilesystemPathAlreadyExistsError(SandboxFilesystemError):
+    """Raised when a path already exists and the operation requires it to be absent."""
+
+    pass

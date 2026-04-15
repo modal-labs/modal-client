@@ -11,6 +11,7 @@ from modal.exception import (
     SandboxFilesystemIsADirectoryError,
     SandboxFilesystemNotADirectoryError,
     SandboxFilesystemNotFoundError,
+    SandboxFilesystemPathAlreadyExistsError,
 )
 
 # The auto-generated .pyi stub for io_streams only includes synchronicity-wrapped
@@ -786,3 +787,102 @@ def test_sandbox_fs_remove_removes_symlink_without_following_it(
 def test_sandbox_fs_remove_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.remove("relative/path.txt")
+
+
+# ---------------------------------------------------------------------------
+# make_directory
+# ---------------------------------------------------------------------------
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_make_directory_no_parents_creates_directory(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    new_dir = tmp_path / "new-dir"
+
+    sandbox.filesystem.make_directory(str(new_dir), create_parents=False)
+
+    assert new_dir.is_dir()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_make_directory_creates_nested_directories(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    nested = tmp_path / "a" / "b" / "c"
+
+    sandbox.filesystem.make_directory(str(nested))
+
+    assert nested.is_dir()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_make_directory_is_idempotent_when_already_exists(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    existing = tmp_path / "existing"
+    existing.mkdir()
+
+    sandbox.filesystem.make_directory(str(existing))
+
+    assert existing.is_dir()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_make_directory_no_parents_errors_when_already_exists(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    existing = tmp_path / "existing"
+    existing.mkdir()
+
+    with pytest.raises(SandboxFilesystemPathAlreadyExistsError):
+        sandbox.filesystem.make_directory(str(existing), create_parents=False)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_make_directory_no_parents_errors_when_parent_missing(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    missing = tmp_path / "missing-parent" / "child"
+
+    with pytest.raises(SandboxFilesystemNotFoundError):
+        sandbox.filesystem.make_directory(str(missing), create_parents=False)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+@pytest.mark.parametrize("parents", [False, True])
+def test_sandbox_fs_make_directory_errors_when_target_is_a_file(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, parents
+):
+    file_path = tmp_path / "existing-file"
+    file_path.write_bytes(b"I am a file")
+
+    with pytest.raises(SandboxFilesystemPathAlreadyExistsError):
+        sandbox.filesystem.make_directory(str(file_path), create_parents=parents)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+@pytest.mark.parametrize("parents", [False, True])
+def test_sandbox_fs_make_directory_errors_when_ancestor_is_a_file(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, parents
+):
+    blocker = tmp_path / "blocker"
+    blocker.write_bytes(b"I am a file")
+    blocked = blocker / "child"
+
+    with pytest.raises(SandboxFilesystemNotADirectoryError):
+        sandbox.filesystem.make_directory(str(blocked), create_parents=parents)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_make_directory_no_parents_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+    with pytest.raises(InvalidError, match="absolute remote_path values"):
+        sandbox.filesystem.make_directory("relative/path", create_parents=False)
