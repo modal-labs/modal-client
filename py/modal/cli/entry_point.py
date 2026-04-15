@@ -11,6 +11,7 @@ from modal.output import OutputManager
 from . import run, shell as shell_module
 from .app import app_cli
 from .billing import billing_cli
+from .bootstrap import bootstrap
 from .changelog import changelog
 from .cluster import cluster_cli
 from .config import config_cli
@@ -19,6 +20,7 @@ from .dashboard import dashboard
 from .dict import dict_cli
 from .environment import environment_cli
 from .launch import launch_cli
+from .logo import print_logo
 from .network_file_system import nfs_cli
 from .profile import profile_cli
 from .queues import queue_cli
@@ -88,28 +90,7 @@ def check_path():
 @synchronizer.create_blocking
 async def setup(profile: Optional[str] = None):
     check_path()
-
-    art = """
-           #############        #############
-          ####         ##      ####         ##
-         ##  ##         ##    ##  ##         ##
-        ##    ##         ##  ##    ##         ##
-       ##      ##         ####      ##         ##
-      ##        #############        ##         ##
-     ##        ##         ####        ##         ##
-    ##        ##         ##  ##        ##         ##
-   ##        ##         ##    ##        ##         ##
-  ##        ##         ##      ##        ##         ##
- ##        ##         ##        ##        ##         ##
-##        ##         ##          ##        #############
- ##      ##         ##            ##      ##         ##
-  ##    ##         ##              ##    ##         ##
-   ##  ##         ##                ##  ##         ##
-    ####         ##                  ####         ##
-     #############                    #############
-"""
-
-    OutputManager.get().print(art, highlight=False, style="green")
+    print_logo()
 
     # Fetch a new token (same as `modal token new` but redirect to /home once finishes)
     await _new_token(profile=profile, next_url="/home")
@@ -145,8 +126,11 @@ entrypoint_cli_typer.add_typer(billing_cli, rich_help_panel="Observability")
 entrypoint_cli_typer.command("changelog", rich_help_panel="Observability")(changelog)
 entrypoint_cli_typer.command("dashboard", rich_help_panel="Observability")(dashboard)
 
-# Hide setup from help as it's redundant with modal token new, but nicer for onboarding
-entrypoint_cli_typer.command("setup", help="Bootstrap Modal's configuration.", rich_help_panel="Onboarding")(setup)
+# Onboarding
+entrypoint_cli_typer.command("setup", help="Get started using Modal.", rich_help_panel="Onboarding")(setup)
+entrypoint_cli_typer.command("bootstrap", help="Initialize a sample Modal App.", rich_help_panel="Onboarding")(
+    bootstrap
+)
 
 # Special handling for modal run, which is more complicated
 entrypoint_cli = typer.main.get_command(entrypoint_cli_typer)
