@@ -11,9 +11,11 @@ from typing import Union, cast
 from ._utils.async_utils import synchronize_api
 from ._utils.logger import logger
 from ._utils.sandbox_fs_utils import (
+    make_make_directory_command,
     make_read_file_command,
     make_remove_command,
     make_write_file_command,
+    raise_make_directory_error,
     raise_read_file_error,
     raise_remove_error,
     raise_write_file_error,
@@ -338,7 +340,7 @@ class _SandboxFilesystem:
         To remove a directory and all its contents:
 
         ```python fixture:sandbox
-        sandbox.exec("mkdir", "-p", "/tmp/mydir/subdir").wait()
+        sandbox.filesystem.make_directory("/tmp/mydir/subdir")
         sandbox.filesystem.remove("/tmp/mydir", recursive=True)
         ```
         """
@@ -350,6 +352,41 @@ class _SandboxFilesystem:
 
         if returncode != 0:
             raise_remove_error(returncode, stderr, remote_path)
+
+    async def make_directory(self, remote_path: str, *, create_parents: bool = True) -> None:
+        """Create a new directory in the Sandbox.
+
+        `remote_path` must be an absolute path in the Sandbox.
+
+        When `create_parents` is `True` (the default), any missing parent directories are created and the call is
+        idempotent (succeeds silently if the directory already exists). When `create_parents` is `False`, the
+        immediate parent directory must already exist and the path must not already exist.
+
+        **Raises**
+
+        - `SandboxFilesystemNotFoundError`: the parent directory does not exist and `create_parents` is `False`.
+        - `SandboxFilesystemPathAlreadyExistsError`: the path already exists.
+        - `SandboxFilesystemNotADirectoryError`: a path component is not a directory.
+        - `SandboxFilesystemPermissionError`: creation is not permitted.
+        - `InvalidError`: the operation is not supported by the mount.
+        - `SandboxFilesystemError`: the command fails for any other reason.
+
+        **Usage**
+
+        ```python fixture:sandbox
+        sandbox.filesystem.make_directory("/tmp/a/b/c")
+        ```
+        """
+        validate_absolute_remote_path(remote_path, "make_directory")
+
+        with translate_exec_errors("make_directory", remote_path):
+            process = await self._sandbox.exec(
+                _SANDBOX_FS_TOOLS_PATH, make_make_directory_command(remote_path, create_parents)
+            )
+            stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
+
+        if returncode != 0:
+            raise_make_directory_error(returncode, stderr, remote_path)
 
 
 SandboxFilesystem = synchronize_api(_SandboxFilesystem)
