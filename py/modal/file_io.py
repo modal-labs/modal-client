@@ -406,7 +406,7 @@ class _FileIO(Generic[T]):
         """Create a new directory."""
         deprecation_warning(
             (2026, 3, 9),
-            "`FileIO.mkdir()` is deprecated. Use `Sandbox.mkdir()` instead.",
+            "`FileIO.mkdir()` is deprecated. Use `Sandbox.filesystem.make_directory()` instead.",
             pending=True,
         )
         await mkdir(path, client, task_id, parents)
@@ -416,7 +416,7 @@ class _FileIO(Generic[T]):
         """Remove a file or directory in the Sandbox."""
         deprecation_warning(
             (2026, 3, 9),
-            "`FileIO.rm()` is deprecated. Use `Sandbox.rm()` instead.",
+            "`FileIO.rm()` is deprecated. Use `Sandbox.filesystem.remove()` instead.",
             pending=True,
         )
         await rm(path, client, task_id, recursive)
