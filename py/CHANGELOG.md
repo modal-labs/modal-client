@@ -4,6 +4,20 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.4.2 (2026-04-16)
+
+- We've added a new `modal app rollover` CLI command for triggering a redeployment of an App without making any code or configuration changes. A rollover replaces existing containers with fresh ones. As with `modal deploy`, there are two strategies for switching between deployments:
+  - `--strategy=rolling` (the default) will smoothly migrate traffic from old containers to new containers
+  - `--strategy=recreate` will terminate all running containers so that any subsequent inputs will go to new containers
+- We've added a new `modal bootstrap` CLI command, which fetches deployable starter code for common AI applications (e.g., text generation, text-to-image, speech-to-text). This is an experiment: try it out and give us feedback!
+- We've added two methods to the new Sandbox filesystem API:
+  - `sandbox.filesystem.make_directory()` creates a new directory on the Sandbox filesystem
+  - `sandbox.filesystem.remove()` deletes a file or directory from the Sandbox filesystem
+- The new Sandbox filesystem methods replace the `modal.Sandbox.mkdir` and `modal.Sandbox.rm` methods, which are now deprecated.
+- The `modal app stop` and `modal container stop` CLI commands now prompt for confirmation (pass `--yes` to skip).
+- Several other `modal app` CLI commands will now map a name-based argument to a recently-stopped App that used that name. This is useful for, e.g., fetching logs from an App after it has been stopped.
+- We've added a `build_args` parameter to `modal.Image.dockerfile_commands()`.
+
 ### 1.4.1 (2026-03-30)
 
 - Sandboxes now support `sb.unmount_image(path)` to remove a previously mounted Image from a path and reveal the underlying Sandbox filesystem there again.
