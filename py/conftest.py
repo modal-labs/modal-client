@@ -38,7 +38,7 @@ def sandbox(running_app):
 
 @register_runner()
 class ModalRunner(DefaultRunner):
-    def runtest(self, test, args):
+    def runtest(self, test, args, **kwargs):
         try:
             module_name = "markdown_code_fence.py"
             try:
