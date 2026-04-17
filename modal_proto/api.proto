@@ -1374,6 +1374,7 @@ message DomainListResponse {
 
 message EnvironmentCreateRequest {
   string name = 1;
+  bool is_managed = 2;
 }
 
 message EnvironmentDeleteRequest {
