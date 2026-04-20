@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-import typer
+import click
 
 from modal._utils.async_utils import synchronizer
 from modal.client import _Client
@@ -12,35 +12,32 @@ from modal.output import OutputManager
 from modal.token_flow import _new_token, _set_token
 from modal_proto import api_pb2
 
-token_cli = typer.Typer(name="token", help="Manage tokens.", no_args_is_help=True)
+from ._help import ModalGroup
 
-profile_option = typer.Option(
-    None,
-    help=(
-        "Modal profile to set credentials for. If unspecified "
-        "(and MODAL_PROFILE environment variable is not set), "
-        "uses the workspace name associated with the credentials."
-    ),
+token_cli = ModalGroup(name="token", help="Manage tokens.")
+
+_PROFILE_HELP = (
+    "Modal profile to set credentials for. If unspecified "
+    "(and MODAL_PROFILE environment variable is not set), "
+    "uses the workspace name associated with the credentials."
 )
-activate_option = typer.Option(
-    True,
-    help="Activate the profile containing this token after creation.",
-)
-
-verify_option = typer.Option(
-    True,
-    help="Make a test request to verify the new credentials.",
-)
+_ACTIVATE_HELP = "Activate the profile containing this token after creation."
+_VERIFY_HELP = "Make a test request to verify the new credentials."
 
 
-@token_cli.command(name="set")
+@token_cli.command("set")
+@click.option("--token-id", default=None, help="Account token ID.")
+@click.option("--token-secret", default=None, help="Account token secret.")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
+@click.option("--activate/--no-activate", default=True, help=_ACTIVATE_HELP)
+@click.option("--verify/--no-verify", default=True, help=_VERIFY_HELP)
 @synchronizer.create_blocking
 async def set(
-    token_id: Optional[str] = typer.Option(None, help="Account token ID."),
-    token_secret: Optional[str] = typer.Option(None, help="Account token secret."),
-    profile: Optional[str] = profile_option,
-    activate: bool = activate_option,
-    verify: bool = verify_option,
+    token_id: Optional[str],
+    token_secret: Optional[str],
+    profile: Optional[str],
+    activate: bool,
+    verify: bool,
 ):
     """Set account credentials for connecting to Modal.
 
@@ -53,19 +50,18 @@ async def set(
     await _set_token(token_id, token_secret, profile=profile, activate=activate, verify=verify)
 
 
-@token_cli.command(name="new")
+@token_cli.command("new")
+@click.option("--profile", default=None, help=_PROFILE_HELP)
+@click.option("--activate/--no-activate", default=True, help=_ACTIVATE_HELP)
+@click.option("--verify/--no-verify", default=True, help=_VERIFY_HELP)
+@click.option("--source", default=None, hidden=True)
 @synchronizer.create_blocking
-async def new(
-    profile: Optional[str] = profile_option,
-    activate: bool = activate_option,
-    verify: bool = verify_option,
-    source: Optional[str] = None,
-):
+async def new(profile: Optional[str], activate: bool, verify: bool, source: Optional[str]):
     """Create a new token by using an authenticated web session."""
     await _new_token(profile=profile, activate=activate, verify=verify, source=source)
 
 
-@token_cli.command(name="info")
+@token_cli.command("info")
 @synchronizer.create_blocking
 async def info():
     """Display information about the token that is currently in use."""

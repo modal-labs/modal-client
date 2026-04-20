@@ -3,7 +3,7 @@ import warnings
 from datetime import datetime, timezone
 from typing import Optional, Union
 
-import typer
+import click
 from click import UsageError
 from rich.table import Column
 from rich.text import Text
@@ -15,14 +15,14 @@ from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.app import _DEFAULT_LOGS_TAIL, _SOURCE_OPTIONS, _parse_time_arg
 from modal.cli.utils import (
-    ENV_OPTION,
-    YES_OPTION,
     confirm_or_suggest_yes,
     display_table,
+    env_option,
     fetch_app_logs,
     is_tty,
     stream_app_logs,
     tail_app_logs,
+    yes_option,
 )
 from modal.client import _Client
 from modal.config import config
@@ -32,14 +32,19 @@ from modal.exception import InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
-container_cli = typer.Typer(name="container", help="Manage and connect to running containers.", no_args_is_help=True)
+from ._help import ModalGroup
+
+container_cli = ModalGroup(name="container", help="Manage and connect to running containers.")
 
 
 @container_cli.command("list")
+@click.option("--app-id", default="", help="List containers running for a specific App.")
+@env_option
+@click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
 async def list_(
-    app_id: str = typer.Option("", "--app-id", help="List containers running for a specific App."),
-    env: Optional[str] = ENV_OPTION,
+    app_id: str = "",
+    env: Optional[str] = None,
     json: bool = False,
 ):
     """List all containers that are currently running."""
@@ -72,29 +77,30 @@ async def list_(
 
 
 @container_cli.command("logs", no_args_is_help=True)
+@click.argument("container_id")
+@click.option("-f", "--follow", is_flag=True, default=False, help="Stream log output until Container stops")
+@click.option("--all", "all_logs", is_flag=True, default=False, help="Show all logs for the container")
+@click.option(
+    "--since",
+    default=None,
+    help="Start of time range. Accepts ISO 8601 datetime or relative time, e.g. '1d' (1 day ago), '2h', '30m', etc.",
+)
+@click.option("--until", default=None, help="End of time range; accepts same argument types as --since")
+@click.option("-n", "--tail", default=None, type=int, help="Show only the last N log entries")
+@click.option("--search", default=None, help="Filter by search text")
+@click.option("-s", "--source", default=None, help="Filter by source: 'stdout', 'stderr', or 'system'")
+@click.option("--timestamps", is_flag=True, default=False, help="Prefix each line with its timestamp")
 @synchronizer.create_blocking
 async def logs(
-    container_id: str = typer.Argument(help="Container ID"),
-    follow: bool = typer.Option(False, "-f", "--follow", help="Stream log output until Container stops"),
-    all_logs: bool = typer.Option(False, "--all", help="Show all logs for the container"),
-    since: Optional[str] = typer.Option(
-        None,
-        "--since",
-        help=(
-            "Start of time range. Accepts ISO 8601 datetime or relative time, e.g. '1d' (1 day ago), '2h', '30m', etc."
-        ),
-    ),
-    until: Optional[str] = typer.Option(
-        None,
-        "--until",
-        help="End of time range; accepts same argument types as --since",
-    ),
-    tail: Optional[int] = typer.Option(None, "--tail", "-n", help="Show only the last N log entries"),
-    search: Optional[str] = typer.Option(None, "--search", help="Filter by search text"),
-    source: Optional[str] = typer.Option(
-        None, "--source", "-s", help="Filter by source: 'stdout', 'stderr', or 'system'"
-    ),
-    timestamps: bool = typer.Option(False, "--timestamps", help="Prefix each line with its timestamp"),
+    container_id: str,
+    follow: bool = False,
+    all_logs: bool = False,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    tail: Optional[int] = None,
+    search: Optional[str] = None,
+    source: Optional[str] = None,
+    timestamps: bool = False,
 ):
     """Fetch or stream logs for a specific container.
 
@@ -257,18 +263,13 @@ async def logs(
             )
 
 
-@container_cli.command("exec")
 @synchronizer.create_blocking
-async def exec(
-    pty: Optional[bool] = typer.Option(default=None, help="Run the command using a PTY."),
-    container_id: str = typer.Argument(help="Container ID"),
-    command: list[str] = typer.Argument(
-        help="A command to run inside the container.\n\n"
-        "To pass command-line flags or options, add `--` before the start of your commands. "
-        "For example: `modal container exec <id> -- /bin/bash -c 'echo hi'`"
-    ),
+async def _exec_impl(
+    pty: Optional[bool] = None,
+    container_id: str = "",
+    command: tuple[str, ...] = (),
 ):
-    """Execute a command in a container."""
+    """Execute a command in a container (implementation)."""
 
     if pty is None:
         pty = is_tty()
@@ -292,16 +293,29 @@ async def exec(
         ).wait()
 
 
-@container_cli.command("stop")
-@synchronizer.create_blocking
-async def stop(
-    container_id: str = typer.Argument(help="Container ID"),
-    *,
-    yes: bool = YES_OPTION,
+@container_cli.command("exec")
+@click.option("--pty/--no-pty", default=None, help="Run the command using a PTY.")
+@click.argument("container_id")
+@click.argument("command", nargs=-1, required=True)
+def exec(
+    pty: Optional[bool] = None,
+    container_id: str = "",
+    command: tuple[str, ...] = (),
 ):
-    """Stop a currently-running container and reassign its in-progress inputs.
+    """Execute a command in a container."""
+    _exec_impl(pty=pty, container_id=container_id, command=command)
+
+
+@container_cli.command("stop")
+@click.argument("container_id")
+@yes_option
+@synchronizer.create_blocking
+async def stop(container_id: str = "", *, yes: bool = False):
+    """Terminate a running container.
 
     This will send the container a SIGINT signal that Modal will handle.
+    Any inputs that are currently running on the container will be cancelled and rescheduled
+    on other containers.
     """
     client = await _Client.from_env()
     resp = await client.stub.TaskGetInfo(api_pb2.TaskGetInfoRequest(task_id=container_id))

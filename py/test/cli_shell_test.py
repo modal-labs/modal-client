@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022-2023
-import inspect
 import platform
 import pytest
 import re
@@ -7,9 +6,9 @@ import subprocess
 from pathlib import Path
 from unittest.mock import Mock
 
-import typer
+import click
 
-from modal.cli.shell import _params_from_signature, _parse_sandbox_container_ref, _passed_forbidden_args, shell
+from modal.cli.shell import _parse_sandbox_container_ref, _passed_forbidden_args, shell
 
 from .conftest import run_cli_command
 from .supports.skip import skip_windows
@@ -153,46 +152,78 @@ def test_shell_forbids_image_args_with_image_id(servicer, set_env_client, forbid
     )
 
 
-def test_shell_all_shell_command_params_have_explicit_param_decls():
-    sig = inspect.signature(shell)
-    for param_name, param in sig.parameters.items():
-        if param_name in {"ref"}:  # ... all except ref
-            continue
-
-        assert param.default.param_decls
+def _shell_defaults(ctx: click.Context) -> dict[str, object]:
+    """Effective defaults for every shell param, matching what click passes when the user
+    omits the flag entirely."""
+    return {p.name: p.process_value(ctx, p.get_default(ctx)) for p in shell.params if p.name is not None}
 
 
 @pytest.mark.parametrize(
-    "passed_args,expected",
+    "overrides,expected",
     [
         ({}, []),
         ({"ref": "sb-123", "cmd": "/bin/sh", "pty": True}, []),
         ({"ref": "sb-123", "cpu": 2, "memory": 1024}, ["--cpu", "--memory"]),
     ],
 )
-def test_passed_forbidden_args_with_shell_function(passed_args, expected):
-    param_objs = _params_from_signature(shell)
-    result = _passed_forbidden_args(
-        param_objs, passed_args, allowed=lambda p: p in {"cmd", "pty", "ref", "use_module_mode"}
-    )
+def test_passed_forbidden_args_with_shell_function(overrides, expected):
+    with click.Context(shell) as ctx:
+        passed = {**_shell_defaults(ctx), **overrides}
+        result = _passed_forbidden_args(
+            shell.params, ctx, passed, allowed=lambda p: p in {"cmd", "pty", "ref", "use_module_mode"}
+        )
     assert result == expected
 
 
 def test_passed_forbidden_args_with_predicate():
-    def dummy_shell(
-        image: str = typer.Option(None, "--image"),
-        cpu: int = typer.Option(None, "--cpu"),
-        memory: int = typer.Option(None, "--memory"),
-    ):
+    # Uses a hand-rolled command instead of `shell` to exercise the helper's
+    # genericity — its signature takes arbitrary params + ctx. Every option
+    # declares an explicit default, matching the invariant
+    # test_shell_params_have_concrete_defaults enforces on the real shell.
+    @click.command()
+    @click.option("--image", default=None)
+    @click.option("--cpu", type=int, default=None)
+    @click.option("--memory", type=int, default=None)
+    def dummy(image, cpu, memory):
         pass
 
-    param_objs = _params_from_signature(dummy_shell)
+    with click.Context(dummy) as ctx:
+        _pfa = _passed_forbidden_args
+        params = dummy.params
+        assert _pfa(params, ctx, {"image": "debian:latest", "cpu": 2}, allowed=lambda p: p == "image") == ["--cpu"]
+        assert _pfa(params, ctx, {"image": "debian:latest", "cpu": 2}, allowed=lambda _: True) == []
+        assert _pfa(params, ctx, {"image": "debian:latest", "cpu": 2}, allowed=lambda _: False) == [
+            "--image",
+            "--cpu",
+        ]
+        assert _pfa(params, ctx, {"image": None, "cpu": None}, allowed=lambda _: False) == []
 
-    _pfa = _passed_forbidden_args
-    assert _pfa(param_objs, {"image": "debian:latest", "cpu": 2}, allowed=lambda p: p == "image") == ["--cpu"]
-    assert _pfa(param_objs, {"image": "debian:latest", "cpu": 2}, allowed=lambda _: True) == []
-    assert _pfa(param_objs, {"image": "debian:latest", "cpu": 2}, allowed=lambda _: False) == ["--image", "--cpu"]
-    assert _pfa(param_objs, {"image": None, "cpu": None}, allowed=lambda _: False) == []
+
+def test_shell_params_have_concrete_defaults():
+    """Regression guard for `_passed_forbidden_args`.
+
+    The helper compares `passed_args[name]` against `process_value(get_default(ctx))`.
+    This only works when every param's default is a concrete value click hands to
+    the callback (None, False, a tuple, a string, etc.) — not an internal sentinel
+    like `click.core.UNSET`. Scalar Options declared without an explicit `default=`
+    produce UNSET in click 8.3+; that would cause the helper to spuriously flag
+    the option as passed even when the user didn't set it.
+
+    If a new `--foo` is added without `default=`, this test fails and points at
+    the fix: declare an explicit default.
+    """
+    with click.Context(shell) as ctx:
+        missing = []
+        for p in shell.params:
+            default = p.process_value(ctx, p.get_default(ctx))
+            # click's internal "no default declared" marker; match by type name
+            # because it's not a public import in click 8.2.
+            if type(default).__name__ == "Sentinel":
+                missing.append(p.name)
+    assert not missing, (
+        f"shell params missing explicit default=: {missing}. "
+        "_passed_forbidden_args relies on a concrete default; add `default=...` to the @click.option(...) decorator."
+    )
 
 
 @pytest.mark.parametrize(

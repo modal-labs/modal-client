@@ -2,13 +2,14 @@
 import subprocess
 from typing import Optional
 
-import typer
+import click
 from rich.rule import Rule
 
 from modal._utils.async_utils import synchronizer
 from modal.output import OutputManager
 
 from . import run, shell as shell_module
+from ._help import ModalCommand, ModalGroup
 from .app import app_cli
 from .billing import billing_cli
 from .bootstrap import bootstrap
@@ -29,18 +30,8 @@ from .token import _new_token, token_cli
 from .volume import volume_cli
 
 
-def version_callback(value: bool):
-    if value:
-        from modal_version import __version__
-
-        typer.echo(f"modal client version: {__version__}")
-        raise typer.Exit()
-
-
-entrypoint_cli_typer = typer.Typer(
-    no_args_is_help=False,
-    add_completion=False,
-    rich_markup_mode="markdown",
+@click.group(
+    cls=ModalGroup,
     context_settings={"help_option_names": ["-h", "--help"]},
     help="""
     Modal is the fastest way to run code in the cloud.
@@ -49,19 +40,24 @@ entrypoint_cli_typer = typer.Typer(
     about running code on Modal.
     """,
 )
+@click.option(
+    "--version",
+    is_flag=True,
+    default=False,
+    is_eager=True,
+    expose_value=False,
+    callback=lambda ctx, param, value: _version_callback(ctx, value),
+)
+def entrypoint_cli():
+    pass
 
 
-@entrypoint_cli_typer.callback(invoke_without_command=True)
-def modal(
-    ctx: typer.Context,
-    version: bool = typer.Option(None, "--version", callback=version_callback),
-):
-    # TODO: When https://github.com/fastapi/typer/pull/1240 gets shipped, then
-    # - set invoke_without_command=False in the callback decorator
-    # - set no_args_is_help=True in entrypoint_cli_typer
-    if ctx.invoked_subcommand is None:
-        OutputManager.get().print(ctx.get_help())
-        raise typer.Exit()
+def _version_callback(ctx, value):
+    if value:
+        from modal_version import __version__
+
+        click.echo(f"modal client version: {__version__}")
+        ctx.exit(0)
 
 
 def check_path():
@@ -87,6 +83,8 @@ def check_path():
     output.print(Rule(style="white"))
 
 
+@click.command("setup", cls=ModalCommand, help="Bootstrap Modal's configuration.")
+@click.option("--profile", default=None)
 @synchronizer.create_blocking
 async def setup(profile: Optional[str] = None):
     check_path()
@@ -96,46 +94,35 @@ async def setup(profile: Optional[str] = None):
     await _new_token(profile=profile, next_url="/home")
 
 
-# Commands
-entrypoint_cli_typer.command("deploy", no_args_is_help=True)(run.deploy)
-entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
-entrypoint_cli_typer.command("shell")(shell_module.shell)
-entrypoint_cli_typer.add_typer(launch_cli, hidden=True)
+entrypoint_cli.add_command(run.deploy, "deploy", panel="Commands")
+entrypoint_cli.add_command(run.serve, "serve", panel="Commands")
+entrypoint_cli.add_command(shell_module.shell, "shell", panel="Commands")
+entrypoint_cli.add_command(run.run, "run", panel="Commands")
+# launch is hidden as it's experimental and we're tracking towards removing it
+entrypoint_cli.add_command(launch_cli, hidden=True)
 
-# Deployments
-entrypoint_cli_typer.add_typer(app_cli, rich_help_panel="Deployments")
-entrypoint_cli_typer.add_typer(container_cli, rich_help_panel="Deployments")
-# TODO: cluster is hidden while multi-node is in beta/experimental
-entrypoint_cli_typer.add_typer(cluster_cli, rich_help_panel="Deployments", hidden=True)
+entrypoint_cli.add_command(app_cli, panel="Deployments")
+entrypoint_cli.add_command(container_cli, panel="Deployments")
+# cluster is hidden while multi-node is in beta/experimental
+entrypoint_cli.add_command(cluster_cli, panel="Deployments", hidden=True)
 
-# Storage
-entrypoint_cli_typer.add_typer(dict_cli, rich_help_panel="Storage")
-entrypoint_cli_typer.add_typer(nfs_cli, rich_help_panel="Storage", hidden=True)
-entrypoint_cli_typer.add_typer(secret_cli, rich_help_panel="Storage")
-entrypoint_cli_typer.add_typer(queue_cli, rich_help_panel="Storage")
-entrypoint_cli_typer.add_typer(volume_cli, rich_help_panel="Storage")
+entrypoint_cli.add_command(dict_cli, panel="Storage")
+entrypoint_cli.add_command(nfs_cli, panel="Storage")
+entrypoint_cli.add_command(secret_cli, panel="Storage")
+entrypoint_cli.add_command(queue_cli, panel="Storage")
+entrypoint_cli.add_command(volume_cli, panel="Storage")
 
-# Configuration
-entrypoint_cli_typer.add_typer(config_cli, rich_help_panel="Configuration")
-entrypoint_cli_typer.add_typer(environment_cli, rich_help_panel="Configuration")
-entrypoint_cli_typer.add_typer(profile_cli, rich_help_panel="Configuration")
-entrypoint_cli_typer.add_typer(token_cli, rich_help_panel="Configuration")
+entrypoint_cli.add_command(setup, panel="Onboarding")
+entrypoint_cli.add_command(bootstrap, panel="Onboarding")
 
-# Observability
-entrypoint_cli_typer.add_typer(billing_cli, rich_help_panel="Observability")
-entrypoint_cli_typer.command("changelog", rich_help_panel="Observability")(changelog)
-entrypoint_cli_typer.command("dashboard", rich_help_panel="Observability")(dashboard)
+entrypoint_cli.add_command(config_cli, panel="Configuration")
+entrypoint_cli.add_command(environment_cli, panel="Configuration")
+entrypoint_cli.add_command(profile_cli, panel="Configuration")
+entrypoint_cli.add_command(token_cli, panel="Configuration")
 
-# Onboarding
-entrypoint_cli_typer.command("setup", help="Get started using Modal.", rich_help_panel="Onboarding")(setup)
-entrypoint_cli_typer.command("bootstrap", help="Initialize a sample Modal App.", rich_help_panel="Onboarding")(
-    bootstrap
-)
-
-# Special handling for modal run, which is more complicated
-entrypoint_cli = typer.main.get_command(entrypoint_cli_typer)
-entrypoint_cli.add_command(run.run, name="run")  # type: ignore
-entrypoint_cli.list_commands(None)  # type: ignore
+entrypoint_cli.add_command(billing_cli, panel="Observability")
+entrypoint_cli.add_command(changelog, panel="Observability")
+entrypoint_cli.add_command(dashboard, panel="Observability")
 
 if __name__ == "__main__":
     # this module is only called from tests, otherwise the parent package __main__.py is used as the entrypoint

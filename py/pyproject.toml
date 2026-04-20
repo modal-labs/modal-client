@@ -24,7 +24,6 @@ dependencies = [
     "rich>=12.0.0",
     "synchronicity~=0.12.1",
     "toml",
-    "typer>=0.9",
     "types-certifi",
     "types-toml",
     "watchfiles",

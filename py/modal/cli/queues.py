@@ -2,37 +2,42 @@
 from datetime import datetime
 from typing import Optional
 
-import typer
-from typer import Argument, Option, Typer
+import click
 
 from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
+from modal.cli.utils import display_table, env_option, yes_option
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.output import OutputManager
 from modal.queue import _Queue
 from modal_proto import api_pb2
 
-queue_cli = Typer(
+from ._help import ModalGroup
+
+queue_cli = ModalGroup(
     name="queue",
-    no_args_is_help=True,
     help="Manage `modal.Queue` objects and inspect their contents.",
 )
 
-PARTITION_OPTION = Option(
-    None,
-    "-p",
-    "--partition",
-    help="Name of the partition to use, otherwise use the default (anonymous) partition.",
-)
+
+def partition_option(func):
+    """Reusable Click decorator for the --partition / -p option."""
+    return click.option(
+        "-p",
+        "--partition",
+        default=None,
+        help="Name of the partition to use, otherwise use the default (anonymous) partition.",
+    )(func)
 
 
-@queue_cli.command(name="create", rich_help_panel="Management")
+@queue_cli.command("create", panel="Management")
+@click.argument("name")
+@env_option
 @synchronizer.create_blocking
-async def create(name: str, *, env: Optional[str] = ENV_OPTION):
+async def create(name: str, *, env: Optional[str] = None):
     """Create a named Queue.
 
     Note: This is a no-op when the Queue already exists.
@@ -45,19 +50,23 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
         await resolver.load(q, load_context)
 
 
-@queue_cli.command(name="delete", rich_help_panel="Management")
+@queue_cli.command("delete", panel="Management")
+@click.argument("name")
+@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Queue doesn't exist.")
+@yes_option
+@env_option
 @synchronizer.create_blocking
 async def delete(
     name: str,
     *,
-    allow_missing: bool = Option(False, "--allow-missing", help="Don't error if the Queue doesn't exist."),
-    yes: bool = YES_OPTION,
-    env: Optional[str] = ENV_OPTION,
+    allow_missing: bool = False,
+    yes: bool = False,
+    env: Optional[str] = None,
 ):
     """Delete a named Queue and all of its data."""
     env = ensure_env(env)
     if not yes:
-        typer.confirm(
+        click.confirm(
             f"Are you sure you want to irrevocably delete the modal.Queue '{name}'?",
             default=False,
             abort=True,
@@ -65,9 +74,11 @@ async def delete(
     await _Queue.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
-@queue_cli.command(name="list", rich_help_panel="Management")
+@queue_cli.command("list", panel="Management")
+@click.option("--json", is_flag=True, default=False)
+@env_option
 @synchronizer.create_blocking
-async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
+async def list_(*, json: bool = False, env: Optional[str] = None):
     """List all named Queues."""
     env = ensure_env(env)
     client = await _Client.from_env()
@@ -112,20 +123,25 @@ async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     display_table(["Name", "Created at", "Created by", "Partitions", "Total size"], rows, json)
 
 
-@queue_cli.command(name="clear", rich_help_panel="Management")
+@queue_cli.command("clear", panel="Management")
+@click.argument("name")
+@partition_option
+@click.option("-a", "--all", "all", is_flag=True, default=False, help="Clear the contents of all partitions.")
+@yes_option
+@env_option
 @synchronizer.create_blocking
 async def clear(
     name: str,
-    partition: Optional[str] = PARTITION_OPTION,
-    all: bool = Option(False, "-a", "--all", help="Clear the contents of all partitions."),
-    yes: bool = YES_OPTION,
+    partition: Optional[str] = None,
+    all: bool = False,
+    yes: bool = False,
     *,
-    env: Optional[str] = ENV_OPTION,
+    env: Optional[str] = None,
 ):
     """Clear the contents of a queue by removing all of its data."""
     q = _Queue.from_name(name, environment_name=env)
     if not yes:
-        typer.confirm(
+        click.confirm(
             f"Are you sure you want to irrevocably delete the contents of modal.Queue '{name}'?",
             default=False,
             abort=True,
@@ -133,12 +149,14 @@ async def clear(
     await q.clear(partition=partition, all=all)
 
 
-@queue_cli.command(name="peek", rich_help_panel="Inspection")
+@queue_cli.command("peek", panel="Inspection")
+@click.argument("name")
+@click.argument("n", default=1, type=int)
+@partition_option
+@env_option
 @synchronizer.create_blocking
-async def peek(
-    name: str, n: int = Argument(1), partition: Optional[str] = PARTITION_OPTION, *, env: Optional[str] = ENV_OPTION
-):
-    """Print the next N items in the queue or queue partition (without removal)."""
+async def peek(name: str, n: int = 1, partition: Optional[str] = None, *, env: Optional[str] = None):
+    """Print the next N items without removing them."""
     q = _Queue.from_name(name, environment_name=env)
     output = OutputManager.get()
     i = 0
@@ -149,15 +167,19 @@ async def peek(
             break
 
 
-@queue_cli.command(name="len", rich_help_panel="Inspection")
+@queue_cli.command("len", panel="Inspection")
+@click.argument("name")
+@partition_option
+@click.option(
+    "-t",
+    "--total",
+    is_flag=True,
+    default=False,
+    help="Compute the sum of the queue lengths across all partitions",
+)
+@env_option
 @synchronizer.create_blocking
-async def len_(
-    name: str,
-    partition: Optional[str] = PARTITION_OPTION,
-    total: bool = Option(False, "-t", "--total", help="Compute the sum of the queue lengths across all partitions"),
-    *,
-    env: Optional[str] = ENV_OPTION,
-):
-    """Print the length of a queue partition or the total length of all partitions."""
+async def len_(name: str, partition: Optional[str] = None, total: bool = False, *, env: Optional[str] = None):
+    """Print the length of the queue or one of its partitions."""
     q = _Queue.from_name(name, environment_name=env)
     OutputManager.get().print(await q.len(partition=partition, total=total))

@@ -5,9 +5,11 @@ import urllib.request
 from dataclasses import asdict, dataclass
 from typing import Optional
 
-import typer
+import click
 
 from modal._vendor.version import Version
+
+from ._help import ModalCommand
 
 CHANGELOG_URL = "https://modal.com/docs/reference/changelog.md"
 
@@ -73,7 +75,7 @@ def _filter_entries(
     if for_version is not None:
         n = len(for_version.split("."))
         if n not in (2, 3):
-            raise typer.BadParameter(f"Invalid version format: {for_version!r}. Use X.Y or X.Y.Z.")
+            raise click.BadParameter(f"Invalid version format: {for_version!r}. Use X.Y or X.Y.Z.")
         fv = Version(for_version)
         return [e for e in entries if Version(e.version).release[:n] == fv.release[:n]]
     if newer:
@@ -93,19 +95,20 @@ def _format_entries(entries: list[ChangelogEntry], *, as_json: bool) -> str:
     return "\n\n".join(parts)
 
 
+@click.command("changelog", cls=ModalCommand)
+@click.option("--last", default=None, type=int, help="Show the N most recent entries before the installed version.")
+@click.option("--since", default=None, help="Show entries after a version (X.Y.Z) or date (YYYY-MM-DD), exclusive.")
+@click.option("--for", "for_version", default=None, help="Show entries for a version (X.Y.Z) or series (X.Y).")
+@click.option("--newer", is_flag=True, default=False, help="Show entries newer than the installed version.")
+@click.option("--all", "all", is_flag=True, default=False, help="Show all entries.")
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
 def changelog(
-    last: Optional[int] = typer.Option(
-        None, "--last", help="Show the N most recent entries before the installed version."
-    ),
-    since: Optional[str] = typer.Option(
-        None, "--since", help="Show entries after a version (X.Y.Z) or date (YYYY-MM-DD), exclusive."
-    ),
-    for_version: Optional[str] = typer.Option(
-        None, "--for", help="Show entries for a version (X.Y.Z) or series (X.Y)."
-    ),
-    newer: bool = typer.Option(False, "--newer", help="Show entries newer than the installed version."),
-    all: bool = typer.Option(False, "--all", help="Show all entries."),
-    json: bool = typer.Option(False, "--json", help="Output as JSON."),
+    last: Optional[int],
+    since: Optional[str],
+    for_version: Optional[str],
+    newer: bool,
+    all: bool,
+    json: bool,
 ):
     """Fetch release notes from the Modal changelog.
 
@@ -137,7 +140,7 @@ def changelog(
 
     filter_flags = sum([last is not None, since is not None, for_version is not None, newer, all])
     if filter_flags > 1:
-        raise typer.BadParameter("Only one of --last, --since, --for, --newer, or --all may be used at a time.")
+        raise click.BadParameter("Only one of --last, --since, --for, --newer, or --all may be used at a time.")
 
     markdown = _fetch_changelog_markdown()
     entries = _parse_entries(markdown)
@@ -152,8 +155,8 @@ def changelog(
     )
 
     if not filtered:
-        typer.echo("No changelog entries found.")
-        raise typer.Exit()
+        click.echo("No changelog entries found.")
+        raise SystemExit(0)
 
     output = _format_entries(filtered, as_json=json)
-    typer.echo(output)
+    click.echo(output)

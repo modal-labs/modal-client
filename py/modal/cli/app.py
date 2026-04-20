@@ -8,11 +8,9 @@ from typing import Optional, Union, get_args
 
 import click
 import rich
-import typer
 from click import UsageError
 from rich.table import Column
 from rich.text import Text
-from typer import Argument
 
 from modal._object import _get_environment_name
 from modal._traceback import print_server_warnings
@@ -27,20 +25,18 @@ from modal_proto import api_pb2
 
 from .._logs import _FETCH_LIMIT, _MAX_FETCH_RANGE, LogsFilters
 from .._utils.time_utils import locale_tz, timestamp_to_localized_str
+from ._help import ModalGroup
 from .utils import (
-    ENV_OPTION,
-    YES_OPTION,
     confirm_or_suggest_yes,
     display_table,
+    env_option,
     fetch_app_logs,
     stream_app_logs,
     tail_app_logs,
+    yes_option,
 )
 
-APP_IDENTIFIER = Argument("", help="App name or ID")
-NAME_OPTION = typer.Option("", "-n", "--name", help="Deprecated: Pass App name as a positional argument")
-
-app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_args_is_help=True)
+app_cli = ModalGroup(name="app", help="Manage deployed and running apps.")
 
 APP_STATE_TO_MESSAGE = {
     api_pb2.APP_STATE_DEPLOYED: Text("deployed", style="green"),
@@ -101,9 +97,11 @@ async def resolve_app_identifier(
 
 
 @app_cli.command("list")
+@env_option
+@click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
-    """List Modal apps that are currently deployed/running or recently stopped."""
+async def list_(env: Optional[str] = None, json: bool = False):
+    """List Apps that are running, deployed or recently stopped."""
     env = ensure_env(env)
     client = await _Client.from_env()
 
@@ -176,38 +174,43 @@ _SOURCE_OPTIONS = {
 
 
 @app_cli.command("logs", no_args_is_help=True)
+@click.argument("app_identifier")
+@click.option("-f", "--follow", is_flag=True, default=False, help="Stream log output until App stops")
+@click.option(
+    "--since",
+    default=None,
+    help="Start of time range. Accepts ISO 8601 datetime or relative time, e.g. '1d' (1 day ago), '2h', '30m', etc.",
+)
+@click.option("--until", default=None, help="End of time range; accepts same argument types as --since")
+@click.option("-n", "--tail", default=None, type=int, help="Show only the last N log entries")
+@click.option("--search", default=None, help="Filter by search text")
+@click.option("--function", "function_id", default="", help="Filter by Function ID (fu-*)")
+@click.option("--function-call", "function_call_id", default="", help="Filter by FunctionCall ID (fc-*)")
+@click.option("--container", "container_id", default="", help="Filter by Container ID (ta-*)")
+@click.option("-s", "--source", default=None, help="Filter by source: 'stdout', 'stderr', or 'system'")
+@click.option("--timestamps", is_flag=True, default=False, help="Prefix each line with its timestamp")
+@click.option("--show-function-id", is_flag=True, default=False, help="Prefix each line with its Function ID")
+@click.option("--show-function-call-id", is_flag=True, default=False, help="Prefix each line with its FunctionCall ID")
+@click.option("--show-container-id", is_flag=True, default=False, help="Prefix each line with its Container ID")
+@env_option
 @synchronizer.create_blocking
 async def logs(
-    app_identifier: str = APP_IDENTIFIER,
-    follow: bool = typer.Option(False, "-f", "--follow", help="Stream log output until App stops"),
-    since: Optional[str] = typer.Option(
-        None,
-        "--since",
-        help=(
-            "Start of time range. Accepts ISO 8601 datetime or relative time, e.g. '1d' (1 day ago), '2h', '30m', etc."
-        ),
-    ),
-    until: Optional[str] = typer.Option(
-        None,
-        "--until",
-        help="End of time range; accepts same argument types as --since",
-    ),
-    tail: Optional[int] = typer.Option(None, "--tail", "-n", help="Show only the last N log entries"),
-    search: Optional[str] = typer.Option(None, "--search", help="Filter by search text"),
-    function_id: Optional[str] = typer.Option("", "--function", help="Filter by Function ID (fu-*)"),
-    function_call_id: Optional[str] = typer.Option("", "--function-call", help="Filter by FunctionCall ID (fc-*)"),
-    container_id: Optional[str] = typer.Option("", "--container", help="Filter by Container ID (ta-*)"),
-    source: Optional[str] = typer.Option(
-        None, "--source", "-s", help="Filter by source: 'stdout', 'stderr', or 'system'"
-    ),
-    timestamps: bool = typer.Option(False, "--timestamps", help="Prefix each line with its timestamp"),
-    show_function_id: bool = typer.Option(False, "--show-function-id", help="Prefix each line with its Function ID"),
-    show_function_call_id: bool = typer.Option(
-        False, "--show-function-call-id", help="Prefix each line with its FunctionCall ID"
-    ),
-    show_container_id: bool = typer.Option(False, "--show-container-id", help="Prefix each line with its Container ID"),
+    app_identifier: str,
+    follow: bool = False,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    tail: Optional[int] = None,
+    search: Optional[str] = None,
+    function_id: str = "",
+    function_call_id: str = "",
+    container_id: str = "",
+    source: Optional[str] = None,
+    timestamps: bool = False,
+    show_function_id: bool = False,
+    show_function_call_id: bool = False,
+    show_container_id: bool = False,
     *,
-    env: Optional[str] = ENV_OPTION,
+    env: Optional[str] = None,
 ):
     """Fetch or stream App logs.
 
@@ -265,8 +268,6 @@ async def logs(
     ```
 
     """
-    if not app_identifier:
-        raise UsageError("Either an App ID or name must be provided.")
 
     if follow and (since or until or tail):
         raise UsageError("--follow cannot be combined with --since, --until, or --tail.")
@@ -350,12 +351,15 @@ async def logs(
 
 
 @app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})
+@click.argument("app_identifier")
+@click.argument("version", default="")
+@env_option
 @synchronizer.create_blocking
 async def rollback(
-    app_identifier: str = APP_IDENTIFIER,
-    version: str = typer.Argument("", help="Target version for rollback."),
+    app_identifier: str,
+    version: str = "",
     *,
-    env: Optional[str] = ENV_OPTION,
+    env: Optional[str] = None,
 ):
     """Redeploy a previous version of an App.
 
@@ -404,16 +408,20 @@ async def rollback(
 
 
 @app_cli.command("rollover", no_args_is_help=True)
+@click.argument("app_identifier")
+@click.option(
+    "--strategy",
+    default="rolling",
+    type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE)),
+    help="Strategy for rollover",
+)
+@env_option
 @synchronizer.create_blocking
 async def rollover(
-    app_identifier: str = APP_IDENTIFIER,
+    app_identifier: str,
+    strategy: str = "rolling",
     *,
-    strategy: str = typer.Option(
-        "rolling",
-        help="Strategy for rollover",
-        click_type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE)),
-    ),
-    env: Optional[str] = ENV_OPTION,
+    env: Optional[str] = None,
 ):
     """Redeploy an App to get new containers without code changes.
 
@@ -467,12 +475,15 @@ async def rollover(
 
 
 @app_cli.command("stop", no_args_is_help=True)
+@click.argument("app_identifier")
+@yes_option
+@env_option
 @synchronizer.create_blocking
 async def stop(
-    app_identifier: str = APP_IDENTIFIER,
+    app_identifier: str,
     *,
-    yes: bool = YES_OPTION,
-    env: Optional[str] = ENV_OPTION,
+    yes: bool = False,
+    env: Optional[str] = None,
 ):
     """Permanently stop an App and terminate its running containers."""
     env = ensure_env(env)
@@ -510,11 +521,14 @@ async def stop(
 
 
 @app_cli.command("history", no_args_is_help=True)
+@click.argument("app_identifier")
+@env_option
+@click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
 async def history(
-    app_identifier: str = APP_IDENTIFIER,
+    app_identifier: str,
     *,
-    env: Optional[str] = ENV_OPTION,
+    env: Optional[str] = None,
     json: bool = False,
 ):
     """Show an App's deployment history.
@@ -588,11 +602,13 @@ async def history(
 
 
 @app_cli.command("dashboard", no_args_is_help=True)
+@click.argument("app_identifier")
+@env_option
 @synchronizer.create_blocking
 async def dashboard(
-    app_identifier: str = APP_IDENTIFIER,
+    app_identifier: str,
     *,
-    env: Optional[str] = ENV_OPTION,
+    env: Optional[str] = None,
 ):
     """Open an App's dashboard page in your web browser.
 
