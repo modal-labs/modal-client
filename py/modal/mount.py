@@ -794,33 +794,30 @@ async def _create_single_client_dependency_mount(
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpd:
         print(f"📦 Building {mount_name}.")  # noqa: T201
         requirements = os.path.join(os.path.dirname(__file__), f"builder/{builder_version}.txt")
-        cmd = " ".join(
-            [
-                "uv",
-                "pip",
-                "install",
-                "--strict",
-                "--no-deps",
-                "--no-cache",
-                "-r",
-                requirements,
-                "--compile-bytecode",
-                "--target",
-                tmpd,
-                "--python-platform",
-                uv_python_platform,
-                "--python",
-                python_version,
-            ]
-        )
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
+        cmd = [
+            "uv",
+            "pip",
+            "install",
+            "--strict",
+            "--no-deps",
+            "--no-cache",
+            "-r",
+            requirements,
+            "--compile-bytecode",
+            "--target",
+            tmpd,
+            "--python-platform",
+            uv_python_platform,
+            "--python",
+            python_version,
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        await proc.wait()
+        stdout, stderr = await proc.communicate()
         if proc.returncode:
-            stdout, stderr = await proc.communicate()
             print(stdout.decode("utf-8"))  # noqa: T201
             print(stderr.decode("utf-8"))  # noqa: T201
             raise RuntimeError(f"Subprocess failed with {proc.returncode}")
