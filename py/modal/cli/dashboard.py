@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2026
 from typing import Optional
 
-import typer
+import click
 
 from modal._utils.async_utils import synchronizer
 from modal._utils.browser_utils import open_url_and_display
@@ -9,10 +9,14 @@ from modal.client import _Client
 from modal.config import config
 from modal_proto import api_pb2
 
+from ._help import ModalCommand
 
+
+@click.command("dashboard", cls=ModalCommand)
+@click.argument("object_id", default=None, required=False)
 @synchronizer.create_blocking
 async def dashboard(
-    object_id: Optional[str] = typer.Argument(None, help="Open a view for a specific object."),
+    object_id: Optional[str] = None,
 ):
     """Open the Modal Dashboard in a web browser."""
     if object_id:

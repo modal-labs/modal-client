@@ -4,42 +4,48 @@ from json import dumps
 from typing import Optional
 
 import click
-import typer
 
 from modal._billing import _workspace_billing_report
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import parse_date, parse_date_range, resolve_timezone
 
+from ._help import ModalGroup
 from .utils import display_table
 
-billing_cli = typer.Typer(name="billing", help="View workspace billing information.", no_args_is_help=True)
+billing_cli = ModalGroup(name="billing", help="View workspace billing information.")
 
 
 DATE_HELP = "Date (in UTC by default): ISO format (2025-01-01) or relative (yesterday, 3 days ago, etc.)."
 
 
 @billing_cli.command("report", no_args_is_help=True)
+@click.option("--start", default=None, help=f"Start date. {DATE_HELP}")
+@click.option("--end", default=None, help=f"End date. {DATE_HELP} Defaults to now.")
+@click.option(
+    "--for",
+    "for_",
+    default=None,
+    help="Convenience range: today, yesterday, this week, last week, this month, last month.",
+)
+@click.option("-r", "--resolution", default="d", help="Time resolution: 'd' (daily) or 'h' (hourly).")
+@click.option(
+    "--tz",
+    default=None,
+    help="Timezone for date interpretation: 'local', offset (5, -4, +05:30), or IANA name. Requires hourly resolution.",
+)
+@click.option("-t", "--tag-names", default=None, help="Comma-separated list of tag names to include.")
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@click.option("--csv", "csv", is_flag=True, default=False, help="Output as CSV.")
 @synchronizer.create_blocking
 async def report(
-    start: Optional[str] = typer.Option(None, "--start", help=f"Start date. {DATE_HELP}"),
-    end: Optional[str] = typer.Option(None, "--end", help=f"End date. {DATE_HELP} Defaults to now."),
-    for_: Optional[str] = typer.Option(
-        None, "--for", help="Convenience range: today, yesterday, this week, last week, this month, last month."
-    ),
-    resolution: str = typer.Option("d", "--resolution", "-r", help="Time resolution: 'd' (daily) or 'h' (hourly)."),
-    tz: Optional[str] = typer.Option(
-        None,
-        "--tz",
-        help=(
-            "Timezone for date interpretation: 'local', offset (5, -4, +05:30), or IANA name."
-            " Requires hourly resolution."
-        ),
-    ),
-    tag_names: Optional[str] = typer.Option(
-        None, "--tag-names", "-t", help="Comma-separated list of tag names to include."
-    ),
-    json: bool = typer.Option(False, "--json", help="Output as JSON."),
-    csv: bool = typer.Option(False, "--csv", help="Output as CSV."),
+    start: Optional[str],
+    end: Optional[str],
+    for_: Optional[str],
+    resolution: str,
+    tz: Optional[str],
+    tag_names: Optional[str],
+    json: bool,
+    csv: bool,
 ):
     """Generate a billing report for the workspace.
 

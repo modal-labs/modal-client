@@ -1,29 +1,32 @@
 # Copyright Modal Labs 2024
+
 from typing import Optional
 
-import typer
-from typer import Argument, Option, Typer
+import click
 
 from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
+from modal.cli.utils import display_table, env_option, yes_option
 from modal.client import _Client
 from modal.dict import _Dict
 from modal.environments import ensure_env
 from modal.output import OutputManager
 
-dict_cli = Typer(
+from ._help import ModalGroup
+
+dict_cli = ModalGroup(
     name="dict",
-    no_args_is_help=True,
     help="Manage `modal.Dict` objects and inspect their contents.",
 )
 
 
-@dict_cli.command(name="create", rich_help_panel="Management")
+@dict_cli.command("create", panel="Management")
+@click.argument("name")
+@env_option
 @synchronizer.create_blocking
-async def create(name: str, *, env: Optional[str] = ENV_OPTION):
+async def create(name: str, *, env: Optional[str] = None):
     """Create a named Dict object.
 
     Note: This is a no-op when the Dict already exists.
@@ -37,9 +40,11 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
         await resolver.load(d, load_context)
 
 
-@dict_cli.command(name="list", rich_help_panel="Management")
+@dict_cli.command("list", panel="Management")
+@click.option("--json", is_flag=True, default=False)
+@env_option
 @synchronizer.create_blocking
-async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
+async def list_(*, json: bool = False, env: Optional[str] = None):
     """List all named Dicts."""
     env = ensure_env(env)
     dicts = await _Dict.objects.list(environment_name=env)
@@ -51,13 +56,16 @@ async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     display_table(["Name", "Created at", "Created by"], rows, json)
 
 
-@dict_cli.command("clear", rich_help_panel="Management")
+@dict_cli.command("clear", panel="Management")
+@click.argument("name")
+@yes_option
+@env_option
 @synchronizer.create_blocking
-async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
+async def clear(name: str, *, yes: bool = False, env: Optional[str] = None):
     """Clear the contents of a named Dict by deleting all of its data."""
     d = _Dict.from_name(name, environment_name=env)
     if not yes:
-        typer.confirm(
+        click.confirm(
             f"Are you sure you want to irrevocably delete the contents of modal.Dict '{name}'?",
             default=False,
             abort=True,
@@ -65,18 +73,22 @@ async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_O
     await d.clear()
 
 
-@dict_cli.command(name="delete", rich_help_panel="Management")
+@dict_cli.command("delete", panel="Management")
+@click.argument("name")
+@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Dict doesn't exist.")
+@yes_option
+@env_option
 @synchronizer.create_blocking
 async def delete(
     name: str,
     *,
-    allow_missing: bool = Option(False, "--allow-missing", help="Don't error if the Dict doesn't exist."),
-    yes: bool = YES_OPTION,
-    env: Optional[str] = ENV_OPTION,
+    allow_missing: bool = False,
+    yes: bool = False,
+    env: Optional[str] = None,
 ):
     """Delete a named Dict and all of its data."""
     if not yes:
-        typer.confirm(
+        click.confirm(
             f"Are you sure you want to irrevocably delete the modal.Dict '{name}'?",
             default=False,
             abort=True,
@@ -84,9 +96,12 @@ async def delete(
     await _Dict.objects.delete(name, environment_name=env, allow_missing=allow_missing)
 
 
-@dict_cli.command(name="get", rich_help_panel="Inspection")
+@dict_cli.command("get", panel="Inspection")
+@click.argument("name")
+@click.argument("key")
+@env_option
 @synchronizer.create_blocking
-async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
+async def get(name: str, key: str, *, env: Optional[str] = None):
     """Print the value for a specific key.
 
     Note: When using the CLI, keys are always interpreted as having a string type.
@@ -101,16 +116,36 @@ def _display(input: str, use_repr: bool) -> str:
     return val[:80] + "..." if len(val) > 80 else val
 
 
-@dict_cli.command(name="items", rich_help_panel="Inspection")
+@dict_cli.command("items", panel="Inspection")
+@click.argument("name")
+@click.argument("n", default=20, type=int)
+@click.option(
+    "-a",
+    "--all",
+    "all",
+    is_flag=True,
+    default=False,
+    help="Ignore N and print all entries in the Dict (may be slow)",
+)
+@click.option(
+    "-r",
+    "--repr",
+    "use_repr",
+    is_flag=True,
+    default=False,
+    help="Display items using `repr()` to see more details",
+)
+@click.option("--json", is_flag=True, default=False)
+@env_option
 @synchronizer.create_blocking
 async def items(
     name: str,
-    n: int = Argument(default=20, help="Limit the number of entries shown"),
+    n: int = 20,
     *,
-    all: bool = Option(False, "-a", "--all", help="Ignore N and print all entries in the Dict (may be slow)"),
-    use_repr: bool = Option(False, "-r", "--repr", help="Display items using `repr()` to see more details"),
+    all: bool = False,
+    use_repr: bool = False,
     json: bool = False,
-    env: Optional[str] = ENV_OPTION,
+    env: Optional[str] = None,
 ):
     """Print the contents of a Dict.
 

@@ -9,7 +9,7 @@ from datetime import datetime
 from json import dumps
 from typing import Optional, Union
 
-import typer
+import click
 from rich.table import Column, Table
 from rich.text import Text
 
@@ -167,14 +167,21 @@ ENV_OPTION_HELP = """Environment to interact with.
 If not specified, Modal will use the default environment of your current profile, or the `MODAL_ENVIRONMENT` variable.
 Otherwise, raises an error if the workspace has multiple environments.
 """
-ENV_OPTION = typer.Option(None, "-e", "--env", help=ENV_OPTION_HELP)
 
-YES_OPTION = typer.Option(False, "-y", "--yes", help="Run without pausing for confirmation.")
+
+def env_option(func):
+    """Reusable Click decorator for the --env / -e option."""
+    return click.option("-e", "--env", default=None, help=ENV_OPTION_HELP)(func)
+
+
+def yes_option(func):
+    """Reusable Click decorator for the --yes / -y option."""
+    return click.option("-y", "--yes", is_flag=True, default=False, help="Run without pausing for confirmation.")(func)
 
 
 def confirm_or_suggest_yes(msg: str) -> None:
     """Prompt for confirmation, or abort with a hint to use --yes if stdin is not a TTY."""
     if not sys.stdin.isatty():
-        typer.echo(f"{msg} [y/N]: ")
+        click.echo(f"{msg} [y/N]: ")
         raise SystemExit("Aborted: no interactive terminal detected. Rerun with --yes (-y) to skip confirmation.")
-    typer.confirm(msg, default=False, abort=True)
+    click.confirm(msg, default=False, abort=True)

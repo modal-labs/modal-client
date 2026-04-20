@@ -9,7 +9,7 @@ from click import Command, Context, Group
 from modal.cli.entry_point import entrypoint_cli
 
 
-# Adapted from typer_cli, since it's incompatible with the latest version of typer
+# Adapted from typer_cli for generating CLI docs from click commands
 # (see https://github.com/tiangolo/typer-cli/issues/50)
 def get_docs_for_click(
     obj: Command,
