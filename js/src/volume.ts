@@ -48,7 +48,7 @@ export class VolumeService {
         objectCreationType: params?.createIfMissing
           ? ObjectCreationType.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
           : ObjectCreationType.OBJECT_CREATION_TYPE_UNSPECIFIED,
-        version: params?.version || VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
+        version: params?.version ?? VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
       });
       this.#client.logger.debug(
         "Retrieved Volume",
