@@ -2998,6 +2998,10 @@ message Sandbox {
 
   // Probe used to determine when the sandbox has become ready.
   optional Probe readiness_probe = 38;
+
+  // If set, only connections from these CIDRs will be allowed to connect to the sandbox
+  // (tunnels and auth proxy).
+  repeated string allowed_inbound_cidrs = 39;
 }
 
 message SandboxCreateConnectTokenRequest {
