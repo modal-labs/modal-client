@@ -794,35 +794,45 @@ async def _create_single_client_dependency_mount(
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpd:
         print(f"📦 Building {mount_name}.")  # noqa: T201
         requirements = os.path.join(os.path.dirname(__file__), f"builder/{builder_version}.txt")
-        cmd = " ".join(
-            [
-                "uv",
-                "pip",
-                "install",
-                "--strict",
-                "--no-deps",
-                "--no-cache",
-                "-r",
-                requirements,
-                "--compile-bytecode",
-                "--target",
-                tmpd,
-                "--python-platform",
-                uv_python_platform,
-                "--python",
-                python_version,
-            ]
-        )
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.wait()
-        if proc.returncode:
+        cmd = [
+            "uv",
+            "pip",
+            "install",
+            "--strict",
+            "--no-deps",
+            "--no-cache",
+            "-r",
+            requirements,
+            "--compile-bytecode",
+            "--target",
+            tmpd,
+            "--python-platform",
+            uv_python_platform,
+            "--python",
+            python_version,
+        ]
+        # Retry uv pip install on transient failures (e.g. network blips,
+        # resource contention).  uv exits with non-zero on recoverable errors
+        # like rate limits or connection resets.
+        last_error: Optional[bytes] = None
+        for attempt in range(3):
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
             stdout, stderr = await proc.communicate()
+            if not proc.returncode:
+                break
+            last_error = stderr
+            if attempt < 2:
+                print(  # noqa: T201
+                    f"⚠️ uv pip install for {mount_name} failed with exit code {proc.returncode}, retrying..."
+                )
+                await asyncio.sleep(2**attempt)
+        else:
             print(stdout.decode("utf-8"))  # noqa: T201
-            print(stderr.decode("utf-8"))  # noqa: T201
+            print((last_error or b"").decode("utf-8"))  # noqa: T201
             raise RuntimeError(f"Subprocess failed with {proc.returncode}")
 
         print(f"🌐 Downloaded and unpacked {mount_name} packages to {tmpd}.")  # noqa: T201

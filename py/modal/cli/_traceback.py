@@ -154,9 +154,8 @@ def setup_rich_traceback() -> None:
     import click
     import grpclib
     import synchronicity
-    import typer
 
-    install(suppress=[synchronicity, grpclib, click, typer], extra_lines=1)
+    install(suppress=[synchronicity, grpclib, click], extra_lines=1)
 
 
 def highlight_modal_warnings() -> None:

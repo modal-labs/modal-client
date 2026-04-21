@@ -1,14 +1,16 @@
 # Copyright Modal Labs 2023
-from typing import Annotated, Optional, Union
+from typing import Optional, Union
 
-import typer
+import click
 from click import UsageError
 from rich.text import Text
 
 from modal import environments
 from modal._utils.name_utils import check_environment_name
-from modal.cli.utils import YES_OPTION, display_table
+from modal.cli.utils import display_table, yes_option
 from modal.config import config
+
+from ._help import ModalGroup
 
 ENVIRONMENT_HELP_TEXT = """Create and interact with Environments
 
@@ -22,7 +24,7 @@ production, to prevent overwriting production apps when developing new features
 while still being able to deploy changes to a live environment.
 """
 
-environment_cli = typer.Typer(name="environment", help=ENVIRONMENT_HELP_TEXT, no_args_is_help=True)
+environment_cli = ModalGroup(name="environment", help=ENVIRONMENT_HELP_TEXT)
 
 
 class RenderableBool(Text):
@@ -33,7 +35,8 @@ class RenderableBool(Text):
         return repr(self.value)
 
 
-@environment_cli.command(name="list", help="List all environments in the current workspace")
+@environment_cli.command("list", help="List all environments in the current workspace")
+@click.option("--json", is_flag=True, default=False)
 def list_(json: Optional[bool] = False):
     envs = environments.list_environments()
 
@@ -56,11 +59,12 @@ def list_(json: Optional[bool] = False):
 ENVIRONMENT_CREATE_HELP = """Create a new environment in the current workspace"""
 
 
-@environment_cli.command(name="create", help=ENVIRONMENT_CREATE_HELP)
-def create(name: Annotated[str, typer.Argument(help="Name of the new environment. Must be unique. Case sensitive")]):
+@environment_cli.command("create", help=ENVIRONMENT_CREATE_HELP)
+@click.argument("name")
+def create(name: str):
     check_environment_name(name)
     environments.create_environment(name)
-    typer.echo(f"Environment created: {name}")
+    click.echo(f"Environment created: {name}")
 
 
 ENVIRONMENT_DELETE_HELP = """Delete an environment in the current workspace
@@ -69,14 +73,16 @@ Deletes all apps in the selected environment and deletes the environment irrevoc
 """
 
 
-@environment_cli.command(name="delete", help=ENVIRONMENT_DELETE_HELP)
+@environment_cli.command("delete", help=ENVIRONMENT_DELETE_HELP)
+@click.argument("name")
+@yes_option
 def delete(
-    name: str = typer.Argument(help="Name of the environment to be deleted. Case sensitive"),
+    name: str,
     *,
-    yes: bool = YES_OPTION,
+    yes: bool = False,
 ):
     if not yes:
-        typer.confirm(
+        click.confirm(
             (
                 f"Are you sure you want to irrevocably delete the environment '{name}' and"
                 " all its associated Apps, Secrets, Volumes, Dicts and Queues?"
@@ -86,19 +92,20 @@ def delete(
         )
 
     environments.delete_environment(name)
-    typer.echo(f"Environment deleted: {name}")
+    click.echo(f"Environment deleted: {name}")
 
 
 ENVIRONMENT_UPDATE_HELP = """Update the name or web suffix of an environment"""
 
 
-@environment_cli.command(name="update", help=ENVIRONMENT_UPDATE_HELP)
+@environment_cli.command("update", help=ENVIRONMENT_UPDATE_HELP)
+@click.argument("current_name")
+@click.option("--set-name", default=None, help="New name of the environment")
+@click.option("--set-web-suffix", default=None, help="New web suffix of environment (empty string is no suffix)")
 def update(
     current_name: str,
-    set_name: Optional[str] = typer.Option(default=None, help="New name of the environment"),
-    set_web_suffix: Optional[str] = typer.Option(
-        default=None, help="New web suffix of environment (empty string is no suffix)"
-    ),
+    set_name: Optional[str] = None,
+    set_web_suffix: Optional[str] = None,
 ):
     if set_name is None and set_web_suffix is None:
         raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix)")
@@ -107,4 +114,4 @@ def update(
         check_environment_name(set_name)
 
     environments.update_environment(current_name, new_name=set_name, new_web_suffix=set_web_suffix)
-    typer.echo("Environment updated")
+    click.echo("Environment updated")

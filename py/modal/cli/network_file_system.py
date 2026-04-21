@@ -4,30 +4,33 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import typer
+import click
 from click import UsageError
 from rich.syntax import Syntax
 from rich.table import Table
-from typer import Argument, Typer
 
 import modal
 from modal._location import display_location
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
+from modal.cli.utils import display_table, env_option, yes_option
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
 from modal.output import OutputManager
 from modal_proto import api_pb2
 
-nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", no_args_is_help=True)
+from ._help import ModalGroup
+
+nfs_cli = ModalGroup(name="nfs", help="Read and edit `modal.NetworkFileSystem` file systems.", hidden=True)
 
 
-@nfs_cli.command(name="list", help="List the names of all network file systems.", rich_help_panel="Management")
+@nfs_cli.command("list", help="List the names of all network file systems.", panel="Management")
+@env_option
+@click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = None, json: Optional[bool] = False):
     env = ensure_env(env)
 
     client = await _Client.from_env()
@@ -54,10 +57,12 @@ def some_func():
 """
 
 
-@nfs_cli.command(name="create", help="Create a named network file system.", rich_help_panel="Management")
+@nfs_cli.command("create", help="Create a named network file system.", panel="Management")
+@click.argument("name")
+@env_option
 def create(
     name: str,
-    env: Optional[str] = ENV_OPTION,
+    env: Optional[str] = None,
 ):
     ensure_env(env)
     modal.NetworkFileSystem.create_deployed(name, environment_name=env)
@@ -67,16 +72,15 @@ def create(
     output.print(usage)
 
 
-@nfs_cli.command(
-    name="ls",
-    help="List files and directories in a network file system.",
-    rich_help_panel="File operations",
-)
+@nfs_cli.command("ls", help="List files and directories in a network file system.", panel="File operations")
+@click.argument("volume_name")
+@click.argument("path", default="/")
+@env_option
 @synchronizer.create_blocking
 async def ls(
     volume_name: str,
-    path: str = typer.Argument(default="/"),
-    env: Optional[str] = ENV_OPTION,
+    path: str = "/",
+    env: Optional[str] = None,
 ):
     ensure_env(env)
     volume = _NetworkFileSystem.from_name(volume_name)
@@ -99,24 +103,25 @@ async def ls(
             print(entry.path)  # noqa: T201
 
 
-@nfs_cli.command(
-    name="put",
-    help="""Upload a file or directory to a network file system.
-
-Remote parent directories will be created as needed.
-
-Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file
-will be uploaded with its current name under that directory.
-""",
-    rich_help_panel="File operations",
-)
+@nfs_cli.command("put", panel="File operations")
+@click.argument("volume_name")
+@click.argument("local_path")
+@click.argument("remote_path", default="/")
+@env_option
 @synchronizer.create_blocking
 async def put(
     volume_name: str,
     local_path: str,
-    remote_path: str = typer.Argument(default="/"),
-    env: Optional[str] = ENV_OPTION,
+    remote_path: str = "/",
+    env: Optional[str] = None,
 ):
+    """Upload a file or directory to a network file system.
+
+    Remote parent directories will be created as needed.
+
+    Ending the REMOTE_PATH with a forward slash (/), it's assumed to be a directory and the file
+    will be uploaded with its current name under that directory.
+    """
     ensure_env(env)
     volume = _NetworkFileSystem.from_name(volume_name)
     if remote_path.endswith("/"):
@@ -143,14 +148,19 @@ class CliError(Exception):
         self.message = message
 
 
-@nfs_cli.command(name="get", rich_help_panel="File operations")
+@nfs_cli.command("get", panel="File operations")
+@click.argument("volume_name")
+@click.argument("remote_path")
+@click.argument("local_destination", default=".")
+@click.option("--force", is_flag=True, default=False)
+@env_option
 @synchronizer.create_blocking
 async def get(
     volume_name: str,
     remote_path: str,
-    local_destination: str = typer.Argument("."),
+    local_destination: str = ".",
     force: bool = False,
-    env: Optional[str] = ENV_OPTION,
+    env: Optional[str] = None,
 ):
     """Download a file from a network file system.
 
@@ -174,15 +184,17 @@ async def get(
     output.step_completed("Finished downloading files to local!")
 
 
-@nfs_cli.command(
-    name="rm", help="Delete a file or directory from a network file system.", rich_help_panel="File operations"
-)
+@nfs_cli.command("rm", help="Delete a file or directory from a network file system.", panel="File operations")
+@click.argument("volume_name")
+@click.argument("remote_path")
+@click.option("-r", "--recursive", is_flag=True, default=False, help="Delete directory recursively")
+@env_option
 @synchronizer.create_blocking
 async def rm(
     volume_name: str,
     remote_path: str,
-    recursive: bool = typer.Option(False, "-r", "--recursive", help="Delete directory recursively"),
-    env: Optional[str] = ENV_OPTION,
+    recursive: bool = False,
+    env: Optional[str] = None,
 ):
     ensure_env(env)
     volume = _NetworkFileSystem.from_name(volume_name)
@@ -190,21 +202,20 @@ async def rm(
     OutputManager.get().step_completed(f"{remote_path} was deleted successfully!")
 
 
-@nfs_cli.command(
-    name="delete",
-    help="Delete a named, persistent modal.NetworkFileSystem.",
-    rich_help_panel="Management",
-)
+@nfs_cli.command("delete", help="Delete a named, persistent modal.NetworkFileSystem.", panel="Management")
+@click.argument("nfs_name")
+@yes_option
+@env_option
 @synchronizer.create_blocking
 async def delete(
-    nfs_name: str = Argument(help="Name of the modal.NetworkFileSystem to be deleted. Case sensitive"),
-    yes: bool = YES_OPTION,
-    env: Optional[str] = ENV_OPTION,
+    nfs_name: str,
+    yes: bool = False,
+    env: Optional[str] = None,
 ):
     # Lookup first to validate the name, even though delete is a staticmethod
     await _NetworkFileSystem.from_name(nfs_name, environment_name=env).hydrate()
     if not yes:
-        typer.confirm(
+        click.confirm(
             f"Are you sure you want to irrevocably delete the modal.NetworkFileSystem '{nfs_name}'?",
             default=False,
             abort=True,

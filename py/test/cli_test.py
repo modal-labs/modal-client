@@ -1648,3 +1648,38 @@ def test_rollover_rolling(servicer, mock_dir, set_env_client):
     res = run_cli_command(["app", "rollover", "my_app"])
     assert "View Deployment" in res.stdout
     assert not servicer.task_list_calls
+
+
+def test_short_help_fits_max_help_width():
+    import click
+    from rich.console import Console
+
+    from modal.cli._help import _MAX_HELP_WIDTH, build_command_table
+    from modal.cli.entry_point import entrypoint_cli
+
+    # Oversized scratch console so measurement isn't clipped by our own width.
+    console = Console(width=10_000)
+    offenders: list[str] = []
+
+    def check(group: click.Group, path: str) -> None:
+        visible = [(name, sub) for name, sub in group.commands.items() if not sub.hidden]
+        if not visible:
+            return
+        name_width = max(len(name) for name, _ in visible)
+        for name, sub in visible:
+            full_path = f"{path} {name}" if path else name
+            # Use a generous limit so an explicit short_help longer than our
+            # budget isn't silently clipped before we measure it.
+            short = sub.get_short_help_str(limit=1000)
+            # Build a probe row using the same configuration --help would use
+            # and ask Rich how wide it wants to be.
+            probe = build_command_table(name_width)
+            probe.add_row(name, short)
+            required = console.measure(probe).maximum
+            if required > _MAX_HELP_WIDTH:
+                offenders.append(f"{full_path}: row needs {required} chars, max {_MAX_HELP_WIDTH}")
+            if isinstance(sub, click.Group):
+                check(sub, full_path)
+
+    check(entrypoint_cli, "modal")
+    assert not offenders, "short help would wrap in --help:\n" + "\n".join(offenders)

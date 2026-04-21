@@ -584,6 +584,11 @@ def test_scaledown_window_must_be_positive():
         app.function(scaledown_window=0)(dummy)
 
 
+def test_scaleup_window_accepted_as_experimental_option():
+    app = App(include_source=False)
+    app.function(experimental_options={"flash": True, "scaleup_window": 5})(dummy)
+
+
 def test_autoscaler_settings_are_multiples_of_cluster_size():
     app = App(include_source=False)
 
@@ -1250,6 +1255,18 @@ def test_autoscaler_settings(client, servicer):
         assert settings.min_containers == defn.warm_pool_size == kwargs["min_containers"]
         assert settings.max_containers == defn.concurrency_limit == kwargs["max_containers"]
         assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["scaledown_window"]
+
+
+def test_scaleup_window_in_experimental_options(client, servicer):
+    app = App(include_source=False)
+
+    f = app.function(
+        experimental_options={"flash": True, "scaleup_window": 5},
+    )(dummy)
+
+    with app.run(client=client):
+        defn = servicer.app_functions[f.object_id]
+        assert defn.experimental_options["scaleup_window"] == "5"
 
 
 @pytest.mark.parametrize(

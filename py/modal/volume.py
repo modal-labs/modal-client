@@ -57,6 +57,7 @@ from ._utils.blob_utils import (
     BLOCK_SIZE,
     FileUploadSpec,
     FileUploadSpec2,
+    _ByteBudget,
     blob_upload_file,
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
@@ -1024,6 +1025,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
         self._upload_generators = []
         self._progress_cb = progress_cb or (lambda *_, **__: None)
         self._force = force
+        self._byte_budget = _ByteBudget.from_system_memory()
 
     async def __aenter__(self):
         return self
@@ -1131,6 +1133,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
                         functools.partial(self._progress_cb, progress_task_id),
                         sha256_hex=file_spec.sha256_hex,
                         md5_hex=file_spec.md5_hex,
+                        byte_budget=self._byte_budget,
                     )
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)

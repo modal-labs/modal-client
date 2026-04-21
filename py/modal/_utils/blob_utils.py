@@ -6,7 +6,7 @@ import os
 import platform
 import time
 from collections.abc import AsyncIterator
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, asynccontextmanager, contextmanager
 from io import BytesIO, FileIO
 from pathlib import Path, PurePosixPath
 from typing import (
@@ -21,11 +21,13 @@ from typing import (
 )
 from urllib.parse import urlparse
 
+from typing_extensions import Self
+
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
 from ..exception import ExecutionError
-from .async_utils import TaskContext, retry
+from .async_utils import TaskContext, asyncnullcontext, retry
 from .hash_utils import UploadHashes, get_upload_hashes
 from .http_utils import ClientSessionRegistry
 from .logger import logger
@@ -54,8 +56,58 @@ DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
 # TODO(dano): remove this once we stop requiring md5 for blobs
 MULTIPART_UPLOAD_THRESHOLD = 1024**3
 
+# Memory budget for multipart uploads.
+MULTIPART_INFLIGHT_BYTES_MAX = 2 * 1024**3  # 2 GiB
+MULTIPART_INFLIGHT_BYTES_MIN = 256 * 1024 * 1024  # 256 MiB
+MULTIPART_INFLIGHT_MEMORY_FRACTION = 0.5  # 50% of RAM
+
+
 # For block based storage like volumefs2: the size of a block
 BLOCK_SIZE: int = 8 * 1024 * 1024
+
+
+class _ByteBudget:
+    """Limits total in-flight bytes across concurrent operations."""
+
+    def __init__(self, total: int):
+        self._total = total
+        self._available = total
+        self._cond = asyncio.Condition()
+
+    @classmethod
+    def from_system_memory(cls) -> Self:
+        return cls(_get_multipart_inflight_budget())
+
+    @asynccontextmanager
+    async def acquire(self, n: int):
+        async with self._cond:
+            # Wait until enough budget is free. If a single part exceeds the
+            # total budget, allow it through once nothing else is in-flight.
+            while self._available < min(n, self._total):
+                await self._cond.wait()
+            self._available -= n
+        try:
+            yield
+        finally:
+            async with self._cond:
+                self._available += n
+                self._cond.notify_all()
+
+
+def _get_multipart_inflight_budget() -> int:
+    """Return a byte budget for concurrent part uploads, scaled to available system memory."""
+    try:
+        import psutil
+
+        available = psutil.virtual_memory().available
+    except Exception:
+        try:
+            available = os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+        except (AttributeError, ValueError, OSError):
+            return MULTIPART_INFLIGHT_BYTES_MIN
+
+    budget = int(available * MULTIPART_INFLIGHT_MEMORY_FRACTION)
+    return max(MULTIPART_INFLIGHT_BYTES_MIN, min(budget, MULTIPART_INFLIGHT_BYTES_MAX))
 
 
 @retry(n_attempts=3, base_delay=0.3, attempt_timeout=None)
@@ -116,6 +168,7 @@ async def perform_multipart_upload(
     completion_url: str,
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
     progress_report_cb: Optional[Callable] = None,
+    byte_budget: Optional[_ByteBudget] = None,
 ) -> None:
     from .bytes_io_segment_payload import BytesIOSegmentPayload
 
@@ -133,6 +186,14 @@ async def perform_multipart_upload(
         filename = data_file.name
         data_file_readers = [open(filename, "rb") for _ in range(len(part_urls))]
 
+    async def _upload_part(part_url: str, part_payload: "BytesIOSegmentPayload") -> str:
+        # BytesIOSegmentPayload limits the amount of memory used, but here we
+        # acquire some extra for additional copies for various buffers based on
+        # empirical testing.
+        bytes_to_acquire = 4 * part_payload.chunk_size
+        async with byte_budget.acquire(bytes_to_acquire) if byte_budget else asyncnullcontext():
+            return await _upload_to_s3_url(part_url, payload=part_payload, content_type=None)
+
     for part_number, (data_file_rdr, part_url) in enumerate(zip(data_file_readers, part_urls), start=1):
         part_length_bytes = min(num_bytes_left, max_part_size)
         part_payload = BytesIOSegmentPayload(
@@ -142,7 +203,7 @@ async def perform_multipart_upload(
             chunk_size=upload_chunk_size,
             progress_report_cb=progress_report_cb,
         )
-        upload_coros.append(_upload_to_s3_url(part_url, payload=part_payload, content_type=None))
+        upload_coros.append(_upload_part(part_url, part_payload))
         num_bytes_left -= part_length_bytes
         file_offset += part_length_bytes
 
@@ -211,7 +272,11 @@ async def _blob_upload_with_fallback(
 
 
 async def _blob_upload(
-    upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub, progress_report_cb: Optional[Callable] = None
+    upload_hashes: UploadHashes,
+    data: Union[bytes, BinaryIO],
+    stub,
+    progress_report_cb: Optional[Callable] = None,
+    byte_budget: Optional[_ByteBudget] = None,
 ) -> tuple[str, bool, int]:
     if isinstance(data, bytes):
         data = BytesIO(data)
@@ -236,6 +301,7 @@ async def _blob_upload(
                 completion_url=part.completion_url,
                 upload_chunk_size=DEFAULT_SEGMENT_CHUNK_SIZE,
                 progress_report_cb=progress_report_cb,
+                byte_budget=byte_budget,
             )
 
         blob_id, r2_failed, r2_throughput_bytes_s = await _blob_upload_with_fallback(
@@ -304,9 +370,10 @@ async def blob_upload_file(
     progress_report_cb: Optional[Callable] = None,
     sha256_hex: Optional[str] = None,
     md5_hex: Optional[str] = None,
+    byte_budget: Optional[_ByteBudget] = None,
 ) -> str:
     upload_hashes = get_upload_hashes(file_obj, sha256_hex=sha256_hex, md5_hex=md5_hex)
-    blob_id, _, _ = await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
+    blob_id, _, _ = await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb, byte_budget=byte_budget)
     return blob_id
 
 
@@ -650,7 +717,7 @@ def use_md5(url: str) -> bool:
     host = urlparse(url).netloc.split(":")[0]
     if host.endswith(".amazonaws.com") or host.endswith(".r2.cloudflarestorage.com"):
         return True
-    elif host in ["127.0.0.1", "localhost", "172.21.0.1"]:
+    elif host in ["127.0.0.1", "localhost", "172.20.0.1", "172.21.0.1"]:
         return False
     else:
         raise Exception(f"Unknown S3 host: {host}")

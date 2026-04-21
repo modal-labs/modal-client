@@ -9,25 +9,27 @@ from tempfile import NamedTemporaryFile
 from typing import Optional
 
 import click
-import typer
 from rich.syntax import Syntax
-from typer import Argument, Option
 
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
+from modal.cli.utils import display_table, env_option, yes_option
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.output import OutputManager
 from modal.secret import _Secret
 from modal_proto import api_pb2
 
-secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=True)
+from ._help import ModalGroup
+
+secret_cli = ModalGroup(name="secret", help="Manage secrets.")
 
 
 @secret_cli.command("list", help="List your published secrets.")
+@env_option
+@click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
+async def list_(env: Optional[str] = None, json: bool = False):
     env = ensure_env(env)
     client = await _Client.from_env()
 
@@ -73,19 +75,35 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
 
 
 @secret_cli.command("create", help="Create a new secret.")
+@click.argument("secret_name")
+@click.argument("keyvalues", nargs=-1)
+@env_option
+@click.option(
+    "--from-dotenv",
+    default=None,
+    type=click.Path(path_type=Path),
+    help="Path to a .env file to load secrets from.",
+)
+@click.option(
+    "--from-json",
+    default=None,
+    type=click.Path(path_type=Path),
+    help="Path to a JSON file to load secrets from.",
+)
+@click.option("--force", is_flag=True, default=False, help="Overwrite the secret if it already exists.")
 @synchronizer.create_blocking
 async def create(
     secret_name: str,
-    keyvalues: Optional[list[str]] = typer.Argument(default=None, help="Space-separated KEY=VALUE items."),
-    env: Optional[str] = ENV_OPTION,
-    from_dotenv: Optional[Path] = typer.Option(default=None, help="Path to a .env file to load secrets from."),
-    from_json: Optional[Path] = typer.Option(default=None, help="Path to a JSON file to load secrets from."),
-    force: bool = typer.Option(False, "--force", help="Overwrite the secret if it already exists."),
+    keyvalues: tuple[str, ...] = (),
+    env: Optional[str] = None,
+    from_dotenv: Optional[Path] = None,
+    from_json: Optional[Path] = None,
+    force: bool = False,
 ):
     env = ensure_env(env)
     env_dict = {}
 
-    for arg in keyvalues or []:
+    for arg in keyvalues:
         if "=" in arg:
             key, value = arg.split("=", 1)
             if value == "-":
@@ -163,17 +181,21 @@ def some_function():
 
 
 @secret_cli.command("delete", help="Delete a named Secret.")
+@click.argument("name")
+@click.option("--allow-missing", is_flag=True, default=False, help="Don't error if the Secret doesn't exist.")
+@yes_option
+@env_option
 @synchronizer.create_blocking
 async def delete(
-    name: str = Argument(help="Name of the modal.Secret to be deleted. Case sensitive"),
+    name: str,
     *,
-    allow_missing: bool = Option(False, "--allow-missing", help="Don't error if the Secret doesn't exist."),
-    yes: bool = YES_OPTION,
-    env: Optional[str] = ENV_OPTION,
+    allow_missing: bool = False,
+    yes: bool = False,
+    env: Optional[str] = None,
 ):
     env = ensure_env(env)
     if not yes:
-        typer.confirm(
+        click.confirm(
             f"Are you sure you want to irrevocably delete the modal.Secret '{name}'?",
             default=False,
             abort=True,
