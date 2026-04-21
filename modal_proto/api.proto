@@ -767,7 +767,7 @@ message AutoscalerSettings {
   optional uint32 max_containers = 2;
   // Additional container to spin up when Function is active
   optional uint32 buffer_containers = 3;
-  // Currently unused; a placeholder in case we decide to expose scaleup control to users
+  // Stabilization window (in seconds) before scaling up; requires sustained demand over this period
   optional uint32 scaleup_window = 4;
   // Maximum amount of time a container can be idle before being scaled down, in seconds; pka "container_idle_timeout"
   optional uint32 scaledown_window = 5;
