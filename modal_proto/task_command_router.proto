@@ -208,6 +208,8 @@ message TaskMountDirectoryRequest {
 message TaskSnapshotDirectoryRequest {
   string task_id = 1;
   bytes path = 2;
+  // A unique ID to ensure idempotency of directory snapshot requests.
+  string snapshot_id = 3;
 }
 
 message TaskSnapshotDirectoryResponse {
