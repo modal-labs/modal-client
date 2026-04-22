@@ -1942,6 +1942,7 @@ message FunctionGetInputsItem {
   uint32 retry_count = 7;
   optional int32 function_map_idx = 8; // intercepted and only used by the worker.
   string attempt_token = 9;
+  bool from_input_plane = 10;
 }
 
 message FunctionGetInputsRequest {
@@ -2146,6 +2147,7 @@ message FunctionPutOutputsItem {
   uint32 retry_count = 8;
   string function_call_id = 9; // injected by the worker
   optional int32 function_map_idx = 10; // injected by the worker
+  bool from_input_plane = 11; // injected by the worker
 }
 
 message FunctionPutOutputsRequest {
@@ -2996,6 +2998,10 @@ message Sandbox {
 
   // Probe used to determine when the sandbox has become ready.
   optional Probe readiness_probe = 38;
+
+  // If set, only connections from these CIDRs will be allowed to connect to the sandbox
+  // (tunnels and auth proxy).
+  repeated string allowed_inbound_cidrs = 39;
 }
 
 message SandboxCreateConnectTokenRequest {

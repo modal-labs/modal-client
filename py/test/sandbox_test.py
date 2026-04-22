@@ -1049,6 +1049,22 @@ def test_snapshot_directory(servicer, client, exec_backend, app):
 
 @skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_create_with_snapshot_directory_image(servicer, client, exec_backend, app):
+    sb = Sandbox.create(app=app)
+    image = sb.snapshot_directory("/tmp")
+    sb.terminate()
+
+    assert image.is_hydrated
+    assert image.object_id == "im-snapshot-123"
+
+    sb2 = Sandbox.create(image=image, app=app)
+    sb2.terminate()
+
+    assert servicer.sandbox_defs[-1].image_id == "im-snapshot-123"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_unmount_image(servicer, client, exec_backend, app, monkeypatch):
     """Test unmounting an image from a path in the sandbox."""
     captured_requests = []

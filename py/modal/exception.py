@@ -90,7 +90,7 @@ class _GRPCErrorWrapper(grpclib.GRPCError):
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._message!r})"
 
-    def _warn_on_grpc_error_attribute_access(self) -> None:
+    def _attribute_warning(self) -> None:
         from ._utils.deprecation import deprecation_warning  # Avoid circular import
 
         exc_type = type(self).__name__
@@ -104,7 +104,7 @@ class _GRPCErrorWrapper(grpclib.GRPCError):
 
     @property
     def message(self) -> str:
-        self._warn_on_grpc_error_attribute_access()
+        self._attribute_warning()
         return self._grpc_message
 
     @message.setter
@@ -113,7 +113,7 @@ class _GRPCErrorWrapper(grpclib.GRPCError):
 
     @property
     def status(self) -> grpclib.Status:
-        self._warn_on_grpc_error_attribute_access()
+        self._attribute_warning()
         return self._grpc_status
 
     @status.setter
@@ -122,7 +122,7 @@ class _GRPCErrorWrapper(grpclib.GRPCError):
 
     @property
     def details(self) -> Any:
-        self._warn_on_grpc_error_attribute_access()
+        self._attribute_warning()
         return self._grpc_details
 
     @details.setter
