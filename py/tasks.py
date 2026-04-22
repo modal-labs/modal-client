@@ -542,6 +542,8 @@ def show_deprecations(ctx):
             self.current_function = None
             self.assignments.pop("__doc__", None)
 
+        visit_AsyncFunctionDef = visit_FunctionDef
+
         def visit_Assign(self, node):
             for target in node.targets:
                 if isinstance(target, ast.Name):
@@ -553,18 +555,22 @@ def show_deprecations(ctx):
             self.generic_visit(node)
 
         def visit_Call(self, node):
-            func_name_to_level = {
-                "deprecation_warning": "[yellow]warning[/yellow]",
-                "deprecation_error": "[red]error[/red]",
+            level: str | None = None
+            if isinstance(node.func, ast.Name):
+                if node.func.id == "deprecation_error":
+                    level = "[red]error[/red]"
                 # We may add a flag to make renamed_parameter error instead of warn
                 # in which case this would get a little bit more complicated.
-                "renamed_parameter": "[yellow]warning[/yellow]",
-            }
-            if (
-                isinstance(node.func, ast.Name)
-                and node.func.id in func_name_to_level
-                and isinstance(node.args[0], ast.Tuple)
-            ):
+                elif node.func.id == "renamed_parameter":
+                    level = "[yellow]warning[/yellow]"
+                elif node.func.id == "deprecation_warning":
+                    is_pending = any(
+                        kw.arg == "pending" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+                        for kw in node.keywords
+                    )
+                    level = "[blue]pending[/blue]" if is_pending else "[yellow]warning[/yellow]"
+
+            if level is not None and isinstance(node.func, ast.Name) and isinstance(node.args[0], ast.Tuple):
                 depr_date = date(*(getattr(elt, "n") for elt in node.args[0].elts))
                 function = (
                     f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
@@ -595,7 +601,6 @@ def show_deprecations(ctx):
                     if len(message) > (max_length := 80):
                         message = message[:max_length] + "..."
 
-                level = func_name_to_level[node.func.id]
                 self.deprecations.append((str(depr_date), level, f"{self.fname}:{node.lineno}", function, message))
 
     files = get_modal_source_files()
