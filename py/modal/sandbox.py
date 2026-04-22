@@ -268,22 +268,28 @@ class _Sandbox(_Object, type_prefix="sb"):
         if pty:
             pty_info = _Sandbox._default_pty_info()
 
-        def _deps() -> list[_Object]:
-            deps: list[_Object] = [image] + list(mounts) + list(secrets)
-            for _, vol in validated_network_file_systems:
-                deps.append(vol)
-            for _, vol in validated_volumes:
-                deps.append(vol)
-            for _, cloud_bucket_mount in cloud_bucket_mounts:
-                if cloud_bucket_mount.secret:
-                    deps.append(cloud_bucket_mount.secret)
-            if proxy:
-                deps.append(proxy)
-            return deps
-
         async def _load(
             self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
         ):
+            # An already-hydrated image (e.g. one returned by
+            # `Sandbox.snapshot_directory`) is skipped — there's nothing to load.
+            dep_tasks: list = []
+            if not image._is_hydrated:
+                dep_tasks.append(resolver.load(image, load_context))
+            for dep in list(mounts) + list(secrets):
+                dep_tasks.append(resolver.load(dep, load_context))
+            for _, vol in validated_network_file_systems:
+                dep_tasks.append(resolver.load(vol, load_context))
+            for _, vol in validated_volumes:
+                dep_tasks.append(resolver.load(vol, load_context))
+            for _, cloud_bucket_mount in cloud_bucket_mounts:
+                if cloud_bucket_mount.secret:
+                    dep_tasks.append(resolver.load(cloud_bucket_mount.secret, load_context))
+            if proxy:
+                dep_tasks.append(resolver.load(proxy, load_context))
+            if dep_tasks:
+                await asyncio.gather(*dep_tasks)
+
             # Validate that the same volume (by object_id) isn't mounted at multiple paths
             validate_volumes_by_object_id(validated_volumes)
 
@@ -363,7 +369,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, None)
 
-        return _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_context_overrides=LoadContext.empty())
+        return _Sandbox._from_loader(_load, "Sandbox()", load_context_overrides=LoadContext.empty())
 
     @staticmethod
     async def create(
@@ -689,12 +695,17 @@ class _Sandbox(_Object, type_prefix="sb"):
                 allowed_cidrs=cidr_allowlist,
             )
 
-        def _deps() -> list[_Object]:
-            return [image] + list(secrets)
-
         async def _load(
             self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
         ):
+            dep_tasks: list = []
+            if not image._is_hydrated:
+                dep_tasks.append(resolver.load(image, load_context))
+            for secret in secrets:
+                dep_tasks.append(resolver.load(secret, load_context))
+            if dep_tasks:
+                await asyncio.gather(*dep_tasks)
+
             definition = api_pb2.Sandbox(
                 entrypoint_args=args,
                 image_id=image.object_id,
@@ -732,7 +743,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 for t in create_resp.tunnels
             }
 
-        obj = _Sandbox._from_loader(_load, "Sandbox()", deps=_deps, load_context_overrides=LoadContext.empty())
+        obj = _Sandbox._from_loader(_load, "Sandbox()", load_context_overrides=LoadContext.empty())
 
         app_id: Optional[str] = None
         app_client: Optional[_Client] = None
@@ -906,19 +917,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         if resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
             raise ExecutionError(resp.result.exception)
 
-        image_id = resp.image_id
-        metadata = resp.image_metadata
-
-        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
-            # no need to hydrate again since we do it eagerly below
-            pass
-
-        rep = "Image()"
-        # TODO: use ._new_hydrated instead
-        image = _Image._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
-        image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
-
-        return image
+        return _Image._new_hydrated(resp.image_id, self._client, resp.image_metadata)
 
     async def mount_image(self, path: Union[PurePosixPath, str], image: _Image):
         """Mount an Image at a specified path in a running Sandbox.
