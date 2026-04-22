@@ -1031,14 +1031,38 @@ def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, exec_bac
 
 @skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_snapshot_directory(servicer, client, exec_backend, app):
+def test_snapshot_directory(servicer, client, exec_backend, app, monkeypatch):
     """Test snapshotting a directory to create a new image."""
+    captured_requests = []
+    original = FakeTaskCommandRouterClient.snapshot_directory
+
+    async def _snapshot_directory(self, request):
+        captured_requests.append(request)
+        return await original(self, request)
+
+    monkeypatch.setattr(FakeTaskCommandRouterClient, "snapshot_directory", _snapshot_directory, raising=True)
+
     sb = Sandbox.create(app=app)
 
     # Create and snapshot a directory
     image = sb.snapshot_directory("/tmp")
 
     assert image.object_id == "im-snapshot-123"  # From mock
+
+    # Verify snapshot_id is set and is a valid UUID
+    assert len(captured_requests) == 1
+    snapshot_id = captured_requests[0].snapshot_id
+    assert snapshot_id, "snapshot_id must be non-empty"
+    import uuid
+
+    uuid.UUID(snapshot_id)  # Raises ValueError if not a valid UUID
+
+    # Verify each call generates a unique snapshot_id
+    image2 = sb.snapshot_directory("/var")
+    assert len(captured_requests) == 2
+    snapshot_id2 = captured_requests[1].snapshot_id
+    assert snapshot_id2, "snapshot_id must be non-empty"
+    assert snapshot_id != snapshot_id2, "Each snapshot call should generate a unique snapshot_id"
 
     # Test validation: non-absolute path should raise
     with pytest.raises(InvalidError, match="must be absolute"):

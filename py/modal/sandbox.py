@@ -1031,7 +1031,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError(f"Snapshot path must be absolute; got: {posix_path}")
         path_bytes = posix_path.as_posix().encode("utf8")
 
-        req = sr_pb2.TaskSnapshotDirectoryRequest(task_id=task_id, path=path_bytes)
+        snapshot_id = str(uuid.uuid4())
+        req = sr_pb2.TaskSnapshotDirectoryRequest(task_id=task_id, path=path_bytes, snapshot_id=snapshot_id)
         res = await command_router_client.snapshot_directory(req)
         return _Image._new_hydrated(res.image_id, self._client, None)
 
