@@ -1115,7 +1115,7 @@ async def async_merge(
             new_output_task = asyncio.create_task(queue.get())
 
     finally:
-        unfinished_tasks = [t for t in tasks | {new_output_task} if not t.done()]
+        unfinished_tasks: list[asyncio.Task[Any]] = [t for t in tasks | {new_output_task} if not t.done()]
         for t in unfinished_tasks:
             t.cancel()
         try:
