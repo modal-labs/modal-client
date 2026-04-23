@@ -1641,8 +1641,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         return await _FileIO.create(path, mode, self._client, task_id)
 
     async def ls(self, path: str) -> builtins.list[str]:
-        """[Alpha] List the contents of a directory in the Sandbox."""
+        """[Alpha] List the contents of a directory in the Sandbox.
+
+        .. deprecated:: 2026-04-15
+            Use `Sandbox.filesystem.list_files()` instead."""
         self._ensure_v1("ls")
+        deprecation_warning(
+            (2026, 4, 15),
+            "`Sandbox.ls()` is deprecated. Use `Sandbox.filesystem.list_files()` instead.",
+            pending=True,
+        )
         task_id = await self._get_task_id()
         return await ls(path, self._client, task_id)
 

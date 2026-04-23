@@ -60,27 +60,6 @@ def try_parse_error_payload(stderr: Union[str, bytes]) -> Optional[ErrorPayload]
     return ErrorPayload(error_kind=error_kind, message=message, detail=detail)
 
 
-def raise_read_file_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
-    if payload := try_parse_error_payload(stderr):
-        logger.debug(
-            f"sandbox-fs-tools read error: path={remote_path}, "
-            f"error_kind={payload.error_kind}, message={payload.message}, detail={payload.detail}"
-        )
-        if payload.error_kind == "NotFound":
-            raise SandboxFilesystemNotFoundError(f"{payload.message}: {remote_path}")
-        if payload.error_kind == "IsDirectory":
-            raise SandboxFilesystemIsADirectoryError(f"{payload.message}: {remote_path}")
-        if payload.error_kind == "PermissionDenied":
-            raise SandboxFilesystemPermissionError(f"{payload.message}: {remote_path}")
-        if payload.error_kind == "FileTooLarge":
-            raise SandboxFilesystemFileTooLargeError(f"{payload.message}: {remote_path}")
-        raise SandboxFilesystemError(payload.message)
-
-    if stderr_text := _stderr_to_text(stderr):
-        logger.debug(f"Unstructured modal-sandbox-fs-tools stderr: {stderr_text}")
-    raise SandboxFilesystemError(f"Operation on '{remote_path}' failed with exit code {returncode}")
-
-
 def _extract_support_error_code(exc: Exception) -> Optional[str]:
     if match := re.search(r"Error code:\s*([A-Z0-9]{8})", str(exc)):
         return match.group(1)
@@ -144,6 +123,57 @@ def make_write_file_command(remote_path: str) -> str:
     return json.dumps({"WriteFile": {"path": remote_path}})
 
 
+def raise_list_files_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+    if payload := try_parse_error_payload(stderr):
+        logger.debug(
+            f"sandbox-fs-tools list_files error: path={remote_path}, "
+            f"error_kind={payload.error_kind}, message={payload.message}, detail={payload.detail}"
+        )
+        if payload.error_kind == "NotFound":
+            raise SandboxFilesystemNotFoundError(f"{payload.message}: {remote_path}")
+        if payload.error_kind in ("IsFile", "NotDirectory"):
+            raise SandboxFilesystemNotADirectoryError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "PermissionDenied":
+            raise SandboxFilesystemPermissionError(f"{payload.message}: {remote_path}")
+        raise SandboxFilesystemError(payload.message)
+
+    if stderr_text := _stderr_to_text(stderr):
+        logger.debug(f"Unstructured modal-sandbox-fs-tools stderr: {stderr_text}")
+    raise SandboxFilesystemError(f"Operation on '{remote_path}' failed with exit code {returncode}")
+
+
+def make_list_files_command(remote_path: str) -> str:
+    """Build the JSON command string for a ListFiles operation.
+
+    The returned JSON must match the `Command` enum in the modal-sandbox-fs-tools
+    Rust crate (crates/modal-sandbox-fs-tools/src/lib.rs). Treat changes to
+    this schema like protobuf changes: fields must not be removed or renamed,
+    only added with backwards-compatible defaults.
+    """
+    return json.dumps({"ListFiles": {"path": remote_path}})
+
+
+def raise_read_file_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+    if payload := try_parse_error_payload(stderr):
+        logger.debug(
+            f"sandbox-fs-tools read error: path={remote_path}, "
+            f"error_kind={payload.error_kind}, message={payload.message}, detail={payload.detail}"
+        )
+        if payload.error_kind == "NotFound":
+            raise SandboxFilesystemNotFoundError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "IsDirectory":
+            raise SandboxFilesystemIsADirectoryError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "PermissionDenied":
+            raise SandboxFilesystemPermissionError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "FileTooLarge":
+            raise SandboxFilesystemFileTooLargeError(f"{payload.message}: {remote_path}")
+        raise SandboxFilesystemError(payload.message)
+
+    if stderr_text := _stderr_to_text(stderr):
+        logger.debug(f"Unstructured modal-sandbox-fs-tools stderr: {stderr_text}")
+    raise SandboxFilesystemError(f"Operation on '{remote_path}' failed with exit code {returncode}")
+
+
 def make_read_file_command(remote_path: str) -> str:
     """Build the JSON command string for a ReadFile operation.
 
@@ -153,17 +183,6 @@ def make_read_file_command(remote_path: str) -> str:
     only added with backwards-compatible defaults.
     """
     return json.dumps({"ReadFile": {"path": remote_path}})
-
-
-def make_remove_command(remote_path: str, recursive: bool) -> str:
-    """Build the JSON command string for a Remove operation.
-
-    The returned JSON must match the `Command` enum in the modal-sandbox-fs-tools
-    Rust crate (crates/modal-sandbox-fs-tools/src/lib.rs). Treat changes to
-    this schema like protobuf changes: fields must not be removed or renamed,
-    only added with backwards-compatible defaults.
-    """
-    return json.dumps({"Remove": {"path": remote_path, "recursive": recursive}})
 
 
 def raise_remove_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
@@ -189,15 +208,15 @@ def raise_remove_error(returncode: int, stderr: Union[str, bytes], remote_path: 
     raise SandboxFilesystemError(f"Operation on '{remote_path}' failed with exit code {returncode}")
 
 
-def make_make_directory_command(remote_path: str, create_parents: bool) -> str:
-    """Build the JSON command string for a MakeDirectory operation.
+def make_remove_command(remote_path: str, recursive: bool) -> str:
+    """Build the JSON command string for a Remove operation.
 
     The returned JSON must match the `Command` enum in the modal-sandbox-fs-tools
     Rust crate (crates/modal-sandbox-fs-tools/src/lib.rs). Treat changes to
     this schema like protobuf changes: fields must not be removed or renamed,
     only added with backwards-compatible defaults.
     """
-    return json.dumps({"MakeDirectory": {"path": remote_path, "parents": create_parents}})
+    return json.dumps({"Remove": {"path": remote_path, "recursive": recursive}})
 
 
 def raise_make_directory_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
@@ -223,6 +242,17 @@ def raise_make_directory_error(returncode: int, stderr: Union[str, bytes], remot
     if stderr_text := _stderr_to_text(stderr):
         logger.debug(f"Unstructured modal-sandbox-fs-tools stderr: {stderr_text}")
     raise SandboxFilesystemError(f"Operation on '{remote_path}' failed with exit code {returncode}")
+
+
+def make_make_directory_command(remote_path: str, create_parents: bool) -> str:
+    """Build the JSON command string for a MakeDirectory operation.
+
+    The returned JSON must match the `Command` enum in the modal-sandbox-fs-tools
+    Rust crate (crates/modal-sandbox-fs-tools/src/lib.rs). Treat changes to
+    this schema like protobuf changes: fields must not be removed or renamed,
+    only added with backwards-compatible defaults.
+    """
+    return json.dumps({"MakeDirectory": {"path": remote_path, "parents": create_parents}})
 
 
 def validate_absolute_remote_path(remote_path: str, operation: str) -> None:

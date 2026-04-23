@@ -18,6 +18,7 @@ from modal.exception import (
 # types, so mypy cannot see this plain module-level constant. We suppress the
 # error here rather than defining a separate constant we'd have to keep in sync.
 from modal.io_streams import TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE  # type: ignore[attr-defined]
+from modal.sandbox_fs import FileInfo, FileType
 
 from .supports.skip import skip_windows
 
@@ -690,6 +691,286 @@ def test_sandbox_fs_copy_from_local_errors_when_local_path_is_directory(
 
     with pytest.raises(IsADirectoryError):
         sandbox.filesystem.copy_from_local(local_dir, remote_path)
+
+
+# ---------------------------------------------------------------------------
+# list_files
+# ---------------------------------------------------------------------------
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_returns_expected_entries(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    remote_dir = str(tmp_path / "list-dir")
+    (tmp_path / "list-dir").mkdir()
+    (tmp_path / "list-dir" / "hello.txt").write_text("hello", encoding="utf-8")
+    (tmp_path / "list-dir" / "subdir").mkdir()
+
+    result = sandbox.filesystem.list_files(remote_dir)
+
+    assert isinstance(result, list)
+    assert len(result) == 2
+    names = {entry.name for entry in result}
+    assert names == {"hello.txt", "subdir"}
+
+    file_entry = next(e for e in result if e.name == "hello.txt")
+    assert file_entry.is_file()
+    assert not file_entry.is_dir()
+    assert not file_entry.is_symlink()
+    assert file_entry.type == FileType.FILE
+    assert file_entry.size == 5
+
+    dir_entry = next(e for e in result if e.name == "subdir")
+    assert dir_entry.is_dir()
+    assert not dir_entry.is_file()
+    assert dir_entry.type == FileType.DIRECTORY
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+    with pytest.raises(InvalidError, match="absolute remote_path values"):
+        sandbox.filesystem.list_files("relative/path")
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_fileinfo_has_correct_metadata(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    remote_dir = str(tmp_path / "meta-dir")
+    (tmp_path / "meta-dir").mkdir()
+    file_content = "test content"
+    (tmp_path / "meta-dir" / "test.txt").write_text(file_content, encoding="utf-8")
+
+    result = sandbox.filesystem.list_files(remote_dir)
+
+    assert len(result) == 1
+    entry = result[0]
+    assert isinstance(entry, FileInfo)
+    assert entry.name == "test.txt"
+    assert entry.path.endswith("/meta-dir/test.txt")
+    assert entry.type == FileType.FILE
+    assert entry.size == len(file_content)
+    assert entry.permissions  # should be a non-empty octal string
+    assert entry.owner  # should be a non-empty string
+    assert entry.group  # should be a non-empty string
+    assert entry.modified_time > 0
+    assert entry.mode > 0
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_returns_empty_list_for_empty_directory(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    remote_dir = str(tmp_path / "empty-dir")
+    (tmp_path / "empty-dir").mkdir()
+
+    result = sandbox.filesystem.list_files(remote_dir)
+
+    assert result == []
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_includes_nested_directory_entries(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    remote_dir = str(tmp_path / "nested-dir")
+    (tmp_path / "nested-dir").mkdir()
+    (tmp_path / "nested-dir" / "a").mkdir()
+    (tmp_path / "nested-dir" / "a" / "deep.txt").write_text("deep", encoding="utf-8")
+    (tmp_path / "nested-dir" / "b.txt").write_text("b", encoding="utf-8")
+
+    result = sandbox.filesystem.list_files(remote_dir)
+
+    # list_files only lists immediate children, not recursively
+    assert len(result) == 2
+    names = {entry.name for entry in result}
+    assert names == {"a", "b.txt"}
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_errors_when_path_does_not_exist(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    remote_path = str(tmp_path / "nonexistent-dir")
+
+    with pytest.raises(SandboxFilesystemNotFoundError):
+        sandbox.filesystem.list_files(remote_path)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_errors_when_path_is_a_file(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    remote_path = str(tmp_path / "not-a-dir.txt")
+    (tmp_path / "not-a-dir.txt").write_text("I am a file", encoding="utf-8")
+
+    with pytest.raises(SandboxFilesystemNotADirectoryError):
+        sandbox.filesystem.list_files(remote_path)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_errors_when_path_component_is_a_file(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    blocker = tmp_path / "blocker.txt"
+    blocker.write_text("I am a file", encoding="utf-8")
+    remote_path = str(blocker / "subdir")
+
+    with pytest.raises(SandboxFilesystemNotADirectoryError):
+        sandbox.filesystem.list_files(remote_path)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_returns_correct_type_for_symlinks(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    import os
+
+    remote_dir = str(tmp_path / "symlink-type-dir")
+    (tmp_path / "symlink-type-dir").mkdir()
+    os.symlink("/dev/null", tmp_path / "symlink-type-dir" / "link")
+
+    result = sandbox.filesystem.list_files(remote_dir)
+
+    assert len(result) == 1
+    assert result[0].type == FileType.SYMLINK
+    assert result[0].is_symlink()
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_shows_symlink_target_for_symlinked_files(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    import os
+
+    target = tmp_path / "target.txt"
+    target.write_text("content", encoding="utf-8")
+    link_dir = tmp_path / "links"
+    link_dir.mkdir()
+    os.symlink(target, link_dir / "link.txt")
+
+    result = sandbox.filesystem.list_files(str(link_dir))
+
+    assert len(result) == 1
+    assert result[0].symlink_target == str(target)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_does_not_show_symlink_target_for_nonsymlinked_file(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    remote_dir = str(tmp_path / "no-symlink-file-dir")
+    (tmp_path / "no-symlink-file-dir").mkdir()
+    (tmp_path / "no-symlink-file-dir" / "file.txt").write_text("hello", encoding="utf-8")
+
+    result = sandbox.filesystem.list_files(remote_dir)
+
+    assert len(result) == 1
+    assert result[0].symlink_target is None
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_does_not_show_symlink_target_for_nonsymlinked_directory(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    remote_dir = str(tmp_path / "no-symlink-dir-dir")
+    (tmp_path / "no-symlink-dir-dir").mkdir()
+    (tmp_path / "no-symlink-dir-dir" / "subdir").mkdir()
+
+    result = sandbox.filesystem.list_files(remote_dir)
+
+    assert len(result) == 1
+    assert result[0].symlink_target is None
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_entries_sorted_by_name(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    remote_dir = str(tmp_path / "sorted-dir")
+    (tmp_path / "sorted-dir").mkdir()
+    (tmp_path / "sorted-dir" / "zebra.txt").write_text("z", encoding="utf-8")
+    (tmp_path / "sorted-dir" / "alpha.txt").write_text("a", encoding="utf-8")
+    (tmp_path / "sorted-dir" / "middle.txt").write_text("m", encoding="utf-8")
+
+    result = sandbox.filesystem.list_files(remote_dir)
+
+    assert [entry.name for entry in result] == ["alpha.txt", "middle.txt", "zebra.txt"]
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_dangling_symlink_reported_as_symlink(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    import os
+
+    remote_dir = str(tmp_path / "dangling-dir")
+    (tmp_path / "dangling-dir").mkdir()
+    os.symlink(tmp_path / "nonexistent-target", tmp_path / "dangling-dir" / "dangling-link")
+
+    result = sandbox.filesystem.list_files(remote_dir)
+
+    assert len(result) == 1
+    assert result[0].type == FileType.SYMLINK
+    assert result[0].is_symlink()
+    assert result[0].symlink_target == str(tmp_path / "nonexistent-target")
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_follows_symlink_if_path_is_directory(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    import os
+
+    target_dir = tmp_path / "target-dir"
+    target_dir.mkdir()
+    (target_dir / "file.txt").write_text("hello", encoding="utf-8")
+    link = tmp_path / "link-to-dir"
+    os.symlink(target_dir, link)
+
+    result = sandbox.filesystem.list_files(str(link))
+
+    assert len(result) == 1
+    assert result[0].name == "file.txt"
+    assert result[0].type == FileType.FILE
+    assert result[0].path.startswith(str(link))
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_list_files_symlink_to_directory_reported_as_symlink(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    import os
+
+    remote_dir = str(tmp_path / "dir-with-dirlink")
+    (tmp_path / "dir-with-dirlink").mkdir()
+    target_dir = tmp_path / "dir-with-dirlink" / "target-dir"
+    target_dir.mkdir()
+    os.symlink(target_dir, tmp_path / "dir-with-dirlink" / "link-to-dir")
+
+    result = sandbox.filesystem.list_files(remote_dir)
+
+    link_entry = next(e for e in result if e.name == "link-to-dir")
+    assert link_entry.type == FileType.SYMLINK
+    assert link_entry.is_symlink()
+    assert link_entry.symlink_target == str(target_dir)
 
 
 # ---------------------------------------------------------------------------

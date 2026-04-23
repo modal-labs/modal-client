@@ -396,7 +396,7 @@ class _FileIO(Generic[T]):
         """List the contents of the provided directory."""
         deprecation_warning(
             (2026, 3, 9),
-            "`FileIO.ls()` is deprecated. Use `Sandbox.ls()` instead.",
+            "`FileIO.ls()` is deprecated. Use `Sandbox.filesystem.list_files()` instead.",
             pending=True,
         )
         return await ls(path, client, task_id)

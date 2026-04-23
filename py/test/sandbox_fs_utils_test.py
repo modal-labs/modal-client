@@ -4,6 +4,7 @@ import pytest
 
 from modal._utils.sandbox_fs_utils import (
     ErrorPayload,
+    make_list_files_command,
     translate_exec_errors,
     translate_exec_unexpected_error,
     try_parse_error_payload,
@@ -77,6 +78,18 @@ def test_try_parse_error_payload_returns_none_for_non_string_message():
 
 def test_try_parse_error_payload_returns_none_for_blank_message():
     assert try_parse_error_payload(json.dumps({"error_kind": "NotFound", "message": "  "})) is None
+
+
+def test_make_list_files_command_produces_correct_json():
+    result = make_list_files_command("/tmp/mydir")
+    parsed = json.loads(result)
+    assert parsed == {"ListFiles": {"path": "/tmp/mydir"}}
+
+
+def test_make_list_files_command_handles_path_with_special_characters():
+    result = make_list_files_command("/tmp/my dir/with spaces")
+    parsed = json.loads(result)
+    assert parsed == {"ListFiles": {"path": "/tmp/my dir/with spaces"}}
 
 
 def test_try_parse_error_payload_includes_detail_when_present():
