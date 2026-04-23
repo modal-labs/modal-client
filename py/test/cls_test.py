@@ -167,6 +167,34 @@ def test_call_class_sync(client, servicer):
     assert function_map_request.function_id == service_function_id
 
 
+def test_cls_instantiation_reuses_bind_params_cache(client, servicer):
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            # Instantiate the same class twice with the same args
+            obj1 = Foo("foo", 234)
+            obj1.bar.remote(42)
+            obj2 = Foo("foo", 234)
+            obj2.bar.remote(42)
+            # Only 1 FunctionBindParams RPC should be made due to caching
+            assert len(ctx.get_requests("FunctionBindParams")) == 1
+
+
+def test_with_options_reuses_bind_params_cache(client, servicer):
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            # Create two _Cls instances via with_options with identical options
+            cls1 = Foo.with_options(max_containers=3)  # type: ignore
+            cls2 = Foo.with_options(max_containers=3)  # type: ignore
+            # Instantiate each and call a method to trigger FunctionBindParams
+            obj1 = cls1()
+            obj1.bar.remote(2)
+            obj2 = cls2()
+            obj2.bar.remote(2)
+            # Only 1 FunctionBindParams RPC total since both share the same parent _Function
+            # and have identical serialized_params + options
+            assert len(ctx.get_requests("FunctionBindParams")) == 1
+
+
 def test_class_with_options(client, servicer):
     unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
     unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})

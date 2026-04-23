@@ -5,6 +5,7 @@ import inspect
 import time
 import typing
 import warnings
+from collections import OrderedDict
 from collections.abc import AsyncGenerator, Collection, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -1261,6 +1262,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             else:
                 options_pb = None
 
+            options_bytes = options_pb.SerializeToString() if options_pb else b""
+            cache_key = (parent.object_id, serialized_params, options_bytes)
+
+            if cache_key in parent._bind_params_cache:
+                bound_function_id, handle_metadata = parent._bind_params_cache[cache_key]
+                # Move to end for LRU ordering
+                parent._bind_params_cache.move_to_end(cache_key)
+                param_bound_func._hydrate(bound_function_id, parent._client, handle_metadata)
+                return
+
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=parent.object_id,
                 serialized_params=serialized_params,
@@ -1271,6 +1282,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             response = await parent._client.stub.FunctionBindParams(req)
             param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
+
+            # Cache the successful result
+            parent._bind_params_cache[cache_key] = (response.bound_function_id, response.handle_metadata)
+            # Evict oldest entry if cache exceeds max size
+            if len(parent._bind_params_cache) > 256:
+                parent._bind_params_cache.popitem(last=False)
 
         def _deps():
             if options:
@@ -1471,6 +1488,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._serve_mounts = frozenset()
         self._metadata = None
         self._experimental_flash_urls = None
+        self._bind_params_cache: OrderedDict[tuple, tuple] = OrderedDict()
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
