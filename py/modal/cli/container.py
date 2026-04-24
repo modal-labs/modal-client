@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import uuid
 import warnings
 from datetime import datetime, timezone
 from typing import Optional, Union
@@ -12,6 +13,7 @@ from modal._logs import _FETCH_LIMIT, _MAX_FETCH_RANGE, LogsFilters
 from modal._object import _get_environment_name
 from modal._output.pty import get_pty_info
 from modal._utils.async_utils import synchronizer
+from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.app import _DEFAULT_LOGS_TAIL, _SOURCE_OPTIONS, _parse_time_arg
 from modal.cli.utils import (
@@ -30,7 +32,7 @@ from modal.container_process import _ContainerProcess
 from modal.environments import ensure_env
 from modal.exception import InvalidError
 from modal.stream_type import StreamType
-from modal_proto import api_pb2
+from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from ._help import ModalGroup
 
@@ -276,20 +278,33 @@ async def _exec_impl(
 
     client = await _Client.from_env()
 
-    req = api_pb2.ContainerExecRequest(
+    command_router_client = await TaskCommandRouterClient.try_init(client, container_id)
+    if command_router_client is None:
+        raise InvalidError(f"Command router access is not available for container {container_id}")
+
+    process_id = str(uuid.uuid4())
+
+    start_req = sr_pb2.TaskExecStartRequest(
         task_id=container_id,
-        command=command,
+        exec_id=process_id,
+        command_args=command,
+        stdout_config=sr_pb2.TaskExecStdoutConfig.TASK_EXEC_STDOUT_CONFIG_PIPE,
+        stderr_config=sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_PIPE,
         pty_info=get_pty_info(shell=True) if pty else None,
         runtime_debug=config.get("function_runtime_debug"),
     )
-    res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
+    await command_router_client.exec_start(start_req)
 
     if pty:
-        await _ContainerProcess(res.exec_id, container_id, client).attach()
+        await _ContainerProcess(process_id, container_id, client, command_router_client=command_router_client).attach()
     else:
-        # TODO: redirect stderr to its own stream?
         await _ContainerProcess(
-            res.exec_id, container_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT
+            process_id,
+            container_id,
+            client,
+            command_router_client=command_router_client,
+            stdout=StreamType.STDOUT,
+            stderr=StreamType.STDOUT,
         ).wait()
 
 
