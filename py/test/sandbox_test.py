@@ -787,6 +787,27 @@ def test_sandbox_create_pty(app, servicer):
 
 
 @skip_non_subprocess
+def test_experimental_sandbox_create_resources_default(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app)
+        req = ctx.pop_request("SandboxCreateV2")
+
+        assert req.definition.resources.memory_mb == 0
+        assert req.definition.resources.milli_cpu == 0
+
+
+@skip_non_subprocess
+def test_experimental_sandbox_create_memory_roundtrip(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, cpu=2.0, memory=512)
+        req = ctx.pop_request("SandboxCreateV2")
+
+        assert req.definition.resources.memory_mb == 512
+        assert req.definition.resources.memory_mb_max == 0
+        assert req.definition.resources.milli_cpu == 2000
+
+
+@skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
 def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
     pty_info = None
