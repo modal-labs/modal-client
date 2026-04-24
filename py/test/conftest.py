@@ -2130,6 +2130,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
+    async def SandboxCreateV2(self, stream):
+        request: api_pb2.SandboxCreateV2Request = await stream.recv_message()
+        self.sandbox_app_id = request.app_id
+        self.sandbox_defs.append(request.definition)
+
+        await stream.send_message(api_pb2.SandboxCreateV2Response(sandbox_id="sb-v2-123", task_id="ta-v2-123"))
+
     async def SandboxGetLogs(self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
         f: asyncio.StreamReader

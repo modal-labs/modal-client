@@ -628,6 +628,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         idle_timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         cpu: Optional[float] = None,
+        memory: Optional[int] = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,
         block_network: bool = False,
@@ -642,7 +643,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> "_Sandbox":
         """Create a sandbox using the V2 backend.
 
-        Only CPU is configurable; memory is derived as a fixed ratio of CPU.
         Features like tags, snapshots, exec, volumes, network file systems,
         GPUs, custom domains, and proxies are not supported.
         """
@@ -714,7 +714,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 timeout_secs=timeout,
                 idle_timeout_secs=idle_timeout,
                 workdir=workdir,
-                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=0, gpu=None, ephemeral_disk=None),
+                resources=convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=None, ephemeral_disk=None),
                 cloud_provider_str=cloud if cloud else None,
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
