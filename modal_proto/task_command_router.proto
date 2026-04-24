@@ -7,6 +7,11 @@ import "modal_proto/api.proto";
 
 package modal.task_command_router;
 
+enum SandboxStdioFileDescriptor {
+  SANDBOX_STDIO_FILE_DESCRIPTOR_STDOUT = 0;
+  SANDBOX_STDIO_FILE_DESCRIPTOR_STDERR = 1;
+}
+
 enum TaskExecStderrConfig {
   // The output will be discarded.
   TASK_EXEC_STDERR_CONFIG_DEVNULL = 0;
@@ -29,6 +34,25 @@ enum TaskExecStdoutConfig {
   TASK_EXEC_STDOUT_CONFIG_DEVNULL = 0;
   // The output will be streamed to the client.
   TASK_EXEC_STDOUT_CONFIG_PIPE = 1;
+}
+
+message SandboxStdinWriteV2Request {
+  string task_id = 1;
+  uint64 offset = 2;
+  bytes data = 3;
+  bool eof = 4;
+}
+
+message SandboxStdinWriteV2Response {}
+
+message SandboxStdioReadV2Request {
+  string task_id = 1;
+  uint64 offset = 2;
+  SandboxStdioFileDescriptor file_descriptor = 3;
+}
+
+message SandboxStdioReadV2Response {
+  bytes data = 1;
 }
 
 message TaskContainerCreateRequest {
@@ -222,6 +246,8 @@ message TaskUnmountDirectoryRequest {
 }
 
 service TaskCommandRouter {
+  rpc SandboxStdinWriteV2(SandboxStdinWriteV2Request) returns (SandboxStdinWriteV2Response);
+  rpc SandboxStdioReadV2(SandboxStdioReadV2Request) returns (stream SandboxStdioReadV2Response);
   // Create an additional container for a task.
   rpc TaskContainerCreate(TaskContainerCreateRequest) returns (TaskContainerCreateResponse);
   // Get the latest container associated with a logical name.
