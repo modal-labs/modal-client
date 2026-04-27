@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from modal._clustered_functions import ClusterInfo
 from modal.experimental.flash import _FlashContainerEntry, _FlashManager, _FlashPrometheusAutoscaler
 from modal_proto import api_pb2
+from test.supports.skip import skip_windows
 
 
 @pytest.fixture
@@ -263,6 +264,7 @@ class TestFlashManagerStopping:
         assert flash_manager.num_heartbeat_failures > 0
 
     @pytest.mark.asyncio
+    @skip_windows("flash manager should only be running in linux")
     async def test_hearbeat_on_dead_process(self, flash_manager, servicer):
         """Test that flash heartbeat kills task if process dies."""
         flash_manager.tunnel = MagicMock()
