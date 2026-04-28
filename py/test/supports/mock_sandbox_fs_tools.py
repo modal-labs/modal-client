@@ -6,8 +6,11 @@ Emulates the Rust binary's behavior for ReadFile and WriteFile, including
 structured JSON error payloads on stderr. Accepts a single JSON argument.
 """
 
+import grp
 import json
 import os
+import pwd
+import stat
 import sys
 
 
@@ -17,6 +20,38 @@ def _error_payload(error_kind, message, detail=None):
         payload["detail"] = detail
     sys.stderr.write(json.dumps(payload))
     raise SystemExit(1)
+
+
+def _build_file_entry(name, path, st):
+    """Build a FileEntry dict matching the Rust crate's `build_file_entry`."""
+    if stat.S_ISLNK(st.st_mode):
+        file_type = "symlink"
+    elif stat.S_ISDIR(st.st_mode):
+        file_type = "directory"
+    else:
+        file_type = "file"
+    try:
+        owner = pwd.getpwuid(st.st_uid).pw_name
+    except KeyError:
+        owner = str(st.st_uid)
+    try:
+        group = grp.getgrgid(st.st_gid).gr_name
+    except KeyError:
+        group = str(st.st_gid)
+    entry = {
+        "name": name,
+        "path": path,
+        "type": file_type,
+        "size": st.st_size,
+        "mode": st.st_mode,
+        "permissions": f"{stat.S_IMODE(st.st_mode):04o}",
+        "owner": owner,
+        "group": group,
+        "modified_time": st.st_mtime,
+    }
+    if file_type == "symlink":
+        entry["symlink_target"] = os.readlink(path)
+    return entry
 
 
 if len(sys.argv) != 2:
@@ -41,10 +76,6 @@ if "ListFiles" in command:
     if not os.path.isdir(target):
         _error_payload("IsFile", "expected a directory path")
     try:
-        import grp
-        import pwd
-        import stat
-
         entries = []
         for name in sorted(os.listdir(target)):
             full_path = os.path.join(target, name)
@@ -52,34 +83,7 @@ if "ListFiles" in command:
                 st = os.lstat(full_path)
             except OSError:
                 continue
-            if stat.S_ISLNK(st.st_mode):
-                file_type = "symlink"
-            elif stat.S_ISDIR(st.st_mode):
-                file_type = "directory"
-            else:
-                file_type = "file"
-            try:
-                owner = pwd.getpwuid(st.st_uid).pw_name
-            except KeyError:
-                owner = str(st.st_uid)
-            try:
-                group = grp.getgrgid(st.st_gid).gr_name
-            except KeyError:
-                group = str(st.st_gid)
-            entry = {
-                "name": name,
-                "path": os.path.abspath(full_path),
-                "type": file_type,
-                "size": st.st_size,
-                "mode": st.st_mode,
-                "permissions": f"{stat.S_IMODE(st.st_mode):04o}",
-                "owner": owner,
-                "group": group,
-                "modified_time": st.st_mtime,
-            }
-            if file_type == "symlink":
-                entry["symlink_target"] = os.readlink(full_path)
-            entries.append(entry)
+            entries.append(_build_file_entry(name, os.path.abspath(full_path), st))
         sys.stdout.write(json.dumps(entries))
         sys.stdout.flush()
     except PermissionError:
@@ -147,6 +151,23 @@ if "Remove" in command:
             _error_payload("DirectoryNotEmpty", "directory is not empty")
         else:
             _error_payload("Io", str(e))
+    raise SystemExit(0)
+
+if "Stat" in command:
+    target = command["Stat"]["path"]
+    try:
+        st = os.lstat(target)
+    except FileNotFoundError:
+        _error_payload("NotFound", "path does not exist")
+    except NotADirectoryError:
+        _error_payload("NotDirectory", "a component of the path is not a directory")
+    except PermissionError:
+        _error_payload("PermissionDenied", "permission denied")
+    except OSError as e:
+        _error_payload("Io", "I/O error", detail=str(e))
+    name = os.path.basename(target.rstrip("/"))
+    sys.stdout.write(json.dumps(_build_file_entry(name, target, st)))
+    sys.stdout.flush()
     raise SystemExit(0)
 
 if "WriteFile" in command:

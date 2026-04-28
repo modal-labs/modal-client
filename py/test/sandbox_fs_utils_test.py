@@ -5,6 +5,7 @@ import pytest
 from modal._utils.sandbox_fs_utils import (
     ErrorPayload,
     make_list_files_command,
+    make_stat_command,
     translate_exec_errors,
     translate_exec_unexpected_error,
     try_parse_error_payload,
@@ -104,3 +105,15 @@ def test_try_parse_error_payload_ignores_non_string_detail():
     stderr = json.dumps({"error_kind": "Io", "message": "I/O error", "detail": 42})
     result = try_parse_error_payload(stderr)
     assert result == ErrorPayload(error_kind="Io", message="I/O error", detail="")
+
+
+def test_make_stat_command_produces_correct_json():
+    result = make_stat_command("/tmp/file.txt")
+    parsed = json.loads(result)
+    assert parsed == {"Stat": {"path": "/tmp/file.txt"}}
+
+
+def test_make_stat_command_handles_path_with_special_characters():
+    result = make_stat_command("/tmp/my dir/with spaces/file.txt")
+    parsed = json.loads(result)
+    assert parsed == {"Stat": {"path": "/tmp/my dir/with spaces/file.txt"}}
