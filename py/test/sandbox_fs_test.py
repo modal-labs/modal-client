@@ -1167,3 +1167,188 @@ def test_sandbox_fs_make_directory_errors_when_ancestor_is_a_file(
 def test_sandbox_fs_make_directory_no_parents_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.make_directory("relative/path", create_parents=False)
+
+
+# ---------------------------------------------------------------------------
+# stat
+# ---------------------------------------------------------------------------
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_returns_metadata_for_regular_file(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    file_path = tmp_path / "stat-file.txt"
+    file_path.write_text("hello", encoding="utf-8")
+    file_path.chmod(0o644)
+
+    info = sandbox.filesystem.stat(str(file_path))
+
+    assert isinstance(info, FileInfo)
+    assert info.name == "stat-file.txt"
+    assert info.path == str(file_path)
+    assert info.type == FileType.FILE
+    assert info.is_file()
+    assert not info.is_dir()
+    assert not info.is_symlink()
+    assert info.size == 5
+    assert info.permissions == "0644"
+    assert info.mode > 0
+    assert info.modified_time > 0
+    assert info.owner
+    assert info.group
+    assert info.symlink_target is None
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_returns_metadata_for_directory(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    dir_path = tmp_path / "stat-dir"
+    dir_path.mkdir()
+
+    info = sandbox.filesystem.stat(str(dir_path))
+
+    assert info.name == "stat-dir"
+    assert info.path == str(dir_path)
+    assert info.type == FileType.DIRECTORY
+    assert info.is_dir()
+    assert not info.is_file()
+    assert not info.is_symlink()
+    assert info.symlink_target is None
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_returns_metadata_for_empty_file(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    file_path = tmp_path / "empty.txt"
+    file_path.write_bytes(b"")
+
+    info = sandbox.filesystem.stat(str(file_path))
+
+    assert info.type == FileType.FILE
+    assert info.size == 0
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_reports_symlink_to_file_as_symlink(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    import os
+
+    target = tmp_path / "stat-target.txt"
+    target.write_text("hello", encoding="utf-8")
+    link = tmp_path / "stat-link.txt"
+    os.symlink(target, link)
+
+    info = sandbox.filesystem.stat(str(link))
+
+    assert info.name == "stat-link.txt"
+    assert info.path == str(link)
+    assert info.type == FileType.SYMLINK
+    assert info.is_symlink()
+    assert info.symlink_target == str(target)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_reports_symlink_to_directory_as_symlink(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    import os
+
+    target_dir = tmp_path / "stat-target-dir"
+    target_dir.mkdir()
+    link = tmp_path / "stat-link-to-dir"
+    os.symlink(target_dir, link)
+
+    info = sandbox.filesystem.stat(str(link))
+
+    assert info.type == FileType.SYMLINK
+    assert info.is_symlink()
+    assert info.symlink_target == str(target_dir)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_reports_dangling_symlink_as_symlink(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    import os
+
+    missing = tmp_path / "stat-missing-target"
+    link = tmp_path / "stat-dangling-link"
+    os.symlink(missing, link)
+
+    info = sandbox.filesystem.stat(str(link))
+
+    assert info.type == FileType.SYMLINK
+    assert info.is_symlink()
+    assert info.symlink_target == str(missing)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_preserves_relative_symlink_target(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    import os
+
+    # Relative target, with no directory prefix. lstat reads the link text
+    # verbatim, so this exact string must come back through.
+    link = tmp_path / "stat-rel-link.txt"
+    os.symlink("target.txt", link)
+
+    info = sandbox.filesystem.stat(str(link))
+
+    assert info.type == FileType.SYMLINK
+    assert info.symlink_target == "target.txt"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_permissions_string_reflects_mode(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    file_path = tmp_path / "perm-file.txt"
+    file_path.write_bytes(b"")
+    file_path.chmod(0o755)
+
+    info = sandbox.filesystem.stat(str(file_path))
+
+    assert info.permissions == "0755"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+    with pytest.raises(InvalidError, match="absolute remote_path values"):
+        sandbox.filesystem.stat("relative/path.txt")
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_errors_when_path_does_not_exist(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    missing = str(tmp_path / "stat-missing")
+
+    with pytest.raises(SandboxFilesystemNotFoundError):
+        sandbox.filesystem.stat(missing)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_stat_errors_when_ancestor_is_a_file(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    blocker = tmp_path / "stat-blocker"
+    blocker.write_bytes(b"I am a file")
+
+    with pytest.raises(SandboxFilesystemNotADirectoryError):
+        sandbox.filesystem.stat(str(blocker / "child"))

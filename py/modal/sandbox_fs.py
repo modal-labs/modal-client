@@ -18,11 +18,13 @@ from ._utils.sandbox_fs_utils import (
     make_make_directory_command,
     make_read_file_command,
     make_remove_command,
+    make_stat_command,
     make_write_file_command,
     raise_list_files_error,
     raise_make_directory_error,
     raise_read_file_error,
     raise_remove_error,
+    raise_stat_error,
     raise_write_file_error,
     translate_exec_errors,
     validate_absolute_remote_path,
@@ -418,6 +420,57 @@ class _SandboxFilesystem:
 
         if returncode != 0:
             raise_remove_error(returncode, stderr, remote_path)
+
+    async def stat(self, remote_path: str) -> FileInfo:
+        """Return metadata for a single file, directory, or symlink in the Sandbox.
+
+        `remote_path` must be an absolute path in the Sandbox. If `remote_path` is a symlink, the returned
+        `FileInfo` object describes the symlink, not the target it points to.
+
+        **Raises**
+
+        - `SandboxFilesystemNotFoundError`: the path does not exist.
+        - `SandboxFilesystemNotADirectoryError`: a non-leaf component of the path is not a directory.
+        - `SandboxFilesystemPermissionError`: a component of the path is not searchable.
+        - `SandboxFilesystemError`: the command fails for any other reason.
+
+        **Usage**
+
+        ```python fixture:sandbox
+        sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
+        info = sandbox.filesystem.stat("/tmp/hello.txt")
+        print(info.size, info.permissions, info.modified_time)
+        ```
+        """
+        validate_absolute_remote_path(remote_path, "stat")
+
+        t0 = time.monotonic()
+        with translate_exec_errors("stat", remote_path):
+            process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_stat_command(remote_path))
+            stdout, stderr, returncode = await asyncio.gather(
+                process.stdout.read(), process.stderr.read(), process.wait()
+            )
+
+        if returncode != 0:
+            raise_stat_error(returncode, stderr, remote_path)
+
+        entry = json.loads(stdout)
+        result = FileInfo(
+            name=entry["name"],
+            path=entry["path"],
+            type=FileType(entry["type"]),
+            size=entry["size"],
+            mode=entry["mode"],
+            permissions=entry["permissions"],
+            owner=entry["owner"],
+            group=entry["group"],
+            modified_time=entry["modified_time"],
+            symlink_target=entry.get("symlink_target"),
+        )
+
+        dur_s = max(time.monotonic() - t0, 0.001)
+        logger.debug(f"sandbox stat {remote_path}: ({dur_s:.2f}s)")
+        return result
 
     async def write_bytes(self, data: Union[bytes, bytearray, memoryview], remote_path: str) -> None:
         """Write binary content to a file in the Sandbox.
