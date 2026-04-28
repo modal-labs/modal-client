@@ -93,6 +93,7 @@ async def _serve_app(
     app: "modal.app._App",
     import_ref: ImportRef,
     *,
+    name: Optional[str] = None,
     _watcher: Optional[AsyncGenerator[set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
 ) -> AsyncGenerator["modal.app._App", None]:
@@ -101,7 +102,9 @@ async def _serve_app(
 
     client = await _Client.from_env()
 
-    async with _run_app(app, client=client, environment_name=environment_name, deployment_strategy="recreate"):
+    async with _run_app(
+        app, name=name, client=client, environment_name=environment_name, deployment_strategy="recreate"
+    ):
         if _watcher is not None:
             watcher = _watcher  # Only used by tests
         else:

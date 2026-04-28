@@ -266,3 +266,14 @@ def test_run_app_recreate_deployment_stop_fails(servicer, client, monkeypatch):
             ctx.set_responder("TaskList", task_list)
             ctx.set_responder("ContainerStop", container_stop)
             dummy_app.deploy(client=client, strategy="recreate")
+
+
+@pytest.mark.parametrize("default_name", ["default-name", None])
+def test_runtime_name_assignment(servicer, client, default_name):
+    app = modal.App(name=default_name)
+
+    with servicer.intercept() as ctx:
+        with app.run(name="override-name", client=client):
+            pass
+
+    assert ctx.pop_request("AppCreate").description == "override-name"

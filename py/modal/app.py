@@ -379,6 +379,7 @@ class _App:
     async def run(
         self,
         *,
+        name: Optional[str] = None,
         client: Optional[_Client] = None,
         detach: bool = False,
         interactive: bool = False,
@@ -426,7 +427,7 @@ class _App:
         from .runner import _run_app  # Defer import of runner.py, which imports a lot from Rich
 
         async with _run_app(
-            self, client=client, detach=detach, interactive=interactive, environment_name=environment_name
+            self, name=name, client=client, detach=detach, interactive=interactive, environment_name=environment_name
         ):
             yield self
 

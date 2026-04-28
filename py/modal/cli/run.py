@@ -235,6 +235,7 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
         output_mgr.set_timestamps(ctx.obj["show_timestamps"])
         with run_app(
             app,
+            name=ctx.obj["name"],
             detach=ctx.obj["detach"],
             environment_name=ctx.obj["env"],
             interactive=ctx.obj["interactive"],
@@ -365,6 +366,7 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
         output_mgr.set_timestamps(ctx.obj["show_timestamps"])
         with run_app(
             app,
+            name=ctx.obj["name"],
             detach=ctx.obj["detach"],
             environment_name=ctx.obj["env"],
             interactive=ctx.obj["interactive"],
@@ -448,6 +450,7 @@ class RunGroup(ModalGroup):
     cls=RunGroup,
     subcommand_metavar="FUNC_REF",
 )
+@click.option("-n", "--name", help="Name for this run of the App.")
 @click.option("-w", "--write-result", help="Write return value (which must be str or bytes) to this local path.")
 @click.option("-q", "--quiet", is_flag=True, help="Don't show Modal progress indicators.")
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
@@ -458,6 +461,7 @@ class RunGroup(ModalGroup):
 @click.pass_context
 def run(
     ctx: click.Context,
+    name: Optional[str],
     write_result: Optional[str],
     detach: bool,
     quiet: bool,
@@ -498,6 +502,7 @@ def run(
     ```
     """
     ctx.ensure_object(dict)
+    ctx.obj["name"] = name
     ctx.obj["result_path"] = write_result
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
@@ -573,6 +578,7 @@ def deploy(
 
 @click.command("serve", cls=ModalCommand, no_args_is_help=True)
 @click.argument("app_ref")
+@click.option("-n", "--name", help="Name for this run of the App.")
 @click.option("--timeout", default=None, type=float)
 @click.option("-e", "--env", default=None, help=ENV_OPTION_HELP)
 @click.option(
@@ -585,6 +591,7 @@ def deploy(
 @click.option("--timestamps", is_flag=True, default=False, help="Show timestamps for each log line.")
 def serve(
     app_ref: str,
+    name: Optional[str] = None,
     timeout: Optional[float] = None,
     env: Optional[str] = None,
     use_module_mode: bool = False,
@@ -611,7 +618,7 @@ def serve(
     app = import_app_from_ref(import_ref, base_cmd="modal serve")
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
-    with serve_app(app, import_ref, environment_name=env):
+    with serve_app(app, import_ref, name=name, environment_name=env):
         if timeout is None:
             timeout = config["serve_timeout"]
         if timeout is None:

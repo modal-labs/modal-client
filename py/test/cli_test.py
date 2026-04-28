@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from pickle import dumps
+from unittest import mock
 from unittest.mock import MagicMock
 
 import toml
@@ -623,6 +624,21 @@ def test_app_descriptions(servicer, set_env_client, test_dir):
     assert "--timeout 0.0" not in description
 
 
+def test_app_descriptions_with_name(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "prints_desc_app.py"
+    run_cli_command(["run", "--detach", "--name", "named-run-app", app_file.as_posix() + "::foo"])
+    run_cli_command(["serve", "--timeout", "0.0", "--name", "named-serve-app", app_file.as_posix()])
+
+    create_reqs = [s for s in servicer.requests if isinstance(s, api_pb2.AppCreateRequest)]
+    assert len(create_reqs) == 2
+
+    run_description = create_reqs[0].description
+    assert run_description == "named-run-app"
+
+    serve_description = create_reqs[1].description
+    assert serve_description == "named-serve-app"
+
+
 def test_logs(servicer, server_url_env, set_env_client, mock_dir):
     async def app_done(self, stream):
         await stream.recv_message()
@@ -663,8 +679,6 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
 
 
 def test_logs_spinner_text(servicer, server_url_env, set_env_client, mock_dir):
-    from unittest import mock
-
     from modal._output.rich import RichOutputManager
 
     async def app_done(self, stream):

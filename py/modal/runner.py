@@ -360,6 +360,7 @@ async def _status_based_disconnect(client: _Client, app_id: str, exc_info: Optio
 async def _run_app(
     app: "modal.app._App",
     *,
+    name: Optional[str] = None,
     client: Optional[_Client] = None,
     detach: bool = False,
     environment_name: Optional[str] = None,
@@ -380,7 +381,9 @@ async def _run_app(
             "You should not use `app.run` or `run_app` within a Modal `local_entrypoint`"
         )
 
-    if app.description is None:
+    if name:
+        app.set_description(name)
+    elif app.description is None:
         import __main__
 
         if "__file__" in dir(__main__):
