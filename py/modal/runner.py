@@ -430,8 +430,10 @@ async def _run_app(
                 output_mgr.step_completed(initialized_msg)
                 output_mgr.update_app_page_url(running_app.app_page_url or "ERROR:NO_APP_PAGE")
 
-            # Start logs loop
-
+        # Start the app-logs streaming loop whenever the manager can process logs.
+        # In quiet mode (`modal run -q`) we still want stdout/stderr from remote
+        # functions — only progress indicators are suppressed (see issue #2076).
+        if output_mgr.can_process_logs:
             logs_loop = tc.create_task(get_app_logs_loop(load_context.client, output_mgr, app_id=running_app.app_id))
 
         try:

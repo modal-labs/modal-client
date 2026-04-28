@@ -246,6 +246,12 @@ class RichOutputManager(OutputManager):
         return not self._quiet_mode
 
     @property
+    def can_process_logs(self) -> bool:
+        # A Rich-backed manager can always deliver function logs — even in quiet mode,
+        # `put_streaming_log` writes to the real Rich console (see issue #2076).
+        return True
+
+    @property
     def is_terminal(self) -> bool:
         return self._console.is_terminal
 
