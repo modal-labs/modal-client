@@ -5,11 +5,12 @@ from __future__ import annotations
 
 import inspect
 import os
+import shutil
 import sys
 from typing import Any, Optional
 
 import click
-from rich.console import Console
+from rich.console import Console, Group, RenderableType
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.panel import Panel
@@ -24,6 +25,7 @@ _OPTION_METAVAR_STYLE = "dim"
 _ERROR_STYLE = "red"
 
 _MAX_HELP_WIDTH = 80
+_HELP_PADDING = 1
 
 
 def use_rich_style() -> bool:
@@ -34,25 +36,24 @@ def use_rich_style() -> bool:
     return sys.stdout.isatty()
 
 
-def _make_console(file: Optional[Any] = None) -> Console:
-    return Console(file=file, highlight=False)
+def _make_help_console() -> Console:
+    columns, _ = shutil.get_terminal_size()
+    return Console(highlight=False, width=min(_MAX_HELP_WIDTH, columns))
 
 
-def _render_usage(cmd: click.Command, ctx: click.Context, console: Console) -> None:
+def _build_usage(cmd: click.Command, ctx: click.Context) -> RenderableType:
     pieces = " ".join(cmd.collect_usage_pieces(ctx))
     usage = Text()
     usage.append("Usage: ", style=_HEADING_STYLE)
     usage.append(f"{ctx.command_path} {pieces}".rstrip())
-    console.print(usage)
-    console.print()
+    return usage
 
 
-def _render_help_text(cmd: click.Command, console: Console) -> None:
+def _build_help_text(cmd: click.Command) -> Optional[RenderableType]:
     text = cmd.help or cmd.short_help or ""
     if not text:
-        return
-    console.print(Padding(Markdown(inspect.cleandoc(text)), (0, 2)))
-    console.print()
+        return None
+    return Markdown(inspect.cleandoc(text))
 
 
 def _option_label(param: click.Parameter, ctx: click.Context) -> Text:
@@ -73,7 +74,7 @@ def _option_label(param: click.Parameter, ctx: click.Context) -> Text:
     return text
 
 
-def _render_options(cmd: click.Command, ctx: click.Context, console: Console) -> None:
+def _build_options(cmd: click.Command, ctx: click.Context) -> Optional[RenderableType]:
     rows: list[tuple[Text, str]] = []
     for param in cmd.get_params(ctx):
         rec = param.get_help_record(ctx)
@@ -81,22 +82,20 @@ def _render_options(cmd: click.Command, ctx: click.Context, console: Console) ->
             continue
         rows.append((_option_label(param, ctx), rec[1] or ""))
     if not rows:
-        return
+        return None
 
-    console.print(Text("Options", style=_HEADING_STYLE))
     table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2))
     table.add_column(no_wrap=True)  # styling lives in the Text cells
     table.add_column(overflow="fold")
     for label, help_str in rows:
         table.add_row(label, help_str)
-    console.print(table)
-    console.print()
+    return Group(Text("Options", style=_HEADING_STYLE), table)
 
 
-def _render_epilog(cmd: click.Command, console: Console) -> None:
-    if cmd.epilog:
-        console.print(cmd.epilog)
-        console.print()
+def _build_epilog(cmd: click.Command) -> Optional[RenderableType]:
+    if not cmd.epilog:
+        return None
+    return Text(cmd.epilog)
 
 
 def _group_commands_by_panel(group: click.Group) -> dict[str, list[tuple[str, click.Command]]]:
@@ -109,23 +108,25 @@ def _group_commands_by_panel(group: click.Group) -> dict[str, list[tuple[str, cl
     return panels
 
 
-def _render_commands(group: click.Group, console: Console) -> None:
+def _build_commands(group: click.Group, available_width: int) -> Optional[RenderableType]:
     panels = _group_commands_by_panel(group)
     if not panels:
-        return
+        return None
 
     # We want the name / description columns to be the same widths across groups
     name_width = max(len(name) for items in panels.values() for name, _ in items)
-    table_width = min(_MAX_HELP_WIDTH, console.width)
 
+    parts: list[RenderableType] = []
     for panel_name, items in panels.items():
-        console.print(Text(panel_name.ljust(table_width), style=f"{_HEADING_STYLE} underline"))
-        _render_command_table(console, items, name_width, table_width)
-        console.print()
+        if parts:
+            parts.append(Text(""))
+        parts.append(Text(panel_name.ljust(available_width), style=f"{_HEADING_STYLE} underline"))
+        parts.append(_build_command_table(items, name_width, available_width))
+    return Group(*parts)
 
 
 def build_command_table(name_width: int, table_width: Optional[int] = None) -> Table:
-    kwargs: dict[str, Any] = {"box": None, "show_header": False, "pad_edge": False, "padding": (0, 2)}
+    kwargs: dict[str, Any] = {"box": None, "show_header": False, "pad_edge": True, "padding": (0, 1)}
     if table_width is not None:
         kwargs["width"] = table_width
     table = Table(**kwargs)
@@ -137,16 +138,39 @@ def build_command_table(name_width: int, table_width: Optional[int] = None) -> T
     return table
 
 
-def _render_command_table(
-    console: Console,
+def _build_command_table(
     items: list[tuple[str, click.Command]],
     name_width: int,
     table_width: int,
-) -> None:
+) -> Table:
     table = build_command_table(name_width, table_width)
     for name, sub in items:
         table.add_row(name, sub.get_short_help_str(limit=80))
-    console.print(table)
+    return table
+
+
+def _available_width(console: Console) -> int:
+    return min(_MAX_HELP_WIDTH, console.width) - _HELP_PADDING * 2
+
+
+def _emit(
+    console: Console,
+    sections: list[Optional[RenderableType]],
+    formatter: click.HelpFormatter,
+) -> None:
+    parts: list[RenderableType] = []
+    for section in sections:
+        if section is None:
+            continue
+        if parts:
+            parts.append(Text(""))
+        parts.append(section)
+    if parts:
+        # Always pad with a blank line before the next prompt
+        parts.append(Text(""))
+    with console.capture() as capture:
+        console.print(Padding(Group(*parts), (0, _HELP_PADDING)))
+    formatter.write(capture.get())
 
 
 # -- Public Command / Group subclasses ---------------------------------------
@@ -162,13 +186,17 @@ class ModalCommand(click.Command):
     def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         if not use_rich_style():
             return super().format_help(ctx, formatter)
-        console = _make_console()
-        with console.capture() as capture:
-            _render_usage(self, ctx, console)
-            _render_help_text(self, console)
-            _render_options(self, ctx, console)
-            _render_epilog(self, console)
-        formatter.write(capture.get())
+        console = _make_help_console()
+        _emit(
+            console,
+            [
+                _build_usage(self, ctx),
+                _build_help_text(self),
+                _build_options(self, ctx),
+                _build_epilog(self),
+            ],
+            formatter,
+        )
 
 
 class ModalGroup(click.Group):
@@ -209,22 +237,25 @@ class ModalGroup(click.Group):
     def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         if not use_rich_style():
             return super().format_help(ctx, formatter)
-        console = _make_console()
-        with console.capture() as capture:
-            _render_usage(self, ctx, console)
-            _render_help_text(self, console)
-            _render_options(self, ctx, console)
-            _render_commands(self, console)
-            _render_epilog(self, console)
-        formatter.write(capture.get())
+        console = _make_help_console()
+        _emit(
+            console,
+            [
+                _build_usage(self, ctx),
+                _build_help_text(self),
+                _build_options(self, ctx),
+                _build_commands(self, _available_width(console)),
+                _build_epilog(self),
+            ],
+            formatter,
+        )
 
 
 # -- Error rendering ---------------------------------------------------------
 
 
 def _render_click_exception(exc: click.ClickException, file: Any) -> None:
-    console = _make_console(file if file is not None else sys.stderr)
-    title = "Error"
+    console = Console(file=file if file is not None else sys.stderr, highlight=False)
 
     if isinstance(exc, click.UsageError) and exc.ctx is not None:
         ctx = exc.ctx
@@ -236,7 +267,7 @@ def _render_click_exception(exc: click.ClickException, file: Any) -> None:
     console.print(
         Panel(
             Text(exc.format_message()),
-            title=title,
+            title="Error",
             title_align="left",
             border_style=_ERROR_STYLE,
             expand=True,
