@@ -25,7 +25,10 @@ pytest_test(
     # watchfiles (transitive via client/py/modal) has Rust extensions; pip packages
     # are resolved per target platform. On arm64 target builds, rules_python
     # downloads arm64 wheels which lack _rust_notify.so. Skip on non-x86_64 targets.
-    target_compatible_with = ["@platforms//cpu:x86_64"],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "//constraints:modal_worker_host",
+    ],
     deps = [
         "//client/modal_proto",
         "//client/py/modal",
