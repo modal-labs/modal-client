@@ -162,11 +162,10 @@ def display_table(
         output.print(table)
 
 
-ENV_OPTION_HELP = """Environment to interact with.
-
-If not specified, Modal will use the default environment of your current profile, or the `MODAL_ENVIRONMENT` variable.
-Otherwise, raises an error if the workspace has multiple environments.
-"""
+ENV_OPTION_HELP = (
+    "Environment to interact with. If unspecified, defers to `MODAL_ENVIRONMENT`, "
+    "your active local profile, or your workspace default, in that order."
+)
 
 
 def env_option(func):
