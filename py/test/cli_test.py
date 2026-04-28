@@ -1678,12 +1678,13 @@ def test_short_help_fits_max_help_width():
     import click
     from rich.console import Console
 
-    from modal.cli._help import _MAX_HELP_WIDTH, build_command_table
+    from modal.cli._help import _HELP_PADDING, _MAX_HELP_WIDTH, build_command_table
     from modal.cli.entry_point import entrypoint_cli
 
     # Oversized scratch console so measurement isn't clipped by our own width.
     console = Console(width=10_000)
     offenders: list[str] = []
+    budget = _MAX_HELP_WIDTH - _HELP_PADDING * 2
 
     def check(group: click.Group, path: str) -> None:
         visible = [(name, sub) for name, sub in group.commands.items() if not sub.hidden]
@@ -1700,8 +1701,8 @@ def test_short_help_fits_max_help_width():
             probe = build_command_table(name_width)
             probe.add_row(name, short)
             required = console.measure(probe).maximum
-            if required > _MAX_HELP_WIDTH:
-                offenders.append(f"{full_path}: row needs {required} chars, max {_MAX_HELP_WIDTH}")
+            if required > budget:
+                offenders.append(f"{full_path}: row needs {required} chars, max {budget}")
             if isinstance(sub, click.Group):
                 check(sub, full_path)
 
