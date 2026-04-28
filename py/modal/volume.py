@@ -31,7 +31,15 @@ from synchronicity.async_wrap import asynccontextmanager
 
 import modal.exception
 import modal_proto.api_pb2
-from modal.exception import AlreadyExistsError, ConflictError, InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import (
+    AlreadyExistsError,
+    ConflictError,
+    ExecutionError,
+    InvalidError,
+    NotFoundError,
+    ServiceError,
+    VolumeUploadTimeoutError,
+)
 from modal_proto import api_pb2
 
 from ._load_context import LoadContext
@@ -73,6 +81,26 @@ from .config import logger
 # Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.
 VOLUME_PUT_FILE_CLIENT_TIMEOUT = 60 * 60
+
+
+async def _raise_on_block_response_error(response) -> None:
+    """Raise a picklable Modal exception on error.
+
+    We avoid `aiohttp.ClientResponse.raise_for_status()` because the resulting
+    `ClientResponseError` is not picklable, which breaks result serialization
+    when raised from within a Modal function.
+    """
+    if response.status < 400:
+        return
+
+    try:
+        body = await response.text()
+    except Exception:
+        body = "<unavailable>"
+
+    if response.status == 503:
+        raise ServiceError(f"Service temporarily unavailable: {body}")
+    raise ExecutionError(f"Request failed with status {response.status} {response.reason}: {body}")
 
 
 def _validate_volume_version(
@@ -742,7 +770,7 @@ class _Volume(_Object, type_prefix="vo"):
         @retry(n_attempts=5, base_delay=0.1, attempt_timeout=None)
         async def read_block(block_url: str) -> bytes:
             async with ClientSessionRegistry.get_session().get(block_url) as get_response:
-                get_response.raise_for_status()
+                await _raise_on_block_response_error(get_response)
                 return await get_response.content.read()
 
         async def iter_urls() -> AsyncGenerator[str]:
@@ -811,7 +839,7 @@ class _Volume(_Object, type_prefix="vo"):
             num_bytes_written = 0
 
             async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
-                get_response.raise_for_status()
+                await _raise_on_block_response_error(get_response)
                 async for chunk in get_response.content.iter_any():
                     num_chunk_bytes_written = 0
 
@@ -1377,7 +1405,7 @@ async def _put_missing_blocks(
                     missing_block.put_url,
                     data=payload,
                 ) as response:
-                    response.raise_for_status()
+                    await _raise_on_block_response_error(response)
                     return await response.content.read()
 
         async with put_semaphore:

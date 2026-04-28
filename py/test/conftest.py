@@ -3160,6 +3160,8 @@ def blob_server_factory():
             return aiohttp.web.Response(status=404, text="block not found")
         if version == "error-500":
             return aiohttp.web.Response(status=500, text="internal server error")
+        if version == "error-503":
+            return aiohttp.web.Response(status=503, text="service unavailable")
 
         if version == "v1":
             file_sha256_hex, block_idx, start, length = rest
