@@ -10,10 +10,13 @@ from .container_io_manager import _ContainerIOManager
 
 
 def is_local() -> bool:
-    """Returns if we are currently on the machine launching/deploying a Modal app
+    """Indicate the execution context of the current process.
 
-    Returns `True` when executed locally on the user's machine.
-    Returns `False` when executed from a Modal container in the cloud.
+    Note: this function specifically returns False when the current process is
+    running a Modal Function and True in all other cases. It will return True
+    when called from a child process of a Function or inside a Modal Sandbox,
+    even though those processes are running on Modal hardware.
+
     """
     return not _ContainerIOManager._singleton
 
