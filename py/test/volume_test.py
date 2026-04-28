@@ -17,7 +17,14 @@ from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.blob_utils import BLOCK_SIZE
-from modal.exception import AlreadyExistsError, InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import (
+    AlreadyExistsError,
+    ExecutionError,
+    InvalidError,
+    NotFoundError,
+    ServiceError,
+    VolumeUploadTimeoutError,
+)
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
@@ -752,7 +759,7 @@ def test_volume_from_name_version_mismatch(servicer, client, create_if_missing):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("version", VERSIONS)
 async def test_volume_read_file_http_500_error(monkeypatch, servicer, client, version):
-    import aiohttp
+    import pickle
 
     # Disable retries during test run
     monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
@@ -764,17 +771,39 @@ async def test_volume_read_file_http_500_error(monkeypatch, servicer, client, ve
         ctx.add_response("VolumeGetFile2", response)
 
         async with modal.Volume.ephemeral(client=client, version=version) as vol:
-            with pytest.raises(aiohttp.ClientResponseError) as exc_info:
+            with pytest.raises(ExecutionError) as exc_info:
                 async for _ in vol.read_file.aio("foo.bin"):  # TODO(elias): deprecate .aio syntax optional
                     ...
-            assert exc_info.value.status == 500
+            assert "500" in str(exc_info.value)
+            # Verify the exception is picklable so it can cross Modal's function boundary.
+            pickle.loads(pickle.dumps(exc_info.value))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_read_file_http_503_error(monkeypatch, servicer, client, version):
+    """503 from clobber-worker signals upstream storage unavailability; surface as ServiceError."""
+    import pickle
+
+    # Disable retries during test run
+    monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
+
+    with servicer.intercept() as ctx:
+        url = f"{servicer.blob_host}/block/test-get-request:error-503:"
+        response = api_pb2.VolumeGetFile2Response(get_urls=[url], size=100, start=0, len=100)
+        ctx.add_response("VolumeGetFile2", response)
+
+        async with modal.Volume.ephemeral(client=client, version=version) as vol:
+            with pytest.raises(ServiceError) as exc_info:
+                async for _ in vol.read_file.aio("foo.bin"):
+                    ...
+            assert "service temporarily unavailable" in str(exc_info.value).lower()
+            pickle.loads(pickle.dumps(exc_info.value))
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("version", VERSIONS)
 async def test_volume_read_file_into_fileobj_http_404_error(monkeypatch, servicer, client, version):
-    import aiohttp
-
     # Disable retries during test run
     monkeypatch.setattr(modal.volume, "retry", lambda *args, **kwargs: lambda f: f)
 
@@ -786,7 +815,7 @@ async def test_volume_read_file_into_fileobj_http_404_error(monkeypatch, service
 
         async with modal.Volume.ephemeral(client=client, version=version) as vol:
             output = io.BytesIO()
-            with pytest.raises(aiohttp.ClientResponseError) as exc_info:
+            with pytest.raises(ExecutionError) as exc_info:
                 await vol.read_file_into_fileobj.aio("foo.bin", output)
 
-            assert exc_info.value.status == 404
+            assert "404" in str(exc_info.value)
