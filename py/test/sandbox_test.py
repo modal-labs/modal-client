@@ -1513,6 +1513,23 @@ def test_sandbox_wait_until_ready_times_out_on_repeated_deadline_exceeded(app, s
         sb.terminate()
 
 
+def test_sandbox_create_reuses_hydrated_image(app, servicer):
+    async def sandbox_create_no_subprocess(servicer_self, stream):
+        request = await stream.recv_message()
+        servicer_self.sandbox_defs.append(request.definition)
+        await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
+
+    image = Image.debian_slim()
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxCreate", sandbox_create_no_subprocess)
+        Sandbox.create("echo", "first", image=image, app=app)
+        Sandbox.create("echo", "second", image=image, app=app)
+
+        image_gets = ctx.get_requests("ImageGetOrCreate")
+        assert len(image_gets) == 1, f"Expected 1 ImageGetOrCreate request, got {len(image_gets)}"
+
+
 @skip_non_subprocess
 def test_sandbox_wait_until_ready_retries_empty_ready_at(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app, readiness_probe=modal.Probe.with_tcp(8080))
