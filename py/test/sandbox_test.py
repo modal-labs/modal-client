@@ -78,7 +78,7 @@ def test_probe_rejects_invalid_raw_configuration(kwargs, match):
 
 
 @skip_non_subprocess
-def test_sandbox(app, servicer):
+def test_sandbox(app, servicer, sandbox_subprocess):
     sb = Sandbox.create("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600, app=app)
 
     assert sb.poll() is None
@@ -120,7 +120,6 @@ def test_sandbox_duplicate_volumes(client, servicer):
             )
 
 
-@skip_non_subprocess
 def test_sandbox_mount_layer(app, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
@@ -131,7 +130,6 @@ def test_sandbox_mount_layer(app, servicer, tmpdir):
     assert servicer.files_sha2data[sha]["data"] == b"foo"
 
 
-@skip_non_subprocess
 def test_sandbox_image(app, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
@@ -144,7 +142,6 @@ def test_sandbox_image(app, servicer, tmpdir):
     assert all(c in last_image.dockerfile_commands[-1] for c in ["foo", "bar", "potato"])
 
 
-@skip_non_subprocess
 def test_sandbox_secret(app, servicer, tmpdir):
     sb = Sandbox.create("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})], app=app)
     sb.wait()
@@ -152,7 +149,6 @@ def test_sandbox_secret(app, servicer, tmpdir):
     assert len(servicer.sandbox_defs[0].secret_ids) == 1
 
 
-@skip_non_subprocess
 def test_sandbox_nfs(client, app, servicer, tmpdir):
     with NetworkFileSystem.ephemeral(client=client) as nfs:
         with pytest.raises(InvalidError):
@@ -164,7 +160,7 @@ def test_sandbox_nfs(client, app, servicer, tmpdir):
 
 
 @skip_non_subprocess
-def test_sandbox_from_id(app, client, servicer):
+def test_sandbox_from_id(app, client, servicer, sandbox_subprocess):
     sb = Sandbox.create("bash", "-c", "echo foo && exit 42", timeout=600, app=app)
     sb.wait()
 
@@ -173,7 +169,6 @@ def test_sandbox_from_id(app, client, servicer):
     assert sb2.returncode == 42
 
 
-@skip_non_subprocess
 def test_sandbox_terminate(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
     sb.terminate()
@@ -183,7 +178,7 @@ def test_sandbox_terminate(app, servicer):
 
 @skip_non_subprocess
 @pytest.mark.asyncio
-async def test_sandbox_stdin_async(app, servicer):
+async def test_sandbox_stdin_async(app, servicer, sandbox_subprocess):
     sb = await Sandbox.create.aio("bash", "-c", "while read line; do echo $line; done && exit 13", app=app)
 
     sb.stdin.write(b"foo\n")
@@ -200,7 +195,7 @@ async def test_sandbox_stdin_async(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_stdin(app, servicer):
+def test_sandbox_stdin(app, servicer, sandbox_subprocess):
     sb = Sandbox.create("bash", "-c", "while read line; do echo $line; done && exit 13", app=app)
 
     sb.stdin.write(b"foo\n")
@@ -217,7 +212,7 @@ def test_sandbox_stdin(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_stdin_write_str(app, servicer):
+def test_sandbox_stdin_write_str(app, servicer, sandbox_subprocess):
     sb = Sandbox.create("bash", "-c", "while read line; do echo $line; done && exit 13", app=app)
 
     sb.stdin.write("foo\n")
@@ -234,7 +229,7 @@ def test_sandbox_stdin_write_str(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_stdin_write_after_terminate(app, servicer):
+def test_sandbox_stdin_write_after_terminate(app, servicer, sandbox_subprocess):
     sb = Sandbox.create("bash", "-c", "echo foo", app=app)
     sb.wait()
     with pytest.raises(ValueError):
@@ -243,7 +238,7 @@ def test_sandbox_stdin_write_after_terminate(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_stdin_write_after_eof(app, servicer):
+def test_sandbox_stdin_write_after_eof(app, servicer, sandbox_subprocess):
     sb = Sandbox.create(app=app)
     sb.stdin.write_eof()
     with pytest.raises(ValueError):
@@ -252,7 +247,7 @@ def test_sandbox_stdin_write_after_eof(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_stdout(app, servicer):
+def test_sandbox_stdout(app, servicer, sandbox_subprocess):
     """Test that reads from sandboxes are fully line-buffered, i.e.,
     that we don't read partial lines or multiple lines at once."""
 
@@ -284,7 +279,7 @@ def test_sandbox_stdout(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_stdout_next(app, servicer):
+def test_sandbox_stdout_next(app, servicer, sandbox_subprocess):
     """Test that we can iterate on a StreamReader directly, without a call to __aiter__()."""
 
     # normal sequence of reads
@@ -299,7 +294,7 @@ def test_sandbox_stdout_next(app, servicer):
 
 @skip_non_subprocess
 @pytest.mark.asyncio
-async def test_sandbox_async_for(app, servicer):
+async def test_sandbox_async_for(app, servicer, sandbox_subprocess):
     sb = await Sandbox.create.aio("bash", "-c", "echo hello && echo world && echo bye >&2", app=app)
 
     out = ""
@@ -341,7 +336,7 @@ def test_sandbox_exec_stdout_bytes_mode(app, servicer, exec_backend):
 
 
 @skip_non_subprocess
-def test_app_sandbox(client, servicer):
+def test_app_sandbox(client, servicer, sandbox_subprocess):
     image = Image.debian_slim().pip_install("xyz").add_local_file(__file__, remote_path="/xyz")
     secret = Secret.from_dict({"FOO": "bar"})
 
@@ -439,7 +434,6 @@ def test_sandbox_exec_output_double_read(app, servicer, exec_backend):
     assert cp.wait() == 0
 
 
-@skip_non_subprocess
 def test_sandbox_create_and_exec_with_bad_args(app, servicer):
     too_big = 130_000
     single_arg_size = too_big // 10
@@ -456,7 +450,7 @@ def test_sandbox_create_and_exec_with_bad_args(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_on_app_lookup(client, servicer):
+def test_sandbox_on_app_lookup(client, servicer, sandbox_subprocess):
     app = App.lookup("my-app", create_if_missing=True, client=client)
     sb = Sandbox.create("echo", "hi", app=app)
     sb.wait()
@@ -464,7 +458,6 @@ def test_sandbox_on_app_lookup(client, servicer):
     assert servicer.sandbox_app_id == app.app_id
 
 
-@skip_non_subprocess
 def test_sandbox_list_env(app, client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
     assert len(list(Sandbox.list(client=client))) == 1
@@ -473,7 +466,6 @@ def test_sandbox_list_env(app, client, servicer):
     assert not list(Sandbox.list(client=client))
 
 
-@skip_non_subprocess
 def test_sandbox_list_app(client, servicer):
     image = Image.debian_slim().pip_install("xyz").add_local_file(__file__, "/xyz")
     secret = Secret.from_dict({"FOO": "bar"})
@@ -489,7 +481,6 @@ def test_sandbox_list_app(client, servicer):
         assert not list(Sandbox.list(app_id=app.app_id, client=client))
 
 
-@skip_non_subprocess
 def test_sandbox_list_tags(app, client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
     assert sb.get_tags() == {}
@@ -503,7 +494,6 @@ def test_sandbox_list_tags(app, client, servicer):
     assert not list(Sandbox.list(tags={"baz": "qux"}, client=client))
 
 
-@skip_non_subprocess
 def test_sandbox_network_access(app, servicer):
     with pytest.raises(InvalidError):
         Sandbox.create("echo", "test", block_network=True, cidr_allowlist=["10.0.0.0/8"], app=app)
@@ -532,7 +522,6 @@ def test_sandbox_network_access(app, servicer):
     sb.terminate()
 
 
-@skip_non_subprocess
 def test_sandbox_block_network_with_ports(app, servicer):
     """Test that specifying open ports when block_network is enabled raises an error."""
 
@@ -579,7 +568,6 @@ def test_sandbox_no_entrypoint(app, servicer):
     sb.terminate()
 
 
-@skip_non_subprocess
 def test_sandbox_gpu_fallbacks_support(client, servicer):
     with pytest.raises(InvalidError, match="do not support"):
         Sandbox.create(client=client, gpu=["t4", "a100"])  # type: ignore
@@ -648,7 +636,6 @@ def test_sandbox_exec_with_streamtype_stdout_read_from_stdout_raises_error(app, 
         cp.stdout.read()
 
 
-@skip_non_subprocess
 def test_sandbox_snapshot(app, client, servicer):
     sb = Sandbox.create(app=app, _experimental_enable_snapshot=True)
     sandbox_snapshot = sb._experimental_snapshot()
@@ -669,7 +656,6 @@ def test_sandbox_snapshot(app, client, servicer):
     sb.terminate()
 
 
-@skip_non_subprocess
 def test_sandbox_snapshot_fs(app, servicer):
     sb = Sandbox.create(app=app)
     image = sb.snapshot_filesystem()
@@ -682,7 +668,6 @@ def test_sandbox_snapshot_fs(app, servicer):
     assert servicer.sandbox_defs[1].image_id == "im-123"
 
 
-@skip_non_subprocess
 def test_sandbox_cpu_request(app, servicer):
     _ = Sandbox.create(cpu=2.0, app=app)
 
@@ -690,7 +675,6 @@ def test_sandbox_cpu_request(app, servicer):
     assert servicer.sandbox_defs[0].resources.milli_cpu_max == 0
 
 
-@skip_non_subprocess
 def test_sandbox_cpu_limit(app, servicer):
     _ = Sandbox.create(cpu=(2, 4), app=app)
 
@@ -698,7 +682,6 @@ def test_sandbox_cpu_limit(app, servicer):
     assert servicer.sandbox_defs[0].resources.milli_cpu_max == 4000
 
 
-@skip_non_subprocess
 def test_sandbox_proxy(app, servicer):
     _ = Sandbox.create(proxy=Proxy.from_name("my-proxy"), app=app)
 
@@ -754,7 +737,6 @@ def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
 
 
 @pytest.mark.parametrize("read_only", [True, False])
-@skip_non_subprocess
 def test_sandbox_volume(app, servicer, read_only):
     volume = Volume.from_name("my-volume", create_if_missing=True)
 
@@ -774,7 +756,6 @@ def test_sandbox_volume(app, servicer, read_only):
         assert req.definition.volume_mounts[0].read_only == read_only
 
 
-@skip_non_subprocess
 def test_sandbox_create_pty(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox.create("echo", "hi", pty=True, app=app)
@@ -786,7 +767,6 @@ def test_sandbox_create_pty(app, servicer):
         assert req.definition.pty_info.no_terminate_on_idle_stdin is True
 
 
-@skip_non_subprocess
 def test_experimental_sandbox_create_resources_default(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app)
@@ -796,7 +776,6 @@ def test_experimental_sandbox_create_resources_default(app, servicer):
         assert req.definition.resources.milli_cpu == 0
 
 
-@skip_non_subprocess
 def test_experimental_sandbox_create_memory_roundtrip(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app, cpu=2.0, memory=512)
@@ -951,7 +930,6 @@ def test_sandbox_stdout_read_incremental_iter(servicer, client, by_line, text):
             assert chunks == [b"caf\xc3", b"\xa9"]  # no buffering
 
 
-@skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_mount_image(servicer, client, exec_backend, app, monkeypatch):
     """Test mounting an image at a path in the sandbox."""
@@ -1027,7 +1005,6 @@ def test_mount_image(servicer, client, exec_backend, app, monkeypatch):
     sb.terminate()
 
 
-@skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, exec_backend, app, monkeypatch):
     """Test mounting an explicit empty image via Image.from_scratch()."""
@@ -1050,7 +1027,6 @@ def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, exec_bac
     sb.terminate()
 
 
-@skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_snapshot_directory(servicer, client, exec_backend, app, monkeypatch):
     """Test snapshotting a directory to create a new image."""
@@ -1092,7 +1068,6 @@ def test_snapshot_directory(servicer, client, exec_backend, app, monkeypatch):
     sb.terminate()
 
 
-@skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_create_with_snapshot_directory_image(servicer, client, exec_backend, app):
     sb = Sandbox.create(app=app)
@@ -1108,7 +1083,6 @@ def test_sandbox_create_with_snapshot_directory_image(servicer, client, exec_bac
     assert servicer.sandbox_defs[-1].image_id == "im-snapshot-123"
 
 
-@skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_unmount_image(servicer, client, exec_backend, app, monkeypatch):
     """Test unmounting an image from a path in the sandbox."""
@@ -1134,7 +1108,6 @@ def test_unmount_image(servicer, client, exec_backend, app, monkeypatch):
     sb.terminate()
 
 
-@skip_non_subprocess
 @pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_exec_on_terminate_sandbox_raises(servicer, client, exec_backend, app):
     sb = Sandbox.create(app=app)
@@ -1196,7 +1169,6 @@ def test_func_map_covers_all_public_methods_and_properties():
     assert set(detach_error_funcs) == attributes_to_raise_on_detached
 
 
-@skip_non_subprocess
 @pytest.mark.parametrize("name", detach_error_funcs)
 @pytest.mark.filterwarnings("ignore::modal.exception.DeprecationError")
 def test_detach_errors(servicer, client, app, name):
@@ -1210,7 +1182,6 @@ def test_detach_errors(servicer, client, app, name):
         func(sb)
 
 
-@skip_non_subprocess
 def test_detach_twice(servicer, client, app):
     """Calling detach twice does **not** raise errors."""
     sb = Sandbox.create(app=app)
@@ -1218,7 +1189,6 @@ def test_detach_twice(servicer, client, app):
     sb.detach()
 
 
-@skip_non_subprocess
 def test_sandbox_terminate_wait(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
@@ -1409,7 +1379,6 @@ def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer, mon
     assert list(router_client.last_container_create_request.secret_ids) == [secret.object_id]
 
 
-@skip_non_subprocess
 def test_sandbox_container_create_rejects_image_with_mount_layers(app):
     image = mock.Mock()
     image._mount_layers = [mock.Mock()]
@@ -1420,7 +1389,6 @@ def test_sandbox_container_create_rejects_image_with_mount_layers(app):
         sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
 
 
-@skip_non_subprocess
 def test_sandbox_container_create_rejects_unhydrated_image(app):
     image = Image.debian_slim()
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
@@ -1429,7 +1397,6 @@ def test_sandbox_container_create_rejects_unhydrated_image(app):
         sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
 
 
-@skip_non_subprocess
 def test_sandbox_container_create_rejects_mounts_kwarg(app):
     image = mock.Mock()
     image.object_id = "im-test-1"
@@ -1442,7 +1409,6 @@ def test_sandbox_container_create_rejects_mounts_kwarg(app):
         create(name="worker", image=image, mounts=())
 
 
-@skip_non_subprocess
 def test_sandbox_wait_allowed_after_detached(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
     sb.terminate()
@@ -1452,7 +1418,6 @@ def test_sandbox_wait_allowed_after_detached(app, servicer):
     assert sb.returncode != 0
 
 
-@skip_non_subprocess
 def test_sandbox_wait_until_ready(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app, readiness_probe=modal.Probe.with_tcp(8080))
 
@@ -1467,7 +1432,6 @@ def test_sandbox_wait_until_ready(app, servicer):
     sb.terminate()
 
 
-@skip_non_subprocess
 def test_sandbox_wait_until_ready_retries_deadline_exceeded(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app, readiness_probe=modal.Probe.with_tcp(8080))
     requests: list[api_pb2.SandboxWaitUntilReadyRequest] = []
@@ -1492,7 +1456,6 @@ def test_sandbox_wait_until_ready_retries_deadline_exceeded(app, servicer):
     sb.terminate()
 
 
-@skip_non_subprocess
 def test_sandbox_wait_until_ready_times_out_on_repeated_deadline_exceeded(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app, readiness_probe=modal.Probe.with_tcp(8080))
     requests: list[api_pb2.SandboxWaitUntilReadyRequest] = []
@@ -1530,7 +1493,6 @@ def test_sandbox_create_reuses_hydrated_image(app, servicer):
         assert len(image_gets) == 1, f"Expected 1 ImageGetOrCreate request, got {len(image_gets)}"
 
 
-@skip_non_subprocess
 def test_sandbox_wait_until_ready_retries_empty_ready_at(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app, readiness_probe=modal.Probe.with_tcp(8080))
     requests: list[api_pb2.SandboxWaitUntilReadyRequest] = []
