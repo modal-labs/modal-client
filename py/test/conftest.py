@@ -348,6 +348,115 @@ def exec_backend(request, monkeypatch, client):
     return backend
 
 
+@contextlib.contextmanager
+def sandbox_subprocess_intercept(servicer):
+    """Context manager that replaces sandbox mock RPCs with subprocess-backed implementations.
+
+    By default, SandboxCreate just records arguments without spawning a subprocess.
+    Use this context manager (or the ``sandbox_subprocess`` fixture) for tests
+    that need actual I/O (stdin/stdout/stderr, exit codes, timing).
+    """
+    proc_holder: dict[str, asyncio.subprocess.Process] = {}
+
+    async def _SandboxCreate(servicer_self, stream):
+        request: api_pb2.SandboxCreateRequest = await stream.recv_message()
+        proc = await asyncio.subprocess.create_subprocess_exec(
+            *(request.definition.entrypoint_args or ["sleep", f"{48 * 3600}"]),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE,
+        )
+        proc_holder["proc"] = proc
+        servicer_self._sandbox_terminated = False
+        servicer_self.sandbox_app_id = request.app_id
+        servicer_self.sandbox_defs.append(request.definition)
+        await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
+
+    async def _SandboxGetLogs(servicer_self, stream):
+        request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
+        proc = proc_holder.get("proc")
+        if proc is None:
+            await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
+            return
+        f: asyncio.StreamReader
+        if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+            f = proc.stdout
+        else:
+            f = proc.stderr
+        async for message in f:
+            await stream.send_message(
+                api_pb2.TaskLogsBatch(
+                    items=[api_pb2.TaskLogs(data=message.decode("utf-8"), file_descriptor=request.file_descriptor)]
+                )
+            )
+        await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
+
+    async def _SandboxWait(servicer_self, stream):
+        request: api_pb2.SandboxWaitRequest = await stream.recv_message()
+        proc = proc_holder.get("proc")
+        if proc is None:
+            result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+            servicer_self.sandbox_result = result
+            await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
+            return
+        try:
+            await asyncio.wait_for(proc.wait(), request.timeout)
+        except asyncio.TimeoutError:
+            pass
+        if proc.returncode is None:
+            await stream.send_message(api_pb2.SandboxWaitResponse())
+            return
+        elif proc.returncode != 0:
+            result = api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=proc.returncode
+            )
+        else:
+            result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+        servicer_self.sandbox_result = result
+        await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
+
+    async def _SandboxTerminate(servicer_self, stream):
+        servicer_self._sandbox_terminated = True
+        proc = proc_holder.get("proc")
+        if proc is not None:
+            try:
+                proc.terminate()
+            except ProcessLookupError:
+                pass
+        await stream.send_message(api_pb2.SandboxTerminateResponse())
+
+    async def _SandboxStdinWrite(servicer_self, stream):
+        request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
+        proc = proc_holder.get("proc")
+        if proc is None or proc.returncode is not None:
+            raise GRPCError(Status.FAILED_PRECONDITION, "Sandbox has already terminated")
+        proc.stdin.write(request.input)
+        await proc.stdin.drain()
+        if request.eof:
+            proc.stdin.close()
+        await stream.send_message(api_pb2.SandboxStdinWriteResponse())
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxCreate", _SandboxCreate)
+        ctx.set_responder("SandboxGetLogs", _SandboxGetLogs)
+        ctx.set_responder("SandboxWait", _SandboxWait)
+        ctx.set_responder("SandboxTerminate", _SandboxTerminate)
+        ctx.set_responder("SandboxStdinWrite", _SandboxStdinWrite)
+        yield ctx
+
+
+@pytest.fixture
+def sandbox_subprocess(servicer):
+    """Enable real subprocess spawning for sandbox mock RPCs.
+
+    By default, SandboxCreate just records arguments without spawning a
+    subprocess.  Tests that need actual I/O (stdin/stdout/stderr, exit
+    codes, timing) should request this fixture.
+    """
+    with sandbox_subprocess_intercept(servicer):
+        yield
+
+
 @dataclasses.dataclass
 class Volume:
     version: "api_pb2.VolumeFsVersion.ValueType"
@@ -588,8 +697,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.sandbox_defs = []
         self.sandbox_app_id = None
-        self.sandbox: asyncio.subprocess.Process = None
         self.sandbox_result: api_pb2.GenericResult | None = None
+        self._sandbox_terminated = False
 
         self.shell_prompt = None
         self.container_exec: asyncio.subprocess.Process = None
@@ -2120,16 +2229,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
-        self.sandbox = await asyncio.subprocess.create_subprocess_exec(
-            *(request.definition.entrypoint_args or ["sleep", f"{48 * 3600}"]),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            stdin=asyncio.subprocess.PIPE,
-        )
-
+        self._sandbox_terminated = False
         self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
-
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     async def SandboxCreateV2(self, stream):
@@ -2140,38 +2242,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SandboxCreateV2Response(sandbox_id="sb-v2-123", task_id="ta-v2-123"))
 
     async def SandboxGetLogs(self, stream):
-        request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
-        f: asyncio.StreamReader
-        if request.file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
-            # Blocking read until EOF is returned.
-            f = self.sandbox.stdout
-        else:
-            f = self.sandbox.stderr
-
-        async for message in f:
-            await stream.send_message(
-                api_pb2.TaskLogsBatch(
-                    items=[api_pb2.TaskLogs(data=message.decode("utf-8"), file_descriptor=request.file_descriptor)]
-                )
-            )
-
+        _request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
         await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
 
     async def SandboxWait(self, stream):
-        request: api_pb2.SandboxWaitRequest = await stream.recv_message()
-        try:
-            await asyncio.wait_for(self.sandbox.wait(), request.timeout)
-        except asyncio.TimeoutError:
-            pass
-
-        if self.sandbox.returncode is None:
-            # This happens when request.timeout is 0 and the sandbox hasn't completed.
-            await stream.send_message(api_pb2.SandboxWaitResponse())
-            return
-        elif self.sandbox.returncode != 0:
-            result = api_pb2.GenericResult(
-                status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE, exitcode=self.sandbox.returncode
-            )
+        _request: api_pb2.SandboxWaitRequest = await stream.recv_message()
+        if self._sandbox_terminated:
+            result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED, exitcode=-1)
         else:
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
         self.sandbox_result = result
@@ -2179,7 +2256,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxList(self, stream):
         request: api_pb2.SandboxListRequest = await stream.recv_message()
-        if self.sandbox.returncode or request.before_timestamp == 1:
+        if self._sandbox_terminated or request.before_timestamp == 1:
             await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
             return
 
@@ -2215,10 +2292,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(Empty())
 
     async def SandboxTerminate(self, stream):
-        try:
-            self.sandbox.terminate()
-        except ProcessLookupError:
-            pass
+        self._sandbox_terminated = True
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
     async def SandboxSnapshot(self, stream):
@@ -2276,16 +2350,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="modal_container_exec"))
 
     async def SandboxStdinWrite(self, stream):
-        request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
-
-        if self.sandbox.returncode is not None:
+        _request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
+        if self._sandbox_terminated:
             raise GRPCError(Status.FAILED_PRECONDITION, "Sandbox has already terminated")
-
-        self.sandbox.stdin.write(request.input)
-        await self.sandbox.stdin.drain()
-
-        if request.eof:
-            self.sandbox.stdin.close()
         await stream.send_message(api_pb2.SandboxStdinWriteResponse())
 
     ### Secret
