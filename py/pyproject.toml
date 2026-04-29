@@ -38,7 +38,6 @@ classifiers = [
 
 [dependency-groups]
 dev = [
-    "cbor2==5.7.0",
     "fastapi~=0.125",
     "flaky~=3.8",
     "grpclib==0.4.9",
