@@ -234,6 +234,18 @@ message TaskSnapshotDirectoryRequest {
   bytes path = 2;
   // A unique ID to ensure idempotency of directory snapshot requests.
   string snapshot_id = 3;
+  // Lifetime for the resulting image, in seconds. When set, the
+  // image's expires_at is a hard cutoff: it is fixed at creation time
+  // and is not extended on use.
+  //
+  // When unset, the resulting image gets the legacy retention policy:
+  // a 30-day TTL that is bumped forward by 30 days on every use, so
+  // active images effectively never expire.
+  //
+  // Sentinel: -1 means "no expiry" (the image never expires).
+  // 0 and other negative values are invalid and rejected by the
+  // server.
+  optional int64 ttl_seconds = 4;
 }
 
 message TaskSnapshotDirectoryResponse {
