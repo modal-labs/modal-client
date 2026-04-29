@@ -594,6 +594,50 @@ func (x DeploymentNamespace) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
+type EnvironmentRole int32
+
+const (
+	EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED EnvironmentRole = 0
+	EnvironmentRole_ENVIRONMENT_ROLE_VIEWER      EnvironmentRole = 1
+	EnvironmentRole_ENVIRONMENT_ROLE_CONTRIBUTOR EnvironmentRole = 2
+)
+
+// Enum value maps for EnvironmentRole.
+var (
+	EnvironmentRole_name = map[int32]string{
+		0: "ENVIRONMENT_ROLE_UNSPECIFIED",
+		1: "ENVIRONMENT_ROLE_VIEWER",
+		2: "ENVIRONMENT_ROLE_CONTRIBUTOR",
+	}
+	EnvironmentRole_value = map[string]int32{
+		"ENVIRONMENT_ROLE_UNSPECIFIED": 0,
+		"ENVIRONMENT_ROLE_VIEWER":      1,
+		"ENVIRONMENT_ROLE_CONTRIBUTOR": 2,
+	}
+)
+
+func (x EnvironmentRole) Enum() *EnvironmentRole {
+	p := new(EnvironmentRole)
+	*p = x
+	return p
+}
+
+func (x EnvironmentRole) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EnvironmentRole) Descriptor() protoreflect.EnumDescriptor {
+	return file_modal_proto_api_proto_enumTypes[11].Descriptor()
+}
+
+func (EnvironmentRole) Type() protoreflect.EnumType {
+	return &file_modal_proto_api_proto_enumTypes[11]
+}
+
+func (x EnvironmentRole) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
 type ExecOutputOption int32
 
 const (
@@ -630,11 +674,11 @@ func (x ExecOutputOption) String() string {
 }
 
 func (ExecOutputOption) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[11].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[12].Descriptor()
 }
 
 func (ExecOutputOption) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[11]
+	return &file_modal_proto_api_proto_enumTypes[12]
 }
 
 func (x ExecOutputOption) Number() protoreflect.EnumNumber {
@@ -677,11 +721,11 @@ func (x FileDescriptor) String() string {
 }
 
 func (FileDescriptor) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[12].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[13].Descriptor()
 }
 
 func (FileDescriptor) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[12]
+	return &file_modal_proto_api_proto_enumTypes[13]
 }
 
 func (x FileDescriptor) Number() protoreflect.EnumNumber {
@@ -727,11 +771,11 @@ func (x FunctionCallInvocationType) String() string {
 }
 
 func (FunctionCallInvocationType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[13].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[14].Descriptor()
 }
 
 func (FunctionCallInvocationType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[13]
+	return &file_modal_proto_api_proto_enumTypes[14]
 }
 
 func (x FunctionCallInvocationType) Number() protoreflect.EnumNumber {
@@ -771,11 +815,11 @@ func (x FunctionCallType) String() string {
 }
 
 func (FunctionCallType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[14].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[15].Descriptor()
 }
 
 func (FunctionCallType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[14]
+	return &file_modal_proto_api_proto_enumTypes[15]
 }
 
 func (x FunctionCallType) Number() protoreflect.EnumNumber {
@@ -838,14 +882,108 @@ func (x GPUType) String() string {
 }
 
 func (GPUType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[15].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[16].Descriptor()
 }
 
 func (GPUType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[15]
+	return &file_modal_proto_api_proto_enumTypes[16]
 }
 
 func (x GPUType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+type IdentityProviderType int32
+
+const (
+	IdentityProviderType_IDENTITY_PROVIDER_TYPE_UNSPECIFIED  IdentityProviderType = 0
+	IdentityProviderType_IDENTITY_PROVIDER_TYPE_GITHUB       IdentityProviderType = 1
+	IdentityProviderType_IDENTITY_PROVIDER_TYPE_OKTA         IdentityProviderType = 2
+	IdentityProviderType_IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH IdentityProviderType = 3
+)
+
+// Enum value maps for IdentityProviderType.
+var (
+	IdentityProviderType_name = map[int32]string{
+		0: "IDENTITY_PROVIDER_TYPE_UNSPECIFIED",
+		1: "IDENTITY_PROVIDER_TYPE_GITHUB",
+		2: "IDENTITY_PROVIDER_TYPE_OKTA",
+		3: "IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH",
+	}
+	IdentityProviderType_value = map[string]int32{
+		"IDENTITY_PROVIDER_TYPE_UNSPECIFIED":  0,
+		"IDENTITY_PROVIDER_TYPE_GITHUB":       1,
+		"IDENTITY_PROVIDER_TYPE_OKTA":         2,
+		"IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH": 3,
+	}
+)
+
+func (x IdentityProviderType) Enum() *IdentityProviderType {
+	p := new(IdentityProviderType)
+	*p = x
+	return p
+}
+
+func (x IdentityProviderType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (IdentityProviderType) Descriptor() protoreflect.EnumDescriptor {
+	return file_modal_proto_api_proto_enumTypes[17].Descriptor()
+}
+
+func (IdentityProviderType) Type() protoreflect.EnumType {
+	return &file_modal_proto_api_proto_enumTypes[17]
+}
+
+func (x IdentityProviderType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+type MemberRole int32
+
+const (
+	MemberRole_MEMBER_ROLE_UNSPECIFIED MemberRole = 0
+	MemberRole_MEMBER_ROLE_USER        MemberRole = 1
+	MemberRole_MEMBER_ROLE_MANAGER     MemberRole = 2
+	MemberRole_MEMBER_ROLE_OWNER       MemberRole = 3
+)
+
+// Enum value maps for MemberRole.
+var (
+	MemberRole_name = map[int32]string{
+		0: "MEMBER_ROLE_UNSPECIFIED",
+		1: "MEMBER_ROLE_USER",
+		2: "MEMBER_ROLE_MANAGER",
+		3: "MEMBER_ROLE_OWNER",
+	}
+	MemberRole_value = map[string]int32{
+		"MEMBER_ROLE_UNSPECIFIED": 0,
+		"MEMBER_ROLE_USER":        1,
+		"MEMBER_ROLE_MANAGER":     2,
+		"MEMBER_ROLE_OWNER":       3,
+	}
+)
+
+func (x MemberRole) Enum() *MemberRole {
+	p := new(MemberRole)
+	*p = x
+	return p
+}
+
+func (x MemberRole) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MemberRole) Descriptor() protoreflect.EnumDescriptor {
+	return file_modal_proto_api_proto_enumTypes[18].Descriptor()
+}
+
+func (MemberRole) Type() protoreflect.EnumType {
+	return &file_modal_proto_api_proto_enumTypes[18]
+}
+
+func (x MemberRole) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
@@ -891,11 +1029,11 @@ func (x ObjectCreationType) String() string {
 }
 
 func (ObjectCreationType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[16].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[19].Descriptor()
 }
 
 func (ObjectCreationType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[16]
+	return &file_modal_proto_api_proto_enumTypes[19]
 }
 
 func (x ObjectCreationType) Number() protoreflect.EnumNumber {
@@ -956,11 +1094,11 @@ func (x ParameterType) String() string {
 }
 
 func (ParameterType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[17].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[20].Descriptor()
 }
 
 func (ParameterType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[17]
+	return &file_modal_proto_api_proto_enumTypes[20]
 }
 
 func (x ParameterType) Number() protoreflect.EnumNumber {
@@ -997,11 +1135,11 @@ func (x ProgressType) String() string {
 }
 
 func (ProgressType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[18].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[21].Descriptor()
 }
 
 func (ProgressType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[18]
+	return &file_modal_proto_api_proto_enumTypes[21]
 }
 
 func (x ProgressType) Number() protoreflect.EnumNumber {
@@ -1047,11 +1185,11 @@ func (x ProxyIpStatus) String() string {
 }
 
 func (ProxyIpStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[19].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[22].Descriptor()
 }
 
 func (ProxyIpStatus) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[19]
+	return &file_modal_proto_api_proto_enumTypes[22]
 }
 
 func (x ProxyIpStatus) Number() protoreflect.EnumNumber {
@@ -1091,11 +1229,11 @@ func (x ProxyType) String() string {
 }
 
 func (ProxyType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[20].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[23].Descriptor()
 }
 
 func (ProxyType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[20]
+	return &file_modal_proto_api_proto_enumTypes[23]
 }
 
 func (x ProxyType) Number() protoreflect.EnumNumber {
@@ -1135,11 +1273,11 @@ func (x RateLimitInterval) String() string {
 }
 
 func (RateLimitInterval) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[21].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[24].Descriptor()
 }
 
 func (RateLimitInterval) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[21]
+	return &file_modal_proto_api_proto_enumTypes[24]
 }
 
 func (x RateLimitInterval) Number() protoreflect.EnumNumber {
@@ -1185,11 +1323,11 @@ func (x RegistryAuthType) String() string {
 }
 
 func (RegistryAuthType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[22].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[25].Descriptor()
 }
 
 func (RegistryAuthType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[22]
+	return &file_modal_proto_api_proto_enumTypes[25]
 }
 
 func (x RegistryAuthType) Number() protoreflect.EnumNumber {
@@ -1229,11 +1367,11 @@ func (x SeekWhence) String() string {
 }
 
 func (SeekWhence) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[23].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[26].Descriptor()
 }
 
 func (SeekWhence) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[23]
+	return &file_modal_proto_api_proto_enumTypes[26]
 }
 
 func (x SeekWhence) Number() protoreflect.EnumNumber {
@@ -1306,11 +1444,11 @@ func (x SystemErrorCode) String() string {
 }
 
 func (SystemErrorCode) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[24].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[27].Descriptor()
 }
 
 func (SystemErrorCode) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[24]
+	return &file_modal_proto_api_proto_enumTypes[27]
 }
 
 func (x SystemErrorCode) Number() protoreflect.EnumNumber {
@@ -1353,11 +1491,11 @@ func (x TaskSnapshotBehavior) String() string {
 }
 
 func (TaskSnapshotBehavior) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[25].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[28].Descriptor()
 }
 
 func (TaskSnapshotBehavior) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[25]
+	return &file_modal_proto_api_proto_enumTypes[28]
 }
 
 func (x TaskSnapshotBehavior) Number() protoreflect.EnumNumber {
@@ -1424,11 +1562,11 @@ func (x TaskState) String() string {
 }
 
 func (TaskState) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[26].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[29].Descriptor()
 }
 
 func (TaskState) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[26]
+	return &file_modal_proto_api_proto_enumTypes[29]
 }
 
 func (x TaskState) Number() protoreflect.EnumNumber {
@@ -1465,11 +1603,11 @@ func (x TunnelType) String() string {
 }
 
 func (TunnelType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[27].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[30].Descriptor()
 }
 
 func (TunnelType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[27]
+	return &file_modal_proto_api_proto_enumTypes[30]
 }
 
 func (x TunnelType) Number() protoreflect.EnumNumber {
@@ -1509,11 +1647,11 @@ func (x VolumeFsVersion) String() string {
 }
 
 func (VolumeFsVersion) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[28].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[31].Descriptor()
 }
 
 func (VolumeFsVersion) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[28]
+	return &file_modal_proto_api_proto_enumTypes[31]
 }
 
 func (x VolumeFsVersion) Number() protoreflect.EnumNumber {
@@ -1556,11 +1694,11 @@ func (x WebhookAsyncMode) String() string {
 }
 
 func (WebhookAsyncMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[29].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[32].Descriptor()
 }
 
 func (WebhookAsyncMode) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[29]
+	return &file_modal_proto_api_proto_enumTypes[32]
 }
 
 func (x WebhookAsyncMode) Number() protoreflect.EnumNumber {
@@ -1606,11 +1744,11 @@ func (x WebhookType) String() string {
 }
 
 func (WebhookType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[30].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[33].Descriptor()
 }
 
 func (WebhookType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[30]
+	return &file_modal_proto_api_proto_enumTypes[33]
 }
 
 func (x WebhookType) Number() protoreflect.EnumNumber {
@@ -1650,11 +1788,11 @@ func (x ClassParameterInfo_ParameterSerializationFormat) String() string {
 }
 
 func (ClassParameterInfo_ParameterSerializationFormat) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[31].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[34].Descriptor()
 }
 
 func (ClassParameterInfo_ParameterSerializationFormat) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[31]
+	return &file_modal_proto_api_proto_enumTypes[34]
 }
 
 func (x ClassParameterInfo_ParameterSerializationFormat) Number() protoreflect.EnumNumber {
@@ -1697,11 +1835,11 @@ func (x CloudBucketMount_BucketType) String() string {
 }
 
 func (CloudBucketMount_BucketType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[32].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[35].Descriptor()
 }
 
 func (CloudBucketMount_BucketType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[32]
+	return &file_modal_proto_api_proto_enumTypes[35]
 }
 
 func (x CloudBucketMount_BucketType) Number() protoreflect.EnumNumber {
@@ -1741,11 +1879,11 @@ func (x CloudBucketMount_MetadataTTLType) String() string {
 }
 
 func (CloudBucketMount_MetadataTTLType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[33].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[36].Descriptor()
 }
 
 func (CloudBucketMount_MetadataTTLType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[33]
+	return &file_modal_proto_api_proto_enumTypes[36]
 }
 
 func (x CloudBucketMount_MetadataTTLType) Number() protoreflect.EnumNumber {
@@ -1794,11 +1932,11 @@ func (x FileEntry_FileType) String() string {
 }
 
 func (FileEntry_FileType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[34].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[37].Descriptor()
 }
 
 func (FileEntry_FileType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[34]
+	return &file_modal_proto_api_proto_enumTypes[37]
 }
 
 func (x FileEntry_FileType) Number() protoreflect.EnumNumber {
@@ -1838,11 +1976,11 @@ func (x Function_DefinitionType) String() string {
 }
 
 func (Function_DefinitionType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[35].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[38].Descriptor()
 }
 
 func (Function_DefinitionType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[35]
+	return &file_modal_proto_api_proto_enumTypes[38]
 }
 
 func (x Function_DefinitionType) Number() protoreflect.EnumNumber {
@@ -1882,11 +2020,11 @@ func (x Function_FunctionType) String() string {
 }
 
 func (Function_FunctionType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[36].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[39].Descriptor()
 }
 
 func (Function_FunctionType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[36]
+	return &file_modal_proto_api_proto_enumTypes[39]
 }
 
 func (x Function_FunctionType) Number() protoreflect.EnumNumber {
@@ -1923,11 +2061,11 @@ func (x FunctionSchema_FunctionSchemaType) String() string {
 }
 
 func (FunctionSchema_FunctionSchemaType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[37].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[40].Descriptor()
 }
 
 func (FunctionSchema_FunctionSchemaType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[37]
+	return &file_modal_proto_api_proto_enumTypes[40]
 }
 
 func (x FunctionSchema_FunctionSchemaType) Number() protoreflect.EnumNumber {
@@ -1986,11 +2124,11 @@ func (x GenericResult_GenericStatus) String() string {
 }
 
 func (GenericResult_GenericStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[38].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[41].Descriptor()
 }
 
 func (GenericResult_GenericStatus) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[38]
+	return &file_modal_proto_api_proto_enumTypes[41]
 }
 
 func (x GenericResult_GenericStatus) Number() protoreflect.EnumNumber {
@@ -2033,11 +2171,11 @@ func (x NetworkAccess_NetworkAccessType) String() string {
 }
 
 func (NetworkAccess_NetworkAccessType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[39].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[42].Descriptor()
 }
 
 func (NetworkAccess_NetworkAccessType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[39]
+	return &file_modal_proto_api_proto_enumTypes[42]
 }
 
 func (x NetworkAccess_NetworkAccessType) Number() protoreflect.EnumNumber {
@@ -2077,11 +2215,11 @@ func (x PTYInfo_PTYType) String() string {
 }
 
 func (PTYInfo_PTYType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[40].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[43].Descriptor()
 }
 
 func (PTYInfo_PTYType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[40]
+	return &file_modal_proto_api_proto_enumTypes[43]
 }
 
 func (x PTYInfo_PTYType) Number() protoreflect.EnumNumber {
@@ -2121,11 +2259,11 @@ func (x SandboxRestoreRequest_SandboxNameOverrideType) String() string {
 }
 
 func (SandboxRestoreRequest_SandboxNameOverrideType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[41].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[44].Descriptor()
 }
 
 func (SandboxRestoreRequest_SandboxNameOverrideType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[41]
+	return &file_modal_proto_api_proto_enumTypes[44]
 }
 
 func (x SandboxRestoreRequest_SandboxNameOverrideType) Number() protoreflect.EnumNumber {
@@ -2168,11 +2306,11 @@ func (x Warning_WarningType) String() string {
 }
 
 func (Warning_WarningType) Descriptor() protoreflect.EnumDescriptor {
-	return file_modal_proto_api_proto_enumTypes[42].Descriptor()
+	return file_modal_proto_api_proto_enumTypes[45].Descriptor()
 }
 
 func (Warning_WarningType) Type() protoreflect.EnumType {
-	return &file_modal_proto_api_proto_enumTypes[42]
+	return &file_modal_proto_api_proto_enumTypes[45]
 }
 
 func (x Warning_WarningType) Number() protoreflect.EnumNumber {
@@ -7496,7 +7634,7 @@ type AutoscalerSettings_builder struct {
 	MaxContainers *uint32
 	// Additional container to spin up when Function is active
 	BufferContainers *uint32
-	// Currently unused; a placeholder in case we decide to expose scaleup control to users
+	// Stabilization window (in seconds) before scaling up; requires sustained demand over this period
 	ScaleupWindow *uint32
 	// Maximum amount of time a container can be idle before being scaled down, in seconds; pka "container_idle_timeout"
 	ScaledownWindow *uint32
@@ -16739,10 +16877,11 @@ func (b0 DomainListResponse_builder) Build() *DomainListResponse {
 }
 
 type EnvironmentCreateRequest struct {
-	state           protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Name string                 `protobuf:"bytes,1,opt,name=name,proto3"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Name      string                 `protobuf:"bytes,1,opt,name=name,proto3"`
+	xxx_hidden_IsManaged bool                   `protobuf:"varint,2,opt,name=is_managed,json=isManaged,proto3"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *EnvironmentCreateRequest) Reset() {
@@ -16777,14 +16916,26 @@ func (x *EnvironmentCreateRequest) GetName() string {
 	return ""
 }
 
+func (x *EnvironmentCreateRequest) GetIsManaged() bool {
+	if x != nil {
+		return x.xxx_hidden_IsManaged
+	}
+	return false
+}
+
 func (x *EnvironmentCreateRequest) SetName(v string) {
 	x.xxx_hidden_Name = v
+}
+
+func (x *EnvironmentCreateRequest) SetIsManaged(v bool) {
+	x.xxx_hidden_IsManaged = v
 }
 
 type EnvironmentCreateRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Name string
+	Name      string
+	IsManaged bool
 }
 
 func (b0 EnvironmentCreateRequest_builder) Build() *EnvironmentCreateRequest {
@@ -16792,6 +16943,7 @@ func (b0 EnvironmentCreateRequest_builder) Build() *EnvironmentCreateRequest {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Name = b.Name
+	x.xxx_hidden_IsManaged = b.IsManaged
 	return m0
 }
 
@@ -16852,6 +17004,180 @@ func (b0 EnvironmentDeleteRequest_builder) Build() *EnvironmentDeleteRequest {
 	return m0
 }
 
+type EnvironmentGetManagedRequest struct {
+	state                    protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_EnvironmentId string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *EnvironmentGetManagedRequest) Reset() {
+	*x = EnvironmentGetManagedRequest{}
+	mi := &file_modal_proto_api_proto_msgTypes[146]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnvironmentGetManagedRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnvironmentGetManagedRequest) ProtoMessage() {}
+
+func (x *EnvironmentGetManagedRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[146]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *EnvironmentGetManagedRequest) GetEnvironmentId() string {
+	if x != nil {
+		return x.xxx_hidden_EnvironmentId
+	}
+	return ""
+}
+
+func (x *EnvironmentGetManagedRequest) SetEnvironmentId(v string) {
+	x.xxx_hidden_EnvironmentId = v
+}
+
+type EnvironmentGetManagedRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	EnvironmentId string
+}
+
+func (b0 EnvironmentGetManagedRequest_builder) Build() *EnvironmentGetManagedRequest {
+	m0 := &EnvironmentGetManagedRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_EnvironmentId = b.EnvironmentId
+	return m0
+}
+
+type EnvironmentGetManagedResponse struct {
+	state                      protoimpl.MessageState                             `protogen:"opaque.v1"`
+	xxx_hidden_EnvironmentId   string                                             `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
+	xxx_hidden_Name            string                                             `protobuf:"bytes,2,opt,name=name,proto3"`
+	xxx_hidden_CreatedAt       float64                                            `protobuf:"fixed64,3,opt,name=created_at,json=createdAt,proto3"`
+	xxx_hidden_PrincipalRoles  *[]*EnvironmentGetManagedResponse_PrincipalEnvRole `protobuf:"bytes,4,rep,name=principal_roles,json=principalRoles,proto3"`
+	xxx_hidden_AdditionalRoles *[]*EnvironmentGetManagedResponse_PrincipalEnvRole `protobuf:"bytes,5,rep,name=additional_roles,json=additionalRoles,proto3"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
+}
+
+func (x *EnvironmentGetManagedResponse) Reset() {
+	*x = EnvironmentGetManagedResponse{}
+	mi := &file_modal_proto_api_proto_msgTypes[147]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnvironmentGetManagedResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnvironmentGetManagedResponse) ProtoMessage() {}
+
+func (x *EnvironmentGetManagedResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[147]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *EnvironmentGetManagedResponse) GetEnvironmentId() string {
+	if x != nil {
+		return x.xxx_hidden_EnvironmentId
+	}
+	return ""
+}
+
+func (x *EnvironmentGetManagedResponse) GetName() string {
+	if x != nil {
+		return x.xxx_hidden_Name
+	}
+	return ""
+}
+
+func (x *EnvironmentGetManagedResponse) GetCreatedAt() float64 {
+	if x != nil {
+		return x.xxx_hidden_CreatedAt
+	}
+	return 0
+}
+
+func (x *EnvironmentGetManagedResponse) GetPrincipalRoles() []*EnvironmentGetManagedResponse_PrincipalEnvRole {
+	if x != nil {
+		if x.xxx_hidden_PrincipalRoles != nil {
+			return *x.xxx_hidden_PrincipalRoles
+		}
+	}
+	return nil
+}
+
+func (x *EnvironmentGetManagedResponse) GetAdditionalRoles() []*EnvironmentGetManagedResponse_PrincipalEnvRole {
+	if x != nil {
+		if x.xxx_hidden_AdditionalRoles != nil {
+			return *x.xxx_hidden_AdditionalRoles
+		}
+	}
+	return nil
+}
+
+func (x *EnvironmentGetManagedResponse) SetEnvironmentId(v string) {
+	x.xxx_hidden_EnvironmentId = v
+}
+
+func (x *EnvironmentGetManagedResponse) SetName(v string) {
+	x.xxx_hidden_Name = v
+}
+
+func (x *EnvironmentGetManagedResponse) SetCreatedAt(v float64) {
+	x.xxx_hidden_CreatedAt = v
+}
+
+func (x *EnvironmentGetManagedResponse) SetPrincipalRoles(v []*EnvironmentGetManagedResponse_PrincipalEnvRole) {
+	x.xxx_hidden_PrincipalRoles = &v
+}
+
+func (x *EnvironmentGetManagedResponse) SetAdditionalRoles(v []*EnvironmentGetManagedResponse_PrincipalEnvRole) {
+	x.xxx_hidden_AdditionalRoles = &v
+}
+
+type EnvironmentGetManagedResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	EnvironmentId   string
+	Name            string
+	CreatedAt       float64
+	PrincipalRoles  []*EnvironmentGetManagedResponse_PrincipalEnvRole
+	AdditionalRoles []*EnvironmentGetManagedResponse_PrincipalEnvRole
+}
+
+func (b0 EnvironmentGetManagedResponse_builder) Build() *EnvironmentGetManagedResponse {
+	m0 := &EnvironmentGetManagedResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_EnvironmentId = b.EnvironmentId
+	x.xxx_hidden_Name = b.Name
+	x.xxx_hidden_CreatedAt = b.CreatedAt
+	x.xxx_hidden_PrincipalRoles = &b.PrincipalRoles
+	x.xxx_hidden_AdditionalRoles = &b.AdditionalRoles
+	return m0
+}
+
 type EnvironmentGetOrCreateRequest struct {
 	state                         protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_DeploymentName     string                 `protobuf:"bytes,1,opt,name=deployment_name,json=deploymentName,proto3"`
@@ -16862,7 +17188,7 @@ type EnvironmentGetOrCreateRequest struct {
 
 func (x *EnvironmentGetOrCreateRequest) Reset() {
 	*x = EnvironmentGetOrCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[146]
+	mi := &file_modal_proto_api_proto_msgTypes[148]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16874,7 +17200,7 @@ func (x *EnvironmentGetOrCreateRequest) String() string {
 func (*EnvironmentGetOrCreateRequest) ProtoMessage() {}
 
 func (x *EnvironmentGetOrCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[146]
+	mi := &file_modal_proto_api_proto_msgTypes[148]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16933,7 +17259,7 @@ type EnvironmentGetOrCreateResponse struct {
 
 func (x *EnvironmentGetOrCreateResponse) Reset() {
 	*x = EnvironmentGetOrCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[147]
+	mi := &file_modal_proto_api_proto_msgTypes[149]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16945,7 +17271,7 @@ func (x *EnvironmentGetOrCreateResponse) String() string {
 func (*EnvironmentGetOrCreateResponse) ProtoMessage() {}
 
 func (x *EnvironmentGetOrCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[147]
+	mi := &file_modal_proto_api_proto_msgTypes[149]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17025,7 +17351,7 @@ type EnvironmentListItem struct {
 
 func (x *EnvironmentListItem) Reset() {
 	*x = EnvironmentListItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[148]
+	mi := &file_modal_proto_api_proto_msgTypes[150]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17037,7 +17363,7 @@ func (x *EnvironmentListItem) String() string {
 func (*EnvironmentListItem) ProtoMessage() {}
 
 func (x *EnvironmentListItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[148]
+	mi := &file_modal_proto_api_proto_msgTypes[150]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17231,7 +17557,7 @@ type EnvironmentListResponse struct {
 
 func (x *EnvironmentListResponse) Reset() {
 	*x = EnvironmentListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[149]
+	mi := &file_modal_proto_api_proto_msgTypes[151]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17243,7 +17569,7 @@ func (x *EnvironmentListResponse) String() string {
 func (*EnvironmentListResponse) ProtoMessage() {}
 
 func (x *EnvironmentListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[149]
+	mi := &file_modal_proto_api_proto_msgTypes[151]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17291,7 +17617,7 @@ type EnvironmentMetadata struct {
 
 func (x *EnvironmentMetadata) Reset() {
 	*x = EnvironmentMetadata{}
-	mi := &file_modal_proto_api_proto_msgTypes[150]
+	mi := &file_modal_proto_api_proto_msgTypes[152]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17303,7 +17629,7 @@ func (x *EnvironmentMetadata) String() string {
 func (*EnvironmentMetadata) ProtoMessage() {}
 
 func (x *EnvironmentMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[150]
+	mi := &file_modal_proto_api_proto_msgTypes[152]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17363,6 +17689,176 @@ func (b0 EnvironmentMetadata_builder) Build() *EnvironmentMetadata {
 	return m0
 }
 
+type EnvironmentRoleSetRequest struct {
+	state                    protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_EnvironmentId string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
+	xxx_hidden_UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3"`
+	xxx_hidden_ServiceUserId string                 `protobuf:"bytes,3,opt,name=service_user_id,json=serviceUserId,proto3"`
+	xxx_hidden_Role          EnvironmentRole        `protobuf:"varint,4,opt,name=role,proto3,enum=modal.client.EnvironmentRole"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *EnvironmentRoleSetRequest) Reset() {
+	*x = EnvironmentRoleSetRequest{}
+	mi := &file_modal_proto_api_proto_msgTypes[153]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnvironmentRoleSetRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnvironmentRoleSetRequest) ProtoMessage() {}
+
+func (x *EnvironmentRoleSetRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[153]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *EnvironmentRoleSetRequest) GetEnvironmentId() string {
+	if x != nil {
+		return x.xxx_hidden_EnvironmentId
+	}
+	return ""
+}
+
+func (x *EnvironmentRoleSetRequest) GetUserId() string {
+	if x != nil {
+		return x.xxx_hidden_UserId
+	}
+	return ""
+}
+
+func (x *EnvironmentRoleSetRequest) GetServiceUserId() string {
+	if x != nil {
+		return x.xxx_hidden_ServiceUserId
+	}
+	return ""
+}
+
+func (x *EnvironmentRoleSetRequest) GetRole() EnvironmentRole {
+	if x != nil {
+		return x.xxx_hidden_Role
+	}
+	return EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED
+}
+
+func (x *EnvironmentRoleSetRequest) SetEnvironmentId(v string) {
+	x.xxx_hidden_EnvironmentId = v
+}
+
+func (x *EnvironmentRoleSetRequest) SetUserId(v string) {
+	x.xxx_hidden_UserId = v
+}
+
+func (x *EnvironmentRoleSetRequest) SetServiceUserId(v string) {
+	x.xxx_hidden_ServiceUserId = v
+}
+
+func (x *EnvironmentRoleSetRequest) SetRole(v EnvironmentRole) {
+	x.xxx_hidden_Role = v
+}
+
+type EnvironmentRoleSetRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	EnvironmentId string
+	UserId        string
+	ServiceUserId string
+	Role          EnvironmentRole
+}
+
+func (b0 EnvironmentRoleSetRequest_builder) Build() *EnvironmentRoleSetRequest {
+	m0 := &EnvironmentRoleSetRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_EnvironmentId = b.EnvironmentId
+	x.xxx_hidden_UserId = b.UserId
+	x.xxx_hidden_ServiceUserId = b.ServiceUserId
+	x.xxx_hidden_Role = b.Role
+	return m0
+}
+
+type EnvironmentSetManagedRequest struct {
+	state                    protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_EnvironmentId string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3"`
+	xxx_hidden_Managed       bool                   `protobuf:"varint,2,opt,name=managed,proto3"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *EnvironmentSetManagedRequest) Reset() {
+	*x = EnvironmentSetManagedRequest{}
+	mi := &file_modal_proto_api_proto_msgTypes[154]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnvironmentSetManagedRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnvironmentSetManagedRequest) ProtoMessage() {}
+
+func (x *EnvironmentSetManagedRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[154]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *EnvironmentSetManagedRequest) GetEnvironmentId() string {
+	if x != nil {
+		return x.xxx_hidden_EnvironmentId
+	}
+	return ""
+}
+
+func (x *EnvironmentSetManagedRequest) GetManaged() bool {
+	if x != nil {
+		return x.xxx_hidden_Managed
+	}
+	return false
+}
+
+func (x *EnvironmentSetManagedRequest) SetEnvironmentId(v string) {
+	x.xxx_hidden_EnvironmentId = v
+}
+
+func (x *EnvironmentSetManagedRequest) SetManaged(v bool) {
+	x.xxx_hidden_Managed = v
+}
+
+type EnvironmentSetManagedRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	EnvironmentId string
+	Managed       bool
+}
+
+func (b0 EnvironmentSetManagedRequest_builder) Build() *EnvironmentSetManagedRequest {
+	m0 := &EnvironmentSetManagedRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_EnvironmentId = b.EnvironmentId
+	x.xxx_hidden_Managed = b.Managed
+	return m0
+}
+
 // Environment-scoped settings, with workspace-level defaults.
 // Note that we use MergeFrom to combine workspace / environment settings,
 // which will *append* any `repeated` fields!
@@ -17376,7 +17872,7 @@ type EnvironmentSettings struct {
 
 func (x *EnvironmentSettings) Reset() {
 	*x = EnvironmentSettings{}
-	mi := &file_modal_proto_api_proto_msgTypes[151]
+	mi := &file_modal_proto_api_proto_msgTypes[155]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17388,7 +17884,7 @@ func (x *EnvironmentSettings) String() string {
 func (*EnvironmentSettings) ProtoMessage() {}
 
 func (x *EnvironmentSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[151]
+	mi := &file_modal_proto_api_proto_msgTypes[155]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17452,7 +17948,7 @@ type EnvironmentUpdateRequest struct {
 
 func (x *EnvironmentUpdateRequest) Reset() {
 	*x = EnvironmentUpdateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[152]
+	mi := &file_modal_proto_api_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17464,7 +17960,7 @@ func (x *EnvironmentUpdateRequest) String() string {
 func (*EnvironmentUpdateRequest) ProtoMessage() {}
 
 func (x *EnvironmentUpdateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[152]
+	mi := &file_modal_proto_api_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17619,7 +18115,7 @@ type FileEntry struct {
 
 func (x *FileEntry) Reset() {
 	*x = FileEntry{}
-	mi := &file_modal_proto_api_proto_msgTypes[153]
+	mi := &file_modal_proto_api_proto_msgTypes[157]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17631,7 +18127,7 @@ func (x *FileEntry) String() string {
 func (*FileEntry) ProtoMessage() {}
 
 func (x *FileEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[153]
+	mi := &file_modal_proto_api_proto_msgTypes[157]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17718,7 +18214,7 @@ type FilesystemRuntimeOutputBatch struct {
 
 func (x *FilesystemRuntimeOutputBatch) Reset() {
 	*x = FilesystemRuntimeOutputBatch{}
-	mi := &file_modal_proto_api_proto_msgTypes[154]
+	mi := &file_modal_proto_api_proto_msgTypes[158]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17730,7 +18226,7 @@ func (x *FilesystemRuntimeOutputBatch) String() string {
 func (*FilesystemRuntimeOutputBatch) ProtoMessage() {}
 
 func (x *FilesystemRuntimeOutputBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[154]
+	mi := &file_modal_proto_api_proto_msgTypes[158]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17825,7 +18321,7 @@ type FlashContainerDeregisterRequest struct {
 
 func (x *FlashContainerDeregisterRequest) Reset() {
 	*x = FlashContainerDeregisterRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[155]
+	mi := &file_modal_proto_api_proto_msgTypes[159]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17837,7 +18333,7 @@ func (x *FlashContainerDeregisterRequest) String() string {
 func (*FlashContainerDeregisterRequest) ProtoMessage() {}
 
 func (x *FlashContainerDeregisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[155]
+	mi := &file_modal_proto_api_proto_msgTypes[159]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17882,7 +18378,7 @@ type FlashContainerListRequest struct {
 
 func (x *FlashContainerListRequest) Reset() {
 	*x = FlashContainerListRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[156]
+	mi := &file_modal_proto_api_proto_msgTypes[160]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17894,7 +18390,7 @@ func (x *FlashContainerListRequest) String() string {
 func (*FlashContainerListRequest) ProtoMessage() {}
 
 func (x *FlashContainerListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[156]
+	mi := &file_modal_proto_api_proto_msgTypes[160]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17939,7 +18435,7 @@ type FlashContainerListResponse struct {
 
 func (x *FlashContainerListResponse) Reset() {
 	*x = FlashContainerListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[157]
+	mi := &file_modal_proto_api_proto_msgTypes[161]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17951,7 +18447,7 @@ func (x *FlashContainerListResponse) String() string {
 func (*FlashContainerListResponse) ProtoMessage() {}
 
 func (x *FlashContainerListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[157]
+	mi := &file_modal_proto_api_proto_msgTypes[161]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18002,7 +18498,7 @@ type FlashContainerRegisterRequest struct {
 
 func (x *FlashContainerRegisterRequest) Reset() {
 	*x = FlashContainerRegisterRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[158]
+	mi := &file_modal_proto_api_proto_msgTypes[162]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18014,7 +18510,7 @@ func (x *FlashContainerRegisterRequest) String() string {
 func (*FlashContainerRegisterRequest) ProtoMessage() {}
 
 func (x *FlashContainerRegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[158]
+	mi := &file_modal_proto_api_proto_msgTypes[162]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18111,7 +18607,7 @@ type FlashContainerRegisterResponse struct {
 
 func (x *FlashContainerRegisterResponse) Reset() {
 	*x = FlashContainerRegisterResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[159]
+	mi := &file_modal_proto_api_proto_msgTypes[163]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18123,7 +18619,7 @@ func (x *FlashContainerRegisterResponse) String() string {
 func (*FlashContainerRegisterResponse) ProtoMessage() {}
 
 func (x *FlashContainerRegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[159]
+	mi := &file_modal_proto_api_proto_msgTypes[163]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18169,7 +18665,7 @@ type FlashProxyUpstreamRequest struct {
 
 func (x *FlashProxyUpstreamRequest) Reset() {
 	*x = FlashProxyUpstreamRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[160]
+	mi := &file_modal_proto_api_proto_msgTypes[164]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18181,7 +18677,7 @@ func (x *FlashProxyUpstreamRequest) String() string {
 func (*FlashProxyUpstreamRequest) ProtoMessage() {}
 
 func (x *FlashProxyUpstreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[160]
+	mi := &file_modal_proto_api_proto_msgTypes[164]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18240,7 +18736,7 @@ type FlashSetTargetSlotsMetricsRequest struct {
 
 func (x *FlashSetTargetSlotsMetricsRequest) Reset() {
 	*x = FlashSetTargetSlotsMetricsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[161]
+	mi := &file_modal_proto_api_proto_msgTypes[165]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18252,7 +18748,7 @@ func (x *FlashSetTargetSlotsMetricsRequest) String() string {
 func (*FlashSetTargetSlotsMetricsRequest) ProtoMessage() {}
 
 func (x *FlashSetTargetSlotsMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[161]
+	mi := &file_modal_proto_api_proto_msgTypes[165]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18310,7 +18806,7 @@ type FlashSetTargetSlotsMetricsResponse struct {
 
 func (x *FlashSetTargetSlotsMetricsResponse) Reset() {
 	*x = FlashSetTargetSlotsMetricsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[162]
+	mi := &file_modal_proto_api_proto_msgTypes[166]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18322,7 +18818,7 @@ func (x *FlashSetTargetSlotsMetricsResponse) String() string {
 func (*FlashSetTargetSlotsMetricsResponse) ProtoMessage() {}
 
 func (x *FlashSetTargetSlotsMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[162]
+	mi := &file_modal_proto_api_proto_msgTypes[166]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18434,7 +18930,7 @@ type Function struct {
 
 func (x *Function) Reset() {
 	*x = Function{}
-	mi := &file_modal_proto_api_proto_msgTypes[163]
+	mi := &file_modal_proto_api_proto_msgTypes[167]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18446,7 +18942,7 @@ func (x *Function) String() string {
 func (*Function) ProtoMessage() {}
 
 func (x *Function) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[163]
+	mi := &file_modal_proto_api_proto_msgTypes[167]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19750,7 +20246,7 @@ type FunctionAsyncInvokeRequest struct {
 
 func (x *FunctionAsyncInvokeRequest) Reset() {
 	*x = FunctionAsyncInvokeRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[164]
+	mi := &file_modal_proto_api_proto_msgTypes[168]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19762,7 +20258,7 @@ func (x *FunctionAsyncInvokeRequest) String() string {
 func (*FunctionAsyncInvokeRequest) ProtoMessage() {}
 
 func (x *FunctionAsyncInvokeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[164]
+	mi := &file_modal_proto_api_proto_msgTypes[168]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19845,7 +20341,7 @@ type FunctionAsyncInvokeResponse struct {
 
 func (x *FunctionAsyncInvokeResponse) Reset() {
 	*x = FunctionAsyncInvokeResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[165]
+	mi := &file_modal_proto_api_proto_msgTypes[169]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19857,7 +20353,7 @@ func (x *FunctionAsyncInvokeResponse) String() string {
 func (*FunctionAsyncInvokeResponse) ProtoMessage() {}
 
 func (x *FunctionAsyncInvokeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[165]
+	mi := &file_modal_proto_api_proto_msgTypes[169]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19919,7 +20415,7 @@ type FunctionBindParamsRequest struct {
 
 func (x *FunctionBindParamsRequest) Reset() {
 	*x = FunctionBindParamsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[166]
+	mi := &file_modal_proto_api_proto_msgTypes[170]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19931,7 +20427,7 @@ func (x *FunctionBindParamsRequest) String() string {
 func (*FunctionBindParamsRequest) ProtoMessage() {}
 
 func (x *FunctionBindParamsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[166]
+	mi := &file_modal_proto_api_proto_msgTypes[170]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20043,7 +20539,7 @@ type FunctionBindParamsResponse struct {
 
 func (x *FunctionBindParamsResponse) Reset() {
 	*x = FunctionBindParamsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[167]
+	mi := &file_modal_proto_api_proto_msgTypes[171]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20055,7 +20551,7 @@ func (x *FunctionBindParamsResponse) String() string {
 func (*FunctionBindParamsResponse) ProtoMessage() {}
 
 func (x *FunctionBindParamsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[167]
+	mi := &file_modal_proto_api_proto_msgTypes[171]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20127,7 +20623,7 @@ type FunctionCallCallGraphInfo struct {
 
 func (x *FunctionCallCallGraphInfo) Reset() {
 	*x = FunctionCallCallGraphInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[168]
+	mi := &file_modal_proto_api_proto_msgTypes[172]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20139,7 +20635,7 @@ func (x *FunctionCallCallGraphInfo) String() string {
 func (*FunctionCallCallGraphInfo) ProtoMessage() {}
 
 func (x *FunctionCallCallGraphInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[168]
+	mi := &file_modal_proto_api_proto_msgTypes[172]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20227,7 +20723,7 @@ type FunctionCallCancelRequest struct {
 
 func (x *FunctionCallCancelRequest) Reset() {
 	*x = FunctionCallCancelRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[169]
+	mi := &file_modal_proto_api_proto_msgTypes[173]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20239,7 +20735,7 @@ func (x *FunctionCallCancelRequest) String() string {
 func (*FunctionCallCancelRequest) ProtoMessage() {}
 
 func (x *FunctionCallCancelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[169]
+	mi := &file_modal_proto_api_proto_msgTypes[173]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20329,7 +20825,7 @@ type FunctionCallFromIdRequest struct {
 
 func (x *FunctionCallFromIdRequest) Reset() {
 	*x = FunctionCallFromIdRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[170]
+	mi := &file_modal_proto_api_proto_msgTypes[174]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20341,7 +20837,7 @@ func (x *FunctionCallFromIdRequest) String() string {
 func (*FunctionCallFromIdRequest) ProtoMessage() {}
 
 func (x *FunctionCallFromIdRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[170]
+	mi := &file_modal_proto_api_proto_msgTypes[174]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20388,7 +20884,7 @@ type FunctionCallFromIdResponse struct {
 
 func (x *FunctionCallFromIdResponse) Reset() {
 	*x = FunctionCallFromIdResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[171]
+	mi := &file_modal_proto_api_proto_msgTypes[175]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20400,7 +20896,7 @@ func (x *FunctionCallFromIdResponse) String() string {
 func (*FunctionCallFromIdResponse) ProtoMessage() {}
 
 func (x *FunctionCallFromIdResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[171]
+	mi := &file_modal_proto_api_proto_msgTypes[175]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20460,7 +20956,7 @@ type FunctionCallGetDataRequest struct {
 
 func (x *FunctionCallGetDataRequest) Reset() {
 	*x = FunctionCallGetDataRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[172]
+	mi := &file_modal_proto_api_proto_msgTypes[176]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20472,7 +20968,7 @@ func (x *FunctionCallGetDataRequest) String() string {
 func (*FunctionCallGetDataRequest) ProtoMessage() {}
 
 func (x *FunctionCallGetDataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[172]
+	mi := &file_modal_proto_api_proto_msgTypes[176]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20617,7 +21113,7 @@ func (b0 FunctionCallGetDataRequest_builder) Build() *FunctionCallGetDataRequest
 type case_FunctionCallGetDataRequest_CallInfo protoreflect.FieldNumber
 
 func (x case_FunctionCallGetDataRequest_CallInfo) String() string {
-	md := file_modal_proto_api_proto_msgTypes[172].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[176].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -20658,7 +21154,7 @@ type FunctionCallInfo struct {
 
 func (x *FunctionCallInfo) Reset() {
 	*x = FunctionCallInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[173]
+	mi := &file_modal_proto_api_proto_msgTypes[177]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20670,7 +21166,7 @@ func (x *FunctionCallInfo) String() string {
 func (*FunctionCallInfo) ProtoMessage() {}
 
 func (x *FunctionCallInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[173]
+	mi := &file_modal_proto_api_proto_msgTypes[177]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20887,7 +21383,7 @@ type FunctionCallListRequest struct {
 
 func (x *FunctionCallListRequest) Reset() {
 	*x = FunctionCallListRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[174]
+	mi := &file_modal_proto_api_proto_msgTypes[178]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20899,7 +21395,7 @@ func (x *FunctionCallListRequest) String() string {
 func (*FunctionCallListRequest) ProtoMessage() {}
 
 func (x *FunctionCallListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[174]
+	mi := &file_modal_proto_api_proto_msgTypes[178]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20944,7 +21440,7 @@ type FunctionCallListResponse struct {
 
 func (x *FunctionCallListResponse) Reset() {
 	*x = FunctionCallListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[175]
+	mi := &file_modal_proto_api_proto_msgTypes[179]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20956,7 +21452,7 @@ func (x *FunctionCallListResponse) String() string {
 func (*FunctionCallListResponse) ProtoMessage() {}
 
 func (x *FunctionCallListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[175]
+	mi := &file_modal_proto_api_proto_msgTypes[179]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21004,7 +21500,7 @@ type FunctionCallPutDataRequest struct {
 
 func (x *FunctionCallPutDataRequest) Reset() {
 	*x = FunctionCallPutDataRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[176]
+	mi := &file_modal_proto_api_proto_msgTypes[180]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21016,7 +21512,7 @@ func (x *FunctionCallPutDataRequest) String() string {
 func (*FunctionCallPutDataRequest) ProtoMessage() {}
 
 func (x *FunctionCallPutDataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[176]
+	mi := &file_modal_proto_api_proto_msgTypes[180]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21150,7 +21646,7 @@ func (b0 FunctionCallPutDataRequest_builder) Build() *FunctionCallPutDataRequest
 type case_FunctionCallPutDataRequest_CallInfo protoreflect.FieldNumber
 
 func (x case_FunctionCallPutDataRequest_CallInfo) String() string {
-	md := file_modal_proto_api_proto_msgTypes[176].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[180].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -21186,7 +21682,7 @@ type FunctionCreateRequest struct {
 
 func (x *FunctionCreateRequest) Reset() {
 	*x = FunctionCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[177]
+	mi := &file_modal_proto_api_proto_msgTypes[181]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21198,7 +21694,7 @@ func (x *FunctionCreateRequest) String() string {
 func (*FunctionCreateRequest) ProtoMessage() {}
 
 func (x *FunctionCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[177]
+	mi := &file_modal_proto_api_proto_msgTypes[181]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21337,7 +21833,7 @@ type FunctionCreateResponse struct {
 
 func (x *FunctionCreateResponse) Reset() {
 	*x = FunctionCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[178]
+	mi := &file_modal_proto_api_proto_msgTypes[182]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21349,7 +21845,7 @@ func (x *FunctionCreateResponse) String() string {
 func (*FunctionCreateResponse) ProtoMessage() {}
 
 func (x *FunctionCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[178]
+	mi := &file_modal_proto_api_proto_msgTypes[182]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21514,7 +22010,7 @@ type FunctionData struct {
 
 func (x *FunctionData) Reset() {
 	*x = FunctionData{}
-	mi := &file_modal_proto_api_proto_msgTypes[179]
+	mi := &file_modal_proto_api_proto_msgTypes[183]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21526,7 +22022,7 @@ func (x *FunctionData) String() string {
 func (*FunctionData) ProtoMessage() {}
 
 func (x *FunctionData) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[179]
+	mi := &file_modal_proto_api_proto_msgTypes[183]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22193,7 +22689,7 @@ type FunctionExtended struct {
 
 func (x *FunctionExtended) Reset() {
 	*x = FunctionExtended{}
-	mi := &file_modal_proto_api_proto_msgTypes[180]
+	mi := &file_modal_proto_api_proto_msgTypes[184]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22205,7 +22701,7 @@ func (x *FunctionExtended) String() string {
 func (*FunctionExtended) ProtoMessage() {}
 
 func (x *FunctionExtended) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[180]
+	mi := &file_modal_proto_api_proto_msgTypes[184]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22350,7 +22846,7 @@ func (b0 FunctionExtended_builder) Build() *FunctionExtended {
 type case_FunctionExtended_FunctionExtended protoreflect.FieldNumber
 
 func (x case_FunctionExtended_FunctionExtended) String() string {
-	md := file_modal_proto_api_proto_msgTypes[180].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[184].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -22384,7 +22880,7 @@ type FunctionFinishInputsRequest struct {
 
 func (x *FunctionFinishInputsRequest) Reset() {
 	*x = FunctionFinishInputsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[181]
+	mi := &file_modal_proto_api_proto_msgTypes[185]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22396,7 +22892,7 @@ func (x *FunctionFinishInputsRequest) String() string {
 func (*FunctionFinishInputsRequest) ProtoMessage() {}
 
 func (x *FunctionFinishInputsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[181]
+	mi := &file_modal_proto_api_proto_msgTypes[185]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22467,7 +22963,7 @@ type FunctionGetCallGraphRequest struct {
 
 func (x *FunctionGetCallGraphRequest) Reset() {
 	*x = FunctionGetCallGraphRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[182]
+	mi := &file_modal_proto_api_proto_msgTypes[186]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22479,7 +22975,7 @@ func (x *FunctionGetCallGraphRequest) String() string {
 func (*FunctionGetCallGraphRequest) ProtoMessage() {}
 
 func (x *FunctionGetCallGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[182]
+	mi := &file_modal_proto_api_proto_msgTypes[186]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22525,7 +23021,7 @@ type FunctionGetCallGraphResponse struct {
 
 func (x *FunctionGetCallGraphResponse) Reset() {
 	*x = FunctionGetCallGraphResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[183]
+	mi := &file_modal_proto_api_proto_msgTypes[187]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22537,7 +23033,7 @@ func (x *FunctionGetCallGraphResponse) String() string {
 func (*FunctionGetCallGraphResponse) ProtoMessage() {}
 
 func (x *FunctionGetCallGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[183]
+	mi := &file_modal_proto_api_proto_msgTypes[187]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22599,7 +23095,7 @@ type FunctionGetCurrentStatsRequest struct {
 
 func (x *FunctionGetCurrentStatsRequest) Reset() {
 	*x = FunctionGetCurrentStatsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[184]
+	mi := &file_modal_proto_api_proto_msgTypes[188]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22611,7 +23107,7 @@ func (x *FunctionGetCurrentStatsRequest) String() string {
 func (*FunctionGetCurrentStatsRequest) ProtoMessage() {}
 
 func (x *FunctionGetCurrentStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[184]
+	mi := &file_modal_proto_api_proto_msgTypes[188]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22658,7 +23154,7 @@ type FunctionGetDynamicConcurrencyRequest struct {
 
 func (x *FunctionGetDynamicConcurrencyRequest) Reset() {
 	*x = FunctionGetDynamicConcurrencyRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[185]
+	mi := &file_modal_proto_api_proto_msgTypes[189]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22670,7 +23166,7 @@ func (x *FunctionGetDynamicConcurrencyRequest) String() string {
 func (*FunctionGetDynamicConcurrencyRequest) ProtoMessage() {}
 
 func (x *FunctionGetDynamicConcurrencyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[185]
+	mi := &file_modal_proto_api_proto_msgTypes[189]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22741,7 +23237,7 @@ type FunctionGetDynamicConcurrencyResponse struct {
 
 func (x *FunctionGetDynamicConcurrencyResponse) Reset() {
 	*x = FunctionGetDynamicConcurrencyResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[186]
+	mi := &file_modal_proto_api_proto_msgTypes[190]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22753,7 +23249,7 @@ func (x *FunctionGetDynamicConcurrencyResponse) String() string {
 func (*FunctionGetDynamicConcurrencyResponse) ProtoMessage() {}
 
 func (x *FunctionGetDynamicConcurrencyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[186]
+	mi := &file_modal_proto_api_proto_msgTypes[190]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22799,6 +23295,7 @@ type FunctionGetInputsItem struct {
 	xxx_hidden_RetryCount                 uint32                     `protobuf:"varint,7,opt,name=retry_count,json=retryCount,proto3"`
 	xxx_hidden_FunctionMapIdx             int32                      `protobuf:"varint,8,opt,name=function_map_idx,json=functionMapIdx,proto3,oneof"`
 	xxx_hidden_AttemptToken               string                     `protobuf:"bytes,9,opt,name=attempt_token,json=attemptToken,proto3"`
+	xxx_hidden_FromInputPlane             bool                       `protobuf:"varint,10,opt,name=from_input_plane,json=fromInputPlane,proto3"`
 	XXX_raceDetectHookData                protoimpl.RaceDetectHookData
 	XXX_presence                          [1]uint32
 	unknownFields                         protoimpl.UnknownFields
@@ -22807,7 +23304,7 @@ type FunctionGetInputsItem struct {
 
 func (x *FunctionGetInputsItem) Reset() {
 	*x = FunctionGetInputsItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[187]
+	mi := &file_modal_proto_api_proto_msgTypes[191]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22819,7 +23316,7 @@ func (x *FunctionGetInputsItem) String() string {
 func (*FunctionGetInputsItem) ProtoMessage() {}
 
 func (x *FunctionGetInputsItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[187]
+	mi := &file_modal_proto_api_proto_msgTypes[191]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22886,6 +23383,13 @@ func (x *FunctionGetInputsItem) GetAttemptToken() string {
 	return ""
 }
 
+func (x *FunctionGetInputsItem) GetFromInputPlane() bool {
+	if x != nil {
+		return x.xxx_hidden_FromInputPlane
+	}
+	return false
+}
+
 func (x *FunctionGetInputsItem) SetInputId(v string) {
 	x.xxx_hidden_InputId = v
 }
@@ -22912,11 +23416,15 @@ func (x *FunctionGetInputsItem) SetRetryCount(v uint32) {
 
 func (x *FunctionGetInputsItem) SetFunctionMapIdx(v int32) {
 	x.xxx_hidden_FunctionMapIdx = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 9)
 }
 
 func (x *FunctionGetInputsItem) SetAttemptToken(v string) {
 	x.xxx_hidden_AttemptToken = v
+}
+
+func (x *FunctionGetInputsItem) SetFromInputPlane(v bool) {
+	x.xxx_hidden_FromInputPlane = v
 }
 
 func (x *FunctionGetInputsItem) HasInput() bool {
@@ -22953,6 +23461,7 @@ type FunctionGetInputsItem_builder struct {
 	RetryCount                 uint32
 	FunctionMapIdx             *int32
 	AttemptToken               string
+	FromInputPlane             bool
 }
 
 func (b0 FunctionGetInputsItem_builder) Build() *FunctionGetInputsItem {
@@ -22966,10 +23475,11 @@ func (b0 FunctionGetInputsItem_builder) Build() *FunctionGetInputsItem {
 	x.xxx_hidden_FunctionCallInvocationType = b.FunctionCallInvocationType
 	x.xxx_hidden_RetryCount = b.RetryCount
 	if b.FunctionMapIdx != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 9)
 		x.xxx_hidden_FunctionMapIdx = *b.FunctionMapIdx
 	}
 	x.xxx_hidden_AttemptToken = b.AttemptToken
+	x.xxx_hidden_FromInputPlane = b.FromInputPlane
 	return m0
 }
 
@@ -22987,7 +23497,7 @@ type FunctionGetInputsRequest struct {
 
 func (x *FunctionGetInputsRequest) Reset() {
 	*x = FunctionGetInputsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[188]
+	mi := &file_modal_proto_api_proto_msgTypes[192]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -22999,7 +23509,7 @@ func (x *FunctionGetInputsRequest) String() string {
 func (*FunctionGetInputsRequest) ProtoMessage() {}
 
 func (x *FunctionGetInputsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[188]
+	mi := &file_modal_proto_api_proto_msgTypes[192]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23110,7 +23620,7 @@ type FunctionGetInputsResponse struct {
 
 func (x *FunctionGetInputsResponse) Reset() {
 	*x = FunctionGetInputsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[189]
+	mi := &file_modal_proto_api_proto_msgTypes[193]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23122,7 +23632,7 @@ func (x *FunctionGetInputsResponse) String() string {
 func (*FunctionGetInputsResponse) ProtoMessage() {}
 
 func (x *FunctionGetInputsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[189]
+	mi := &file_modal_proto_api_proto_msgTypes[193]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23190,7 +23700,7 @@ type FunctionGetOutputsItem struct {
 
 func (x *FunctionGetOutputsItem) Reset() {
 	*x = FunctionGetOutputsItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[190]
+	mi := &file_modal_proto_api_proto_msgTypes[194]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23202,7 +23712,7 @@ func (x *FunctionGetOutputsItem) String() string {
 func (*FunctionGetOutputsItem) ProtoMessage() {}
 
 func (x *FunctionGetOutputsItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[190]
+	mi := &file_modal_proto_api_proto_msgTypes[194]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23372,7 +23882,7 @@ type FunctionGetOutputsRequest struct {
 
 func (x *FunctionGetOutputsRequest) Reset() {
 	*x = FunctionGetOutputsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[191]
+	mi := &file_modal_proto_api_proto_msgTypes[195]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23384,7 +23894,7 @@ func (x *FunctionGetOutputsRequest) String() string {
 func (*FunctionGetOutputsRequest) ProtoMessage() {}
 
 func (x *FunctionGetOutputsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[191]
+	mi := &file_modal_proto_api_proto_msgTypes[195]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23569,7 +24079,7 @@ type FunctionGetOutputsResponse struct {
 
 func (x *FunctionGetOutputsResponse) Reset() {
 	*x = FunctionGetOutputsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[192]
+	mi := &file_modal_proto_api_proto_msgTypes[196]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23581,7 +24091,7 @@ func (x *FunctionGetOutputsResponse) String() string {
 func (*FunctionGetOutputsResponse) ProtoMessage() {}
 
 func (x *FunctionGetOutputsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[192]
+	mi := &file_modal_proto_api_proto_msgTypes[196]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23669,7 +24179,7 @@ type FunctionGetRequest struct {
 
 func (x *FunctionGetRequest) Reset() {
 	*x = FunctionGetRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[193]
+	mi := &file_modal_proto_api_proto_msgTypes[197]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23681,7 +24191,7 @@ func (x *FunctionGetRequest) String() string {
 func (*FunctionGetRequest) ProtoMessage() {}
 
 func (x *FunctionGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[193]
+	mi := &file_modal_proto_api_proto_msgTypes[197]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23754,7 +24264,7 @@ type FunctionGetResponse struct {
 
 func (x *FunctionGetResponse) Reset() {
 	*x = FunctionGetResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[194]
+	mi := &file_modal_proto_api_proto_msgTypes[198]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23766,7 +24276,7 @@ func (x *FunctionGetResponse) String() string {
 func (*FunctionGetResponse) ProtoMessage() {}
 
 func (x *FunctionGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[194]
+	mi := &file_modal_proto_api_proto_msgTypes[198]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23850,7 +24360,7 @@ type FunctionGetSerializedRequest struct {
 
 func (x *FunctionGetSerializedRequest) Reset() {
 	*x = FunctionGetSerializedRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[195]
+	mi := &file_modal_proto_api_proto_msgTypes[199]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23862,7 +24372,7 @@ func (x *FunctionGetSerializedRequest) String() string {
 func (*FunctionGetSerializedRequest) ProtoMessage() {}
 
 func (x *FunctionGetSerializedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[195]
+	mi := &file_modal_proto_api_proto_msgTypes[199]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23908,7 +24418,7 @@ type FunctionGetSerializedResponse struct {
 
 func (x *FunctionGetSerializedResponse) Reset() {
 	*x = FunctionGetSerializedResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[196]
+	mi := &file_modal_proto_api_proto_msgTypes[200]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -23920,7 +24430,7 @@ func (x *FunctionGetSerializedResponse) String() string {
 func (*FunctionGetSerializedResponse) ProtoMessage() {}
 
 func (x *FunctionGetSerializedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[196]
+	mi := &file_modal_proto_api_proto_msgTypes[200]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24001,7 +24511,7 @@ type FunctionHandleMetadata struct {
 
 func (x *FunctionHandleMetadata) Reset() {
 	*x = FunctionHandleMetadata{}
-	mi := &file_modal_proto_api_proto_msgTypes[197]
+	mi := &file_modal_proto_api_proto_msgTypes[201]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24013,7 +24523,7 @@ func (x *FunctionHandleMetadata) String() string {
 func (*FunctionHandleMetadata) ProtoMessage() {}
 
 func (x *FunctionHandleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[197]
+	mi := &file_modal_proto_api_proto_msgTypes[201]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24337,7 +24847,7 @@ type FunctionInput struct {
 
 func (x *FunctionInput) Reset() {
 	*x = FunctionInput{}
-	mi := &file_modal_proto_api_proto_msgTypes[198]
+	mi := &file_modal_proto_api_proto_msgTypes[202]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24349,7 +24859,7 @@ func (x *FunctionInput) String() string {
 func (*FunctionInput) ProtoMessage() {}
 
 func (x *FunctionInput) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[198]
+	mi := &file_modal_proto_api_proto_msgTypes[202]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24531,7 +25041,7 @@ func (b0 FunctionInput_builder) Build() *FunctionInput {
 type case_FunctionInput_ArgsOneof protoreflect.FieldNumber
 
 func (x case_FunctionInput_ArgsOneof) String() string {
-	md := file_modal_proto_api_proto_msgTypes[198].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[202].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -24569,7 +25079,7 @@ type FunctionMapRequest struct {
 
 func (x *FunctionMapRequest) Reset() {
 	*x = FunctionMapRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[199]
+	mi := &file_modal_proto_api_proto_msgTypes[203]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24581,7 +25091,7 @@ func (x *FunctionMapRequest) String() string {
 func (*FunctionMapRequest) ProtoMessage() {}
 
 func (x *FunctionMapRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[199]
+	mi := &file_modal_proto_api_proto_msgTypes[203]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24711,7 +25221,7 @@ type FunctionMapResponse struct {
 
 func (x *FunctionMapResponse) Reset() {
 	*x = FunctionMapResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[200]
+	mi := &file_modal_proto_api_proto_msgTypes[204]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24723,7 +25233,7 @@ func (x *FunctionMapResponse) String() string {
 func (*FunctionMapResponse) ProtoMessage() {}
 
 func (x *FunctionMapResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[200]
+	mi := &file_modal_proto_api_proto_msgTypes[204]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24867,7 +25377,7 @@ type FunctionOptions struct {
 
 func (x *FunctionOptions) Reset() {
 	*x = FunctionOptions{}
-	mi := &file_modal_proto_api_proto_msgTypes[201]
+	mi := &file_modal_proto_api_proto_msgTypes[205]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -24879,7 +25389,7 @@ func (x *FunctionOptions) String() string {
 func (*FunctionOptions) ProtoMessage() {}
 
 func (x *FunctionOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[201]
+	mi := &file_modal_proto_api_proto_msgTypes[205]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25381,7 +25891,7 @@ type FunctionPrecreateRequest struct {
 
 func (x *FunctionPrecreateRequest) Reset() {
 	*x = FunctionPrecreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[202]
+	mi := &file_modal_proto_api_proto_msgTypes[206]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25393,7 +25903,7 @@ func (x *FunctionPrecreateRequest) String() string {
 func (*FunctionPrecreateRequest) ProtoMessage() {}
 
 func (x *FunctionPrecreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[202]
+	mi := &file_modal_proto_api_proto_msgTypes[206]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25592,7 +26102,7 @@ type FunctionPrecreateResponse struct {
 
 func (x *FunctionPrecreateResponse) Reset() {
 	*x = FunctionPrecreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[203]
+	mi := &file_modal_proto_api_proto_msgTypes[207]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25604,7 +26114,7 @@ func (x *FunctionPrecreateResponse) String() string {
 func (*FunctionPrecreateResponse) ProtoMessage() {}
 
 func (x *FunctionPrecreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[203]
+	mi := &file_modal_proto_api_proto_msgTypes[207]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25676,7 +26186,7 @@ type FunctionPutInputsItem struct {
 
 func (x *FunctionPutInputsItem) Reset() {
 	*x = FunctionPutInputsItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[204]
+	mi := &file_modal_proto_api_proto_msgTypes[208]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25688,7 +26198,7 @@ func (x *FunctionPutInputsItem) String() string {
 func (*FunctionPutInputsItem) ProtoMessage() {}
 
 func (x *FunctionPutInputsItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[204]
+	mi := &file_modal_proto_api_proto_msgTypes[208]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25785,7 +26295,7 @@ type FunctionPutInputsRequest struct {
 
 func (x *FunctionPutInputsRequest) Reset() {
 	*x = FunctionPutInputsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[205]
+	mi := &file_modal_proto_api_proto_msgTypes[209]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25797,7 +26307,7 @@ func (x *FunctionPutInputsRequest) String() string {
 func (*FunctionPutInputsRequest) ProtoMessage() {}
 
 func (x *FunctionPutInputsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[205]
+	mi := &file_modal_proto_api_proto_msgTypes[209]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25870,7 +26380,7 @@ type FunctionPutInputsResponse struct {
 
 func (x *FunctionPutInputsResponse) Reset() {
 	*x = FunctionPutInputsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[206]
+	mi := &file_modal_proto_api_proto_msgTypes[210]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25882,7 +26392,7 @@ func (x *FunctionPutInputsResponse) String() string {
 func (*FunctionPutInputsResponse) ProtoMessage() {}
 
 func (x *FunctionPutInputsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[206]
+	mi := &file_modal_proto_api_proto_msgTypes[210]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25931,7 +26441,7 @@ type FunctionPutInputsResponseItem struct {
 
 func (x *FunctionPutInputsResponseItem) Reset() {
 	*x = FunctionPutInputsResponseItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[207]
+	mi := &file_modal_proto_api_proto_msgTypes[211]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -25943,7 +26453,7 @@ func (x *FunctionPutInputsResponseItem) String() string {
 func (*FunctionPutInputsResponseItem) ProtoMessage() {}
 
 func (x *FunctionPutInputsResponseItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[207]
+	mi := &file_modal_proto_api_proto_msgTypes[211]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26015,6 +26525,7 @@ type FunctionPutOutputsItem struct {
 	xxx_hidden_RetryCount      uint32                 `protobuf:"varint,8,opt,name=retry_count,json=retryCount,proto3"`
 	xxx_hidden_FunctionCallId  string                 `protobuf:"bytes,9,opt,name=function_call_id,json=functionCallId,proto3"`
 	xxx_hidden_FunctionMapIdx  int32                  `protobuf:"varint,10,opt,name=function_map_idx,json=functionMapIdx,proto3,oneof"`
+	xxx_hidden_FromInputPlane  bool                   `protobuf:"varint,11,opt,name=from_input_plane,json=fromInputPlane,proto3"`
 	XXX_raceDetectHookData     protoimpl.RaceDetectHookData
 	XXX_presence               [1]uint32
 	unknownFields              protoimpl.UnknownFields
@@ -26023,7 +26534,7 @@ type FunctionPutOutputsItem struct {
 
 func (x *FunctionPutOutputsItem) Reset() {
 	*x = FunctionPutOutputsItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[208]
+	mi := &file_modal_proto_api_proto_msgTypes[212]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26035,7 +26546,7 @@ func (x *FunctionPutOutputsItem) String() string {
 func (*FunctionPutOutputsItem) ProtoMessage() {}
 
 func (x *FunctionPutOutputsItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[208]
+	mi := &file_modal_proto_api_proto_msgTypes[212]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26102,6 +26613,13 @@ func (x *FunctionPutOutputsItem) GetFunctionMapIdx() int32 {
 	return 0
 }
 
+func (x *FunctionPutOutputsItem) GetFromInputPlane() bool {
+	if x != nil {
+		return x.xxx_hidden_FromInputPlane
+	}
+	return false
+}
+
 func (x *FunctionPutOutputsItem) SetInputId(v string) {
 	x.xxx_hidden_InputId = v
 }
@@ -26132,7 +26650,11 @@ func (x *FunctionPutOutputsItem) SetFunctionCallId(v string) {
 
 func (x *FunctionPutOutputsItem) SetFunctionMapIdx(v int32) {
 	x.xxx_hidden_FunctionMapIdx = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 9)
+}
+
+func (x *FunctionPutOutputsItem) SetFromInputPlane(v bool) {
+	x.xxx_hidden_FromInputPlane = v
 }
 
 func (x *FunctionPutOutputsItem) HasResult() bool {
@@ -26169,6 +26691,7 @@ type FunctionPutOutputsItem_builder struct {
 	RetryCount      uint32
 	FunctionCallId  string
 	FunctionMapIdx  *int32
+	FromInputPlane  bool
 }
 
 func (b0 FunctionPutOutputsItem_builder) Build() *FunctionPutOutputsItem {
@@ -26183,9 +26706,10 @@ func (b0 FunctionPutOutputsItem_builder) Build() *FunctionPutOutputsItem {
 	x.xxx_hidden_RetryCount = b.RetryCount
 	x.xxx_hidden_FunctionCallId = b.FunctionCallId
 	if b.FunctionMapIdx != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 9)
 		x.xxx_hidden_FunctionMapIdx = *b.FunctionMapIdx
 	}
+	x.xxx_hidden_FromInputPlane = b.FromInputPlane
 	return m0
 }
 
@@ -26199,7 +26723,7 @@ type FunctionPutOutputsRequest struct {
 
 func (x *FunctionPutOutputsRequest) Reset() {
 	*x = FunctionPutOutputsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[209]
+	mi := &file_modal_proto_api_proto_msgTypes[213]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26211,7 +26735,7 @@ func (x *FunctionPutOutputsRequest) String() string {
 func (*FunctionPutOutputsRequest) ProtoMessage() {}
 
 func (x *FunctionPutOutputsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[209]
+	mi := &file_modal_proto_api_proto_msgTypes[213]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26273,7 +26797,7 @@ type FunctionRetryInputsItem struct {
 
 func (x *FunctionRetryInputsItem) Reset() {
 	*x = FunctionRetryInputsItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[210]
+	mi := &file_modal_proto_api_proto_msgTypes[214]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26285,7 +26809,7 @@ func (x *FunctionRetryInputsItem) String() string {
 func (*FunctionRetryInputsItem) ProtoMessage() {}
 
 func (x *FunctionRetryInputsItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[210]
+	mi := &file_modal_proto_api_proto_msgTypes[214]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26368,7 +26892,7 @@ type FunctionRetryInputsRequest struct {
 
 func (x *FunctionRetryInputsRequest) Reset() {
 	*x = FunctionRetryInputsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[211]
+	mi := &file_modal_proto_api_proto_msgTypes[215]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26380,7 +26904,7 @@ func (x *FunctionRetryInputsRequest) String() string {
 func (*FunctionRetryInputsRequest) ProtoMessage() {}
 
 func (x *FunctionRetryInputsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[211]
+	mi := &file_modal_proto_api_proto_msgTypes[215]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26440,7 +26964,7 @@ type FunctionRetryInputsResponse struct {
 
 func (x *FunctionRetryInputsResponse) Reset() {
 	*x = FunctionRetryInputsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[212]
+	mi := &file_modal_proto_api_proto_msgTypes[216]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26452,7 +26976,7 @@ func (x *FunctionRetryInputsResponse) String() string {
 func (*FunctionRetryInputsResponse) ProtoMessage() {}
 
 func (x *FunctionRetryInputsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[212]
+	mi := &file_modal_proto_api_proto_msgTypes[216]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26500,7 +27024,7 @@ type FunctionRetryPolicy struct {
 
 func (x *FunctionRetryPolicy) Reset() {
 	*x = FunctionRetryPolicy{}
-	mi := &file_modal_proto_api_proto_msgTypes[213]
+	mi := &file_modal_proto_api_proto_msgTypes[217]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26512,7 +27036,7 @@ func (x *FunctionRetryPolicy) String() string {
 func (*FunctionRetryPolicy) ProtoMessage() {}
 
 func (x *FunctionRetryPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[213]
+	mi := &file_modal_proto_api_proto_msgTypes[217]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26599,7 +27123,7 @@ type FunctionSchema struct {
 
 func (x *FunctionSchema) Reset() {
 	*x = FunctionSchema{}
-	mi := &file_modal_proto_api_proto_msgTypes[214]
+	mi := &file_modal_proto_api_proto_msgTypes[218]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26611,7 +27135,7 @@ func (x *FunctionSchema) String() string {
 func (*FunctionSchema) ProtoMessage() {}
 
 func (x *FunctionSchema) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[214]
+	mi := &file_modal_proto_api_proto_msgTypes[218]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26697,7 +27221,7 @@ type FunctionStats struct {
 
 func (x *FunctionStats) Reset() {
 	*x = FunctionStats{}
-	mi := &file_modal_proto_api_proto_msgTypes[215]
+	mi := &file_modal_proto_api_proto_msgTypes[219]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26709,7 +27233,7 @@ func (x *FunctionStats) String() string {
 func (*FunctionStats) ProtoMessage() {}
 
 func (x *FunctionStats) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[215]
+	mi := &file_modal_proto_api_proto_msgTypes[219]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26782,7 +27306,7 @@ type FunctionUpdateSchedulingParamsRequest struct {
 
 func (x *FunctionUpdateSchedulingParamsRequest) Reset() {
 	*x = FunctionUpdateSchedulingParamsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[216]
+	mi := &file_modal_proto_api_proto_msgTypes[220]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26794,7 +27318,7 @@ func (x *FunctionUpdateSchedulingParamsRequest) String() string {
 func (*FunctionUpdateSchedulingParamsRequest) ProtoMessage() {}
 
 func (x *FunctionUpdateSchedulingParamsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[216]
+	mi := &file_modal_proto_api_proto_msgTypes[220]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26875,7 +27399,7 @@ type FunctionUpdateSchedulingParamsResponse struct {
 
 func (x *FunctionUpdateSchedulingParamsResponse) Reset() {
 	*x = FunctionUpdateSchedulingParamsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[217]
+	mi := &file_modal_proto_api_proto_msgTypes[221]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26887,7 +27411,7 @@ func (x *FunctionUpdateSchedulingParamsResponse) String() string {
 func (*FunctionUpdateSchedulingParamsResponse) ProtoMessage() {}
 
 func (x *FunctionUpdateSchedulingParamsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[217]
+	mi := &file_modal_proto_api_proto_msgTypes[221]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26921,7 +27445,7 @@ type GPUConfig struct {
 
 func (x *GPUConfig) Reset() {
 	*x = GPUConfig{}
-	mi := &file_modal_proto_api_proto_msgTypes[218]
+	mi := &file_modal_proto_api_proto_msgTypes[222]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -26933,7 +27457,7 @@ func (x *GPUConfig) String() string {
 func (*GPUConfig) ProtoMessage() {}
 
 func (x *GPUConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[218]
+	mi := &file_modal_proto_api_proto_msgTypes[222]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27004,7 +27528,7 @@ type GeneratorDone struct {
 
 func (x *GeneratorDone) Reset() {
 	*x = GeneratorDone{}
-	mi := &file_modal_proto_api_proto_msgTypes[219]
+	mi := &file_modal_proto_api_proto_msgTypes[223]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27016,7 +27540,7 @@ func (x *GeneratorDone) String() string {
 func (*GeneratorDone) ProtoMessage() {}
 
 func (x *GeneratorDone) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[219]
+	mi := &file_modal_proto_api_proto_msgTypes[223]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27062,7 +27586,7 @@ type GenericPayloadType struct {
 
 func (x *GenericPayloadType) Reset() {
 	*x = GenericPayloadType{}
-	mi := &file_modal_proto_api_proto_msgTypes[220]
+	mi := &file_modal_proto_api_proto_msgTypes[224]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27074,7 +27598,7 @@ func (x *GenericPayloadType) String() string {
 func (*GenericPayloadType) ProtoMessage() {}
 
 func (x *GenericPayloadType) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[220]
+	mi := &file_modal_proto_api_proto_msgTypes[224]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27141,7 +27665,7 @@ type GenericResult struct {
 
 func (x *GenericResult) Reset() {
 	*x = GenericResult{}
-	mi := &file_modal_proto_api_proto_msgTypes[221]
+	mi := &file_modal_proto_api_proto_msgTypes[225]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27153,7 +27677,7 @@ func (x *GenericResult) String() string {
 func (*GenericResult) ProtoMessage() {}
 
 func (x *GenericResult) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[221]
+	mi := &file_modal_proto_api_proto_msgTypes[225]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27372,7 +27896,7 @@ func (b0 GenericResult_builder) Build() *GenericResult {
 type case_GenericResult_DataOneof protoreflect.FieldNumber
 
 func (x case_GenericResult_DataOneof) String() string {
-	md := file_modal_proto_api_proto_msgTypes[221].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[225].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -27409,7 +27933,7 @@ type HTTPConfig struct {
 
 func (x *HTTPConfig) Reset() {
 	*x = HTTPConfig{}
-	mi := &file_modal_proto_api_proto_msgTypes[222]
+	mi := &file_modal_proto_api_proto_msgTypes[226]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27421,7 +27945,7 @@ func (x *HTTPConfig) String() string {
 func (*HTTPConfig) ProtoMessage() {}
 
 func (x *HTTPConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[222]
+	mi := &file_modal_proto_api_proto_msgTypes[226]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27545,7 +28069,7 @@ type Image struct {
 
 func (x *Image) Reset() {
 	*x = Image{}
-	mi := &file_modal_proto_api_proto_msgTypes[223]
+	mi := &file_modal_proto_api_proto_msgTypes[227]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27557,7 +28081,7 @@ func (x *Image) String() string {
 func (*Image) ProtoMessage() {}
 
 func (x *Image) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[223]
+	mi := &file_modal_proto_api_proto_msgTypes[227]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27833,7 +28357,7 @@ type ImageContextFile struct {
 
 func (x *ImageContextFile) Reset() {
 	*x = ImageContextFile{}
-	mi := &file_modal_proto_api_proto_msgTypes[224]
+	mi := &file_modal_proto_api_proto_msgTypes[228]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27845,7 +28369,7 @@ func (x *ImageContextFile) String() string {
 func (*ImageContextFile) ProtoMessage() {}
 
 func (x *ImageContextFile) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[224]
+	mi := &file_modal_proto_api_proto_msgTypes[228]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27906,7 +28430,7 @@ type ImageDeleteRequest struct {
 
 func (x *ImageDeleteRequest) Reset() {
 	*x = ImageDeleteRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[225]
+	mi := &file_modal_proto_api_proto_msgTypes[229]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27918,7 +28442,7 @@ func (x *ImageDeleteRequest) String() string {
 func (*ImageDeleteRequest) ProtoMessage() {}
 
 func (x *ImageDeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[225]
+	mi := &file_modal_proto_api_proto_msgTypes[229]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27963,7 +28487,7 @@ type ImageFromIdRequest struct {
 
 func (x *ImageFromIdRequest) Reset() {
 	*x = ImageFromIdRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[226]
+	mi := &file_modal_proto_api_proto_msgTypes[230]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -27975,7 +28499,7 @@ func (x *ImageFromIdRequest) String() string {
 func (*ImageFromIdRequest) ProtoMessage() {}
 
 func (x *ImageFromIdRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[226]
+	mi := &file_modal_proto_api_proto_msgTypes[230]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28021,7 +28545,7 @@ type ImageFromIdResponse struct {
 
 func (x *ImageFromIdResponse) Reset() {
 	*x = ImageFromIdResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[227]
+	mi := &file_modal_proto_api_proto_msgTypes[231]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28033,7 +28557,7 @@ func (x *ImageFromIdResponse) String() string {
 func (*ImageFromIdResponse) ProtoMessage() {}
 
 func (x *ImageFromIdResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[227]
+	mi := &file_modal_proto_api_proto_msgTypes[231]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28110,7 +28634,7 @@ type ImageGetOrCreateRequest struct {
 
 func (x *ImageGetOrCreateRequest) Reset() {
 	*x = ImageGetOrCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[228]
+	mi := &file_modal_proto_api_proto_msgTypes[232]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28122,7 +28646,7 @@ func (x *ImageGetOrCreateRequest) String() string {
 func (*ImageGetOrCreateRequest) ProtoMessage() {}
 
 func (x *ImageGetOrCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[228]
+	mi := &file_modal_proto_api_proto_msgTypes[232]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28286,7 +28810,7 @@ type ImageGetOrCreateResponse struct {
 
 func (x *ImageGetOrCreateResponse) Reset() {
 	*x = ImageGetOrCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[229]
+	mi := &file_modal_proto_api_proto_msgTypes[233]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28298,7 +28822,7 @@ func (x *ImageGetOrCreateResponse) String() string {
 func (*ImageGetOrCreateResponse) ProtoMessage() {}
 
 func (x *ImageGetOrCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[229]
+	mi := &file_modal_proto_api_proto_msgTypes[233]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28397,7 +28921,7 @@ type ImageJoinStreamingRequest struct {
 
 func (x *ImageJoinStreamingRequest) Reset() {
 	*x = ImageJoinStreamingRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[230]
+	mi := &file_modal_proto_api_proto_msgTypes[234]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28409,7 +28933,7 @@ func (x *ImageJoinStreamingRequest) String() string {
 func (*ImageJoinStreamingRequest) ProtoMessage() {}
 
 func (x *ImageJoinStreamingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[230]
+	mi := &file_modal_proto_api_proto_msgTypes[234]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28497,7 +29021,7 @@ type ImageJoinStreamingResponse struct {
 
 func (x *ImageJoinStreamingResponse) Reset() {
 	*x = ImageJoinStreamingResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[231]
+	mi := &file_modal_proto_api_proto_msgTypes[235]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28509,7 +29033,7 @@ func (x *ImageJoinStreamingResponse) String() string {
 func (*ImageJoinStreamingResponse) ProtoMessage() {}
 
 func (x *ImageJoinStreamingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[231]
+	mi := &file_modal_proto_api_proto_msgTypes[235]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28636,7 +29160,7 @@ type ImageMetadata struct {
 
 func (x *ImageMetadata) Reset() {
 	*x = ImageMetadata{}
-	mi := &file_modal_proto_api_proto_msgTypes[232]
+	mi := &file_modal_proto_api_proto_msgTypes[236]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28648,7 +29172,7 @@ func (x *ImageMetadata) String() string {
 func (*ImageMetadata) ProtoMessage() {}
 
 func (x *ImageMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[232]
+	mi := &file_modal_proto_api_proto_msgTypes[236]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28832,7 +29356,7 @@ type ImageRegistryConfig struct {
 
 func (x *ImageRegistryConfig) Reset() {
 	*x = ImageRegistryConfig{}
-	mi := &file_modal_proto_api_proto_msgTypes[233]
+	mi := &file_modal_proto_api_proto_msgTypes[237]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28844,7 +29368,7 @@ func (x *ImageRegistryConfig) String() string {
 func (*ImageRegistryConfig) ProtoMessage() {}
 
 func (x *ImageRegistryConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[233]
+	mi := &file_modal_proto_api_proto_msgTypes[237]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28905,7 +29429,7 @@ type InputCallGraphInfo struct {
 
 func (x *InputCallGraphInfo) Reset() {
 	*x = InputCallGraphInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[234]
+	mi := &file_modal_proto_api_proto_msgTypes[238]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -28917,7 +29441,7 @@ func (x *InputCallGraphInfo) String() string {
 func (*InputCallGraphInfo) ProtoMessage() {}
 
 func (x *InputCallGraphInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[234]
+	mi := &file_modal_proto_api_proto_msgTypes[238]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29002,7 +29526,7 @@ type InputCategoryInfo struct {
 
 func (x *InputCategoryInfo) Reset() {
 	*x = InputCategoryInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[235]
+	mi := &file_modal_proto_api_proto_msgTypes[239]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29014,7 +29538,7 @@ func (x *InputCategoryInfo) String() string {
 func (*InputCategoryInfo) ProtoMessage() {}
 
 func (x *InputCategoryInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[235]
+	mi := &file_modal_proto_api_proto_msgTypes[239]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29080,7 +29604,7 @@ type InputInfo struct {
 
 func (x *InputInfo) Reset() {
 	*x = InputInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[236]
+	mi := &file_modal_proto_api_proto_msgTypes[240]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29092,7 +29616,7 @@ func (x *InputInfo) String() string {
 func (*InputInfo) ProtoMessage() {}
 
 func (x *InputInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[236]
+	mi := &file_modal_proto_api_proto_msgTypes[240]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29216,7 +29740,7 @@ type ListPagination struct {
 
 func (x *ListPagination) Reset() {
 	*x = ListPagination{}
-	mi := &file_modal_proto_api_proto_msgTypes[237]
+	mi := &file_modal_proto_api_proto_msgTypes[241]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29228,7 +29752,7 @@ func (x *ListPagination) String() string {
 func (*ListPagination) ProtoMessage() {}
 
 func (x *ListPagination) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[237]
+	mi := &file_modal_proto_api_proto_msgTypes[241]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29289,7 +29813,7 @@ type MapAwaitRequest struct {
 
 func (x *MapAwaitRequest) Reset() {
 	*x = MapAwaitRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[238]
+	mi := &file_modal_proto_api_proto_msgTypes[242]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29301,7 +29825,7 @@ func (x *MapAwaitRequest) String() string {
 func (*MapAwaitRequest) ProtoMessage() {}
 
 func (x *MapAwaitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[238]
+	mi := &file_modal_proto_api_proto_msgTypes[242]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29459,7 +29983,7 @@ func (b0 MapAwaitRequest_builder) Build() *MapAwaitRequest {
 type case_MapAwaitRequest_CallInfo protoreflect.FieldNumber
 
 func (x case_MapAwaitRequest_CallInfo) String() string {
-	md := file_modal_proto_api_proto_msgTypes[238].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[242].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -29492,7 +30016,7 @@ type MapAwaitResponse struct {
 
 func (x *MapAwaitResponse) Reset() {
 	*x = MapAwaitResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[239]
+	mi := &file_modal_proto_api_proto_msgTypes[243]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29504,7 +30028,7 @@ func (x *MapAwaitResponse) String() string {
 func (*MapAwaitResponse) ProtoMessage() {}
 
 func (x *MapAwaitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[239]
+	mi := &file_modal_proto_api_proto_msgTypes[243]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29566,7 +30090,7 @@ type MapCheckInputsRequest struct {
 
 func (x *MapCheckInputsRequest) Reset() {
 	*x = MapCheckInputsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[240]
+	mi := &file_modal_proto_api_proto_msgTypes[244]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29578,7 +30102,7 @@ func (x *MapCheckInputsRequest) String() string {
 func (*MapCheckInputsRequest) ProtoMessage() {}
 
 func (x *MapCheckInputsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[240]
+	mi := &file_modal_proto_api_proto_msgTypes[244]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29649,7 +30173,7 @@ type MapCheckInputsResponse struct {
 
 func (x *MapCheckInputsResponse) Reset() {
 	*x = MapCheckInputsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[241]
+	mi := &file_modal_proto_api_proto_msgTypes[245]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29661,7 +30185,7 @@ func (x *MapCheckInputsResponse) String() string {
 func (*MapCheckInputsResponse) ProtoMessage() {}
 
 func (x *MapCheckInputsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[241]
+	mi := &file_modal_proto_api_proto_msgTypes[245]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29709,7 +30233,7 @@ type MapStartOrContinueItem struct {
 
 func (x *MapStartOrContinueItem) Reset() {
 	*x = MapStartOrContinueItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[242]
+	mi := &file_modal_proto_api_proto_msgTypes[246]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29721,7 +30245,7 @@ func (x *MapStartOrContinueItem) String() string {
 func (*MapStartOrContinueItem) ProtoMessage() {}
 
 func (x *MapStartOrContinueItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[242]
+	mi := &file_modal_proto_api_proto_msgTypes[246]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29812,7 +30336,7 @@ type MapStartOrContinueRequest struct {
 
 func (x *MapStartOrContinueRequest) Reset() {
 	*x = MapStartOrContinueRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[243]
+	mi := &file_modal_proto_api_proto_msgTypes[247]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -29824,7 +30348,7 @@ func (x *MapStartOrContinueRequest) String() string {
 func (*MapStartOrContinueRequest) ProtoMessage() {}
 
 func (x *MapStartOrContinueRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[243]
+	mi := &file_modal_proto_api_proto_msgTypes[247]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29986,7 +30510,7 @@ func (b0 MapStartOrContinueRequest_builder) Build() *MapStartOrContinueRequest {
 type case_MapStartOrContinueRequest_CallInfo protoreflect.FieldNumber
 
 func (x case_MapStartOrContinueRequest_CallInfo) String() string {
-	md := file_modal_proto_api_proto_msgTypes[243].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[247].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -30023,7 +30547,7 @@ type MapStartOrContinueResponse struct {
 
 func (x *MapStartOrContinueResponse) Reset() {
 	*x = MapStartOrContinueResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[244]
+	mi := &file_modal_proto_api_proto_msgTypes[248]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30035,7 +30559,7 @@ func (x *MapStartOrContinueResponse) String() string {
 func (*MapStartOrContinueResponse) ProtoMessage() {}
 
 func (x *MapStartOrContinueResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[244]
+	mi := &file_modal_proto_api_proto_msgTypes[248]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30166,7 +30690,7 @@ type MethodDefinition struct {
 
 func (x *MethodDefinition) Reset() {
 	*x = MethodDefinition{}
-	mi := &file_modal_proto_api_proto_msgTypes[245]
+	mi := &file_modal_proto_api_proto_msgTypes[249]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30178,7 +30702,7 @@ func (x *MethodDefinition) String() string {
 func (*MethodDefinition) ProtoMessage() {}
 
 func (x *MethodDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[245]
+	mi := &file_modal_proto_api_proto_msgTypes[249]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30367,7 +30891,7 @@ type MountFile struct {
 
 func (x *MountFile) Reset() {
 	*x = MountFile{}
-	mi := &file_modal_proto_api_proto_msgTypes[246]
+	mi := &file_modal_proto_api_proto_msgTypes[250]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30379,7 +30903,7 @@ func (x *MountFile) String() string {
 func (*MountFile) ProtoMessage() {}
 
 func (x *MountFile) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[246]
+	mi := &file_modal_proto_api_proto_msgTypes[250]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30500,7 +31024,7 @@ type MountGetOrCreateRequest struct {
 
 func (x *MountGetOrCreateRequest) Reset() {
 	*x = MountGetOrCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[247]
+	mi := &file_modal_proto_api_proto_msgTypes[251]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30512,7 +31036,7 @@ func (x *MountGetOrCreateRequest) String() string {
 func (*MountGetOrCreateRequest) ProtoMessage() {}
 
 func (x *MountGetOrCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[247]
+	mi := &file_modal_proto_api_proto_msgTypes[251]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30625,7 +31149,7 @@ type MountGetOrCreateResponse struct {
 
 func (x *MountGetOrCreateResponse) Reset() {
 	*x = MountGetOrCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[248]
+	mi := &file_modal_proto_api_proto_msgTypes[252]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30637,7 +31161,7 @@ func (x *MountGetOrCreateResponse) String() string {
 func (*MountGetOrCreateResponse) ProtoMessage() {}
 
 func (x *MountGetOrCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[248]
+	mi := &file_modal_proto_api_proto_msgTypes[252]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30706,7 +31230,7 @@ type MountHandleMetadata struct {
 
 func (x *MountHandleMetadata) Reset() {
 	*x = MountHandleMetadata{}
-	mi := &file_modal_proto_api_proto_msgTypes[249]
+	mi := &file_modal_proto_api_proto_msgTypes[253]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30718,7 +31242,7 @@ func (x *MountHandleMetadata) String() string {
 func (*MountHandleMetadata) ProtoMessage() {}
 
 func (x *MountHandleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[249]
+	mi := &file_modal_proto_api_proto_msgTypes[253]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30764,7 +31288,7 @@ type MountPutFileRequest struct {
 
 func (x *MountPutFileRequest) Reset() {
 	*x = MountPutFileRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[250]
+	mi := &file_modal_proto_api_proto_msgTypes[254]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30776,7 +31300,7 @@ func (x *MountPutFileRequest) String() string {
 func (*MountPutFileRequest) ProtoMessage() {}
 
 func (x *MountPutFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[250]
+	mi := &file_modal_proto_api_proto_msgTypes[254]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30911,7 +31435,7 @@ func (b0 MountPutFileRequest_builder) Build() *MountPutFileRequest {
 type case_MountPutFileRequest_DataOneof protoreflect.FieldNumber
 
 func (x case_MountPutFileRequest_DataOneof) String() string {
-	md := file_modal_proto_api_proto_msgTypes[250].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[254].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -30943,7 +31467,7 @@ type MountPutFileResponse struct {
 
 func (x *MountPutFileResponse) Reset() {
 	*x = MountPutFileResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[251]
+	mi := &file_modal_proto_api_proto_msgTypes[255]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -30955,7 +31479,7 @@ func (x *MountPutFileResponse) String() string {
 func (*MountPutFileResponse) ProtoMessage() {}
 
 func (x *MountPutFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[251]
+	mi := &file_modal_proto_api_proto_msgTypes[255]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31002,7 +31526,7 @@ type MultiPartUpload struct {
 
 func (x *MultiPartUpload) Reset() {
 	*x = MultiPartUpload{}
-	mi := &file_modal_proto_api_proto_msgTypes[252]
+	mi := &file_modal_proto_api_proto_msgTypes[256]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31014,7 +31538,7 @@ func (x *MultiPartUpload) String() string {
 func (*MultiPartUpload) ProtoMessage() {}
 
 func (x *MultiPartUpload) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[252]
+	mi := &file_modal_proto_api_proto_msgTypes[256]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31085,7 +31609,7 @@ type MultiPartUploadList struct {
 
 func (x *MultiPartUploadList) Reset() {
 	*x = MultiPartUploadList{}
-	mi := &file_modal_proto_api_proto_msgTypes[253]
+	mi := &file_modal_proto_api_proto_msgTypes[257]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31097,7 +31621,7 @@ func (x *MultiPartUploadList) String() string {
 func (*MultiPartUploadList) ProtoMessage() {}
 
 func (x *MultiPartUploadList) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[253]
+	mi := &file_modal_proto_api_proto_msgTypes[257]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31145,7 +31669,7 @@ type NetworkAccess struct {
 
 func (x *NetworkAccess) Reset() {
 	*x = NetworkAccess{}
-	mi := &file_modal_proto_api_proto_msgTypes[254]
+	mi := &file_modal_proto_api_proto_msgTypes[258]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31157,7 +31681,7 @@ func (x *NetworkAccess) String() string {
 func (*NetworkAccess) ProtoMessage() {}
 
 func (x *NetworkAccess) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[254]
+	mi := &file_modal_proto_api_proto_msgTypes[258]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31216,7 +31740,7 @@ type NotebookKernelPublishResultsRequest struct {
 
 func (x *NotebookKernelPublishResultsRequest) Reset() {
 	*x = NotebookKernelPublishResultsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[255]
+	mi := &file_modal_proto_api_proto_msgTypes[259]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31228,7 +31752,7 @@ func (x *NotebookKernelPublishResultsRequest) String() string {
 func (*NotebookKernelPublishResultsRequest) ProtoMessage() {}
 
 func (x *NotebookKernelPublishResultsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[255]
+	mi := &file_modal_proto_api_proto_msgTypes[259]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31292,7 +31816,7 @@ type NotebookOutput struct {
 
 func (x *NotebookOutput) Reset() {
 	*x = NotebookOutput{}
-	mi := &file_modal_proto_api_proto_msgTypes[256]
+	mi := &file_modal_proto_api_proto_msgTypes[260]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31304,7 +31828,7 @@ func (x *NotebookOutput) String() string {
 func (*NotebookOutput) ProtoMessage() {}
 
 func (x *NotebookOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[256]
+	mi := &file_modal_proto_api_proto_msgTypes[260]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31507,7 +32031,7 @@ func (b0 NotebookOutput_builder) Build() *NotebookOutput {
 type case_NotebookOutput_OutputType protoreflect.FieldNumber
 
 func (x case_NotebookOutput_OutputType) String() string {
-	md := file_modal_proto_api_proto_msgTypes[256].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[260].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -31552,7 +32076,7 @@ type Object struct {
 
 func (x *Object) Reset() {
 	*x = Object{}
-	mi := &file_modal_proto_api_proto_msgTypes[257]
+	mi := &file_modal_proto_api_proto_msgTypes[261]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31564,7 +32088,7 @@ func (x *Object) String() string {
 func (*Object) ProtoMessage() {}
 
 func (x *Object) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[257]
+	mi := &file_modal_proto_api_proto_msgTypes[261]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31818,7 +32342,7 @@ func (b0 Object_builder) Build() *Object {
 type case_Object_HandleMetadataOneof protoreflect.FieldNumber
 
 func (x case_Object_HandleMetadataOneof) String() string {
-	md := file_modal_proto_api_proto_msgTypes[257].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[261].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -31868,7 +32392,7 @@ type ObjectDependency struct {
 
 func (x *ObjectDependency) Reset() {
 	*x = ObjectDependency{}
-	mi := &file_modal_proto_api_proto_msgTypes[258]
+	mi := &file_modal_proto_api_proto_msgTypes[262]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31880,7 +32404,7 @@ func (x *ObjectDependency) String() string {
 func (*ObjectDependency) ProtoMessage() {}
 
 func (x *ObjectDependency) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[258]
+	mi := &file_modal_proto_api_proto_msgTypes[262]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31932,7 +32456,7 @@ type PTYInfo struct {
 
 func (x *PTYInfo) Reset() {
 	*x = PTYInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[259]
+	mi := &file_modal_proto_api_proto_msgTypes[263]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -31944,7 +32468,7 @@ func (x *PTYInfo) String() string {
 func (*PTYInfo) ProtoMessage() {}
 
 func (x *PTYInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[259]
+	mi := &file_modal_proto_api_proto_msgTypes[263]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32084,7 +32608,7 @@ type PortSpec struct {
 
 func (x *PortSpec) Reset() {
 	*x = PortSpec{}
-	mi := &file_modal_proto_api_proto_msgTypes[260]
+	mi := &file_modal_proto_api_proto_msgTypes[264]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32096,7 +32620,7 @@ func (x *PortSpec) String() string {
 func (*PortSpec) ProtoMessage() {}
 
 func (x *PortSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[260]
+	mi := &file_modal_proto_api_proto_msgTypes[264]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32185,7 +32709,7 @@ type PortSpecs struct {
 
 func (x *PortSpecs) Reset() {
 	*x = PortSpecs{}
-	mi := &file_modal_proto_api_proto_msgTypes[261]
+	mi := &file_modal_proto_api_proto_msgTypes[265]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32197,7 +32721,7 @@ func (x *PortSpecs) String() string {
 func (*PortSpecs) ProtoMessage() {}
 
 func (x *PortSpecs) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[261]
+	mi := &file_modal_proto_api_proto_msgTypes[265]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32247,7 +32771,7 @@ type Probe struct {
 
 func (x *Probe) Reset() {
 	*x = Probe{}
-	mi := &file_modal_proto_api_proto_msgTypes[262]
+	mi := &file_modal_proto_api_proto_msgTypes[266]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32259,7 +32783,7 @@ func (x *Probe) String() string {
 func (*Probe) ProtoMessage() {}
 
 func (x *Probe) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[262]
+	mi := &file_modal_proto_api_proto_msgTypes[266]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32411,7 +32935,7 @@ func (b0 Probe_builder) Build() *Probe {
 type case_Probe_ProbeOneof protoreflect.FieldNumber
 
 func (x case_Probe_ProbeOneof) String() string {
-	md := file_modal_proto_api_proto_msgTypes[262].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[266].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -32448,7 +32972,7 @@ type Proxy struct {
 
 func (x *Proxy) Reset() {
 	*x = Proxy{}
-	mi := &file_modal_proto_api_proto_msgTypes[263]
+	mi := &file_modal_proto_api_proto_msgTypes[267]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32460,7 +32984,7 @@ func (x *Proxy) String() string {
 func (*Proxy) ProtoMessage() {}
 
 func (x *Proxy) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[263]
+	mi := &file_modal_proto_api_proto_msgTypes[267]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32572,7 +33096,7 @@ type ProxyAddIpRequest struct {
 
 func (x *ProxyAddIpRequest) Reset() {
 	*x = ProxyAddIpRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[264]
+	mi := &file_modal_proto_api_proto_msgTypes[268]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32584,7 +33108,7 @@ func (x *ProxyAddIpRequest) String() string {
 func (*ProxyAddIpRequest) ProtoMessage() {}
 
 func (x *ProxyAddIpRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[264]
+	mi := &file_modal_proto_api_proto_msgTypes[268]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32629,7 +33153,7 @@ type ProxyAddIpResponse struct {
 
 func (x *ProxyAddIpResponse) Reset() {
 	*x = ProxyAddIpResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[265]
+	mi := &file_modal_proto_api_proto_msgTypes[269]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32641,7 +33165,7 @@ func (x *ProxyAddIpResponse) String() string {
 func (*ProxyAddIpResponse) ProtoMessage() {}
 
 func (x *ProxyAddIpResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[265]
+	mi := &file_modal_proto_api_proto_msgTypes[269]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32699,7 +33223,7 @@ type ProxyCreateRequest struct {
 
 func (x *ProxyCreateRequest) Reset() {
 	*x = ProxyCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[266]
+	mi := &file_modal_proto_api_proto_msgTypes[270]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32711,7 +33235,7 @@ func (x *ProxyCreateRequest) String() string {
 func (*ProxyCreateRequest) ProtoMessage() {}
 
 func (x *ProxyCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[266]
+	mi := &file_modal_proto_api_proto_msgTypes[270]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32782,7 +33306,7 @@ type ProxyCreateResponse struct {
 
 func (x *ProxyCreateResponse) Reset() {
 	*x = ProxyCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[267]
+	mi := &file_modal_proto_api_proto_msgTypes[271]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32794,7 +33318,7 @@ func (x *ProxyCreateResponse) String() string {
 func (*ProxyCreateResponse) ProtoMessage() {}
 
 func (x *ProxyCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[267]
+	mi := &file_modal_proto_api_proto_msgTypes[271]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32850,7 +33374,7 @@ type ProxyDeleteRequest struct {
 
 func (x *ProxyDeleteRequest) Reset() {
 	*x = ProxyDeleteRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[268]
+	mi := &file_modal_proto_api_proto_msgTypes[272]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32862,7 +33386,7 @@ func (x *ProxyDeleteRequest) String() string {
 func (*ProxyDeleteRequest) ProtoMessage() {}
 
 func (x *ProxyDeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[268]
+	mi := &file_modal_proto_api_proto_msgTypes[272]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32909,7 +33433,7 @@ type ProxyGetOrCreateRequest struct {
 
 func (x *ProxyGetOrCreateRequest) Reset() {
 	*x = ProxyGetOrCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[269]
+	mi := &file_modal_proto_api_proto_msgTypes[273]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -32921,7 +33445,7 @@ func (x *ProxyGetOrCreateRequest) String() string {
 func (*ProxyGetOrCreateRequest) ProtoMessage() {}
 
 func (x *ProxyGetOrCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[269]
+	mi := &file_modal_proto_api_proto_msgTypes[273]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32992,7 +33516,7 @@ type ProxyGetOrCreateResponse struct {
 
 func (x *ProxyGetOrCreateResponse) Reset() {
 	*x = ProxyGetOrCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[270]
+	mi := &file_modal_proto_api_proto_msgTypes[274]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33004,7 +33528,7 @@ func (x *ProxyGetOrCreateResponse) String() string {
 func (*ProxyGetOrCreateResponse) ProtoMessage() {}
 
 func (x *ProxyGetOrCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[270]
+	mi := &file_modal_proto_api_proto_msgTypes[274]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33050,7 +33574,7 @@ type ProxyGetRequest struct {
 
 func (x *ProxyGetRequest) Reset() {
 	*x = ProxyGetRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[271]
+	mi := &file_modal_proto_api_proto_msgTypes[275]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33062,7 +33586,7 @@ func (x *ProxyGetRequest) String() string {
 func (*ProxyGetRequest) ProtoMessage() {}
 
 func (x *ProxyGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[271]
+	mi := &file_modal_proto_api_proto_msgTypes[275]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33120,7 +33644,7 @@ type ProxyGetResponse struct {
 
 func (x *ProxyGetResponse) Reset() {
 	*x = ProxyGetResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[272]
+	mi := &file_modal_proto_api_proto_msgTypes[276]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33132,7 +33656,7 @@ func (x *ProxyGetResponse) String() string {
 func (*ProxyGetResponse) ProtoMessage() {}
 
 func (x *ProxyGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[272]
+	mi := &file_modal_proto_api_proto_msgTypes[276]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33193,7 +33717,7 @@ type ProxyInfo struct {
 
 func (x *ProxyInfo) Reset() {
 	*x = ProxyInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[273]
+	mi := &file_modal_proto_api_proto_msgTypes[277]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33205,7 +33729,7 @@ func (x *ProxyInfo) String() string {
 func (*ProxyInfo) ProtoMessage() {}
 
 func (x *ProxyInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[273]
+	mi := &file_modal_proto_api_proto_msgTypes[277]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33318,7 +33842,7 @@ type ProxyIp struct {
 
 func (x *ProxyIp) Reset() {
 	*x = ProxyIp{}
-	mi := &file_modal_proto_api_proto_msgTypes[274]
+	mi := &file_modal_proto_api_proto_msgTypes[278]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33330,7 +33854,7 @@ func (x *ProxyIp) String() string {
 func (*ProxyIp) ProtoMessage() {}
 
 func (x *ProxyIp) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[274]
+	mi := &file_modal_proto_api_proto_msgTypes[278]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33414,7 +33938,7 @@ type ProxyListResponse struct {
 
 func (x *ProxyListResponse) Reset() {
 	*x = ProxyListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[275]
+	mi := &file_modal_proto_api_proto_msgTypes[279]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33426,7 +33950,7 @@ func (x *ProxyListResponse) String() string {
 func (*ProxyListResponse) ProtoMessage() {}
 
 func (x *ProxyListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[275]
+	mi := &file_modal_proto_api_proto_msgTypes[279]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33473,7 +33997,7 @@ type ProxyRemoveIpRequest struct {
 
 func (x *ProxyRemoveIpRequest) Reset() {
 	*x = ProxyRemoveIpRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[276]
+	mi := &file_modal_proto_api_proto_msgTypes[280]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33485,7 +34009,7 @@ func (x *ProxyRemoveIpRequest) String() string {
 func (*ProxyRemoveIpRequest) ProtoMessage() {}
 
 func (x *ProxyRemoveIpRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[276]
+	mi := &file_modal_proto_api_proto_msgTypes[280]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33532,7 +34056,7 @@ type QueueClearRequest struct {
 
 func (x *QueueClearRequest) Reset() {
 	*x = QueueClearRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[277]
+	mi := &file_modal_proto_api_proto_msgTypes[281]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33544,7 +34068,7 @@ func (x *QueueClearRequest) String() string {
 func (*QueueClearRequest) ProtoMessage() {}
 
 func (x *QueueClearRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[277]
+	mi := &file_modal_proto_api_proto_msgTypes[281]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33618,7 +34142,7 @@ type QueueDeleteRequest struct {
 
 func (x *QueueDeleteRequest) Reset() {
 	*x = QueueDeleteRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[278]
+	mi := &file_modal_proto_api_proto_msgTypes[282]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33630,7 +34154,7 @@ func (x *QueueDeleteRequest) String() string {
 func (*QueueDeleteRequest) ProtoMessage() {}
 
 func (x *QueueDeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[278]
+	mi := &file_modal_proto_api_proto_msgTypes[282]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33675,7 +34199,7 @@ type QueueGetByIdRequest struct {
 
 func (x *QueueGetByIdRequest) Reset() {
 	*x = QueueGetByIdRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[279]
+	mi := &file_modal_proto_api_proto_msgTypes[283]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33687,7 +34211,7 @@ func (x *QueueGetByIdRequest) String() string {
 func (*QueueGetByIdRequest) ProtoMessage() {}
 
 func (x *QueueGetByIdRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[279]
+	mi := &file_modal_proto_api_proto_msgTypes[283]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33733,7 +34257,7 @@ type QueueGetByIdResponse struct {
 
 func (x *QueueGetByIdResponse) Reset() {
 	*x = QueueGetByIdResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[280]
+	mi := &file_modal_proto_api_proto_msgTypes[284]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33745,7 +34269,7 @@ func (x *QueueGetByIdResponse) String() string {
 func (*QueueGetByIdResponse) ProtoMessage() {}
 
 func (x *QueueGetByIdResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[280]
+	mi := &file_modal_proto_api_proto_msgTypes[284]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33816,7 +34340,7 @@ type QueueGetOrCreateRequest struct {
 
 func (x *QueueGetOrCreateRequest) Reset() {
 	*x = QueueGetOrCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[281]
+	mi := &file_modal_proto_api_proto_msgTypes[285]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33828,7 +34352,7 @@ func (x *QueueGetOrCreateRequest) String() string {
 func (*QueueGetOrCreateRequest) ProtoMessage() {}
 
 func (x *QueueGetOrCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[281]
+	mi := &file_modal_proto_api_proto_msgTypes[285]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33900,7 +34424,7 @@ type QueueGetOrCreateResponse struct {
 
 func (x *QueueGetOrCreateResponse) Reset() {
 	*x = QueueGetOrCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[282]
+	mi := &file_modal_proto_api_proto_msgTypes[286]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33912,7 +34436,7 @@ func (x *QueueGetOrCreateResponse) String() string {
 func (*QueueGetOrCreateResponse) ProtoMessage() {}
 
 func (x *QueueGetOrCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[282]
+	mi := &file_modal_proto_api_proto_msgTypes[286]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33984,7 +34508,7 @@ type QueueGetRequest struct {
 
 func (x *QueueGetRequest) Reset() {
 	*x = QueueGetRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[283]
+	mi := &file_modal_proto_api_proto_msgTypes[287]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -33996,7 +34520,7 @@ func (x *QueueGetRequest) String() string {
 func (*QueueGetRequest) ProtoMessage() {}
 
 func (x *QueueGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[283]
+	mi := &file_modal_proto_api_proto_msgTypes[287]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34083,7 +34607,7 @@ type QueueGetResponse struct {
 
 func (x *QueueGetResponse) Reset() {
 	*x = QueueGetResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[284]
+	mi := &file_modal_proto_api_proto_msgTypes[288]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34095,7 +34619,7 @@ func (x *QueueGetResponse) String() string {
 func (*QueueGetResponse) ProtoMessage() {}
 
 func (x *QueueGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[284]
+	mi := &file_modal_proto_api_proto_msgTypes[288]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34140,7 +34664,7 @@ type QueueHeartbeatRequest struct {
 
 func (x *QueueHeartbeatRequest) Reset() {
 	*x = QueueHeartbeatRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[285]
+	mi := &file_modal_proto_api_proto_msgTypes[289]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34152,7 +34676,7 @@ func (x *QueueHeartbeatRequest) String() string {
 func (*QueueHeartbeatRequest) ProtoMessage() {}
 
 func (x *QueueHeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[285]
+	mi := &file_modal_proto_api_proto_msgTypes[289]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34198,7 +34722,7 @@ type QueueItem struct {
 
 func (x *QueueItem) Reset() {
 	*x = QueueItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[286]
+	mi := &file_modal_proto_api_proto_msgTypes[290]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34210,7 +34734,7 @@ func (x *QueueItem) String() string {
 func (*QueueItem) ProtoMessage() {}
 
 func (x *QueueItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[286]
+	mi := &file_modal_proto_api_proto_msgTypes[290]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34273,7 +34797,7 @@ type QueueLenRequest struct {
 
 func (x *QueueLenRequest) Reset() {
 	*x = QueueLenRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[287]
+	mi := &file_modal_proto_api_proto_msgTypes[291]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34285,7 +34809,7 @@ func (x *QueueLenRequest) String() string {
 func (*QueueLenRequest) ProtoMessage() {}
 
 func (x *QueueLenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[287]
+	mi := &file_modal_proto_api_proto_msgTypes[291]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34359,7 +34883,7 @@ type QueueLenResponse struct {
 
 func (x *QueueLenResponse) Reset() {
 	*x = QueueLenResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[288]
+	mi := &file_modal_proto_api_proto_msgTypes[292]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34371,7 +34895,7 @@ func (x *QueueLenResponse) String() string {
 func (*QueueLenResponse) ProtoMessage() {}
 
 func (x *QueueLenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[288]
+	mi := &file_modal_proto_api_proto_msgTypes[292]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34418,7 +34942,7 @@ type QueueListRequest struct {
 
 func (x *QueueListRequest) Reset() {
 	*x = QueueListRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[289]
+	mi := &file_modal_proto_api_proto_msgTypes[293]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34430,7 +34954,7 @@ func (x *QueueListRequest) String() string {
 func (*QueueListRequest) ProtoMessage() {}
 
 func (x *QueueListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[289]
+	mi := &file_modal_proto_api_proto_msgTypes[293]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34513,7 +35037,7 @@ type QueueListResponse struct {
 
 func (x *QueueListResponse) Reset() {
 	*x = QueueListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[290]
+	mi := &file_modal_proto_api_proto_msgTypes[294]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34525,7 +35049,7 @@ func (x *QueueListResponse) String() string {
 func (*QueueListResponse) ProtoMessage() {}
 
 func (x *QueueListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[290]
+	mi := &file_modal_proto_api_proto_msgTypes[294]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34586,7 +35110,7 @@ type QueueMetadata struct {
 
 func (x *QueueMetadata) Reset() {
 	*x = QueueMetadata{}
-	mi := &file_modal_proto_api_proto_msgTypes[291]
+	mi := &file_modal_proto_api_proto_msgTypes[295]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34598,7 +35122,7 @@ func (x *QueueMetadata) String() string {
 func (*QueueMetadata) ProtoMessage() {}
 
 func (x *QueueMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[291]
+	mi := &file_modal_proto_api_proto_msgTypes[295]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34670,7 +35194,7 @@ type QueueNextItemsRequest struct {
 
 func (x *QueueNextItemsRequest) Reset() {
 	*x = QueueNextItemsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[292]
+	mi := &file_modal_proto_api_proto_msgTypes[296]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34682,7 +35206,7 @@ func (x *QueueNextItemsRequest) String() string {
 func (*QueueNextItemsRequest) ProtoMessage() {}
 
 func (x *QueueNextItemsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[292]
+	mi := &file_modal_proto_api_proto_msgTypes[296]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34769,7 +35293,7 @@ type QueueNextItemsResponse struct {
 
 func (x *QueueNextItemsResponse) Reset() {
 	*x = QueueNextItemsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[293]
+	mi := &file_modal_proto_api_proto_msgTypes[297]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34781,7 +35305,7 @@ func (x *QueueNextItemsResponse) String() string {
 func (*QueueNextItemsResponse) ProtoMessage() {}
 
 func (x *QueueNextItemsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[293]
+	mi := &file_modal_proto_api_proto_msgTypes[297]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34831,7 +35355,7 @@ type QueuePutRequest struct {
 
 func (x *QueuePutRequest) Reset() {
 	*x = QueuePutRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[294]
+	mi := &file_modal_proto_api_proto_msgTypes[298]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34843,7 +35367,7 @@ func (x *QueuePutRequest) String() string {
 func (*QueuePutRequest) ProtoMessage() {}
 
 func (x *QueuePutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[294]
+	mi := &file_modal_proto_api_proto_msgTypes[298]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34932,7 +35456,7 @@ type RPCRetryPolicy struct {
 
 func (x *RPCRetryPolicy) Reset() {
 	*x = RPCRetryPolicy{}
-	mi := &file_modal_proto_api_proto_msgTypes[295]
+	mi := &file_modal_proto_api_proto_msgTypes[299]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -34944,7 +35468,7 @@ func (x *RPCRetryPolicy) String() string {
 func (*RPCRetryPolicy) ProtoMessage() {}
 
 func (x *RPCRetryPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[295]
+	mi := &file_modal_proto_api_proto_msgTypes[299]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34996,7 +35520,7 @@ type RPCStatus struct {
 
 func (x *RPCStatus) Reset() {
 	*x = RPCStatus{}
-	mi := &file_modal_proto_api_proto_msgTypes[296]
+	mi := &file_modal_proto_api_proto_msgTypes[300]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35008,7 +35532,7 @@ func (x *RPCStatus) String() string {
 func (*RPCStatus) ProtoMessage() {}
 
 func (x *RPCStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[296]
+	mi := &file_modal_proto_api_proto_msgTypes[300]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35082,7 +35606,7 @@ type RateLimit struct {
 
 func (x *RateLimit) Reset() {
 	*x = RateLimit{}
-	mi := &file_modal_proto_api_proto_msgTypes[297]
+	mi := &file_modal_proto_api_proto_msgTypes[301]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35094,7 +35618,7 @@ func (x *RateLimit) String() string {
 func (*RateLimit) ProtoMessage() {}
 
 func (x *RateLimit) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[297]
+	mi := &file_modal_proto_api_proto_msgTypes[301]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35157,7 +35681,7 @@ type ResourceInfo struct {
 
 func (x *ResourceInfo) Reset() {
 	*x = ResourceInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[298]
+	mi := &file_modal_proto_api_proto_msgTypes[302]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35169,7 +35693,7 @@ func (x *ResourceInfo) String() string {
 func (*ResourceInfo) ProtoMessage() {}
 
 func (x *ResourceInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[298]
+	mi := &file_modal_proto_api_proto_msgTypes[302]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35307,7 +35831,7 @@ type Resources struct {
 
 func (x *Resources) Reset() {
 	*x = Resources{}
-	mi := &file_modal_proto_api_proto_msgTypes[299]
+	mi := &file_modal_proto_api_proto_msgTypes[303]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35319,7 +35843,7 @@ func (x *Resources) String() string {
 func (*Resources) ProtoMessage() {}
 
 func (x *Resources) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[299]
+	mi := &file_modal_proto_api_proto_msgTypes[303]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35455,7 +35979,7 @@ type RuntimeInputMessage struct {
 
 func (x *RuntimeInputMessage) Reset() {
 	*x = RuntimeInputMessage{}
-	mi := &file_modal_proto_api_proto_msgTypes[300]
+	mi := &file_modal_proto_api_proto_msgTypes[304]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35467,7 +35991,7 @@ func (x *RuntimeInputMessage) String() string {
 func (*RuntimeInputMessage) ProtoMessage() {}
 
 func (x *RuntimeInputMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[300]
+	mi := &file_modal_proto_api_proto_msgTypes[304]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35548,7 +36072,7 @@ type RuntimeOutputBatch struct {
 
 func (x *RuntimeOutputBatch) Reset() {
 	*x = RuntimeOutputBatch{}
-	mi := &file_modal_proto_api_proto_msgTypes[301]
+	mi := &file_modal_proto_api_proto_msgTypes[305]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35560,7 +36084,7 @@ func (x *RuntimeOutputBatch) String() string {
 func (*RuntimeOutputBatch) ProtoMessage() {}
 
 func (x *RuntimeOutputBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[301]
+	mi := &file_modal_proto_api_proto_msgTypes[305]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35698,7 +36222,7 @@ type RuntimeOutputMessage struct {
 
 func (x *RuntimeOutputMessage) Reset() {
 	*x = RuntimeOutputMessage{}
-	mi := &file_modal_proto_api_proto_msgTypes[302]
+	mi := &file_modal_proto_api_proto_msgTypes[306]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35710,7 +36234,7 @@ func (x *RuntimeOutputMessage) String() string {
 func (*RuntimeOutputMessage) ProtoMessage() {}
 
 func (x *RuntimeOutputMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[302]
+	mi := &file_modal_proto_api_proto_msgTypes[306]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35788,7 +36312,7 @@ type S3Mount struct {
 
 func (x *S3Mount) Reset() {
 	*x = S3Mount{}
-	mi := &file_modal_proto_api_proto_msgTypes[303]
+	mi := &file_modal_proto_api_proto_msgTypes[307]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35800,7 +36324,7 @@ func (x *S3Mount) String() string {
 func (*S3Mount) ProtoMessage() {}
 
 func (x *S3Mount) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[303]
+	mi := &file_modal_proto_api_proto_msgTypes[307]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35913,6 +36437,7 @@ type Sandbox struct {
 	xxx_hidden_CustomDomain                 string                   `protobuf:"bytes,36,opt,name=custom_domain,json=customDomain,proto3"`
 	xxx_hidden_IncludeOidcIdentityToken     bool                     `protobuf:"varint,37,opt,name=include_oidc_identity_token,json=includeOidcIdentityToken,proto3"`
 	xxx_hidden_ReadinessProbe               *Probe                   `protobuf:"bytes,38,opt,name=readiness_probe,json=readinessProbe,proto3,oneof"`
+	xxx_hidden_AllowedInboundCidrs          []string                 `protobuf:"bytes,39,rep,name=allowed_inbound_cidrs,json=allowedInboundCidrs,proto3"`
 	XXX_raceDetectHookData                  protoimpl.RaceDetectHookData
 	XXX_presence                            [2]uint32
 	unknownFields                           protoimpl.UnknownFields
@@ -35921,7 +36446,7 @@ type Sandbox struct {
 
 func (x *Sandbox) Reset() {
 	*x = Sandbox{}
-	mi := &file_modal_proto_api_proto_msgTypes[304]
+	mi := &file_modal_proto_api_proto_msgTypes[308]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -35933,7 +36458,7 @@ func (x *Sandbox) String() string {
 func (*Sandbox) ProtoMessage() {}
 
 func (x *Sandbox) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[304]
+	mi := &file_modal_proto_api_proto_msgTypes[308]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36186,6 +36711,7 @@ func (x *Sandbox) GetIdleTimeoutSecs() uint32 {
 	return 0
 }
 
+// Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *Sandbox) GetDirectSandboxCommandsEnabled() bool {
 	if x != nil {
 		return x.xxx_hidden_DirectSandboxCommandsEnabled
@@ -36221,6 +36747,13 @@ func (x *Sandbox) GetReadinessProbe() *Probe {
 	return nil
 }
 
+func (x *Sandbox) GetAllowedInboundCidrs() []string {
+	if x != nil {
+		return x.xxx_hidden_AllowedInboundCidrs
+	}
+	return nil
+}
+
 func (x *Sandbox) SetEntrypointArgs(v []string) {
 	x.xxx_hidden_EntrypointArgs = v
 }
@@ -36251,7 +36784,7 @@ func (x *Sandbox) SetTimeoutSecs(v uint32) {
 
 func (x *Sandbox) SetWorkdir(v string) {
 	x.xxx_hidden_Workdir = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 36)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 37)
 }
 
 func (x *Sandbox) SetNfsMounts(v []*SharedVolumeMount) {
@@ -36308,7 +36841,7 @@ func (x *Sandbox) SetNetworkAccess(v *NetworkAccess) {
 
 func (x *Sandbox) SetProxyId(v string) {
 	x.xxx_hidden_ProxyId = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 20, 36)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 20, 37)
 }
 
 func (x *Sandbox) SetEnableSnapshot(v bool) {
@@ -36317,7 +36850,7 @@ func (x *Sandbox) SetEnableSnapshot(v bool) {
 
 func (x *Sandbox) SetSnapshotVersion(v uint32) {
 	x.xxx_hidden_SnapshotVersion = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 22, 36)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 22, 37)
 }
 
 func (x *Sandbox) SetCloudProviderStr(v string) {
@@ -36326,12 +36859,12 @@ func (x *Sandbox) SetCloudProviderStr(v string) {
 
 func (x *Sandbox) SetRunscRuntimeVersion(v string) {
 	x.xxx_hidden_RunscRuntimeVersion = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 24, 36)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 24, 37)
 }
 
 func (x *Sandbox) SetRuntime(v string) {
 	x.xxx_hidden_Runtime = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 25, 36)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 25, 37)
 }
 
 func (x *Sandbox) SetVerbose(v bool) {
@@ -36340,7 +36873,7 @@ func (x *Sandbox) SetVerbose(v bool) {
 
 func (x *Sandbox) SetName(v string) {
 	x.xxx_hidden_Name = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 27, 36)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 27, 37)
 }
 
 func (x *Sandbox) SetExperimentalOptions(v map[string]bool) {
@@ -36353,9 +36886,10 @@ func (x *Sandbox) SetPreloadPathPrefixes(v []string) {
 
 func (x *Sandbox) SetIdleTimeoutSecs(v uint32) {
 	x.xxx_hidden_IdleTimeoutSecs = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 30, 36)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 30, 37)
 }
 
+// Deprecated: Marked as deprecated in modal_proto/api.proto.
 func (x *Sandbox) SetDirectSandboxCommandsEnabled(v bool) {
 	x.xxx_hidden_DirectSandboxCommandsEnabled = v
 }
@@ -36374,6 +36908,10 @@ func (x *Sandbox) SetIncludeOidcIdentityToken(v bool) {
 
 func (x *Sandbox) SetReadinessProbe(v *Probe) {
 	x.xxx_hidden_ReadinessProbe = v
+}
+
+func (x *Sandbox) SetAllowedInboundCidrs(v []string) {
+	x.xxx_hidden_AllowedInboundCidrs = v
 }
 
 func (x *Sandbox) HasResources() bool {
@@ -36603,9 +37141,9 @@ type Sandbox_builder struct {
 	PreloadPathPrefixes []string
 	// Optional idle timeout in seconds. If set, the sandbox will be terminated after being idle for this duration.
 	IdleTimeoutSecs *uint32
-	// If set, the sandbox will be created with direct sandbox commands enabled.
-	// Exec commands for the sandbox will be issued directly to the sandbox
-	// command router running on the Modal worker.
+	// Deprecated: direct sandbox commands are always enabled.
+	//
+	// Deprecated: Marked as deprecated in modal_proto/api.proto.
 	DirectSandboxCommandsEnabled bool
 	// Internal: restricts sandbox to run on this specific instance type.
 	// Set by server during SandboxRestore to ensure the restored sandbox runs
@@ -36619,6 +37157,9 @@ type Sandbox_builder struct {
 	IncludeOidcIdentityToken bool
 	// Probe used to determine when the sandbox has become ready.
 	ReadinessProbe *Probe
+	// If set, only connections from these CIDRs will be allowed to connect to the sandbox
+	// (tunnels and auth proxy).
+	AllowedInboundCidrs []string
 }
 
 func (b0 Sandbox_builder) Build() *Sandbox {
@@ -36633,7 +37174,7 @@ func (b0 Sandbox_builder) Build() *Sandbox {
 	x.xxx_hidden_CloudProvider = b.CloudProvider
 	x.xxx_hidden_TimeoutSecs = b.TimeoutSecs
 	if b.Workdir != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 36)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 37)
 		x.xxx_hidden_Workdir = b.Workdir
 	}
 	x.xxx_hidden_NfsMounts = &b.NfsMounts
@@ -36651,32 +37192,32 @@ func (b0 Sandbox_builder) Build() *Sandbox {
 	x.xxx_hidden_I6PnEnabled = b.I6PnEnabled
 	x.xxx_hidden_NetworkAccess = b.NetworkAccess
 	if b.ProxyId != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 20, 36)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 20, 37)
 		x.xxx_hidden_ProxyId = b.ProxyId
 	}
 	x.xxx_hidden_EnableSnapshot = b.EnableSnapshot
 	if b.SnapshotVersion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 22, 36)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 22, 37)
 		x.xxx_hidden_SnapshotVersion = *b.SnapshotVersion
 	}
 	x.xxx_hidden_CloudProviderStr = b.CloudProviderStr
 	if b.RunscRuntimeVersion != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 24, 36)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 24, 37)
 		x.xxx_hidden_RunscRuntimeVersion = b.RunscRuntimeVersion
 	}
 	if b.Runtime != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 25, 36)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 25, 37)
 		x.xxx_hidden_Runtime = b.Runtime
 	}
 	x.xxx_hidden_Verbose = b.Verbose
 	if b.Name != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 27, 36)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 27, 37)
 		x.xxx_hidden_Name = b.Name
 	}
 	x.xxx_hidden_ExperimentalOptions = b.ExperimentalOptions
 	x.xxx_hidden_PreloadPathPrefixes = b.PreloadPathPrefixes
 	if b.IdleTimeoutSecs != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 30, 36)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 30, 37)
 		x.xxx_hidden_IdleTimeoutSecs = *b.IdleTimeoutSecs
 	}
 	x.xxx_hidden_DirectSandboxCommandsEnabled = b.DirectSandboxCommandsEnabled
@@ -36684,13 +37225,14 @@ func (b0 Sandbox_builder) Build() *Sandbox {
 	x.xxx_hidden_CustomDomain = b.CustomDomain
 	x.xxx_hidden_IncludeOidcIdentityToken = b.IncludeOidcIdentityToken
 	x.xxx_hidden_ReadinessProbe = b.ReadinessProbe
+	x.xxx_hidden_AllowedInboundCidrs = b.AllowedInboundCidrs
 	return m0
 }
 
 type case_Sandbox_OpenPortsOneof protoreflect.FieldNumber
 
 func (x case_Sandbox_OpenPortsOneof) String() string {
-	md := file_modal_proto_api_proto_msgTypes[304].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[308].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -36717,7 +37259,7 @@ type SandboxCreateConnectTokenRequest struct {
 
 func (x *SandboxCreateConnectTokenRequest) Reset() {
 	*x = SandboxCreateConnectTokenRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[305]
+	mi := &file_modal_proto_api_proto_msgTypes[309]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36729,7 +37271,7 @@ func (x *SandboxCreateConnectTokenRequest) String() string {
 func (*SandboxCreateConnectTokenRequest) ProtoMessage() {}
 
 func (x *SandboxCreateConnectTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[305]
+	mi := &file_modal_proto_api_proto_msgTypes[309]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36788,7 +37330,7 @@ type SandboxCreateConnectTokenResponse struct {
 
 func (x *SandboxCreateConnectTokenResponse) Reset() {
 	*x = SandboxCreateConnectTokenResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[306]
+	mi := &file_modal_proto_api_proto_msgTypes[310]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36800,7 +37342,7 @@ func (x *SandboxCreateConnectTokenResponse) String() string {
 func (*SandboxCreateConnectTokenResponse) ProtoMessage() {}
 
 func (x *SandboxCreateConnectTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[306]
+	mi := &file_modal_proto_api_proto_msgTypes[310]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36860,7 +37402,7 @@ type SandboxCreateRequest struct {
 
 func (x *SandboxCreateRequest) Reset() {
 	*x = SandboxCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[307]
+	mi := &file_modal_proto_api_proto_msgTypes[311]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36872,7 +37414,7 @@ func (x *SandboxCreateRequest) String() string {
 func (*SandboxCreateRequest) ProtoMessage() {}
 
 func (x *SandboxCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[307]
+	mi := &file_modal_proto_api_proto_msgTypes[311]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36954,7 +37496,7 @@ type SandboxCreateResponse struct {
 
 func (x *SandboxCreateResponse) Reset() {
 	*x = SandboxCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[308]
+	mi := &file_modal_proto_api_proto_msgTypes[312]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -36966,7 +37508,7 @@ func (x *SandboxCreateResponse) String() string {
 func (*SandboxCreateResponse) ProtoMessage() {}
 
 func (x *SandboxCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[308]
+	mi := &file_modal_proto_api_proto_msgTypes[312]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37012,7 +37554,7 @@ type SandboxCreateV2Request struct {
 
 func (x *SandboxCreateV2Request) Reset() {
 	*x = SandboxCreateV2Request{}
-	mi := &file_modal_proto_api_proto_msgTypes[309]
+	mi := &file_modal_proto_api_proto_msgTypes[313]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37024,7 +37566,7 @@ func (x *SandboxCreateV2Request) String() string {
 func (*SandboxCreateV2Request) ProtoMessage() {}
 
 func (x *SandboxCreateV2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[309]
+	mi := &file_modal_proto_api_proto_msgTypes[313]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37095,7 +37637,7 @@ type SandboxCreateV2Response struct {
 
 func (x *SandboxCreateV2Response) Reset() {
 	*x = SandboxCreateV2Response{}
-	mi := &file_modal_proto_api_proto_msgTypes[310]
+	mi := &file_modal_proto_api_proto_msgTypes[314]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37107,7 +37649,7 @@ func (x *SandboxCreateV2Response) String() string {
 func (*SandboxCreateV2Response) ProtoMessage() {}
 
 func (x *SandboxCreateV2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[310]
+	mi := &file_modal_proto_api_proto_msgTypes[314]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37182,7 +37724,7 @@ type SandboxGetCommandRouterAccessRequest struct {
 
 func (x *SandboxGetCommandRouterAccessRequest) Reset() {
 	*x = SandboxGetCommandRouterAccessRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[311]
+	mi := &file_modal_proto_api_proto_msgTypes[315]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37194,7 +37736,7 @@ func (x *SandboxGetCommandRouterAccessRequest) String() string {
 func (*SandboxGetCommandRouterAccessRequest) ProtoMessage() {}
 
 func (x *SandboxGetCommandRouterAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[311]
+	mi := &file_modal_proto_api_proto_msgTypes[315]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37240,7 +37782,7 @@ type SandboxGetCommandRouterAccessResponse struct {
 
 func (x *SandboxGetCommandRouterAccessResponse) Reset() {
 	*x = SandboxGetCommandRouterAccessResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[312]
+	mi := &file_modal_proto_api_proto_msgTypes[316]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37252,7 +37794,7 @@ func (x *SandboxGetCommandRouterAccessResponse) String() string {
 func (*SandboxGetCommandRouterAccessResponse) ProtoMessage() {}
 
 func (x *SandboxGetCommandRouterAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[312]
+	mi := &file_modal_proto_api_proto_msgTypes[316]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37312,7 +37854,7 @@ type SandboxGetFromNameRequest struct {
 
 func (x *SandboxGetFromNameRequest) Reset() {
 	*x = SandboxGetFromNameRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[313]
+	mi := &file_modal_proto_api_proto_msgTypes[317]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37324,7 +37866,7 @@ func (x *SandboxGetFromNameRequest) String() string {
 func (*SandboxGetFromNameRequest) ProtoMessage() {}
 
 func (x *SandboxGetFromNameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[313]
+	mi := &file_modal_proto_api_proto_msgTypes[317]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37395,7 +37937,7 @@ type SandboxGetFromNameResponse struct {
 
 func (x *SandboxGetFromNameResponse) Reset() {
 	*x = SandboxGetFromNameResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[314]
+	mi := &file_modal_proto_api_proto_msgTypes[318]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37407,7 +37949,7 @@ func (x *SandboxGetFromNameResponse) String() string {
 func (*SandboxGetFromNameResponse) ProtoMessage() {}
 
 func (x *SandboxGetFromNameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[314]
+	mi := &file_modal_proto_api_proto_msgTypes[318]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37455,7 +37997,7 @@ type SandboxGetLogsRequest struct {
 
 func (x *SandboxGetLogsRequest) Reset() {
 	*x = SandboxGetLogsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[315]
+	mi := &file_modal_proto_api_proto_msgTypes[319]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37467,7 +38009,7 @@ func (x *SandboxGetLogsRequest) String() string {
 func (*SandboxGetLogsRequest) ProtoMessage() {}
 
 func (x *SandboxGetLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[315]
+	mi := &file_modal_proto_api_proto_msgTypes[319]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37551,7 +38093,7 @@ type SandboxGetResourceUsageRequest struct {
 
 func (x *SandboxGetResourceUsageRequest) Reset() {
 	*x = SandboxGetResourceUsageRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[316]
+	mi := &file_modal_proto_api_proto_msgTypes[320]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37563,7 +38105,7 @@ func (x *SandboxGetResourceUsageRequest) String() string {
 func (*SandboxGetResourceUsageRequest) ProtoMessage() {}
 
 func (x *SandboxGetResourceUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[316]
+	mi := &file_modal_proto_api_proto_msgTypes[320]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37613,7 +38155,7 @@ type SandboxGetResourceUsageResponse struct {
 
 func (x *SandboxGetResourceUsageResponse) Reset() {
 	*x = SandboxGetResourceUsageResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[317]
+	mi := &file_modal_proto_api_proto_msgTypes[321]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37625,7 +38167,7 @@ func (x *SandboxGetResourceUsageResponse) String() string {
 func (*SandboxGetResourceUsageResponse) ProtoMessage() {}
 
 func (x *SandboxGetResourceUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[317]
+	mi := &file_modal_proto_api_proto_msgTypes[321]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37732,7 +38274,7 @@ type SandboxGetTaskIdRequest struct {
 
 func (x *SandboxGetTaskIdRequest) Reset() {
 	*x = SandboxGetTaskIdRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[318]
+	mi := &file_modal_proto_api_proto_msgTypes[322]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37744,7 +38286,7 @@ func (x *SandboxGetTaskIdRequest) String() string {
 func (*SandboxGetTaskIdRequest) ProtoMessage() {}
 
 func (x *SandboxGetTaskIdRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[318]
+	mi := &file_modal_proto_api_proto_msgTypes[322]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37834,7 +38376,7 @@ type SandboxGetTaskIdResponse struct {
 
 func (x *SandboxGetTaskIdResponse) Reset() {
 	*x = SandboxGetTaskIdResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[319]
+	mi := &file_modal_proto_api_proto_msgTypes[323]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37846,7 +38388,7 @@ func (x *SandboxGetTaskIdResponse) String() string {
 func (*SandboxGetTaskIdResponse) ProtoMessage() {}
 
 func (x *SandboxGetTaskIdResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[319]
+	mi := &file_modal_proto_api_proto_msgTypes[323]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37935,7 +38477,7 @@ type SandboxGetTunnelsRequest struct {
 
 func (x *SandboxGetTunnelsRequest) Reset() {
 	*x = SandboxGetTunnelsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[320]
+	mi := &file_modal_proto_api_proto_msgTypes[324]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -37947,7 +38489,7 @@ func (x *SandboxGetTunnelsRequest) String() string {
 func (*SandboxGetTunnelsRequest) ProtoMessage() {}
 
 func (x *SandboxGetTunnelsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[320]
+	mi := &file_modal_proto_api_proto_msgTypes[324]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38006,7 +38548,7 @@ type SandboxGetTunnelsResponse struct {
 
 func (x *SandboxGetTunnelsResponse) Reset() {
 	*x = SandboxGetTunnelsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[321]
+	mi := &file_modal_proto_api_proto_msgTypes[325]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38018,7 +38560,7 @@ func (x *SandboxGetTunnelsResponse) String() string {
 func (*SandboxGetTunnelsResponse) ProtoMessage() {}
 
 func (x *SandboxGetTunnelsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[321]
+	mi := &file_modal_proto_api_proto_msgTypes[325]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38089,7 +38631,7 @@ type SandboxHandleMetadata struct {
 
 func (x *SandboxHandleMetadata) Reset() {
 	*x = SandboxHandleMetadata{}
-	mi := &file_modal_proto_api_proto_msgTypes[322]
+	mi := &file_modal_proto_api_proto_msgTypes[326]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38101,7 +38643,7 @@ func (x *SandboxHandleMetadata) String() string {
 func (*SandboxHandleMetadata) ProtoMessage() {}
 
 func (x *SandboxHandleMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[322]
+	mi := &file_modal_proto_api_proto_msgTypes[326]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38172,7 +38714,7 @@ type SandboxInfo struct {
 
 func (x *SandboxInfo) Reset() {
 	*x = SandboxInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[323]
+	mi := &file_modal_proto_api_proto_msgTypes[327]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38184,7 +38726,7 @@ func (x *SandboxInfo) String() string {
 func (*SandboxInfo) ProtoMessage() {}
 
 func (x *SandboxInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[323]
+	mi := &file_modal_proto_api_proto_msgTypes[327]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38471,7 +39013,7 @@ type SandboxListRequest struct {
 
 func (x *SandboxListRequest) Reset() {
 	*x = SandboxListRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[324]
+	mi := &file_modal_proto_api_proto_msgTypes[328]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38483,7 +39025,7 @@ func (x *SandboxListRequest) String() string {
 func (*SandboxListRequest) ProtoMessage() {}
 
 func (x *SandboxListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[324]
+	mi := &file_modal_proto_api_proto_msgTypes[328]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38582,7 +39124,7 @@ type SandboxListResponse struct {
 
 func (x *SandboxListResponse) Reset() {
 	*x = SandboxListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[325]
+	mi := &file_modal_proto_api_proto_msgTypes[329]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38594,7 +39136,7 @@ func (x *SandboxListResponse) String() string {
 func (*SandboxListResponse) ProtoMessage() {}
 
 func (x *SandboxListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[325]
+	mi := &file_modal_proto_api_proto_msgTypes[329]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38643,7 +39185,7 @@ type SandboxRestoreRequest struct {
 
 func (x *SandboxRestoreRequest) Reset() {
 	*x = SandboxRestoreRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[326]
+	mi := &file_modal_proto_api_proto_msgTypes[330]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38655,7 +39197,7 @@ func (x *SandboxRestoreRequest) String() string {
 func (*SandboxRestoreRequest) ProtoMessage() {}
 
 func (x *SandboxRestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[326]
+	mi := &file_modal_proto_api_proto_msgTypes[330]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38726,7 +39268,7 @@ type SandboxRestoreResponse struct {
 
 func (x *SandboxRestoreResponse) Reset() {
 	*x = SandboxRestoreResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[327]
+	mi := &file_modal_proto_api_proto_msgTypes[331]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38738,7 +39280,7 @@ func (x *SandboxRestoreResponse) String() string {
 func (*SandboxRestoreResponse) ProtoMessage() {}
 
 func (x *SandboxRestoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[327]
+	mi := &file_modal_proto_api_proto_msgTypes[331]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38784,7 +39326,7 @@ type SandboxSnapshotFsAsyncGetRequest struct {
 
 func (x *SandboxSnapshotFsAsyncGetRequest) Reset() {
 	*x = SandboxSnapshotFsAsyncGetRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[328]
+	mi := &file_modal_proto_api_proto_msgTypes[332]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38796,7 +39338,7 @@ func (x *SandboxSnapshotFsAsyncGetRequest) String() string {
 func (*SandboxSnapshotFsAsyncGetRequest) ProtoMessage() {}
 
 func (x *SandboxSnapshotFsAsyncGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[328]
+	mi := &file_modal_proto_api_proto_msgTypes[332]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38854,7 +39396,7 @@ type SandboxSnapshotFsAsyncRequest struct {
 
 func (x *SandboxSnapshotFsAsyncRequest) Reset() {
 	*x = SandboxSnapshotFsAsyncRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[329]
+	mi := &file_modal_proto_api_proto_msgTypes[333]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38866,7 +39408,7 @@ func (x *SandboxSnapshotFsAsyncRequest) String() string {
 func (*SandboxSnapshotFsAsyncRequest) ProtoMessage() {}
 
 func (x *SandboxSnapshotFsAsyncRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[329]
+	mi := &file_modal_proto_api_proto_msgTypes[333]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38911,7 +39453,7 @@ type SandboxSnapshotFsAsyncResponse struct {
 
 func (x *SandboxSnapshotFsAsyncResponse) Reset() {
 	*x = SandboxSnapshotFsAsyncResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[330]
+	mi := &file_modal_proto_api_proto_msgTypes[334]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38923,7 +39465,7 @@ func (x *SandboxSnapshotFsAsyncResponse) String() string {
 func (*SandboxSnapshotFsAsyncResponse) ProtoMessage() {}
 
 func (x *SandboxSnapshotFsAsyncResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[330]
+	mi := &file_modal_proto_api_proto_msgTypes[334]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38969,7 +39511,7 @@ type SandboxSnapshotFsRequest struct {
 
 func (x *SandboxSnapshotFsRequest) Reset() {
 	*x = SandboxSnapshotFsRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[331]
+	mi := &file_modal_proto_api_proto_msgTypes[335]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -38981,7 +39523,7 @@ func (x *SandboxSnapshotFsRequest) String() string {
 func (*SandboxSnapshotFsRequest) ProtoMessage() {}
 
 func (x *SandboxSnapshotFsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[331]
+	mi := &file_modal_proto_api_proto_msgTypes[335]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39041,7 +39583,7 @@ type SandboxSnapshotFsResponse struct {
 
 func (x *SandboxSnapshotFsResponse) Reset() {
 	*x = SandboxSnapshotFsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[332]
+	mi := &file_modal_proto_api_proto_msgTypes[336]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39053,7 +39595,7 @@ func (x *SandboxSnapshotFsResponse) String() string {
 func (*SandboxSnapshotFsResponse) ProtoMessage() {}
 
 func (x *SandboxSnapshotFsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[332]
+	mi := &file_modal_proto_api_proto_msgTypes[336]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39147,7 +39689,7 @@ type SandboxSnapshotGetRequest struct {
 
 func (x *SandboxSnapshotGetRequest) Reset() {
 	*x = SandboxSnapshotGetRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[333]
+	mi := &file_modal_proto_api_proto_msgTypes[337]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39159,7 +39701,7 @@ func (x *SandboxSnapshotGetRequest) String() string {
 func (*SandboxSnapshotGetRequest) ProtoMessage() {}
 
 func (x *SandboxSnapshotGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[333]
+	mi := &file_modal_proto_api_proto_msgTypes[337]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39204,7 +39746,7 @@ type SandboxSnapshotGetResponse struct {
 
 func (x *SandboxSnapshotGetResponse) Reset() {
 	*x = SandboxSnapshotGetResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[334]
+	mi := &file_modal_proto_api_proto_msgTypes[338]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39216,7 +39758,7 @@ func (x *SandboxSnapshotGetResponse) String() string {
 func (*SandboxSnapshotGetResponse) ProtoMessage() {}
 
 func (x *SandboxSnapshotGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[334]
+	mi := &file_modal_proto_api_proto_msgTypes[338]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39261,7 +39803,7 @@ type SandboxSnapshotRequest struct {
 
 func (x *SandboxSnapshotRequest) Reset() {
 	*x = SandboxSnapshotRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[335]
+	mi := &file_modal_proto_api_proto_msgTypes[339]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39273,7 +39815,7 @@ func (x *SandboxSnapshotRequest) String() string {
 func (*SandboxSnapshotRequest) ProtoMessage() {}
 
 func (x *SandboxSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[335]
+	mi := &file_modal_proto_api_proto_msgTypes[339]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39318,7 +39860,7 @@ type SandboxSnapshotResponse struct {
 
 func (x *SandboxSnapshotResponse) Reset() {
 	*x = SandboxSnapshotResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[336]
+	mi := &file_modal_proto_api_proto_msgTypes[340]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39330,7 +39872,7 @@ func (x *SandboxSnapshotResponse) String() string {
 func (*SandboxSnapshotResponse) ProtoMessage() {}
 
 func (x *SandboxSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[336]
+	mi := &file_modal_proto_api_proto_msgTypes[340]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39376,7 +39918,7 @@ type SandboxSnapshotWaitRequest struct {
 
 func (x *SandboxSnapshotWaitRequest) Reset() {
 	*x = SandboxSnapshotWaitRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[337]
+	mi := &file_modal_proto_api_proto_msgTypes[341]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39388,7 +39930,7 @@ func (x *SandboxSnapshotWaitRequest) String() string {
 func (*SandboxSnapshotWaitRequest) ProtoMessage() {}
 
 func (x *SandboxSnapshotWaitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[337]
+	mi := &file_modal_proto_api_proto_msgTypes[341]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39446,7 +39988,7 @@ type SandboxSnapshotWaitResponse struct {
 
 func (x *SandboxSnapshotWaitResponse) Reset() {
 	*x = SandboxSnapshotWaitResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[338]
+	mi := &file_modal_proto_api_proto_msgTypes[342]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39458,7 +40000,7 @@ func (x *SandboxSnapshotWaitResponse) String() string {
 func (*SandboxSnapshotWaitResponse) ProtoMessage() {}
 
 func (x *SandboxSnapshotWaitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[338]
+	mi := &file_modal_proto_api_proto_msgTypes[342]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39517,7 +40059,7 @@ type SandboxStdinWriteRequest struct {
 
 func (x *SandboxStdinWriteRequest) Reset() {
 	*x = SandboxStdinWriteRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[339]
+	mi := &file_modal_proto_api_proto_msgTypes[343]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39529,7 +40071,7 @@ func (x *SandboxStdinWriteRequest) String() string {
 func (*SandboxStdinWriteRequest) ProtoMessage() {}
 
 func (x *SandboxStdinWriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[339]
+	mi := &file_modal_proto_api_proto_msgTypes[343]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39615,7 +40157,7 @@ type SandboxStdinWriteResponse struct {
 
 func (x *SandboxStdinWriteResponse) Reset() {
 	*x = SandboxStdinWriteResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[340]
+	mi := &file_modal_proto_api_proto_msgTypes[344]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39627,7 +40169,7 @@ func (x *SandboxStdinWriteResponse) String() string {
 func (*SandboxStdinWriteResponse) ProtoMessage() {}
 
 func (x *SandboxStdinWriteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[340]
+	mi := &file_modal_proto_api_proto_msgTypes[344]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39660,7 +40202,7 @@ type SandboxTag struct {
 
 func (x *SandboxTag) Reset() {
 	*x = SandboxTag{}
-	mi := &file_modal_proto_api_proto_msgTypes[341]
+	mi := &file_modal_proto_api_proto_msgTypes[345]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39672,7 +40214,7 @@ func (x *SandboxTag) String() string {
 func (*SandboxTag) ProtoMessage() {}
 
 func (x *SandboxTag) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[341]
+	mi := &file_modal_proto_api_proto_msgTypes[345]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39730,7 +40272,7 @@ type SandboxTagsGetRequest struct {
 
 func (x *SandboxTagsGetRequest) Reset() {
 	*x = SandboxTagsGetRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[342]
+	mi := &file_modal_proto_api_proto_msgTypes[346]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39742,7 +40284,7 @@ func (x *SandboxTagsGetRequest) String() string {
 func (*SandboxTagsGetRequest) ProtoMessage() {}
 
 func (x *SandboxTagsGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[342]
+	mi := &file_modal_proto_api_proto_msgTypes[346]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39787,7 +40329,7 @@ type SandboxTagsGetResponse struct {
 
 func (x *SandboxTagsGetResponse) Reset() {
 	*x = SandboxTagsGetResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[343]
+	mi := &file_modal_proto_api_proto_msgTypes[347]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39799,7 +40341,7 @@ func (x *SandboxTagsGetResponse) String() string {
 func (*SandboxTagsGetResponse) ProtoMessage() {}
 
 func (x *SandboxTagsGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[343]
+	mi := &file_modal_proto_api_proto_msgTypes[347]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39848,7 +40390,7 @@ type SandboxTagsSetRequest struct {
 
 func (x *SandboxTagsSetRequest) Reset() {
 	*x = SandboxTagsSetRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[344]
+	mi := &file_modal_proto_api_proto_msgTypes[348]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39860,7 +40402,7 @@ func (x *SandboxTagsSetRequest) String() string {
 func (*SandboxTagsSetRequest) ProtoMessage() {}
 
 func (x *SandboxTagsSetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[344]
+	mi := &file_modal_proto_api_proto_msgTypes[348]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39933,7 +40475,7 @@ type SandboxTerminateRequest struct {
 
 func (x *SandboxTerminateRequest) Reset() {
 	*x = SandboxTerminateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[345]
+	mi := &file_modal_proto_api_proto_msgTypes[349]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -39945,7 +40487,7 @@ func (x *SandboxTerminateRequest) String() string {
 func (*SandboxTerminateRequest) ProtoMessage() {}
 
 func (x *SandboxTerminateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[345]
+	mi := &file_modal_proto_api_proto_msgTypes[349]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39990,7 +40532,7 @@ type SandboxTerminateResponse struct {
 
 func (x *SandboxTerminateResponse) Reset() {
 	*x = SandboxTerminateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[346]
+	mi := &file_modal_proto_api_proto_msgTypes[350]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40002,7 +40544,7 @@ func (x *SandboxTerminateResponse) String() string {
 func (*SandboxTerminateResponse) ProtoMessage() {}
 
 func (x *SandboxTerminateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[346]
+	mi := &file_modal_proto_api_proto_msgTypes[350]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40059,7 +40601,7 @@ type SandboxWaitRequest struct {
 
 func (x *SandboxWaitRequest) Reset() {
 	*x = SandboxWaitRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[347]
+	mi := &file_modal_proto_api_proto_msgTypes[351]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40071,7 +40613,7 @@ func (x *SandboxWaitRequest) String() string {
 func (*SandboxWaitRequest) ProtoMessage() {}
 
 func (x *SandboxWaitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[347]
+	mi := &file_modal_proto_api_proto_msgTypes[351]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40129,7 +40671,7 @@ type SandboxWaitResponse struct {
 
 func (x *SandboxWaitResponse) Reset() {
 	*x = SandboxWaitResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[348]
+	mi := &file_modal_proto_api_proto_msgTypes[352]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40141,7 +40683,7 @@ func (x *SandboxWaitResponse) String() string {
 func (*SandboxWaitResponse) ProtoMessage() {}
 
 func (x *SandboxWaitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[348]
+	mi := &file_modal_proto_api_proto_msgTypes[352]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40198,7 +40740,7 @@ type SandboxWaitUntilReadyRequest struct {
 
 func (x *SandboxWaitUntilReadyRequest) Reset() {
 	*x = SandboxWaitUntilReadyRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[349]
+	mi := &file_modal_proto_api_proto_msgTypes[353]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40210,7 +40752,7 @@ func (x *SandboxWaitUntilReadyRequest) String() string {
 func (*SandboxWaitUntilReadyRequest) ProtoMessage() {}
 
 func (x *SandboxWaitUntilReadyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[349]
+	mi := &file_modal_proto_api_proto_msgTypes[353]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40268,7 +40810,7 @@ type SandboxWaitUntilReadyResponse struct {
 
 func (x *SandboxWaitUntilReadyResponse) Reset() {
 	*x = SandboxWaitUntilReadyResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[350]
+	mi := &file_modal_proto_api_proto_msgTypes[354]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40280,7 +40822,7 @@ func (x *SandboxWaitUntilReadyResponse) String() string {
 func (*SandboxWaitUntilReadyResponse) ProtoMessage() {}
 
 func (x *SandboxWaitUntilReadyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[350]
+	mi := &file_modal_proto_api_proto_msgTypes[354]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40325,7 +40867,7 @@ type Schedule struct {
 
 func (x *Schedule) Reset() {
 	*x = Schedule{}
-	mi := &file_modal_proto_api_proto_msgTypes[351]
+	mi := &file_modal_proto_api_proto_msgTypes[355]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40337,7 +40879,7 @@ func (x *Schedule) String() string {
 func (*Schedule) ProtoMessage() {}
 
 func (x *Schedule) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[351]
+	mi := &file_modal_proto_api_proto_msgTypes[355]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40464,7 +41006,7 @@ func (b0 Schedule_builder) Build() *Schedule {
 type case_Schedule_ScheduleOneof protoreflect.FieldNumber
 
 func (x case_Schedule_ScheduleOneof) String() string {
-	md := file_modal_proto_api_proto_msgTypes[351].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[355].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -40503,7 +41045,7 @@ type SchedulerPlacement struct {
 
 func (x *SchedulerPlacement) Reset() {
 	*x = SchedulerPlacement{}
-	mi := &file_modal_proto_api_proto_msgTypes[352]
+	mi := &file_modal_proto_api_proto_msgTypes[356]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40515,7 +41057,7 @@ func (x *SchedulerPlacement) String() string {
 func (*SchedulerPlacement) ProtoMessage() {}
 
 func (x *SchedulerPlacement) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[352]
+	mi := &file_modal_proto_api_proto_msgTypes[356]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40666,7 +41208,7 @@ type SecretCreateRequest struct {
 
 func (x *SecretCreateRequest) Reset() {
 	*x = SecretCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[353]
+	mi := &file_modal_proto_api_proto_msgTypes[357]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40678,7 +41220,7 @@ func (x *SecretCreateRequest) String() string {
 func (*SecretCreateRequest) ProtoMessage() {}
 
 func (x *SecretCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[353]
+	mi := &file_modal_proto_api_proto_msgTypes[357]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40762,7 +41304,7 @@ type SecretCreateResponse struct {
 
 func (x *SecretCreateResponse) Reset() {
 	*x = SecretCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[354]
+	mi := &file_modal_proto_api_proto_msgTypes[358]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40774,7 +41316,7 @@ func (x *SecretCreateResponse) String() string {
 func (*SecretCreateResponse) ProtoMessage() {}
 
 func (x *SecretCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[354]
+	mi := &file_modal_proto_api_proto_msgTypes[358]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40819,7 +41361,7 @@ type SecretDeleteRequest struct {
 
 func (x *SecretDeleteRequest) Reset() {
 	*x = SecretDeleteRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[355]
+	mi := &file_modal_proto_api_proto_msgTypes[359]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40831,7 +41373,7 @@ func (x *SecretDeleteRequest) String() string {
 func (*SecretDeleteRequest) ProtoMessage() {}
 
 func (x *SecretDeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[355]
+	mi := &file_modal_proto_api_proto_msgTypes[359]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40881,7 +41423,7 @@ type SecretGetOrCreateRequest struct {
 
 func (x *SecretGetOrCreateRequest) Reset() {
 	*x = SecretGetOrCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[356]
+	mi := &file_modal_proto_api_proto_msgTypes[360]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -40893,7 +41435,7 @@ func (x *SecretGetOrCreateRequest) String() string {
 func (*SecretGetOrCreateRequest) ProtoMessage() {}
 
 func (x *SecretGetOrCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[356]
+	mi := &file_modal_proto_api_proto_msgTypes[360]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41004,7 +41546,7 @@ type SecretGetOrCreateResponse struct {
 
 func (x *SecretGetOrCreateResponse) Reset() {
 	*x = SecretGetOrCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[357]
+	mi := &file_modal_proto_api_proto_msgTypes[361]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41016,7 +41558,7 @@ func (x *SecretGetOrCreateResponse) String() string {
 func (*SecretGetOrCreateResponse) ProtoMessage() {}
 
 func (x *SecretGetOrCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[357]
+	mi := &file_modal_proto_api_proto_msgTypes[361]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41090,7 +41632,7 @@ type SecretListItem struct {
 
 func (x *SecretListItem) Reset() {
 	*x = SecretListItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[358]
+	mi := &file_modal_proto_api_proto_msgTypes[362]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41102,7 +41644,7 @@ func (x *SecretListItem) String() string {
 func (*SecretListItem) ProtoMessage() {}
 
 func (x *SecretListItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[358]
+	mi := &file_modal_proto_api_proto_msgTypes[362]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41224,7 +41766,7 @@ type SecretListRequest struct {
 
 func (x *SecretListRequest) Reset() {
 	*x = SecretListRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[359]
+	mi := &file_modal_proto_api_proto_msgTypes[363]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41236,7 +41778,7 @@ func (x *SecretListRequest) String() string {
 func (*SecretListRequest) ProtoMessage() {}
 
 func (x *SecretListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[359]
+	mi := &file_modal_proto_api_proto_msgTypes[363]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41306,7 +41848,7 @@ type SecretListResponse struct {
 
 func (x *SecretListResponse) Reset() {
 	*x = SecretListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[360]
+	mi := &file_modal_proto_api_proto_msgTypes[364]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41318,7 +41860,7 @@ func (x *SecretListResponse) String() string {
 func (*SecretListResponse) ProtoMessage() {}
 
 func (x *SecretListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[360]
+	mi := &file_modal_proto_api_proto_msgTypes[364]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41379,7 +41921,7 @@ type SecretMetadata struct {
 
 func (x *SecretMetadata) Reset() {
 	*x = SecretMetadata{}
-	mi := &file_modal_proto_api_proto_msgTypes[361]
+	mi := &file_modal_proto_api_proto_msgTypes[365]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41391,7 +41933,7 @@ func (x *SecretMetadata) String() string {
 func (*SecretMetadata) ProtoMessage() {}
 
 func (x *SecretMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[361]
+	mi := &file_modal_proto_api_proto_msgTypes[365]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41461,7 +42003,7 @@ type SecretUpdateRequest struct {
 
 func (x *SecretUpdateRequest) Reset() {
 	*x = SecretUpdateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[362]
+	mi := &file_modal_proto_api_proto_msgTypes[366]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41473,7 +42015,7 @@ func (x *SecretUpdateRequest) String() string {
 func (*SecretUpdateRequest) ProtoMessage() {}
 
 func (x *SecretUpdateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[362]
+	mi := &file_modal_proto_api_proto_msgTypes[366]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41524,6 +42066,147 @@ func (b0 SecretUpdateRequest_builder) Build() *SecretUpdateRequest {
 	return m0
 }
 
+type ServiceUser struct {
+	state                         protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Name               string                 `protobuf:"bytes,1,opt,name=name,proto3"`
+	xxx_hidden_TokenId            string                 `protobuf:"bytes,2,opt,name=token_id,json=tokenId,proto3"`
+	xxx_hidden_CreatedBy          string                 `protobuf:"bytes,3,opt,name=created_by,json=createdBy,proto3"`
+	xxx_hidden_CreatedAt          float64                `protobuf:"fixed64,4,opt,name=created_at,json=createdAt,proto3"`
+	xxx_hidden_LastUsedAt         float64                `protobuf:"fixed64,5,opt,name=last_used_at,json=lastUsedAt,proto3"`
+	xxx_hidden_CreatedByAvatarUrl string                 `protobuf:"bytes,6,opt,name=created_by_avatar_url,json=createdByAvatarUrl,proto3"`
+	xxx_hidden_ServiceUserId      string                 `protobuf:"bytes,7,opt,name=service_user_id,json=serviceUserId,proto3"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
+}
+
+func (x *ServiceUser) Reset() {
+	*x = ServiceUser{}
+	mi := &file_modal_proto_api_proto_msgTypes[367]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceUser) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceUser) ProtoMessage() {}
+
+func (x *ServiceUser) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[367]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ServiceUser) GetName() string {
+	if x != nil {
+		return x.xxx_hidden_Name
+	}
+	return ""
+}
+
+func (x *ServiceUser) GetTokenId() string {
+	if x != nil {
+		return x.xxx_hidden_TokenId
+	}
+	return ""
+}
+
+func (x *ServiceUser) GetCreatedBy() string {
+	if x != nil {
+		return x.xxx_hidden_CreatedBy
+	}
+	return ""
+}
+
+func (x *ServiceUser) GetCreatedAt() float64 {
+	if x != nil {
+		return x.xxx_hidden_CreatedAt
+	}
+	return 0
+}
+
+func (x *ServiceUser) GetLastUsedAt() float64 {
+	if x != nil {
+		return x.xxx_hidden_LastUsedAt
+	}
+	return 0
+}
+
+func (x *ServiceUser) GetCreatedByAvatarUrl() string {
+	if x != nil {
+		return x.xxx_hidden_CreatedByAvatarUrl
+	}
+	return ""
+}
+
+func (x *ServiceUser) GetServiceUserId() string {
+	if x != nil {
+		return x.xxx_hidden_ServiceUserId
+	}
+	return ""
+}
+
+func (x *ServiceUser) SetName(v string) {
+	x.xxx_hidden_Name = v
+}
+
+func (x *ServiceUser) SetTokenId(v string) {
+	x.xxx_hidden_TokenId = v
+}
+
+func (x *ServiceUser) SetCreatedBy(v string) {
+	x.xxx_hidden_CreatedBy = v
+}
+
+func (x *ServiceUser) SetCreatedAt(v float64) {
+	x.xxx_hidden_CreatedAt = v
+}
+
+func (x *ServiceUser) SetLastUsedAt(v float64) {
+	x.xxx_hidden_LastUsedAt = v
+}
+
+func (x *ServiceUser) SetCreatedByAvatarUrl(v string) {
+	x.xxx_hidden_CreatedByAvatarUrl = v
+}
+
+func (x *ServiceUser) SetServiceUserId(v string) {
+	x.xxx_hidden_ServiceUserId = v
+}
+
+type ServiceUser_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	Name               string
+	TokenId            string
+	CreatedBy          string
+	CreatedAt          float64
+	LastUsedAt         float64
+	CreatedByAvatarUrl string
+	ServiceUserId      string
+}
+
+func (b0 ServiceUser_builder) Build() *ServiceUser {
+	m0 := &ServiceUser{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_Name = b.Name
+	x.xxx_hidden_TokenId = b.TokenId
+	x.xxx_hidden_CreatedBy = b.CreatedBy
+	x.xxx_hidden_CreatedAt = b.CreatedAt
+	x.xxx_hidden_LastUsedAt = b.LastUsedAt
+	x.xxx_hidden_CreatedByAvatarUrl = b.CreatedByAvatarUrl
+	x.xxx_hidden_ServiceUserId = b.ServiceUserId
+	return m0
+}
+
 type ServiceUserIdentity struct {
 	state                      protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_ServiceUserId   string                 `protobuf:"bytes,1,opt,name=service_user_id,json=serviceUserId,proto3"`
@@ -41535,7 +42218,7 @@ type ServiceUserIdentity struct {
 
 func (x *ServiceUserIdentity) Reset() {
 	*x = ServiceUserIdentity{}
-	mi := &file_modal_proto_api_proto_msgTypes[363]
+	mi := &file_modal_proto_api_proto_msgTypes[368]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41547,7 +42230,7 @@ func (x *ServiceUserIdentity) String() string {
 func (*ServiceUserIdentity) ProtoMessage() {}
 
 func (x *ServiceUserIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[363]
+	mi := &file_modal_proto_api_proto_msgTypes[368]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41620,6 +42303,65 @@ func (b0 ServiceUserIdentity_builder) Build() *ServiceUserIdentity {
 	return m0
 }
 
+type ServiceUserListResponse struct {
+	state                   protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_ServiceUsers *[]*ServiceUser        `protobuf:"bytes,1,rep,name=service_users,json=serviceUsers,proto3"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *ServiceUserListResponse) Reset() {
+	*x = ServiceUserListResponse{}
+	mi := &file_modal_proto_api_proto_msgTypes[369]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceUserListResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceUserListResponse) ProtoMessage() {}
+
+func (x *ServiceUserListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[369]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ServiceUserListResponse) GetServiceUsers() []*ServiceUser {
+	if x != nil {
+		if x.xxx_hidden_ServiceUsers != nil {
+			return *x.xxx_hidden_ServiceUsers
+		}
+	}
+	return nil
+}
+
+func (x *ServiceUserListResponse) SetServiceUsers(v []*ServiceUser) {
+	x.xxx_hidden_ServiceUsers = &v
+}
+
+type ServiceUserListResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	ServiceUsers []*ServiceUser
+}
+
+func (b0 ServiceUserListResponse_builder) Build() *ServiceUserListResponse {
+	m0 := &ServiceUserListResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_ServiceUsers = &b.ServiceUsers
+	return m0
+}
+
 type SharedVolumeDeleteRequest struct {
 	state                     protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_SharedVolumeId string                 `protobuf:"bytes,1,opt,name=shared_volume_id,json=sharedVolumeId,proto3"`
@@ -41629,7 +42371,7 @@ type SharedVolumeDeleteRequest struct {
 
 func (x *SharedVolumeDeleteRequest) Reset() {
 	*x = SharedVolumeDeleteRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[364]
+	mi := &file_modal_proto_api_proto_msgTypes[370]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41641,7 +42383,7 @@ func (x *SharedVolumeDeleteRequest) String() string {
 func (*SharedVolumeDeleteRequest) ProtoMessage() {}
 
 func (x *SharedVolumeDeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[364]
+	mi := &file_modal_proto_api_proto_msgTypes[370]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41687,7 +42429,7 @@ type SharedVolumeGetFileRequest struct {
 
 func (x *SharedVolumeGetFileRequest) Reset() {
 	*x = SharedVolumeGetFileRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[365]
+	mi := &file_modal_proto_api_proto_msgTypes[371]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41699,7 +42441,7 @@ func (x *SharedVolumeGetFileRequest) String() string {
 func (*SharedVolumeGetFileRequest) ProtoMessage() {}
 
 func (x *SharedVolumeGetFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[365]
+	mi := &file_modal_proto_api_proto_msgTypes[371]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41757,7 +42499,7 @@ type SharedVolumeGetFileResponse struct {
 
 func (x *SharedVolumeGetFileResponse) Reset() {
 	*x = SharedVolumeGetFileResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[366]
+	mi := &file_modal_proto_api_proto_msgTypes[372]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41769,7 +42511,7 @@ func (x *SharedVolumeGetFileResponse) String() string {
 func (*SharedVolumeGetFileResponse) ProtoMessage() {}
 
 func (x *SharedVolumeGetFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[366]
+	mi := &file_modal_proto_api_proto_msgTypes[372]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41891,7 +42633,7 @@ func (b0 SharedVolumeGetFileResponse_builder) Build() *SharedVolumeGetFileRespon
 type case_SharedVolumeGetFileResponse_DataOneof protoreflect.FieldNumber
 
 func (x case_SharedVolumeGetFileResponse_DataOneof) String() string {
-	md := file_modal_proto_api_proto_msgTypes[366].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[372].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -41926,7 +42668,7 @@ type SharedVolumeGetOrCreateRequest struct {
 
 func (x *SharedVolumeGetOrCreateRequest) Reset() {
 	*x = SharedVolumeGetOrCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[367]
+	mi := &file_modal_proto_api_proto_msgTypes[373]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -41938,7 +42680,7 @@ func (x *SharedVolumeGetOrCreateRequest) String() string {
 func (*SharedVolumeGetOrCreateRequest) ProtoMessage() {}
 
 func (x *SharedVolumeGetOrCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[367]
+	mi := &file_modal_proto_api_proto_msgTypes[373]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42022,7 +42764,7 @@ type SharedVolumeGetOrCreateResponse struct {
 
 func (x *SharedVolumeGetOrCreateResponse) Reset() {
 	*x = SharedVolumeGetOrCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[368]
+	mi := &file_modal_proto_api_proto_msgTypes[374]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42034,7 +42776,7 @@ func (x *SharedVolumeGetOrCreateResponse) String() string {
 func (*SharedVolumeGetOrCreateResponse) ProtoMessage() {}
 
 func (x *SharedVolumeGetOrCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[368]
+	mi := &file_modal_proto_api_proto_msgTypes[374]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42079,7 +42821,7 @@ type SharedVolumeHeartbeatRequest struct {
 
 func (x *SharedVolumeHeartbeatRequest) Reset() {
 	*x = SharedVolumeHeartbeatRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[369]
+	mi := &file_modal_proto_api_proto_msgTypes[375]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42091,7 +42833,7 @@ func (x *SharedVolumeHeartbeatRequest) String() string {
 func (*SharedVolumeHeartbeatRequest) ProtoMessage() {}
 
 func (x *SharedVolumeHeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[369]
+	mi := &file_modal_proto_api_proto_msgTypes[375]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42137,7 +42879,7 @@ type SharedVolumeListFilesRequest struct {
 
 func (x *SharedVolumeListFilesRequest) Reset() {
 	*x = SharedVolumeListFilesRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[370]
+	mi := &file_modal_proto_api_proto_msgTypes[376]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42149,7 +42891,7 @@ func (x *SharedVolumeListFilesRequest) String() string {
 func (*SharedVolumeListFilesRequest) ProtoMessage() {}
 
 func (x *SharedVolumeListFilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[370]
+	mi := &file_modal_proto_api_proto_msgTypes[376]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42207,7 +42949,7 @@ type SharedVolumeListFilesResponse struct {
 
 func (x *SharedVolumeListFilesResponse) Reset() {
 	*x = SharedVolumeListFilesResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[371]
+	mi := &file_modal_proto_api_proto_msgTypes[377]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42219,7 +42961,7 @@ func (x *SharedVolumeListFilesResponse) String() string {
 func (*SharedVolumeListFilesResponse) ProtoMessage() {}
 
 func (x *SharedVolumeListFilesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[371]
+	mi := &file_modal_proto_api_proto_msgTypes[377]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42269,7 +43011,7 @@ type SharedVolumeListItem struct {
 
 func (x *SharedVolumeListItem) Reset() {
 	*x = SharedVolumeListItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[372]
+	mi := &file_modal_proto_api_proto_msgTypes[378]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42281,7 +43023,7 @@ func (x *SharedVolumeListItem) String() string {
 func (*SharedVolumeListItem) ProtoMessage() {}
 
 func (x *SharedVolumeListItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[372]
+	mi := &file_modal_proto_api_proto_msgTypes[378]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42365,7 +43107,7 @@ type SharedVolumeListRequest struct {
 
 func (x *SharedVolumeListRequest) Reset() {
 	*x = SharedVolumeListRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[373]
+	mi := &file_modal_proto_api_proto_msgTypes[379]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42377,7 +43119,7 @@ func (x *SharedVolumeListRequest) String() string {
 func (*SharedVolumeListRequest) ProtoMessage() {}
 
 func (x *SharedVolumeListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[373]
+	mi := &file_modal_proto_api_proto_msgTypes[379]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42423,7 +43165,7 @@ type SharedVolumeListResponse struct {
 
 func (x *SharedVolumeListResponse) Reset() {
 	*x = SharedVolumeListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[374]
+	mi := &file_modal_proto_api_proto_msgTypes[380]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42435,7 +43177,7 @@ func (x *SharedVolumeListResponse) String() string {
 func (*SharedVolumeListResponse) ProtoMessage() {}
 
 func (x *SharedVolumeListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[374]
+	mi := &file_modal_proto_api_proto_msgTypes[380]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42497,7 +43239,7 @@ type SharedVolumeMount struct {
 
 func (x *SharedVolumeMount) Reset() {
 	*x = SharedVolumeMount{}
-	mi := &file_modal_proto_api_proto_msgTypes[375]
+	mi := &file_modal_proto_api_proto_msgTypes[381]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42509,7 +43251,7 @@ func (x *SharedVolumeMount) String() string {
 func (*SharedVolumeMount) ProtoMessage() {}
 
 func (x *SharedVolumeMount) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[375]
+	mi := &file_modal_proto_api_proto_msgTypes[381]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42584,7 +43326,7 @@ type SharedVolumePutFileRequest struct {
 
 func (x *SharedVolumePutFileRequest) Reset() {
 	*x = SharedVolumePutFileRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[376]
+	mi := &file_modal_proto_api_proto_msgTypes[382]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42596,7 +43338,7 @@ func (x *SharedVolumePutFileRequest) String() string {
 func (*SharedVolumePutFileRequest) ProtoMessage() {}
 
 func (x *SharedVolumePutFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[376]
+	mi := &file_modal_proto_api_proto_msgTypes[382]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42770,7 +43512,7 @@ func (b0 SharedVolumePutFileRequest_builder) Build() *SharedVolumePutFileRequest
 type case_SharedVolumePutFileRequest_DataOneof protoreflect.FieldNumber
 
 func (x case_SharedVolumePutFileRequest_DataOneof) String() string {
-	md := file_modal_proto_api_proto_msgTypes[376].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[382].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -42802,7 +43544,7 @@ type SharedVolumePutFileResponse struct {
 
 func (x *SharedVolumePutFileResponse) Reset() {
 	*x = SharedVolumePutFileResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[377]
+	mi := &file_modal_proto_api_proto_msgTypes[383]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42814,7 +43556,7 @@ func (x *SharedVolumePutFileResponse) String() string {
 func (*SharedVolumePutFileResponse) ProtoMessage() {}
 
 func (x *SharedVolumePutFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[377]
+	mi := &file_modal_proto_api_proto_msgTypes[383]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42861,7 +43603,7 @@ type SharedVolumeRemoveFileRequest struct {
 
 func (x *SharedVolumeRemoveFileRequest) Reset() {
 	*x = SharedVolumeRemoveFileRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[378]
+	mi := &file_modal_proto_api_proto_msgTypes[384]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42873,7 +43615,7 @@ func (x *SharedVolumeRemoveFileRequest) String() string {
 func (*SharedVolumeRemoveFileRequest) ProtoMessage() {}
 
 func (x *SharedVolumeRemoveFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[378]
+	mi := &file_modal_proto_api_proto_msgTypes[384]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42945,7 +43687,7 @@ type SystemErrorMessage struct {
 
 func (x *SystemErrorMessage) Reset() {
 	*x = SystemErrorMessage{}
-	mi := &file_modal_proto_api_proto_msgTypes[379]
+	mi := &file_modal_proto_api_proto_msgTypes[385]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -42957,7 +43699,7 @@ func (x *SystemErrorMessage) String() string {
 func (*SystemErrorMessage) ProtoMessage() {}
 
 func (x *SystemErrorMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[379]
+	mi := &file_modal_proto_api_proto_msgTypes[385]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43016,7 +43758,7 @@ type TaskClusterHelloRequest struct {
 
 func (x *TaskClusterHelloRequest) Reset() {
 	*x = TaskClusterHelloRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[380]
+	mi := &file_modal_proto_api_proto_msgTypes[386]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43028,7 +43770,7 @@ func (x *TaskClusterHelloRequest) String() string {
 func (*TaskClusterHelloRequest) ProtoMessage() {}
 
 func (x *TaskClusterHelloRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[380]
+	mi := &file_modal_proto_api_proto_msgTypes[386]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43089,7 +43831,7 @@ type TaskClusterHelloResponse struct {
 
 func (x *TaskClusterHelloResponse) Reset() {
 	*x = TaskClusterHelloResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[381]
+	mi := &file_modal_proto_api_proto_msgTypes[387]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43101,7 +43843,7 @@ func (x *TaskClusterHelloResponse) String() string {
 func (*TaskClusterHelloResponse) ProtoMessage() {}
 
 func (x *TaskClusterHelloResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[381]
+	mi := &file_modal_proto_api_proto_msgTypes[387]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43186,7 +43928,7 @@ type TaskCurrentInputsResponse struct {
 
 func (x *TaskCurrentInputsResponse) Reset() {
 	*x = TaskCurrentInputsResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[382]
+	mi := &file_modal_proto_api_proto_msgTypes[388]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43198,7 +43940,7 @@ func (x *TaskCurrentInputsResponse) String() string {
 func (*TaskCurrentInputsResponse) ProtoMessage() {}
 
 func (x *TaskCurrentInputsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[382]
+	mi := &file_modal_proto_api_proto_msgTypes[388]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43246,7 +43988,7 @@ type TaskGetCommandRouterAccessRequest struct {
 
 func (x *TaskGetCommandRouterAccessRequest) Reset() {
 	*x = TaskGetCommandRouterAccessRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[383]
+	mi := &file_modal_proto_api_proto_msgTypes[389]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43258,7 +44000,7 @@ func (x *TaskGetCommandRouterAccessRequest) String() string {
 func (*TaskGetCommandRouterAccessRequest) ProtoMessage() {}
 
 func (x *TaskGetCommandRouterAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[383]
+	mi := &file_modal_proto_api_proto_msgTypes[389]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43304,7 +44046,7 @@ type TaskGetCommandRouterAccessResponse struct {
 
 func (x *TaskGetCommandRouterAccessResponse) Reset() {
 	*x = TaskGetCommandRouterAccessResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[384]
+	mi := &file_modal_proto_api_proto_msgTypes[390]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43316,7 +44058,7 @@ func (x *TaskGetCommandRouterAccessResponse) String() string {
 func (*TaskGetCommandRouterAccessResponse) ProtoMessage() {}
 
 func (x *TaskGetCommandRouterAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[384]
+	mi := &file_modal_proto_api_proto_msgTypes[390]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43374,7 +44116,7 @@ type TaskGetInfoRequest struct {
 
 func (x *TaskGetInfoRequest) Reset() {
 	*x = TaskGetInfoRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[385]
+	mi := &file_modal_proto_api_proto_msgTypes[391]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43386,7 +44128,7 @@ func (x *TaskGetInfoRequest) String() string {
 func (*TaskGetInfoRequest) ProtoMessage() {}
 
 func (x *TaskGetInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[385]
+	mi := &file_modal_proto_api_proto_msgTypes[391]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43432,7 +44174,7 @@ type TaskGetInfoResponse struct {
 
 func (x *TaskGetInfoResponse) Reset() {
 	*x = TaskGetInfoResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[386]
+	mi := &file_modal_proto_api_proto_msgTypes[392]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43444,7 +44186,7 @@ func (x *TaskGetInfoResponse) String() string {
 func (*TaskGetInfoResponse) ProtoMessage() {}
 
 func (x *TaskGetInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[386]
+	mi := &file_modal_proto_api_proto_msgTypes[392]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43521,7 +44263,7 @@ type TaskInfo struct {
 
 func (x *TaskInfo) Reset() {
 	*x = TaskInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[387]
+	mi := &file_modal_proto_api_proto_msgTypes[393]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43533,7 +44275,7 @@ func (x *TaskInfo) String() string {
 func (*TaskInfo) ProtoMessage() {}
 
 func (x *TaskInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[387]
+	mi := &file_modal_proto_api_proto_msgTypes[393]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43705,7 +44447,7 @@ type TaskListRequest struct {
 
 func (x *TaskListRequest) Reset() {
 	*x = TaskListRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[388]
+	mi := &file_modal_proto_api_proto_msgTypes[394]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43717,7 +44459,7 @@ func (x *TaskListRequest) String() string {
 func (*TaskListRequest) ProtoMessage() {}
 
 func (x *TaskListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[388]
+	mi := &file_modal_proto_api_proto_msgTypes[394]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43775,7 +44517,7 @@ type TaskListResponse struct {
 
 func (x *TaskListResponse) Reset() {
 	*x = TaskListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[389]
+	mi := &file_modal_proto_api_proto_msgTypes[395]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43787,7 +44529,7 @@ func (x *TaskListResponse) String() string {
 func (*TaskListResponse) ProtoMessage() {}
 
 func (x *TaskListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[389]
+	mi := &file_modal_proto_api_proto_msgTypes[395]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43843,7 +44585,7 @@ type TaskLogs struct {
 
 func (x *TaskLogs) Reset() {
 	*x = TaskLogs{}
-	mi := &file_modal_proto_api_proto_msgTypes[390]
+	mi := &file_modal_proto_api_proto_msgTypes[396]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43855,7 +44597,7 @@ func (x *TaskLogs) String() string {
 func (*TaskLogs) ProtoMessage() {}
 
 func (x *TaskLogs) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[390]
+	mi := &file_modal_proto_api_proto_msgTypes[396]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44038,7 +44780,7 @@ type TaskLogsBatch struct {
 
 func (x *TaskLogsBatch) Reset() {
 	*x = TaskLogsBatch{}
-	mi := &file_modal_proto_api_proto_msgTypes[391]
+	mi := &file_modal_proto_api_proto_msgTypes[397]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44050,7 +44792,7 @@ func (x *TaskLogsBatch) String() string {
 func (*TaskLogsBatch) ProtoMessage() {}
 
 func (x *TaskLogsBatch) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[391]
+	mi := &file_modal_proto_api_proto_msgTypes[397]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44230,7 +44972,7 @@ type TaskProgress struct {
 
 func (x *TaskProgress) Reset() {
 	*x = TaskProgress{}
-	mi := &file_modal_proto_api_proto_msgTypes[392]
+	mi := &file_modal_proto_api_proto_msgTypes[398]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44242,7 +44984,7 @@ func (x *TaskProgress) String() string {
 func (*TaskProgress) ProtoMessage() {}
 
 func (x *TaskProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[392]
+	mi := &file_modal_proto_api_proto_msgTypes[398]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44326,7 +45068,7 @@ type TaskResultRequest struct {
 
 func (x *TaskResultRequest) Reset() {
 	*x = TaskResultRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[393]
+	mi := &file_modal_proto_api_proto_msgTypes[399]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44338,7 +45080,7 @@ func (x *TaskResultRequest) String() string {
 func (*TaskResultRequest) ProtoMessage() {}
 
 func (x *TaskResultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[393]
+	mi := &file_modal_proto_api_proto_msgTypes[399]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44398,7 +45140,7 @@ type TaskStats struct {
 
 func (x *TaskStats) Reset() {
 	*x = TaskStats{}
-	mi := &file_modal_proto_api_proto_msgTypes[394]
+	mi := &file_modal_proto_api_proto_msgTypes[400]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44410,7 +45152,7 @@ func (x *TaskStats) String() string {
 func (*TaskStats) ProtoMessage() {}
 
 func (x *TaskStats) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[394]
+	mi := &file_modal_proto_api_proto_msgTypes[400]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44511,7 +45253,7 @@ type TaskTemplate struct {
 
 func (x *TaskTemplate) Reset() {
 	*x = TaskTemplate{}
-	mi := &file_modal_proto_api_proto_msgTypes[395]
+	mi := &file_modal_proto_api_proto_msgTypes[401]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44523,7 +45265,7 @@ func (x *TaskTemplate) String() string {
 func (*TaskTemplate) ProtoMessage() {}
 
 func (x *TaskTemplate) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[395]
+	mi := &file_modal_proto_api_proto_msgTypes[401]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44632,7 +45374,7 @@ type TemplateListRequest struct {
 
 func (x *TemplateListRequest) Reset() {
 	*x = TemplateListRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[396]
+	mi := &file_modal_proto_api_proto_msgTypes[402]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44644,7 +45386,7 @@ func (x *TemplateListRequest) String() string {
 func (*TemplateListRequest) ProtoMessage() {}
 
 func (x *TemplateListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[396]
+	mi := &file_modal_proto_api_proto_msgTypes[402]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44676,7 +45418,7 @@ type TemplateListResponse struct {
 
 func (x *TemplateListResponse) Reset() {
 	*x = TemplateListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[397]
+	mi := &file_modal_proto_api_proto_msgTypes[403]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44688,7 +45430,7 @@ func (x *TemplateListResponse) String() string {
 func (*TemplateListResponse) ProtoMessage() {}
 
 func (x *TemplateListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[397]
+	mi := &file_modal_proto_api_proto_msgTypes[403]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44737,7 +45479,7 @@ type TokenFlowCreateRequest struct {
 
 func (x *TokenFlowCreateRequest) Reset() {
 	*x = TokenFlowCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[398]
+	mi := &file_modal_proto_api_proto_msgTypes[404]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44749,7 +45491,7 @@ func (x *TokenFlowCreateRequest) String() string {
 func (*TokenFlowCreateRequest) ProtoMessage() {}
 
 func (x *TokenFlowCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[398]
+	mi := &file_modal_proto_api_proto_msgTypes[404]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44823,7 +45565,7 @@ type TokenFlowCreateResponse struct {
 
 func (x *TokenFlowCreateResponse) Reset() {
 	*x = TokenFlowCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[399]
+	mi := &file_modal_proto_api_proto_msgTypes[405]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44835,7 +45577,7 @@ func (x *TokenFlowCreateResponse) String() string {
 func (*TokenFlowCreateResponse) ProtoMessage() {}
 
 func (x *TokenFlowCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[399]
+	mi := &file_modal_proto_api_proto_msgTypes[405]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44921,7 +45663,7 @@ type TokenFlowWaitRequest struct {
 
 func (x *TokenFlowWaitRequest) Reset() {
 	*x = TokenFlowWaitRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[400]
+	mi := &file_modal_proto_api_proto_msgTypes[406]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44933,7 +45675,7 @@ func (x *TokenFlowWaitRequest) String() string {
 func (*TokenFlowWaitRequest) ProtoMessage() {}
 
 func (x *TokenFlowWaitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[400]
+	mi := &file_modal_proto_api_proto_msgTypes[406]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45007,7 +45749,7 @@ type TokenFlowWaitResponse struct {
 
 func (x *TokenFlowWaitResponse) Reset() {
 	*x = TokenFlowWaitResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[401]
+	mi := &file_modal_proto_api_proto_msgTypes[407]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45019,7 +45761,7 @@ func (x *TokenFlowWaitResponse) String() string {
 func (*TokenFlowWaitResponse) ProtoMessage() {}
 
 func (x *TokenFlowWaitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[401]
+	mi := &file_modal_proto_api_proto_msgTypes[407]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45102,7 +45844,7 @@ type TokenInfoGetRequest struct {
 
 func (x *TokenInfoGetRequest) Reset() {
 	*x = TokenInfoGetRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[402]
+	mi := &file_modal_proto_api_proto_msgTypes[408]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45114,7 +45856,7 @@ func (x *TokenInfoGetRequest) String() string {
 func (*TokenInfoGetRequest) ProtoMessage() {}
 
 func (x *TokenInfoGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[402]
+	mi := &file_modal_proto_api_proto_msgTypes[408]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45152,7 +45894,7 @@ type TokenInfoGetResponse struct {
 
 func (x *TokenInfoGetResponse) Reset() {
 	*x = TokenInfoGetResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[403]
+	mi := &file_modal_proto_api_proto_msgTypes[409]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45164,7 +45906,7 @@ func (x *TokenInfoGetResponse) String() string {
 func (*TokenInfoGetResponse) ProtoMessage() {}
 
 func (x *TokenInfoGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[403]
+	mi := &file_modal_proto_api_proto_msgTypes[409]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45392,7 +46134,7 @@ func (b0 TokenInfoGetResponse_builder) Build() *TokenInfoGetResponse {
 type case_TokenInfoGetResponse_Identity protoreflect.FieldNumber
 
 func (x case_TokenInfoGetResponse_Identity) String() string {
-	md := file_modal_proto_api_proto_msgTypes[403].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[409].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -45430,7 +46172,7 @@ type TunnelData struct {
 
 func (x *TunnelData) Reset() {
 	*x = TunnelData{}
-	mi := &file_modal_proto_api_proto_msgTypes[404]
+	mi := &file_modal_proto_api_proto_msgTypes[410]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45442,7 +46184,7 @@ func (x *TunnelData) String() string {
 func (*TunnelData) ProtoMessage() {}
 
 func (x *TunnelData) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[404]
+	mi := &file_modal_proto_api_proto_msgTypes[410]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45578,7 +46320,7 @@ type TunnelStartRequest struct {
 
 func (x *TunnelStartRequest) Reset() {
 	*x = TunnelStartRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[405]
+	mi := &file_modal_proto_api_proto_msgTypes[411]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45590,7 +46332,7 @@ func (x *TunnelStartRequest) String() string {
 func (*TunnelStartRequest) ProtoMessage() {}
 
 func (x *TunnelStartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[405]
+	mi := &file_modal_proto_api_proto_msgTypes[411]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45684,7 +46426,7 @@ type TunnelStartResponse struct {
 
 func (x *TunnelStartResponse) Reset() {
 	*x = TunnelStartResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[406]
+	mi := &file_modal_proto_api_proto_msgTypes[412]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45696,7 +46438,7 @@ func (x *TunnelStartResponse) String() string {
 func (*TunnelStartResponse) ProtoMessage() {}
 
 func (x *TunnelStartResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[406]
+	mi := &file_modal_proto_api_proto_msgTypes[412]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45815,7 +46557,7 @@ type TunnelStopRequest struct {
 
 func (x *TunnelStopRequest) Reset() {
 	*x = TunnelStopRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[407]
+	mi := &file_modal_proto_api_proto_msgTypes[413]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45827,7 +46569,7 @@ func (x *TunnelStopRequest) String() string {
 func (*TunnelStopRequest) ProtoMessage() {}
 
 func (x *TunnelStopRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[407]
+	mi := &file_modal_proto_api_proto_msgTypes[413]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45872,7 +46614,7 @@ type TunnelStopResponse struct {
 
 func (x *TunnelStopResponse) Reset() {
 	*x = TunnelStopResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[408]
+	mi := &file_modal_proto_api_proto_msgTypes[414]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45884,7 +46626,7 @@ func (x *TunnelStopResponse) String() string {
 func (*TunnelStopResponse) ProtoMessage() {}
 
 func (x *TunnelStopResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[408]
+	mi := &file_modal_proto_api_proto_msgTypes[414]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45929,7 +46671,7 @@ type UploadUrlList struct {
 
 func (x *UploadUrlList) Reset() {
 	*x = UploadUrlList{}
-	mi := &file_modal_proto_api_proto_msgTypes[409]
+	mi := &file_modal_proto_api_proto_msgTypes[415]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45941,7 +46683,7 @@ func (x *UploadUrlList) String() string {
 func (*UploadUrlList) ProtoMessage() {}
 
 func (x *UploadUrlList) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[409]
+	mi := &file_modal_proto_api_proto_msgTypes[415]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45988,7 +46730,7 @@ type UserActionInfo struct {
 
 func (x *UserActionInfo) Reset() {
 	*x = UserActionInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[410]
+	mi := &file_modal_proto_api_proto_msgTypes[416]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46000,7 +46742,7 @@ func (x *UserActionInfo) String() string {
 func (*UserActionInfo) ProtoMessage() {}
 
 func (x *UserActionInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[410]
+	mi := &file_modal_proto_api_proto_msgTypes[416]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46059,7 +46801,7 @@ type UserIdentity struct {
 
 func (x *UserIdentity) Reset() {
 	*x = UserIdentity{}
-	mi := &file_modal_proto_api_proto_msgTypes[411]
+	mi := &file_modal_proto_api_proto_msgTypes[417]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46071,7 +46813,7 @@ func (x *UserIdentity) String() string {
 func (*UserIdentity) ProtoMessage() {}
 
 func (x *UserIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[411]
+	mi := &file_modal_proto_api_proto_msgTypes[417]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46129,7 +46871,7 @@ type VolumeCommitRequest struct {
 
 func (x *VolumeCommitRequest) Reset() {
 	*x = VolumeCommitRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[412]
+	mi := &file_modal_proto_api_proto_msgTypes[418]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46141,7 +46883,7 @@ func (x *VolumeCommitRequest) String() string {
 func (*VolumeCommitRequest) ProtoMessage() {}
 
 func (x *VolumeCommitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[412]
+	mi := &file_modal_proto_api_proto_msgTypes[418]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46188,7 +46930,7 @@ type VolumeCommitResponse struct {
 
 func (x *VolumeCommitResponse) Reset() {
 	*x = VolumeCommitResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[413]
+	mi := &file_modal_proto_api_proto_msgTypes[419]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46200,7 +46942,7 @@ func (x *VolumeCommitResponse) String() string {
 func (*VolumeCommitResponse) ProtoMessage() {}
 
 func (x *VolumeCommitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[413]
+	mi := &file_modal_proto_api_proto_msgTypes[419]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46248,7 +46990,7 @@ type VolumeCopyFiles2Request struct {
 
 func (x *VolumeCopyFiles2Request) Reset() {
 	*x = VolumeCopyFiles2Request{}
-	mi := &file_modal_proto_api_proto_msgTypes[414]
+	mi := &file_modal_proto_api_proto_msgTypes[420]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46260,7 +47002,7 @@ func (x *VolumeCopyFiles2Request) String() string {
 func (*VolumeCopyFiles2Request) ProtoMessage() {}
 
 func (x *VolumeCopyFiles2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[414]
+	mi := &file_modal_proto_api_proto_msgTypes[420]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46347,7 +47089,7 @@ type VolumeCopyFilesRequest struct {
 
 func (x *VolumeCopyFilesRequest) Reset() {
 	*x = VolumeCopyFilesRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[415]
+	mi := &file_modal_proto_api_proto_msgTypes[421]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46359,7 +47101,7 @@ func (x *VolumeCopyFilesRequest) String() string {
 func (*VolumeCopyFilesRequest) ProtoMessage() {}
 
 func (x *VolumeCopyFilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[415]
+	mi := &file_modal_proto_api_proto_msgTypes[421]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46444,7 +47186,7 @@ type VolumeDeleteRequest struct {
 
 func (x *VolumeDeleteRequest) Reset() {
 	*x = VolumeDeleteRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[416]
+	mi := &file_modal_proto_api_proto_msgTypes[422]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46456,7 +47198,7 @@ func (x *VolumeDeleteRequest) String() string {
 func (*VolumeDeleteRequest) ProtoMessage() {}
 
 func (x *VolumeDeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[416]
+	mi := &file_modal_proto_api_proto_msgTypes[422]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46517,7 +47259,7 @@ type VolumeGetByIdRequest struct {
 
 func (x *VolumeGetByIdRequest) Reset() {
 	*x = VolumeGetByIdRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[417]
+	mi := &file_modal_proto_api_proto_msgTypes[423]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46529,7 +47271,7 @@ func (x *VolumeGetByIdRequest) String() string {
 func (*VolumeGetByIdRequest) ProtoMessage() {}
 
 func (x *VolumeGetByIdRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[417]
+	mi := &file_modal_proto_api_proto_msgTypes[423]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46575,7 +47317,7 @@ type VolumeGetByIdResponse struct {
 
 func (x *VolumeGetByIdResponse) Reset() {
 	*x = VolumeGetByIdResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[418]
+	mi := &file_modal_proto_api_proto_msgTypes[424]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46587,7 +47329,7 @@ func (x *VolumeGetByIdResponse) String() string {
 func (*VolumeGetByIdResponse) ProtoMessage() {}
 
 func (x *VolumeGetByIdResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[418]
+	mi := &file_modal_proto_api_proto_msgTypes[424]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46659,7 +47401,7 @@ type VolumeGetFile2Request struct {
 
 func (x *VolumeGetFile2Request) Reset() {
 	*x = VolumeGetFile2Request{}
-	mi := &file_modal_proto_api_proto_msgTypes[419]
+	mi := &file_modal_proto_api_proto_msgTypes[425]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46671,7 +47413,7 @@ func (x *VolumeGetFile2Request) String() string {
 func (*VolumeGetFile2Request) ProtoMessage() {}
 
 func (x *VolumeGetFile2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[419]
+	mi := &file_modal_proto_api_proto_msgTypes[425]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46758,7 +47500,7 @@ type VolumeGetFile2Response struct {
 
 func (x *VolumeGetFile2Response) Reset() {
 	*x = VolumeGetFile2Response{}
-	mi := &file_modal_proto_api_proto_msgTypes[420]
+	mi := &file_modal_proto_api_proto_msgTypes[426]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46770,7 +47512,7 @@ func (x *VolumeGetFile2Response) String() string {
 func (*VolumeGetFile2Response) ProtoMessage() {}
 
 func (x *VolumeGetFile2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[420]
+	mi := &file_modal_proto_api_proto_msgTypes[426]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46857,7 +47599,7 @@ type VolumeGetFileRequest struct {
 
 func (x *VolumeGetFileRequest) Reset() {
 	*x = VolumeGetFileRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[421]
+	mi := &file_modal_proto_api_proto_msgTypes[427]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46869,7 +47611,7 @@ func (x *VolumeGetFileRequest) String() string {
 func (*VolumeGetFileRequest) ProtoMessage() {}
 
 func (x *VolumeGetFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[421]
+	mi := &file_modal_proto_api_proto_msgTypes[427]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46956,7 +47698,7 @@ type VolumeGetFileResponse struct {
 
 func (x *VolumeGetFileResponse) Reset() {
 	*x = VolumeGetFileResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[422]
+	mi := &file_modal_proto_api_proto_msgTypes[428]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46968,7 +47710,7 @@ func (x *VolumeGetFileResponse) String() string {
 func (*VolumeGetFileResponse) ProtoMessage() {}
 
 func (x *VolumeGetFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[422]
+	mi := &file_modal_proto_api_proto_msgTypes[428]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47129,7 +47871,7 @@ func (b0 VolumeGetFileResponse_builder) Build() *VolumeGetFileResponse {
 type case_VolumeGetFileResponse_DataOneof protoreflect.FieldNumber
 
 func (x case_VolumeGetFileResponse_DataOneof) String() string {
-	md := file_modal_proto_api_proto_msgTypes[422].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[428].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -47165,7 +47907,7 @@ type VolumeGetOrCreateRequest struct {
 
 func (x *VolumeGetOrCreateRequest) Reset() {
 	*x = VolumeGetOrCreateRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[423]
+	mi := &file_modal_proto_api_proto_msgTypes[429]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47177,7 +47919,7 @@ func (x *VolumeGetOrCreateRequest) String() string {
 func (*VolumeGetOrCreateRequest) ProtoMessage() {}
 
 func (x *VolumeGetOrCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[423]
+	mi := &file_modal_proto_api_proto_msgTypes[429]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47276,7 +48018,7 @@ type VolumeGetOrCreateResponse struct {
 
 func (x *VolumeGetOrCreateResponse) Reset() {
 	*x = VolumeGetOrCreateResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[424]
+	mi := &file_modal_proto_api_proto_msgTypes[430]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47288,7 +48030,7 @@ func (x *VolumeGetOrCreateResponse) String() string {
 func (*VolumeGetOrCreateResponse) ProtoMessage() {}
 
 func (x *VolumeGetOrCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[424]
+	mi := &file_modal_proto_api_proto_msgTypes[430]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47370,7 +48112,7 @@ type VolumeHeartbeatRequest struct {
 
 func (x *VolumeHeartbeatRequest) Reset() {
 	*x = VolumeHeartbeatRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[425]
+	mi := &file_modal_proto_api_proto_msgTypes[431]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47382,7 +48124,7 @@ func (x *VolumeHeartbeatRequest) String() string {
 func (*VolumeHeartbeatRequest) ProtoMessage() {}
 
 func (x *VolumeHeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[425]
+	mi := &file_modal_proto_api_proto_msgTypes[431]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47432,7 +48174,7 @@ type VolumeListFiles2Request struct {
 
 func (x *VolumeListFiles2Request) Reset() {
 	*x = VolumeListFiles2Request{}
-	mi := &file_modal_proto_api_proto_msgTypes[426]
+	mi := &file_modal_proto_api_proto_msgTypes[432]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47444,7 +48186,7 @@ func (x *VolumeListFiles2Request) String() string {
 func (*VolumeListFiles2Request) ProtoMessage() {}
 
 func (x *VolumeListFiles2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[426]
+	mi := &file_modal_proto_api_proto_msgTypes[432]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47544,7 +48286,7 @@ type VolumeListFiles2Response struct {
 
 func (x *VolumeListFiles2Response) Reset() {
 	*x = VolumeListFiles2Response{}
-	mi := &file_modal_proto_api_proto_msgTypes[427]
+	mi := &file_modal_proto_api_proto_msgTypes[433]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47556,7 +48298,7 @@ func (x *VolumeListFiles2Response) String() string {
 func (*VolumeListFiles2Response) ProtoMessage() {}
 
 func (x *VolumeListFiles2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[427]
+	mi := &file_modal_proto_api_proto_msgTypes[433]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47608,7 +48350,7 @@ type VolumeListFilesRequest struct {
 
 func (x *VolumeListFilesRequest) Reset() {
 	*x = VolumeListFilesRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[428]
+	mi := &file_modal_proto_api_proto_msgTypes[434]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47620,7 +48362,7 @@ func (x *VolumeListFilesRequest) String() string {
 func (*VolumeListFilesRequest) ProtoMessage() {}
 
 func (x *VolumeListFilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[428]
+	mi := &file_modal_proto_api_proto_msgTypes[434]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47720,7 +48462,7 @@ type VolumeListFilesResponse struct {
 
 func (x *VolumeListFilesResponse) Reset() {
 	*x = VolumeListFilesResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[429]
+	mi := &file_modal_proto_api_proto_msgTypes[435]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47732,7 +48474,7 @@ func (x *VolumeListFilesResponse) String() string {
 func (*VolumeListFilesResponse) ProtoMessage() {}
 
 func (x *VolumeListFilesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[429]
+	mi := &file_modal_proto_api_proto_msgTypes[435]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47782,7 +48524,7 @@ type VolumeListItem struct {
 
 func (x *VolumeListItem) Reset() {
 	*x = VolumeListItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[430]
+	mi := &file_modal_proto_api_proto_msgTypes[436]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47794,7 +48536,7 @@ func (x *VolumeListItem) String() string {
 func (*VolumeListItem) ProtoMessage() {}
 
 func (x *VolumeListItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[430]
+	mi := &file_modal_proto_api_proto_msgTypes[436]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47890,7 +48632,7 @@ type VolumeListRequest struct {
 
 func (x *VolumeListRequest) Reset() {
 	*x = VolumeListRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[431]
+	mi := &file_modal_proto_api_proto_msgTypes[437]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47902,7 +48644,7 @@ func (x *VolumeListRequest) String() string {
 func (*VolumeListRequest) ProtoMessage() {}
 
 func (x *VolumeListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[431]
+	mi := &file_modal_proto_api_proto_msgTypes[437]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47972,7 +48714,7 @@ type VolumeListResponse struct {
 
 func (x *VolumeListResponse) Reset() {
 	*x = VolumeListResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[432]
+	mi := &file_modal_proto_api_proto_msgTypes[438]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47984,7 +48726,7 @@ func (x *VolumeListResponse) String() string {
 func (*VolumeListResponse) ProtoMessage() {}
 
 func (x *VolumeListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[432]
+	mi := &file_modal_proto_api_proto_msgTypes[438]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48046,7 +48788,7 @@ type VolumeMetadata struct {
 
 func (x *VolumeMetadata) Reset() {
 	*x = VolumeMetadata{}
-	mi := &file_modal_proto_api_proto_msgTypes[433]
+	mi := &file_modal_proto_api_proto_msgTypes[439]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48058,7 +48800,7 @@ func (x *VolumeMetadata) String() string {
 func (*VolumeMetadata) ProtoMessage() {}
 
 func (x *VolumeMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[433]
+	mi := &file_modal_proto_api_proto_msgTypes[439]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48143,7 +48885,7 @@ type VolumeMount struct {
 
 func (x *VolumeMount) Reset() {
 	*x = VolumeMount{}
-	mi := &file_modal_proto_api_proto_msgTypes[434]
+	mi := &file_modal_proto_api_proto_msgTypes[440]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48155,7 +48897,7 @@ func (x *VolumeMount) String() string {
 func (*VolumeMount) ProtoMessage() {}
 
 func (x *VolumeMount) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[434]
+	mi := &file_modal_proto_api_proto_msgTypes[440]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48241,7 +48983,7 @@ type VolumePutFiles2Request struct {
 
 func (x *VolumePutFiles2Request) Reset() {
 	*x = VolumePutFiles2Request{}
-	mi := &file_modal_proto_api_proto_msgTypes[435]
+	mi := &file_modal_proto_api_proto_msgTypes[441]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48253,7 +48995,7 @@ func (x *VolumePutFiles2Request) String() string {
 func (*VolumePutFiles2Request) ProtoMessage() {}
 
 func (x *VolumePutFiles2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[435]
+	mi := &file_modal_proto_api_proto_msgTypes[441]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48330,7 +49072,7 @@ type VolumePutFiles2Response struct {
 
 func (x *VolumePutFiles2Response) Reset() {
 	*x = VolumePutFiles2Response{}
-	mi := &file_modal_proto_api_proto_msgTypes[436]
+	mi := &file_modal_proto_api_proto_msgTypes[442]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48342,7 +49084,7 @@ func (x *VolumePutFiles2Response) String() string {
 func (*VolumePutFiles2Response) ProtoMessage() {}
 
 func (x *VolumePutFiles2Response) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[436]
+	mi := &file_modal_proto_api_proto_msgTypes[442]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48399,7 +49141,7 @@ type VolumePutFilesRequest struct {
 
 func (x *VolumePutFilesRequest) Reset() {
 	*x = VolumePutFilesRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[437]
+	mi := &file_modal_proto_api_proto_msgTypes[443]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48411,7 +49153,7 @@ func (x *VolumePutFilesRequest) String() string {
 func (*VolumePutFilesRequest) ProtoMessage() {}
 
 func (x *VolumePutFilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[437]
+	mi := &file_modal_proto_api_proto_msgTypes[443]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48487,7 +49229,7 @@ type VolumeReloadRequest struct {
 
 func (x *VolumeReloadRequest) Reset() {
 	*x = VolumeReloadRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[438]
+	mi := &file_modal_proto_api_proto_msgTypes[444]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48499,7 +49241,7 @@ func (x *VolumeReloadRequest) String() string {
 func (*VolumeReloadRequest) ProtoMessage() {}
 
 func (x *VolumeReloadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[438]
+	mi := &file_modal_proto_api_proto_msgTypes[444]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48548,7 +49290,7 @@ type VolumeRemoveFile2Request struct {
 
 func (x *VolumeRemoveFile2Request) Reset() {
 	*x = VolumeRemoveFile2Request{}
-	mi := &file_modal_proto_api_proto_msgTypes[439]
+	mi := &file_modal_proto_api_proto_msgTypes[445]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48560,7 +49302,7 @@ func (x *VolumeRemoveFile2Request) String() string {
 func (*VolumeRemoveFile2Request) ProtoMessage() {}
 
 func (x *VolumeRemoveFile2Request) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[439]
+	mi := &file_modal_proto_api_proto_msgTypes[445]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48633,7 +49375,7 @@ type VolumeRemoveFileRequest struct {
 
 func (x *VolumeRemoveFileRequest) Reset() {
 	*x = VolumeRemoveFileRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[440]
+	mi := &file_modal_proto_api_proto_msgTypes[446]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48645,7 +49387,7 @@ func (x *VolumeRemoveFileRequest) String() string {
 func (*VolumeRemoveFileRequest) ProtoMessage() {}
 
 func (x *VolumeRemoveFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[440]
+	mi := &file_modal_proto_api_proto_msgTypes[446]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48717,7 +49459,7 @@ type VolumeRenameRequest struct {
 
 func (x *VolumeRenameRequest) Reset() {
 	*x = VolumeRenameRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[441]
+	mi := &file_modal_proto_api_proto_msgTypes[447]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48729,7 +49471,7 @@ func (x *VolumeRenameRequest) String() string {
 func (*VolumeRenameRequest) ProtoMessage() {}
 
 func (x *VolumeRenameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[441]
+	mi := &file_modal_proto_api_proto_msgTypes[447]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48788,7 +49530,7 @@ type Warning struct {
 
 func (x *Warning) Reset() {
 	*x = Warning{}
-	mi := &file_modal_proto_api_proto_msgTypes[442]
+	mi := &file_modal_proto_api_proto_msgTypes[448]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48800,7 +49542,7 @@ func (x *Warning) String() string {
 func (*Warning) ProtoMessage() {}
 
 func (x *Warning) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[442]
+	mi := &file_modal_proto_api_proto_msgTypes[448]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48860,7 +49602,7 @@ type WebUrlInfo struct {
 
 func (x *WebUrlInfo) Reset() {
 	*x = WebUrlInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[443]
+	mi := &file_modal_proto_api_proto_msgTypes[449]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48872,7 +49614,7 @@ func (x *WebUrlInfo) String() string {
 func (*WebUrlInfo) ProtoMessage() {}
 
 func (x *WebUrlInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[443]
+	mi := &file_modal_proto_api_proto_msgTypes[449]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48955,7 +49697,7 @@ type WebhookConfig struct {
 
 func (x *WebhookConfig) Reset() {
 	*x = WebhookConfig{}
-	mi := &file_modal_proto_api_proto_msgTypes[444]
+	mi := &file_modal_proto_api_proto_msgTypes[450]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48967,7 +49709,7 @@ func (x *WebhookConfig) String() string {
 func (*WebhookConfig) ProtoMessage() {}
 
 func (x *WebhookConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[444]
+	mi := &file_modal_proto_api_proto_msgTypes[450]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49136,7 +49878,7 @@ type WorkspaceBillingReportItem struct {
 
 func (x *WorkspaceBillingReportItem) Reset() {
 	*x = WorkspaceBillingReportItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[445]
+	mi := &file_modal_proto_api_proto_msgTypes[451]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49148,7 +49890,7 @@ func (x *WorkspaceBillingReportItem) String() string {
 func (*WorkspaceBillingReportItem) ProtoMessage() {}
 
 func (x *WorkspaceBillingReportItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[445]
+	mi := &file_modal_proto_api_proto_msgTypes[451]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49272,7 +50014,7 @@ type WorkspaceBillingReportRequest struct {
 
 func (x *WorkspaceBillingReportRequest) Reset() {
 	*x = WorkspaceBillingReportRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[446]
+	mi := &file_modal_proto_api_proto_msgTypes[452]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49284,7 +50026,7 @@ func (x *WorkspaceBillingReportRequest) String() string {
 func (*WorkspaceBillingReportRequest) ProtoMessage() {}
 
 func (x *WorkspaceBillingReportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[446]
+	mi := &file_modal_proto_api_proto_msgTypes[452]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49391,7 +50133,7 @@ type WorkspaceDashboardUrlRequest struct {
 
 func (x *WorkspaceDashboardUrlRequest) Reset() {
 	*x = WorkspaceDashboardUrlRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[447]
+	mi := &file_modal_proto_api_proto_msgTypes[453]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49403,7 +50145,7 @@ func (x *WorkspaceDashboardUrlRequest) String() string {
 func (*WorkspaceDashboardUrlRequest) ProtoMessage() {}
 
 func (x *WorkspaceDashboardUrlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[447]
+	mi := &file_modal_proto_api_proto_msgTypes[453]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49448,7 +50190,7 @@ type WorkspaceDashboardUrlResponse struct {
 
 func (x *WorkspaceDashboardUrlResponse) Reset() {
 	*x = WorkspaceDashboardUrlResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[448]
+	mi := &file_modal_proto_api_proto_msgTypes[454]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49460,7 +50202,7 @@ func (x *WorkspaceDashboardUrlResponse) String() string {
 func (*WorkspaceDashboardUrlResponse) ProtoMessage() {}
 
 func (x *WorkspaceDashboardUrlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[448]
+	mi := &file_modal_proto_api_proto_msgTypes[454]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49496,6 +50238,248 @@ func (b0 WorkspaceDashboardUrlResponse_builder) Build() *WorkspaceDashboardUrlRe
 	return m0
 }
 
+type WorkspaceMembersListItem struct {
+	state                           protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_MemberId             string                 `protobuf:"bytes,1,opt,name=member_id,json=memberId,proto3"`
+	xxx_hidden_MemberDisplayname    string                 `protobuf:"bytes,2,opt,name=member_displayname,json=memberDisplayname,proto3"`
+	xxx_hidden_MemberRole           MemberRole             `protobuf:"varint,3,opt,name=member_role,json=memberRole,proto3,enum=modal.client.MemberRole"`
+	xxx_hidden_JoinedAt             float64                `protobuf:"fixed64,4,opt,name=joined_at,json=joinedAt,proto3"`
+	xxx_hidden_LastActiveAt         float64                `protobuf:"fixed64,5,opt,name=last_active_at,json=lastActiveAt,proto3"`
+	xxx_hidden_DeletedAt            float64                `protobuf:"fixed64,7,opt,name=deleted_at,json=deletedAt,proto3"`
+	xxx_hidden_UserId               string                 `protobuf:"bytes,8,opt,name=user_id,json=userId,proto3"`
+	xxx_hidden_IdentityProviderType IdentityProviderType   `protobuf:"varint,9,opt,name=identity_provider_type,json=identityProviderType,proto3,enum=modal.client.IdentityProviderType"`
+	xxx_hidden_Email                string                 `protobuf:"bytes,10,opt,name=email,proto3"`
+	xxx_hidden_AvatarUrl            string                 `protobuf:"bytes,11,opt,name=avatar_url,json=avatarUrl,proto3"`
+	unknownFields                   protoimpl.UnknownFields
+	sizeCache                       protoimpl.SizeCache
+}
+
+func (x *WorkspaceMembersListItem) Reset() {
+	*x = WorkspaceMembersListItem{}
+	mi := &file_modal_proto_api_proto_msgTypes[455]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkspaceMembersListItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkspaceMembersListItem) ProtoMessage() {}
+
+func (x *WorkspaceMembersListItem) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[455]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *WorkspaceMembersListItem) GetMemberId() string {
+	if x != nil {
+		return x.xxx_hidden_MemberId
+	}
+	return ""
+}
+
+func (x *WorkspaceMembersListItem) GetMemberDisplayname() string {
+	if x != nil {
+		return x.xxx_hidden_MemberDisplayname
+	}
+	return ""
+}
+
+func (x *WorkspaceMembersListItem) GetMemberRole() MemberRole {
+	if x != nil {
+		return x.xxx_hidden_MemberRole
+	}
+	return MemberRole_MEMBER_ROLE_UNSPECIFIED
+}
+
+func (x *WorkspaceMembersListItem) GetJoinedAt() float64 {
+	if x != nil {
+		return x.xxx_hidden_JoinedAt
+	}
+	return 0
+}
+
+func (x *WorkspaceMembersListItem) GetLastActiveAt() float64 {
+	if x != nil {
+		return x.xxx_hidden_LastActiveAt
+	}
+	return 0
+}
+
+func (x *WorkspaceMembersListItem) GetDeletedAt() float64 {
+	if x != nil {
+		return x.xxx_hidden_DeletedAt
+	}
+	return 0
+}
+
+func (x *WorkspaceMembersListItem) GetUserId() string {
+	if x != nil {
+		return x.xxx_hidden_UserId
+	}
+	return ""
+}
+
+func (x *WorkspaceMembersListItem) GetIdentityProviderType() IdentityProviderType {
+	if x != nil {
+		return x.xxx_hidden_IdentityProviderType
+	}
+	return IdentityProviderType_IDENTITY_PROVIDER_TYPE_UNSPECIFIED
+}
+
+func (x *WorkspaceMembersListItem) GetEmail() string {
+	if x != nil {
+		return x.xxx_hidden_Email
+	}
+	return ""
+}
+
+func (x *WorkspaceMembersListItem) GetAvatarUrl() string {
+	if x != nil {
+		return x.xxx_hidden_AvatarUrl
+	}
+	return ""
+}
+
+func (x *WorkspaceMembersListItem) SetMemberId(v string) {
+	x.xxx_hidden_MemberId = v
+}
+
+func (x *WorkspaceMembersListItem) SetMemberDisplayname(v string) {
+	x.xxx_hidden_MemberDisplayname = v
+}
+
+func (x *WorkspaceMembersListItem) SetMemberRole(v MemberRole) {
+	x.xxx_hidden_MemberRole = v
+}
+
+func (x *WorkspaceMembersListItem) SetJoinedAt(v float64) {
+	x.xxx_hidden_JoinedAt = v
+}
+
+func (x *WorkspaceMembersListItem) SetLastActiveAt(v float64) {
+	x.xxx_hidden_LastActiveAt = v
+}
+
+func (x *WorkspaceMembersListItem) SetDeletedAt(v float64) {
+	x.xxx_hidden_DeletedAt = v
+}
+
+func (x *WorkspaceMembersListItem) SetUserId(v string) {
+	x.xxx_hidden_UserId = v
+}
+
+func (x *WorkspaceMembersListItem) SetIdentityProviderType(v IdentityProviderType) {
+	x.xxx_hidden_IdentityProviderType = v
+}
+
+func (x *WorkspaceMembersListItem) SetEmail(v string) {
+	x.xxx_hidden_Email = v
+}
+
+func (x *WorkspaceMembersListItem) SetAvatarUrl(v string) {
+	x.xxx_hidden_AvatarUrl = v
+}
+
+type WorkspaceMembersListItem_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	MemberId             string
+	MemberDisplayname    string
+	MemberRole           MemberRole
+	JoinedAt             float64
+	LastActiveAt         float64
+	DeletedAt            float64
+	UserId               string
+	IdentityProviderType IdentityProviderType
+	Email                string
+	AvatarUrl            string
+}
+
+func (b0 WorkspaceMembersListItem_builder) Build() *WorkspaceMembersListItem {
+	m0 := &WorkspaceMembersListItem{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_MemberId = b.MemberId
+	x.xxx_hidden_MemberDisplayname = b.MemberDisplayname
+	x.xxx_hidden_MemberRole = b.MemberRole
+	x.xxx_hidden_JoinedAt = b.JoinedAt
+	x.xxx_hidden_LastActiveAt = b.LastActiveAt
+	x.xxx_hidden_DeletedAt = b.DeletedAt
+	x.xxx_hidden_UserId = b.UserId
+	x.xxx_hidden_IdentityProviderType = b.IdentityProviderType
+	x.xxx_hidden_Email = b.Email
+	x.xxx_hidden_AvatarUrl = b.AvatarUrl
+	return m0
+}
+
+type WorkspaceMembersListResponse struct {
+	state              protoimpl.MessageState       `protogen:"opaque.v1"`
+	xxx_hidden_Members *[]*WorkspaceMembersListItem `protobuf:"bytes,1,rep,name=members,proto3"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *WorkspaceMembersListResponse) Reset() {
+	*x = WorkspaceMembersListResponse{}
+	mi := &file_modal_proto_api_proto_msgTypes[456]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkspaceMembersListResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkspaceMembersListResponse) ProtoMessage() {}
+
+func (x *WorkspaceMembersListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[456]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *WorkspaceMembersListResponse) GetMembers() []*WorkspaceMembersListItem {
+	if x != nil {
+		if x.xxx_hidden_Members != nil {
+			return *x.xxx_hidden_Members
+		}
+	}
+	return nil
+}
+
+func (x *WorkspaceMembersListResponse) SetMembers(v []*WorkspaceMembersListItem) {
+	x.xxx_hidden_Members = &v
+}
+
+type WorkspaceMembersListResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	Members []*WorkspaceMembersListItem
+}
+
+func (b0 WorkspaceMembersListResponse_builder) Build() *WorkspaceMembersListResponse {
+	m0 := &WorkspaceMembersListResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_Members = &b.Members
+	return m0
+}
+
 type WorkspaceNameLookupResponse struct {
 	state                    protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_WorkspaceName string                 `protobuf:"bytes,1,opt,name=workspace_name,json=workspaceName,proto3"`
@@ -49506,7 +50490,7 @@ type WorkspaceNameLookupResponse struct {
 
 func (x *WorkspaceNameLookupResponse) Reset() {
 	*x = WorkspaceNameLookupResponse{}
-	mi := &file_modal_proto_api_proto_msgTypes[449]
+	mi := &file_modal_proto_api_proto_msgTypes[457]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49518,7 +50502,7 @@ func (x *WorkspaceNameLookupResponse) String() string {
 func (*WorkspaceNameLookupResponse) ProtoMessage() {}
 
 func (x *WorkspaceNameLookupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[449]
+	mi := &file_modal_proto_api_proto_msgTypes[457]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49582,7 +50566,7 @@ type AppCountLogsResponse_LogBucket struct {
 
 func (x *AppCountLogsResponse_LogBucket) Reset() {
 	*x = AppCountLogsResponse_LogBucket{}
-	mi := &file_modal_proto_api_proto_msgTypes[450]
+	mi := &file_modal_proto_api_proto_msgTypes[458]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49594,7 +50578,7 @@ func (x *AppCountLogsResponse_LogBucket) String() string {
 func (*AppCountLogsResponse_LogBucket) ProtoMessage() {}
 
 func (x *AppCountLogsResponse_LogBucket) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[450]
+	mi := &file_modal_proto_api_proto_msgTypes[458]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49695,7 +50679,7 @@ type AppListResponse_AppListItem struct {
 
 func (x *AppListResponse_AppListItem) Reset() {
 	*x = AppListResponse_AppListItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[455]
+	mi := &file_modal_proto_api_proto_msgTypes[463]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49707,7 +50691,7 @@ func (x *AppListResponse_AppListItem) String() string {
 func (*AppListResponse_AppListItem) ProtoMessage() {}
 
 func (x *AppListResponse_AppListItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[455]
+	mi := &file_modal_proto_api_proto_msgTypes[463]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49840,7 +50824,7 @@ type Asgi_Http struct {
 
 func (x *Asgi_Http) Reset() {
 	*x = Asgi_Http{}
-	mi := &file_modal_proto_api_proto_msgTypes[462]
+	mi := &file_modal_proto_api_proto_msgTypes[470]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49852,7 +50836,7 @@ func (x *Asgi_Http) String() string {
 func (*Asgi_Http) ProtoMessage() {}
 
 func (x *Asgi_Http) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[462]
+	mi := &file_modal_proto_api_proto_msgTypes[470]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50028,7 +51012,7 @@ type Asgi_HttpRequest struct {
 
 func (x *Asgi_HttpRequest) Reset() {
 	*x = Asgi_HttpRequest{}
-	mi := &file_modal_proto_api_proto_msgTypes[463]
+	mi := &file_modal_proto_api_proto_msgTypes[471]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50040,7 +51024,7 @@ func (x *Asgi_HttpRequest) String() string {
 func (*Asgi_HttpRequest) ProtoMessage() {}
 
 func (x *Asgi_HttpRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[463]
+	mi := &file_modal_proto_api_proto_msgTypes[471]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50104,7 +51088,7 @@ type Asgi_HttpResponseStart struct {
 
 func (x *Asgi_HttpResponseStart) Reset() {
 	*x = Asgi_HttpResponseStart{}
-	mi := &file_modal_proto_api_proto_msgTypes[464]
+	mi := &file_modal_proto_api_proto_msgTypes[472]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50116,7 +51100,7 @@ func (x *Asgi_HttpResponseStart) String() string {
 func (*Asgi_HttpResponseStart) ProtoMessage() {}
 
 func (x *Asgi_HttpResponseStart) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[464]
+	mi := &file_modal_proto_api_proto_msgTypes[472]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50189,7 +51173,7 @@ type Asgi_HttpResponseBody struct {
 
 func (x *Asgi_HttpResponseBody) Reset() {
 	*x = Asgi_HttpResponseBody{}
-	mi := &file_modal_proto_api_proto_msgTypes[465]
+	mi := &file_modal_proto_api_proto_msgTypes[473]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50201,7 +51185,7 @@ func (x *Asgi_HttpResponseBody) String() string {
 func (*Asgi_HttpResponseBody) ProtoMessage() {}
 
 func (x *Asgi_HttpResponseBody) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[465]
+	mi := &file_modal_proto_api_proto_msgTypes[473]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50264,7 +51248,7 @@ type Asgi_HttpResponseTrailers struct {
 
 func (x *Asgi_HttpResponseTrailers) Reset() {
 	*x = Asgi_HttpResponseTrailers{}
-	mi := &file_modal_proto_api_proto_msgTypes[466]
+	mi := &file_modal_proto_api_proto_msgTypes[474]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50276,7 +51260,7 @@ func (x *Asgi_HttpResponseTrailers) String() string {
 func (*Asgi_HttpResponseTrailers) ProtoMessage() {}
 
 func (x *Asgi_HttpResponseTrailers) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[466]
+	mi := &file_modal_proto_api_proto_msgTypes[474]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50334,7 +51318,7 @@ type Asgi_HttpDisconnect struct {
 
 func (x *Asgi_HttpDisconnect) Reset() {
 	*x = Asgi_HttpDisconnect{}
-	mi := &file_modal_proto_api_proto_msgTypes[467]
+	mi := &file_modal_proto_api_proto_msgTypes[475]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50346,7 +51330,7 @@ func (x *Asgi_HttpDisconnect) String() string {
 func (*Asgi_HttpDisconnect) ProtoMessage() {}
 
 func (x *Asgi_HttpDisconnect) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[467]
+	mi := &file_modal_proto_api_proto_msgTypes[475]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50388,7 +51372,7 @@ type Asgi_Websocket struct {
 
 func (x *Asgi_Websocket) Reset() {
 	*x = Asgi_Websocket{}
-	mi := &file_modal_proto_api_proto_msgTypes[468]
+	mi := &file_modal_proto_api_proto_msgTypes[476]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50400,7 +51384,7 @@ func (x *Asgi_Websocket) String() string {
 func (*Asgi_Websocket) ProtoMessage() {}
 
 func (x *Asgi_Websocket) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[468]
+	mi := &file_modal_proto_api_proto_msgTypes[476]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50574,7 +51558,7 @@ type Asgi_WebsocketConnect struct {
 
 func (x *Asgi_WebsocketConnect) Reset() {
 	*x = Asgi_WebsocketConnect{}
-	mi := &file_modal_proto_api_proto_msgTypes[469]
+	mi := &file_modal_proto_api_proto_msgTypes[477]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50586,7 +51570,7 @@ func (x *Asgi_WebsocketConnect) String() string {
 func (*Asgi_WebsocketConnect) ProtoMessage() {}
 
 func (x *Asgi_WebsocketConnect) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[469]
+	mi := &file_modal_proto_api_proto_msgTypes[477]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50622,7 +51606,7 @@ type Asgi_WebsocketAccept struct {
 
 func (x *Asgi_WebsocketAccept) Reset() {
 	*x = Asgi_WebsocketAccept{}
-	mi := &file_modal_proto_api_proto_msgTypes[470]
+	mi := &file_modal_proto_api_proto_msgTypes[478]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50634,7 +51618,7 @@ func (x *Asgi_WebsocketAccept) String() string {
 func (*Asgi_WebsocketAccept) ProtoMessage() {}
 
 func (x *Asgi_WebsocketAccept) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[470]
+	mi := &file_modal_proto_api_proto_msgTypes[478]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50712,7 +51696,7 @@ type Asgi_WebsocketReceive struct {
 
 func (x *Asgi_WebsocketReceive) Reset() {
 	*x = Asgi_WebsocketReceive{}
-	mi := &file_modal_proto_api_proto_msgTypes[471]
+	mi := &file_modal_proto_api_proto_msgTypes[479]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50724,7 +51708,7 @@ func (x *Asgi_WebsocketReceive) String() string {
 func (*Asgi_WebsocketReceive) ProtoMessage() {}
 
 func (x *Asgi_WebsocketReceive) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[471]
+	mi := &file_modal_proto_api_proto_msgTypes[479]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50846,7 +51830,7 @@ func (b0 Asgi_WebsocketReceive_builder) Build() *Asgi_WebsocketReceive {
 type case_Asgi_WebsocketReceive_Content protoreflect.FieldNumber
 
 func (x case_Asgi_WebsocketReceive_Content) String() string {
-	md := file_modal_proto_api_proto_msgTypes[471].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[479].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -50879,7 +51863,7 @@ type Asgi_WebsocketSend struct {
 
 func (x *Asgi_WebsocketSend) Reset() {
 	*x = Asgi_WebsocketSend{}
-	mi := &file_modal_proto_api_proto_msgTypes[472]
+	mi := &file_modal_proto_api_proto_msgTypes[480]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50891,7 +51875,7 @@ func (x *Asgi_WebsocketSend) String() string {
 func (*Asgi_WebsocketSend) ProtoMessage() {}
 
 func (x *Asgi_WebsocketSend) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[472]
+	mi := &file_modal_proto_api_proto_msgTypes[480]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51013,7 +51997,7 @@ func (b0 Asgi_WebsocketSend_builder) Build() *Asgi_WebsocketSend {
 type case_Asgi_WebsocketSend_Content protoreflect.FieldNumber
 
 func (x case_Asgi_WebsocketSend_Content) String() string {
-	md := file_modal_proto_api_proto_msgTypes[472].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[480].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -51048,7 +52032,7 @@ type Asgi_WebsocketDisconnect struct {
 
 func (x *Asgi_WebsocketDisconnect) Reset() {
 	*x = Asgi_WebsocketDisconnect{}
-	mi := &file_modal_proto_api_proto_msgTypes[473]
+	mi := &file_modal_proto_api_proto_msgTypes[481]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51060,7 +52044,7 @@ func (x *Asgi_WebsocketDisconnect) String() string {
 func (*Asgi_WebsocketDisconnect) ProtoMessage() {}
 
 func (x *Asgi_WebsocketDisconnect) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[473]
+	mi := &file_modal_proto_api_proto_msgTypes[481]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51125,7 +52109,7 @@ type Asgi_WebsocketClose struct {
 
 func (x *Asgi_WebsocketClose) Reset() {
 	*x = Asgi_WebsocketClose{}
-	mi := &file_modal_proto_api_proto_msgTypes[474]
+	mi := &file_modal_proto_api_proto_msgTypes[482]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51137,7 +52121,7 @@ func (x *Asgi_WebsocketClose) String() string {
 func (*Asgi_WebsocketClose) ProtoMessage() {}
 
 func (x *Asgi_WebsocketClose) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[474]
+	mi := &file_modal_proto_api_proto_msgTypes[482]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51214,7 +52198,7 @@ type DictListResponse_DictInfo struct {
 
 func (x *DictListResponse_DictInfo) Reset() {
 	*x = DictListResponse_DictInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[477]
+	mi := &file_modal_proto_api_proto_msgTypes[485]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51226,7 +52210,7 @@ func (x *DictListResponse_DictInfo) String() string {
 func (*DictListResponse_DictInfo) ProtoMessage() {}
 
 func (x *DictListResponse_DictInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[477]
+	mi := &file_modal_proto_api_proto_msgTypes[485]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51312,6 +52296,161 @@ func (b0 DictListResponse_DictInfo_builder) Build() *DictListResponse_DictInfo {
 	return m0
 }
 
+type EnvironmentGetManagedResponse_PrincipalEnvRole struct {
+	state                      protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_UserId          string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3"`
+	xxx_hidden_ServiceUserId   string                 `protobuf:"bytes,2,opt,name=service_user_id,json=serviceUserId,proto3"`
+	xxx_hidden_Email           string                 `protobuf:"bytes,3,opt,name=email,proto3"`
+	xxx_hidden_AvatarUrl       string                 `protobuf:"bytes,4,opt,name=avatar_url,json=avatarUrl,proto3"`
+	xxx_hidden_ServiceUserName string                 `protobuf:"bytes,5,opt,name=service_user_name,json=serviceUserName,proto3"`
+	xxx_hidden_Role            EnvironmentRole        `protobuf:"varint,6,opt,name=role,proto3,enum=modal.client.EnvironmentRole"`
+	xxx_hidden_MemberRole      MemberRole             `protobuf:"varint,7,opt,name=member_role,json=memberRole,proto3,enum=modal.client.MemberRole"`
+	xxx_hidden_UserName        string                 `protobuf:"bytes,8,opt,name=user_name,json=userName,proto3"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) Reset() {
+	*x = EnvironmentGetManagedResponse_PrincipalEnvRole{}
+	mi := &file_modal_proto_api_proto_msgTypes[486]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnvironmentGetManagedResponse_PrincipalEnvRole) ProtoMessage() {}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_api_proto_msgTypes[486]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) GetUserId() string {
+	if x != nil {
+		return x.xxx_hidden_UserId
+	}
+	return ""
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) GetServiceUserId() string {
+	if x != nil {
+		return x.xxx_hidden_ServiceUserId
+	}
+	return ""
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) GetEmail() string {
+	if x != nil {
+		return x.xxx_hidden_Email
+	}
+	return ""
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) GetAvatarUrl() string {
+	if x != nil {
+		return x.xxx_hidden_AvatarUrl
+	}
+	return ""
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) GetServiceUserName() string {
+	if x != nil {
+		return x.xxx_hidden_ServiceUserName
+	}
+	return ""
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) GetRole() EnvironmentRole {
+	if x != nil {
+		return x.xxx_hidden_Role
+	}
+	return EnvironmentRole_ENVIRONMENT_ROLE_UNSPECIFIED
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) GetMemberRole() MemberRole {
+	if x != nil {
+		return x.xxx_hidden_MemberRole
+	}
+	return MemberRole_MEMBER_ROLE_UNSPECIFIED
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) GetUserName() string {
+	if x != nil {
+		return x.xxx_hidden_UserName
+	}
+	return ""
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) SetUserId(v string) {
+	x.xxx_hidden_UserId = v
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) SetServiceUserId(v string) {
+	x.xxx_hidden_ServiceUserId = v
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) SetEmail(v string) {
+	x.xxx_hidden_Email = v
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) SetAvatarUrl(v string) {
+	x.xxx_hidden_AvatarUrl = v
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) SetServiceUserName(v string) {
+	x.xxx_hidden_ServiceUserName = v
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) SetRole(v EnvironmentRole) {
+	x.xxx_hidden_Role = v
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) SetMemberRole(v MemberRole) {
+	x.xxx_hidden_MemberRole = v
+}
+
+func (x *EnvironmentGetManagedResponse_PrincipalEnvRole) SetUserName(v string) {
+	x.xxx_hidden_UserName = v
+}
+
+type EnvironmentGetManagedResponse_PrincipalEnvRole_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	UserId          string
+	ServiceUserId   string
+	Email           string
+	AvatarUrl       string
+	ServiceUserName string
+	Role            EnvironmentRole
+	MemberRole      MemberRole
+	UserName        string
+}
+
+func (b0 EnvironmentGetManagedResponse_PrincipalEnvRole_builder) Build() *EnvironmentGetManagedResponse_PrincipalEnvRole {
+	m0 := &EnvironmentGetManagedResponse_PrincipalEnvRole{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_UserId = b.UserId
+	x.xxx_hidden_ServiceUserId = b.ServiceUserId
+	x.xxx_hidden_Email = b.Email
+	x.xxx_hidden_AvatarUrl = b.AvatarUrl
+	x.xxx_hidden_ServiceUserName = b.ServiceUserName
+	x.xxx_hidden_Role = b.Role
+	x.xxx_hidden_MemberRole = b.MemberRole
+	x.xxx_hidden_UserName = b.UserName
+	return m0
+}
+
 type FlashContainerListResponse_Container struct {
 	state             protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_TaskId string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
@@ -51323,7 +52462,7 @@ type FlashContainerListResponse_Container struct {
 
 func (x *FlashContainerListResponse_Container) Reset() {
 	*x = FlashContainerListResponse_Container{}
-	mi := &file_modal_proto_api_proto_msgTypes[478]
+	mi := &file_modal_proto_api_proto_msgTypes[487]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51335,7 +52474,7 @@ func (x *FlashContainerListResponse_Container) String() string {
 func (*FlashContainerListResponse_Container) ProtoMessage() {}
 
 func (x *FlashContainerListResponse_Container) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[478]
+	mi := &file_modal_proto_api_proto_msgTypes[487]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51407,7 +52546,7 @@ type FunctionData_RankedFunction struct {
 
 func (x *FunctionData_RankedFunction) Reset() {
 	*x = FunctionData_RankedFunction{}
-	mi := &file_modal_proto_api_proto_msgTypes[482]
+	mi := &file_modal_proto_api_proto_msgTypes[491]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51419,7 +52558,7 @@ func (x *FunctionData_RankedFunction) String() string {
 func (*FunctionData_RankedFunction) ProtoMessage() {}
 
 func (x *FunctionData_RankedFunction) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[482]
+	mi := &file_modal_proto_api_proto_msgTypes[491]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51492,7 +52631,7 @@ type NotebookKernelPublishResultsRequest_ExecuteReply struct {
 
 func (x *NotebookKernelPublishResultsRequest_ExecuteReply) Reset() {
 	*x = NotebookKernelPublishResultsRequest_ExecuteReply{}
-	mi := &file_modal_proto_api_proto_msgTypes[488]
+	mi := &file_modal_proto_api_proto_msgTypes[497]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51504,7 +52643,7 @@ func (x *NotebookKernelPublishResultsRequest_ExecuteReply) String() string {
 func (*NotebookKernelPublishResultsRequest_ExecuteReply) ProtoMessage() {}
 
 func (x *NotebookKernelPublishResultsRequest_ExecuteReply) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[488]
+	mi := &file_modal_proto_api_proto_msgTypes[497]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51577,7 +52716,7 @@ type NotebookKernelPublishResultsRequest_CellResult struct {
 
 func (x *NotebookKernelPublishResultsRequest_CellResult) Reset() {
 	*x = NotebookKernelPublishResultsRequest_CellResult{}
-	mi := &file_modal_proto_api_proto_msgTypes[489]
+	mi := &file_modal_proto_api_proto_msgTypes[498]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51589,7 +52728,7 @@ func (x *NotebookKernelPublishResultsRequest_CellResult) String() string {
 func (*NotebookKernelPublishResultsRequest_CellResult) ProtoMessage() {}
 
 func (x *NotebookKernelPublishResultsRequest_CellResult) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[489]
+	mi := &file_modal_proto_api_proto_msgTypes[498]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51766,7 +52905,7 @@ func (b0 NotebookKernelPublishResultsRequest_CellResult_builder) Build() *Notebo
 type case_NotebookKernelPublishResultsRequest_CellResult_ResultType protoreflect.FieldNumber
 
 func (x case_NotebookKernelPublishResultsRequest_CellResult_ResultType) String() string {
-	md := file_modal_proto_api_proto_msgTypes[489].Descriptor()
+	md := file_modal_proto_api_proto_msgTypes[498].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -51813,7 +52952,7 @@ type NotebookOutput_ExecuteResult struct {
 
 func (x *NotebookOutput_ExecuteResult) Reset() {
 	*x = NotebookOutput_ExecuteResult{}
-	mi := &file_modal_proto_api_proto_msgTypes[490]
+	mi := &file_modal_proto_api_proto_msgTypes[499]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51825,7 +52964,7 @@ func (x *NotebookOutput_ExecuteResult) String() string {
 func (*NotebookOutput_ExecuteResult) ProtoMessage() {}
 
 func (x *NotebookOutput_ExecuteResult) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[490]
+	mi := &file_modal_proto_api_proto_msgTypes[499]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51923,7 +53062,7 @@ type NotebookOutput_DisplayData struct {
 
 func (x *NotebookOutput_DisplayData) Reset() {
 	*x = NotebookOutput_DisplayData{}
-	mi := &file_modal_proto_api_proto_msgTypes[491]
+	mi := &file_modal_proto_api_proto_msgTypes[500]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51935,7 +53074,7 @@ func (x *NotebookOutput_DisplayData) String() string {
 func (*NotebookOutput_DisplayData) ProtoMessage() {}
 
 func (x *NotebookOutput_DisplayData) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[491]
+	mi := &file_modal_proto_api_proto_msgTypes[500]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52050,7 +53189,7 @@ type NotebookOutput_Stream struct {
 
 func (x *NotebookOutput_Stream) Reset() {
 	*x = NotebookOutput_Stream{}
-	mi := &file_modal_proto_api_proto_msgTypes[492]
+	mi := &file_modal_proto_api_proto_msgTypes[501]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52062,7 +53201,7 @@ func (x *NotebookOutput_Stream) String() string {
 func (*NotebookOutput_Stream) ProtoMessage() {}
 
 func (x *NotebookOutput_Stream) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[492]
+	mi := &file_modal_proto_api_proto_msgTypes[501]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52123,7 +53262,7 @@ type NotebookOutput_Error struct {
 
 func (x *NotebookOutput_Error) Reset() {
 	*x = NotebookOutput_Error{}
-	mi := &file_modal_proto_api_proto_msgTypes[493]
+	mi := &file_modal_proto_api_proto_msgTypes[502]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52135,7 +53274,7 @@ func (x *NotebookOutput_Error) String() string {
 func (*NotebookOutput_Error) ProtoMessage() {}
 
 func (x *NotebookOutput_Error) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[493]
+	mi := &file_modal_proto_api_proto_msgTypes[502]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52206,7 +53345,7 @@ type Probe_ExecCommand struct {
 
 func (x *Probe_ExecCommand) Reset() {
 	*x = Probe_ExecCommand{}
-	mi := &file_modal_proto_api_proto_msgTypes[494]
+	mi := &file_modal_proto_api_proto_msgTypes[503]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52218,7 +53357,7 @@ func (x *Probe_ExecCommand) String() string {
 func (*Probe_ExecCommand) ProtoMessage() {}
 
 func (x *Probe_ExecCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[494]
+	mi := &file_modal_proto_api_proto_msgTypes[503]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52269,7 +53408,7 @@ type QueueListResponse_QueueInfo struct {
 
 func (x *QueueListResponse_QueueInfo) Reset() {
 	*x = QueueListResponse_QueueInfo{}
-	mi := &file_modal_proto_api_proto_msgTypes[495]
+	mi := &file_modal_proto_api_proto_msgTypes[504]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52281,7 +53420,7 @@ func (x *QueueListResponse_QueueInfo) String() string {
 func (*QueueListResponse_QueueInfo) ProtoMessage() {}
 
 func (x *QueueListResponse_QueueInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[495]
+	mi := &file_modal_proto_api_proto_msgTypes[504]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52403,7 +53542,7 @@ type ResourceInfo_ResourceValue struct {
 
 func (x *ResourceInfo_ResourceValue) Reset() {
 	*x = ResourceInfo_ResourceValue{}
-	mi := &file_modal_proto_api_proto_msgTypes[496]
+	mi := &file_modal_proto_api_proto_msgTypes[505]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52415,7 +53554,7 @@ func (x *ResourceInfo_ResourceValue) String() string {
 func (*ResourceInfo_ResourceValue) ProtoMessage() {}
 
 func (x *ResourceInfo_ResourceValue) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[496]
+	mi := &file_modal_proto_api_proto_msgTypes[505]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52474,7 +53613,7 @@ type Schedule_Cron struct {
 
 func (x *Schedule_Cron) Reset() {
 	*x = Schedule_Cron{}
-	mi := &file_modal_proto_api_proto_msgTypes[498]
+	mi := &file_modal_proto_api_proto_msgTypes[507]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52486,7 +53625,7 @@ func (x *Schedule_Cron) String() string {
 func (*Schedule_Cron) ProtoMessage() {}
 
 func (x *Schedule_Cron) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[498]
+	mi := &file_modal_proto_api_proto_msgTypes[507]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52550,7 +53689,7 @@ type Schedule_Period struct {
 
 func (x *Schedule_Period) Reset() {
 	*x = Schedule_Period{}
-	mi := &file_modal_proto_api_proto_msgTypes[499]
+	mi := &file_modal_proto_api_proto_msgTypes[508]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52562,7 +53701,7 @@ func (x *Schedule_Period) String() string {
 func (*Schedule_Period) ProtoMessage() {}
 
 func (x *Schedule_Period) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[499]
+	mi := &file_modal_proto_api_proto_msgTypes[508]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52688,7 +53827,7 @@ type SecretUpdateRequest_Update struct {
 
 func (x *SecretUpdateRequest_Update) Reset() {
 	*x = SecretUpdateRequest_Update{}
-	mi := &file_modal_proto_api_proto_msgTypes[502]
+	mi := &file_modal_proto_api_proto_msgTypes[511]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52700,7 +53839,7 @@ func (x *SecretUpdateRequest_Update) String() string {
 func (*SecretUpdateRequest_Update) ProtoMessage() {}
 
 func (x *SecretUpdateRequest_Update) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[502]
+	mi := &file_modal_proto_api_proto_msgTypes[511]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52779,7 +53918,7 @@ type TemplateListResponse_TemplateListItem struct {
 
 func (x *TemplateListResponse_TemplateListItem) Reset() {
 	*x = TemplateListResponse_TemplateListItem{}
-	mi := &file_modal_proto_api_proto_msgTypes[503]
+	mi := &file_modal_proto_api_proto_msgTypes[512]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52791,7 +53930,7 @@ func (x *TemplateListResponse_TemplateListItem) String() string {
 func (*TemplateListResponse_TemplateListItem) ProtoMessage() {}
 
 func (x *TemplateListResponse_TemplateListItem) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[503]
+	mi := &file_modal_proto_api_proto_msgTypes[512]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52867,7 +54006,7 @@ type VolumePutFiles2Request_File struct {
 
 func (x *VolumePutFiles2Request_File) Reset() {
 	*x = VolumePutFiles2Request_File{}
-	mi := &file_modal_proto_api_proto_msgTypes[504]
+	mi := &file_modal_proto_api_proto_msgTypes[513]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52879,7 +54018,7 @@ func (x *VolumePutFiles2Request_File) String() string {
 func (*VolumePutFiles2Request_File) ProtoMessage() {}
 
 func (x *VolumePutFiles2Request_File) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[504]
+	mi := &file_modal_proto_api_proto_msgTypes[513]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52989,7 +54128,7 @@ type VolumePutFiles2Request_Block struct {
 
 func (x *VolumePutFiles2Request_Block) Reset() {
 	*x = VolumePutFiles2Request_Block{}
-	mi := &file_modal_proto_api_proto_msgTypes[505]
+	mi := &file_modal_proto_api_proto_msgTypes[514]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -53001,7 +54140,7 @@ func (x *VolumePutFiles2Request_Block) String() string {
 func (*VolumePutFiles2Request_Block) ProtoMessage() {}
 
 func (x *VolumePutFiles2Request_Block) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[505]
+	mi := &file_modal_proto_api_proto_msgTypes[514]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -53091,7 +54230,7 @@ type VolumePutFiles2Response_MissingBlock struct {
 
 func (x *VolumePutFiles2Response_MissingBlock) Reset() {
 	*x = VolumePutFiles2Response_MissingBlock{}
-	mi := &file_modal_proto_api_proto_msgTypes[506]
+	mi := &file_modal_proto_api_proto_msgTypes[515]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -53103,7 +54242,7 @@ func (x *VolumePutFiles2Response_MissingBlock) String() string {
 func (*VolumePutFiles2Response_MissingBlock) ProtoMessage() {}
 
 func (x *VolumePutFiles2Response_MissingBlock) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_api_proto_msgTypes[506]
+	mi := &file_modal_proto_api_proto_msgTypes[515]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -53990,11 +55129,33 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"dnsRecords\"\x13\n" +
 	"\x11DomainListRequest\"D\n" +
 	"\x12DomainListResponse\x12.\n" +
-	"\adomains\x18\x01 \x03(\v2\x14.modal.client.DomainR\adomains\".\n" +
+	"\adomains\x18\x01 \x03(\v2\x14.modal.client.DomainR\adomains\"M\n" +
 	"\x18EnvironmentCreateRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\".\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
+	"\n" +
+	"is_managed\x18\x02 \x01(\bR\tisManaged\".\n" +
 	"\x18EnvironmentDeleteRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x9c\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"E\n" +
+	"\x1cEnvironmentGetManagedRequest\x12%\n" +
+	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\"\x8b\x05\n" +
+	"\x1dEnvironmentGetManagedResponse\x12%\n" +
+	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x03 \x01(\x01R\tcreatedAt\x12e\n" +
+	"\x0fprincipal_roles\x18\x04 \x03(\v2<.modal.client.EnvironmentGetManagedResponse.PrincipalEnvRoleR\x0eprincipalRoles\x12g\n" +
+	"\x10additional_roles\x18\x05 \x03(\v2<.modal.client.EnvironmentGetManagedResponse.PrincipalEnvRoleR\x0fadditionalRoles\x1a\xbf\x02\n" +
+	"\x10PrincipalEnvRole\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12&\n" +
+	"\x0fservice_user_id\x18\x02 \x01(\tR\rserviceUserId\x12\x14\n" +
+	"\x05email\x18\x03 \x01(\tR\x05email\x12\x1d\n" +
+	"\n" +
+	"avatar_url\x18\x04 \x01(\tR\tavatarUrl\x12*\n" +
+	"\x11service_user_name\x18\x05 \x01(\tR\x0fserviceUserName\x121\n" +
+	"\x04role\x18\x06 \x01(\x0e2\x1d.modal.client.EnvironmentRoleR\x04role\x129\n" +
+	"\vmember_role\x18\a \x01(\x0e2\x18.modal.client.MemberRoleR\n" +
+	"memberRole\x12\x1b\n" +
+	"\tuser_name\x18\b \x01(\tR\buserName\"\x9c\x01\n" +
 	"\x1dEnvironmentGetOrCreateRequest\x12'\n" +
 	"\x0fdeployment_name\x18\x01 \x01(\tR\x0edeploymentName\x12R\n" +
 	"\x14object_creation_type\x18\x02 \x01(\x0e2 .modal.client.ObjectCreationTypeR\x12objectCreationType\"\x86\x01\n" +
@@ -54021,7 +55182,15 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x05items\x18\x02 \x03(\v2!.modal.client.EnvironmentListItemR\x05items\"h\n" +
 	"\x13EnvironmentMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
-	"\bsettings\x18\x02 \x01(\v2!.modal.client.EnvironmentSettingsR\bsettings\"p\n" +
+	"\bsettings\x18\x02 \x01(\v2!.modal.client.EnvironmentSettingsR\bsettings\"\xb6\x01\n" +
+	"\x19EnvironmentRoleSetRequest\x12%\n" +
+	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12&\n" +
+	"\x0fservice_user_id\x18\x03 \x01(\tR\rserviceUserId\x121\n" +
+	"\x04role\x18\x04 \x01(\x0e2\x1d.modal.client.EnvironmentRoleR\x04role\"_\n" +
+	"\x1cEnvironmentSetManagedRequest\x12%\n" +
+	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x12\x18\n" +
+	"\amanaged\x18\x02 \x01(\bR\amanaged\"p\n" +
 	"\x13EnvironmentSettings\x122\n" +
 	"\x15image_builder_version\x18\x01 \x01(\tR\x13imageBuilderVersion\x12%\n" +
 	"\x0ewebhook_suffix\x18\x02 \x01(\tR\rwebhookSuffix\"\xc9\x02\n" +
@@ -54354,7 +55523,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x12target_concurrency\x18\x02 \x01(\rR\x11targetConcurrency\x12'\n" +
 	"\x0fmax_concurrency\x18\x03 \x01(\rR\x0emaxConcurrency\"I\n" +
 	"%FunctionGetDynamicConcurrencyResponse\x12 \n" +
-	"\vconcurrency\x18\x01 \x01(\rR\vconcurrency\"\xad\x03\n" +
+	"\vconcurrency\x18\x01 \x01(\rR\vconcurrency\"\xd7\x03\n" +
 	"\x15FunctionGetInputsItem\x12\x19\n" +
 	"\binput_id\x18\x01 \x01(\tR\ainputId\x121\n" +
 	"\x05input\x18\x02 \x01(\v2\x1b.modal.client.FunctionInputR\x05input\x12\x1f\n" +
@@ -54365,7 +55534,9 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\vretry_count\x18\a \x01(\rR\n" +
 	"retryCount\x12-\n" +
 	"\x10function_map_idx\x18\b \x01(\x05H\x00R\x0efunctionMapIdx\x88\x01\x01\x12#\n" +
-	"\rattempt_token\x18\t \x01(\tR\fattemptTokenB\x13\n" +
+	"\rattempt_token\x18\t \x01(\tR\fattemptToken\x12(\n" +
+	"\x10from_input_plane\x18\n" +
+	" \x01(\bR\x0efromInputPlaneB\x13\n" +
 	"\x11_function_map_idxJ\x04\b\x04\x10\x05\"\x8d\x02\n" +
 	"\x18FunctionGetInputsRequest\x12\x1f\n" +
 	"\vfunction_id\x18\x01 \x01(\tR\n" +
@@ -54560,7 +55731,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x1dFunctionPutInputsResponseItem\x12\x10\n" +
 	"\x03idx\x18\x01 \x01(\x05R\x03idx\x12\x19\n" +
 	"\binput_id\x18\x02 \x01(\tR\ainputId\x12\x1b\n" +
-	"\tinput_jwt\x18\x03 \x01(\tR\binputJwt\"\x88\x03\n" +
+	"\tinput_jwt\x18\x03 \x01(\tR\binputJwt\"\xb2\x03\n" +
 	"\x16FunctionPutOutputsItem\x12\x19\n" +
 	"\binput_id\x18\x01 \x01(\tR\ainputId\x123\n" +
 	"\x06result\x18\x02 \x01(\v2\x1b.modal.client.GenericResultR\x06result\x12(\n" +
@@ -54572,7 +55743,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"retryCount\x12(\n" +
 	"\x10function_call_id\x18\t \x01(\tR\x0efunctionCallId\x12-\n" +
 	"\x10function_map_idx\x18\n" +
-	" \x01(\x05H\x00R\x0efunctionMapIdx\x88\x01\x01B\x13\n" +
+	" \x01(\x05H\x00R\x0efunctionMapIdx\x88\x01\x01\x12(\n" +
+	"\x10from_input_plane\x18\v \x01(\bR\x0efromInputPlaneB\x13\n" +
 	"\x11_function_map_idx\"~\n" +
 	"\x19FunctionPutOutputsRequest\x12>\n" +
 	"\aoutputs\x18\x04 \x03(\v2$.modal.client.FunctionPutOutputsItemR\aoutputs\x12!\n" +
@@ -55100,7 +56272,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\n" +
 	"mount_path\x18\x02 \x01(\tR\tmountPath\x122\n" +
 	"\x15credentials_secret_id\x18\x03 \x01(\tR\x13credentialsSecretId\x12\x1b\n" +
-	"\tread_only\x18\x04 \x01(\bR\breadOnly\"\x80\x10\n" +
+	"\tread_only\x18\x04 \x01(\bR\breadOnly\"\xb8\x10\n" +
 	"\aSandbox\x12'\n" +
 	"\x0fentrypoint_args\x18\x01 \x03(\tR\x0eentrypointArgs\x12\x1b\n" +
 	"\tmount_ids\x18\x02 \x03(\tR\bmountIds\x12\x19\n" +
@@ -55136,12 +56308,13 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x04name\x18\x1e \x01(\tH\aR\x04name\x88\x01\x01\x12a\n" +
 	"\x14experimental_options\x18\x1f \x03(\v2..modal.client.Sandbox.ExperimentalOptionsEntryR\x13experimentalOptions\x122\n" +
 	"\x15preload_path_prefixes\x18  \x03(\tR\x13preloadPathPrefixes\x12/\n" +
-	"\x11idle_timeout_secs\x18! \x01(\rH\bR\x0fidleTimeoutSecs\x88\x01\x01\x12E\n" +
-	"\x1fdirect_sandbox_commands_enabled\x18\" \x01(\bR\x1cdirectSandboxCommandsEnabled\x123\n" +
+	"\x11idle_timeout_secs\x18! \x01(\rH\bR\x0fidleTimeoutSecs\x88\x01\x01\x12I\n" +
+	"\x1fdirect_sandbox_commands_enabled\x18\" \x01(\bB\x02\x18\x01R\x1cdirectSandboxCommandsEnabled\x123\n" +
 	"\x16_restore_instance_type\x18# \x01(\tR\x13RestoreInstanceType\x12#\n" +
 	"\rcustom_domain\x18$ \x01(\tR\fcustomDomain\x12=\n" +
 	"\x1binclude_oidc_identity_token\x18% \x01(\bR\x18includeOidcIdentityToken\x12A\n" +
-	"\x0freadiness_probe\x18& \x01(\v2\x13.modal.client.ProbeH\tR\x0ereadinessProbe\x88\x01\x01\x1aF\n" +
+	"\x0freadiness_probe\x18& \x01(\v2\x13.modal.client.ProbeH\tR\x0ereadinessProbe\x88\x01\x01\x122\n" +
+	"\x15allowed_inbound_cidrs\x18' \x03(\tR\x13allowedInboundCidrs\x1aF\n" +
 	"\x18ExperimentalOptionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\bR\x05value:\x028\x01B\x12\n" +
@@ -55422,12 +56595,25 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x06Update\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x19\n" +
 	"\x05value\x18\x02 \x01(\tH\x00R\x05value\x88\x01\x01B\b\n" +
-	"\x06_value\"\xa4\x01\n" +
+	"\x06_value\"\xf7\x01\n" +
+	"\vServiceUser\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
+	"\btoken_id\x18\x02 \x01(\tR\atokenId\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\x03 \x01(\tR\tcreatedBy\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\x01R\tcreatedAt\x12 \n" +
+	"\flast_used_at\x18\x05 \x01(\x01R\n" +
+	"lastUsedAt\x121\n" +
+	"\x15created_by_avatar_url\x18\x06 \x01(\tR\x12createdByAvatarUrl\x12&\n" +
+	"\x0fservice_user_id\x18\a \x01(\tR\rserviceUserId\"\xa4\x01\n" +
 	"\x13ServiceUserIdentity\x12&\n" +
 	"\x0fservice_user_id\x18\x01 \x01(\tR\rserviceUserId\x12*\n" +
 	"\x11service_user_name\x18\x02 \x01(\tR\x0fserviceUserName\x129\n" +
 	"\n" +
-	"created_by\x18\x03 \x01(\v2\x1a.modal.client.UserIdentityR\tcreatedBy\"E\n" +
+	"created_by\x18\x03 \x01(\v2\x1a.modal.client.UserIdentityR\tcreatedBy\"Y\n" +
+	"\x17ServiceUserListResponse\x12>\n" +
+	"\rservice_users\x18\x01 \x03(\v2\x19.modal.client.ServiceUserR\fserviceUsers\"E\n" +
 	"\x19SharedVolumeDeleteRequest\x12(\n" +
 	"\x10shared_volume_id\x18\x01 \x01(\tR\x0esharedVolumeId\"Z\n" +
 	"\x1aSharedVolumeGetFileRequest\x12(\n" +
@@ -55842,7 +57028,24 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x1cWorkspaceDashboardUrlRequest\x12)\n" +
 	"\x10environment_name\x18\x01 \x01(\tR\x0fenvironmentName\"1\n" +
 	"\x1dWorkspaceDashboardUrlResponse\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\"d\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\"\xb1\x03\n" +
+	"\x18WorkspaceMembersListItem\x12\x1b\n" +
+	"\tmember_id\x18\x01 \x01(\tR\bmemberId\x12-\n" +
+	"\x12member_displayname\x18\x02 \x01(\tR\x11memberDisplayname\x129\n" +
+	"\vmember_role\x18\x03 \x01(\x0e2\x18.modal.client.MemberRoleR\n" +
+	"memberRole\x12\x1b\n" +
+	"\tjoined_at\x18\x04 \x01(\x01R\bjoinedAt\x12$\n" +
+	"\x0elast_active_at\x18\x05 \x01(\x01R\flastActiveAt\x12\x1d\n" +
+	"\n" +
+	"deleted_at\x18\a \x01(\x01R\tdeletedAt\x12\x17\n" +
+	"\auser_id\x18\b \x01(\tR\x06userId\x12X\n" +
+	"\x16identity_provider_type\x18\t \x01(\x0e2\".modal.client.IdentityProviderTypeR\x14identityProviderType\x12\x14\n" +
+	"\x05email\x18\n" +
+	" \x01(\tR\x05email\x12\x1d\n" +
+	"\n" +
+	"avatar_url\x18\v \x01(\tR\tavatarUrlJ\x04\b\x06\x10\a\"`\n" +
+	"\x1cWorkspaceMembersListResponse\x12@\n" +
+	"\amembers\x18\x01 \x03(\v2&.modal.client.WorkspaceMembersListItemR\amembers\"d\n" +
 	"\x1bWorkspaceNameLookupResponse\x12)\n" +
 	"\x0eworkspace_name\x18\x01 \x01(\tB\x02\x18\x01R\rworkspaceName\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername*\x83\x01\n" +
@@ -55915,7 +57118,11 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x13DeploymentNamespace\x12$\n" +
 	" DEPLOYMENT_NAMESPACE_UNSPECIFIED\x10\x00\x12\"\n" +
 	"\x1eDEPLOYMENT_NAMESPACE_WORKSPACE\x10\x01\x12\x1f\n" +
-	"\x1bDEPLOYMENT_NAMESPACE_GLOBAL\x10\x03*\x92\x01\n" +
+	"\x1bDEPLOYMENT_NAMESPACE_GLOBAL\x10\x03*r\n" +
+	"\x0fEnvironmentRole\x12 \n" +
+	"\x1cENVIRONMENT_ROLE_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17ENVIRONMENT_ROLE_VIEWER\x10\x01\x12 \n" +
+	"\x1cENVIRONMENT_ROLE_CONTRIBUTOR\x10\x02*\x92\x01\n" +
 	"\x10ExecOutputOption\x12\"\n" +
 	"\x1eEXEC_OUTPUT_OPTION_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aEXEC_OUTPUT_OPTION_DEVNULL\x10\x01\x12\x1b\n" +
@@ -55947,7 +57154,18 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\rGPU_TYPE_H100\x10\n" +
 	"\x12\x11\n" +
 	"\rGPU_TYPE_L40S\x10\v\x12\x11\n" +
-	"\rGPU_TYPE_H200\x10\f*\xa0\x02\n" +
+	"\rGPU_TYPE_H200\x10\f*\xab\x01\n" +
+	"\x14IdentityProviderType\x12&\n" +
+	"\"IDENTITY_PROVIDER_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
+	"\x1dIDENTITY_PROVIDER_TYPE_GITHUB\x10\x01\x12\x1f\n" +
+	"\x1bIDENTITY_PROVIDER_TYPE_OKTA\x10\x02\x12'\n" +
+	"#IDENTITY_PROVIDER_TYPE_GOOGLE_OAUTH\x10\x03*o\n" +
+	"\n" +
+	"MemberRole\x12\x1b\n" +
+	"\x17MEMBER_ROLE_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10MEMBER_ROLE_USER\x10\x01\x12\x17\n" +
+	"\x13MEMBER_ROLE_MANAGER\x10\x02\x12\x15\n" +
+	"\x11MEMBER_ROLE_OWNER\x10\x03*\xa0\x02\n" +
 	"\x12ObjectCreationType\x12$\n" +
 	" OBJECT_CREATION_TYPE_UNSPECIFIED\x10\x00\x12*\n" +
 	"&OBJECT_CREATION_TYPE_CREATE_IF_MISSING\x10\x01\x12.\n" +
@@ -56046,7 +57264,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x15WEBHOOK_TYPE_ASGI_APP\x10\x01\x12\x19\n" +
 	"\x15WEBHOOK_TYPE_FUNCTION\x10\x02\x12\x19\n" +
 	"\x15WEBHOOK_TYPE_WSGI_APP\x10\x03\x12\x1b\n" +
-	"\x17WEBHOOK_TYPE_WEB_SERVER\x10\x042\xec\x8a\x01\n" +
+	"\x17WEBHOOK_TYPE_WEB_SERVER\x10\x042\xc0\x8e\x01\n" +
 	"\vModalClient\x12W\n" +
 	"\x13AppClientDisconnect\x12(.modal.client.AppClientDisconnectRequest\x1a\x16.google.protobuf.Empty\x12U\n" +
 	"\fAppCountLogs\x12!.modal.client.AppCountLogsRequest\x1a\".modal.client.AppCountLogsResponse\x12L\n" +
@@ -56118,9 +57336,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\n" +
 	"DomainList\x12\x1f.modal.client.DomainListRequest\x1a .modal.client.DomainListResponse\x12S\n" +
 	"\x11EnvironmentCreate\x12&.modal.client.EnvironmentCreateRequest\x1a\x16.google.protobuf.Empty\x12S\n" +
-	"\x11EnvironmentDelete\x12&.modal.client.EnvironmentDeleteRequest\x1a\x16.google.protobuf.Empty\x12s\n" +
+	"\x11EnvironmentDelete\x12&.modal.client.EnvironmentDeleteRequest\x1a\x16.google.protobuf.Empty\x12p\n" +
+	"\x15EnvironmentGetManaged\x12*.modal.client.EnvironmentGetManagedRequest\x1a+.modal.client.EnvironmentGetManagedResponse\x12s\n" +
 	"\x16EnvironmentGetOrCreate\x12+.modal.client.EnvironmentGetOrCreateRequest\x1a,.modal.client.EnvironmentGetOrCreateResponse\x12P\n" +
-	"\x0fEnvironmentList\x12\x16.google.protobuf.Empty\x1a%.modal.client.EnvironmentListResponse\x12^\n" +
+	"\x0fEnvironmentList\x12\x16.google.protobuf.Empty\x1a%.modal.client.EnvironmentListResponse\x12U\n" +
+	"\x12EnvironmentRoleSet\x12'.modal.client.EnvironmentRoleSetRequest\x1a\x16.google.protobuf.Empty\x12[\n" +
+	"\x15EnvironmentSetManaged\x12*.modal.client.EnvironmentSetManagedRequest\x1a\x16.google.protobuf.Empty\x12^\n" +
 	"\x11EnvironmentUpdate\x12&.modal.client.EnvironmentUpdateRequest\x1a!.modal.client.EnvironmentListItem\x12a\n" +
 	"\x18FlashContainerDeregister\x12-.modal.client.FlashContainerDeregisterRequest\x1a\x16.google.protobuf.Empty\x12g\n" +
 	"\x12FlashContainerList\x12'.modal.client.FlashContainerListRequest\x1a(.modal.client.FlashContainerListResponse\x12s\n" +
@@ -56210,7 +57431,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x11SecretGetOrCreate\x12&.modal.client.SecretGetOrCreateRequest\x1a'.modal.client.SecretGetOrCreateResponse\x12O\n" +
 	"\n" +
 	"SecretList\x12\x1f.modal.client.SecretListRequest\x1a .modal.client.SecretListResponse\x12I\n" +
-	"\fSecretUpdate\x12!.modal.client.SecretUpdateRequest\x1a\x16.google.protobuf.Empty\x12U\n" +
+	"\fSecretUpdate\x12!.modal.client.SecretUpdateRequest\x1a\x16.google.protobuf.Empty\x12P\n" +
+	"\x0fServiceUserList\x12\x16.google.protobuf.Empty\x1a%.modal.client.ServiceUserListResponse\x12U\n" +
 	"\x12SharedVolumeDelete\x12'.modal.client.SharedVolumeDeleteRequest\x1a\x16.google.protobuf.Empty\x12j\n" +
 	"\x13SharedVolumeGetFile\x12(.modal.client.SharedVolumeGetFileRequest\x1a).modal.client.SharedVolumeGetFileResponse\x12v\n" +
 	"\x17SharedVolumeGetOrCreate\x12,.modal.client.SharedVolumeGetOrCreateRequest\x1a-.modal.client.SharedVolumeGetOrCreateResponse\x12[\n" +
@@ -56254,11 +57476,12 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x11VolumeRemoveFile2\x12&.modal.client.VolumeRemoveFile2Request\x1a\x16.google.protobuf.Empty\x12I\n" +
 	"\fVolumeRename\x12!.modal.client.VolumeRenameRequest\x1a\x16.google.protobuf.Empty\x12q\n" +
 	"\x16WorkspaceBillingReport\x12+.modal.client.WorkspaceBillingReportRequest\x1a(.modal.client.WorkspaceBillingReportItem0\x01\x12s\n" +
-	"\x18WorkspaceDashboardUrlGet\x12*.modal.client.WorkspaceDashboardUrlRequest\x1a+.modal.client.WorkspaceDashboardUrlResponse\x12X\n" +
+	"\x18WorkspaceDashboardUrlGet\x12*.modal.client.WorkspaceDashboardUrlRequest\x1a+.modal.client.WorkspaceDashboardUrlResponse\x12Z\n" +
+	"\x14WorkspaceMembersList\x12\x16.google.protobuf.Empty\x1a*.modal.client.WorkspaceMembersListResponse\x12X\n" +
 	"\x13WorkspaceNameLookup\x12\x16.google.protobuf.Empty\x1a).modal.client.WorkspaceNameLookupResponseB&Z$github.com/modal-labs/modal/go/protob\x06proto3"
 
-var file_modal_proto_api_proto_enumTypes = make([]protoimpl.EnumInfo, 43)
-var file_modal_proto_api_proto_msgTypes = make([]protoimpl.MessageInfo, 508)
+var file_modal_proto_api_proto_enumTypes = make([]protoimpl.EnumInfo, 46)
+var file_modal_proto_api_proto_msgTypes = make([]protoimpl.MessageInfo, 517)
 var file_modal_proto_api_proto_goTypes = []any{
 	(AppDeployVisibility)(0),        // 0: modal.client.AppDeployVisibility
 	(AppDisconnectReason)(0),        // 1: modal.client.AppDisconnectReason
@@ -56271,1372 +57494,1403 @@ var file_modal_proto_api_proto_goTypes = []any{
 	(DNSRecordType)(0),              // 8: modal.client.DNSRecordType
 	(DataFormat)(0),                 // 9: modal.client.DataFormat
 	(DeploymentNamespace)(0),        // 10: modal.client.DeploymentNamespace
-	(ExecOutputOption)(0),           // 11: modal.client.ExecOutputOption
-	(FileDescriptor)(0),             // 12: modal.client.FileDescriptor
-	(FunctionCallInvocationType)(0), // 13: modal.client.FunctionCallInvocationType
-	(FunctionCallType)(0),           // 14: modal.client.FunctionCallType
-	(GPUType)(0),                    // 15: modal.client.GPUType
-	(ObjectCreationType)(0),         // 16: modal.client.ObjectCreationType
-	(ParameterType)(0),              // 17: modal.client.ParameterType
-	(ProgressType)(0),               // 18: modal.client.ProgressType
-	(ProxyIpStatus)(0),              // 19: modal.client.ProxyIpStatus
-	(ProxyType)(0),                  // 20: modal.client.ProxyType
-	(RateLimitInterval)(0),          // 21: modal.client.RateLimitInterval
-	(RegistryAuthType)(0),           // 22: modal.client.RegistryAuthType
-	(SeekWhence)(0),                 // 23: modal.client.SeekWhence
-	(SystemErrorCode)(0),            // 24: modal.client.SystemErrorCode
-	(TaskSnapshotBehavior)(0),       // 25: modal.client.TaskSnapshotBehavior
-	(TaskState)(0),                  // 26: modal.client.TaskState
-	(TunnelType)(0),                 // 27: modal.client.TunnelType
-	(VolumeFsVersion)(0),            // 28: modal.client.VolumeFsVersion
-	(WebhookAsyncMode)(0),           // 29: modal.client.WebhookAsyncMode
-	(WebhookType)(0),                // 30: modal.client.WebhookType
-	(ClassParameterInfo_ParameterSerializationFormat)(0), // 31: modal.client.ClassParameterInfo.ParameterSerializationFormat
-	(CloudBucketMount_BucketType)(0),                     // 32: modal.client.CloudBucketMount.BucketType
-	(CloudBucketMount_MetadataTTLType)(0),                // 33: modal.client.CloudBucketMount.MetadataTTLType
-	(FileEntry_FileType)(0),                              // 34: modal.client.FileEntry.FileType
-	(Function_DefinitionType)(0),                         // 35: modal.client.Function.DefinitionType
-	(Function_FunctionType)(0),                           // 36: modal.client.Function.FunctionType
-	(FunctionSchema_FunctionSchemaType)(0),               // 37: modal.client.FunctionSchema.FunctionSchemaType
-	(GenericResult_GenericStatus)(0),                     // 38: modal.client.GenericResult.GenericStatus
-	(NetworkAccess_NetworkAccessType)(0),                 // 39: modal.client.NetworkAccess.NetworkAccessType
-	(PTYInfo_PTYType)(0),                                 // 40: modal.client.PTYInfo.PTYType
-	(SandboxRestoreRequest_SandboxNameOverrideType)(0),   // 41: modal.client.SandboxRestoreRequest.SandboxNameOverrideType
-	(Warning_WarningType)(0),                             // 42: modal.client.Warning.WarningType
-	(*AppClientDisconnectRequest)(nil),                   // 43: modal.client.AppClientDisconnectRequest
-	(*AppCountLogsRequest)(nil),                          // 44: modal.client.AppCountLogsRequest
-	(*AppCountLogsResponse)(nil),                         // 45: modal.client.AppCountLogsResponse
-	(*AppCreateRequest)(nil),                             // 46: modal.client.AppCreateRequest
-	(*AppCreateResponse)(nil),                            // 47: modal.client.AppCreateResponse
-	(*AppDeployRequest)(nil),                             // 48: modal.client.AppDeployRequest
-	(*AppDeployResponse)(nil),                            // 49: modal.client.AppDeployResponse
-	(*AppDeploymentHistory)(nil),                         // 50: modal.client.AppDeploymentHistory
-	(*AppDeploymentHistoryRequest)(nil),                  // 51: modal.client.AppDeploymentHistoryRequest
-	(*AppDeploymentHistoryResponse)(nil),                 // 52: modal.client.AppDeploymentHistoryResponse
-	(*AppFetchLogsRequest)(nil),                          // 53: modal.client.AppFetchLogsRequest
-	(*AppFetchLogsResponse)(nil),                         // 54: modal.client.AppFetchLogsResponse
-	(*AppGetByDeploymentNameRequest)(nil),                // 55: modal.client.AppGetByDeploymentNameRequest
-	(*AppGetByDeploymentNameResponse)(nil),               // 56: modal.client.AppGetByDeploymentNameResponse
-	(*AppGetLayoutRequest)(nil),                          // 57: modal.client.AppGetLayoutRequest
-	(*AppGetLayoutResponse)(nil),                         // 58: modal.client.AppGetLayoutResponse
-	(*AppGetLifecycleRequest)(nil),                       // 59: modal.client.AppGetLifecycleRequest
-	(*AppGetLifecycleResponse)(nil),                      // 60: modal.client.AppGetLifecycleResponse
-	(*AppGetLogsRequest)(nil),                            // 61: modal.client.AppGetLogsRequest
-	(*AppGetObjectsItem)(nil),                            // 62: modal.client.AppGetObjectsItem
-	(*AppGetObjectsRequest)(nil),                         // 63: modal.client.AppGetObjectsRequest
-	(*AppGetObjectsResponse)(nil),                        // 64: modal.client.AppGetObjectsResponse
-	(*AppGetOrCreateRequest)(nil),                        // 65: modal.client.AppGetOrCreateRequest
-	(*AppGetOrCreateResponse)(nil),                       // 66: modal.client.AppGetOrCreateResponse
-	(*AppGetTagsRequest)(nil),                            // 67: modal.client.AppGetTagsRequest
-	(*AppGetTagsResponse)(nil),                           // 68: modal.client.AppGetTagsResponse
-	(*AppHeartbeatRequest)(nil),                          // 69: modal.client.AppHeartbeatRequest
-	(*AppLayout)(nil),                                    // 70: modal.client.AppLayout
-	(*AppLifecycle)(nil),                                 // 71: modal.client.AppLifecycle
-	(*AppListRequest)(nil),                               // 72: modal.client.AppListRequest
-	(*AppListResponse)(nil),                              // 73: modal.client.AppListResponse
-	(*AppLookupRequest)(nil),                             // 74: modal.client.AppLookupRequest
-	(*AppLookupResponse)(nil),                            // 75: modal.client.AppLookupResponse
-	(*AppPublishRequest)(nil),                            // 76: modal.client.AppPublishRequest
-	(*AppPublishResponse)(nil),                           // 77: modal.client.AppPublishResponse
-	(*AppRollbackRequest)(nil),                           // 78: modal.client.AppRollbackRequest
-	(*AppRolloverRequest)(nil),                           // 79: modal.client.AppRolloverRequest
-	(*AppRolloverResponse)(nil),                          // 80: modal.client.AppRolloverResponse
-	(*AppSetObjectsRequest)(nil),                         // 81: modal.client.AppSetObjectsRequest
-	(*AppSetTagsRequest)(nil),                            // 82: modal.client.AppSetTagsRequest
-	(*AppStopRequest)(nil),                               // 83: modal.client.AppStopRequest
-	(*Asgi)(nil),                                         // 84: modal.client.Asgi
-	(*AttemptAwaitRequest)(nil),                          // 85: modal.client.AttemptAwaitRequest
-	(*AttemptAwaitResponse)(nil),                         // 86: modal.client.AttemptAwaitResponse
-	(*AttemptRetryRequest)(nil),                          // 87: modal.client.AttemptRetryRequest
-	(*AttemptRetryResponse)(nil),                         // 88: modal.client.AttemptRetryResponse
-	(*AttemptStartRequest)(nil),                          // 89: modal.client.AttemptStartRequest
-	(*AttemptStartResponse)(nil),                         // 90: modal.client.AttemptStartResponse
-	(*AuthTokenGetRequest)(nil),                          // 91: modal.client.AuthTokenGetRequest
-	(*AuthTokenGetResponse)(nil),                         // 92: modal.client.AuthTokenGetResponse
-	(*AutoscalerConfiguration)(nil),                      // 93: modal.client.AutoscalerConfiguration
-	(*AutoscalerSettings)(nil),                           // 94: modal.client.AutoscalerSettings
-	(*AutoscalingMetrics)(nil),                           // 95: modal.client.AutoscalingMetrics
-	(*BaseImage)(nil),                                    // 96: modal.client.BaseImage
-	(*BlobCreateRequest)(nil),                            // 97: modal.client.BlobCreateRequest
-	(*BlobCreateResponse)(nil),                           // 98: modal.client.BlobCreateResponse
-	(*BlobGetRequest)(nil),                               // 99: modal.client.BlobGetRequest
-	(*BlobGetResponse)(nil),                              // 100: modal.client.BlobGetResponse
-	(*BuildFunction)(nil),                                // 101: modal.client.BuildFunction
-	(*CancelInputEvent)(nil),                             // 102: modal.client.CancelInputEvent
-	(*CheckpointInfo)(nil),                               // 103: modal.client.CheckpointInfo
-	(*ClassCreateRequest)(nil),                           // 104: modal.client.ClassCreateRequest
-	(*ClassCreateResponse)(nil),                          // 105: modal.client.ClassCreateResponse
-	(*ClassGetRequest)(nil),                              // 106: modal.client.ClassGetRequest
-	(*ClassGetResponse)(nil),                             // 107: modal.client.ClassGetResponse
-	(*ClassHandleMetadata)(nil),                          // 108: modal.client.ClassHandleMetadata
-	(*ClassMethod)(nil),                                  // 109: modal.client.ClassMethod
-	(*ClassParameterInfo)(nil),                           // 110: modal.client.ClassParameterInfo
-	(*ClassParameterSet)(nil),                            // 111: modal.client.ClassParameterSet
-	(*ClassParameterSpec)(nil),                           // 112: modal.client.ClassParameterSpec
-	(*ClassParameterValue)(nil),                          // 113: modal.client.ClassParameterValue
-	(*ClientHelloResponse)(nil),                          // 114: modal.client.ClientHelloResponse
-	(*CloudBucketMount)(nil),                             // 115: modal.client.CloudBucketMount
-	(*ClusterGetRequest)(nil),                            // 116: modal.client.ClusterGetRequest
-	(*ClusterGetResponse)(nil),                           // 117: modal.client.ClusterGetResponse
-	(*ClusterListRequest)(nil),                           // 118: modal.client.ClusterListRequest
-	(*ClusterListResponse)(nil),                          // 119: modal.client.ClusterListResponse
-	(*ClusterStats)(nil),                                 // 120: modal.client.ClusterStats
-	(*CommitInfo)(nil),                                   // 121: modal.client.CommitInfo
-	(*ContainerArguments)(nil),                           // 122: modal.client.ContainerArguments
-	(*ContainerCheckpointRequest)(nil),                   // 123: modal.client.ContainerCheckpointRequest
-	(*ContainerExecGetOutputRequest)(nil),                // 124: modal.client.ContainerExecGetOutputRequest
-	(*ContainerExecPutInputRequest)(nil),                 // 125: modal.client.ContainerExecPutInputRequest
-	(*ContainerExecRequest)(nil),                         // 126: modal.client.ContainerExecRequest
-	(*ContainerExecResponse)(nil),                        // 127: modal.client.ContainerExecResponse
-	(*ContainerExecWaitRequest)(nil),                     // 128: modal.client.ContainerExecWaitRequest
-	(*ContainerExecWaitResponse)(nil),                    // 129: modal.client.ContainerExecWaitResponse
-	(*ContainerFileCloseRequest)(nil),                    // 130: modal.client.ContainerFileCloseRequest
-	(*ContainerFileDeleteBytesRequest)(nil),              // 131: modal.client.ContainerFileDeleteBytesRequest
-	(*ContainerFileFlushRequest)(nil),                    // 132: modal.client.ContainerFileFlushRequest
-	(*ContainerFileLsRequest)(nil),                       // 133: modal.client.ContainerFileLsRequest
-	(*ContainerFileMkdirRequest)(nil),                    // 134: modal.client.ContainerFileMkdirRequest
-	(*ContainerFileOpenRequest)(nil),                     // 135: modal.client.ContainerFileOpenRequest
-	(*ContainerFileReadLineRequest)(nil),                 // 136: modal.client.ContainerFileReadLineRequest
-	(*ContainerFileReadRequest)(nil),                     // 137: modal.client.ContainerFileReadRequest
-	(*ContainerFileRmRequest)(nil),                       // 138: modal.client.ContainerFileRmRequest
-	(*ContainerFileSeekRequest)(nil),                     // 139: modal.client.ContainerFileSeekRequest
-	(*ContainerFileWatchRequest)(nil),                    // 140: modal.client.ContainerFileWatchRequest
-	(*ContainerFileWriteReplaceBytesRequest)(nil),        // 141: modal.client.ContainerFileWriteReplaceBytesRequest
-	(*ContainerFileWriteRequest)(nil),                    // 142: modal.client.ContainerFileWriteRequest
-	(*ContainerFilesystemExecGetOutputRequest)(nil),      // 143: modal.client.ContainerFilesystemExecGetOutputRequest
-	(*ContainerFilesystemExecRequest)(nil),               // 144: modal.client.ContainerFilesystemExecRequest
-	(*ContainerFilesystemExecResponse)(nil),              // 145: modal.client.ContainerFilesystemExecResponse
-	(*ContainerHeartbeatRequest)(nil),                    // 146: modal.client.ContainerHeartbeatRequest
-	(*ContainerHeartbeatResponse)(nil),                   // 147: modal.client.ContainerHeartbeatResponse
-	(*ContainerLogRequest)(nil),                          // 148: modal.client.ContainerLogRequest
-	(*ContainerReloadVolumesRequest)(nil),                // 149: modal.client.ContainerReloadVolumesRequest
-	(*ContainerReloadVolumesResponse)(nil),               // 150: modal.client.ContainerReloadVolumesResponse
-	(*ContainerStopRequest)(nil),                         // 151: modal.client.ContainerStopRequest
-	(*ContainerStopResponse)(nil),                        // 152: modal.client.ContainerStopResponse
-	(*CreationInfo)(nil),                                 // 153: modal.client.CreationInfo
-	(*CustomDomainConfig)(nil),                           // 154: modal.client.CustomDomainConfig
-	(*CustomDomainInfo)(nil),                             // 155: modal.client.CustomDomainInfo
-	(*DNSRecord)(nil),                                    // 156: modal.client.DNSRecord
-	(*DataChunk)(nil),                                    // 157: modal.client.DataChunk
-	(*DictClearRequest)(nil),                             // 158: modal.client.DictClearRequest
-	(*DictContainsRequest)(nil),                          // 159: modal.client.DictContainsRequest
-	(*DictContainsResponse)(nil),                         // 160: modal.client.DictContainsResponse
-	(*DictContentsRequest)(nil),                          // 161: modal.client.DictContentsRequest
-	(*DictDeleteRequest)(nil),                            // 162: modal.client.DictDeleteRequest
-	(*DictEntry)(nil),                                    // 163: modal.client.DictEntry
-	(*DictGetByIdRequest)(nil),                           // 164: modal.client.DictGetByIdRequest
-	(*DictGetByIdResponse)(nil),                          // 165: modal.client.DictGetByIdResponse
-	(*DictGetOrCreateRequest)(nil),                       // 166: modal.client.DictGetOrCreateRequest
-	(*DictGetOrCreateResponse)(nil),                      // 167: modal.client.DictGetOrCreateResponse
-	(*DictGetRequest)(nil),                               // 168: modal.client.DictGetRequest
-	(*DictGetResponse)(nil),                              // 169: modal.client.DictGetResponse
-	(*DictHeartbeatRequest)(nil),                         // 170: modal.client.DictHeartbeatRequest
-	(*DictLenRequest)(nil),                               // 171: modal.client.DictLenRequest
-	(*DictLenResponse)(nil),                              // 172: modal.client.DictLenResponse
-	(*DictListRequest)(nil),                              // 173: modal.client.DictListRequest
-	(*DictListResponse)(nil),                             // 174: modal.client.DictListResponse
-	(*DictMetadata)(nil),                                 // 175: modal.client.DictMetadata
-	(*DictPopRequest)(nil),                               // 176: modal.client.DictPopRequest
-	(*DictPopResponse)(nil),                              // 177: modal.client.DictPopResponse
-	(*DictUpdateRequest)(nil),                            // 178: modal.client.DictUpdateRequest
-	(*DictUpdateResponse)(nil),                           // 179: modal.client.DictUpdateResponse
-	(*Domain)(nil),                                       // 180: modal.client.Domain
-	(*DomainCertificateVerifyRequest)(nil),               // 181: modal.client.DomainCertificateVerifyRequest
-	(*DomainCertificateVerifyResponse)(nil),              // 182: modal.client.DomainCertificateVerifyResponse
-	(*DomainCreateRequest)(nil),                          // 183: modal.client.DomainCreateRequest
-	(*DomainCreateResponse)(nil),                         // 184: modal.client.DomainCreateResponse
-	(*DomainListRequest)(nil),                            // 185: modal.client.DomainListRequest
-	(*DomainListResponse)(nil),                           // 186: modal.client.DomainListResponse
-	(*EnvironmentCreateRequest)(nil),                     // 187: modal.client.EnvironmentCreateRequest
-	(*EnvironmentDeleteRequest)(nil),                     // 188: modal.client.EnvironmentDeleteRequest
-	(*EnvironmentGetOrCreateRequest)(nil),                // 189: modal.client.EnvironmentGetOrCreateRequest
-	(*EnvironmentGetOrCreateResponse)(nil),               // 190: modal.client.EnvironmentGetOrCreateResponse
-	(*EnvironmentListItem)(nil),                          // 191: modal.client.EnvironmentListItem
-	(*EnvironmentListResponse)(nil),                      // 192: modal.client.EnvironmentListResponse
-	(*EnvironmentMetadata)(nil),                          // 193: modal.client.EnvironmentMetadata
-	(*EnvironmentSettings)(nil),                          // 194: modal.client.EnvironmentSettings
-	(*EnvironmentUpdateRequest)(nil),                     // 195: modal.client.EnvironmentUpdateRequest
-	(*FileEntry)(nil),                                    // 196: modal.client.FileEntry
-	(*FilesystemRuntimeOutputBatch)(nil),                 // 197: modal.client.FilesystemRuntimeOutputBatch
-	(*FlashContainerDeregisterRequest)(nil),              // 198: modal.client.FlashContainerDeregisterRequest
-	(*FlashContainerListRequest)(nil),                    // 199: modal.client.FlashContainerListRequest
-	(*FlashContainerListResponse)(nil),                   // 200: modal.client.FlashContainerListResponse
-	(*FlashContainerRegisterRequest)(nil),                // 201: modal.client.FlashContainerRegisterRequest
-	(*FlashContainerRegisterResponse)(nil),               // 202: modal.client.FlashContainerRegisterResponse
-	(*FlashProxyUpstreamRequest)(nil),                    // 203: modal.client.FlashProxyUpstreamRequest
-	(*FlashSetTargetSlotsMetricsRequest)(nil),            // 204: modal.client.FlashSetTargetSlotsMetricsRequest
-	(*FlashSetTargetSlotsMetricsResponse)(nil),           // 205: modal.client.FlashSetTargetSlotsMetricsResponse
-	(*Function)(nil),                                     // 206: modal.client.Function
-	(*FunctionAsyncInvokeRequest)(nil),                   // 207: modal.client.FunctionAsyncInvokeRequest
-	(*FunctionAsyncInvokeResponse)(nil),                  // 208: modal.client.FunctionAsyncInvokeResponse
-	(*FunctionBindParamsRequest)(nil),                    // 209: modal.client.FunctionBindParamsRequest
-	(*FunctionBindParamsResponse)(nil),                   // 210: modal.client.FunctionBindParamsResponse
-	(*FunctionCallCallGraphInfo)(nil),                    // 211: modal.client.FunctionCallCallGraphInfo
-	(*FunctionCallCancelRequest)(nil),                    // 212: modal.client.FunctionCallCancelRequest
-	(*FunctionCallFromIdRequest)(nil),                    // 213: modal.client.FunctionCallFromIdRequest
-	(*FunctionCallFromIdResponse)(nil),                   // 214: modal.client.FunctionCallFromIdResponse
-	(*FunctionCallGetDataRequest)(nil),                   // 215: modal.client.FunctionCallGetDataRequest
-	(*FunctionCallInfo)(nil),                             // 216: modal.client.FunctionCallInfo
-	(*FunctionCallListRequest)(nil),                      // 217: modal.client.FunctionCallListRequest
-	(*FunctionCallListResponse)(nil),                     // 218: modal.client.FunctionCallListResponse
-	(*FunctionCallPutDataRequest)(nil),                   // 219: modal.client.FunctionCallPutDataRequest
-	(*FunctionCreateRequest)(nil),                        // 220: modal.client.FunctionCreateRequest
-	(*FunctionCreateResponse)(nil),                       // 221: modal.client.FunctionCreateResponse
-	(*FunctionData)(nil),                                 // 222: modal.client.FunctionData
-	(*FunctionExtended)(nil),                             // 223: modal.client.FunctionExtended
-	(*FunctionFinishInputsRequest)(nil),                  // 224: modal.client.FunctionFinishInputsRequest
-	(*FunctionGetCallGraphRequest)(nil),                  // 225: modal.client.FunctionGetCallGraphRequest
-	(*FunctionGetCallGraphResponse)(nil),                 // 226: modal.client.FunctionGetCallGraphResponse
-	(*FunctionGetCurrentStatsRequest)(nil),               // 227: modal.client.FunctionGetCurrentStatsRequest
-	(*FunctionGetDynamicConcurrencyRequest)(nil),         // 228: modal.client.FunctionGetDynamicConcurrencyRequest
-	(*FunctionGetDynamicConcurrencyResponse)(nil),        // 229: modal.client.FunctionGetDynamicConcurrencyResponse
-	(*FunctionGetInputsItem)(nil),                        // 230: modal.client.FunctionGetInputsItem
-	(*FunctionGetInputsRequest)(nil),                     // 231: modal.client.FunctionGetInputsRequest
-	(*FunctionGetInputsResponse)(nil),                    // 232: modal.client.FunctionGetInputsResponse
-	(*FunctionGetOutputsItem)(nil),                       // 233: modal.client.FunctionGetOutputsItem
-	(*FunctionGetOutputsRequest)(nil),                    // 234: modal.client.FunctionGetOutputsRequest
-	(*FunctionGetOutputsResponse)(nil),                   // 235: modal.client.FunctionGetOutputsResponse
-	(*FunctionGetRequest)(nil),                           // 236: modal.client.FunctionGetRequest
-	(*FunctionGetResponse)(nil),                          // 237: modal.client.FunctionGetResponse
-	(*FunctionGetSerializedRequest)(nil),                 // 238: modal.client.FunctionGetSerializedRequest
-	(*FunctionGetSerializedResponse)(nil),                // 239: modal.client.FunctionGetSerializedResponse
-	(*FunctionHandleMetadata)(nil),                       // 240: modal.client.FunctionHandleMetadata
-	(*FunctionInput)(nil),                                // 241: modal.client.FunctionInput
-	(*FunctionMapRequest)(nil),                           // 242: modal.client.FunctionMapRequest
-	(*FunctionMapResponse)(nil),                          // 243: modal.client.FunctionMapResponse
-	(*FunctionOptions)(nil),                              // 244: modal.client.FunctionOptions
-	(*FunctionPrecreateRequest)(nil),                     // 245: modal.client.FunctionPrecreateRequest
-	(*FunctionPrecreateResponse)(nil),                    // 246: modal.client.FunctionPrecreateResponse
-	(*FunctionPutInputsItem)(nil),                        // 247: modal.client.FunctionPutInputsItem
-	(*FunctionPutInputsRequest)(nil),                     // 248: modal.client.FunctionPutInputsRequest
-	(*FunctionPutInputsResponse)(nil),                    // 249: modal.client.FunctionPutInputsResponse
-	(*FunctionPutInputsResponseItem)(nil),                // 250: modal.client.FunctionPutInputsResponseItem
-	(*FunctionPutOutputsItem)(nil),                       // 251: modal.client.FunctionPutOutputsItem
-	(*FunctionPutOutputsRequest)(nil),                    // 252: modal.client.FunctionPutOutputsRequest
-	(*FunctionRetryInputsItem)(nil),                      // 253: modal.client.FunctionRetryInputsItem
-	(*FunctionRetryInputsRequest)(nil),                   // 254: modal.client.FunctionRetryInputsRequest
-	(*FunctionRetryInputsResponse)(nil),                  // 255: modal.client.FunctionRetryInputsResponse
-	(*FunctionRetryPolicy)(nil),                          // 256: modal.client.FunctionRetryPolicy
-	(*FunctionSchema)(nil),                               // 257: modal.client.FunctionSchema
-	(*FunctionStats)(nil),                                // 258: modal.client.FunctionStats
-	(*FunctionUpdateSchedulingParamsRequest)(nil),        // 259: modal.client.FunctionUpdateSchedulingParamsRequest
-	(*FunctionUpdateSchedulingParamsResponse)(nil),       // 260: modal.client.FunctionUpdateSchedulingParamsResponse
-	(*GPUConfig)(nil),                                    // 261: modal.client.GPUConfig
-	(*GeneratorDone)(nil),                                // 262: modal.client.GeneratorDone
-	(*GenericPayloadType)(nil),                           // 263: modal.client.GenericPayloadType
-	(*GenericResult)(nil),                                // 264: modal.client.GenericResult
-	(*HTTPConfig)(nil),                                   // 265: modal.client.HTTPConfig
-	(*Image)(nil),                                        // 266: modal.client.Image
-	(*ImageContextFile)(nil),                             // 267: modal.client.ImageContextFile
-	(*ImageDeleteRequest)(nil),                           // 268: modal.client.ImageDeleteRequest
-	(*ImageFromIdRequest)(nil),                           // 269: modal.client.ImageFromIdRequest
-	(*ImageFromIdResponse)(nil),                          // 270: modal.client.ImageFromIdResponse
-	(*ImageGetOrCreateRequest)(nil),                      // 271: modal.client.ImageGetOrCreateRequest
-	(*ImageGetOrCreateResponse)(nil),                     // 272: modal.client.ImageGetOrCreateResponse
-	(*ImageJoinStreamingRequest)(nil),                    // 273: modal.client.ImageJoinStreamingRequest
-	(*ImageJoinStreamingResponse)(nil),                   // 274: modal.client.ImageJoinStreamingResponse
-	(*ImageMetadata)(nil),                                // 275: modal.client.ImageMetadata
-	(*ImageRegistryConfig)(nil),                          // 276: modal.client.ImageRegistryConfig
-	(*InputCallGraphInfo)(nil),                           // 277: modal.client.InputCallGraphInfo
-	(*InputCategoryInfo)(nil),                            // 278: modal.client.InputCategoryInfo
-	(*InputInfo)(nil),                                    // 279: modal.client.InputInfo
-	(*ListPagination)(nil),                               // 280: modal.client.ListPagination
-	(*MapAwaitRequest)(nil),                              // 281: modal.client.MapAwaitRequest
-	(*MapAwaitResponse)(nil),                             // 282: modal.client.MapAwaitResponse
-	(*MapCheckInputsRequest)(nil),                        // 283: modal.client.MapCheckInputsRequest
-	(*MapCheckInputsResponse)(nil),                       // 284: modal.client.MapCheckInputsResponse
-	(*MapStartOrContinueItem)(nil),                       // 285: modal.client.MapStartOrContinueItem
-	(*MapStartOrContinueRequest)(nil),                    // 286: modal.client.MapStartOrContinueRequest
-	(*MapStartOrContinueResponse)(nil),                   // 287: modal.client.MapStartOrContinueResponse
-	(*MethodDefinition)(nil),                             // 288: modal.client.MethodDefinition
-	(*MountFile)(nil),                                    // 289: modal.client.MountFile
-	(*MountGetOrCreateRequest)(nil),                      // 290: modal.client.MountGetOrCreateRequest
-	(*MountGetOrCreateResponse)(nil),                     // 291: modal.client.MountGetOrCreateResponse
-	(*MountHandleMetadata)(nil),                          // 292: modal.client.MountHandleMetadata
-	(*MountPutFileRequest)(nil),                          // 293: modal.client.MountPutFileRequest
-	(*MountPutFileResponse)(nil),                         // 294: modal.client.MountPutFileResponse
-	(*MultiPartUpload)(nil),                              // 295: modal.client.MultiPartUpload
-	(*MultiPartUploadList)(nil),                          // 296: modal.client.MultiPartUploadList
-	(*NetworkAccess)(nil),                                // 297: modal.client.NetworkAccess
-	(*NotebookKernelPublishResultsRequest)(nil),          // 298: modal.client.NotebookKernelPublishResultsRequest
-	(*NotebookOutput)(nil),                               // 299: modal.client.NotebookOutput
-	(*Object)(nil),                                       // 300: modal.client.Object
-	(*ObjectDependency)(nil),                             // 301: modal.client.ObjectDependency
-	(*PTYInfo)(nil),                                      // 302: modal.client.PTYInfo
-	(*PortSpec)(nil),                                     // 303: modal.client.PortSpec
-	(*PortSpecs)(nil),                                    // 304: modal.client.PortSpecs
-	(*Probe)(nil),                                        // 305: modal.client.Probe
-	(*Proxy)(nil),                                        // 306: modal.client.Proxy
-	(*ProxyAddIpRequest)(nil),                            // 307: modal.client.ProxyAddIpRequest
-	(*ProxyAddIpResponse)(nil),                           // 308: modal.client.ProxyAddIpResponse
-	(*ProxyCreateRequest)(nil),                           // 309: modal.client.ProxyCreateRequest
-	(*ProxyCreateResponse)(nil),                          // 310: modal.client.ProxyCreateResponse
-	(*ProxyDeleteRequest)(nil),                           // 311: modal.client.ProxyDeleteRequest
-	(*ProxyGetOrCreateRequest)(nil),                      // 312: modal.client.ProxyGetOrCreateRequest
-	(*ProxyGetOrCreateResponse)(nil),                     // 313: modal.client.ProxyGetOrCreateResponse
-	(*ProxyGetRequest)(nil),                              // 314: modal.client.ProxyGetRequest
-	(*ProxyGetResponse)(nil),                             // 315: modal.client.ProxyGetResponse
-	(*ProxyInfo)(nil),                                    // 316: modal.client.ProxyInfo
-	(*ProxyIp)(nil),                                      // 317: modal.client.ProxyIp
-	(*ProxyListResponse)(nil),                            // 318: modal.client.ProxyListResponse
-	(*ProxyRemoveIpRequest)(nil),                         // 319: modal.client.ProxyRemoveIpRequest
-	(*QueueClearRequest)(nil),                            // 320: modal.client.QueueClearRequest
-	(*QueueDeleteRequest)(nil),                           // 321: modal.client.QueueDeleteRequest
-	(*QueueGetByIdRequest)(nil),                          // 322: modal.client.QueueGetByIdRequest
-	(*QueueGetByIdResponse)(nil),                         // 323: modal.client.QueueGetByIdResponse
-	(*QueueGetOrCreateRequest)(nil),                      // 324: modal.client.QueueGetOrCreateRequest
-	(*QueueGetOrCreateResponse)(nil),                     // 325: modal.client.QueueGetOrCreateResponse
-	(*QueueGetRequest)(nil),                              // 326: modal.client.QueueGetRequest
-	(*QueueGetResponse)(nil),                             // 327: modal.client.QueueGetResponse
-	(*QueueHeartbeatRequest)(nil),                        // 328: modal.client.QueueHeartbeatRequest
-	(*QueueItem)(nil),                                    // 329: modal.client.QueueItem
-	(*QueueLenRequest)(nil),                              // 330: modal.client.QueueLenRequest
-	(*QueueLenResponse)(nil),                             // 331: modal.client.QueueLenResponse
-	(*QueueListRequest)(nil),                             // 332: modal.client.QueueListRequest
-	(*QueueListResponse)(nil),                            // 333: modal.client.QueueListResponse
-	(*QueueMetadata)(nil),                                // 334: modal.client.QueueMetadata
-	(*QueueNextItemsRequest)(nil),                        // 335: modal.client.QueueNextItemsRequest
-	(*QueueNextItemsResponse)(nil),                       // 336: modal.client.QueueNextItemsResponse
-	(*QueuePutRequest)(nil),                              // 337: modal.client.QueuePutRequest
-	(*RPCRetryPolicy)(nil),                               // 338: modal.client.RPCRetryPolicy
-	(*RPCStatus)(nil),                                    // 339: modal.client.RPCStatus
-	(*RateLimit)(nil),                                    // 340: modal.client.RateLimit
-	(*ResourceInfo)(nil),                                 // 341: modal.client.ResourceInfo
-	(*Resources)(nil),                                    // 342: modal.client.Resources
-	(*RuntimeInputMessage)(nil),                          // 343: modal.client.RuntimeInputMessage
-	(*RuntimeOutputBatch)(nil),                           // 344: modal.client.RuntimeOutputBatch
-	(*RuntimeOutputMessage)(nil),                         // 345: modal.client.RuntimeOutputMessage
-	(*S3Mount)(nil),                                      // 346: modal.client.S3Mount
-	(*Sandbox)(nil),                                      // 347: modal.client.Sandbox
-	(*SandboxCreateConnectTokenRequest)(nil),             // 348: modal.client.SandboxCreateConnectTokenRequest
-	(*SandboxCreateConnectTokenResponse)(nil),            // 349: modal.client.SandboxCreateConnectTokenResponse
-	(*SandboxCreateRequest)(nil),                         // 350: modal.client.SandboxCreateRequest
-	(*SandboxCreateResponse)(nil),                        // 351: modal.client.SandboxCreateResponse
-	(*SandboxCreateV2Request)(nil),                       // 352: modal.client.SandboxCreateV2Request
-	(*SandboxCreateV2Response)(nil),                      // 353: modal.client.SandboxCreateV2Response
-	(*SandboxGetCommandRouterAccessRequest)(nil),         // 354: modal.client.SandboxGetCommandRouterAccessRequest
-	(*SandboxGetCommandRouterAccessResponse)(nil),        // 355: modal.client.SandboxGetCommandRouterAccessResponse
-	(*SandboxGetFromNameRequest)(nil),                    // 356: modal.client.SandboxGetFromNameRequest
-	(*SandboxGetFromNameResponse)(nil),                   // 357: modal.client.SandboxGetFromNameResponse
-	(*SandboxGetLogsRequest)(nil),                        // 358: modal.client.SandboxGetLogsRequest
-	(*SandboxGetResourceUsageRequest)(nil),               // 359: modal.client.SandboxGetResourceUsageRequest
-	(*SandboxGetResourceUsageResponse)(nil),              // 360: modal.client.SandboxGetResourceUsageResponse
-	(*SandboxGetTaskIdRequest)(nil),                      // 361: modal.client.SandboxGetTaskIdRequest
-	(*SandboxGetTaskIdResponse)(nil),                     // 362: modal.client.SandboxGetTaskIdResponse
-	(*SandboxGetTunnelsRequest)(nil),                     // 363: modal.client.SandboxGetTunnelsRequest
-	(*SandboxGetTunnelsResponse)(nil),                    // 364: modal.client.SandboxGetTunnelsResponse
-	(*SandboxHandleMetadata)(nil),                        // 365: modal.client.SandboxHandleMetadata
-	(*SandboxInfo)(nil),                                  // 366: modal.client.SandboxInfo
-	(*SandboxListRequest)(nil),                           // 367: modal.client.SandboxListRequest
-	(*SandboxListResponse)(nil),                          // 368: modal.client.SandboxListResponse
-	(*SandboxRestoreRequest)(nil),                        // 369: modal.client.SandboxRestoreRequest
-	(*SandboxRestoreResponse)(nil),                       // 370: modal.client.SandboxRestoreResponse
-	(*SandboxSnapshotFsAsyncGetRequest)(nil),             // 371: modal.client.SandboxSnapshotFsAsyncGetRequest
-	(*SandboxSnapshotFsAsyncRequest)(nil),                // 372: modal.client.SandboxSnapshotFsAsyncRequest
-	(*SandboxSnapshotFsAsyncResponse)(nil),               // 373: modal.client.SandboxSnapshotFsAsyncResponse
-	(*SandboxSnapshotFsRequest)(nil),                     // 374: modal.client.SandboxSnapshotFsRequest
-	(*SandboxSnapshotFsResponse)(nil),                    // 375: modal.client.SandboxSnapshotFsResponse
-	(*SandboxSnapshotGetRequest)(nil),                    // 376: modal.client.SandboxSnapshotGetRequest
-	(*SandboxSnapshotGetResponse)(nil),                   // 377: modal.client.SandboxSnapshotGetResponse
-	(*SandboxSnapshotRequest)(nil),                       // 378: modal.client.SandboxSnapshotRequest
-	(*SandboxSnapshotResponse)(nil),                      // 379: modal.client.SandboxSnapshotResponse
-	(*SandboxSnapshotWaitRequest)(nil),                   // 380: modal.client.SandboxSnapshotWaitRequest
-	(*SandboxSnapshotWaitResponse)(nil),                  // 381: modal.client.SandboxSnapshotWaitResponse
-	(*SandboxStdinWriteRequest)(nil),                     // 382: modal.client.SandboxStdinWriteRequest
-	(*SandboxStdinWriteResponse)(nil),                    // 383: modal.client.SandboxStdinWriteResponse
-	(*SandboxTag)(nil),                                   // 384: modal.client.SandboxTag
-	(*SandboxTagsGetRequest)(nil),                        // 385: modal.client.SandboxTagsGetRequest
-	(*SandboxTagsGetResponse)(nil),                       // 386: modal.client.SandboxTagsGetResponse
-	(*SandboxTagsSetRequest)(nil),                        // 387: modal.client.SandboxTagsSetRequest
-	(*SandboxTerminateRequest)(nil),                      // 388: modal.client.SandboxTerminateRequest
-	(*SandboxTerminateResponse)(nil),                     // 389: modal.client.SandboxTerminateResponse
-	(*SandboxWaitRequest)(nil),                           // 390: modal.client.SandboxWaitRequest
-	(*SandboxWaitResponse)(nil),                          // 391: modal.client.SandboxWaitResponse
-	(*SandboxWaitUntilReadyRequest)(nil),                 // 392: modal.client.SandboxWaitUntilReadyRequest
-	(*SandboxWaitUntilReadyResponse)(nil),                // 393: modal.client.SandboxWaitUntilReadyResponse
-	(*Schedule)(nil),                                     // 394: modal.client.Schedule
-	(*SchedulerPlacement)(nil),                           // 395: modal.client.SchedulerPlacement
-	(*SecretCreateRequest)(nil),                          // 396: modal.client.SecretCreateRequest
-	(*SecretCreateResponse)(nil),                         // 397: modal.client.SecretCreateResponse
-	(*SecretDeleteRequest)(nil),                          // 398: modal.client.SecretDeleteRequest
-	(*SecretGetOrCreateRequest)(nil),                     // 399: modal.client.SecretGetOrCreateRequest
-	(*SecretGetOrCreateResponse)(nil),                    // 400: modal.client.SecretGetOrCreateResponse
-	(*SecretListItem)(nil),                               // 401: modal.client.SecretListItem
-	(*SecretListRequest)(nil),                            // 402: modal.client.SecretListRequest
-	(*SecretListResponse)(nil),                           // 403: modal.client.SecretListResponse
-	(*SecretMetadata)(nil),                               // 404: modal.client.SecretMetadata
-	(*SecretUpdateRequest)(nil),                          // 405: modal.client.SecretUpdateRequest
-	(*ServiceUserIdentity)(nil),                          // 406: modal.client.ServiceUserIdentity
-	(*SharedVolumeDeleteRequest)(nil),                    // 407: modal.client.SharedVolumeDeleteRequest
-	(*SharedVolumeGetFileRequest)(nil),                   // 408: modal.client.SharedVolumeGetFileRequest
-	(*SharedVolumeGetFileResponse)(nil),                  // 409: modal.client.SharedVolumeGetFileResponse
-	(*SharedVolumeGetOrCreateRequest)(nil),               // 410: modal.client.SharedVolumeGetOrCreateRequest
-	(*SharedVolumeGetOrCreateResponse)(nil),              // 411: modal.client.SharedVolumeGetOrCreateResponse
-	(*SharedVolumeHeartbeatRequest)(nil),                 // 412: modal.client.SharedVolumeHeartbeatRequest
-	(*SharedVolumeListFilesRequest)(nil),                 // 413: modal.client.SharedVolumeListFilesRequest
-	(*SharedVolumeListFilesResponse)(nil),                // 414: modal.client.SharedVolumeListFilesResponse
-	(*SharedVolumeListItem)(nil),                         // 415: modal.client.SharedVolumeListItem
-	(*SharedVolumeListRequest)(nil),                      // 416: modal.client.SharedVolumeListRequest
-	(*SharedVolumeListResponse)(nil),                     // 417: modal.client.SharedVolumeListResponse
-	(*SharedVolumeMount)(nil),                            // 418: modal.client.SharedVolumeMount
-	(*SharedVolumePutFileRequest)(nil),                   // 419: modal.client.SharedVolumePutFileRequest
-	(*SharedVolumePutFileResponse)(nil),                  // 420: modal.client.SharedVolumePutFileResponse
-	(*SharedVolumeRemoveFileRequest)(nil),                // 421: modal.client.SharedVolumeRemoveFileRequest
-	(*SystemErrorMessage)(nil),                           // 422: modal.client.SystemErrorMessage
-	(*TaskClusterHelloRequest)(nil),                      // 423: modal.client.TaskClusterHelloRequest
-	(*TaskClusterHelloResponse)(nil),                     // 424: modal.client.TaskClusterHelloResponse
-	(*TaskCurrentInputsResponse)(nil),                    // 425: modal.client.TaskCurrentInputsResponse
-	(*TaskGetCommandRouterAccessRequest)(nil),            // 426: modal.client.TaskGetCommandRouterAccessRequest
-	(*TaskGetCommandRouterAccessResponse)(nil),           // 427: modal.client.TaskGetCommandRouterAccessResponse
-	(*TaskGetInfoRequest)(nil),                           // 428: modal.client.TaskGetInfoRequest
-	(*TaskGetInfoResponse)(nil),                          // 429: modal.client.TaskGetInfoResponse
-	(*TaskInfo)(nil),                                     // 430: modal.client.TaskInfo
-	(*TaskListRequest)(nil),                              // 431: modal.client.TaskListRequest
-	(*TaskListResponse)(nil),                             // 432: modal.client.TaskListResponse
-	(*TaskLogs)(nil),                                     // 433: modal.client.TaskLogs
-	(*TaskLogsBatch)(nil),                                // 434: modal.client.TaskLogsBatch
-	(*TaskProgress)(nil),                                 // 435: modal.client.TaskProgress
-	(*TaskResultRequest)(nil),                            // 436: modal.client.TaskResultRequest
-	(*TaskStats)(nil),                                    // 437: modal.client.TaskStats
-	(*TaskTemplate)(nil),                                 // 438: modal.client.TaskTemplate
-	(*TemplateListRequest)(nil),                          // 439: modal.client.TemplateListRequest
-	(*TemplateListResponse)(nil),                         // 440: modal.client.TemplateListResponse
-	(*TokenFlowCreateRequest)(nil),                       // 441: modal.client.TokenFlowCreateRequest
-	(*TokenFlowCreateResponse)(nil),                      // 442: modal.client.TokenFlowCreateResponse
-	(*TokenFlowWaitRequest)(nil),                         // 443: modal.client.TokenFlowWaitRequest
-	(*TokenFlowWaitResponse)(nil),                        // 444: modal.client.TokenFlowWaitResponse
-	(*TokenInfoGetRequest)(nil),                          // 445: modal.client.TokenInfoGetRequest
-	(*TokenInfoGetResponse)(nil),                         // 446: modal.client.TokenInfoGetResponse
-	(*TunnelData)(nil),                                   // 447: modal.client.TunnelData
-	(*TunnelStartRequest)(nil),                           // 448: modal.client.TunnelStartRequest
-	(*TunnelStartResponse)(nil),                          // 449: modal.client.TunnelStartResponse
-	(*TunnelStopRequest)(nil),                            // 450: modal.client.TunnelStopRequest
-	(*TunnelStopResponse)(nil),                           // 451: modal.client.TunnelStopResponse
-	(*UploadUrlList)(nil),                                // 452: modal.client.UploadUrlList
-	(*UserActionInfo)(nil),                               // 453: modal.client.UserActionInfo
-	(*UserIdentity)(nil),                                 // 454: modal.client.UserIdentity
-	(*VolumeCommitRequest)(nil),                          // 455: modal.client.VolumeCommitRequest
-	(*VolumeCommitResponse)(nil),                         // 456: modal.client.VolumeCommitResponse
-	(*VolumeCopyFiles2Request)(nil),                      // 457: modal.client.VolumeCopyFiles2Request
-	(*VolumeCopyFilesRequest)(nil),                       // 458: modal.client.VolumeCopyFilesRequest
-	(*VolumeDeleteRequest)(nil),                          // 459: modal.client.VolumeDeleteRequest
-	(*VolumeGetByIdRequest)(nil),                         // 460: modal.client.VolumeGetByIdRequest
-	(*VolumeGetByIdResponse)(nil),                        // 461: modal.client.VolumeGetByIdResponse
-	(*VolumeGetFile2Request)(nil),                        // 462: modal.client.VolumeGetFile2Request
-	(*VolumeGetFile2Response)(nil),                       // 463: modal.client.VolumeGetFile2Response
-	(*VolumeGetFileRequest)(nil),                         // 464: modal.client.VolumeGetFileRequest
-	(*VolumeGetFileResponse)(nil),                        // 465: modal.client.VolumeGetFileResponse
-	(*VolumeGetOrCreateRequest)(nil),                     // 466: modal.client.VolumeGetOrCreateRequest
-	(*VolumeGetOrCreateResponse)(nil),                    // 467: modal.client.VolumeGetOrCreateResponse
-	(*VolumeHeartbeatRequest)(nil),                       // 468: modal.client.VolumeHeartbeatRequest
-	(*VolumeListFiles2Request)(nil),                      // 469: modal.client.VolumeListFiles2Request
-	(*VolumeListFiles2Response)(nil),                     // 470: modal.client.VolumeListFiles2Response
-	(*VolumeListFilesRequest)(nil),                       // 471: modal.client.VolumeListFilesRequest
-	(*VolumeListFilesResponse)(nil),                      // 472: modal.client.VolumeListFilesResponse
-	(*VolumeListItem)(nil),                               // 473: modal.client.VolumeListItem
-	(*VolumeListRequest)(nil),                            // 474: modal.client.VolumeListRequest
-	(*VolumeListResponse)(nil),                           // 475: modal.client.VolumeListResponse
-	(*VolumeMetadata)(nil),                               // 476: modal.client.VolumeMetadata
-	(*VolumeMount)(nil),                                  // 477: modal.client.VolumeMount
-	(*VolumePutFiles2Request)(nil),                       // 478: modal.client.VolumePutFiles2Request
-	(*VolumePutFiles2Response)(nil),                      // 479: modal.client.VolumePutFiles2Response
-	(*VolumePutFilesRequest)(nil),                        // 480: modal.client.VolumePutFilesRequest
-	(*VolumeReloadRequest)(nil),                          // 481: modal.client.VolumeReloadRequest
-	(*VolumeRemoveFile2Request)(nil),                     // 482: modal.client.VolumeRemoveFile2Request
-	(*VolumeRemoveFileRequest)(nil),                      // 483: modal.client.VolumeRemoveFileRequest
-	(*VolumeRenameRequest)(nil),                          // 484: modal.client.VolumeRenameRequest
-	(*Warning)(nil),                                      // 485: modal.client.Warning
-	(*WebUrlInfo)(nil),                                   // 486: modal.client.WebUrlInfo
-	(*WebhookConfig)(nil),                                // 487: modal.client.WebhookConfig
-	(*WorkspaceBillingReportItem)(nil),                   // 488: modal.client.WorkspaceBillingReportItem
-	(*WorkspaceBillingReportRequest)(nil),                // 489: modal.client.WorkspaceBillingReportRequest
-	(*WorkspaceDashboardUrlRequest)(nil),                 // 490: modal.client.WorkspaceDashboardUrlRequest
-	(*WorkspaceDashboardUrlResponse)(nil),                // 491: modal.client.WorkspaceDashboardUrlResponse
-	(*WorkspaceNameLookupResponse)(nil),                  // 492: modal.client.WorkspaceNameLookupResponse
-	(*AppCountLogsResponse_LogBucket)(nil),               // 493: modal.client.AppCountLogsResponse.LogBucket
-	nil,                                                  // 494: modal.client.AppCreateRequest.TagsEntry
-	nil,                                                  // 495: modal.client.AppGetTagsResponse.TagsEntry
-	nil,                                                  // 496: modal.client.AppLayout.FunctionIdsEntry
-	nil,                                                  // 497: modal.client.AppLayout.ClassIdsEntry
-	(*AppListResponse_AppListItem)(nil),                  // 498: modal.client.AppListResponse.AppListItem
-	nil,                                                  // 499: modal.client.AppPublishRequest.FunctionIdsEntry
-	nil,                                                  // 500: modal.client.AppPublishRequest.ClassIdsEntry
-	nil,                                                  // 501: modal.client.AppPublishRequest.DefinitionIdsEntry
-	nil,                                                  // 502: modal.client.AppPublishRequest.TagsEntry
-	nil,                                                  // 503: modal.client.AppSetObjectsRequest.IndexedObjectIdsEntry
-	nil,                                                  // 504: modal.client.AppSetTagsRequest.TagsEntry
-	(*Asgi_Http)(nil),                                    // 505: modal.client.Asgi.Http
-	(*Asgi_HttpRequest)(nil),                             // 506: modal.client.Asgi.HttpRequest
-	(*Asgi_HttpResponseStart)(nil),                       // 507: modal.client.Asgi.HttpResponseStart
-	(*Asgi_HttpResponseBody)(nil),                        // 508: modal.client.Asgi.HttpResponseBody
-	(*Asgi_HttpResponseTrailers)(nil),                    // 509: modal.client.Asgi.HttpResponseTrailers
-	(*Asgi_HttpDisconnect)(nil),                          // 510: modal.client.Asgi.HttpDisconnect
-	(*Asgi_Websocket)(nil),                               // 511: modal.client.Asgi.Websocket
-	(*Asgi_WebsocketConnect)(nil),                        // 512: modal.client.Asgi.WebsocketConnect
-	(*Asgi_WebsocketAccept)(nil),                         // 513: modal.client.Asgi.WebsocketAccept
-	(*Asgi_WebsocketReceive)(nil),                        // 514: modal.client.Asgi.WebsocketReceive
-	(*Asgi_WebsocketSend)(nil),                           // 515: modal.client.Asgi.WebsocketSend
-	(*Asgi_WebsocketDisconnect)(nil),                     // 516: modal.client.Asgi.WebsocketDisconnect
-	(*Asgi_WebsocketClose)(nil),                          // 517: modal.client.Asgi.WebsocketClose
-	nil,                                                  // 518: modal.client.AutoscalerConfiguration.OverrideEventsEntry
-	nil,                                                  // 519: modal.client.ContainerArguments.TracingContextEntry
-	(*DictListResponse_DictInfo)(nil),                    // 520: modal.client.DictListResponse.DictInfo
-	(*FlashContainerListResponse_Container)(nil),         // 521: modal.client.FlashContainerListResponse.Container
-	nil,                                 // 522: modal.client.Function.MethodDefinitionsEntry
-	nil,                                 // 523: modal.client.Function.ExperimentalOptionsEntry
-	nil,                                 // 524: modal.client.FunctionData.MethodDefinitionsEntry
-	(*FunctionData_RankedFunction)(nil), // 525: modal.client.FunctionData.RankedFunction
-	nil,                                 // 526: modal.client.FunctionData.ExperimentalOptionsEntry
-	nil,                                 // 527: modal.client.FunctionHandleMetadata.MethodHandleMetadataEntry
-	nil,                                 // 528: modal.client.FunctionPrecreateRequest.MethodDefinitionsEntry
-	nil,                                 // 529: modal.client.Image.BuildArgsEntry
-	nil,                                 // 530: modal.client.ImageMetadata.PythonPackagesEntry
-	(*NotebookKernelPublishResultsRequest_ExecuteReply)(nil), // 531: modal.client.NotebookKernelPublishResultsRequest.ExecuteReply
-	(*NotebookKernelPublishResultsRequest_CellResult)(nil),   // 532: modal.client.NotebookKernelPublishResultsRequest.CellResult
-	(*NotebookOutput_ExecuteResult)(nil),                     // 533: modal.client.NotebookOutput.ExecuteResult
-	(*NotebookOutput_DisplayData)(nil),                       // 534: modal.client.NotebookOutput.DisplayData
-	(*NotebookOutput_Stream)(nil),                            // 535: modal.client.NotebookOutput.Stream
-	(*NotebookOutput_Error)(nil),                             // 536: modal.client.NotebookOutput.Error
-	(*Probe_ExecCommand)(nil),                                // 537: modal.client.Probe.ExecCommand
-	(*QueueListResponse_QueueInfo)(nil),                      // 538: modal.client.QueueListResponse.QueueInfo
-	(*ResourceInfo_ResourceValue)(nil),                       // 539: modal.client.ResourceInfo.ResourceValue
-	nil,                                                      // 540: modal.client.Sandbox.ExperimentalOptionsEntry
-	(*Schedule_Cron)(nil),                                    // 541: modal.client.Schedule.Cron
-	(*Schedule_Period)(nil),                                  // 542: modal.client.Schedule.Period
-	nil,                                                      // 543: modal.client.SecretCreateRequest.EnvDictEntry
-	nil,                                                      // 544: modal.client.SecretGetOrCreateRequest.EnvDictEntry
-	(*SecretUpdateRequest_Update)(nil),                       // 545: modal.client.SecretUpdateRequest.Update
-	(*TemplateListResponse_TemplateListItem)(nil),            // 546: modal.client.TemplateListResponse.TemplateListItem
-	(*VolumePutFiles2Request_File)(nil),                      // 547: modal.client.VolumePutFiles2Request.File
-	(*VolumePutFiles2Request_Block)(nil),                     // 548: modal.client.VolumePutFiles2Request.Block
-	(*VolumePutFiles2Response_MissingBlock)(nil),             // 549: modal.client.VolumePutFiles2Response.MissingBlock
-	nil,                            // 550: modal.client.WorkspaceBillingReportItem.TagsEntry
-	(*timestamppb.Timestamp)(nil),  // 551: google.protobuf.Timestamp
-	(*wrapperspb.StringValue)(nil), // 552: google.protobuf.StringValue
-	(*anypb.Any)(nil),              // 553: google.protobuf.Any
-	(*structpb.Struct)(nil),        // 554: google.protobuf.Struct
-	(*emptypb.Empty)(nil),          // 555: google.protobuf.Empty
+	(EnvironmentRole)(0),            // 11: modal.client.EnvironmentRole
+	(ExecOutputOption)(0),           // 12: modal.client.ExecOutputOption
+	(FileDescriptor)(0),             // 13: modal.client.FileDescriptor
+	(FunctionCallInvocationType)(0), // 14: modal.client.FunctionCallInvocationType
+	(FunctionCallType)(0),           // 15: modal.client.FunctionCallType
+	(GPUType)(0),                    // 16: modal.client.GPUType
+	(IdentityProviderType)(0),       // 17: modal.client.IdentityProviderType
+	(MemberRole)(0),                 // 18: modal.client.MemberRole
+	(ObjectCreationType)(0),         // 19: modal.client.ObjectCreationType
+	(ParameterType)(0),              // 20: modal.client.ParameterType
+	(ProgressType)(0),               // 21: modal.client.ProgressType
+	(ProxyIpStatus)(0),              // 22: modal.client.ProxyIpStatus
+	(ProxyType)(0),                  // 23: modal.client.ProxyType
+	(RateLimitInterval)(0),          // 24: modal.client.RateLimitInterval
+	(RegistryAuthType)(0),           // 25: modal.client.RegistryAuthType
+	(SeekWhence)(0),                 // 26: modal.client.SeekWhence
+	(SystemErrorCode)(0),            // 27: modal.client.SystemErrorCode
+	(TaskSnapshotBehavior)(0),       // 28: modal.client.TaskSnapshotBehavior
+	(TaskState)(0),                  // 29: modal.client.TaskState
+	(TunnelType)(0),                 // 30: modal.client.TunnelType
+	(VolumeFsVersion)(0),            // 31: modal.client.VolumeFsVersion
+	(WebhookAsyncMode)(0),           // 32: modal.client.WebhookAsyncMode
+	(WebhookType)(0),                // 33: modal.client.WebhookType
+	(ClassParameterInfo_ParameterSerializationFormat)(0),   // 34: modal.client.ClassParameterInfo.ParameterSerializationFormat
+	(CloudBucketMount_BucketType)(0),                       // 35: modal.client.CloudBucketMount.BucketType
+	(CloudBucketMount_MetadataTTLType)(0),                  // 36: modal.client.CloudBucketMount.MetadataTTLType
+	(FileEntry_FileType)(0),                                // 37: modal.client.FileEntry.FileType
+	(Function_DefinitionType)(0),                           // 38: modal.client.Function.DefinitionType
+	(Function_FunctionType)(0),                             // 39: modal.client.Function.FunctionType
+	(FunctionSchema_FunctionSchemaType)(0),                 // 40: modal.client.FunctionSchema.FunctionSchemaType
+	(GenericResult_GenericStatus)(0),                       // 41: modal.client.GenericResult.GenericStatus
+	(NetworkAccess_NetworkAccessType)(0),                   // 42: modal.client.NetworkAccess.NetworkAccessType
+	(PTYInfo_PTYType)(0),                                   // 43: modal.client.PTYInfo.PTYType
+	(SandboxRestoreRequest_SandboxNameOverrideType)(0),     // 44: modal.client.SandboxRestoreRequest.SandboxNameOverrideType
+	(Warning_WarningType)(0),                               // 45: modal.client.Warning.WarningType
+	(*AppClientDisconnectRequest)(nil),                     // 46: modal.client.AppClientDisconnectRequest
+	(*AppCountLogsRequest)(nil),                            // 47: modal.client.AppCountLogsRequest
+	(*AppCountLogsResponse)(nil),                           // 48: modal.client.AppCountLogsResponse
+	(*AppCreateRequest)(nil),                               // 49: modal.client.AppCreateRequest
+	(*AppCreateResponse)(nil),                              // 50: modal.client.AppCreateResponse
+	(*AppDeployRequest)(nil),                               // 51: modal.client.AppDeployRequest
+	(*AppDeployResponse)(nil),                              // 52: modal.client.AppDeployResponse
+	(*AppDeploymentHistory)(nil),                           // 53: modal.client.AppDeploymentHistory
+	(*AppDeploymentHistoryRequest)(nil),                    // 54: modal.client.AppDeploymentHistoryRequest
+	(*AppDeploymentHistoryResponse)(nil),                   // 55: modal.client.AppDeploymentHistoryResponse
+	(*AppFetchLogsRequest)(nil),                            // 56: modal.client.AppFetchLogsRequest
+	(*AppFetchLogsResponse)(nil),                           // 57: modal.client.AppFetchLogsResponse
+	(*AppGetByDeploymentNameRequest)(nil),                  // 58: modal.client.AppGetByDeploymentNameRequest
+	(*AppGetByDeploymentNameResponse)(nil),                 // 59: modal.client.AppGetByDeploymentNameResponse
+	(*AppGetLayoutRequest)(nil),                            // 60: modal.client.AppGetLayoutRequest
+	(*AppGetLayoutResponse)(nil),                           // 61: modal.client.AppGetLayoutResponse
+	(*AppGetLifecycleRequest)(nil),                         // 62: modal.client.AppGetLifecycleRequest
+	(*AppGetLifecycleResponse)(nil),                        // 63: modal.client.AppGetLifecycleResponse
+	(*AppGetLogsRequest)(nil),                              // 64: modal.client.AppGetLogsRequest
+	(*AppGetObjectsItem)(nil),                              // 65: modal.client.AppGetObjectsItem
+	(*AppGetObjectsRequest)(nil),                           // 66: modal.client.AppGetObjectsRequest
+	(*AppGetObjectsResponse)(nil),                          // 67: modal.client.AppGetObjectsResponse
+	(*AppGetOrCreateRequest)(nil),                          // 68: modal.client.AppGetOrCreateRequest
+	(*AppGetOrCreateResponse)(nil),                         // 69: modal.client.AppGetOrCreateResponse
+	(*AppGetTagsRequest)(nil),                              // 70: modal.client.AppGetTagsRequest
+	(*AppGetTagsResponse)(nil),                             // 71: modal.client.AppGetTagsResponse
+	(*AppHeartbeatRequest)(nil),                            // 72: modal.client.AppHeartbeatRequest
+	(*AppLayout)(nil),                                      // 73: modal.client.AppLayout
+	(*AppLifecycle)(nil),                                   // 74: modal.client.AppLifecycle
+	(*AppListRequest)(nil),                                 // 75: modal.client.AppListRequest
+	(*AppListResponse)(nil),                                // 76: modal.client.AppListResponse
+	(*AppLookupRequest)(nil),                               // 77: modal.client.AppLookupRequest
+	(*AppLookupResponse)(nil),                              // 78: modal.client.AppLookupResponse
+	(*AppPublishRequest)(nil),                              // 79: modal.client.AppPublishRequest
+	(*AppPublishResponse)(nil),                             // 80: modal.client.AppPublishResponse
+	(*AppRollbackRequest)(nil),                             // 81: modal.client.AppRollbackRequest
+	(*AppRolloverRequest)(nil),                             // 82: modal.client.AppRolloverRequest
+	(*AppRolloverResponse)(nil),                            // 83: modal.client.AppRolloverResponse
+	(*AppSetObjectsRequest)(nil),                           // 84: modal.client.AppSetObjectsRequest
+	(*AppSetTagsRequest)(nil),                              // 85: modal.client.AppSetTagsRequest
+	(*AppStopRequest)(nil),                                 // 86: modal.client.AppStopRequest
+	(*Asgi)(nil),                                           // 87: modal.client.Asgi
+	(*AttemptAwaitRequest)(nil),                            // 88: modal.client.AttemptAwaitRequest
+	(*AttemptAwaitResponse)(nil),                           // 89: modal.client.AttemptAwaitResponse
+	(*AttemptRetryRequest)(nil),                            // 90: modal.client.AttemptRetryRequest
+	(*AttemptRetryResponse)(nil),                           // 91: modal.client.AttemptRetryResponse
+	(*AttemptStartRequest)(nil),                            // 92: modal.client.AttemptStartRequest
+	(*AttemptStartResponse)(nil),                           // 93: modal.client.AttemptStartResponse
+	(*AuthTokenGetRequest)(nil),                            // 94: modal.client.AuthTokenGetRequest
+	(*AuthTokenGetResponse)(nil),                           // 95: modal.client.AuthTokenGetResponse
+	(*AutoscalerConfiguration)(nil),                        // 96: modal.client.AutoscalerConfiguration
+	(*AutoscalerSettings)(nil),                             // 97: modal.client.AutoscalerSettings
+	(*AutoscalingMetrics)(nil),                             // 98: modal.client.AutoscalingMetrics
+	(*BaseImage)(nil),                                      // 99: modal.client.BaseImage
+	(*BlobCreateRequest)(nil),                              // 100: modal.client.BlobCreateRequest
+	(*BlobCreateResponse)(nil),                             // 101: modal.client.BlobCreateResponse
+	(*BlobGetRequest)(nil),                                 // 102: modal.client.BlobGetRequest
+	(*BlobGetResponse)(nil),                                // 103: modal.client.BlobGetResponse
+	(*BuildFunction)(nil),                                  // 104: modal.client.BuildFunction
+	(*CancelInputEvent)(nil),                               // 105: modal.client.CancelInputEvent
+	(*CheckpointInfo)(nil),                                 // 106: modal.client.CheckpointInfo
+	(*ClassCreateRequest)(nil),                             // 107: modal.client.ClassCreateRequest
+	(*ClassCreateResponse)(nil),                            // 108: modal.client.ClassCreateResponse
+	(*ClassGetRequest)(nil),                                // 109: modal.client.ClassGetRequest
+	(*ClassGetResponse)(nil),                               // 110: modal.client.ClassGetResponse
+	(*ClassHandleMetadata)(nil),                            // 111: modal.client.ClassHandleMetadata
+	(*ClassMethod)(nil),                                    // 112: modal.client.ClassMethod
+	(*ClassParameterInfo)(nil),                             // 113: modal.client.ClassParameterInfo
+	(*ClassParameterSet)(nil),                              // 114: modal.client.ClassParameterSet
+	(*ClassParameterSpec)(nil),                             // 115: modal.client.ClassParameterSpec
+	(*ClassParameterValue)(nil),                            // 116: modal.client.ClassParameterValue
+	(*ClientHelloResponse)(nil),                            // 117: modal.client.ClientHelloResponse
+	(*CloudBucketMount)(nil),                               // 118: modal.client.CloudBucketMount
+	(*ClusterGetRequest)(nil),                              // 119: modal.client.ClusterGetRequest
+	(*ClusterGetResponse)(nil),                             // 120: modal.client.ClusterGetResponse
+	(*ClusterListRequest)(nil),                             // 121: modal.client.ClusterListRequest
+	(*ClusterListResponse)(nil),                            // 122: modal.client.ClusterListResponse
+	(*ClusterStats)(nil),                                   // 123: modal.client.ClusterStats
+	(*CommitInfo)(nil),                                     // 124: modal.client.CommitInfo
+	(*ContainerArguments)(nil),                             // 125: modal.client.ContainerArguments
+	(*ContainerCheckpointRequest)(nil),                     // 126: modal.client.ContainerCheckpointRequest
+	(*ContainerExecGetOutputRequest)(nil),                  // 127: modal.client.ContainerExecGetOutputRequest
+	(*ContainerExecPutInputRequest)(nil),                   // 128: modal.client.ContainerExecPutInputRequest
+	(*ContainerExecRequest)(nil),                           // 129: modal.client.ContainerExecRequest
+	(*ContainerExecResponse)(nil),                          // 130: modal.client.ContainerExecResponse
+	(*ContainerExecWaitRequest)(nil),                       // 131: modal.client.ContainerExecWaitRequest
+	(*ContainerExecWaitResponse)(nil),                      // 132: modal.client.ContainerExecWaitResponse
+	(*ContainerFileCloseRequest)(nil),                      // 133: modal.client.ContainerFileCloseRequest
+	(*ContainerFileDeleteBytesRequest)(nil),                // 134: modal.client.ContainerFileDeleteBytesRequest
+	(*ContainerFileFlushRequest)(nil),                      // 135: modal.client.ContainerFileFlushRequest
+	(*ContainerFileLsRequest)(nil),                         // 136: modal.client.ContainerFileLsRequest
+	(*ContainerFileMkdirRequest)(nil),                      // 137: modal.client.ContainerFileMkdirRequest
+	(*ContainerFileOpenRequest)(nil),                       // 138: modal.client.ContainerFileOpenRequest
+	(*ContainerFileReadLineRequest)(nil),                   // 139: modal.client.ContainerFileReadLineRequest
+	(*ContainerFileReadRequest)(nil),                       // 140: modal.client.ContainerFileReadRequest
+	(*ContainerFileRmRequest)(nil),                         // 141: modal.client.ContainerFileRmRequest
+	(*ContainerFileSeekRequest)(nil),                       // 142: modal.client.ContainerFileSeekRequest
+	(*ContainerFileWatchRequest)(nil),                      // 143: modal.client.ContainerFileWatchRequest
+	(*ContainerFileWriteReplaceBytesRequest)(nil),          // 144: modal.client.ContainerFileWriteReplaceBytesRequest
+	(*ContainerFileWriteRequest)(nil),                      // 145: modal.client.ContainerFileWriteRequest
+	(*ContainerFilesystemExecGetOutputRequest)(nil),        // 146: modal.client.ContainerFilesystemExecGetOutputRequest
+	(*ContainerFilesystemExecRequest)(nil),                 // 147: modal.client.ContainerFilesystemExecRequest
+	(*ContainerFilesystemExecResponse)(nil),                // 148: modal.client.ContainerFilesystemExecResponse
+	(*ContainerHeartbeatRequest)(nil),                      // 149: modal.client.ContainerHeartbeatRequest
+	(*ContainerHeartbeatResponse)(nil),                     // 150: modal.client.ContainerHeartbeatResponse
+	(*ContainerLogRequest)(nil),                            // 151: modal.client.ContainerLogRequest
+	(*ContainerReloadVolumesRequest)(nil),                  // 152: modal.client.ContainerReloadVolumesRequest
+	(*ContainerReloadVolumesResponse)(nil),                 // 153: modal.client.ContainerReloadVolumesResponse
+	(*ContainerStopRequest)(nil),                           // 154: modal.client.ContainerStopRequest
+	(*ContainerStopResponse)(nil),                          // 155: modal.client.ContainerStopResponse
+	(*CreationInfo)(nil),                                   // 156: modal.client.CreationInfo
+	(*CustomDomainConfig)(nil),                             // 157: modal.client.CustomDomainConfig
+	(*CustomDomainInfo)(nil),                               // 158: modal.client.CustomDomainInfo
+	(*DNSRecord)(nil),                                      // 159: modal.client.DNSRecord
+	(*DataChunk)(nil),                                      // 160: modal.client.DataChunk
+	(*DictClearRequest)(nil),                               // 161: modal.client.DictClearRequest
+	(*DictContainsRequest)(nil),                            // 162: modal.client.DictContainsRequest
+	(*DictContainsResponse)(nil),                           // 163: modal.client.DictContainsResponse
+	(*DictContentsRequest)(nil),                            // 164: modal.client.DictContentsRequest
+	(*DictDeleteRequest)(nil),                              // 165: modal.client.DictDeleteRequest
+	(*DictEntry)(nil),                                      // 166: modal.client.DictEntry
+	(*DictGetByIdRequest)(nil),                             // 167: modal.client.DictGetByIdRequest
+	(*DictGetByIdResponse)(nil),                            // 168: modal.client.DictGetByIdResponse
+	(*DictGetOrCreateRequest)(nil),                         // 169: modal.client.DictGetOrCreateRequest
+	(*DictGetOrCreateResponse)(nil),                        // 170: modal.client.DictGetOrCreateResponse
+	(*DictGetRequest)(nil),                                 // 171: modal.client.DictGetRequest
+	(*DictGetResponse)(nil),                                // 172: modal.client.DictGetResponse
+	(*DictHeartbeatRequest)(nil),                           // 173: modal.client.DictHeartbeatRequest
+	(*DictLenRequest)(nil),                                 // 174: modal.client.DictLenRequest
+	(*DictLenResponse)(nil),                                // 175: modal.client.DictLenResponse
+	(*DictListRequest)(nil),                                // 176: modal.client.DictListRequest
+	(*DictListResponse)(nil),                               // 177: modal.client.DictListResponse
+	(*DictMetadata)(nil),                                   // 178: modal.client.DictMetadata
+	(*DictPopRequest)(nil),                                 // 179: modal.client.DictPopRequest
+	(*DictPopResponse)(nil),                                // 180: modal.client.DictPopResponse
+	(*DictUpdateRequest)(nil),                              // 181: modal.client.DictUpdateRequest
+	(*DictUpdateResponse)(nil),                             // 182: modal.client.DictUpdateResponse
+	(*Domain)(nil),                                         // 183: modal.client.Domain
+	(*DomainCertificateVerifyRequest)(nil),                 // 184: modal.client.DomainCertificateVerifyRequest
+	(*DomainCertificateVerifyResponse)(nil),                // 185: modal.client.DomainCertificateVerifyResponse
+	(*DomainCreateRequest)(nil),                            // 186: modal.client.DomainCreateRequest
+	(*DomainCreateResponse)(nil),                           // 187: modal.client.DomainCreateResponse
+	(*DomainListRequest)(nil),                              // 188: modal.client.DomainListRequest
+	(*DomainListResponse)(nil),                             // 189: modal.client.DomainListResponse
+	(*EnvironmentCreateRequest)(nil),                       // 190: modal.client.EnvironmentCreateRequest
+	(*EnvironmentDeleteRequest)(nil),                       // 191: modal.client.EnvironmentDeleteRequest
+	(*EnvironmentGetManagedRequest)(nil),                   // 192: modal.client.EnvironmentGetManagedRequest
+	(*EnvironmentGetManagedResponse)(nil),                  // 193: modal.client.EnvironmentGetManagedResponse
+	(*EnvironmentGetOrCreateRequest)(nil),                  // 194: modal.client.EnvironmentGetOrCreateRequest
+	(*EnvironmentGetOrCreateResponse)(nil),                 // 195: modal.client.EnvironmentGetOrCreateResponse
+	(*EnvironmentListItem)(nil),                            // 196: modal.client.EnvironmentListItem
+	(*EnvironmentListResponse)(nil),                        // 197: modal.client.EnvironmentListResponse
+	(*EnvironmentMetadata)(nil),                            // 198: modal.client.EnvironmentMetadata
+	(*EnvironmentRoleSetRequest)(nil),                      // 199: modal.client.EnvironmentRoleSetRequest
+	(*EnvironmentSetManagedRequest)(nil),                   // 200: modal.client.EnvironmentSetManagedRequest
+	(*EnvironmentSettings)(nil),                            // 201: modal.client.EnvironmentSettings
+	(*EnvironmentUpdateRequest)(nil),                       // 202: modal.client.EnvironmentUpdateRequest
+	(*FileEntry)(nil),                                      // 203: modal.client.FileEntry
+	(*FilesystemRuntimeOutputBatch)(nil),                   // 204: modal.client.FilesystemRuntimeOutputBatch
+	(*FlashContainerDeregisterRequest)(nil),                // 205: modal.client.FlashContainerDeregisterRequest
+	(*FlashContainerListRequest)(nil),                      // 206: modal.client.FlashContainerListRequest
+	(*FlashContainerListResponse)(nil),                     // 207: modal.client.FlashContainerListResponse
+	(*FlashContainerRegisterRequest)(nil),                  // 208: modal.client.FlashContainerRegisterRequest
+	(*FlashContainerRegisterResponse)(nil),                 // 209: modal.client.FlashContainerRegisterResponse
+	(*FlashProxyUpstreamRequest)(nil),                      // 210: modal.client.FlashProxyUpstreamRequest
+	(*FlashSetTargetSlotsMetricsRequest)(nil),              // 211: modal.client.FlashSetTargetSlotsMetricsRequest
+	(*FlashSetTargetSlotsMetricsResponse)(nil),             // 212: modal.client.FlashSetTargetSlotsMetricsResponse
+	(*Function)(nil),                                       // 213: modal.client.Function
+	(*FunctionAsyncInvokeRequest)(nil),                     // 214: modal.client.FunctionAsyncInvokeRequest
+	(*FunctionAsyncInvokeResponse)(nil),                    // 215: modal.client.FunctionAsyncInvokeResponse
+	(*FunctionBindParamsRequest)(nil),                      // 216: modal.client.FunctionBindParamsRequest
+	(*FunctionBindParamsResponse)(nil),                     // 217: modal.client.FunctionBindParamsResponse
+	(*FunctionCallCallGraphInfo)(nil),                      // 218: modal.client.FunctionCallCallGraphInfo
+	(*FunctionCallCancelRequest)(nil),                      // 219: modal.client.FunctionCallCancelRequest
+	(*FunctionCallFromIdRequest)(nil),                      // 220: modal.client.FunctionCallFromIdRequest
+	(*FunctionCallFromIdResponse)(nil),                     // 221: modal.client.FunctionCallFromIdResponse
+	(*FunctionCallGetDataRequest)(nil),                     // 222: modal.client.FunctionCallGetDataRequest
+	(*FunctionCallInfo)(nil),                               // 223: modal.client.FunctionCallInfo
+	(*FunctionCallListRequest)(nil),                        // 224: modal.client.FunctionCallListRequest
+	(*FunctionCallListResponse)(nil),                       // 225: modal.client.FunctionCallListResponse
+	(*FunctionCallPutDataRequest)(nil),                     // 226: modal.client.FunctionCallPutDataRequest
+	(*FunctionCreateRequest)(nil),                          // 227: modal.client.FunctionCreateRequest
+	(*FunctionCreateResponse)(nil),                         // 228: modal.client.FunctionCreateResponse
+	(*FunctionData)(nil),                                   // 229: modal.client.FunctionData
+	(*FunctionExtended)(nil),                               // 230: modal.client.FunctionExtended
+	(*FunctionFinishInputsRequest)(nil),                    // 231: modal.client.FunctionFinishInputsRequest
+	(*FunctionGetCallGraphRequest)(nil),                    // 232: modal.client.FunctionGetCallGraphRequest
+	(*FunctionGetCallGraphResponse)(nil),                   // 233: modal.client.FunctionGetCallGraphResponse
+	(*FunctionGetCurrentStatsRequest)(nil),                 // 234: modal.client.FunctionGetCurrentStatsRequest
+	(*FunctionGetDynamicConcurrencyRequest)(nil),           // 235: modal.client.FunctionGetDynamicConcurrencyRequest
+	(*FunctionGetDynamicConcurrencyResponse)(nil),          // 236: modal.client.FunctionGetDynamicConcurrencyResponse
+	(*FunctionGetInputsItem)(nil),                          // 237: modal.client.FunctionGetInputsItem
+	(*FunctionGetInputsRequest)(nil),                       // 238: modal.client.FunctionGetInputsRequest
+	(*FunctionGetInputsResponse)(nil),                      // 239: modal.client.FunctionGetInputsResponse
+	(*FunctionGetOutputsItem)(nil),                         // 240: modal.client.FunctionGetOutputsItem
+	(*FunctionGetOutputsRequest)(nil),                      // 241: modal.client.FunctionGetOutputsRequest
+	(*FunctionGetOutputsResponse)(nil),                     // 242: modal.client.FunctionGetOutputsResponse
+	(*FunctionGetRequest)(nil),                             // 243: modal.client.FunctionGetRequest
+	(*FunctionGetResponse)(nil),                            // 244: modal.client.FunctionGetResponse
+	(*FunctionGetSerializedRequest)(nil),                   // 245: modal.client.FunctionGetSerializedRequest
+	(*FunctionGetSerializedResponse)(nil),                  // 246: modal.client.FunctionGetSerializedResponse
+	(*FunctionHandleMetadata)(nil),                         // 247: modal.client.FunctionHandleMetadata
+	(*FunctionInput)(nil),                                  // 248: modal.client.FunctionInput
+	(*FunctionMapRequest)(nil),                             // 249: modal.client.FunctionMapRequest
+	(*FunctionMapResponse)(nil),                            // 250: modal.client.FunctionMapResponse
+	(*FunctionOptions)(nil),                                // 251: modal.client.FunctionOptions
+	(*FunctionPrecreateRequest)(nil),                       // 252: modal.client.FunctionPrecreateRequest
+	(*FunctionPrecreateResponse)(nil),                      // 253: modal.client.FunctionPrecreateResponse
+	(*FunctionPutInputsItem)(nil),                          // 254: modal.client.FunctionPutInputsItem
+	(*FunctionPutInputsRequest)(nil),                       // 255: modal.client.FunctionPutInputsRequest
+	(*FunctionPutInputsResponse)(nil),                      // 256: modal.client.FunctionPutInputsResponse
+	(*FunctionPutInputsResponseItem)(nil),                  // 257: modal.client.FunctionPutInputsResponseItem
+	(*FunctionPutOutputsItem)(nil),                         // 258: modal.client.FunctionPutOutputsItem
+	(*FunctionPutOutputsRequest)(nil),                      // 259: modal.client.FunctionPutOutputsRequest
+	(*FunctionRetryInputsItem)(nil),                        // 260: modal.client.FunctionRetryInputsItem
+	(*FunctionRetryInputsRequest)(nil),                     // 261: modal.client.FunctionRetryInputsRequest
+	(*FunctionRetryInputsResponse)(nil),                    // 262: modal.client.FunctionRetryInputsResponse
+	(*FunctionRetryPolicy)(nil),                            // 263: modal.client.FunctionRetryPolicy
+	(*FunctionSchema)(nil),                                 // 264: modal.client.FunctionSchema
+	(*FunctionStats)(nil),                                  // 265: modal.client.FunctionStats
+	(*FunctionUpdateSchedulingParamsRequest)(nil),          // 266: modal.client.FunctionUpdateSchedulingParamsRequest
+	(*FunctionUpdateSchedulingParamsResponse)(nil),         // 267: modal.client.FunctionUpdateSchedulingParamsResponse
+	(*GPUConfig)(nil),                                      // 268: modal.client.GPUConfig
+	(*GeneratorDone)(nil),                                  // 269: modal.client.GeneratorDone
+	(*GenericPayloadType)(nil),                             // 270: modal.client.GenericPayloadType
+	(*GenericResult)(nil),                                  // 271: modal.client.GenericResult
+	(*HTTPConfig)(nil),                                     // 272: modal.client.HTTPConfig
+	(*Image)(nil),                                          // 273: modal.client.Image
+	(*ImageContextFile)(nil),                               // 274: modal.client.ImageContextFile
+	(*ImageDeleteRequest)(nil),                             // 275: modal.client.ImageDeleteRequest
+	(*ImageFromIdRequest)(nil),                             // 276: modal.client.ImageFromIdRequest
+	(*ImageFromIdResponse)(nil),                            // 277: modal.client.ImageFromIdResponse
+	(*ImageGetOrCreateRequest)(nil),                        // 278: modal.client.ImageGetOrCreateRequest
+	(*ImageGetOrCreateResponse)(nil),                       // 279: modal.client.ImageGetOrCreateResponse
+	(*ImageJoinStreamingRequest)(nil),                      // 280: modal.client.ImageJoinStreamingRequest
+	(*ImageJoinStreamingResponse)(nil),                     // 281: modal.client.ImageJoinStreamingResponse
+	(*ImageMetadata)(nil),                                  // 282: modal.client.ImageMetadata
+	(*ImageRegistryConfig)(nil),                            // 283: modal.client.ImageRegistryConfig
+	(*InputCallGraphInfo)(nil),                             // 284: modal.client.InputCallGraphInfo
+	(*InputCategoryInfo)(nil),                              // 285: modal.client.InputCategoryInfo
+	(*InputInfo)(nil),                                      // 286: modal.client.InputInfo
+	(*ListPagination)(nil),                                 // 287: modal.client.ListPagination
+	(*MapAwaitRequest)(nil),                                // 288: modal.client.MapAwaitRequest
+	(*MapAwaitResponse)(nil),                               // 289: modal.client.MapAwaitResponse
+	(*MapCheckInputsRequest)(nil),                          // 290: modal.client.MapCheckInputsRequest
+	(*MapCheckInputsResponse)(nil),                         // 291: modal.client.MapCheckInputsResponse
+	(*MapStartOrContinueItem)(nil),                         // 292: modal.client.MapStartOrContinueItem
+	(*MapStartOrContinueRequest)(nil),                      // 293: modal.client.MapStartOrContinueRequest
+	(*MapStartOrContinueResponse)(nil),                     // 294: modal.client.MapStartOrContinueResponse
+	(*MethodDefinition)(nil),                               // 295: modal.client.MethodDefinition
+	(*MountFile)(nil),                                      // 296: modal.client.MountFile
+	(*MountGetOrCreateRequest)(nil),                        // 297: modal.client.MountGetOrCreateRequest
+	(*MountGetOrCreateResponse)(nil),                       // 298: modal.client.MountGetOrCreateResponse
+	(*MountHandleMetadata)(nil),                            // 299: modal.client.MountHandleMetadata
+	(*MountPutFileRequest)(nil),                            // 300: modal.client.MountPutFileRequest
+	(*MountPutFileResponse)(nil),                           // 301: modal.client.MountPutFileResponse
+	(*MultiPartUpload)(nil),                                // 302: modal.client.MultiPartUpload
+	(*MultiPartUploadList)(nil),                            // 303: modal.client.MultiPartUploadList
+	(*NetworkAccess)(nil),                                  // 304: modal.client.NetworkAccess
+	(*NotebookKernelPublishResultsRequest)(nil),            // 305: modal.client.NotebookKernelPublishResultsRequest
+	(*NotebookOutput)(nil),                                 // 306: modal.client.NotebookOutput
+	(*Object)(nil),                                         // 307: modal.client.Object
+	(*ObjectDependency)(nil),                               // 308: modal.client.ObjectDependency
+	(*PTYInfo)(nil),                                        // 309: modal.client.PTYInfo
+	(*PortSpec)(nil),                                       // 310: modal.client.PortSpec
+	(*PortSpecs)(nil),                                      // 311: modal.client.PortSpecs
+	(*Probe)(nil),                                          // 312: modal.client.Probe
+	(*Proxy)(nil),                                          // 313: modal.client.Proxy
+	(*ProxyAddIpRequest)(nil),                              // 314: modal.client.ProxyAddIpRequest
+	(*ProxyAddIpResponse)(nil),                             // 315: modal.client.ProxyAddIpResponse
+	(*ProxyCreateRequest)(nil),                             // 316: modal.client.ProxyCreateRequest
+	(*ProxyCreateResponse)(nil),                            // 317: modal.client.ProxyCreateResponse
+	(*ProxyDeleteRequest)(nil),                             // 318: modal.client.ProxyDeleteRequest
+	(*ProxyGetOrCreateRequest)(nil),                        // 319: modal.client.ProxyGetOrCreateRequest
+	(*ProxyGetOrCreateResponse)(nil),                       // 320: modal.client.ProxyGetOrCreateResponse
+	(*ProxyGetRequest)(nil),                                // 321: modal.client.ProxyGetRequest
+	(*ProxyGetResponse)(nil),                               // 322: modal.client.ProxyGetResponse
+	(*ProxyInfo)(nil),                                      // 323: modal.client.ProxyInfo
+	(*ProxyIp)(nil),                                        // 324: modal.client.ProxyIp
+	(*ProxyListResponse)(nil),                              // 325: modal.client.ProxyListResponse
+	(*ProxyRemoveIpRequest)(nil),                           // 326: modal.client.ProxyRemoveIpRequest
+	(*QueueClearRequest)(nil),                              // 327: modal.client.QueueClearRequest
+	(*QueueDeleteRequest)(nil),                             // 328: modal.client.QueueDeleteRequest
+	(*QueueGetByIdRequest)(nil),                            // 329: modal.client.QueueGetByIdRequest
+	(*QueueGetByIdResponse)(nil),                           // 330: modal.client.QueueGetByIdResponse
+	(*QueueGetOrCreateRequest)(nil),                        // 331: modal.client.QueueGetOrCreateRequest
+	(*QueueGetOrCreateResponse)(nil),                       // 332: modal.client.QueueGetOrCreateResponse
+	(*QueueGetRequest)(nil),                                // 333: modal.client.QueueGetRequest
+	(*QueueGetResponse)(nil),                               // 334: modal.client.QueueGetResponse
+	(*QueueHeartbeatRequest)(nil),                          // 335: modal.client.QueueHeartbeatRequest
+	(*QueueItem)(nil),                                      // 336: modal.client.QueueItem
+	(*QueueLenRequest)(nil),                                // 337: modal.client.QueueLenRequest
+	(*QueueLenResponse)(nil),                               // 338: modal.client.QueueLenResponse
+	(*QueueListRequest)(nil),                               // 339: modal.client.QueueListRequest
+	(*QueueListResponse)(nil),                              // 340: modal.client.QueueListResponse
+	(*QueueMetadata)(nil),                                  // 341: modal.client.QueueMetadata
+	(*QueueNextItemsRequest)(nil),                          // 342: modal.client.QueueNextItemsRequest
+	(*QueueNextItemsResponse)(nil),                         // 343: modal.client.QueueNextItemsResponse
+	(*QueuePutRequest)(nil),                                // 344: modal.client.QueuePutRequest
+	(*RPCRetryPolicy)(nil),                                 // 345: modal.client.RPCRetryPolicy
+	(*RPCStatus)(nil),                                      // 346: modal.client.RPCStatus
+	(*RateLimit)(nil),                                      // 347: modal.client.RateLimit
+	(*ResourceInfo)(nil),                                   // 348: modal.client.ResourceInfo
+	(*Resources)(nil),                                      // 349: modal.client.Resources
+	(*RuntimeInputMessage)(nil),                            // 350: modal.client.RuntimeInputMessage
+	(*RuntimeOutputBatch)(nil),                             // 351: modal.client.RuntimeOutputBatch
+	(*RuntimeOutputMessage)(nil),                           // 352: modal.client.RuntimeOutputMessage
+	(*S3Mount)(nil),                                        // 353: modal.client.S3Mount
+	(*Sandbox)(nil),                                        // 354: modal.client.Sandbox
+	(*SandboxCreateConnectTokenRequest)(nil),               // 355: modal.client.SandboxCreateConnectTokenRequest
+	(*SandboxCreateConnectTokenResponse)(nil),              // 356: modal.client.SandboxCreateConnectTokenResponse
+	(*SandboxCreateRequest)(nil),                           // 357: modal.client.SandboxCreateRequest
+	(*SandboxCreateResponse)(nil),                          // 358: modal.client.SandboxCreateResponse
+	(*SandboxCreateV2Request)(nil),                         // 359: modal.client.SandboxCreateV2Request
+	(*SandboxCreateV2Response)(nil),                        // 360: modal.client.SandboxCreateV2Response
+	(*SandboxGetCommandRouterAccessRequest)(nil),           // 361: modal.client.SandboxGetCommandRouterAccessRequest
+	(*SandboxGetCommandRouterAccessResponse)(nil),          // 362: modal.client.SandboxGetCommandRouterAccessResponse
+	(*SandboxGetFromNameRequest)(nil),                      // 363: modal.client.SandboxGetFromNameRequest
+	(*SandboxGetFromNameResponse)(nil),                     // 364: modal.client.SandboxGetFromNameResponse
+	(*SandboxGetLogsRequest)(nil),                          // 365: modal.client.SandboxGetLogsRequest
+	(*SandboxGetResourceUsageRequest)(nil),                 // 366: modal.client.SandboxGetResourceUsageRequest
+	(*SandboxGetResourceUsageResponse)(nil),                // 367: modal.client.SandboxGetResourceUsageResponse
+	(*SandboxGetTaskIdRequest)(nil),                        // 368: modal.client.SandboxGetTaskIdRequest
+	(*SandboxGetTaskIdResponse)(nil),                       // 369: modal.client.SandboxGetTaskIdResponse
+	(*SandboxGetTunnelsRequest)(nil),                       // 370: modal.client.SandboxGetTunnelsRequest
+	(*SandboxGetTunnelsResponse)(nil),                      // 371: modal.client.SandboxGetTunnelsResponse
+	(*SandboxHandleMetadata)(nil),                          // 372: modal.client.SandboxHandleMetadata
+	(*SandboxInfo)(nil),                                    // 373: modal.client.SandboxInfo
+	(*SandboxListRequest)(nil),                             // 374: modal.client.SandboxListRequest
+	(*SandboxListResponse)(nil),                            // 375: modal.client.SandboxListResponse
+	(*SandboxRestoreRequest)(nil),                          // 376: modal.client.SandboxRestoreRequest
+	(*SandboxRestoreResponse)(nil),                         // 377: modal.client.SandboxRestoreResponse
+	(*SandboxSnapshotFsAsyncGetRequest)(nil),               // 378: modal.client.SandboxSnapshotFsAsyncGetRequest
+	(*SandboxSnapshotFsAsyncRequest)(nil),                  // 379: modal.client.SandboxSnapshotFsAsyncRequest
+	(*SandboxSnapshotFsAsyncResponse)(nil),                 // 380: modal.client.SandboxSnapshotFsAsyncResponse
+	(*SandboxSnapshotFsRequest)(nil),                       // 381: modal.client.SandboxSnapshotFsRequest
+	(*SandboxSnapshotFsResponse)(nil),                      // 382: modal.client.SandboxSnapshotFsResponse
+	(*SandboxSnapshotGetRequest)(nil),                      // 383: modal.client.SandboxSnapshotGetRequest
+	(*SandboxSnapshotGetResponse)(nil),                     // 384: modal.client.SandboxSnapshotGetResponse
+	(*SandboxSnapshotRequest)(nil),                         // 385: modal.client.SandboxSnapshotRequest
+	(*SandboxSnapshotResponse)(nil),                        // 386: modal.client.SandboxSnapshotResponse
+	(*SandboxSnapshotWaitRequest)(nil),                     // 387: modal.client.SandboxSnapshotWaitRequest
+	(*SandboxSnapshotWaitResponse)(nil),                    // 388: modal.client.SandboxSnapshotWaitResponse
+	(*SandboxStdinWriteRequest)(nil),                       // 389: modal.client.SandboxStdinWriteRequest
+	(*SandboxStdinWriteResponse)(nil),                      // 390: modal.client.SandboxStdinWriteResponse
+	(*SandboxTag)(nil),                                     // 391: modal.client.SandboxTag
+	(*SandboxTagsGetRequest)(nil),                          // 392: modal.client.SandboxTagsGetRequest
+	(*SandboxTagsGetResponse)(nil),                         // 393: modal.client.SandboxTagsGetResponse
+	(*SandboxTagsSetRequest)(nil),                          // 394: modal.client.SandboxTagsSetRequest
+	(*SandboxTerminateRequest)(nil),                        // 395: modal.client.SandboxTerminateRequest
+	(*SandboxTerminateResponse)(nil),                       // 396: modal.client.SandboxTerminateResponse
+	(*SandboxWaitRequest)(nil),                             // 397: modal.client.SandboxWaitRequest
+	(*SandboxWaitResponse)(nil),                            // 398: modal.client.SandboxWaitResponse
+	(*SandboxWaitUntilReadyRequest)(nil),                   // 399: modal.client.SandboxWaitUntilReadyRequest
+	(*SandboxWaitUntilReadyResponse)(nil),                  // 400: modal.client.SandboxWaitUntilReadyResponse
+	(*Schedule)(nil),                                       // 401: modal.client.Schedule
+	(*SchedulerPlacement)(nil),                             // 402: modal.client.SchedulerPlacement
+	(*SecretCreateRequest)(nil),                            // 403: modal.client.SecretCreateRequest
+	(*SecretCreateResponse)(nil),                           // 404: modal.client.SecretCreateResponse
+	(*SecretDeleteRequest)(nil),                            // 405: modal.client.SecretDeleteRequest
+	(*SecretGetOrCreateRequest)(nil),                       // 406: modal.client.SecretGetOrCreateRequest
+	(*SecretGetOrCreateResponse)(nil),                      // 407: modal.client.SecretGetOrCreateResponse
+	(*SecretListItem)(nil),                                 // 408: modal.client.SecretListItem
+	(*SecretListRequest)(nil),                              // 409: modal.client.SecretListRequest
+	(*SecretListResponse)(nil),                             // 410: modal.client.SecretListResponse
+	(*SecretMetadata)(nil),                                 // 411: modal.client.SecretMetadata
+	(*SecretUpdateRequest)(nil),                            // 412: modal.client.SecretUpdateRequest
+	(*ServiceUser)(nil),                                    // 413: modal.client.ServiceUser
+	(*ServiceUserIdentity)(nil),                            // 414: modal.client.ServiceUserIdentity
+	(*ServiceUserListResponse)(nil),                        // 415: modal.client.ServiceUserListResponse
+	(*SharedVolumeDeleteRequest)(nil),                      // 416: modal.client.SharedVolumeDeleteRequest
+	(*SharedVolumeGetFileRequest)(nil),                     // 417: modal.client.SharedVolumeGetFileRequest
+	(*SharedVolumeGetFileResponse)(nil),                    // 418: modal.client.SharedVolumeGetFileResponse
+	(*SharedVolumeGetOrCreateRequest)(nil),                 // 419: modal.client.SharedVolumeGetOrCreateRequest
+	(*SharedVolumeGetOrCreateResponse)(nil),                // 420: modal.client.SharedVolumeGetOrCreateResponse
+	(*SharedVolumeHeartbeatRequest)(nil),                   // 421: modal.client.SharedVolumeHeartbeatRequest
+	(*SharedVolumeListFilesRequest)(nil),                   // 422: modal.client.SharedVolumeListFilesRequest
+	(*SharedVolumeListFilesResponse)(nil),                  // 423: modal.client.SharedVolumeListFilesResponse
+	(*SharedVolumeListItem)(nil),                           // 424: modal.client.SharedVolumeListItem
+	(*SharedVolumeListRequest)(nil),                        // 425: modal.client.SharedVolumeListRequest
+	(*SharedVolumeListResponse)(nil),                       // 426: modal.client.SharedVolumeListResponse
+	(*SharedVolumeMount)(nil),                              // 427: modal.client.SharedVolumeMount
+	(*SharedVolumePutFileRequest)(nil),                     // 428: modal.client.SharedVolumePutFileRequest
+	(*SharedVolumePutFileResponse)(nil),                    // 429: modal.client.SharedVolumePutFileResponse
+	(*SharedVolumeRemoveFileRequest)(nil),                  // 430: modal.client.SharedVolumeRemoveFileRequest
+	(*SystemErrorMessage)(nil),                             // 431: modal.client.SystemErrorMessage
+	(*TaskClusterHelloRequest)(nil),                        // 432: modal.client.TaskClusterHelloRequest
+	(*TaskClusterHelloResponse)(nil),                       // 433: modal.client.TaskClusterHelloResponse
+	(*TaskCurrentInputsResponse)(nil),                      // 434: modal.client.TaskCurrentInputsResponse
+	(*TaskGetCommandRouterAccessRequest)(nil),              // 435: modal.client.TaskGetCommandRouterAccessRequest
+	(*TaskGetCommandRouterAccessResponse)(nil),             // 436: modal.client.TaskGetCommandRouterAccessResponse
+	(*TaskGetInfoRequest)(nil),                             // 437: modal.client.TaskGetInfoRequest
+	(*TaskGetInfoResponse)(nil),                            // 438: modal.client.TaskGetInfoResponse
+	(*TaskInfo)(nil),                                       // 439: modal.client.TaskInfo
+	(*TaskListRequest)(nil),                                // 440: modal.client.TaskListRequest
+	(*TaskListResponse)(nil),                               // 441: modal.client.TaskListResponse
+	(*TaskLogs)(nil),                                       // 442: modal.client.TaskLogs
+	(*TaskLogsBatch)(nil),                                  // 443: modal.client.TaskLogsBatch
+	(*TaskProgress)(nil),                                   // 444: modal.client.TaskProgress
+	(*TaskResultRequest)(nil),                              // 445: modal.client.TaskResultRequest
+	(*TaskStats)(nil),                                      // 446: modal.client.TaskStats
+	(*TaskTemplate)(nil),                                   // 447: modal.client.TaskTemplate
+	(*TemplateListRequest)(nil),                            // 448: modal.client.TemplateListRequest
+	(*TemplateListResponse)(nil),                           // 449: modal.client.TemplateListResponse
+	(*TokenFlowCreateRequest)(nil),                         // 450: modal.client.TokenFlowCreateRequest
+	(*TokenFlowCreateResponse)(nil),                        // 451: modal.client.TokenFlowCreateResponse
+	(*TokenFlowWaitRequest)(nil),                           // 452: modal.client.TokenFlowWaitRequest
+	(*TokenFlowWaitResponse)(nil),                          // 453: modal.client.TokenFlowWaitResponse
+	(*TokenInfoGetRequest)(nil),                            // 454: modal.client.TokenInfoGetRequest
+	(*TokenInfoGetResponse)(nil),                           // 455: modal.client.TokenInfoGetResponse
+	(*TunnelData)(nil),                                     // 456: modal.client.TunnelData
+	(*TunnelStartRequest)(nil),                             // 457: modal.client.TunnelStartRequest
+	(*TunnelStartResponse)(nil),                            // 458: modal.client.TunnelStartResponse
+	(*TunnelStopRequest)(nil),                              // 459: modal.client.TunnelStopRequest
+	(*TunnelStopResponse)(nil),                             // 460: modal.client.TunnelStopResponse
+	(*UploadUrlList)(nil),                                  // 461: modal.client.UploadUrlList
+	(*UserActionInfo)(nil),                                 // 462: modal.client.UserActionInfo
+	(*UserIdentity)(nil),                                   // 463: modal.client.UserIdentity
+	(*VolumeCommitRequest)(nil),                            // 464: modal.client.VolumeCommitRequest
+	(*VolumeCommitResponse)(nil),                           // 465: modal.client.VolumeCommitResponse
+	(*VolumeCopyFiles2Request)(nil),                        // 466: modal.client.VolumeCopyFiles2Request
+	(*VolumeCopyFilesRequest)(nil),                         // 467: modal.client.VolumeCopyFilesRequest
+	(*VolumeDeleteRequest)(nil),                            // 468: modal.client.VolumeDeleteRequest
+	(*VolumeGetByIdRequest)(nil),                           // 469: modal.client.VolumeGetByIdRequest
+	(*VolumeGetByIdResponse)(nil),                          // 470: modal.client.VolumeGetByIdResponse
+	(*VolumeGetFile2Request)(nil),                          // 471: modal.client.VolumeGetFile2Request
+	(*VolumeGetFile2Response)(nil),                         // 472: modal.client.VolumeGetFile2Response
+	(*VolumeGetFileRequest)(nil),                           // 473: modal.client.VolumeGetFileRequest
+	(*VolumeGetFileResponse)(nil),                          // 474: modal.client.VolumeGetFileResponse
+	(*VolumeGetOrCreateRequest)(nil),                       // 475: modal.client.VolumeGetOrCreateRequest
+	(*VolumeGetOrCreateResponse)(nil),                      // 476: modal.client.VolumeGetOrCreateResponse
+	(*VolumeHeartbeatRequest)(nil),                         // 477: modal.client.VolumeHeartbeatRequest
+	(*VolumeListFiles2Request)(nil),                        // 478: modal.client.VolumeListFiles2Request
+	(*VolumeListFiles2Response)(nil),                       // 479: modal.client.VolumeListFiles2Response
+	(*VolumeListFilesRequest)(nil),                         // 480: modal.client.VolumeListFilesRequest
+	(*VolumeListFilesResponse)(nil),                        // 481: modal.client.VolumeListFilesResponse
+	(*VolumeListItem)(nil),                                 // 482: modal.client.VolumeListItem
+	(*VolumeListRequest)(nil),                              // 483: modal.client.VolumeListRequest
+	(*VolumeListResponse)(nil),                             // 484: modal.client.VolumeListResponse
+	(*VolumeMetadata)(nil),                                 // 485: modal.client.VolumeMetadata
+	(*VolumeMount)(nil),                                    // 486: modal.client.VolumeMount
+	(*VolumePutFiles2Request)(nil),                         // 487: modal.client.VolumePutFiles2Request
+	(*VolumePutFiles2Response)(nil),                        // 488: modal.client.VolumePutFiles2Response
+	(*VolumePutFilesRequest)(nil),                          // 489: modal.client.VolumePutFilesRequest
+	(*VolumeReloadRequest)(nil),                            // 490: modal.client.VolumeReloadRequest
+	(*VolumeRemoveFile2Request)(nil),                       // 491: modal.client.VolumeRemoveFile2Request
+	(*VolumeRemoveFileRequest)(nil),                        // 492: modal.client.VolumeRemoveFileRequest
+	(*VolumeRenameRequest)(nil),                            // 493: modal.client.VolumeRenameRequest
+	(*Warning)(nil),                                        // 494: modal.client.Warning
+	(*WebUrlInfo)(nil),                                     // 495: modal.client.WebUrlInfo
+	(*WebhookConfig)(nil),                                  // 496: modal.client.WebhookConfig
+	(*WorkspaceBillingReportItem)(nil),                     // 497: modal.client.WorkspaceBillingReportItem
+	(*WorkspaceBillingReportRequest)(nil),                  // 498: modal.client.WorkspaceBillingReportRequest
+	(*WorkspaceDashboardUrlRequest)(nil),                   // 499: modal.client.WorkspaceDashboardUrlRequest
+	(*WorkspaceDashboardUrlResponse)(nil),                  // 500: modal.client.WorkspaceDashboardUrlResponse
+	(*WorkspaceMembersListItem)(nil),                       // 501: modal.client.WorkspaceMembersListItem
+	(*WorkspaceMembersListResponse)(nil),                   // 502: modal.client.WorkspaceMembersListResponse
+	(*WorkspaceNameLookupResponse)(nil),                    // 503: modal.client.WorkspaceNameLookupResponse
+	(*AppCountLogsResponse_LogBucket)(nil),                 // 504: modal.client.AppCountLogsResponse.LogBucket
+	nil,                                                    // 505: modal.client.AppCreateRequest.TagsEntry
+	nil,                                                    // 506: modal.client.AppGetTagsResponse.TagsEntry
+	nil,                                                    // 507: modal.client.AppLayout.FunctionIdsEntry
+	nil,                                                    // 508: modal.client.AppLayout.ClassIdsEntry
+	(*AppListResponse_AppListItem)(nil),                    // 509: modal.client.AppListResponse.AppListItem
+	nil,                                                    // 510: modal.client.AppPublishRequest.FunctionIdsEntry
+	nil,                                                    // 511: modal.client.AppPublishRequest.ClassIdsEntry
+	nil,                                                    // 512: modal.client.AppPublishRequest.DefinitionIdsEntry
+	nil,                                                    // 513: modal.client.AppPublishRequest.TagsEntry
+	nil,                                                    // 514: modal.client.AppSetObjectsRequest.IndexedObjectIdsEntry
+	nil,                                                    // 515: modal.client.AppSetTagsRequest.TagsEntry
+	(*Asgi_Http)(nil),                                      // 516: modal.client.Asgi.Http
+	(*Asgi_HttpRequest)(nil),                               // 517: modal.client.Asgi.HttpRequest
+	(*Asgi_HttpResponseStart)(nil),                         // 518: modal.client.Asgi.HttpResponseStart
+	(*Asgi_HttpResponseBody)(nil),                          // 519: modal.client.Asgi.HttpResponseBody
+	(*Asgi_HttpResponseTrailers)(nil),                      // 520: modal.client.Asgi.HttpResponseTrailers
+	(*Asgi_HttpDisconnect)(nil),                            // 521: modal.client.Asgi.HttpDisconnect
+	(*Asgi_Websocket)(nil),                                 // 522: modal.client.Asgi.Websocket
+	(*Asgi_WebsocketConnect)(nil),                          // 523: modal.client.Asgi.WebsocketConnect
+	(*Asgi_WebsocketAccept)(nil),                           // 524: modal.client.Asgi.WebsocketAccept
+	(*Asgi_WebsocketReceive)(nil),                          // 525: modal.client.Asgi.WebsocketReceive
+	(*Asgi_WebsocketSend)(nil),                             // 526: modal.client.Asgi.WebsocketSend
+	(*Asgi_WebsocketDisconnect)(nil),                       // 527: modal.client.Asgi.WebsocketDisconnect
+	(*Asgi_WebsocketClose)(nil),                            // 528: modal.client.Asgi.WebsocketClose
+	nil,                                                    // 529: modal.client.AutoscalerConfiguration.OverrideEventsEntry
+	nil,                                                    // 530: modal.client.ContainerArguments.TracingContextEntry
+	(*DictListResponse_DictInfo)(nil),                      // 531: modal.client.DictListResponse.DictInfo
+	(*EnvironmentGetManagedResponse_PrincipalEnvRole)(nil), // 532: modal.client.EnvironmentGetManagedResponse.PrincipalEnvRole
+	(*FlashContainerListResponse_Container)(nil),           // 533: modal.client.FlashContainerListResponse.Container
+	nil,                                 // 534: modal.client.Function.MethodDefinitionsEntry
+	nil,                                 // 535: modal.client.Function.ExperimentalOptionsEntry
+	nil,                                 // 536: modal.client.FunctionData.MethodDefinitionsEntry
+	(*FunctionData_RankedFunction)(nil), // 537: modal.client.FunctionData.RankedFunction
+	nil,                                 // 538: modal.client.FunctionData.ExperimentalOptionsEntry
+	nil,                                 // 539: modal.client.FunctionHandleMetadata.MethodHandleMetadataEntry
+	nil,                                 // 540: modal.client.FunctionPrecreateRequest.MethodDefinitionsEntry
+	nil,                                 // 541: modal.client.Image.BuildArgsEntry
+	nil,                                 // 542: modal.client.ImageMetadata.PythonPackagesEntry
+	(*NotebookKernelPublishResultsRequest_ExecuteReply)(nil), // 543: modal.client.NotebookKernelPublishResultsRequest.ExecuteReply
+	(*NotebookKernelPublishResultsRequest_CellResult)(nil),   // 544: modal.client.NotebookKernelPublishResultsRequest.CellResult
+	(*NotebookOutput_ExecuteResult)(nil),                     // 545: modal.client.NotebookOutput.ExecuteResult
+	(*NotebookOutput_DisplayData)(nil),                       // 546: modal.client.NotebookOutput.DisplayData
+	(*NotebookOutput_Stream)(nil),                            // 547: modal.client.NotebookOutput.Stream
+	(*NotebookOutput_Error)(nil),                             // 548: modal.client.NotebookOutput.Error
+	(*Probe_ExecCommand)(nil),                                // 549: modal.client.Probe.ExecCommand
+	(*QueueListResponse_QueueInfo)(nil),                      // 550: modal.client.QueueListResponse.QueueInfo
+	(*ResourceInfo_ResourceValue)(nil),                       // 551: modal.client.ResourceInfo.ResourceValue
+	nil,                                                      // 552: modal.client.Sandbox.ExperimentalOptionsEntry
+	(*Schedule_Cron)(nil),                                    // 553: modal.client.Schedule.Cron
+	(*Schedule_Period)(nil),                                  // 554: modal.client.Schedule.Period
+	nil,                                                      // 555: modal.client.SecretCreateRequest.EnvDictEntry
+	nil,                                                      // 556: modal.client.SecretGetOrCreateRequest.EnvDictEntry
+	(*SecretUpdateRequest_Update)(nil),                       // 557: modal.client.SecretUpdateRequest.Update
+	(*TemplateListResponse_TemplateListItem)(nil),            // 558: modal.client.TemplateListResponse.TemplateListItem
+	(*VolumePutFiles2Request_File)(nil),                      // 559: modal.client.VolumePutFiles2Request.File
+	(*VolumePutFiles2Request_Block)(nil),                     // 560: modal.client.VolumePutFiles2Request.Block
+	(*VolumePutFiles2Response_MissingBlock)(nil),             // 561: modal.client.VolumePutFiles2Response.MissingBlock
+	nil,                            // 562: modal.client.WorkspaceBillingReportItem.TagsEntry
+	(*timestamppb.Timestamp)(nil),  // 563: google.protobuf.Timestamp
+	(*wrapperspb.StringValue)(nil), // 564: google.protobuf.StringValue
+	(*anypb.Any)(nil),              // 565: google.protobuf.Any
+	(*structpb.Struct)(nil),        // 566: google.protobuf.Struct
+	(*emptypb.Empty)(nil),          // 567: google.protobuf.Empty
 }
 var file_modal_proto_api_proto_depIdxs = []int32{
 	1,   // 0: modal.client.AppClientDisconnectRequest.reason:type_name -> modal.client.AppDisconnectReason
-	551, // 1: modal.client.AppCountLogsRequest.since:type_name -> google.protobuf.Timestamp
-	551, // 2: modal.client.AppCountLogsRequest.until:type_name -> google.protobuf.Timestamp
-	12,  // 3: modal.client.AppCountLogsRequest.source:type_name -> modal.client.FileDescriptor
-	493, // 4: modal.client.AppCountLogsResponse.buckets:type_name -> modal.client.AppCountLogsResponse.LogBucket
+	563, // 1: modal.client.AppCountLogsRequest.since:type_name -> google.protobuf.Timestamp
+	563, // 2: modal.client.AppCountLogsRequest.until:type_name -> google.protobuf.Timestamp
+	13,  // 3: modal.client.AppCountLogsRequest.source:type_name -> modal.client.FileDescriptor
+	504, // 4: modal.client.AppCountLogsResponse.buckets:type_name -> modal.client.AppCountLogsResponse.LogBucket
 	2,   // 5: modal.client.AppCreateRequest.app_state:type_name -> modal.client.AppState
-	494, // 6: modal.client.AppCreateRequest.tags:type_name -> modal.client.AppCreateRequest.TagsEntry
+	505, // 6: modal.client.AppCreateRequest.tags:type_name -> modal.client.AppCreateRequest.TagsEntry
 	0,   // 7: modal.client.AppDeployRequest.visibility:type_name -> modal.client.AppDeployVisibility
-	121, // 8: modal.client.AppDeploymentHistory.commit_info:type_name -> modal.client.CommitInfo
-	50,  // 9: modal.client.AppDeploymentHistoryResponse.app_deployment_histories:type_name -> modal.client.AppDeploymentHistory
-	551, // 10: modal.client.AppFetchLogsRequest.since:type_name -> google.protobuf.Timestamp
-	551, // 11: modal.client.AppFetchLogsRequest.until:type_name -> google.protobuf.Timestamp
-	12,  // 12: modal.client.AppFetchLogsRequest.source:type_name -> modal.client.FileDescriptor
-	434, // 13: modal.client.AppFetchLogsResponse.batches:type_name -> modal.client.TaskLogsBatch
-	71,  // 14: modal.client.AppGetByDeploymentNameResponse.lifecycle:type_name -> modal.client.AppLifecycle
-	70,  // 15: modal.client.AppGetLayoutResponse.app_layout:type_name -> modal.client.AppLayout
-	71,  // 16: modal.client.AppGetLifecycleResponse.lifecycle:type_name -> modal.client.AppLifecycle
-	12,  // 17: modal.client.AppGetLogsRequest.file_descriptor:type_name -> modal.client.FileDescriptor
-	300, // 18: modal.client.AppGetObjectsItem.object:type_name -> modal.client.Object
-	62,  // 19: modal.client.AppGetObjectsResponse.items:type_name -> modal.client.AppGetObjectsItem
-	16,  // 20: modal.client.AppGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
-	495, // 21: modal.client.AppGetTagsResponse.tags:type_name -> modal.client.AppGetTagsResponse.TagsEntry
-	300, // 22: modal.client.AppLayout.objects:type_name -> modal.client.Object
-	496, // 23: modal.client.AppLayout.function_ids:type_name -> modal.client.AppLayout.FunctionIdsEntry
-	497, // 24: modal.client.AppLayout.class_ids:type_name -> modal.client.AppLayout.ClassIdsEntry
+	124, // 8: modal.client.AppDeploymentHistory.commit_info:type_name -> modal.client.CommitInfo
+	53,  // 9: modal.client.AppDeploymentHistoryResponse.app_deployment_histories:type_name -> modal.client.AppDeploymentHistory
+	563, // 10: modal.client.AppFetchLogsRequest.since:type_name -> google.protobuf.Timestamp
+	563, // 11: modal.client.AppFetchLogsRequest.until:type_name -> google.protobuf.Timestamp
+	13,  // 12: modal.client.AppFetchLogsRequest.source:type_name -> modal.client.FileDescriptor
+	443, // 13: modal.client.AppFetchLogsResponse.batches:type_name -> modal.client.TaskLogsBatch
+	74,  // 14: modal.client.AppGetByDeploymentNameResponse.lifecycle:type_name -> modal.client.AppLifecycle
+	73,  // 15: modal.client.AppGetLayoutResponse.app_layout:type_name -> modal.client.AppLayout
+	74,  // 16: modal.client.AppGetLifecycleResponse.lifecycle:type_name -> modal.client.AppLifecycle
+	13,  // 17: modal.client.AppGetLogsRequest.file_descriptor:type_name -> modal.client.FileDescriptor
+	307, // 18: modal.client.AppGetObjectsItem.object:type_name -> modal.client.Object
+	65,  // 19: modal.client.AppGetObjectsResponse.items:type_name -> modal.client.AppGetObjectsItem
+	19,  // 20: modal.client.AppGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
+	506, // 21: modal.client.AppGetTagsResponse.tags:type_name -> modal.client.AppGetTagsResponse.TagsEntry
+	307, // 22: modal.client.AppLayout.objects:type_name -> modal.client.Object
+	507, // 23: modal.client.AppLayout.function_ids:type_name -> modal.client.AppLayout.FunctionIdsEntry
+	508, // 24: modal.client.AppLayout.class_ids:type_name -> modal.client.AppLayout.ClassIdsEntry
 	2,   // 25: modal.client.AppLifecycle.app_state:type_name -> modal.client.AppState
-	498, // 26: modal.client.AppListResponse.apps:type_name -> modal.client.AppListResponse.AppListItem
+	509, // 26: modal.client.AppListResponse.apps:type_name -> modal.client.AppListResponse.AppListItem
 	2,   // 27: modal.client.AppPublishRequest.app_state:type_name -> modal.client.AppState
-	499, // 28: modal.client.AppPublishRequest.function_ids:type_name -> modal.client.AppPublishRequest.FunctionIdsEntry
-	500, // 29: modal.client.AppPublishRequest.class_ids:type_name -> modal.client.AppPublishRequest.ClassIdsEntry
-	501, // 30: modal.client.AppPublishRequest.definition_ids:type_name -> modal.client.AppPublishRequest.DefinitionIdsEntry
-	121, // 31: modal.client.AppPublishRequest.commit_info:type_name -> modal.client.CommitInfo
-	502, // 32: modal.client.AppPublishRequest.tags:type_name -> modal.client.AppPublishRequest.TagsEntry
-	485, // 33: modal.client.AppPublishResponse.server_warnings:type_name -> modal.client.Warning
-	485, // 34: modal.client.AppRolloverResponse.server_warnings:type_name -> modal.client.Warning
-	503, // 35: modal.client.AppSetObjectsRequest.indexed_object_ids:type_name -> modal.client.AppSetObjectsRequest.IndexedObjectIdsEntry
+	510, // 28: modal.client.AppPublishRequest.function_ids:type_name -> modal.client.AppPublishRequest.FunctionIdsEntry
+	511, // 29: modal.client.AppPublishRequest.class_ids:type_name -> modal.client.AppPublishRequest.ClassIdsEntry
+	512, // 30: modal.client.AppPublishRequest.definition_ids:type_name -> modal.client.AppPublishRequest.DefinitionIdsEntry
+	124, // 31: modal.client.AppPublishRequest.commit_info:type_name -> modal.client.CommitInfo
+	513, // 32: modal.client.AppPublishRequest.tags:type_name -> modal.client.AppPublishRequest.TagsEntry
+	494, // 33: modal.client.AppPublishResponse.server_warnings:type_name -> modal.client.Warning
+	494, // 34: modal.client.AppRolloverResponse.server_warnings:type_name -> modal.client.Warning
+	514, // 35: modal.client.AppSetObjectsRequest.indexed_object_ids:type_name -> modal.client.AppSetObjectsRequest.IndexedObjectIdsEntry
 	2,   // 36: modal.client.AppSetObjectsRequest.new_app_state:type_name -> modal.client.AppState
-	504, // 37: modal.client.AppSetTagsRequest.tags:type_name -> modal.client.AppSetTagsRequest.TagsEntry
+	515, // 37: modal.client.AppSetTagsRequest.tags:type_name -> modal.client.AppSetTagsRequest.TagsEntry
 	3,   // 38: modal.client.AppStopRequest.source:type_name -> modal.client.AppStopSource
-	505, // 39: modal.client.Asgi.http:type_name -> modal.client.Asgi.Http
-	506, // 40: modal.client.Asgi.http_request:type_name -> modal.client.Asgi.HttpRequest
-	507, // 41: modal.client.Asgi.http_response_start:type_name -> modal.client.Asgi.HttpResponseStart
-	508, // 42: modal.client.Asgi.http_response_body:type_name -> modal.client.Asgi.HttpResponseBody
-	509, // 43: modal.client.Asgi.http_response_trailers:type_name -> modal.client.Asgi.HttpResponseTrailers
-	510, // 44: modal.client.Asgi.http_disconnect:type_name -> modal.client.Asgi.HttpDisconnect
-	511, // 45: modal.client.Asgi.websocket:type_name -> modal.client.Asgi.Websocket
-	512, // 46: modal.client.Asgi.websocket_connect:type_name -> modal.client.Asgi.WebsocketConnect
-	513, // 47: modal.client.Asgi.websocket_accept:type_name -> modal.client.Asgi.WebsocketAccept
-	514, // 48: modal.client.Asgi.websocket_receive:type_name -> modal.client.Asgi.WebsocketReceive
-	515, // 49: modal.client.Asgi.websocket_send:type_name -> modal.client.Asgi.WebsocketSend
-	516, // 50: modal.client.Asgi.websocket_disconnect:type_name -> modal.client.Asgi.WebsocketDisconnect
-	517, // 51: modal.client.Asgi.websocket_close:type_name -> modal.client.Asgi.WebsocketClose
-	233, // 52: modal.client.AttemptAwaitResponse.output:type_name -> modal.client.FunctionGetOutputsItem
-	247, // 53: modal.client.AttemptRetryRequest.input:type_name -> modal.client.FunctionPutInputsItem
-	247, // 54: modal.client.AttemptStartRequest.input:type_name -> modal.client.FunctionPutInputsItem
-	256, // 55: modal.client.AttemptStartResponse.retry_policy:type_name -> modal.client.FunctionRetryPolicy
-	94,  // 56: modal.client.AutoscalerConfiguration.settings:type_name -> modal.client.AutoscalerSettings
-	518, // 57: modal.client.AutoscalerConfiguration.override_events:type_name -> modal.client.AutoscalerConfiguration.OverrideEventsEntry
-	94,  // 58: modal.client.AutoscalerConfiguration.default_settings:type_name -> modal.client.AutoscalerSettings
-	94,  // 59: modal.client.AutoscalerConfiguration.static_settings:type_name -> modal.client.AutoscalerSettings
-	94,  // 60: modal.client.AutoscalerConfiguration.override_settings:type_name -> modal.client.AutoscalerSettings
-	295, // 61: modal.client.BlobCreateResponse.multipart:type_name -> modal.client.MultiPartUpload
-	452, // 62: modal.client.BlobCreateResponse.upload_urls:type_name -> modal.client.UploadUrlList
-	296, // 63: modal.client.BlobCreateResponse.multiparts:type_name -> modal.client.MultiPartUploadList
-	241, // 64: modal.client.BuildFunction.input:type_name -> modal.client.FunctionInput
+	516, // 39: modal.client.Asgi.http:type_name -> modal.client.Asgi.Http
+	517, // 40: modal.client.Asgi.http_request:type_name -> modal.client.Asgi.HttpRequest
+	518, // 41: modal.client.Asgi.http_response_start:type_name -> modal.client.Asgi.HttpResponseStart
+	519, // 42: modal.client.Asgi.http_response_body:type_name -> modal.client.Asgi.HttpResponseBody
+	520, // 43: modal.client.Asgi.http_response_trailers:type_name -> modal.client.Asgi.HttpResponseTrailers
+	521, // 44: modal.client.Asgi.http_disconnect:type_name -> modal.client.Asgi.HttpDisconnect
+	522, // 45: modal.client.Asgi.websocket:type_name -> modal.client.Asgi.Websocket
+	523, // 46: modal.client.Asgi.websocket_connect:type_name -> modal.client.Asgi.WebsocketConnect
+	524, // 47: modal.client.Asgi.websocket_accept:type_name -> modal.client.Asgi.WebsocketAccept
+	525, // 48: modal.client.Asgi.websocket_receive:type_name -> modal.client.Asgi.WebsocketReceive
+	526, // 49: modal.client.Asgi.websocket_send:type_name -> modal.client.Asgi.WebsocketSend
+	527, // 50: modal.client.Asgi.websocket_disconnect:type_name -> modal.client.Asgi.WebsocketDisconnect
+	528, // 51: modal.client.Asgi.websocket_close:type_name -> modal.client.Asgi.WebsocketClose
+	240, // 52: modal.client.AttemptAwaitResponse.output:type_name -> modal.client.FunctionGetOutputsItem
+	254, // 53: modal.client.AttemptRetryRequest.input:type_name -> modal.client.FunctionPutInputsItem
+	254, // 54: modal.client.AttemptStartRequest.input:type_name -> modal.client.FunctionPutInputsItem
+	263, // 55: modal.client.AttemptStartResponse.retry_policy:type_name -> modal.client.FunctionRetryPolicy
+	97,  // 56: modal.client.AutoscalerConfiguration.settings:type_name -> modal.client.AutoscalerSettings
+	529, // 57: modal.client.AutoscalerConfiguration.override_events:type_name -> modal.client.AutoscalerConfiguration.OverrideEventsEntry
+	97,  // 58: modal.client.AutoscalerConfiguration.default_settings:type_name -> modal.client.AutoscalerSettings
+	97,  // 59: modal.client.AutoscalerConfiguration.static_settings:type_name -> modal.client.AutoscalerSettings
+	97,  // 60: modal.client.AutoscalerConfiguration.override_settings:type_name -> modal.client.AutoscalerSettings
+	302, // 61: modal.client.BlobCreateResponse.multipart:type_name -> modal.client.MultiPartUpload
+	461, // 62: modal.client.BlobCreateResponse.upload_urls:type_name -> modal.client.UploadUrlList
+	303, // 63: modal.client.BlobCreateResponse.multiparts:type_name -> modal.client.MultiPartUploadList
+	248, // 64: modal.client.BuildFunction.input:type_name -> modal.client.FunctionInput
 	5,   // 65: modal.client.CheckpointInfo.status:type_name -> modal.client.CheckpointStatus
-	109, // 66: modal.client.ClassCreateRequest.methods:type_name -> modal.client.ClassMethod
-	108, // 67: modal.client.ClassCreateResponse.handle_metadata:type_name -> modal.client.ClassHandleMetadata
-	108, // 68: modal.client.ClassGetResponse.handle_metadata:type_name -> modal.client.ClassHandleMetadata
-	485, // 69: modal.client.ClassGetResponse.server_warnings:type_name -> modal.client.Warning
-	109, // 70: modal.client.ClassHandleMetadata.methods:type_name -> modal.client.ClassMethod
-	240, // 71: modal.client.ClassHandleMetadata.class_function_metadata:type_name -> modal.client.FunctionHandleMetadata
-	240, // 72: modal.client.ClassMethod.function_handle_metadata:type_name -> modal.client.FunctionHandleMetadata
-	31,  // 73: modal.client.ClassParameterInfo.format:type_name -> modal.client.ClassParameterInfo.ParameterSerializationFormat
-	112, // 74: modal.client.ClassParameterInfo.schema:type_name -> modal.client.ClassParameterSpec
-	113, // 75: modal.client.ClassParameterSet.parameters:type_name -> modal.client.ClassParameterValue
-	17,  // 76: modal.client.ClassParameterSpec.type:type_name -> modal.client.ParameterType
-	263, // 77: modal.client.ClassParameterSpec.full_type:type_name -> modal.client.GenericPayloadType
-	17,  // 78: modal.client.ClassParameterValue.type:type_name -> modal.client.ParameterType
-	485, // 79: modal.client.ClientHelloResponse.server_warnings:type_name -> modal.client.Warning
-	32,  // 80: modal.client.CloudBucketMount.bucket_type:type_name -> modal.client.CloudBucketMount.BucketType
-	33,  // 81: modal.client.CloudBucketMount.metadata_ttl_type:type_name -> modal.client.CloudBucketMount.MetadataTTLType
-	120, // 82: modal.client.ClusterGetResponse.cluster:type_name -> modal.client.ClusterStats
-	120, // 83: modal.client.ClusterListResponse.clusters:type_name -> modal.client.ClusterStats
-	206, // 84: modal.client.ContainerArguments.function_def:type_name -> modal.client.Function
-	316, // 85: modal.client.ContainerArguments.proxy_info:type_name -> modal.client.ProxyInfo
-	519, // 86: modal.client.ContainerArguments.tracing_context:type_name -> modal.client.ContainerArguments.TracingContextEntry
-	70,  // 87: modal.client.ContainerArguments.app_layout:type_name -> modal.client.AppLayout
-	12,  // 88: modal.client.ContainerExecGetOutputRequest.file_descriptor:type_name -> modal.client.FileDescriptor
-	343, // 89: modal.client.ContainerExecPutInputRequest.input:type_name -> modal.client.RuntimeInputMessage
-	302, // 90: modal.client.ContainerExecRequest.pty_info:type_name -> modal.client.PTYInfo
-	11,  // 91: modal.client.ContainerExecRequest.stdout_output:type_name -> modal.client.ExecOutputOption
-	11,  // 92: modal.client.ContainerExecRequest.stderr_output:type_name -> modal.client.ExecOutputOption
-	23,  // 93: modal.client.ContainerFileSeekRequest.whence:type_name -> modal.client.SeekWhence
-	135, // 94: modal.client.ContainerFilesystemExecRequest.file_open_request:type_name -> modal.client.ContainerFileOpenRequest
-	142, // 95: modal.client.ContainerFilesystemExecRequest.file_write_request:type_name -> modal.client.ContainerFileWriteRequest
-	137, // 96: modal.client.ContainerFilesystemExecRequest.file_read_request:type_name -> modal.client.ContainerFileReadRequest
-	132, // 97: modal.client.ContainerFilesystemExecRequest.file_flush_request:type_name -> modal.client.ContainerFileFlushRequest
-	136, // 98: modal.client.ContainerFilesystemExecRequest.file_read_line_request:type_name -> modal.client.ContainerFileReadLineRequest
-	139, // 99: modal.client.ContainerFilesystemExecRequest.file_seek_request:type_name -> modal.client.ContainerFileSeekRequest
-	131, // 100: modal.client.ContainerFilesystemExecRequest.file_delete_bytes_request:type_name -> modal.client.ContainerFileDeleteBytesRequest
-	141, // 101: modal.client.ContainerFilesystemExecRequest.file_write_replace_bytes_request:type_name -> modal.client.ContainerFileWriteReplaceBytesRequest
-	130, // 102: modal.client.ContainerFilesystemExecRequest.file_close_request:type_name -> modal.client.ContainerFileCloseRequest
-	133, // 103: modal.client.ContainerFilesystemExecRequest.file_ls_request:type_name -> modal.client.ContainerFileLsRequest
-	134, // 104: modal.client.ContainerFilesystemExecRequest.file_mkdir_request:type_name -> modal.client.ContainerFileMkdirRequest
-	138, // 105: modal.client.ContainerFilesystemExecRequest.file_rm_request:type_name -> modal.client.ContainerFileRmRequest
-	140, // 106: modal.client.ContainerFilesystemExecRequest.file_watch_request:type_name -> modal.client.ContainerFileWatchRequest
-	102, // 107: modal.client.ContainerHeartbeatResponse.cancel_input_event:type_name -> modal.client.CancelInputEvent
-	433, // 108: modal.client.ContainerLogRequest.logs:type_name -> modal.client.TaskLogs
+	112, // 66: modal.client.ClassCreateRequest.methods:type_name -> modal.client.ClassMethod
+	111, // 67: modal.client.ClassCreateResponse.handle_metadata:type_name -> modal.client.ClassHandleMetadata
+	111, // 68: modal.client.ClassGetResponse.handle_metadata:type_name -> modal.client.ClassHandleMetadata
+	494, // 69: modal.client.ClassGetResponse.server_warnings:type_name -> modal.client.Warning
+	112, // 70: modal.client.ClassHandleMetadata.methods:type_name -> modal.client.ClassMethod
+	247, // 71: modal.client.ClassHandleMetadata.class_function_metadata:type_name -> modal.client.FunctionHandleMetadata
+	247, // 72: modal.client.ClassMethod.function_handle_metadata:type_name -> modal.client.FunctionHandleMetadata
+	34,  // 73: modal.client.ClassParameterInfo.format:type_name -> modal.client.ClassParameterInfo.ParameterSerializationFormat
+	115, // 74: modal.client.ClassParameterInfo.schema:type_name -> modal.client.ClassParameterSpec
+	116, // 75: modal.client.ClassParameterSet.parameters:type_name -> modal.client.ClassParameterValue
+	20,  // 76: modal.client.ClassParameterSpec.type:type_name -> modal.client.ParameterType
+	270, // 77: modal.client.ClassParameterSpec.full_type:type_name -> modal.client.GenericPayloadType
+	20,  // 78: modal.client.ClassParameterValue.type:type_name -> modal.client.ParameterType
+	494, // 79: modal.client.ClientHelloResponse.server_warnings:type_name -> modal.client.Warning
+	35,  // 80: modal.client.CloudBucketMount.bucket_type:type_name -> modal.client.CloudBucketMount.BucketType
+	36,  // 81: modal.client.CloudBucketMount.metadata_ttl_type:type_name -> modal.client.CloudBucketMount.MetadataTTLType
+	123, // 82: modal.client.ClusterGetResponse.cluster:type_name -> modal.client.ClusterStats
+	123, // 83: modal.client.ClusterListResponse.clusters:type_name -> modal.client.ClusterStats
+	213, // 84: modal.client.ContainerArguments.function_def:type_name -> modal.client.Function
+	323, // 85: modal.client.ContainerArguments.proxy_info:type_name -> modal.client.ProxyInfo
+	530, // 86: modal.client.ContainerArguments.tracing_context:type_name -> modal.client.ContainerArguments.TracingContextEntry
+	73,  // 87: modal.client.ContainerArguments.app_layout:type_name -> modal.client.AppLayout
+	13,  // 88: modal.client.ContainerExecGetOutputRequest.file_descriptor:type_name -> modal.client.FileDescriptor
+	350, // 89: modal.client.ContainerExecPutInputRequest.input:type_name -> modal.client.RuntimeInputMessage
+	309, // 90: modal.client.ContainerExecRequest.pty_info:type_name -> modal.client.PTYInfo
+	12,  // 91: modal.client.ContainerExecRequest.stdout_output:type_name -> modal.client.ExecOutputOption
+	12,  // 92: modal.client.ContainerExecRequest.stderr_output:type_name -> modal.client.ExecOutputOption
+	26,  // 93: modal.client.ContainerFileSeekRequest.whence:type_name -> modal.client.SeekWhence
+	138, // 94: modal.client.ContainerFilesystemExecRequest.file_open_request:type_name -> modal.client.ContainerFileOpenRequest
+	145, // 95: modal.client.ContainerFilesystemExecRequest.file_write_request:type_name -> modal.client.ContainerFileWriteRequest
+	140, // 96: modal.client.ContainerFilesystemExecRequest.file_read_request:type_name -> modal.client.ContainerFileReadRequest
+	135, // 97: modal.client.ContainerFilesystemExecRequest.file_flush_request:type_name -> modal.client.ContainerFileFlushRequest
+	139, // 98: modal.client.ContainerFilesystemExecRequest.file_read_line_request:type_name -> modal.client.ContainerFileReadLineRequest
+	142, // 99: modal.client.ContainerFilesystemExecRequest.file_seek_request:type_name -> modal.client.ContainerFileSeekRequest
+	134, // 100: modal.client.ContainerFilesystemExecRequest.file_delete_bytes_request:type_name -> modal.client.ContainerFileDeleteBytesRequest
+	144, // 101: modal.client.ContainerFilesystemExecRequest.file_write_replace_bytes_request:type_name -> modal.client.ContainerFileWriteReplaceBytesRequest
+	133, // 102: modal.client.ContainerFilesystemExecRequest.file_close_request:type_name -> modal.client.ContainerFileCloseRequest
+	136, // 103: modal.client.ContainerFilesystemExecRequest.file_ls_request:type_name -> modal.client.ContainerFileLsRequest
+	137, // 104: modal.client.ContainerFilesystemExecRequest.file_mkdir_request:type_name -> modal.client.ContainerFileMkdirRequest
+	141, // 105: modal.client.ContainerFilesystemExecRequest.file_rm_request:type_name -> modal.client.ContainerFileRmRequest
+	143, // 106: modal.client.ContainerFilesystemExecRequest.file_watch_request:type_name -> modal.client.ContainerFileWatchRequest
+	105, // 107: modal.client.ContainerHeartbeatResponse.cancel_input_event:type_name -> modal.client.CancelInputEvent
+	442, // 108: modal.client.ContainerLogRequest.logs:type_name -> modal.client.TaskLogs
 	8,   // 109: modal.client.DNSRecord.type:type_name -> modal.client.DNSRecordType
 	9,   // 110: modal.client.DataChunk.data_format:type_name -> modal.client.DataFormat
-	175, // 111: modal.client.DictGetByIdResponse.metadata:type_name -> modal.client.DictMetadata
-	16,  // 112: modal.client.DictGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
-	163, // 113: modal.client.DictGetOrCreateRequest.data:type_name -> modal.client.DictEntry
-	175, // 114: modal.client.DictGetOrCreateResponse.metadata:type_name -> modal.client.DictMetadata
-	280, // 115: modal.client.DictListRequest.pagination:type_name -> modal.client.ListPagination
-	520, // 116: modal.client.DictListResponse.dicts:type_name -> modal.client.DictListResponse.DictInfo
-	153, // 117: modal.client.DictMetadata.creation_info:type_name -> modal.client.CreationInfo
-	163, // 118: modal.client.DictUpdateRequest.updates:type_name -> modal.client.DictEntry
+	178, // 111: modal.client.DictGetByIdResponse.metadata:type_name -> modal.client.DictMetadata
+	19,  // 112: modal.client.DictGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
+	166, // 113: modal.client.DictGetOrCreateRequest.data:type_name -> modal.client.DictEntry
+	178, // 114: modal.client.DictGetOrCreateResponse.metadata:type_name -> modal.client.DictMetadata
+	287, // 115: modal.client.DictListRequest.pagination:type_name -> modal.client.ListPagination
+	531, // 116: modal.client.DictListResponse.dicts:type_name -> modal.client.DictListResponse.DictInfo
+	156, // 117: modal.client.DictMetadata.creation_info:type_name -> modal.client.CreationInfo
+	166, // 118: modal.client.DictUpdateRequest.updates:type_name -> modal.client.DictEntry
 	4,   // 119: modal.client.Domain.certificate_status:type_name -> modal.client.CertificateStatus
-	156, // 120: modal.client.Domain.dns_records:type_name -> modal.client.DNSRecord
-	180, // 121: modal.client.DomainCertificateVerifyResponse.domain:type_name -> modal.client.Domain
-	156, // 122: modal.client.DomainCreateResponse.dns_records:type_name -> modal.client.DNSRecord
-	180, // 123: modal.client.DomainListResponse.domains:type_name -> modal.client.Domain
-	16,  // 124: modal.client.EnvironmentGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
-	193, // 125: modal.client.EnvironmentGetOrCreateResponse.metadata:type_name -> modal.client.EnvironmentMetadata
-	191, // 126: modal.client.EnvironmentListResponse.items:type_name -> modal.client.EnvironmentListItem
-	194, // 127: modal.client.EnvironmentMetadata.settings:type_name -> modal.client.EnvironmentSettings
-	552, // 128: modal.client.EnvironmentUpdateRequest.name:type_name -> google.protobuf.StringValue
-	552, // 129: modal.client.EnvironmentUpdateRequest.web_suffix:type_name -> google.protobuf.StringValue
-	34,  // 130: modal.client.FileEntry.type:type_name -> modal.client.FileEntry.FileType
-	422, // 131: modal.client.FilesystemRuntimeOutputBatch.error:type_name -> modal.client.SystemErrorMessage
-	521, // 132: modal.client.FlashContainerListResponse.containers:type_name -> modal.client.FlashContainerListResponse.Container
-	35,  // 133: modal.client.Function.definition_type:type_name -> modal.client.Function.DefinitionType
-	36,  // 134: modal.client.Function.function_type:type_name -> modal.client.Function.FunctionType
-	342, // 135: modal.client.Function.resources:type_name -> modal.client.Resources
-	340, // 136: modal.client.Function.rate_limit:type_name -> modal.client.RateLimit
-	487, // 137: modal.client.Function.webhook_config:type_name -> modal.client.WebhookConfig
-	418, // 138: modal.client.Function.shared_volume_mounts:type_name -> modal.client.SharedVolumeMount
-	256, // 139: modal.client.Function.retry_policy:type_name -> modal.client.FunctionRetryPolicy
-	302, // 140: modal.client.Function.pty_info:type_name -> modal.client.PTYInfo
-	7,   // 141: modal.client.Function.cloud_provider:type_name -> modal.client.CloudProvider
-	486, // 142: modal.client.Function.web_url_info:type_name -> modal.client.WebUrlInfo
-	477, // 143: modal.client.Function.volume_mounts:type_name -> modal.client.VolumeMount
-	155, // 144: modal.client.Function.custom_domain_info:type_name -> modal.client.CustomDomainInfo
-	103, // 145: modal.client.Function.checkpoint:type_name -> modal.client.CheckpointInfo
-	301, // 146: modal.client.Function.object_dependencies:type_name -> modal.client.ObjectDependency
-	346, // 147: modal.client.Function.s3_mounts:type_name -> modal.client.S3Mount
-	115, // 148: modal.client.Function.cloud_bucket_mounts:type_name -> modal.client.CloudBucketMount
-	395, // 149: modal.client.Function.scheduler_placement:type_name -> modal.client.SchedulerPlacement
-	110, // 150: modal.client.Function.class_parameter_info:type_name -> modal.client.ClassParameterInfo
-	438, // 151: modal.client.Function._experimental_task_templates:type_name -> modal.client.TaskTemplate
-	394, // 152: modal.client.Function.schedule:type_name -> modal.client.Schedule
-	522, // 153: modal.client.Function.method_definitions:type_name -> modal.client.Function.MethodDefinitionsEntry
-	94,  // 154: modal.client.Function.autoscaler_settings:type_name -> modal.client.AutoscalerSettings
-	257, // 155: modal.client.Function.function_schema:type_name -> modal.client.FunctionSchema
-	523, // 156: modal.client.Function.experimental_options:type_name -> modal.client.Function.ExperimentalOptionsEntry
-	9,   // 157: modal.client.Function.supported_input_formats:type_name -> modal.client.DataFormat
-	9,   // 158: modal.client.Function.supported_output_formats:type_name -> modal.client.DataFormat
-	265, // 159: modal.client.Function.http_config:type_name -> modal.client.HTTPConfig
-	241, // 160: modal.client.FunctionAsyncInvokeRequest.input:type_name -> modal.client.FunctionInput
-	244, // 161: modal.client.FunctionBindParamsRequest.function_options:type_name -> modal.client.FunctionOptions
-	240, // 162: modal.client.FunctionBindParamsResponse.handle_metadata:type_name -> modal.client.FunctionHandleMetadata
-	278, // 163: modal.client.FunctionCallInfo.pending_inputs:type_name -> modal.client.InputCategoryInfo
-	278, // 164: modal.client.FunctionCallInfo.failed_inputs:type_name -> modal.client.InputCategoryInfo
-	278, // 165: modal.client.FunctionCallInfo.succeeded_inputs:type_name -> modal.client.InputCategoryInfo
-	278, // 166: modal.client.FunctionCallInfo.timeout_inputs:type_name -> modal.client.InputCategoryInfo
-	278, // 167: modal.client.FunctionCallInfo.cancelled_inputs:type_name -> modal.client.InputCategoryInfo
-	216, // 168: modal.client.FunctionCallListResponse.function_calls:type_name -> modal.client.FunctionCallInfo
-	157, // 169: modal.client.FunctionCallPutDataRequest.data_chunks:type_name -> modal.client.DataChunk
-	206, // 170: modal.client.FunctionCreateRequest.function:type_name -> modal.client.Function
-	394, // 171: modal.client.FunctionCreateRequest.schedule:type_name -> modal.client.Schedule
-	222, // 172: modal.client.FunctionCreateRequest.function_data:type_name -> modal.client.FunctionData
-	206, // 173: modal.client.FunctionCreateResponse.function:type_name -> modal.client.Function
-	240, // 174: modal.client.FunctionCreateResponse.handle_metadata:type_name -> modal.client.FunctionHandleMetadata
-	485, // 175: modal.client.FunctionCreateResponse.server_warnings:type_name -> modal.client.Warning
-	36,  // 176: modal.client.FunctionData.function_type:type_name -> modal.client.Function.FunctionType
-	486, // 177: modal.client.FunctionData.web_url_info:type_name -> modal.client.WebUrlInfo
-	487, // 178: modal.client.FunctionData.webhook_config:type_name -> modal.client.WebhookConfig
-	155, // 179: modal.client.FunctionData.custom_domain_info:type_name -> modal.client.CustomDomainInfo
-	524, // 180: modal.client.FunctionData.method_definitions:type_name -> modal.client.FunctionData.MethodDefinitionsEntry
-	110, // 181: modal.client.FunctionData.class_parameter_info:type_name -> modal.client.ClassParameterInfo
-	525, // 182: modal.client.FunctionData.ranked_functions:type_name -> modal.client.FunctionData.RankedFunction
-	394, // 183: modal.client.FunctionData.schedule:type_name -> modal.client.Schedule
-	94,  // 184: modal.client.FunctionData.autoscaler_settings:type_name -> modal.client.AutoscalerSettings
-	257, // 185: modal.client.FunctionData.function_schema:type_name -> modal.client.FunctionSchema
-	526, // 186: modal.client.FunctionData.experimental_options:type_name -> modal.client.FunctionData.ExperimentalOptionsEntry
-	9,   // 187: modal.client.FunctionData.supported_input_formats:type_name -> modal.client.DataFormat
-	9,   // 188: modal.client.FunctionData.supported_output_formats:type_name -> modal.client.DataFormat
-	265, // 189: modal.client.FunctionData.http_config:type_name -> modal.client.HTTPConfig
-	206, // 190: modal.client.FunctionExtended.function_singleton:type_name -> modal.client.Function
-	222, // 191: modal.client.FunctionExtended.function_data:type_name -> modal.client.FunctionData
-	277, // 192: modal.client.FunctionGetCallGraphResponse.inputs:type_name -> modal.client.InputCallGraphInfo
-	211, // 193: modal.client.FunctionGetCallGraphResponse.function_calls:type_name -> modal.client.FunctionCallCallGraphInfo
-	241, // 194: modal.client.FunctionGetInputsItem.input:type_name -> modal.client.FunctionInput
-	13,  // 195: modal.client.FunctionGetInputsItem.function_call_invocation_type:type_name -> modal.client.FunctionCallInvocationType
-	230, // 196: modal.client.FunctionGetInputsResponse.inputs:type_name -> modal.client.FunctionGetInputsItem
-	264, // 197: modal.client.FunctionGetOutputsItem.result:type_name -> modal.client.GenericResult
-	9,   // 198: modal.client.FunctionGetOutputsItem.data_format:type_name -> modal.client.DataFormat
-	233, // 199: modal.client.FunctionGetOutputsResponse.outputs:type_name -> modal.client.FunctionGetOutputsItem
-	240, // 200: modal.client.FunctionGetResponse.handle_metadata:type_name -> modal.client.FunctionHandleMetadata
-	485, // 201: modal.client.FunctionGetResponse.server_warnings:type_name -> modal.client.Warning
-	36,  // 202: modal.client.FunctionHandleMetadata.function_type:type_name -> modal.client.Function.FunctionType
-	110, // 203: modal.client.FunctionHandleMetadata.class_parameter_info:type_name -> modal.client.ClassParameterInfo
-	527, // 204: modal.client.FunctionHandleMetadata.method_handle_metadata:type_name -> modal.client.FunctionHandleMetadata.MethodHandleMetadataEntry
-	257, // 205: modal.client.FunctionHandleMetadata.function_schema:type_name -> modal.client.FunctionSchema
-	9,   // 206: modal.client.FunctionHandleMetadata.supported_input_formats:type_name -> modal.client.DataFormat
-	9,   // 207: modal.client.FunctionHandleMetadata.supported_output_formats:type_name -> modal.client.DataFormat
-	9,   // 208: modal.client.FunctionInput.data_format:type_name -> modal.client.DataFormat
-	14,  // 209: modal.client.FunctionMapRequest.function_call_type:type_name -> modal.client.FunctionCallType
-	247, // 210: modal.client.FunctionMapRequest.pipelined_inputs:type_name -> modal.client.FunctionPutInputsItem
-	13,  // 211: modal.client.FunctionMapRequest.function_call_invocation_type:type_name -> modal.client.FunctionCallInvocationType
-	250, // 212: modal.client.FunctionMapResponse.pipelined_inputs:type_name -> modal.client.FunctionPutInputsResponseItem
-	256, // 213: modal.client.FunctionMapResponse.retry_policy:type_name -> modal.client.FunctionRetryPolicy
-	342, // 214: modal.client.FunctionOptions.resources:type_name -> modal.client.Resources
-	256, // 215: modal.client.FunctionOptions.retry_policy:type_name -> modal.client.FunctionRetryPolicy
-	477, // 216: modal.client.FunctionOptions.volume_mounts:type_name -> modal.client.VolumeMount
-	395, // 217: modal.client.FunctionOptions.scheduler_placement:type_name -> modal.client.SchedulerPlacement
-	115, // 218: modal.client.FunctionOptions.cloud_bucket_mounts:type_name -> modal.client.CloudBucketMount
-	36,  // 219: modal.client.FunctionPrecreateRequest.function_type:type_name -> modal.client.Function.FunctionType
-	487, // 220: modal.client.FunctionPrecreateRequest.webhook_config:type_name -> modal.client.WebhookConfig
-	528, // 221: modal.client.FunctionPrecreateRequest.method_definitions:type_name -> modal.client.FunctionPrecreateRequest.MethodDefinitionsEntry
-	257, // 222: modal.client.FunctionPrecreateRequest.function_schema:type_name -> modal.client.FunctionSchema
-	9,   // 223: modal.client.FunctionPrecreateRequest.supported_input_formats:type_name -> modal.client.DataFormat
-	9,   // 224: modal.client.FunctionPrecreateRequest.supported_output_formats:type_name -> modal.client.DataFormat
-	240, // 225: modal.client.FunctionPrecreateResponse.handle_metadata:type_name -> modal.client.FunctionHandleMetadata
-	241, // 226: modal.client.FunctionPutInputsItem.input:type_name -> modal.client.FunctionInput
-	247, // 227: modal.client.FunctionPutInputsRequest.inputs:type_name -> modal.client.FunctionPutInputsItem
-	250, // 228: modal.client.FunctionPutInputsResponse.inputs:type_name -> modal.client.FunctionPutInputsResponseItem
-	264, // 229: modal.client.FunctionPutOutputsItem.result:type_name -> modal.client.GenericResult
-	9,   // 230: modal.client.FunctionPutOutputsItem.data_format:type_name -> modal.client.DataFormat
-	251, // 231: modal.client.FunctionPutOutputsRequest.outputs:type_name -> modal.client.FunctionPutOutputsItem
-	241, // 232: modal.client.FunctionRetryInputsItem.input:type_name -> modal.client.FunctionInput
-	253, // 233: modal.client.FunctionRetryInputsRequest.inputs:type_name -> modal.client.FunctionRetryInputsItem
-	37,  // 234: modal.client.FunctionSchema.schema_type:type_name -> modal.client.FunctionSchema.FunctionSchemaType
-	112, // 235: modal.client.FunctionSchema.arguments:type_name -> modal.client.ClassParameterSpec
-	263, // 236: modal.client.FunctionSchema.return_type:type_name -> modal.client.GenericPayloadType
-	94,  // 237: modal.client.FunctionUpdateSchedulingParamsRequest.settings:type_name -> modal.client.AutoscalerSettings
-	15,  // 238: modal.client.GPUConfig.type:type_name -> modal.client.GPUType
-	17,  // 239: modal.client.GenericPayloadType.base_type:type_name -> modal.client.ParameterType
-	263, // 240: modal.client.GenericPayloadType.sub_types:type_name -> modal.client.GenericPayloadType
-	38,  // 241: modal.client.GenericResult.status:type_name -> modal.client.GenericResult.GenericStatus
-	96,  // 242: modal.client.Image.base_images:type_name -> modal.client.BaseImage
-	267, // 243: modal.client.Image.context_files:type_name -> modal.client.ImageContextFile
-	261, // 244: modal.client.Image.gpu_config:type_name -> modal.client.GPUConfig
-	276, // 245: modal.client.Image.image_registry_config:type_name -> modal.client.ImageRegistryConfig
-	101, // 246: modal.client.Image.build_function:type_name -> modal.client.BuildFunction
-	529, // 247: modal.client.Image.build_args:type_name -> modal.client.Image.BuildArgsEntry
-	477, // 248: modal.client.Image.volume_mounts:type_name -> modal.client.VolumeMount
-	275, // 249: modal.client.ImageFromIdResponse.metadata:type_name -> modal.client.ImageMetadata
-	266, // 250: modal.client.ImageGetOrCreateRequest.image:type_name -> modal.client.Image
-	10,  // 251: modal.client.ImageGetOrCreateRequest.namespace:type_name -> modal.client.DeploymentNamespace
-	264, // 252: modal.client.ImageGetOrCreateResponse.result:type_name -> modal.client.GenericResult
-	275, // 253: modal.client.ImageGetOrCreateResponse.metadata:type_name -> modal.client.ImageMetadata
-	264, // 254: modal.client.ImageJoinStreamingResponse.result:type_name -> modal.client.GenericResult
-	433, // 255: modal.client.ImageJoinStreamingResponse.task_logs:type_name -> modal.client.TaskLogs
-	275, // 256: modal.client.ImageJoinStreamingResponse.metadata:type_name -> modal.client.ImageMetadata
-	530, // 257: modal.client.ImageMetadata.python_packages:type_name -> modal.client.ImageMetadata.PythonPackagesEntry
-	22,  // 258: modal.client.ImageRegistryConfig.registry_auth_type:type_name -> modal.client.RegistryAuthType
-	38,  // 259: modal.client.InputCallGraphInfo.status:type_name -> modal.client.GenericResult.GenericStatus
-	279, // 260: modal.client.InputCategoryInfo.latest:type_name -> modal.client.InputInfo
-	233, // 261: modal.client.MapAwaitResponse.outputs:type_name -> modal.client.FunctionGetOutputsItem
-	247, // 262: modal.client.MapStartOrContinueItem.input:type_name -> modal.client.FunctionPutInputsItem
-	285, // 263: modal.client.MapStartOrContinueRequest.items:type_name -> modal.client.MapStartOrContinueItem
-	256, // 264: modal.client.MapStartOrContinueResponse.retry_policy:type_name -> modal.client.FunctionRetryPolicy
-	36,  // 265: modal.client.MethodDefinition.function_type:type_name -> modal.client.Function.FunctionType
-	487, // 266: modal.client.MethodDefinition.webhook_config:type_name -> modal.client.WebhookConfig
-	486, // 267: modal.client.MethodDefinition.web_url_info:type_name -> modal.client.WebUrlInfo
-	155, // 268: modal.client.MethodDefinition.custom_domain_info:type_name -> modal.client.CustomDomainInfo
-	257, // 269: modal.client.MethodDefinition.function_schema:type_name -> modal.client.FunctionSchema
-	9,   // 270: modal.client.MethodDefinition.supported_input_formats:type_name -> modal.client.DataFormat
-	9,   // 271: modal.client.MethodDefinition.supported_output_formats:type_name -> modal.client.DataFormat
-	10,  // 272: modal.client.MountGetOrCreateRequest.namespace:type_name -> modal.client.DeploymentNamespace
-	16,  // 273: modal.client.MountGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
-	289, // 274: modal.client.MountGetOrCreateRequest.files:type_name -> modal.client.MountFile
-	292, // 275: modal.client.MountGetOrCreateResponse.handle_metadata:type_name -> modal.client.MountHandleMetadata
-	295, // 276: modal.client.MultiPartUploadList.items:type_name -> modal.client.MultiPartUpload
-	39,  // 277: modal.client.NetworkAccess.network_access_type:type_name -> modal.client.NetworkAccess.NetworkAccessType
-	532, // 278: modal.client.NotebookKernelPublishResultsRequest.results:type_name -> modal.client.NotebookKernelPublishResultsRequest.CellResult
-	533, // 279: modal.client.NotebookOutput.execute_result:type_name -> modal.client.NotebookOutput.ExecuteResult
-	534, // 280: modal.client.NotebookOutput.display_data:type_name -> modal.client.NotebookOutput.DisplayData
-	535, // 281: modal.client.NotebookOutput.stream:type_name -> modal.client.NotebookOutput.Stream
-	536, // 282: modal.client.NotebookOutput.error:type_name -> modal.client.NotebookOutput.Error
-	240, // 283: modal.client.Object.function_handle_metadata:type_name -> modal.client.FunctionHandleMetadata
-	292, // 284: modal.client.Object.mount_handle_metadata:type_name -> modal.client.MountHandleMetadata
-	108, // 285: modal.client.Object.class_handle_metadata:type_name -> modal.client.ClassHandleMetadata
-	365, // 286: modal.client.Object.sandbox_handle_metadata:type_name -> modal.client.SandboxHandleMetadata
-	476, // 287: modal.client.Object.volume_metadata:type_name -> modal.client.VolumeMetadata
-	40,  // 288: modal.client.PTYInfo.pty_type:type_name -> modal.client.PTYInfo.PTYType
-	27,  // 289: modal.client.PortSpec.tunnel_type:type_name -> modal.client.TunnelType
-	303, // 290: modal.client.PortSpecs.ports:type_name -> modal.client.PortSpec
-	537, // 291: modal.client.Probe.exec_command:type_name -> modal.client.Probe.ExecCommand
-	317, // 292: modal.client.Proxy.proxy_ips:type_name -> modal.client.ProxyIp
-	317, // 293: modal.client.ProxyAddIpResponse.proxy_ip:type_name -> modal.client.ProxyIp
-	306, // 294: modal.client.ProxyCreateResponse.proxy:type_name -> modal.client.Proxy
-	16,  // 295: modal.client.ProxyGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
-	306, // 296: modal.client.ProxyGetResponse.proxy:type_name -> modal.client.Proxy
-	20,  // 297: modal.client.ProxyInfo.proxy_type:type_name -> modal.client.ProxyType
-	19,  // 298: modal.client.ProxyIp.status:type_name -> modal.client.ProxyIpStatus
-	306, // 299: modal.client.ProxyListResponse.proxies:type_name -> modal.client.Proxy
-	334, // 300: modal.client.QueueGetByIdResponse.metadata:type_name -> modal.client.QueueMetadata
-	16,  // 301: modal.client.QueueGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
-	334, // 302: modal.client.QueueGetOrCreateResponse.metadata:type_name -> modal.client.QueueMetadata
-	280, // 303: modal.client.QueueListRequest.pagination:type_name -> modal.client.ListPagination
-	538, // 304: modal.client.QueueListResponse.queues:type_name -> modal.client.QueueListResponse.QueueInfo
-	153, // 305: modal.client.QueueMetadata.creation_info:type_name -> modal.client.CreationInfo
-	329, // 306: modal.client.QueueNextItemsResponse.items:type_name -> modal.client.QueueItem
-	553, // 307: modal.client.RPCStatus.details:type_name -> google.protobuf.Any
-	21,  // 308: modal.client.RateLimit.interval:type_name -> modal.client.RateLimitInterval
-	539, // 309: modal.client.ResourceInfo.memory_mb:type_name -> modal.client.ResourceInfo.ResourceValue
-	539, // 310: modal.client.ResourceInfo.milli_cpu:type_name -> modal.client.ResourceInfo.ResourceValue
-	261, // 311: modal.client.Resources.gpu_config:type_name -> modal.client.GPUConfig
-	345, // 312: modal.client.RuntimeOutputBatch.items:type_name -> modal.client.RuntimeOutputMessage
-	345, // 313: modal.client.RuntimeOutputBatch.stdout:type_name -> modal.client.RuntimeOutputMessage
-	345, // 314: modal.client.RuntimeOutputBatch.stderr:type_name -> modal.client.RuntimeOutputMessage
-	345, // 315: modal.client.RuntimeOutputBatch.info:type_name -> modal.client.RuntimeOutputMessage
-	12,  // 316: modal.client.RuntimeOutputMessage.file_descriptor:type_name -> modal.client.FileDescriptor
-	342, // 317: modal.client.Sandbox.resources:type_name -> modal.client.Resources
-	7,   // 318: modal.client.Sandbox.cloud_provider:type_name -> modal.client.CloudProvider
-	418, // 319: modal.client.Sandbox.nfs_mounts:type_name -> modal.client.SharedVolumeMount
-	346, // 320: modal.client.Sandbox.s3_mounts:type_name -> modal.client.S3Mount
-	115, // 321: modal.client.Sandbox.cloud_bucket_mounts:type_name -> modal.client.CloudBucketMount
-	477, // 322: modal.client.Sandbox.volume_mounts:type_name -> modal.client.VolumeMount
-	302, // 323: modal.client.Sandbox.pty_info:type_name -> modal.client.PTYInfo
-	395, // 324: modal.client.Sandbox.scheduler_placement:type_name -> modal.client.SchedulerPlacement
-	304, // 325: modal.client.Sandbox.open_ports:type_name -> modal.client.PortSpecs
-	297, // 326: modal.client.Sandbox.network_access:type_name -> modal.client.NetworkAccess
-	540, // 327: modal.client.Sandbox.experimental_options:type_name -> modal.client.Sandbox.ExperimentalOptionsEntry
-	305, // 328: modal.client.Sandbox.readiness_probe:type_name -> modal.client.Probe
-	347, // 329: modal.client.SandboxCreateRequest.definition:type_name -> modal.client.Sandbox
-	347, // 330: modal.client.SandboxCreateV2Request.definition:type_name -> modal.client.Sandbox
-	447, // 331: modal.client.SandboxCreateV2Response.tunnels:type_name -> modal.client.TunnelData
-	12,  // 332: modal.client.SandboxGetLogsRequest.file_descriptor:type_name -> modal.client.FileDescriptor
-	264, // 333: modal.client.SandboxGetTaskIdResponse.task_result:type_name -> modal.client.GenericResult
-	264, // 334: modal.client.SandboxGetTunnelsResponse.result:type_name -> modal.client.GenericResult
-	447, // 335: modal.client.SandboxGetTunnelsResponse.tunnels:type_name -> modal.client.TunnelData
-	264, // 336: modal.client.SandboxHandleMetadata.result:type_name -> modal.client.GenericResult
-	430, // 337: modal.client.SandboxInfo.task_info:type_name -> modal.client.TaskInfo
-	384, // 338: modal.client.SandboxInfo.tags:type_name -> modal.client.SandboxTag
-	341, // 339: modal.client.SandboxInfo.resource_info:type_name -> modal.client.ResourceInfo
-	305, // 340: modal.client.SandboxInfo.readiness_probe:type_name -> modal.client.Probe
-	447, // 341: modal.client.SandboxInfo.tunnels:type_name -> modal.client.TunnelData
-	384, // 342: modal.client.SandboxListRequest.tags:type_name -> modal.client.SandboxTag
-	366, // 343: modal.client.SandboxListResponse.sandboxes:type_name -> modal.client.SandboxInfo
-	41,  // 344: modal.client.SandboxRestoreRequest.sandbox_name_override_type:type_name -> modal.client.SandboxRestoreRequest.SandboxNameOverrideType
-	264, // 345: modal.client.SandboxSnapshotFsResponse.result:type_name -> modal.client.GenericResult
-	275, // 346: modal.client.SandboxSnapshotFsResponse.image_metadata:type_name -> modal.client.ImageMetadata
-	264, // 347: modal.client.SandboxSnapshotWaitResponse.result:type_name -> modal.client.GenericResult
-	384, // 348: modal.client.SandboxTagsGetResponse.tags:type_name -> modal.client.SandboxTag
-	384, // 349: modal.client.SandboxTagsSetRequest.tags:type_name -> modal.client.SandboxTag
-	264, // 350: modal.client.SandboxTerminateResponse.existing_result:type_name -> modal.client.GenericResult
-	264, // 351: modal.client.SandboxWaitResponse.result:type_name -> modal.client.GenericResult
-	541, // 352: modal.client.Schedule.cron:type_name -> modal.client.Schedule.Cron
-	542, // 353: modal.client.Schedule.period:type_name -> modal.client.Schedule.Period
-	543, // 354: modal.client.SecretCreateRequest.env_dict:type_name -> modal.client.SecretCreateRequest.EnvDictEntry
-	16,  // 355: modal.client.SecretGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
-	544, // 356: modal.client.SecretGetOrCreateRequest.env_dict:type_name -> modal.client.SecretGetOrCreateRequest.EnvDictEntry
-	404, // 357: modal.client.SecretGetOrCreateResponse.metadata:type_name -> modal.client.SecretMetadata
-	404, // 358: modal.client.SecretListItem.metadata:type_name -> modal.client.SecretMetadata
-	280, // 359: modal.client.SecretListRequest.pagination:type_name -> modal.client.ListPagination
-	401, // 360: modal.client.SecretListResponse.items:type_name -> modal.client.SecretListItem
-	153, // 361: modal.client.SecretMetadata.creation_info:type_name -> modal.client.CreationInfo
-	545, // 362: modal.client.SecretUpdateRequest.updates:type_name -> modal.client.SecretUpdateRequest.Update
-	454, // 363: modal.client.ServiceUserIdentity.created_by:type_name -> modal.client.UserIdentity
-	16,  // 364: modal.client.SharedVolumeGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
-	196, // 365: modal.client.SharedVolumeListFilesResponse.entries:type_name -> modal.client.FileEntry
-	7,   // 366: modal.client.SharedVolumeListItem.cloud_provider:type_name -> modal.client.CloudProvider
-	415, // 367: modal.client.SharedVolumeListResponse.items:type_name -> modal.client.SharedVolumeListItem
-	7,   // 368: modal.client.SharedVolumeMount.cloud_provider:type_name -> modal.client.CloudProvider
-	24,  // 369: modal.client.SystemErrorMessage.error_code:type_name -> modal.client.SystemErrorCode
-	430, // 370: modal.client.TaskGetInfoResponse.info:type_name -> modal.client.TaskInfo
-	264, // 371: modal.client.TaskInfo.result:type_name -> modal.client.GenericResult
-	25,  // 372: modal.client.TaskInfo.snapshot_behavior:type_name -> modal.client.TaskSnapshotBehavior
-	261, // 373: modal.client.TaskInfo.gpu_config:type_name -> modal.client.GPUConfig
-	437, // 374: modal.client.TaskListResponse.tasks:type_name -> modal.client.TaskStats
-	26,  // 375: modal.client.TaskLogs.task_state:type_name -> modal.client.TaskState
-	12,  // 376: modal.client.TaskLogs.file_descriptor:type_name -> modal.client.FileDescriptor
-	435, // 377: modal.client.TaskLogs.task_progress:type_name -> modal.client.TaskProgress
-	433, // 378: modal.client.TaskLogsBatch.items:type_name -> modal.client.TaskLogs
-	18,  // 379: modal.client.TaskProgress.progress_type:type_name -> modal.client.ProgressType
-	264, // 380: modal.client.TaskResultRequest.result:type_name -> modal.client.GenericResult
-	342, // 381: modal.client.TaskTemplate.resources:type_name -> modal.client.Resources
-	546, // 382: modal.client.TemplateListResponse.items:type_name -> modal.client.TemplateListResponse.TemplateListItem
-	454, // 383: modal.client.TokenInfoGetResponse.user_identity:type_name -> modal.client.UserIdentity
-	406, // 384: modal.client.TokenInfoGetResponse.service_user_identity:type_name -> modal.client.ServiceUserIdentity
-	551, // 385: modal.client.TokenInfoGetResponse.created_at:type_name -> google.protobuf.Timestamp
-	551, // 386: modal.client.TokenInfoGetResponse.expires_at:type_name -> google.protobuf.Timestamp
-	27,  // 387: modal.client.TunnelStartRequest.tunnel_type:type_name -> modal.client.TunnelType
-	476, // 388: modal.client.VolumeGetByIdResponse.metadata:type_name -> modal.client.VolumeMetadata
-	16,  // 389: modal.client.VolumeGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
-	28,  // 390: modal.client.VolumeGetOrCreateRequest.version:type_name -> modal.client.VolumeFsVersion
-	28,  // 391: modal.client.VolumeGetOrCreateResponse.version:type_name -> modal.client.VolumeFsVersion
-	476, // 392: modal.client.VolumeGetOrCreateResponse.metadata:type_name -> modal.client.VolumeMetadata
-	196, // 393: modal.client.VolumeListFiles2Response.entries:type_name -> modal.client.FileEntry
-	196, // 394: modal.client.VolumeListFilesResponse.entries:type_name -> modal.client.FileEntry
-	476, // 395: modal.client.VolumeListItem.metadata:type_name -> modal.client.VolumeMetadata
-	280, // 396: modal.client.VolumeListRequest.pagination:type_name -> modal.client.ListPagination
-	473, // 397: modal.client.VolumeListResponse.items:type_name -> modal.client.VolumeListItem
-	28,  // 398: modal.client.VolumeMetadata.version:type_name -> modal.client.VolumeFsVersion
-	153, // 399: modal.client.VolumeMetadata.creation_info:type_name -> modal.client.CreationInfo
-	547, // 400: modal.client.VolumePutFiles2Request.files:type_name -> modal.client.VolumePutFiles2Request.File
-	549, // 401: modal.client.VolumePutFiles2Response.missing_blocks:type_name -> modal.client.VolumePutFiles2Response.MissingBlock
-	289, // 402: modal.client.VolumePutFilesRequest.files:type_name -> modal.client.MountFile
-	42,  // 403: modal.client.Warning.type:type_name -> modal.client.Warning.WarningType
-	30,  // 404: modal.client.WebhookConfig.type:type_name -> modal.client.WebhookType
-	29,  // 405: modal.client.WebhookConfig.async_mode:type_name -> modal.client.WebhookAsyncMode
-	154, // 406: modal.client.WebhookConfig.custom_domains:type_name -> modal.client.CustomDomainConfig
-	551, // 407: modal.client.WorkspaceBillingReportItem.interval:type_name -> google.protobuf.Timestamp
-	550, // 408: modal.client.WorkspaceBillingReportItem.tags:type_name -> modal.client.WorkspaceBillingReportItem.TagsEntry
-	551, // 409: modal.client.WorkspaceBillingReportRequest.start_timestamp:type_name -> google.protobuf.Timestamp
-	551, // 410: modal.client.WorkspaceBillingReportRequest.end_timestamp:type_name -> google.protobuf.Timestamp
-	551, // 411: modal.client.AppCountLogsResponse.LogBucket.bucket_start_at:type_name -> google.protobuf.Timestamp
-	2,   // 412: modal.client.AppListResponse.AppListItem.state:type_name -> modal.client.AppState
-	453, // 413: modal.client.AutoscalerConfiguration.OverrideEventsEntry.value:type_name -> modal.client.UserActionInfo
-	175, // 414: modal.client.DictListResponse.DictInfo.metadata:type_name -> modal.client.DictMetadata
-	288, // 415: modal.client.Function.MethodDefinitionsEntry.value:type_name -> modal.client.MethodDefinition
-	288, // 416: modal.client.FunctionData.MethodDefinitionsEntry.value:type_name -> modal.client.MethodDefinition
-	206, // 417: modal.client.FunctionData.RankedFunction.function:type_name -> modal.client.Function
-	240, // 418: modal.client.FunctionHandleMetadata.MethodHandleMetadataEntry.value:type_name -> modal.client.FunctionHandleMetadata
-	288, // 419: modal.client.FunctionPrecreateRequest.MethodDefinitionsEntry.value:type_name -> modal.client.MethodDefinition
-	299, // 420: modal.client.NotebookKernelPublishResultsRequest.CellResult.output:type_name -> modal.client.NotebookOutput
-	531, // 421: modal.client.NotebookKernelPublishResultsRequest.CellResult.execute_reply:type_name -> modal.client.NotebookKernelPublishResultsRequest.ExecuteReply
-	554, // 422: modal.client.NotebookOutput.ExecuteResult.data:type_name -> google.protobuf.Struct
-	554, // 423: modal.client.NotebookOutput.ExecuteResult.metadata:type_name -> google.protobuf.Struct
-	554, // 424: modal.client.NotebookOutput.DisplayData.data:type_name -> google.protobuf.Struct
-	554, // 425: modal.client.NotebookOutput.DisplayData.metadata:type_name -> google.protobuf.Struct
-	334, // 426: modal.client.QueueListResponse.QueueInfo.metadata:type_name -> modal.client.QueueMetadata
-	548, // 427: modal.client.VolumePutFiles2Request.File.blocks:type_name -> modal.client.VolumePutFiles2Request.Block
-	43,  // 428: modal.client.ModalClient.AppClientDisconnect:input_type -> modal.client.AppClientDisconnectRequest
-	44,  // 429: modal.client.ModalClient.AppCountLogs:input_type -> modal.client.AppCountLogsRequest
-	46,  // 430: modal.client.ModalClient.AppCreate:input_type -> modal.client.AppCreateRequest
-	48,  // 431: modal.client.ModalClient.AppDeploy:input_type -> modal.client.AppDeployRequest
-	51,  // 432: modal.client.ModalClient.AppDeploymentHistory:input_type -> modal.client.AppDeploymentHistoryRequest
-	53,  // 433: modal.client.ModalClient.AppFetchLogs:input_type -> modal.client.AppFetchLogsRequest
-	55,  // 434: modal.client.ModalClient.AppGetByDeploymentName:input_type -> modal.client.AppGetByDeploymentNameRequest
-	57,  // 435: modal.client.ModalClient.AppGetLayout:input_type -> modal.client.AppGetLayoutRequest
-	59,  // 436: modal.client.ModalClient.AppGetLifecycle:input_type -> modal.client.AppGetLifecycleRequest
-	61,  // 437: modal.client.ModalClient.AppGetLogs:input_type -> modal.client.AppGetLogsRequest
-	63,  // 438: modal.client.ModalClient.AppGetObjects:input_type -> modal.client.AppGetObjectsRequest
-	65,  // 439: modal.client.ModalClient.AppGetOrCreate:input_type -> modal.client.AppGetOrCreateRequest
-	67,  // 440: modal.client.ModalClient.AppGetTags:input_type -> modal.client.AppGetTagsRequest
-	69,  // 441: modal.client.ModalClient.AppHeartbeat:input_type -> modal.client.AppHeartbeatRequest
-	72,  // 442: modal.client.ModalClient.AppList:input_type -> modal.client.AppListRequest
-	74,  // 443: modal.client.ModalClient.AppLookup:input_type -> modal.client.AppLookupRequest
-	76,  // 444: modal.client.ModalClient.AppPublish:input_type -> modal.client.AppPublishRequest
-	78,  // 445: modal.client.ModalClient.AppRollback:input_type -> modal.client.AppRollbackRequest
-	79,  // 446: modal.client.ModalClient.AppRollover:input_type -> modal.client.AppRolloverRequest
-	81,  // 447: modal.client.ModalClient.AppSetObjects:input_type -> modal.client.AppSetObjectsRequest
-	82,  // 448: modal.client.ModalClient.AppSetTags:input_type -> modal.client.AppSetTagsRequest
-	83,  // 449: modal.client.ModalClient.AppStop:input_type -> modal.client.AppStopRequest
-	85,  // 450: modal.client.ModalClient.AttemptAwait:input_type -> modal.client.AttemptAwaitRequest
-	87,  // 451: modal.client.ModalClient.AttemptRetry:input_type -> modal.client.AttemptRetryRequest
-	89,  // 452: modal.client.ModalClient.AttemptStart:input_type -> modal.client.AttemptStartRequest
-	91,  // 453: modal.client.ModalClient.AuthTokenGet:input_type -> modal.client.AuthTokenGetRequest
-	97,  // 454: modal.client.ModalClient.BlobCreate:input_type -> modal.client.BlobCreateRequest
-	99,  // 455: modal.client.ModalClient.BlobGet:input_type -> modal.client.BlobGetRequest
-	104, // 456: modal.client.ModalClient.ClassCreate:input_type -> modal.client.ClassCreateRequest
-	106, // 457: modal.client.ModalClient.ClassGet:input_type -> modal.client.ClassGetRequest
-	555, // 458: modal.client.ModalClient.ClientHello:input_type -> google.protobuf.Empty
-	116, // 459: modal.client.ModalClient.ClusterGet:input_type -> modal.client.ClusterGetRequest
-	118, // 460: modal.client.ModalClient.ClusterList:input_type -> modal.client.ClusterListRequest
-	123, // 461: modal.client.ModalClient.ContainerCheckpoint:input_type -> modal.client.ContainerCheckpointRequest
-	126, // 462: modal.client.ModalClient.ContainerExec:input_type -> modal.client.ContainerExecRequest
-	124, // 463: modal.client.ModalClient.ContainerExecGetOutput:input_type -> modal.client.ContainerExecGetOutputRequest
-	125, // 464: modal.client.ModalClient.ContainerExecPutInput:input_type -> modal.client.ContainerExecPutInputRequest
-	128, // 465: modal.client.ModalClient.ContainerExecWait:input_type -> modal.client.ContainerExecWaitRequest
-	144, // 466: modal.client.ModalClient.ContainerFilesystemExec:input_type -> modal.client.ContainerFilesystemExecRequest
-	143, // 467: modal.client.ModalClient.ContainerFilesystemExecGetOutput:input_type -> modal.client.ContainerFilesystemExecGetOutputRequest
-	146, // 468: modal.client.ModalClient.ContainerHeartbeat:input_type -> modal.client.ContainerHeartbeatRequest
-	555, // 469: modal.client.ModalClient.ContainerHello:input_type -> google.protobuf.Empty
-	148, // 470: modal.client.ModalClient.ContainerLog:input_type -> modal.client.ContainerLogRequest
-	149, // 471: modal.client.ModalClient.ContainerReloadVolumes:input_type -> modal.client.ContainerReloadVolumesRequest
-	151, // 472: modal.client.ModalClient.ContainerStop:input_type -> modal.client.ContainerStopRequest
-	158, // 473: modal.client.ModalClient.DictClear:input_type -> modal.client.DictClearRequest
-	159, // 474: modal.client.ModalClient.DictContains:input_type -> modal.client.DictContainsRequest
-	161, // 475: modal.client.ModalClient.DictContents:input_type -> modal.client.DictContentsRequest
-	162, // 476: modal.client.ModalClient.DictDelete:input_type -> modal.client.DictDeleteRequest
-	168, // 477: modal.client.ModalClient.DictGet:input_type -> modal.client.DictGetRequest
-	164, // 478: modal.client.ModalClient.DictGetById:input_type -> modal.client.DictGetByIdRequest
-	166, // 479: modal.client.ModalClient.DictGetOrCreate:input_type -> modal.client.DictGetOrCreateRequest
-	170, // 480: modal.client.ModalClient.DictHeartbeat:input_type -> modal.client.DictHeartbeatRequest
-	171, // 481: modal.client.ModalClient.DictLen:input_type -> modal.client.DictLenRequest
-	173, // 482: modal.client.ModalClient.DictList:input_type -> modal.client.DictListRequest
-	176, // 483: modal.client.ModalClient.DictPop:input_type -> modal.client.DictPopRequest
-	178, // 484: modal.client.ModalClient.DictUpdate:input_type -> modal.client.DictUpdateRequest
-	181, // 485: modal.client.ModalClient.DomainCertificateVerify:input_type -> modal.client.DomainCertificateVerifyRequest
-	183, // 486: modal.client.ModalClient.DomainCreate:input_type -> modal.client.DomainCreateRequest
-	185, // 487: modal.client.ModalClient.DomainList:input_type -> modal.client.DomainListRequest
-	187, // 488: modal.client.ModalClient.EnvironmentCreate:input_type -> modal.client.EnvironmentCreateRequest
-	188, // 489: modal.client.ModalClient.EnvironmentDelete:input_type -> modal.client.EnvironmentDeleteRequest
-	189, // 490: modal.client.ModalClient.EnvironmentGetOrCreate:input_type -> modal.client.EnvironmentGetOrCreateRequest
-	555, // 491: modal.client.ModalClient.EnvironmentList:input_type -> google.protobuf.Empty
-	195, // 492: modal.client.ModalClient.EnvironmentUpdate:input_type -> modal.client.EnvironmentUpdateRequest
-	198, // 493: modal.client.ModalClient.FlashContainerDeregister:input_type -> modal.client.FlashContainerDeregisterRequest
-	199, // 494: modal.client.ModalClient.FlashContainerList:input_type -> modal.client.FlashContainerListRequest
-	201, // 495: modal.client.ModalClient.FlashContainerRegister:input_type -> modal.client.FlashContainerRegisterRequest
-	204, // 496: modal.client.ModalClient.FlashSetTargetSlotsMetrics:input_type -> modal.client.FlashSetTargetSlotsMetricsRequest
-	207, // 497: modal.client.ModalClient.FunctionAsyncInvoke:input_type -> modal.client.FunctionAsyncInvokeRequest
-	209, // 498: modal.client.ModalClient.FunctionBindParams:input_type -> modal.client.FunctionBindParamsRequest
-	212, // 499: modal.client.ModalClient.FunctionCallCancel:input_type -> modal.client.FunctionCallCancelRequest
-	213, // 500: modal.client.ModalClient.FunctionCallFromId:input_type -> modal.client.FunctionCallFromIdRequest
-	215, // 501: modal.client.ModalClient.FunctionCallGetDataIn:input_type -> modal.client.FunctionCallGetDataRequest
-	215, // 502: modal.client.ModalClient.FunctionCallGetDataOut:input_type -> modal.client.FunctionCallGetDataRequest
-	217, // 503: modal.client.ModalClient.FunctionCallList:input_type -> modal.client.FunctionCallListRequest
-	219, // 504: modal.client.ModalClient.FunctionCallPutDataOut:input_type -> modal.client.FunctionCallPutDataRequest
-	220, // 505: modal.client.ModalClient.FunctionCreate:input_type -> modal.client.FunctionCreateRequest
-	224, // 506: modal.client.ModalClient.FunctionFinishInputs:input_type -> modal.client.FunctionFinishInputsRequest
-	236, // 507: modal.client.ModalClient.FunctionGet:input_type -> modal.client.FunctionGetRequest
-	225, // 508: modal.client.ModalClient.FunctionGetCallGraph:input_type -> modal.client.FunctionGetCallGraphRequest
-	227, // 509: modal.client.ModalClient.FunctionGetCurrentStats:input_type -> modal.client.FunctionGetCurrentStatsRequest
-	228, // 510: modal.client.ModalClient.FunctionGetDynamicConcurrency:input_type -> modal.client.FunctionGetDynamicConcurrencyRequest
-	231, // 511: modal.client.ModalClient.FunctionGetInputs:input_type -> modal.client.FunctionGetInputsRequest
-	234, // 512: modal.client.ModalClient.FunctionGetOutputs:input_type -> modal.client.FunctionGetOutputsRequest
-	238, // 513: modal.client.ModalClient.FunctionGetSerialized:input_type -> modal.client.FunctionGetSerializedRequest
-	242, // 514: modal.client.ModalClient.FunctionMap:input_type -> modal.client.FunctionMapRequest
-	245, // 515: modal.client.ModalClient.FunctionPrecreate:input_type -> modal.client.FunctionPrecreateRequest
-	248, // 516: modal.client.ModalClient.FunctionPutInputs:input_type -> modal.client.FunctionPutInputsRequest
-	252, // 517: modal.client.ModalClient.FunctionPutOutputs:input_type -> modal.client.FunctionPutOutputsRequest
-	254, // 518: modal.client.ModalClient.FunctionRetryInputs:input_type -> modal.client.FunctionRetryInputsRequest
-	555, // 519: modal.client.ModalClient.FunctionStartPtyShell:input_type -> google.protobuf.Empty
-	259, // 520: modal.client.ModalClient.FunctionUpdateSchedulingParams:input_type -> modal.client.FunctionUpdateSchedulingParamsRequest
-	268, // 521: modal.client.ModalClient.ImageDelete:input_type -> modal.client.ImageDeleteRequest
-	269, // 522: modal.client.ModalClient.ImageFromId:input_type -> modal.client.ImageFromIdRequest
-	271, // 523: modal.client.ModalClient.ImageGetOrCreate:input_type -> modal.client.ImageGetOrCreateRequest
-	273, // 524: modal.client.ModalClient.ImageJoinStreaming:input_type -> modal.client.ImageJoinStreamingRequest
-	281, // 525: modal.client.ModalClient.MapAwait:input_type -> modal.client.MapAwaitRequest
-	283, // 526: modal.client.ModalClient.MapCheckInputs:input_type -> modal.client.MapCheckInputsRequest
-	286, // 527: modal.client.ModalClient.MapStartOrContinue:input_type -> modal.client.MapStartOrContinueRequest
-	290, // 528: modal.client.ModalClient.MountGetOrCreate:input_type -> modal.client.MountGetOrCreateRequest
-	293, // 529: modal.client.ModalClient.MountPutFile:input_type -> modal.client.MountPutFileRequest
-	298, // 530: modal.client.ModalClient.NotebookKernelPublishResults:input_type -> modal.client.NotebookKernelPublishResultsRequest
-	307, // 531: modal.client.ModalClient.ProxyAddIp:input_type -> modal.client.ProxyAddIpRequest
-	309, // 532: modal.client.ModalClient.ProxyCreate:input_type -> modal.client.ProxyCreateRequest
-	311, // 533: modal.client.ModalClient.ProxyDelete:input_type -> modal.client.ProxyDeleteRequest
-	314, // 534: modal.client.ModalClient.ProxyGet:input_type -> modal.client.ProxyGetRequest
-	312, // 535: modal.client.ModalClient.ProxyGetOrCreate:input_type -> modal.client.ProxyGetOrCreateRequest
-	555, // 536: modal.client.ModalClient.ProxyList:input_type -> google.protobuf.Empty
-	319, // 537: modal.client.ModalClient.ProxyRemoveIp:input_type -> modal.client.ProxyRemoveIpRequest
-	320, // 538: modal.client.ModalClient.QueueClear:input_type -> modal.client.QueueClearRequest
-	321, // 539: modal.client.ModalClient.QueueDelete:input_type -> modal.client.QueueDeleteRequest
-	326, // 540: modal.client.ModalClient.QueueGet:input_type -> modal.client.QueueGetRequest
-	322, // 541: modal.client.ModalClient.QueueGetById:input_type -> modal.client.QueueGetByIdRequest
-	324, // 542: modal.client.ModalClient.QueueGetOrCreate:input_type -> modal.client.QueueGetOrCreateRequest
-	328, // 543: modal.client.ModalClient.QueueHeartbeat:input_type -> modal.client.QueueHeartbeatRequest
-	330, // 544: modal.client.ModalClient.QueueLen:input_type -> modal.client.QueueLenRequest
-	332, // 545: modal.client.ModalClient.QueueList:input_type -> modal.client.QueueListRequest
-	335, // 546: modal.client.ModalClient.QueueNextItems:input_type -> modal.client.QueueNextItemsRequest
-	337, // 547: modal.client.ModalClient.QueuePut:input_type -> modal.client.QueuePutRequest
-	350, // 548: modal.client.ModalClient.SandboxCreate:input_type -> modal.client.SandboxCreateRequest
-	348, // 549: modal.client.ModalClient.SandboxCreateConnectToken:input_type -> modal.client.SandboxCreateConnectTokenRequest
-	352, // 550: modal.client.ModalClient.SandboxCreateV2:input_type -> modal.client.SandboxCreateV2Request
-	354, // 551: modal.client.ModalClient.SandboxGetCommandRouterAccess:input_type -> modal.client.SandboxGetCommandRouterAccessRequest
-	356, // 552: modal.client.ModalClient.SandboxGetFromName:input_type -> modal.client.SandboxGetFromNameRequest
-	358, // 553: modal.client.ModalClient.SandboxGetLogs:input_type -> modal.client.SandboxGetLogsRequest
-	359, // 554: modal.client.ModalClient.SandboxGetResourceUsage:input_type -> modal.client.SandboxGetResourceUsageRequest
-	361, // 555: modal.client.ModalClient.SandboxGetTaskId:input_type -> modal.client.SandboxGetTaskIdRequest
-	361, // 556: modal.client.ModalClient.SandboxGetTaskIdV2:input_type -> modal.client.SandboxGetTaskIdRequest
-	363, // 557: modal.client.ModalClient.SandboxGetTunnels:input_type -> modal.client.SandboxGetTunnelsRequest
-	363, // 558: modal.client.ModalClient.SandboxGetTunnelsV2:input_type -> modal.client.SandboxGetTunnelsRequest
-	367, // 559: modal.client.ModalClient.SandboxList:input_type -> modal.client.SandboxListRequest
-	369, // 560: modal.client.ModalClient.SandboxRestore:input_type -> modal.client.SandboxRestoreRequest
-	378, // 561: modal.client.ModalClient.SandboxSnapshot:input_type -> modal.client.SandboxSnapshotRequest
-	374, // 562: modal.client.ModalClient.SandboxSnapshotFs:input_type -> modal.client.SandboxSnapshotFsRequest
-	372, // 563: modal.client.ModalClient.SandboxSnapshotFsAsync:input_type -> modal.client.SandboxSnapshotFsAsyncRequest
-	371, // 564: modal.client.ModalClient.SandboxSnapshotFsAsyncGet:input_type -> modal.client.SandboxSnapshotFsAsyncGetRequest
-	376, // 565: modal.client.ModalClient.SandboxSnapshotGet:input_type -> modal.client.SandboxSnapshotGetRequest
-	380, // 566: modal.client.ModalClient.SandboxSnapshotWait:input_type -> modal.client.SandboxSnapshotWaitRequest
-	382, // 567: modal.client.ModalClient.SandboxStdinWrite:input_type -> modal.client.SandboxStdinWriteRequest
-	385, // 568: modal.client.ModalClient.SandboxTagsGet:input_type -> modal.client.SandboxTagsGetRequest
-	387, // 569: modal.client.ModalClient.SandboxTagsSet:input_type -> modal.client.SandboxTagsSetRequest
-	388, // 570: modal.client.ModalClient.SandboxTerminate:input_type -> modal.client.SandboxTerminateRequest
-	388, // 571: modal.client.ModalClient.SandboxTerminateV2:input_type -> modal.client.SandboxTerminateRequest
-	390, // 572: modal.client.ModalClient.SandboxWait:input_type -> modal.client.SandboxWaitRequest
-	392, // 573: modal.client.ModalClient.SandboxWaitUntilReady:input_type -> modal.client.SandboxWaitUntilReadyRequest
-	390, // 574: modal.client.ModalClient.SandboxWaitV2:input_type -> modal.client.SandboxWaitRequest
-	398, // 575: modal.client.ModalClient.SecretDelete:input_type -> modal.client.SecretDeleteRequest
-	399, // 576: modal.client.ModalClient.SecretGetOrCreate:input_type -> modal.client.SecretGetOrCreateRequest
-	402, // 577: modal.client.ModalClient.SecretList:input_type -> modal.client.SecretListRequest
-	405, // 578: modal.client.ModalClient.SecretUpdate:input_type -> modal.client.SecretUpdateRequest
-	407, // 579: modal.client.ModalClient.SharedVolumeDelete:input_type -> modal.client.SharedVolumeDeleteRequest
-	408, // 580: modal.client.ModalClient.SharedVolumeGetFile:input_type -> modal.client.SharedVolumeGetFileRequest
-	410, // 581: modal.client.ModalClient.SharedVolumeGetOrCreate:input_type -> modal.client.SharedVolumeGetOrCreateRequest
-	412, // 582: modal.client.ModalClient.SharedVolumeHeartbeat:input_type -> modal.client.SharedVolumeHeartbeatRequest
-	416, // 583: modal.client.ModalClient.SharedVolumeList:input_type -> modal.client.SharedVolumeListRequest
-	413, // 584: modal.client.ModalClient.SharedVolumeListFiles:input_type -> modal.client.SharedVolumeListFilesRequest
-	413, // 585: modal.client.ModalClient.SharedVolumeListFilesStream:input_type -> modal.client.SharedVolumeListFilesRequest
-	419, // 586: modal.client.ModalClient.SharedVolumePutFile:input_type -> modal.client.SharedVolumePutFileRequest
-	421, // 587: modal.client.ModalClient.SharedVolumeRemoveFile:input_type -> modal.client.SharedVolumeRemoveFileRequest
-	423, // 588: modal.client.ModalClient.TaskClusterHello:input_type -> modal.client.TaskClusterHelloRequest
-	555, // 589: modal.client.ModalClient.TaskCurrentInputs:input_type -> google.protobuf.Empty
-	426, // 590: modal.client.ModalClient.TaskGetCommandRouterAccess:input_type -> modal.client.TaskGetCommandRouterAccessRequest
-	428, // 591: modal.client.ModalClient.TaskGetInfo:input_type -> modal.client.TaskGetInfoRequest
-	431, // 592: modal.client.ModalClient.TaskList:input_type -> modal.client.TaskListRequest
-	436, // 593: modal.client.ModalClient.TaskResult:input_type -> modal.client.TaskResultRequest
-	439, // 594: modal.client.ModalClient.TemplateList:input_type -> modal.client.TemplateListRequest
-	441, // 595: modal.client.ModalClient.TokenFlowCreate:input_type -> modal.client.TokenFlowCreateRequest
-	443, // 596: modal.client.ModalClient.TokenFlowWait:input_type -> modal.client.TokenFlowWaitRequest
-	445, // 597: modal.client.ModalClient.TokenInfoGet:input_type -> modal.client.TokenInfoGetRequest
-	448, // 598: modal.client.ModalClient.TunnelStart:input_type -> modal.client.TunnelStartRequest
-	450, // 599: modal.client.ModalClient.TunnelStop:input_type -> modal.client.TunnelStopRequest
-	455, // 600: modal.client.ModalClient.VolumeCommit:input_type -> modal.client.VolumeCommitRequest
-	458, // 601: modal.client.ModalClient.VolumeCopyFiles:input_type -> modal.client.VolumeCopyFilesRequest
-	457, // 602: modal.client.ModalClient.VolumeCopyFiles2:input_type -> modal.client.VolumeCopyFiles2Request
-	459, // 603: modal.client.ModalClient.VolumeDelete:input_type -> modal.client.VolumeDeleteRequest
-	460, // 604: modal.client.ModalClient.VolumeGetById:input_type -> modal.client.VolumeGetByIdRequest
-	464, // 605: modal.client.ModalClient.VolumeGetFile:input_type -> modal.client.VolumeGetFileRequest
-	462, // 606: modal.client.ModalClient.VolumeGetFile2:input_type -> modal.client.VolumeGetFile2Request
-	466, // 607: modal.client.ModalClient.VolumeGetOrCreate:input_type -> modal.client.VolumeGetOrCreateRequest
-	468, // 608: modal.client.ModalClient.VolumeHeartbeat:input_type -> modal.client.VolumeHeartbeatRequest
-	474, // 609: modal.client.ModalClient.VolumeList:input_type -> modal.client.VolumeListRequest
-	471, // 610: modal.client.ModalClient.VolumeListFiles:input_type -> modal.client.VolumeListFilesRequest
-	469, // 611: modal.client.ModalClient.VolumeListFiles2:input_type -> modal.client.VolumeListFiles2Request
-	480, // 612: modal.client.ModalClient.VolumePutFiles:input_type -> modal.client.VolumePutFilesRequest
-	478, // 613: modal.client.ModalClient.VolumePutFiles2:input_type -> modal.client.VolumePutFiles2Request
-	481, // 614: modal.client.ModalClient.VolumeReload:input_type -> modal.client.VolumeReloadRequest
-	483, // 615: modal.client.ModalClient.VolumeRemoveFile:input_type -> modal.client.VolumeRemoveFileRequest
-	482, // 616: modal.client.ModalClient.VolumeRemoveFile2:input_type -> modal.client.VolumeRemoveFile2Request
-	484, // 617: modal.client.ModalClient.VolumeRename:input_type -> modal.client.VolumeRenameRequest
-	489, // 618: modal.client.ModalClient.WorkspaceBillingReport:input_type -> modal.client.WorkspaceBillingReportRequest
-	490, // 619: modal.client.ModalClient.WorkspaceDashboardUrlGet:input_type -> modal.client.WorkspaceDashboardUrlRequest
-	555, // 620: modal.client.ModalClient.WorkspaceNameLookup:input_type -> google.protobuf.Empty
-	555, // 621: modal.client.ModalClient.AppClientDisconnect:output_type -> google.protobuf.Empty
-	45,  // 622: modal.client.ModalClient.AppCountLogs:output_type -> modal.client.AppCountLogsResponse
-	47,  // 623: modal.client.ModalClient.AppCreate:output_type -> modal.client.AppCreateResponse
-	49,  // 624: modal.client.ModalClient.AppDeploy:output_type -> modal.client.AppDeployResponse
-	52,  // 625: modal.client.ModalClient.AppDeploymentHistory:output_type -> modal.client.AppDeploymentHistoryResponse
-	54,  // 626: modal.client.ModalClient.AppFetchLogs:output_type -> modal.client.AppFetchLogsResponse
-	56,  // 627: modal.client.ModalClient.AppGetByDeploymentName:output_type -> modal.client.AppGetByDeploymentNameResponse
-	58,  // 628: modal.client.ModalClient.AppGetLayout:output_type -> modal.client.AppGetLayoutResponse
-	60,  // 629: modal.client.ModalClient.AppGetLifecycle:output_type -> modal.client.AppGetLifecycleResponse
-	434, // 630: modal.client.ModalClient.AppGetLogs:output_type -> modal.client.TaskLogsBatch
-	64,  // 631: modal.client.ModalClient.AppGetObjects:output_type -> modal.client.AppGetObjectsResponse
-	66,  // 632: modal.client.ModalClient.AppGetOrCreate:output_type -> modal.client.AppGetOrCreateResponse
-	68,  // 633: modal.client.ModalClient.AppGetTags:output_type -> modal.client.AppGetTagsResponse
-	555, // 634: modal.client.ModalClient.AppHeartbeat:output_type -> google.protobuf.Empty
-	73,  // 635: modal.client.ModalClient.AppList:output_type -> modal.client.AppListResponse
-	75,  // 636: modal.client.ModalClient.AppLookup:output_type -> modal.client.AppLookupResponse
-	77,  // 637: modal.client.ModalClient.AppPublish:output_type -> modal.client.AppPublishResponse
-	555, // 638: modal.client.ModalClient.AppRollback:output_type -> google.protobuf.Empty
-	80,  // 639: modal.client.ModalClient.AppRollover:output_type -> modal.client.AppRolloverResponse
-	555, // 640: modal.client.ModalClient.AppSetObjects:output_type -> google.protobuf.Empty
-	555, // 641: modal.client.ModalClient.AppSetTags:output_type -> google.protobuf.Empty
-	555, // 642: modal.client.ModalClient.AppStop:output_type -> google.protobuf.Empty
-	86,  // 643: modal.client.ModalClient.AttemptAwait:output_type -> modal.client.AttemptAwaitResponse
-	88,  // 644: modal.client.ModalClient.AttemptRetry:output_type -> modal.client.AttemptRetryResponse
-	90,  // 645: modal.client.ModalClient.AttemptStart:output_type -> modal.client.AttemptStartResponse
-	92,  // 646: modal.client.ModalClient.AuthTokenGet:output_type -> modal.client.AuthTokenGetResponse
-	98,  // 647: modal.client.ModalClient.BlobCreate:output_type -> modal.client.BlobCreateResponse
-	100, // 648: modal.client.ModalClient.BlobGet:output_type -> modal.client.BlobGetResponse
-	105, // 649: modal.client.ModalClient.ClassCreate:output_type -> modal.client.ClassCreateResponse
-	107, // 650: modal.client.ModalClient.ClassGet:output_type -> modal.client.ClassGetResponse
-	114, // 651: modal.client.ModalClient.ClientHello:output_type -> modal.client.ClientHelloResponse
-	117, // 652: modal.client.ModalClient.ClusterGet:output_type -> modal.client.ClusterGetResponse
-	119, // 653: modal.client.ModalClient.ClusterList:output_type -> modal.client.ClusterListResponse
-	555, // 654: modal.client.ModalClient.ContainerCheckpoint:output_type -> google.protobuf.Empty
-	127, // 655: modal.client.ModalClient.ContainerExec:output_type -> modal.client.ContainerExecResponse
-	344, // 656: modal.client.ModalClient.ContainerExecGetOutput:output_type -> modal.client.RuntimeOutputBatch
-	555, // 657: modal.client.ModalClient.ContainerExecPutInput:output_type -> google.protobuf.Empty
-	129, // 658: modal.client.ModalClient.ContainerExecWait:output_type -> modal.client.ContainerExecWaitResponse
-	145, // 659: modal.client.ModalClient.ContainerFilesystemExec:output_type -> modal.client.ContainerFilesystemExecResponse
-	197, // 660: modal.client.ModalClient.ContainerFilesystemExecGetOutput:output_type -> modal.client.FilesystemRuntimeOutputBatch
-	147, // 661: modal.client.ModalClient.ContainerHeartbeat:output_type -> modal.client.ContainerHeartbeatResponse
-	555, // 662: modal.client.ModalClient.ContainerHello:output_type -> google.protobuf.Empty
-	555, // 663: modal.client.ModalClient.ContainerLog:output_type -> google.protobuf.Empty
-	150, // 664: modal.client.ModalClient.ContainerReloadVolumes:output_type -> modal.client.ContainerReloadVolumesResponse
-	152, // 665: modal.client.ModalClient.ContainerStop:output_type -> modal.client.ContainerStopResponse
-	555, // 666: modal.client.ModalClient.DictClear:output_type -> google.protobuf.Empty
-	160, // 667: modal.client.ModalClient.DictContains:output_type -> modal.client.DictContainsResponse
-	163, // 668: modal.client.ModalClient.DictContents:output_type -> modal.client.DictEntry
-	555, // 669: modal.client.ModalClient.DictDelete:output_type -> google.protobuf.Empty
-	169, // 670: modal.client.ModalClient.DictGet:output_type -> modal.client.DictGetResponse
-	165, // 671: modal.client.ModalClient.DictGetById:output_type -> modal.client.DictGetByIdResponse
-	167, // 672: modal.client.ModalClient.DictGetOrCreate:output_type -> modal.client.DictGetOrCreateResponse
-	555, // 673: modal.client.ModalClient.DictHeartbeat:output_type -> google.protobuf.Empty
-	172, // 674: modal.client.ModalClient.DictLen:output_type -> modal.client.DictLenResponse
-	174, // 675: modal.client.ModalClient.DictList:output_type -> modal.client.DictListResponse
-	177, // 676: modal.client.ModalClient.DictPop:output_type -> modal.client.DictPopResponse
-	179, // 677: modal.client.ModalClient.DictUpdate:output_type -> modal.client.DictUpdateResponse
-	182, // 678: modal.client.ModalClient.DomainCertificateVerify:output_type -> modal.client.DomainCertificateVerifyResponse
-	184, // 679: modal.client.ModalClient.DomainCreate:output_type -> modal.client.DomainCreateResponse
-	186, // 680: modal.client.ModalClient.DomainList:output_type -> modal.client.DomainListResponse
-	555, // 681: modal.client.ModalClient.EnvironmentCreate:output_type -> google.protobuf.Empty
-	555, // 682: modal.client.ModalClient.EnvironmentDelete:output_type -> google.protobuf.Empty
-	190, // 683: modal.client.ModalClient.EnvironmentGetOrCreate:output_type -> modal.client.EnvironmentGetOrCreateResponse
-	192, // 684: modal.client.ModalClient.EnvironmentList:output_type -> modal.client.EnvironmentListResponse
-	191, // 685: modal.client.ModalClient.EnvironmentUpdate:output_type -> modal.client.EnvironmentListItem
-	555, // 686: modal.client.ModalClient.FlashContainerDeregister:output_type -> google.protobuf.Empty
-	200, // 687: modal.client.ModalClient.FlashContainerList:output_type -> modal.client.FlashContainerListResponse
-	202, // 688: modal.client.ModalClient.FlashContainerRegister:output_type -> modal.client.FlashContainerRegisterResponse
-	205, // 689: modal.client.ModalClient.FlashSetTargetSlotsMetrics:output_type -> modal.client.FlashSetTargetSlotsMetricsResponse
-	208, // 690: modal.client.ModalClient.FunctionAsyncInvoke:output_type -> modal.client.FunctionAsyncInvokeResponse
-	210, // 691: modal.client.ModalClient.FunctionBindParams:output_type -> modal.client.FunctionBindParamsResponse
-	555, // 692: modal.client.ModalClient.FunctionCallCancel:output_type -> google.protobuf.Empty
-	214, // 693: modal.client.ModalClient.FunctionCallFromId:output_type -> modal.client.FunctionCallFromIdResponse
-	157, // 694: modal.client.ModalClient.FunctionCallGetDataIn:output_type -> modal.client.DataChunk
-	157, // 695: modal.client.ModalClient.FunctionCallGetDataOut:output_type -> modal.client.DataChunk
-	218, // 696: modal.client.ModalClient.FunctionCallList:output_type -> modal.client.FunctionCallListResponse
-	555, // 697: modal.client.ModalClient.FunctionCallPutDataOut:output_type -> google.protobuf.Empty
-	221, // 698: modal.client.ModalClient.FunctionCreate:output_type -> modal.client.FunctionCreateResponse
-	555, // 699: modal.client.ModalClient.FunctionFinishInputs:output_type -> google.protobuf.Empty
-	237, // 700: modal.client.ModalClient.FunctionGet:output_type -> modal.client.FunctionGetResponse
-	226, // 701: modal.client.ModalClient.FunctionGetCallGraph:output_type -> modal.client.FunctionGetCallGraphResponse
-	258, // 702: modal.client.ModalClient.FunctionGetCurrentStats:output_type -> modal.client.FunctionStats
-	229, // 703: modal.client.ModalClient.FunctionGetDynamicConcurrency:output_type -> modal.client.FunctionGetDynamicConcurrencyResponse
-	232, // 704: modal.client.ModalClient.FunctionGetInputs:output_type -> modal.client.FunctionGetInputsResponse
-	235, // 705: modal.client.ModalClient.FunctionGetOutputs:output_type -> modal.client.FunctionGetOutputsResponse
-	239, // 706: modal.client.ModalClient.FunctionGetSerialized:output_type -> modal.client.FunctionGetSerializedResponse
-	243, // 707: modal.client.ModalClient.FunctionMap:output_type -> modal.client.FunctionMapResponse
-	246, // 708: modal.client.ModalClient.FunctionPrecreate:output_type -> modal.client.FunctionPrecreateResponse
-	249, // 709: modal.client.ModalClient.FunctionPutInputs:output_type -> modal.client.FunctionPutInputsResponse
-	555, // 710: modal.client.ModalClient.FunctionPutOutputs:output_type -> google.protobuf.Empty
-	255, // 711: modal.client.ModalClient.FunctionRetryInputs:output_type -> modal.client.FunctionRetryInputsResponse
-	555, // 712: modal.client.ModalClient.FunctionStartPtyShell:output_type -> google.protobuf.Empty
-	260, // 713: modal.client.ModalClient.FunctionUpdateSchedulingParams:output_type -> modal.client.FunctionUpdateSchedulingParamsResponse
-	555, // 714: modal.client.ModalClient.ImageDelete:output_type -> google.protobuf.Empty
-	270, // 715: modal.client.ModalClient.ImageFromId:output_type -> modal.client.ImageFromIdResponse
-	272, // 716: modal.client.ModalClient.ImageGetOrCreate:output_type -> modal.client.ImageGetOrCreateResponse
-	274, // 717: modal.client.ModalClient.ImageJoinStreaming:output_type -> modal.client.ImageJoinStreamingResponse
-	282, // 718: modal.client.ModalClient.MapAwait:output_type -> modal.client.MapAwaitResponse
-	284, // 719: modal.client.ModalClient.MapCheckInputs:output_type -> modal.client.MapCheckInputsResponse
-	287, // 720: modal.client.ModalClient.MapStartOrContinue:output_type -> modal.client.MapStartOrContinueResponse
-	291, // 721: modal.client.ModalClient.MountGetOrCreate:output_type -> modal.client.MountGetOrCreateResponse
-	294, // 722: modal.client.ModalClient.MountPutFile:output_type -> modal.client.MountPutFileResponse
-	555, // 723: modal.client.ModalClient.NotebookKernelPublishResults:output_type -> google.protobuf.Empty
-	308, // 724: modal.client.ModalClient.ProxyAddIp:output_type -> modal.client.ProxyAddIpResponse
-	310, // 725: modal.client.ModalClient.ProxyCreate:output_type -> modal.client.ProxyCreateResponse
-	555, // 726: modal.client.ModalClient.ProxyDelete:output_type -> google.protobuf.Empty
-	315, // 727: modal.client.ModalClient.ProxyGet:output_type -> modal.client.ProxyGetResponse
-	313, // 728: modal.client.ModalClient.ProxyGetOrCreate:output_type -> modal.client.ProxyGetOrCreateResponse
-	318, // 729: modal.client.ModalClient.ProxyList:output_type -> modal.client.ProxyListResponse
-	555, // 730: modal.client.ModalClient.ProxyRemoveIp:output_type -> google.protobuf.Empty
-	555, // 731: modal.client.ModalClient.QueueClear:output_type -> google.protobuf.Empty
-	555, // 732: modal.client.ModalClient.QueueDelete:output_type -> google.protobuf.Empty
-	327, // 733: modal.client.ModalClient.QueueGet:output_type -> modal.client.QueueGetResponse
-	323, // 734: modal.client.ModalClient.QueueGetById:output_type -> modal.client.QueueGetByIdResponse
-	325, // 735: modal.client.ModalClient.QueueGetOrCreate:output_type -> modal.client.QueueGetOrCreateResponse
-	555, // 736: modal.client.ModalClient.QueueHeartbeat:output_type -> google.protobuf.Empty
-	331, // 737: modal.client.ModalClient.QueueLen:output_type -> modal.client.QueueLenResponse
-	333, // 738: modal.client.ModalClient.QueueList:output_type -> modal.client.QueueListResponse
-	336, // 739: modal.client.ModalClient.QueueNextItems:output_type -> modal.client.QueueNextItemsResponse
-	555, // 740: modal.client.ModalClient.QueuePut:output_type -> google.protobuf.Empty
-	351, // 741: modal.client.ModalClient.SandboxCreate:output_type -> modal.client.SandboxCreateResponse
-	349, // 742: modal.client.ModalClient.SandboxCreateConnectToken:output_type -> modal.client.SandboxCreateConnectTokenResponse
-	353, // 743: modal.client.ModalClient.SandboxCreateV2:output_type -> modal.client.SandboxCreateV2Response
-	355, // 744: modal.client.ModalClient.SandboxGetCommandRouterAccess:output_type -> modal.client.SandboxGetCommandRouterAccessResponse
-	357, // 745: modal.client.ModalClient.SandboxGetFromName:output_type -> modal.client.SandboxGetFromNameResponse
-	434, // 746: modal.client.ModalClient.SandboxGetLogs:output_type -> modal.client.TaskLogsBatch
-	360, // 747: modal.client.ModalClient.SandboxGetResourceUsage:output_type -> modal.client.SandboxGetResourceUsageResponse
-	362, // 748: modal.client.ModalClient.SandboxGetTaskId:output_type -> modal.client.SandboxGetTaskIdResponse
-	362, // 749: modal.client.ModalClient.SandboxGetTaskIdV2:output_type -> modal.client.SandboxGetTaskIdResponse
-	364, // 750: modal.client.ModalClient.SandboxGetTunnels:output_type -> modal.client.SandboxGetTunnelsResponse
-	364, // 751: modal.client.ModalClient.SandboxGetTunnelsV2:output_type -> modal.client.SandboxGetTunnelsResponse
-	368, // 752: modal.client.ModalClient.SandboxList:output_type -> modal.client.SandboxListResponse
-	370, // 753: modal.client.ModalClient.SandboxRestore:output_type -> modal.client.SandboxRestoreResponse
-	379, // 754: modal.client.ModalClient.SandboxSnapshot:output_type -> modal.client.SandboxSnapshotResponse
-	375, // 755: modal.client.ModalClient.SandboxSnapshotFs:output_type -> modal.client.SandboxSnapshotFsResponse
-	373, // 756: modal.client.ModalClient.SandboxSnapshotFsAsync:output_type -> modal.client.SandboxSnapshotFsAsyncResponse
-	375, // 757: modal.client.ModalClient.SandboxSnapshotFsAsyncGet:output_type -> modal.client.SandboxSnapshotFsResponse
-	377, // 758: modal.client.ModalClient.SandboxSnapshotGet:output_type -> modal.client.SandboxSnapshotGetResponse
-	381, // 759: modal.client.ModalClient.SandboxSnapshotWait:output_type -> modal.client.SandboxSnapshotWaitResponse
-	383, // 760: modal.client.ModalClient.SandboxStdinWrite:output_type -> modal.client.SandboxStdinWriteResponse
-	386, // 761: modal.client.ModalClient.SandboxTagsGet:output_type -> modal.client.SandboxTagsGetResponse
-	555, // 762: modal.client.ModalClient.SandboxTagsSet:output_type -> google.protobuf.Empty
-	389, // 763: modal.client.ModalClient.SandboxTerminate:output_type -> modal.client.SandboxTerminateResponse
-	389, // 764: modal.client.ModalClient.SandboxTerminateV2:output_type -> modal.client.SandboxTerminateResponse
-	391, // 765: modal.client.ModalClient.SandboxWait:output_type -> modal.client.SandboxWaitResponse
-	393, // 766: modal.client.ModalClient.SandboxWaitUntilReady:output_type -> modal.client.SandboxWaitUntilReadyResponse
-	391, // 767: modal.client.ModalClient.SandboxWaitV2:output_type -> modal.client.SandboxWaitResponse
-	555, // 768: modal.client.ModalClient.SecretDelete:output_type -> google.protobuf.Empty
-	400, // 769: modal.client.ModalClient.SecretGetOrCreate:output_type -> modal.client.SecretGetOrCreateResponse
-	403, // 770: modal.client.ModalClient.SecretList:output_type -> modal.client.SecretListResponse
-	555, // 771: modal.client.ModalClient.SecretUpdate:output_type -> google.protobuf.Empty
-	555, // 772: modal.client.ModalClient.SharedVolumeDelete:output_type -> google.protobuf.Empty
-	409, // 773: modal.client.ModalClient.SharedVolumeGetFile:output_type -> modal.client.SharedVolumeGetFileResponse
-	411, // 774: modal.client.ModalClient.SharedVolumeGetOrCreate:output_type -> modal.client.SharedVolumeGetOrCreateResponse
-	555, // 775: modal.client.ModalClient.SharedVolumeHeartbeat:output_type -> google.protobuf.Empty
-	417, // 776: modal.client.ModalClient.SharedVolumeList:output_type -> modal.client.SharedVolumeListResponse
-	414, // 777: modal.client.ModalClient.SharedVolumeListFiles:output_type -> modal.client.SharedVolumeListFilesResponse
-	414, // 778: modal.client.ModalClient.SharedVolumeListFilesStream:output_type -> modal.client.SharedVolumeListFilesResponse
-	420, // 779: modal.client.ModalClient.SharedVolumePutFile:output_type -> modal.client.SharedVolumePutFileResponse
-	555, // 780: modal.client.ModalClient.SharedVolumeRemoveFile:output_type -> google.protobuf.Empty
-	424, // 781: modal.client.ModalClient.TaskClusterHello:output_type -> modal.client.TaskClusterHelloResponse
-	425, // 782: modal.client.ModalClient.TaskCurrentInputs:output_type -> modal.client.TaskCurrentInputsResponse
-	427, // 783: modal.client.ModalClient.TaskGetCommandRouterAccess:output_type -> modal.client.TaskGetCommandRouterAccessResponse
-	429, // 784: modal.client.ModalClient.TaskGetInfo:output_type -> modal.client.TaskGetInfoResponse
-	432, // 785: modal.client.ModalClient.TaskList:output_type -> modal.client.TaskListResponse
-	555, // 786: modal.client.ModalClient.TaskResult:output_type -> google.protobuf.Empty
-	440, // 787: modal.client.ModalClient.TemplateList:output_type -> modal.client.TemplateListResponse
-	442, // 788: modal.client.ModalClient.TokenFlowCreate:output_type -> modal.client.TokenFlowCreateResponse
-	444, // 789: modal.client.ModalClient.TokenFlowWait:output_type -> modal.client.TokenFlowWaitResponse
-	446, // 790: modal.client.ModalClient.TokenInfoGet:output_type -> modal.client.TokenInfoGetResponse
-	449, // 791: modal.client.ModalClient.TunnelStart:output_type -> modal.client.TunnelStartResponse
-	451, // 792: modal.client.ModalClient.TunnelStop:output_type -> modal.client.TunnelStopResponse
-	456, // 793: modal.client.ModalClient.VolumeCommit:output_type -> modal.client.VolumeCommitResponse
-	555, // 794: modal.client.ModalClient.VolumeCopyFiles:output_type -> google.protobuf.Empty
-	555, // 795: modal.client.ModalClient.VolumeCopyFiles2:output_type -> google.protobuf.Empty
-	555, // 796: modal.client.ModalClient.VolumeDelete:output_type -> google.protobuf.Empty
-	461, // 797: modal.client.ModalClient.VolumeGetById:output_type -> modal.client.VolumeGetByIdResponse
-	465, // 798: modal.client.ModalClient.VolumeGetFile:output_type -> modal.client.VolumeGetFileResponse
-	463, // 799: modal.client.ModalClient.VolumeGetFile2:output_type -> modal.client.VolumeGetFile2Response
-	467, // 800: modal.client.ModalClient.VolumeGetOrCreate:output_type -> modal.client.VolumeGetOrCreateResponse
-	555, // 801: modal.client.ModalClient.VolumeHeartbeat:output_type -> google.protobuf.Empty
-	475, // 802: modal.client.ModalClient.VolumeList:output_type -> modal.client.VolumeListResponse
-	472, // 803: modal.client.ModalClient.VolumeListFiles:output_type -> modal.client.VolumeListFilesResponse
-	470, // 804: modal.client.ModalClient.VolumeListFiles2:output_type -> modal.client.VolumeListFiles2Response
-	555, // 805: modal.client.ModalClient.VolumePutFiles:output_type -> google.protobuf.Empty
-	479, // 806: modal.client.ModalClient.VolumePutFiles2:output_type -> modal.client.VolumePutFiles2Response
-	555, // 807: modal.client.ModalClient.VolumeReload:output_type -> google.protobuf.Empty
-	555, // 808: modal.client.ModalClient.VolumeRemoveFile:output_type -> google.protobuf.Empty
-	555, // 809: modal.client.ModalClient.VolumeRemoveFile2:output_type -> google.protobuf.Empty
-	555, // 810: modal.client.ModalClient.VolumeRename:output_type -> google.protobuf.Empty
-	488, // 811: modal.client.ModalClient.WorkspaceBillingReport:output_type -> modal.client.WorkspaceBillingReportItem
-	491, // 812: modal.client.ModalClient.WorkspaceDashboardUrlGet:output_type -> modal.client.WorkspaceDashboardUrlResponse
-	492, // 813: modal.client.ModalClient.WorkspaceNameLookup:output_type -> modal.client.WorkspaceNameLookupResponse
-	621, // [621:814] is the sub-list for method output_type
-	428, // [428:621] is the sub-list for method input_type
-	428, // [428:428] is the sub-list for extension type_name
-	428, // [428:428] is the sub-list for extension extendee
-	0,   // [0:428] is the sub-list for field type_name
+	159, // 120: modal.client.Domain.dns_records:type_name -> modal.client.DNSRecord
+	183, // 121: modal.client.DomainCertificateVerifyResponse.domain:type_name -> modal.client.Domain
+	159, // 122: modal.client.DomainCreateResponse.dns_records:type_name -> modal.client.DNSRecord
+	183, // 123: modal.client.DomainListResponse.domains:type_name -> modal.client.Domain
+	532, // 124: modal.client.EnvironmentGetManagedResponse.principal_roles:type_name -> modal.client.EnvironmentGetManagedResponse.PrincipalEnvRole
+	532, // 125: modal.client.EnvironmentGetManagedResponse.additional_roles:type_name -> modal.client.EnvironmentGetManagedResponse.PrincipalEnvRole
+	19,  // 126: modal.client.EnvironmentGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
+	198, // 127: modal.client.EnvironmentGetOrCreateResponse.metadata:type_name -> modal.client.EnvironmentMetadata
+	196, // 128: modal.client.EnvironmentListResponse.items:type_name -> modal.client.EnvironmentListItem
+	201, // 129: modal.client.EnvironmentMetadata.settings:type_name -> modal.client.EnvironmentSettings
+	11,  // 130: modal.client.EnvironmentRoleSetRequest.role:type_name -> modal.client.EnvironmentRole
+	564, // 131: modal.client.EnvironmentUpdateRequest.name:type_name -> google.protobuf.StringValue
+	564, // 132: modal.client.EnvironmentUpdateRequest.web_suffix:type_name -> google.protobuf.StringValue
+	37,  // 133: modal.client.FileEntry.type:type_name -> modal.client.FileEntry.FileType
+	431, // 134: modal.client.FilesystemRuntimeOutputBatch.error:type_name -> modal.client.SystemErrorMessage
+	533, // 135: modal.client.FlashContainerListResponse.containers:type_name -> modal.client.FlashContainerListResponse.Container
+	38,  // 136: modal.client.Function.definition_type:type_name -> modal.client.Function.DefinitionType
+	39,  // 137: modal.client.Function.function_type:type_name -> modal.client.Function.FunctionType
+	349, // 138: modal.client.Function.resources:type_name -> modal.client.Resources
+	347, // 139: modal.client.Function.rate_limit:type_name -> modal.client.RateLimit
+	496, // 140: modal.client.Function.webhook_config:type_name -> modal.client.WebhookConfig
+	427, // 141: modal.client.Function.shared_volume_mounts:type_name -> modal.client.SharedVolumeMount
+	263, // 142: modal.client.Function.retry_policy:type_name -> modal.client.FunctionRetryPolicy
+	309, // 143: modal.client.Function.pty_info:type_name -> modal.client.PTYInfo
+	7,   // 144: modal.client.Function.cloud_provider:type_name -> modal.client.CloudProvider
+	495, // 145: modal.client.Function.web_url_info:type_name -> modal.client.WebUrlInfo
+	486, // 146: modal.client.Function.volume_mounts:type_name -> modal.client.VolumeMount
+	158, // 147: modal.client.Function.custom_domain_info:type_name -> modal.client.CustomDomainInfo
+	106, // 148: modal.client.Function.checkpoint:type_name -> modal.client.CheckpointInfo
+	308, // 149: modal.client.Function.object_dependencies:type_name -> modal.client.ObjectDependency
+	353, // 150: modal.client.Function.s3_mounts:type_name -> modal.client.S3Mount
+	118, // 151: modal.client.Function.cloud_bucket_mounts:type_name -> modal.client.CloudBucketMount
+	402, // 152: modal.client.Function.scheduler_placement:type_name -> modal.client.SchedulerPlacement
+	113, // 153: modal.client.Function.class_parameter_info:type_name -> modal.client.ClassParameterInfo
+	447, // 154: modal.client.Function._experimental_task_templates:type_name -> modal.client.TaskTemplate
+	401, // 155: modal.client.Function.schedule:type_name -> modal.client.Schedule
+	534, // 156: modal.client.Function.method_definitions:type_name -> modal.client.Function.MethodDefinitionsEntry
+	97,  // 157: modal.client.Function.autoscaler_settings:type_name -> modal.client.AutoscalerSettings
+	264, // 158: modal.client.Function.function_schema:type_name -> modal.client.FunctionSchema
+	535, // 159: modal.client.Function.experimental_options:type_name -> modal.client.Function.ExperimentalOptionsEntry
+	9,   // 160: modal.client.Function.supported_input_formats:type_name -> modal.client.DataFormat
+	9,   // 161: modal.client.Function.supported_output_formats:type_name -> modal.client.DataFormat
+	272, // 162: modal.client.Function.http_config:type_name -> modal.client.HTTPConfig
+	248, // 163: modal.client.FunctionAsyncInvokeRequest.input:type_name -> modal.client.FunctionInput
+	251, // 164: modal.client.FunctionBindParamsRequest.function_options:type_name -> modal.client.FunctionOptions
+	247, // 165: modal.client.FunctionBindParamsResponse.handle_metadata:type_name -> modal.client.FunctionHandleMetadata
+	285, // 166: modal.client.FunctionCallInfo.pending_inputs:type_name -> modal.client.InputCategoryInfo
+	285, // 167: modal.client.FunctionCallInfo.failed_inputs:type_name -> modal.client.InputCategoryInfo
+	285, // 168: modal.client.FunctionCallInfo.succeeded_inputs:type_name -> modal.client.InputCategoryInfo
+	285, // 169: modal.client.FunctionCallInfo.timeout_inputs:type_name -> modal.client.InputCategoryInfo
+	285, // 170: modal.client.FunctionCallInfo.cancelled_inputs:type_name -> modal.client.InputCategoryInfo
+	223, // 171: modal.client.FunctionCallListResponse.function_calls:type_name -> modal.client.FunctionCallInfo
+	160, // 172: modal.client.FunctionCallPutDataRequest.data_chunks:type_name -> modal.client.DataChunk
+	213, // 173: modal.client.FunctionCreateRequest.function:type_name -> modal.client.Function
+	401, // 174: modal.client.FunctionCreateRequest.schedule:type_name -> modal.client.Schedule
+	229, // 175: modal.client.FunctionCreateRequest.function_data:type_name -> modal.client.FunctionData
+	213, // 176: modal.client.FunctionCreateResponse.function:type_name -> modal.client.Function
+	247, // 177: modal.client.FunctionCreateResponse.handle_metadata:type_name -> modal.client.FunctionHandleMetadata
+	494, // 178: modal.client.FunctionCreateResponse.server_warnings:type_name -> modal.client.Warning
+	39,  // 179: modal.client.FunctionData.function_type:type_name -> modal.client.Function.FunctionType
+	495, // 180: modal.client.FunctionData.web_url_info:type_name -> modal.client.WebUrlInfo
+	496, // 181: modal.client.FunctionData.webhook_config:type_name -> modal.client.WebhookConfig
+	158, // 182: modal.client.FunctionData.custom_domain_info:type_name -> modal.client.CustomDomainInfo
+	536, // 183: modal.client.FunctionData.method_definitions:type_name -> modal.client.FunctionData.MethodDefinitionsEntry
+	113, // 184: modal.client.FunctionData.class_parameter_info:type_name -> modal.client.ClassParameterInfo
+	537, // 185: modal.client.FunctionData.ranked_functions:type_name -> modal.client.FunctionData.RankedFunction
+	401, // 186: modal.client.FunctionData.schedule:type_name -> modal.client.Schedule
+	97,  // 187: modal.client.FunctionData.autoscaler_settings:type_name -> modal.client.AutoscalerSettings
+	264, // 188: modal.client.FunctionData.function_schema:type_name -> modal.client.FunctionSchema
+	538, // 189: modal.client.FunctionData.experimental_options:type_name -> modal.client.FunctionData.ExperimentalOptionsEntry
+	9,   // 190: modal.client.FunctionData.supported_input_formats:type_name -> modal.client.DataFormat
+	9,   // 191: modal.client.FunctionData.supported_output_formats:type_name -> modal.client.DataFormat
+	272, // 192: modal.client.FunctionData.http_config:type_name -> modal.client.HTTPConfig
+	213, // 193: modal.client.FunctionExtended.function_singleton:type_name -> modal.client.Function
+	229, // 194: modal.client.FunctionExtended.function_data:type_name -> modal.client.FunctionData
+	284, // 195: modal.client.FunctionGetCallGraphResponse.inputs:type_name -> modal.client.InputCallGraphInfo
+	218, // 196: modal.client.FunctionGetCallGraphResponse.function_calls:type_name -> modal.client.FunctionCallCallGraphInfo
+	248, // 197: modal.client.FunctionGetInputsItem.input:type_name -> modal.client.FunctionInput
+	14,  // 198: modal.client.FunctionGetInputsItem.function_call_invocation_type:type_name -> modal.client.FunctionCallInvocationType
+	237, // 199: modal.client.FunctionGetInputsResponse.inputs:type_name -> modal.client.FunctionGetInputsItem
+	271, // 200: modal.client.FunctionGetOutputsItem.result:type_name -> modal.client.GenericResult
+	9,   // 201: modal.client.FunctionGetOutputsItem.data_format:type_name -> modal.client.DataFormat
+	240, // 202: modal.client.FunctionGetOutputsResponse.outputs:type_name -> modal.client.FunctionGetOutputsItem
+	247, // 203: modal.client.FunctionGetResponse.handle_metadata:type_name -> modal.client.FunctionHandleMetadata
+	494, // 204: modal.client.FunctionGetResponse.server_warnings:type_name -> modal.client.Warning
+	39,  // 205: modal.client.FunctionHandleMetadata.function_type:type_name -> modal.client.Function.FunctionType
+	113, // 206: modal.client.FunctionHandleMetadata.class_parameter_info:type_name -> modal.client.ClassParameterInfo
+	539, // 207: modal.client.FunctionHandleMetadata.method_handle_metadata:type_name -> modal.client.FunctionHandleMetadata.MethodHandleMetadataEntry
+	264, // 208: modal.client.FunctionHandleMetadata.function_schema:type_name -> modal.client.FunctionSchema
+	9,   // 209: modal.client.FunctionHandleMetadata.supported_input_formats:type_name -> modal.client.DataFormat
+	9,   // 210: modal.client.FunctionHandleMetadata.supported_output_formats:type_name -> modal.client.DataFormat
+	9,   // 211: modal.client.FunctionInput.data_format:type_name -> modal.client.DataFormat
+	15,  // 212: modal.client.FunctionMapRequest.function_call_type:type_name -> modal.client.FunctionCallType
+	254, // 213: modal.client.FunctionMapRequest.pipelined_inputs:type_name -> modal.client.FunctionPutInputsItem
+	14,  // 214: modal.client.FunctionMapRequest.function_call_invocation_type:type_name -> modal.client.FunctionCallInvocationType
+	257, // 215: modal.client.FunctionMapResponse.pipelined_inputs:type_name -> modal.client.FunctionPutInputsResponseItem
+	263, // 216: modal.client.FunctionMapResponse.retry_policy:type_name -> modal.client.FunctionRetryPolicy
+	349, // 217: modal.client.FunctionOptions.resources:type_name -> modal.client.Resources
+	263, // 218: modal.client.FunctionOptions.retry_policy:type_name -> modal.client.FunctionRetryPolicy
+	486, // 219: modal.client.FunctionOptions.volume_mounts:type_name -> modal.client.VolumeMount
+	402, // 220: modal.client.FunctionOptions.scheduler_placement:type_name -> modal.client.SchedulerPlacement
+	118, // 221: modal.client.FunctionOptions.cloud_bucket_mounts:type_name -> modal.client.CloudBucketMount
+	39,  // 222: modal.client.FunctionPrecreateRequest.function_type:type_name -> modal.client.Function.FunctionType
+	496, // 223: modal.client.FunctionPrecreateRequest.webhook_config:type_name -> modal.client.WebhookConfig
+	540, // 224: modal.client.FunctionPrecreateRequest.method_definitions:type_name -> modal.client.FunctionPrecreateRequest.MethodDefinitionsEntry
+	264, // 225: modal.client.FunctionPrecreateRequest.function_schema:type_name -> modal.client.FunctionSchema
+	9,   // 226: modal.client.FunctionPrecreateRequest.supported_input_formats:type_name -> modal.client.DataFormat
+	9,   // 227: modal.client.FunctionPrecreateRequest.supported_output_formats:type_name -> modal.client.DataFormat
+	247, // 228: modal.client.FunctionPrecreateResponse.handle_metadata:type_name -> modal.client.FunctionHandleMetadata
+	248, // 229: modal.client.FunctionPutInputsItem.input:type_name -> modal.client.FunctionInput
+	254, // 230: modal.client.FunctionPutInputsRequest.inputs:type_name -> modal.client.FunctionPutInputsItem
+	257, // 231: modal.client.FunctionPutInputsResponse.inputs:type_name -> modal.client.FunctionPutInputsResponseItem
+	271, // 232: modal.client.FunctionPutOutputsItem.result:type_name -> modal.client.GenericResult
+	9,   // 233: modal.client.FunctionPutOutputsItem.data_format:type_name -> modal.client.DataFormat
+	258, // 234: modal.client.FunctionPutOutputsRequest.outputs:type_name -> modal.client.FunctionPutOutputsItem
+	248, // 235: modal.client.FunctionRetryInputsItem.input:type_name -> modal.client.FunctionInput
+	260, // 236: modal.client.FunctionRetryInputsRequest.inputs:type_name -> modal.client.FunctionRetryInputsItem
+	40,  // 237: modal.client.FunctionSchema.schema_type:type_name -> modal.client.FunctionSchema.FunctionSchemaType
+	115, // 238: modal.client.FunctionSchema.arguments:type_name -> modal.client.ClassParameterSpec
+	270, // 239: modal.client.FunctionSchema.return_type:type_name -> modal.client.GenericPayloadType
+	97,  // 240: modal.client.FunctionUpdateSchedulingParamsRequest.settings:type_name -> modal.client.AutoscalerSettings
+	16,  // 241: modal.client.GPUConfig.type:type_name -> modal.client.GPUType
+	20,  // 242: modal.client.GenericPayloadType.base_type:type_name -> modal.client.ParameterType
+	270, // 243: modal.client.GenericPayloadType.sub_types:type_name -> modal.client.GenericPayloadType
+	41,  // 244: modal.client.GenericResult.status:type_name -> modal.client.GenericResult.GenericStatus
+	99,  // 245: modal.client.Image.base_images:type_name -> modal.client.BaseImage
+	274, // 246: modal.client.Image.context_files:type_name -> modal.client.ImageContextFile
+	268, // 247: modal.client.Image.gpu_config:type_name -> modal.client.GPUConfig
+	283, // 248: modal.client.Image.image_registry_config:type_name -> modal.client.ImageRegistryConfig
+	104, // 249: modal.client.Image.build_function:type_name -> modal.client.BuildFunction
+	541, // 250: modal.client.Image.build_args:type_name -> modal.client.Image.BuildArgsEntry
+	486, // 251: modal.client.Image.volume_mounts:type_name -> modal.client.VolumeMount
+	282, // 252: modal.client.ImageFromIdResponse.metadata:type_name -> modal.client.ImageMetadata
+	273, // 253: modal.client.ImageGetOrCreateRequest.image:type_name -> modal.client.Image
+	10,  // 254: modal.client.ImageGetOrCreateRequest.namespace:type_name -> modal.client.DeploymentNamespace
+	271, // 255: modal.client.ImageGetOrCreateResponse.result:type_name -> modal.client.GenericResult
+	282, // 256: modal.client.ImageGetOrCreateResponse.metadata:type_name -> modal.client.ImageMetadata
+	271, // 257: modal.client.ImageJoinStreamingResponse.result:type_name -> modal.client.GenericResult
+	442, // 258: modal.client.ImageJoinStreamingResponse.task_logs:type_name -> modal.client.TaskLogs
+	282, // 259: modal.client.ImageJoinStreamingResponse.metadata:type_name -> modal.client.ImageMetadata
+	542, // 260: modal.client.ImageMetadata.python_packages:type_name -> modal.client.ImageMetadata.PythonPackagesEntry
+	25,  // 261: modal.client.ImageRegistryConfig.registry_auth_type:type_name -> modal.client.RegistryAuthType
+	41,  // 262: modal.client.InputCallGraphInfo.status:type_name -> modal.client.GenericResult.GenericStatus
+	286, // 263: modal.client.InputCategoryInfo.latest:type_name -> modal.client.InputInfo
+	240, // 264: modal.client.MapAwaitResponse.outputs:type_name -> modal.client.FunctionGetOutputsItem
+	254, // 265: modal.client.MapStartOrContinueItem.input:type_name -> modal.client.FunctionPutInputsItem
+	292, // 266: modal.client.MapStartOrContinueRequest.items:type_name -> modal.client.MapStartOrContinueItem
+	263, // 267: modal.client.MapStartOrContinueResponse.retry_policy:type_name -> modal.client.FunctionRetryPolicy
+	39,  // 268: modal.client.MethodDefinition.function_type:type_name -> modal.client.Function.FunctionType
+	496, // 269: modal.client.MethodDefinition.webhook_config:type_name -> modal.client.WebhookConfig
+	495, // 270: modal.client.MethodDefinition.web_url_info:type_name -> modal.client.WebUrlInfo
+	158, // 271: modal.client.MethodDefinition.custom_domain_info:type_name -> modal.client.CustomDomainInfo
+	264, // 272: modal.client.MethodDefinition.function_schema:type_name -> modal.client.FunctionSchema
+	9,   // 273: modal.client.MethodDefinition.supported_input_formats:type_name -> modal.client.DataFormat
+	9,   // 274: modal.client.MethodDefinition.supported_output_formats:type_name -> modal.client.DataFormat
+	10,  // 275: modal.client.MountGetOrCreateRequest.namespace:type_name -> modal.client.DeploymentNamespace
+	19,  // 276: modal.client.MountGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
+	296, // 277: modal.client.MountGetOrCreateRequest.files:type_name -> modal.client.MountFile
+	299, // 278: modal.client.MountGetOrCreateResponse.handle_metadata:type_name -> modal.client.MountHandleMetadata
+	302, // 279: modal.client.MultiPartUploadList.items:type_name -> modal.client.MultiPartUpload
+	42,  // 280: modal.client.NetworkAccess.network_access_type:type_name -> modal.client.NetworkAccess.NetworkAccessType
+	544, // 281: modal.client.NotebookKernelPublishResultsRequest.results:type_name -> modal.client.NotebookKernelPublishResultsRequest.CellResult
+	545, // 282: modal.client.NotebookOutput.execute_result:type_name -> modal.client.NotebookOutput.ExecuteResult
+	546, // 283: modal.client.NotebookOutput.display_data:type_name -> modal.client.NotebookOutput.DisplayData
+	547, // 284: modal.client.NotebookOutput.stream:type_name -> modal.client.NotebookOutput.Stream
+	548, // 285: modal.client.NotebookOutput.error:type_name -> modal.client.NotebookOutput.Error
+	247, // 286: modal.client.Object.function_handle_metadata:type_name -> modal.client.FunctionHandleMetadata
+	299, // 287: modal.client.Object.mount_handle_metadata:type_name -> modal.client.MountHandleMetadata
+	111, // 288: modal.client.Object.class_handle_metadata:type_name -> modal.client.ClassHandleMetadata
+	372, // 289: modal.client.Object.sandbox_handle_metadata:type_name -> modal.client.SandboxHandleMetadata
+	485, // 290: modal.client.Object.volume_metadata:type_name -> modal.client.VolumeMetadata
+	43,  // 291: modal.client.PTYInfo.pty_type:type_name -> modal.client.PTYInfo.PTYType
+	30,  // 292: modal.client.PortSpec.tunnel_type:type_name -> modal.client.TunnelType
+	310, // 293: modal.client.PortSpecs.ports:type_name -> modal.client.PortSpec
+	549, // 294: modal.client.Probe.exec_command:type_name -> modal.client.Probe.ExecCommand
+	324, // 295: modal.client.Proxy.proxy_ips:type_name -> modal.client.ProxyIp
+	324, // 296: modal.client.ProxyAddIpResponse.proxy_ip:type_name -> modal.client.ProxyIp
+	313, // 297: modal.client.ProxyCreateResponse.proxy:type_name -> modal.client.Proxy
+	19,  // 298: modal.client.ProxyGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
+	313, // 299: modal.client.ProxyGetResponse.proxy:type_name -> modal.client.Proxy
+	23,  // 300: modal.client.ProxyInfo.proxy_type:type_name -> modal.client.ProxyType
+	22,  // 301: modal.client.ProxyIp.status:type_name -> modal.client.ProxyIpStatus
+	313, // 302: modal.client.ProxyListResponse.proxies:type_name -> modal.client.Proxy
+	341, // 303: modal.client.QueueGetByIdResponse.metadata:type_name -> modal.client.QueueMetadata
+	19,  // 304: modal.client.QueueGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
+	341, // 305: modal.client.QueueGetOrCreateResponse.metadata:type_name -> modal.client.QueueMetadata
+	287, // 306: modal.client.QueueListRequest.pagination:type_name -> modal.client.ListPagination
+	550, // 307: modal.client.QueueListResponse.queues:type_name -> modal.client.QueueListResponse.QueueInfo
+	156, // 308: modal.client.QueueMetadata.creation_info:type_name -> modal.client.CreationInfo
+	336, // 309: modal.client.QueueNextItemsResponse.items:type_name -> modal.client.QueueItem
+	565, // 310: modal.client.RPCStatus.details:type_name -> google.protobuf.Any
+	24,  // 311: modal.client.RateLimit.interval:type_name -> modal.client.RateLimitInterval
+	551, // 312: modal.client.ResourceInfo.memory_mb:type_name -> modal.client.ResourceInfo.ResourceValue
+	551, // 313: modal.client.ResourceInfo.milli_cpu:type_name -> modal.client.ResourceInfo.ResourceValue
+	268, // 314: modal.client.Resources.gpu_config:type_name -> modal.client.GPUConfig
+	352, // 315: modal.client.RuntimeOutputBatch.items:type_name -> modal.client.RuntimeOutputMessage
+	352, // 316: modal.client.RuntimeOutputBatch.stdout:type_name -> modal.client.RuntimeOutputMessage
+	352, // 317: modal.client.RuntimeOutputBatch.stderr:type_name -> modal.client.RuntimeOutputMessage
+	352, // 318: modal.client.RuntimeOutputBatch.info:type_name -> modal.client.RuntimeOutputMessage
+	13,  // 319: modal.client.RuntimeOutputMessage.file_descriptor:type_name -> modal.client.FileDescriptor
+	349, // 320: modal.client.Sandbox.resources:type_name -> modal.client.Resources
+	7,   // 321: modal.client.Sandbox.cloud_provider:type_name -> modal.client.CloudProvider
+	427, // 322: modal.client.Sandbox.nfs_mounts:type_name -> modal.client.SharedVolumeMount
+	353, // 323: modal.client.Sandbox.s3_mounts:type_name -> modal.client.S3Mount
+	118, // 324: modal.client.Sandbox.cloud_bucket_mounts:type_name -> modal.client.CloudBucketMount
+	486, // 325: modal.client.Sandbox.volume_mounts:type_name -> modal.client.VolumeMount
+	309, // 326: modal.client.Sandbox.pty_info:type_name -> modal.client.PTYInfo
+	402, // 327: modal.client.Sandbox.scheduler_placement:type_name -> modal.client.SchedulerPlacement
+	311, // 328: modal.client.Sandbox.open_ports:type_name -> modal.client.PortSpecs
+	304, // 329: modal.client.Sandbox.network_access:type_name -> modal.client.NetworkAccess
+	552, // 330: modal.client.Sandbox.experimental_options:type_name -> modal.client.Sandbox.ExperimentalOptionsEntry
+	312, // 331: modal.client.Sandbox.readiness_probe:type_name -> modal.client.Probe
+	354, // 332: modal.client.SandboxCreateRequest.definition:type_name -> modal.client.Sandbox
+	354, // 333: modal.client.SandboxCreateV2Request.definition:type_name -> modal.client.Sandbox
+	456, // 334: modal.client.SandboxCreateV2Response.tunnels:type_name -> modal.client.TunnelData
+	13,  // 335: modal.client.SandboxGetLogsRequest.file_descriptor:type_name -> modal.client.FileDescriptor
+	271, // 336: modal.client.SandboxGetTaskIdResponse.task_result:type_name -> modal.client.GenericResult
+	271, // 337: modal.client.SandboxGetTunnelsResponse.result:type_name -> modal.client.GenericResult
+	456, // 338: modal.client.SandboxGetTunnelsResponse.tunnels:type_name -> modal.client.TunnelData
+	271, // 339: modal.client.SandboxHandleMetadata.result:type_name -> modal.client.GenericResult
+	439, // 340: modal.client.SandboxInfo.task_info:type_name -> modal.client.TaskInfo
+	391, // 341: modal.client.SandboxInfo.tags:type_name -> modal.client.SandboxTag
+	348, // 342: modal.client.SandboxInfo.resource_info:type_name -> modal.client.ResourceInfo
+	312, // 343: modal.client.SandboxInfo.readiness_probe:type_name -> modal.client.Probe
+	456, // 344: modal.client.SandboxInfo.tunnels:type_name -> modal.client.TunnelData
+	391, // 345: modal.client.SandboxListRequest.tags:type_name -> modal.client.SandboxTag
+	373, // 346: modal.client.SandboxListResponse.sandboxes:type_name -> modal.client.SandboxInfo
+	44,  // 347: modal.client.SandboxRestoreRequest.sandbox_name_override_type:type_name -> modal.client.SandboxRestoreRequest.SandboxNameOverrideType
+	271, // 348: modal.client.SandboxSnapshotFsResponse.result:type_name -> modal.client.GenericResult
+	282, // 349: modal.client.SandboxSnapshotFsResponse.image_metadata:type_name -> modal.client.ImageMetadata
+	271, // 350: modal.client.SandboxSnapshotWaitResponse.result:type_name -> modal.client.GenericResult
+	391, // 351: modal.client.SandboxTagsGetResponse.tags:type_name -> modal.client.SandboxTag
+	391, // 352: modal.client.SandboxTagsSetRequest.tags:type_name -> modal.client.SandboxTag
+	271, // 353: modal.client.SandboxTerminateResponse.existing_result:type_name -> modal.client.GenericResult
+	271, // 354: modal.client.SandboxWaitResponse.result:type_name -> modal.client.GenericResult
+	553, // 355: modal.client.Schedule.cron:type_name -> modal.client.Schedule.Cron
+	554, // 356: modal.client.Schedule.period:type_name -> modal.client.Schedule.Period
+	555, // 357: modal.client.SecretCreateRequest.env_dict:type_name -> modal.client.SecretCreateRequest.EnvDictEntry
+	19,  // 358: modal.client.SecretGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
+	556, // 359: modal.client.SecretGetOrCreateRequest.env_dict:type_name -> modal.client.SecretGetOrCreateRequest.EnvDictEntry
+	411, // 360: modal.client.SecretGetOrCreateResponse.metadata:type_name -> modal.client.SecretMetadata
+	411, // 361: modal.client.SecretListItem.metadata:type_name -> modal.client.SecretMetadata
+	287, // 362: modal.client.SecretListRequest.pagination:type_name -> modal.client.ListPagination
+	408, // 363: modal.client.SecretListResponse.items:type_name -> modal.client.SecretListItem
+	156, // 364: modal.client.SecretMetadata.creation_info:type_name -> modal.client.CreationInfo
+	557, // 365: modal.client.SecretUpdateRequest.updates:type_name -> modal.client.SecretUpdateRequest.Update
+	463, // 366: modal.client.ServiceUserIdentity.created_by:type_name -> modal.client.UserIdentity
+	413, // 367: modal.client.ServiceUserListResponse.service_users:type_name -> modal.client.ServiceUser
+	19,  // 368: modal.client.SharedVolumeGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
+	203, // 369: modal.client.SharedVolumeListFilesResponse.entries:type_name -> modal.client.FileEntry
+	7,   // 370: modal.client.SharedVolumeListItem.cloud_provider:type_name -> modal.client.CloudProvider
+	424, // 371: modal.client.SharedVolumeListResponse.items:type_name -> modal.client.SharedVolumeListItem
+	7,   // 372: modal.client.SharedVolumeMount.cloud_provider:type_name -> modal.client.CloudProvider
+	27,  // 373: modal.client.SystemErrorMessage.error_code:type_name -> modal.client.SystemErrorCode
+	439, // 374: modal.client.TaskGetInfoResponse.info:type_name -> modal.client.TaskInfo
+	271, // 375: modal.client.TaskInfo.result:type_name -> modal.client.GenericResult
+	28,  // 376: modal.client.TaskInfo.snapshot_behavior:type_name -> modal.client.TaskSnapshotBehavior
+	268, // 377: modal.client.TaskInfo.gpu_config:type_name -> modal.client.GPUConfig
+	446, // 378: modal.client.TaskListResponse.tasks:type_name -> modal.client.TaskStats
+	29,  // 379: modal.client.TaskLogs.task_state:type_name -> modal.client.TaskState
+	13,  // 380: modal.client.TaskLogs.file_descriptor:type_name -> modal.client.FileDescriptor
+	444, // 381: modal.client.TaskLogs.task_progress:type_name -> modal.client.TaskProgress
+	442, // 382: modal.client.TaskLogsBatch.items:type_name -> modal.client.TaskLogs
+	21,  // 383: modal.client.TaskProgress.progress_type:type_name -> modal.client.ProgressType
+	271, // 384: modal.client.TaskResultRequest.result:type_name -> modal.client.GenericResult
+	349, // 385: modal.client.TaskTemplate.resources:type_name -> modal.client.Resources
+	558, // 386: modal.client.TemplateListResponse.items:type_name -> modal.client.TemplateListResponse.TemplateListItem
+	463, // 387: modal.client.TokenInfoGetResponse.user_identity:type_name -> modal.client.UserIdentity
+	414, // 388: modal.client.TokenInfoGetResponse.service_user_identity:type_name -> modal.client.ServiceUserIdentity
+	563, // 389: modal.client.TokenInfoGetResponse.created_at:type_name -> google.protobuf.Timestamp
+	563, // 390: modal.client.TokenInfoGetResponse.expires_at:type_name -> google.protobuf.Timestamp
+	30,  // 391: modal.client.TunnelStartRequest.tunnel_type:type_name -> modal.client.TunnelType
+	485, // 392: modal.client.VolumeGetByIdResponse.metadata:type_name -> modal.client.VolumeMetadata
+	19,  // 393: modal.client.VolumeGetOrCreateRequest.object_creation_type:type_name -> modal.client.ObjectCreationType
+	31,  // 394: modal.client.VolumeGetOrCreateRequest.version:type_name -> modal.client.VolumeFsVersion
+	31,  // 395: modal.client.VolumeGetOrCreateResponse.version:type_name -> modal.client.VolumeFsVersion
+	485, // 396: modal.client.VolumeGetOrCreateResponse.metadata:type_name -> modal.client.VolumeMetadata
+	203, // 397: modal.client.VolumeListFiles2Response.entries:type_name -> modal.client.FileEntry
+	203, // 398: modal.client.VolumeListFilesResponse.entries:type_name -> modal.client.FileEntry
+	485, // 399: modal.client.VolumeListItem.metadata:type_name -> modal.client.VolumeMetadata
+	287, // 400: modal.client.VolumeListRequest.pagination:type_name -> modal.client.ListPagination
+	482, // 401: modal.client.VolumeListResponse.items:type_name -> modal.client.VolumeListItem
+	31,  // 402: modal.client.VolumeMetadata.version:type_name -> modal.client.VolumeFsVersion
+	156, // 403: modal.client.VolumeMetadata.creation_info:type_name -> modal.client.CreationInfo
+	559, // 404: modal.client.VolumePutFiles2Request.files:type_name -> modal.client.VolumePutFiles2Request.File
+	561, // 405: modal.client.VolumePutFiles2Response.missing_blocks:type_name -> modal.client.VolumePutFiles2Response.MissingBlock
+	296, // 406: modal.client.VolumePutFilesRequest.files:type_name -> modal.client.MountFile
+	45,  // 407: modal.client.Warning.type:type_name -> modal.client.Warning.WarningType
+	33,  // 408: modal.client.WebhookConfig.type:type_name -> modal.client.WebhookType
+	32,  // 409: modal.client.WebhookConfig.async_mode:type_name -> modal.client.WebhookAsyncMode
+	157, // 410: modal.client.WebhookConfig.custom_domains:type_name -> modal.client.CustomDomainConfig
+	563, // 411: modal.client.WorkspaceBillingReportItem.interval:type_name -> google.protobuf.Timestamp
+	562, // 412: modal.client.WorkspaceBillingReportItem.tags:type_name -> modal.client.WorkspaceBillingReportItem.TagsEntry
+	563, // 413: modal.client.WorkspaceBillingReportRequest.start_timestamp:type_name -> google.protobuf.Timestamp
+	563, // 414: modal.client.WorkspaceBillingReportRequest.end_timestamp:type_name -> google.protobuf.Timestamp
+	18,  // 415: modal.client.WorkspaceMembersListItem.member_role:type_name -> modal.client.MemberRole
+	17,  // 416: modal.client.WorkspaceMembersListItem.identity_provider_type:type_name -> modal.client.IdentityProviderType
+	501, // 417: modal.client.WorkspaceMembersListResponse.members:type_name -> modal.client.WorkspaceMembersListItem
+	563, // 418: modal.client.AppCountLogsResponse.LogBucket.bucket_start_at:type_name -> google.protobuf.Timestamp
+	2,   // 419: modal.client.AppListResponse.AppListItem.state:type_name -> modal.client.AppState
+	462, // 420: modal.client.AutoscalerConfiguration.OverrideEventsEntry.value:type_name -> modal.client.UserActionInfo
+	178, // 421: modal.client.DictListResponse.DictInfo.metadata:type_name -> modal.client.DictMetadata
+	11,  // 422: modal.client.EnvironmentGetManagedResponse.PrincipalEnvRole.role:type_name -> modal.client.EnvironmentRole
+	18,  // 423: modal.client.EnvironmentGetManagedResponse.PrincipalEnvRole.member_role:type_name -> modal.client.MemberRole
+	295, // 424: modal.client.Function.MethodDefinitionsEntry.value:type_name -> modal.client.MethodDefinition
+	295, // 425: modal.client.FunctionData.MethodDefinitionsEntry.value:type_name -> modal.client.MethodDefinition
+	213, // 426: modal.client.FunctionData.RankedFunction.function:type_name -> modal.client.Function
+	247, // 427: modal.client.FunctionHandleMetadata.MethodHandleMetadataEntry.value:type_name -> modal.client.FunctionHandleMetadata
+	295, // 428: modal.client.FunctionPrecreateRequest.MethodDefinitionsEntry.value:type_name -> modal.client.MethodDefinition
+	306, // 429: modal.client.NotebookKernelPublishResultsRequest.CellResult.output:type_name -> modal.client.NotebookOutput
+	543, // 430: modal.client.NotebookKernelPublishResultsRequest.CellResult.execute_reply:type_name -> modal.client.NotebookKernelPublishResultsRequest.ExecuteReply
+	566, // 431: modal.client.NotebookOutput.ExecuteResult.data:type_name -> google.protobuf.Struct
+	566, // 432: modal.client.NotebookOutput.ExecuteResult.metadata:type_name -> google.protobuf.Struct
+	566, // 433: modal.client.NotebookOutput.DisplayData.data:type_name -> google.protobuf.Struct
+	566, // 434: modal.client.NotebookOutput.DisplayData.metadata:type_name -> google.protobuf.Struct
+	341, // 435: modal.client.QueueListResponse.QueueInfo.metadata:type_name -> modal.client.QueueMetadata
+	560, // 436: modal.client.VolumePutFiles2Request.File.blocks:type_name -> modal.client.VolumePutFiles2Request.Block
+	46,  // 437: modal.client.ModalClient.AppClientDisconnect:input_type -> modal.client.AppClientDisconnectRequest
+	47,  // 438: modal.client.ModalClient.AppCountLogs:input_type -> modal.client.AppCountLogsRequest
+	49,  // 439: modal.client.ModalClient.AppCreate:input_type -> modal.client.AppCreateRequest
+	51,  // 440: modal.client.ModalClient.AppDeploy:input_type -> modal.client.AppDeployRequest
+	54,  // 441: modal.client.ModalClient.AppDeploymentHistory:input_type -> modal.client.AppDeploymentHistoryRequest
+	56,  // 442: modal.client.ModalClient.AppFetchLogs:input_type -> modal.client.AppFetchLogsRequest
+	58,  // 443: modal.client.ModalClient.AppGetByDeploymentName:input_type -> modal.client.AppGetByDeploymentNameRequest
+	60,  // 444: modal.client.ModalClient.AppGetLayout:input_type -> modal.client.AppGetLayoutRequest
+	62,  // 445: modal.client.ModalClient.AppGetLifecycle:input_type -> modal.client.AppGetLifecycleRequest
+	64,  // 446: modal.client.ModalClient.AppGetLogs:input_type -> modal.client.AppGetLogsRequest
+	66,  // 447: modal.client.ModalClient.AppGetObjects:input_type -> modal.client.AppGetObjectsRequest
+	68,  // 448: modal.client.ModalClient.AppGetOrCreate:input_type -> modal.client.AppGetOrCreateRequest
+	70,  // 449: modal.client.ModalClient.AppGetTags:input_type -> modal.client.AppGetTagsRequest
+	72,  // 450: modal.client.ModalClient.AppHeartbeat:input_type -> modal.client.AppHeartbeatRequest
+	75,  // 451: modal.client.ModalClient.AppList:input_type -> modal.client.AppListRequest
+	77,  // 452: modal.client.ModalClient.AppLookup:input_type -> modal.client.AppLookupRequest
+	79,  // 453: modal.client.ModalClient.AppPublish:input_type -> modal.client.AppPublishRequest
+	81,  // 454: modal.client.ModalClient.AppRollback:input_type -> modal.client.AppRollbackRequest
+	82,  // 455: modal.client.ModalClient.AppRollover:input_type -> modal.client.AppRolloverRequest
+	84,  // 456: modal.client.ModalClient.AppSetObjects:input_type -> modal.client.AppSetObjectsRequest
+	85,  // 457: modal.client.ModalClient.AppSetTags:input_type -> modal.client.AppSetTagsRequest
+	86,  // 458: modal.client.ModalClient.AppStop:input_type -> modal.client.AppStopRequest
+	88,  // 459: modal.client.ModalClient.AttemptAwait:input_type -> modal.client.AttemptAwaitRequest
+	90,  // 460: modal.client.ModalClient.AttemptRetry:input_type -> modal.client.AttemptRetryRequest
+	92,  // 461: modal.client.ModalClient.AttemptStart:input_type -> modal.client.AttemptStartRequest
+	94,  // 462: modal.client.ModalClient.AuthTokenGet:input_type -> modal.client.AuthTokenGetRequest
+	100, // 463: modal.client.ModalClient.BlobCreate:input_type -> modal.client.BlobCreateRequest
+	102, // 464: modal.client.ModalClient.BlobGet:input_type -> modal.client.BlobGetRequest
+	107, // 465: modal.client.ModalClient.ClassCreate:input_type -> modal.client.ClassCreateRequest
+	109, // 466: modal.client.ModalClient.ClassGet:input_type -> modal.client.ClassGetRequest
+	567, // 467: modal.client.ModalClient.ClientHello:input_type -> google.protobuf.Empty
+	119, // 468: modal.client.ModalClient.ClusterGet:input_type -> modal.client.ClusterGetRequest
+	121, // 469: modal.client.ModalClient.ClusterList:input_type -> modal.client.ClusterListRequest
+	126, // 470: modal.client.ModalClient.ContainerCheckpoint:input_type -> modal.client.ContainerCheckpointRequest
+	129, // 471: modal.client.ModalClient.ContainerExec:input_type -> modal.client.ContainerExecRequest
+	127, // 472: modal.client.ModalClient.ContainerExecGetOutput:input_type -> modal.client.ContainerExecGetOutputRequest
+	128, // 473: modal.client.ModalClient.ContainerExecPutInput:input_type -> modal.client.ContainerExecPutInputRequest
+	131, // 474: modal.client.ModalClient.ContainerExecWait:input_type -> modal.client.ContainerExecWaitRequest
+	147, // 475: modal.client.ModalClient.ContainerFilesystemExec:input_type -> modal.client.ContainerFilesystemExecRequest
+	146, // 476: modal.client.ModalClient.ContainerFilesystemExecGetOutput:input_type -> modal.client.ContainerFilesystemExecGetOutputRequest
+	149, // 477: modal.client.ModalClient.ContainerHeartbeat:input_type -> modal.client.ContainerHeartbeatRequest
+	567, // 478: modal.client.ModalClient.ContainerHello:input_type -> google.protobuf.Empty
+	151, // 479: modal.client.ModalClient.ContainerLog:input_type -> modal.client.ContainerLogRequest
+	152, // 480: modal.client.ModalClient.ContainerReloadVolumes:input_type -> modal.client.ContainerReloadVolumesRequest
+	154, // 481: modal.client.ModalClient.ContainerStop:input_type -> modal.client.ContainerStopRequest
+	161, // 482: modal.client.ModalClient.DictClear:input_type -> modal.client.DictClearRequest
+	162, // 483: modal.client.ModalClient.DictContains:input_type -> modal.client.DictContainsRequest
+	164, // 484: modal.client.ModalClient.DictContents:input_type -> modal.client.DictContentsRequest
+	165, // 485: modal.client.ModalClient.DictDelete:input_type -> modal.client.DictDeleteRequest
+	171, // 486: modal.client.ModalClient.DictGet:input_type -> modal.client.DictGetRequest
+	167, // 487: modal.client.ModalClient.DictGetById:input_type -> modal.client.DictGetByIdRequest
+	169, // 488: modal.client.ModalClient.DictGetOrCreate:input_type -> modal.client.DictGetOrCreateRequest
+	173, // 489: modal.client.ModalClient.DictHeartbeat:input_type -> modal.client.DictHeartbeatRequest
+	174, // 490: modal.client.ModalClient.DictLen:input_type -> modal.client.DictLenRequest
+	176, // 491: modal.client.ModalClient.DictList:input_type -> modal.client.DictListRequest
+	179, // 492: modal.client.ModalClient.DictPop:input_type -> modal.client.DictPopRequest
+	181, // 493: modal.client.ModalClient.DictUpdate:input_type -> modal.client.DictUpdateRequest
+	184, // 494: modal.client.ModalClient.DomainCertificateVerify:input_type -> modal.client.DomainCertificateVerifyRequest
+	186, // 495: modal.client.ModalClient.DomainCreate:input_type -> modal.client.DomainCreateRequest
+	188, // 496: modal.client.ModalClient.DomainList:input_type -> modal.client.DomainListRequest
+	190, // 497: modal.client.ModalClient.EnvironmentCreate:input_type -> modal.client.EnvironmentCreateRequest
+	191, // 498: modal.client.ModalClient.EnvironmentDelete:input_type -> modal.client.EnvironmentDeleteRequest
+	192, // 499: modal.client.ModalClient.EnvironmentGetManaged:input_type -> modal.client.EnvironmentGetManagedRequest
+	194, // 500: modal.client.ModalClient.EnvironmentGetOrCreate:input_type -> modal.client.EnvironmentGetOrCreateRequest
+	567, // 501: modal.client.ModalClient.EnvironmentList:input_type -> google.protobuf.Empty
+	199, // 502: modal.client.ModalClient.EnvironmentRoleSet:input_type -> modal.client.EnvironmentRoleSetRequest
+	200, // 503: modal.client.ModalClient.EnvironmentSetManaged:input_type -> modal.client.EnvironmentSetManagedRequest
+	202, // 504: modal.client.ModalClient.EnvironmentUpdate:input_type -> modal.client.EnvironmentUpdateRequest
+	205, // 505: modal.client.ModalClient.FlashContainerDeregister:input_type -> modal.client.FlashContainerDeregisterRequest
+	206, // 506: modal.client.ModalClient.FlashContainerList:input_type -> modal.client.FlashContainerListRequest
+	208, // 507: modal.client.ModalClient.FlashContainerRegister:input_type -> modal.client.FlashContainerRegisterRequest
+	211, // 508: modal.client.ModalClient.FlashSetTargetSlotsMetrics:input_type -> modal.client.FlashSetTargetSlotsMetricsRequest
+	214, // 509: modal.client.ModalClient.FunctionAsyncInvoke:input_type -> modal.client.FunctionAsyncInvokeRequest
+	216, // 510: modal.client.ModalClient.FunctionBindParams:input_type -> modal.client.FunctionBindParamsRequest
+	219, // 511: modal.client.ModalClient.FunctionCallCancel:input_type -> modal.client.FunctionCallCancelRequest
+	220, // 512: modal.client.ModalClient.FunctionCallFromId:input_type -> modal.client.FunctionCallFromIdRequest
+	222, // 513: modal.client.ModalClient.FunctionCallGetDataIn:input_type -> modal.client.FunctionCallGetDataRequest
+	222, // 514: modal.client.ModalClient.FunctionCallGetDataOut:input_type -> modal.client.FunctionCallGetDataRequest
+	224, // 515: modal.client.ModalClient.FunctionCallList:input_type -> modal.client.FunctionCallListRequest
+	226, // 516: modal.client.ModalClient.FunctionCallPutDataOut:input_type -> modal.client.FunctionCallPutDataRequest
+	227, // 517: modal.client.ModalClient.FunctionCreate:input_type -> modal.client.FunctionCreateRequest
+	231, // 518: modal.client.ModalClient.FunctionFinishInputs:input_type -> modal.client.FunctionFinishInputsRequest
+	243, // 519: modal.client.ModalClient.FunctionGet:input_type -> modal.client.FunctionGetRequest
+	232, // 520: modal.client.ModalClient.FunctionGetCallGraph:input_type -> modal.client.FunctionGetCallGraphRequest
+	234, // 521: modal.client.ModalClient.FunctionGetCurrentStats:input_type -> modal.client.FunctionGetCurrentStatsRequest
+	235, // 522: modal.client.ModalClient.FunctionGetDynamicConcurrency:input_type -> modal.client.FunctionGetDynamicConcurrencyRequest
+	238, // 523: modal.client.ModalClient.FunctionGetInputs:input_type -> modal.client.FunctionGetInputsRequest
+	241, // 524: modal.client.ModalClient.FunctionGetOutputs:input_type -> modal.client.FunctionGetOutputsRequest
+	245, // 525: modal.client.ModalClient.FunctionGetSerialized:input_type -> modal.client.FunctionGetSerializedRequest
+	249, // 526: modal.client.ModalClient.FunctionMap:input_type -> modal.client.FunctionMapRequest
+	252, // 527: modal.client.ModalClient.FunctionPrecreate:input_type -> modal.client.FunctionPrecreateRequest
+	255, // 528: modal.client.ModalClient.FunctionPutInputs:input_type -> modal.client.FunctionPutInputsRequest
+	259, // 529: modal.client.ModalClient.FunctionPutOutputs:input_type -> modal.client.FunctionPutOutputsRequest
+	261, // 530: modal.client.ModalClient.FunctionRetryInputs:input_type -> modal.client.FunctionRetryInputsRequest
+	567, // 531: modal.client.ModalClient.FunctionStartPtyShell:input_type -> google.protobuf.Empty
+	266, // 532: modal.client.ModalClient.FunctionUpdateSchedulingParams:input_type -> modal.client.FunctionUpdateSchedulingParamsRequest
+	275, // 533: modal.client.ModalClient.ImageDelete:input_type -> modal.client.ImageDeleteRequest
+	276, // 534: modal.client.ModalClient.ImageFromId:input_type -> modal.client.ImageFromIdRequest
+	278, // 535: modal.client.ModalClient.ImageGetOrCreate:input_type -> modal.client.ImageGetOrCreateRequest
+	280, // 536: modal.client.ModalClient.ImageJoinStreaming:input_type -> modal.client.ImageJoinStreamingRequest
+	288, // 537: modal.client.ModalClient.MapAwait:input_type -> modal.client.MapAwaitRequest
+	290, // 538: modal.client.ModalClient.MapCheckInputs:input_type -> modal.client.MapCheckInputsRequest
+	293, // 539: modal.client.ModalClient.MapStartOrContinue:input_type -> modal.client.MapStartOrContinueRequest
+	297, // 540: modal.client.ModalClient.MountGetOrCreate:input_type -> modal.client.MountGetOrCreateRequest
+	300, // 541: modal.client.ModalClient.MountPutFile:input_type -> modal.client.MountPutFileRequest
+	305, // 542: modal.client.ModalClient.NotebookKernelPublishResults:input_type -> modal.client.NotebookKernelPublishResultsRequest
+	314, // 543: modal.client.ModalClient.ProxyAddIp:input_type -> modal.client.ProxyAddIpRequest
+	316, // 544: modal.client.ModalClient.ProxyCreate:input_type -> modal.client.ProxyCreateRequest
+	318, // 545: modal.client.ModalClient.ProxyDelete:input_type -> modal.client.ProxyDeleteRequest
+	321, // 546: modal.client.ModalClient.ProxyGet:input_type -> modal.client.ProxyGetRequest
+	319, // 547: modal.client.ModalClient.ProxyGetOrCreate:input_type -> modal.client.ProxyGetOrCreateRequest
+	567, // 548: modal.client.ModalClient.ProxyList:input_type -> google.protobuf.Empty
+	326, // 549: modal.client.ModalClient.ProxyRemoveIp:input_type -> modal.client.ProxyRemoveIpRequest
+	327, // 550: modal.client.ModalClient.QueueClear:input_type -> modal.client.QueueClearRequest
+	328, // 551: modal.client.ModalClient.QueueDelete:input_type -> modal.client.QueueDeleteRequest
+	333, // 552: modal.client.ModalClient.QueueGet:input_type -> modal.client.QueueGetRequest
+	329, // 553: modal.client.ModalClient.QueueGetById:input_type -> modal.client.QueueGetByIdRequest
+	331, // 554: modal.client.ModalClient.QueueGetOrCreate:input_type -> modal.client.QueueGetOrCreateRequest
+	335, // 555: modal.client.ModalClient.QueueHeartbeat:input_type -> modal.client.QueueHeartbeatRequest
+	337, // 556: modal.client.ModalClient.QueueLen:input_type -> modal.client.QueueLenRequest
+	339, // 557: modal.client.ModalClient.QueueList:input_type -> modal.client.QueueListRequest
+	342, // 558: modal.client.ModalClient.QueueNextItems:input_type -> modal.client.QueueNextItemsRequest
+	344, // 559: modal.client.ModalClient.QueuePut:input_type -> modal.client.QueuePutRequest
+	357, // 560: modal.client.ModalClient.SandboxCreate:input_type -> modal.client.SandboxCreateRequest
+	355, // 561: modal.client.ModalClient.SandboxCreateConnectToken:input_type -> modal.client.SandboxCreateConnectTokenRequest
+	359, // 562: modal.client.ModalClient.SandboxCreateV2:input_type -> modal.client.SandboxCreateV2Request
+	361, // 563: modal.client.ModalClient.SandboxGetCommandRouterAccess:input_type -> modal.client.SandboxGetCommandRouterAccessRequest
+	363, // 564: modal.client.ModalClient.SandboxGetFromName:input_type -> modal.client.SandboxGetFromNameRequest
+	365, // 565: modal.client.ModalClient.SandboxGetLogs:input_type -> modal.client.SandboxGetLogsRequest
+	366, // 566: modal.client.ModalClient.SandboxGetResourceUsage:input_type -> modal.client.SandboxGetResourceUsageRequest
+	368, // 567: modal.client.ModalClient.SandboxGetTaskId:input_type -> modal.client.SandboxGetTaskIdRequest
+	368, // 568: modal.client.ModalClient.SandboxGetTaskIdV2:input_type -> modal.client.SandboxGetTaskIdRequest
+	370, // 569: modal.client.ModalClient.SandboxGetTunnels:input_type -> modal.client.SandboxGetTunnelsRequest
+	370, // 570: modal.client.ModalClient.SandboxGetTunnelsV2:input_type -> modal.client.SandboxGetTunnelsRequest
+	374, // 571: modal.client.ModalClient.SandboxList:input_type -> modal.client.SandboxListRequest
+	376, // 572: modal.client.ModalClient.SandboxRestore:input_type -> modal.client.SandboxRestoreRequest
+	385, // 573: modal.client.ModalClient.SandboxSnapshot:input_type -> modal.client.SandboxSnapshotRequest
+	381, // 574: modal.client.ModalClient.SandboxSnapshotFs:input_type -> modal.client.SandboxSnapshotFsRequest
+	379, // 575: modal.client.ModalClient.SandboxSnapshotFsAsync:input_type -> modal.client.SandboxSnapshotFsAsyncRequest
+	378, // 576: modal.client.ModalClient.SandboxSnapshotFsAsyncGet:input_type -> modal.client.SandboxSnapshotFsAsyncGetRequest
+	383, // 577: modal.client.ModalClient.SandboxSnapshotGet:input_type -> modal.client.SandboxSnapshotGetRequest
+	387, // 578: modal.client.ModalClient.SandboxSnapshotWait:input_type -> modal.client.SandboxSnapshotWaitRequest
+	389, // 579: modal.client.ModalClient.SandboxStdinWrite:input_type -> modal.client.SandboxStdinWriteRequest
+	392, // 580: modal.client.ModalClient.SandboxTagsGet:input_type -> modal.client.SandboxTagsGetRequest
+	394, // 581: modal.client.ModalClient.SandboxTagsSet:input_type -> modal.client.SandboxTagsSetRequest
+	395, // 582: modal.client.ModalClient.SandboxTerminate:input_type -> modal.client.SandboxTerminateRequest
+	395, // 583: modal.client.ModalClient.SandboxTerminateV2:input_type -> modal.client.SandboxTerminateRequest
+	397, // 584: modal.client.ModalClient.SandboxWait:input_type -> modal.client.SandboxWaitRequest
+	399, // 585: modal.client.ModalClient.SandboxWaitUntilReady:input_type -> modal.client.SandboxWaitUntilReadyRequest
+	397, // 586: modal.client.ModalClient.SandboxWaitV2:input_type -> modal.client.SandboxWaitRequest
+	405, // 587: modal.client.ModalClient.SecretDelete:input_type -> modal.client.SecretDeleteRequest
+	406, // 588: modal.client.ModalClient.SecretGetOrCreate:input_type -> modal.client.SecretGetOrCreateRequest
+	409, // 589: modal.client.ModalClient.SecretList:input_type -> modal.client.SecretListRequest
+	412, // 590: modal.client.ModalClient.SecretUpdate:input_type -> modal.client.SecretUpdateRequest
+	567, // 591: modal.client.ModalClient.ServiceUserList:input_type -> google.protobuf.Empty
+	416, // 592: modal.client.ModalClient.SharedVolumeDelete:input_type -> modal.client.SharedVolumeDeleteRequest
+	417, // 593: modal.client.ModalClient.SharedVolumeGetFile:input_type -> modal.client.SharedVolumeGetFileRequest
+	419, // 594: modal.client.ModalClient.SharedVolumeGetOrCreate:input_type -> modal.client.SharedVolumeGetOrCreateRequest
+	421, // 595: modal.client.ModalClient.SharedVolumeHeartbeat:input_type -> modal.client.SharedVolumeHeartbeatRequest
+	425, // 596: modal.client.ModalClient.SharedVolumeList:input_type -> modal.client.SharedVolumeListRequest
+	422, // 597: modal.client.ModalClient.SharedVolumeListFiles:input_type -> modal.client.SharedVolumeListFilesRequest
+	422, // 598: modal.client.ModalClient.SharedVolumeListFilesStream:input_type -> modal.client.SharedVolumeListFilesRequest
+	428, // 599: modal.client.ModalClient.SharedVolumePutFile:input_type -> modal.client.SharedVolumePutFileRequest
+	430, // 600: modal.client.ModalClient.SharedVolumeRemoveFile:input_type -> modal.client.SharedVolumeRemoveFileRequest
+	432, // 601: modal.client.ModalClient.TaskClusterHello:input_type -> modal.client.TaskClusterHelloRequest
+	567, // 602: modal.client.ModalClient.TaskCurrentInputs:input_type -> google.protobuf.Empty
+	435, // 603: modal.client.ModalClient.TaskGetCommandRouterAccess:input_type -> modal.client.TaskGetCommandRouterAccessRequest
+	437, // 604: modal.client.ModalClient.TaskGetInfo:input_type -> modal.client.TaskGetInfoRequest
+	440, // 605: modal.client.ModalClient.TaskList:input_type -> modal.client.TaskListRequest
+	445, // 606: modal.client.ModalClient.TaskResult:input_type -> modal.client.TaskResultRequest
+	448, // 607: modal.client.ModalClient.TemplateList:input_type -> modal.client.TemplateListRequest
+	450, // 608: modal.client.ModalClient.TokenFlowCreate:input_type -> modal.client.TokenFlowCreateRequest
+	452, // 609: modal.client.ModalClient.TokenFlowWait:input_type -> modal.client.TokenFlowWaitRequest
+	454, // 610: modal.client.ModalClient.TokenInfoGet:input_type -> modal.client.TokenInfoGetRequest
+	457, // 611: modal.client.ModalClient.TunnelStart:input_type -> modal.client.TunnelStartRequest
+	459, // 612: modal.client.ModalClient.TunnelStop:input_type -> modal.client.TunnelStopRequest
+	464, // 613: modal.client.ModalClient.VolumeCommit:input_type -> modal.client.VolumeCommitRequest
+	467, // 614: modal.client.ModalClient.VolumeCopyFiles:input_type -> modal.client.VolumeCopyFilesRequest
+	466, // 615: modal.client.ModalClient.VolumeCopyFiles2:input_type -> modal.client.VolumeCopyFiles2Request
+	468, // 616: modal.client.ModalClient.VolumeDelete:input_type -> modal.client.VolumeDeleteRequest
+	469, // 617: modal.client.ModalClient.VolumeGetById:input_type -> modal.client.VolumeGetByIdRequest
+	473, // 618: modal.client.ModalClient.VolumeGetFile:input_type -> modal.client.VolumeGetFileRequest
+	471, // 619: modal.client.ModalClient.VolumeGetFile2:input_type -> modal.client.VolumeGetFile2Request
+	475, // 620: modal.client.ModalClient.VolumeGetOrCreate:input_type -> modal.client.VolumeGetOrCreateRequest
+	477, // 621: modal.client.ModalClient.VolumeHeartbeat:input_type -> modal.client.VolumeHeartbeatRequest
+	483, // 622: modal.client.ModalClient.VolumeList:input_type -> modal.client.VolumeListRequest
+	480, // 623: modal.client.ModalClient.VolumeListFiles:input_type -> modal.client.VolumeListFilesRequest
+	478, // 624: modal.client.ModalClient.VolumeListFiles2:input_type -> modal.client.VolumeListFiles2Request
+	489, // 625: modal.client.ModalClient.VolumePutFiles:input_type -> modal.client.VolumePutFilesRequest
+	487, // 626: modal.client.ModalClient.VolumePutFiles2:input_type -> modal.client.VolumePutFiles2Request
+	490, // 627: modal.client.ModalClient.VolumeReload:input_type -> modal.client.VolumeReloadRequest
+	492, // 628: modal.client.ModalClient.VolumeRemoveFile:input_type -> modal.client.VolumeRemoveFileRequest
+	491, // 629: modal.client.ModalClient.VolumeRemoveFile2:input_type -> modal.client.VolumeRemoveFile2Request
+	493, // 630: modal.client.ModalClient.VolumeRename:input_type -> modal.client.VolumeRenameRequest
+	498, // 631: modal.client.ModalClient.WorkspaceBillingReport:input_type -> modal.client.WorkspaceBillingReportRequest
+	499, // 632: modal.client.ModalClient.WorkspaceDashboardUrlGet:input_type -> modal.client.WorkspaceDashboardUrlRequest
+	567, // 633: modal.client.ModalClient.WorkspaceMembersList:input_type -> google.protobuf.Empty
+	567, // 634: modal.client.ModalClient.WorkspaceNameLookup:input_type -> google.protobuf.Empty
+	567, // 635: modal.client.ModalClient.AppClientDisconnect:output_type -> google.protobuf.Empty
+	48,  // 636: modal.client.ModalClient.AppCountLogs:output_type -> modal.client.AppCountLogsResponse
+	50,  // 637: modal.client.ModalClient.AppCreate:output_type -> modal.client.AppCreateResponse
+	52,  // 638: modal.client.ModalClient.AppDeploy:output_type -> modal.client.AppDeployResponse
+	55,  // 639: modal.client.ModalClient.AppDeploymentHistory:output_type -> modal.client.AppDeploymentHistoryResponse
+	57,  // 640: modal.client.ModalClient.AppFetchLogs:output_type -> modal.client.AppFetchLogsResponse
+	59,  // 641: modal.client.ModalClient.AppGetByDeploymentName:output_type -> modal.client.AppGetByDeploymentNameResponse
+	61,  // 642: modal.client.ModalClient.AppGetLayout:output_type -> modal.client.AppGetLayoutResponse
+	63,  // 643: modal.client.ModalClient.AppGetLifecycle:output_type -> modal.client.AppGetLifecycleResponse
+	443, // 644: modal.client.ModalClient.AppGetLogs:output_type -> modal.client.TaskLogsBatch
+	67,  // 645: modal.client.ModalClient.AppGetObjects:output_type -> modal.client.AppGetObjectsResponse
+	69,  // 646: modal.client.ModalClient.AppGetOrCreate:output_type -> modal.client.AppGetOrCreateResponse
+	71,  // 647: modal.client.ModalClient.AppGetTags:output_type -> modal.client.AppGetTagsResponse
+	567, // 648: modal.client.ModalClient.AppHeartbeat:output_type -> google.protobuf.Empty
+	76,  // 649: modal.client.ModalClient.AppList:output_type -> modal.client.AppListResponse
+	78,  // 650: modal.client.ModalClient.AppLookup:output_type -> modal.client.AppLookupResponse
+	80,  // 651: modal.client.ModalClient.AppPublish:output_type -> modal.client.AppPublishResponse
+	567, // 652: modal.client.ModalClient.AppRollback:output_type -> google.protobuf.Empty
+	83,  // 653: modal.client.ModalClient.AppRollover:output_type -> modal.client.AppRolloverResponse
+	567, // 654: modal.client.ModalClient.AppSetObjects:output_type -> google.protobuf.Empty
+	567, // 655: modal.client.ModalClient.AppSetTags:output_type -> google.protobuf.Empty
+	567, // 656: modal.client.ModalClient.AppStop:output_type -> google.protobuf.Empty
+	89,  // 657: modal.client.ModalClient.AttemptAwait:output_type -> modal.client.AttemptAwaitResponse
+	91,  // 658: modal.client.ModalClient.AttemptRetry:output_type -> modal.client.AttemptRetryResponse
+	93,  // 659: modal.client.ModalClient.AttemptStart:output_type -> modal.client.AttemptStartResponse
+	95,  // 660: modal.client.ModalClient.AuthTokenGet:output_type -> modal.client.AuthTokenGetResponse
+	101, // 661: modal.client.ModalClient.BlobCreate:output_type -> modal.client.BlobCreateResponse
+	103, // 662: modal.client.ModalClient.BlobGet:output_type -> modal.client.BlobGetResponse
+	108, // 663: modal.client.ModalClient.ClassCreate:output_type -> modal.client.ClassCreateResponse
+	110, // 664: modal.client.ModalClient.ClassGet:output_type -> modal.client.ClassGetResponse
+	117, // 665: modal.client.ModalClient.ClientHello:output_type -> modal.client.ClientHelloResponse
+	120, // 666: modal.client.ModalClient.ClusterGet:output_type -> modal.client.ClusterGetResponse
+	122, // 667: modal.client.ModalClient.ClusterList:output_type -> modal.client.ClusterListResponse
+	567, // 668: modal.client.ModalClient.ContainerCheckpoint:output_type -> google.protobuf.Empty
+	130, // 669: modal.client.ModalClient.ContainerExec:output_type -> modal.client.ContainerExecResponse
+	351, // 670: modal.client.ModalClient.ContainerExecGetOutput:output_type -> modal.client.RuntimeOutputBatch
+	567, // 671: modal.client.ModalClient.ContainerExecPutInput:output_type -> google.protobuf.Empty
+	132, // 672: modal.client.ModalClient.ContainerExecWait:output_type -> modal.client.ContainerExecWaitResponse
+	148, // 673: modal.client.ModalClient.ContainerFilesystemExec:output_type -> modal.client.ContainerFilesystemExecResponse
+	204, // 674: modal.client.ModalClient.ContainerFilesystemExecGetOutput:output_type -> modal.client.FilesystemRuntimeOutputBatch
+	150, // 675: modal.client.ModalClient.ContainerHeartbeat:output_type -> modal.client.ContainerHeartbeatResponse
+	567, // 676: modal.client.ModalClient.ContainerHello:output_type -> google.protobuf.Empty
+	567, // 677: modal.client.ModalClient.ContainerLog:output_type -> google.protobuf.Empty
+	153, // 678: modal.client.ModalClient.ContainerReloadVolumes:output_type -> modal.client.ContainerReloadVolumesResponse
+	155, // 679: modal.client.ModalClient.ContainerStop:output_type -> modal.client.ContainerStopResponse
+	567, // 680: modal.client.ModalClient.DictClear:output_type -> google.protobuf.Empty
+	163, // 681: modal.client.ModalClient.DictContains:output_type -> modal.client.DictContainsResponse
+	166, // 682: modal.client.ModalClient.DictContents:output_type -> modal.client.DictEntry
+	567, // 683: modal.client.ModalClient.DictDelete:output_type -> google.protobuf.Empty
+	172, // 684: modal.client.ModalClient.DictGet:output_type -> modal.client.DictGetResponse
+	168, // 685: modal.client.ModalClient.DictGetById:output_type -> modal.client.DictGetByIdResponse
+	170, // 686: modal.client.ModalClient.DictGetOrCreate:output_type -> modal.client.DictGetOrCreateResponse
+	567, // 687: modal.client.ModalClient.DictHeartbeat:output_type -> google.protobuf.Empty
+	175, // 688: modal.client.ModalClient.DictLen:output_type -> modal.client.DictLenResponse
+	177, // 689: modal.client.ModalClient.DictList:output_type -> modal.client.DictListResponse
+	180, // 690: modal.client.ModalClient.DictPop:output_type -> modal.client.DictPopResponse
+	182, // 691: modal.client.ModalClient.DictUpdate:output_type -> modal.client.DictUpdateResponse
+	185, // 692: modal.client.ModalClient.DomainCertificateVerify:output_type -> modal.client.DomainCertificateVerifyResponse
+	187, // 693: modal.client.ModalClient.DomainCreate:output_type -> modal.client.DomainCreateResponse
+	189, // 694: modal.client.ModalClient.DomainList:output_type -> modal.client.DomainListResponse
+	567, // 695: modal.client.ModalClient.EnvironmentCreate:output_type -> google.protobuf.Empty
+	567, // 696: modal.client.ModalClient.EnvironmentDelete:output_type -> google.protobuf.Empty
+	193, // 697: modal.client.ModalClient.EnvironmentGetManaged:output_type -> modal.client.EnvironmentGetManagedResponse
+	195, // 698: modal.client.ModalClient.EnvironmentGetOrCreate:output_type -> modal.client.EnvironmentGetOrCreateResponse
+	197, // 699: modal.client.ModalClient.EnvironmentList:output_type -> modal.client.EnvironmentListResponse
+	567, // 700: modal.client.ModalClient.EnvironmentRoleSet:output_type -> google.protobuf.Empty
+	567, // 701: modal.client.ModalClient.EnvironmentSetManaged:output_type -> google.protobuf.Empty
+	196, // 702: modal.client.ModalClient.EnvironmentUpdate:output_type -> modal.client.EnvironmentListItem
+	567, // 703: modal.client.ModalClient.FlashContainerDeregister:output_type -> google.protobuf.Empty
+	207, // 704: modal.client.ModalClient.FlashContainerList:output_type -> modal.client.FlashContainerListResponse
+	209, // 705: modal.client.ModalClient.FlashContainerRegister:output_type -> modal.client.FlashContainerRegisterResponse
+	212, // 706: modal.client.ModalClient.FlashSetTargetSlotsMetrics:output_type -> modal.client.FlashSetTargetSlotsMetricsResponse
+	215, // 707: modal.client.ModalClient.FunctionAsyncInvoke:output_type -> modal.client.FunctionAsyncInvokeResponse
+	217, // 708: modal.client.ModalClient.FunctionBindParams:output_type -> modal.client.FunctionBindParamsResponse
+	567, // 709: modal.client.ModalClient.FunctionCallCancel:output_type -> google.protobuf.Empty
+	221, // 710: modal.client.ModalClient.FunctionCallFromId:output_type -> modal.client.FunctionCallFromIdResponse
+	160, // 711: modal.client.ModalClient.FunctionCallGetDataIn:output_type -> modal.client.DataChunk
+	160, // 712: modal.client.ModalClient.FunctionCallGetDataOut:output_type -> modal.client.DataChunk
+	225, // 713: modal.client.ModalClient.FunctionCallList:output_type -> modal.client.FunctionCallListResponse
+	567, // 714: modal.client.ModalClient.FunctionCallPutDataOut:output_type -> google.protobuf.Empty
+	228, // 715: modal.client.ModalClient.FunctionCreate:output_type -> modal.client.FunctionCreateResponse
+	567, // 716: modal.client.ModalClient.FunctionFinishInputs:output_type -> google.protobuf.Empty
+	244, // 717: modal.client.ModalClient.FunctionGet:output_type -> modal.client.FunctionGetResponse
+	233, // 718: modal.client.ModalClient.FunctionGetCallGraph:output_type -> modal.client.FunctionGetCallGraphResponse
+	265, // 719: modal.client.ModalClient.FunctionGetCurrentStats:output_type -> modal.client.FunctionStats
+	236, // 720: modal.client.ModalClient.FunctionGetDynamicConcurrency:output_type -> modal.client.FunctionGetDynamicConcurrencyResponse
+	239, // 721: modal.client.ModalClient.FunctionGetInputs:output_type -> modal.client.FunctionGetInputsResponse
+	242, // 722: modal.client.ModalClient.FunctionGetOutputs:output_type -> modal.client.FunctionGetOutputsResponse
+	246, // 723: modal.client.ModalClient.FunctionGetSerialized:output_type -> modal.client.FunctionGetSerializedResponse
+	250, // 724: modal.client.ModalClient.FunctionMap:output_type -> modal.client.FunctionMapResponse
+	253, // 725: modal.client.ModalClient.FunctionPrecreate:output_type -> modal.client.FunctionPrecreateResponse
+	256, // 726: modal.client.ModalClient.FunctionPutInputs:output_type -> modal.client.FunctionPutInputsResponse
+	567, // 727: modal.client.ModalClient.FunctionPutOutputs:output_type -> google.protobuf.Empty
+	262, // 728: modal.client.ModalClient.FunctionRetryInputs:output_type -> modal.client.FunctionRetryInputsResponse
+	567, // 729: modal.client.ModalClient.FunctionStartPtyShell:output_type -> google.protobuf.Empty
+	267, // 730: modal.client.ModalClient.FunctionUpdateSchedulingParams:output_type -> modal.client.FunctionUpdateSchedulingParamsResponse
+	567, // 731: modal.client.ModalClient.ImageDelete:output_type -> google.protobuf.Empty
+	277, // 732: modal.client.ModalClient.ImageFromId:output_type -> modal.client.ImageFromIdResponse
+	279, // 733: modal.client.ModalClient.ImageGetOrCreate:output_type -> modal.client.ImageGetOrCreateResponse
+	281, // 734: modal.client.ModalClient.ImageJoinStreaming:output_type -> modal.client.ImageJoinStreamingResponse
+	289, // 735: modal.client.ModalClient.MapAwait:output_type -> modal.client.MapAwaitResponse
+	291, // 736: modal.client.ModalClient.MapCheckInputs:output_type -> modal.client.MapCheckInputsResponse
+	294, // 737: modal.client.ModalClient.MapStartOrContinue:output_type -> modal.client.MapStartOrContinueResponse
+	298, // 738: modal.client.ModalClient.MountGetOrCreate:output_type -> modal.client.MountGetOrCreateResponse
+	301, // 739: modal.client.ModalClient.MountPutFile:output_type -> modal.client.MountPutFileResponse
+	567, // 740: modal.client.ModalClient.NotebookKernelPublishResults:output_type -> google.protobuf.Empty
+	315, // 741: modal.client.ModalClient.ProxyAddIp:output_type -> modal.client.ProxyAddIpResponse
+	317, // 742: modal.client.ModalClient.ProxyCreate:output_type -> modal.client.ProxyCreateResponse
+	567, // 743: modal.client.ModalClient.ProxyDelete:output_type -> google.protobuf.Empty
+	322, // 744: modal.client.ModalClient.ProxyGet:output_type -> modal.client.ProxyGetResponse
+	320, // 745: modal.client.ModalClient.ProxyGetOrCreate:output_type -> modal.client.ProxyGetOrCreateResponse
+	325, // 746: modal.client.ModalClient.ProxyList:output_type -> modal.client.ProxyListResponse
+	567, // 747: modal.client.ModalClient.ProxyRemoveIp:output_type -> google.protobuf.Empty
+	567, // 748: modal.client.ModalClient.QueueClear:output_type -> google.protobuf.Empty
+	567, // 749: modal.client.ModalClient.QueueDelete:output_type -> google.protobuf.Empty
+	334, // 750: modal.client.ModalClient.QueueGet:output_type -> modal.client.QueueGetResponse
+	330, // 751: modal.client.ModalClient.QueueGetById:output_type -> modal.client.QueueGetByIdResponse
+	332, // 752: modal.client.ModalClient.QueueGetOrCreate:output_type -> modal.client.QueueGetOrCreateResponse
+	567, // 753: modal.client.ModalClient.QueueHeartbeat:output_type -> google.protobuf.Empty
+	338, // 754: modal.client.ModalClient.QueueLen:output_type -> modal.client.QueueLenResponse
+	340, // 755: modal.client.ModalClient.QueueList:output_type -> modal.client.QueueListResponse
+	343, // 756: modal.client.ModalClient.QueueNextItems:output_type -> modal.client.QueueNextItemsResponse
+	567, // 757: modal.client.ModalClient.QueuePut:output_type -> google.protobuf.Empty
+	358, // 758: modal.client.ModalClient.SandboxCreate:output_type -> modal.client.SandboxCreateResponse
+	356, // 759: modal.client.ModalClient.SandboxCreateConnectToken:output_type -> modal.client.SandboxCreateConnectTokenResponse
+	360, // 760: modal.client.ModalClient.SandboxCreateV2:output_type -> modal.client.SandboxCreateV2Response
+	362, // 761: modal.client.ModalClient.SandboxGetCommandRouterAccess:output_type -> modal.client.SandboxGetCommandRouterAccessResponse
+	364, // 762: modal.client.ModalClient.SandboxGetFromName:output_type -> modal.client.SandboxGetFromNameResponse
+	443, // 763: modal.client.ModalClient.SandboxGetLogs:output_type -> modal.client.TaskLogsBatch
+	367, // 764: modal.client.ModalClient.SandboxGetResourceUsage:output_type -> modal.client.SandboxGetResourceUsageResponse
+	369, // 765: modal.client.ModalClient.SandboxGetTaskId:output_type -> modal.client.SandboxGetTaskIdResponse
+	369, // 766: modal.client.ModalClient.SandboxGetTaskIdV2:output_type -> modal.client.SandboxGetTaskIdResponse
+	371, // 767: modal.client.ModalClient.SandboxGetTunnels:output_type -> modal.client.SandboxGetTunnelsResponse
+	371, // 768: modal.client.ModalClient.SandboxGetTunnelsV2:output_type -> modal.client.SandboxGetTunnelsResponse
+	375, // 769: modal.client.ModalClient.SandboxList:output_type -> modal.client.SandboxListResponse
+	377, // 770: modal.client.ModalClient.SandboxRestore:output_type -> modal.client.SandboxRestoreResponse
+	386, // 771: modal.client.ModalClient.SandboxSnapshot:output_type -> modal.client.SandboxSnapshotResponse
+	382, // 772: modal.client.ModalClient.SandboxSnapshotFs:output_type -> modal.client.SandboxSnapshotFsResponse
+	380, // 773: modal.client.ModalClient.SandboxSnapshotFsAsync:output_type -> modal.client.SandboxSnapshotFsAsyncResponse
+	382, // 774: modal.client.ModalClient.SandboxSnapshotFsAsyncGet:output_type -> modal.client.SandboxSnapshotFsResponse
+	384, // 775: modal.client.ModalClient.SandboxSnapshotGet:output_type -> modal.client.SandboxSnapshotGetResponse
+	388, // 776: modal.client.ModalClient.SandboxSnapshotWait:output_type -> modal.client.SandboxSnapshotWaitResponse
+	390, // 777: modal.client.ModalClient.SandboxStdinWrite:output_type -> modal.client.SandboxStdinWriteResponse
+	393, // 778: modal.client.ModalClient.SandboxTagsGet:output_type -> modal.client.SandboxTagsGetResponse
+	567, // 779: modal.client.ModalClient.SandboxTagsSet:output_type -> google.protobuf.Empty
+	396, // 780: modal.client.ModalClient.SandboxTerminate:output_type -> modal.client.SandboxTerminateResponse
+	396, // 781: modal.client.ModalClient.SandboxTerminateV2:output_type -> modal.client.SandboxTerminateResponse
+	398, // 782: modal.client.ModalClient.SandboxWait:output_type -> modal.client.SandboxWaitResponse
+	400, // 783: modal.client.ModalClient.SandboxWaitUntilReady:output_type -> modal.client.SandboxWaitUntilReadyResponse
+	398, // 784: modal.client.ModalClient.SandboxWaitV2:output_type -> modal.client.SandboxWaitResponse
+	567, // 785: modal.client.ModalClient.SecretDelete:output_type -> google.protobuf.Empty
+	407, // 786: modal.client.ModalClient.SecretGetOrCreate:output_type -> modal.client.SecretGetOrCreateResponse
+	410, // 787: modal.client.ModalClient.SecretList:output_type -> modal.client.SecretListResponse
+	567, // 788: modal.client.ModalClient.SecretUpdate:output_type -> google.protobuf.Empty
+	415, // 789: modal.client.ModalClient.ServiceUserList:output_type -> modal.client.ServiceUserListResponse
+	567, // 790: modal.client.ModalClient.SharedVolumeDelete:output_type -> google.protobuf.Empty
+	418, // 791: modal.client.ModalClient.SharedVolumeGetFile:output_type -> modal.client.SharedVolumeGetFileResponse
+	420, // 792: modal.client.ModalClient.SharedVolumeGetOrCreate:output_type -> modal.client.SharedVolumeGetOrCreateResponse
+	567, // 793: modal.client.ModalClient.SharedVolumeHeartbeat:output_type -> google.protobuf.Empty
+	426, // 794: modal.client.ModalClient.SharedVolumeList:output_type -> modal.client.SharedVolumeListResponse
+	423, // 795: modal.client.ModalClient.SharedVolumeListFiles:output_type -> modal.client.SharedVolumeListFilesResponse
+	423, // 796: modal.client.ModalClient.SharedVolumeListFilesStream:output_type -> modal.client.SharedVolumeListFilesResponse
+	429, // 797: modal.client.ModalClient.SharedVolumePutFile:output_type -> modal.client.SharedVolumePutFileResponse
+	567, // 798: modal.client.ModalClient.SharedVolumeRemoveFile:output_type -> google.protobuf.Empty
+	433, // 799: modal.client.ModalClient.TaskClusterHello:output_type -> modal.client.TaskClusterHelloResponse
+	434, // 800: modal.client.ModalClient.TaskCurrentInputs:output_type -> modal.client.TaskCurrentInputsResponse
+	436, // 801: modal.client.ModalClient.TaskGetCommandRouterAccess:output_type -> modal.client.TaskGetCommandRouterAccessResponse
+	438, // 802: modal.client.ModalClient.TaskGetInfo:output_type -> modal.client.TaskGetInfoResponse
+	441, // 803: modal.client.ModalClient.TaskList:output_type -> modal.client.TaskListResponse
+	567, // 804: modal.client.ModalClient.TaskResult:output_type -> google.protobuf.Empty
+	449, // 805: modal.client.ModalClient.TemplateList:output_type -> modal.client.TemplateListResponse
+	451, // 806: modal.client.ModalClient.TokenFlowCreate:output_type -> modal.client.TokenFlowCreateResponse
+	453, // 807: modal.client.ModalClient.TokenFlowWait:output_type -> modal.client.TokenFlowWaitResponse
+	455, // 808: modal.client.ModalClient.TokenInfoGet:output_type -> modal.client.TokenInfoGetResponse
+	458, // 809: modal.client.ModalClient.TunnelStart:output_type -> modal.client.TunnelStartResponse
+	460, // 810: modal.client.ModalClient.TunnelStop:output_type -> modal.client.TunnelStopResponse
+	465, // 811: modal.client.ModalClient.VolumeCommit:output_type -> modal.client.VolumeCommitResponse
+	567, // 812: modal.client.ModalClient.VolumeCopyFiles:output_type -> google.protobuf.Empty
+	567, // 813: modal.client.ModalClient.VolumeCopyFiles2:output_type -> google.protobuf.Empty
+	567, // 814: modal.client.ModalClient.VolumeDelete:output_type -> google.protobuf.Empty
+	470, // 815: modal.client.ModalClient.VolumeGetById:output_type -> modal.client.VolumeGetByIdResponse
+	474, // 816: modal.client.ModalClient.VolumeGetFile:output_type -> modal.client.VolumeGetFileResponse
+	472, // 817: modal.client.ModalClient.VolumeGetFile2:output_type -> modal.client.VolumeGetFile2Response
+	476, // 818: modal.client.ModalClient.VolumeGetOrCreate:output_type -> modal.client.VolumeGetOrCreateResponse
+	567, // 819: modal.client.ModalClient.VolumeHeartbeat:output_type -> google.protobuf.Empty
+	484, // 820: modal.client.ModalClient.VolumeList:output_type -> modal.client.VolumeListResponse
+	481, // 821: modal.client.ModalClient.VolumeListFiles:output_type -> modal.client.VolumeListFilesResponse
+	479, // 822: modal.client.ModalClient.VolumeListFiles2:output_type -> modal.client.VolumeListFiles2Response
+	567, // 823: modal.client.ModalClient.VolumePutFiles:output_type -> google.protobuf.Empty
+	488, // 824: modal.client.ModalClient.VolumePutFiles2:output_type -> modal.client.VolumePutFiles2Response
+	567, // 825: modal.client.ModalClient.VolumeReload:output_type -> google.protobuf.Empty
+	567, // 826: modal.client.ModalClient.VolumeRemoveFile:output_type -> google.protobuf.Empty
+	567, // 827: modal.client.ModalClient.VolumeRemoveFile2:output_type -> google.protobuf.Empty
+	567, // 828: modal.client.ModalClient.VolumeRename:output_type -> google.protobuf.Empty
+	497, // 829: modal.client.ModalClient.WorkspaceBillingReport:output_type -> modal.client.WorkspaceBillingReportItem
+	500, // 830: modal.client.ModalClient.WorkspaceDashboardUrlGet:output_type -> modal.client.WorkspaceDashboardUrlResponse
+	502, // 831: modal.client.ModalClient.WorkspaceMembersList:output_type -> modal.client.WorkspaceMembersListResponse
+	503, // 832: modal.client.ModalClient.WorkspaceNameLookup:output_type -> modal.client.WorkspaceNameLookupResponse
+	635, // [635:833] is the sub-list for method output_type
+	437, // [437:635] is the sub-list for method input_type
+	437, // [437:437] is the sub-list for extension type_name
+	437, // [437:437] is the sub-list for extension extendee
+	0,   // [0:437] is the sub-list for field type_name
 }
 
 func init() { file_modal_proto_api_proto_init() }
@@ -57717,133 +58971,133 @@ func file_modal_proto_api_proto_init() {
 	}
 	file_modal_proto_api_proto_msgTypes[126].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[134].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[148].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[152].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[154].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[163].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[169].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[172].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[150].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[156].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[158].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[167].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[173].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[176].OneofWrappers = []any{
 		(*functionCallGetDataRequest_FunctionCallId)(nil),
 		(*functionCallGetDataRequest_AttemptToken)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[176].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[180].OneofWrappers = []any{
 		(*functionCallPutDataRequest_FunctionCallId)(nil),
 		(*functionCallPutDataRequest_AttemptToken)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[179].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[180].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[183].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[184].OneofWrappers = []any{
 		(*functionExtended_FunctionSingleton)(nil),
 		(*functionExtended_FunctionData)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[187].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[191].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[197].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[198].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[195].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[201].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[202].OneofWrappers = []any{
 		(*functionInput_Args)(nil),
 		(*functionInput_ArgsBlobId)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[201].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[208].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[221].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[205].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[212].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[225].OneofWrappers = []any{
 		(*genericResult_Data)(nil),
 		(*genericResult_DataBlobId)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[232].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[238].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[236].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[242].OneofWrappers = []any{
 		(*mapAwaitRequest_FunctionCallId)(nil),
 		(*mapAwaitRequest_MapToken)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[242].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[243].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[246].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[247].OneofWrappers = []any{
 		(*mapStartOrContinueRequest_FunctionCallId)(nil),
 		(*mapStartOrContinueRequest_MapToken)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[246].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[250].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[250].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[254].OneofWrappers = []any{
 		(*mountPutFileRequest_Data)(nil),
 		(*mountPutFileRequest_DataBlobId)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[256].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[260].OneofWrappers = []any{
 		(*notebookOutput_ExecuteResult_)(nil),
 		(*notebookOutput_DisplayData_)(nil),
 		(*notebookOutput_Stream_)(nil),
 		(*notebookOutput_Error_)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[257].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[261].OneofWrappers = []any{
 		(*object_FunctionHandleMetadata)(nil),
 		(*object_MountHandleMetadata)(nil),
 		(*object_ClassHandleMetadata)(nil),
 		(*object_SandboxHandleMetadata)(nil),
 		(*object_VolumeMetadata)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[260].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[262].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[264].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[266].OneofWrappers = []any{
 		(*probe_TcpPort)(nil),
 		(*probe_ExecCommand_)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[301].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[304].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[305].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[308].OneofWrappers = []any{
 		(*sandbox_OpenPorts)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[317].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[318].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[319].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[321].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[322].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[323].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[351].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[327].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[355].OneofWrappers = []any{
 		(*schedule_Cron_)(nil),
 		(*schedule_Period_)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[352].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[366].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[356].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[372].OneofWrappers = []any{
 		(*sharedVolumeGetFileResponse_Data)(nil),
 		(*sharedVolumeGetFileResponse_DataBlobId)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[376].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[382].OneofWrappers = []any{
 		(*sharedVolumePutFileRequest_Data)(nil),
 		(*sharedVolumePutFileRequest_DataBlobId)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[403].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[409].OneofWrappers = []any{
 		(*tokenInfoGetResponse_UserIdentity)(nil),
 		(*tokenInfoGetResponse_ServiceUserIdentity)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[404].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[405].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[406].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[422].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[410].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[411].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[412].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[428].OneofWrappers = []any{
 		(*volumeGetFileResponse_Data)(nil),
 		(*volumeGetFileResponse_DataBlobId)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[426].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[428].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[462].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[468].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[432].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[434].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[470].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[471].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[476].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[478].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[479].OneofWrappers = []any{
 		(*asgi_WebsocketReceive_Bytes)(nil),
 		(*asgi_WebsocketReceive_Text)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[472].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[480].OneofWrappers = []any{
 		(*asgi_WebsocketSend_Bytes)(nil),
 		(*asgi_WebsocketSend_Text)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[473].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[474].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[489].OneofWrappers = []any{
+	file_modal_proto_api_proto_msgTypes[481].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[482].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[498].OneofWrappers = []any{
 		(*notebookKernelPublishResultsRequest_CellResult_Output)(nil),
 		(*notebookKernelPublishResultsRequest_CellResult_ClearOutput)(nil),
 		(*notebookKernelPublishResultsRequest_CellResult_ExecuteReply)(nil),
 	}
-	file_modal_proto_api_proto_msgTypes[491].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[502].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[504].OneofWrappers = []any{}
-	file_modal_proto_api_proto_msgTypes[505].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[500].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[511].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[513].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[514].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_modal_proto_api_proto_rawDesc), len(file_modal_proto_api_proto_rawDesc)),
-			NumEnums:      43,
-			NumMessages:   508,
+			NumEnums:      46,
+			NumMessages:   517,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
