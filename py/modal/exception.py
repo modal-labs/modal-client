@@ -178,6 +178,10 @@ class RemoteError(Error):
     """Raised when an error occurs on the Modal server."""
 
 
+class WorkspaceManagementError(Error):
+    """Raised when an error occurs while managing a workspace."""
+
+
 class TimeoutError(Error):
     """Base class for Modal timeouts."""
 

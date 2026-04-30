@@ -630,6 +630,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_apps = 0
         self.classes = []
         self.environments = {"main": "en-1"}
+        self.environment_managed: dict[str, bool] = {}
+        # Workspace principals that can be assigned roles in restricted Environments
+        self.workspace_users: dict[str, str] = {"us-1": "alice", "us-2": "bob", "us-3": "carol"}
+        self.workspace_service_users: dict[str, str] = {"sv-1": "alice-bot", "sv-2": "ops-bot"}
+        # env_id -> {principal_id: role_proto}
+        self.environment_members: dict[str, dict[str, "api_pb2.EnvironmentRole.ValueType"]] = {}
         self.resource_creation_timestamps = {}
 
         self.task_result = None
@@ -1527,6 +1533,79 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Environment
 
     async def EnvironmentCreate(self, stream):
+        request: api_pb2.EnvironmentCreateRequest = await stream.recv_message()
+        name = request.name
+        if name not in self.environments:
+            env_id = f"en-{len(self.environments) + 1}"
+            self.environments[name] = env_id
+            if request.is_managed:
+                self.environment_managed[env_id] = True
+        await stream.send_message(Empty())
+
+    async def EnvironmentDelete(self, stream):
+        request: api_pb2.EnvironmentDeleteRequest = await stream.recv_message()
+        self.environments.pop(request.name, None)
+        await stream.send_message(Empty())
+
+    async def EnvironmentList(self, stream):
+        await stream.recv_message()
+        items = [
+            api_pb2.EnvironmentListItem(
+                name=name,
+                environment_id=env_id,
+                webhook_suffix=f"{name}-suffix",
+            )
+            for name, env_id in self.environments.items()
+        ]
+        await stream.send_message(api_pb2.EnvironmentListResponse(items=items))
+
+    async def EnvironmentSetManaged(self, stream):
+        request: api_pb2.EnvironmentSetManagedRequest = await stream.recv_message()
+        self.environment_managed[request.environment_id] = request.managed
+        await stream.send_message(Empty())
+
+    async def EnvironmentGetManaged(self, stream):
+        request: api_pb2.EnvironmentGetManagedRequest = await stream.recv_message()
+        env_id = request.environment_id
+        members = self.environment_members.get(env_id, {})
+        Principal = api_pb2.EnvironmentGetManagedResponse.PrincipalEnvRole
+        principal_roles = []
+        for principal_id, role in members.items():
+            if principal_id in self.workspace_users:
+                principal_roles.append(
+                    Principal(user_id=principal_id, user_name=self.workspace_users[principal_id], role=role)
+                )
+            elif principal_id in self.workspace_service_users:
+                principal_roles.append(
+                    Principal(
+                        service_user_id=principal_id,
+                        service_user_name=self.workspace_service_users[principal_id],
+                        role=role,
+                    )
+                )
+        additional_roles = []
+        for user_id, user_name in self.workspace_users.items():
+            if user_id not in members:
+                additional_roles.append(Principal(user_id=user_id, user_name=user_name))
+        for sv_id, sv_name in self.workspace_service_users.items():
+            if sv_id not in members:
+                additional_roles.append(Principal(service_user_id=sv_id, service_user_name=sv_name))
+        await stream.send_message(
+            api_pb2.EnvironmentGetManagedResponse(
+                environment_id=env_id,
+                principal_roles=principal_roles,
+                additional_roles=additional_roles,
+            )
+        )
+
+    async def EnvironmentRoleSet(self, stream):
+        request: api_pb2.EnvironmentRoleSetRequest = await stream.recv_message()
+        members = self.environment_members.setdefault(request.environment_id, {})
+        principal_id = request.user_id or request.service_user_id
+        if request.role == api_pb2.ENVIRONMENT_ROLE_UNSPECIFIED:
+            members.pop(principal_id, None)
+        else:
+            members[principal_id] = request.role
         await stream.send_message(Empty())
 
     async def EnvironmentUpdate(self, stream):
@@ -1535,6 +1614,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def EnvironmentGetOrCreate(self, stream):
         request: api_pb2.EnvironmentGetOrCreateRequest = await stream.recv_message()
         name = request.deployment_name
+        if not name:
+            # Simulate server behavior: resolve empty name to the default environment
+            name = next(iter(self.environments))
         if name in self.environments:
             environment_id = self.environments[name]
         else:

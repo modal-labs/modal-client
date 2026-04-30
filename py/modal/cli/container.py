@@ -9,6 +9,7 @@ from click import UsageError
 from rich.table import Column
 from rich.text import Text
 
+from modal._environments import ensure_env
 from modal._logs import _FETCH_LIMIT, _MAX_FETCH_RANGE, LogsFilters
 from modal._object import _get_environment_name
 from modal._output.pty import get_pty_info
@@ -29,7 +30,6 @@ from modal.cli.utils import (
 from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
-from modal.environments import ensure_env
 from modal.exception import InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2

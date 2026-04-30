@@ -13,10 +13,10 @@ import click
 from click import ClickException
 from typing_extensions import TypedDict
 
+from .._environments import ensure_env
 from ..app import App, LocalEntrypoint
 from ..cls import _get_class_constructor_signature
 from ..config import config
-from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
 from ..functions import Function
 from ..output import OutputManager

@@ -12,12 +12,12 @@ from click import UsageError
 from rich.table import Column
 from rich.text import Text
 
+from modal._environments import ensure_env
 from modal._object import _get_environment_name
 from modal._traceback import print_server_warnings
 from modal._utils.async_utils import synchronizer
 from modal._utils.browser_utils import open_url_and_display
 from modal.client import _Client
-from modal.environments import ensure_env
 from modal.exception import InvalidError, NotFoundError
 from modal.output import OutputManager
 from modal.runner import DEPLOYMENT_STRATEGY_TYPE, _stop_and_wait_for_containers

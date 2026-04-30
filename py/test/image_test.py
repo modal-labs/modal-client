@@ -14,7 +14,7 @@ from typing import Callable, Literal, Sequence, Union, get_args
 from unittest import mock
 
 import modal
-from modal import App, Dict, Image, Secret, environments
+from modal import App, Dict, Image, Secret
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
@@ -126,7 +126,9 @@ def builder_version(request, server_url_env, modal_config):
 def clear_environment_cache():
     # Clear the environment cache so we can mock the server returning different image builder versions
     # Alternatively could rewrite some of those tests to use different environments?
-    environments.ENVIRONMENT_CACHE.clear()
+    from modal._environments import ENVIRONMENT_CACHE
+
+    ENVIRONMENT_CACHE.clear()
 
 
 def test_python_version_validation(builder_version):

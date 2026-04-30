@@ -11,11 +11,11 @@ from typing import Optional
 import click
 from rich.syntax import Syntax
 
+from modal._environments import ensure_env
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import display_table, env_option, yes_option
 from modal.client import _Client
-from modal.environments import ensure_env
 from modal.output import OutputManager
 from modal.secret import _Secret
 from modal_proto import api_pb2

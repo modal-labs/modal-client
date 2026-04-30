@@ -29,6 +29,7 @@ from typing_extensions import Self
 from modal._serialization import serialize_data_format
 from modal_proto import api_pb2
 
+from ._environments import _get_environment_cached
 from ._load_context import LoadContext
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
@@ -44,7 +45,6 @@ from ._utils.mount_utils import validate_only_modal_volumes, validate_volumes_by
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
-from .environments import _get_environment_cached
 from .exception import (
     ExecutionError,
     InternalError,

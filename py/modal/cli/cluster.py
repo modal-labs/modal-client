@@ -6,6 +6,7 @@ import click
 from rich.table import Column
 from rich.text import Text
 
+from modal._environments import ensure_env
 from modal._object import _get_environment_name
 from modal._output.pty import get_pty_info
 from modal._utils.async_utils import synchronizer
@@ -15,7 +16,6 @@ from modal.cli.utils import display_table, env_option, is_tty
 from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
-from modal.environments import ensure_env
 from modal.exception import InvalidError
 from modal.output import OutputManager
 from modal.stream_type import StreamType
