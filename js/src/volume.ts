@@ -1,4 +1,4 @@
-import { ObjectCreationType } from "../proto/modal_proto/api";
+import { ObjectCreationType, VolumeFsVersion } from "../proto/modal_proto/api";
 import { getDefaultClient, type ModalClient } from "./client";
 import { ClientError, Status } from "nice-grpc";
 import { NotFoundError, InvalidError } from "./errors";
@@ -8,6 +8,7 @@ import { EphemeralHeartbeatManager } from "./ephemeral";
 export type VolumeFromNameParams = {
   environment?: string;
   createIfMissing?: boolean;
+  version?: number
 };
 
 /** Optional parameters for {@link VolumeService#ephemeral client.volumes.ephemeral()}. */
@@ -47,6 +48,7 @@ export class VolumeService {
         objectCreationType: params?.createIfMissing
           ? ObjectCreationType.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
           : ObjectCreationType.OBJECT_CREATION_TYPE_UNSPECIFIED,
+        version: params?.version ?? VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
       });
       this.#client.logger.debug(
         "Retrieved Volume",
