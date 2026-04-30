@@ -7,9 +7,9 @@ from typing import Any, Callable, Iterable, Optional
 import click
 from click import ClickException
 
+from .._environments import ensure_env
 from .._functions import _FunctionSpec
 from ..app import App
-from ..environments import ensure_env
 from ..exception import InvalidError, NotFoundError
 from ..functions import Function
 from ..image import Image

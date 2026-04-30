@@ -4,6 +4,7 @@ from typing import Optional
 
 import click
 
+from modal._environments import ensure_env
 from modal._load_context import LoadContext
 from modal._resolver import Resolver
 from modal._utils.async_utils import TaskContext, synchronizer
@@ -11,7 +12,6 @@ from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import display_table, env_option, yes_option
 from modal.client import _Client
 from modal.dict import _Dict
-from modal.environments import ensure_env
 from modal.output import OutputManager
 
 from ._help import ModalGroup

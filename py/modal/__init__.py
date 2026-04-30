@@ -17,6 +17,7 @@ try:
     from .cloud_bucket_mount import CloudBucketMount
     from .cls import Cls, parameter
     from .dict import Dict
+    from .environments import Environment
     from .exception import Error
     from .file_pattern_matcher import FilePatternMatcher
     from .functions import Function, FunctionCall
@@ -61,6 +62,7 @@ __all__ = [
     "Cls",
     "Cron",
     "Dict",
+    "Environment",
     "Error",
     "FilePatternMatcher",
     "Function",

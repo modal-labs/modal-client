@@ -63,7 +63,7 @@ def check_object_name(name: str, object_type: str) -> None:
 
 def check_environment_name(name: str) -> None:
     message = (
-        f"Invalid environment name: '{name}'."
+        f"Invalid Environment name: '{name}'."
         "\n\nEnvironment names can only start with alphanumeric characters,"
         " may contain only alphanumeric characters, dashes, periods, and underscores,"
         " and must be shorter than 64 characters."
