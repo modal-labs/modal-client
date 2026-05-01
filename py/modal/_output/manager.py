@@ -153,6 +153,18 @@ class OutputManager(ABC):
         ...
 
     @property
+    def can_process_logs(self) -> bool:
+        """Whether this manager can deliver streaming function logs to the user.
+
+        This is True for any real (Rich-backed) output manager — including when quiet
+        mode is active — and False only for `DisabledOutputManager`. Callers (e.g.
+        `runner._run_app`) should use this — not `is_enabled` — to decide whether to
+        start an app-logs-streaming loop. Quiet mode is meant to suppress progress
+        indicators while still surfacing logs from running functions (see issue #2076).
+        """
+        return self.is_enabled
+
+    @property
     @abstractmethod
     def is_terminal(self) -> bool:
         """Whether the output is connected to a terminal (TTY)."""
