@@ -94,6 +94,23 @@ class DaemonizedThreadPool:
         self.inputs.put((func, args))
 
 
+def call_server(user_code_event_loop: UserCodeEventLoop):
+    async def run():
+        exit_event = asyncio.Event()
+
+        def _on_sigterm():
+            logger.info("server_received_sigterm")
+            exit_event.set()
+
+        user_code_event_loop.loop.add_signal_handler(signal.SIGTERM, _on_sigterm)
+        try:
+            await exit_event.wait()
+        finally:
+            user_code_event_loop.loop.remove_signal_handler(signal.SIGTERM)
+
+    user_code_event_loop.run(run())
+
+
 def call_function(
     user_code_event_loop: UserCodeEventLoop,
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
@@ -385,7 +402,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             )
 
         with service.execution_context(event_loop, container_io_manager) as finalized_functions:
-            call_function(event_loop, container_io_manager, finalized_functions, batch_max_size, batch_wait_ms)
+            if function_def.is_server:
+                call_server(event_loop)
+            else:
+                call_function(event_loop, container_io_manager, finalized_functions, batch_max_size, batch_wait_ms)
 
 
 if __name__ == "__main__":

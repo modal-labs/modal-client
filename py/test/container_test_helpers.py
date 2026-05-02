@@ -5,9 +5,12 @@ import json
 import os
 import pathlib
 import pytest
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import uuid
 from typing import Any, Optional, Sequence
 from unittest import mock
@@ -39,6 +42,19 @@ DEFAULT_APP_LAYOUT_SENTINEL: Any = object()
 
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
+
+
+def _schedule_sigterm(process: subprocess.Popen, delay: float = 1.0) -> None:
+    """Schedule SIGTERM to `process` after `delay` seconds in a daemon thread."""
+
+    def _terminate():
+        time.sleep(delay)
+        try:
+            process.send_signal(signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+
+    threading.Thread(target=_terminate, daemon=True).start()
 
 
 @dataclasses.dataclass
@@ -333,14 +349,20 @@ def _run_container_process(
         f.write(container_args.SerializeToString())
     env["MODAL_CONTAINER_ARGUMENTS_PATH"] = str(container_args_path)
 
-    servicer.container_inputs = _get_multi_inputs(inputs)
+    if is_server:
+        servicer.container_inputs = []
+    else:
+        servicer.container_inputs = _get_multi_inputs(inputs)
 
-    return subprocess.Popen(
+    process = subprocess.Popen(
         [sys.executable, "-m", "modal._container_entrypoint"],
         env={**os.environ, **env},
         stdout=subprocess.PIPE if not _print else None,
         stderr=subprocess.PIPE if not _print else None,
     )
+    if is_server:
+        _schedule_sigterm(process)
+    return process
 
 
 def _run_container_process_auto(
@@ -371,19 +393,12 @@ def _run_container_process_auto(
     with container_args_path.open("wb") as f:
         f.write(container_args.SerializeToString())
 
-    if inputs is None:
-        servicer.container_inputs = (
-            _get_multi_inputs([]) if function_def.is_class or function_def.is_server else _get_inputs()
-        )
-    elif function_def.is_class or function_def.is_server:
-        if function_def.is_server:
-            # Grace period for server heartbeat to start before the container exits.
-            servicer.container_inputs = [
-                api_pb2.FunctionGetInputsResponse(rate_limit_sleep_duration=0.2),
-                api_pb2.FunctionGetInputsResponse(inputs=[api_pb2.FunctionGetInputsItem(kill_switch=True)]),
-            ]
-        else:
-            servicer.container_inputs = _get_multi_inputs(inputs)
+    if function_def.is_server:
+        servicer.container_inputs = []
+    elif inputs is None:
+        servicer.container_inputs = _get_multi_inputs([]) if function_def.is_class else _get_inputs()
+    elif function_def.is_class:
+        servicer.container_inputs = _get_multi_inputs(inputs)
     else:
         servicer.container_inputs = inputs
 
@@ -393,12 +408,15 @@ def _run_container_process_auto(
     env["MODAL_IS_REMOTE"] = "1"
     env["MODAL_CONTAINER_ARGUMENTS_PATH"] = str(container_args_path)
 
-    return subprocess.Popen(
+    process = subprocess.Popen(
         [sys.executable, "-m", "modal._container_entrypoint"],
         env={**os.environ, **env},
         stdout=subprocess.PIPE if not _print else None,
         stderr=subprocess.PIPE if not _print else None,
     )
+    if function_def.is_server:
+        _schedule_sigterm(process)
+    return process
 
 
 # =============================================================================
