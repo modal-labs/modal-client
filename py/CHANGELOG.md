@@ -14,13 +14,13 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
   - `sandbox.filesystem.make_directory()` creates a new directory on the Sandbox filesystem
   - `sandbox.filesystem.remove()` deletes a file or directory from the Sandbox filesystem
 - The new Sandbox filesystem methods replace the `modal.Sandbox.mkdir` and `modal.Sandbox.rm` methods, which are now deprecated.
+- Sandboxes also now support `sb.unmount_image(path)` to remove a previously mounted Image from a path and reveal the underlying Sandbox filesystem there again.
 - The `modal app stop` and `modal container stop` CLI commands now prompt for confirmation (pass `--yes` to skip).
 - Several other `modal app` CLI commands will now map a name-based argument to a recently-stopped App that used that name. This is useful for, e.g., fetching logs from an App after it has been stopped.
 - We've added a `build_args` parameter to `modal.Image.dockerfile_commands()`.
 
 ### 1.4.1 (2026-03-30)
 
-- Sandboxes now support `sb.unmount_image(path)` to remove a previously mounted Image from a path and reveal the underlying Sandbox filesystem there again.
 - We're introducing a concept of "readiness probes" for `modal.Sandbox`. This feature lets you configure a readiness check on a TCP port (`modal.Probe.with_tcp()`) or by executing a process (`modal.Probe.with_exec()`). Calling `sb.wait_until_ready()` will block until the Probe succeeds:
   ```python notest
   app = modal.App.lookup('sandbox-app', create_if_missing=True)
