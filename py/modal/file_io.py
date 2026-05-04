@@ -248,7 +248,6 @@ class _FileIO(Generic[T]):
             "`FileIO.read()` is deprecated."
             " Use `Sandbox.filesystem.read_text()`, `Sandbox.filesystem.read_bytes()`,"
             " or `Sandbox.filesystem.copy_to_local()` instead.",
-            pending=True,
         )
         self._check_closed()
         self._check_readable()
@@ -266,7 +265,6 @@ class _FileIO(Generic[T]):
             "`FileIO.readline()` is deprecated."
             " Use `Sandbox.filesystem.read_text()`, `Sandbox.filesystem.read_bytes()`,"
             " or `Sandbox.filesystem.copy_to_local()` instead.",
-            pending=True,
         )
         self._check_closed()
         self._check_readable()
@@ -288,7 +286,6 @@ class _FileIO(Generic[T]):
             "`FileIO.readlines()` is deprecated."
             " Use `Sandbox.filesystem.read_text()`, `Sandbox.filesystem.read_bytes()`,"
             " or `Sandbox.filesystem.copy_to_local()` instead.",
-            pending=True,
         )
         self._check_closed()
         self._check_readable()
@@ -314,7 +311,6 @@ class _FileIO(Generic[T]):
             "`FileIO.write()` is deprecated."
             " Use `Sandbox.filesystem.write_text()`, `Sandbox.filesystem.write_bytes()`,"
             " or `Sandbox.filesystem.copy_from_local()` instead.",
-            pending=True,
         )
         self._check_closed()
         self._check_writable()
@@ -343,7 +339,6 @@ class _FileIO(Generic[T]):
             "`FileIO.flush()` is deprecated."
             " Use `Sandbox.filesystem.write_text()`, `Sandbox.filesystem.write_bytes()`,"
             " or `Sandbox.filesystem.copy_from_local()` instead.",
-            pending=True,
         )
         self._check_closed()
         self._check_writable()
@@ -407,7 +402,6 @@ class _FileIO(Generic[T]):
         deprecation_warning(
             (2026, 3, 9),
             "`FileIO.mkdir()` is deprecated. Use `Sandbox.filesystem.make_directory()` instead.",
-            pending=True,
         )
         await mkdir(path, client, task_id, parents)
 
@@ -417,7 +411,6 @@ class _FileIO(Generic[T]):
         deprecation_warning(
             (2026, 3, 9),
             "`FileIO.rm()` is deprecated. Use `Sandbox.filesystem.remove()` instead.",
-            pending=True,
         )
         await rm(path, client, task_id, recursive)
 

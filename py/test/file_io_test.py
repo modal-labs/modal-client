@@ -6,6 +6,7 @@ from grpclib import Status
 from grpclib.exceptions import GRPCError
 
 from modal._utils.async_utils import synchronizer
+from modal.exception import DeprecationError
 from modal.file_io import (  # type: ignore
     WRITE_CHUNK_SIZE,
     WRITE_FILE_SIZE_LIMIT,
@@ -107,7 +108,8 @@ def test_file_read(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         f = FileIO.create("/test.txt", "r", client, "task-123")
-        assert f.read() == content
+        with pytest.warns(DeprecationError):
+            assert f.read() == content
         f.close()
 
 
@@ -126,8 +128,10 @@ def test_file_write(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         f = FileIO.create("/test.txt", "a+", client, "task-123")
-        f.write(content)
-        assert f.read() == content
+        with pytest.warns(DeprecationError):
+            f.write(content)
+        with pytest.warns(DeprecationError):
+            assert f.read() == content
         f.close()
 
 
@@ -155,7 +159,8 @@ def test_file_write_chunks(servicer, client, file_size, expected_counter):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         f = FileIO.create("/test.txt", "a+", client, "task-123")
-        f.write(content)
+        with pytest.warns(DeprecationError):
+            f.write(content)
         assert write_counter == expected_counter
         f.close()
 
@@ -172,8 +177,9 @@ def test_file_write_too_large(servicer, client):
         ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
-        with pytest.raises(ValueError):
-            FileIO.create("/test.txt", "a+", client, "task-123").write(content)
+        with pytest.warns(DeprecationError):
+            with pytest.raises(ValueError):
+                FileIO.create("/test.txt", "a+", client, "task-123").write(content)
 
 
 def test_file_readline(servicer, client):
@@ -195,11 +201,16 @@ def test_file_readline(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         f = FileIO.create("/test.txt", "w+", client, "task-123")
-        f.write(content)
-        assert f.readline() == "foo\n"
-        assert f.readline() == "bar\n"
-        assert f.readline() == "baz\n"
-        assert f.readline() == "end"
+        with pytest.warns(DeprecationError):
+            f.write(content)
+        with pytest.warns(DeprecationError):
+            assert f.readline() == "foo\n"
+        with pytest.warns(DeprecationError):
+            assert f.readline() == "bar\n"
+        with pytest.warns(DeprecationError):
+            assert f.readline() == "baz\n"
+        with pytest.warns(DeprecationError):
+            assert f.readline() == "end"
         f.close()
 
 
@@ -219,8 +230,10 @@ def test_file_readlines_no_newline_end(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         f = FileIO.create("/test.txt", "w+", client, "task-123")
-        f.write(content)
-        assert f.readlines() == lines
+        with pytest.warns(DeprecationError):
+            f.write(content)
+        with pytest.warns(DeprecationError):
+            assert f.readlines() == lines
         f.close()
 
 
@@ -240,8 +253,10 @@ def test_file_readlines_newline_end(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         f = FileIO.create("/test.txt", "w+", client, "task-123")
-        f.write(content)
-        assert f.readlines() == lines
+        with pytest.warns(DeprecationError):
+            f.write(content)
+        with pytest.warns(DeprecationError):
+            assert f.readlines() == lines
         f.close()
 
 
@@ -261,8 +276,10 @@ def test_file_readlines_multiple_newline_end(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         f = FileIO.create("/test.txt", "w+", client, "task-123")
-        f.write(content)
-        assert f.readlines() == lines
+        with pytest.warns(DeprecationError):
+            f.write(content)
+        with pytest.warns(DeprecationError):
+            assert f.readlines() == lines
         f.close()
 
 
@@ -278,8 +295,10 @@ def test_file_flush(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         f = FileIO.create("/test.txt", "w+", client, "task-123")
-        f.write("foo")
-        f.flush()
+        with pytest.warns(DeprecationError):
+            f.write("foo")
+        with pytest.warns(DeprecationError):
+            f.flush()
         f.close()
 
 
@@ -301,12 +320,14 @@ def test_file_seek(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         f = FileIO.create("/test.txt", "a+", client, "task-123")
-        f.write("foo\nbar\nbaz\n")
+        with pytest.warns(DeprecationError):
+            f.write("foo\nbar\nbaz\n")
         f.close()
         f = FileIO.create("/test.txt", "r", client, "task-123")
         for i in range(4):
             f.seek(3)
-            assert f.read() == expected_outputs[i]
+            with pytest.warns(DeprecationError):
+                assert f.read() == expected_outputs[i]
         f.close()
 
 
@@ -353,8 +374,10 @@ def test_client_retry(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         f = FileIO.create("/test.txt", "w+", client, "task-123")
-        f.write(content)
-        assert f.read() == content
+        with pytest.warns(DeprecationError):
+            f.write(content)
+        with pytest.warns(DeprecationError):
+            assert f.read() == content
         f.close()
 
 
@@ -480,8 +503,10 @@ async def test_file_io_async_context_manager(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         async with await FileIO.create.aio("/test.txt", "w+", client, "task-123") as f:
-            await f.write.aio(content)
-            assert await f.read.aio() == content
+            with pytest.warns(DeprecationError):
+                await f.write.aio(content)
+            with pytest.warns(DeprecationError):
+                assert await f.read.aio() == content
 
 
 def test_file_io_sync_context_manager(servicer, client):
@@ -499,8 +524,10 @@ def test_file_io_sync_context_manager(servicer, client):
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
         with FileIO.create("/test.txt", "w+", client, "task-123") as f:
-            f.write(content)
-            assert f.read() == content
+            with pytest.warns(DeprecationError):
+                f.write(content)
+            with pytest.warns(DeprecationError):
+                assert f.read() == content
 
 
 def test_file_io_create(client, servicer):
@@ -558,7 +585,8 @@ def test_mkdir(servicer, client):
         ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
-        FileIO.mkdir("/test.txt", client, "task-123")
+        with pytest.warns(DeprecationError):
+            FileIO.mkdir("/test.txt", client, "task-123")
 
 
 def test_rm(servicer, client):
@@ -575,4 +603,5 @@ def test_rm(servicer, client):
         ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
-        FileIO.rm("/test.txt", client, "task-123")
+        with pytest.warns(DeprecationError):
+            FileIO.rm("/test.txt", client, "task-123")

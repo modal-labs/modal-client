@@ -1635,7 +1635,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         deprecation_warning(
             (2026, 3, 9),
             "`Sandbox.open()` is deprecated. Use the `Sandbox.filesystem` APIs instead.",
-            pending=True,
         )
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
@@ -1664,7 +1663,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         deprecation_warning(
             (2026, 4, 15),
             "`Sandbox.mkdir()` is deprecated. Use `Sandbox.filesystem.make_directory()` instead.",
-            pending=True,
         )
         task_id = await self._get_task_id()
         return await mkdir(path, self._client, task_id, parents)
@@ -1679,7 +1677,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         deprecation_warning(
             (2026, 4, 15),
             "`Sandbox.rm()` is deprecated. Use `Sandbox.filesystem.remove()` instead.",
-            pending=True,
         )
         task_id = await self._get_task_id()
         return await rm(path, self._client, task_id, recursive)
