@@ -717,7 +717,14 @@ def use_md5(url: str) -> bool:
     host = urlparse(url).netloc.split(":")[0]
     if host.endswith(".amazonaws.com") or host.endswith(".r2.cloudflarestorage.com"):
         return True
-    elif host in ["127.0.0.1", "localhost", "172.20.0.1", "172.21.0.1"]:
+    if host == "localhost":
         return False
-    else:
-        raise Exception(f"Unknown S3 host: {host}")
+    try:
+        import ipaddress
+
+        addr = ipaddress.ip_address(host)
+        if addr.is_private or addr.is_loopback:
+            return False
+    except ValueError:
+        pass
+    raise Exception(f"Unknown S3 host: {host}")
