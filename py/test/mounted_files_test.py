@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2022
 import os
 import pytest
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path, PurePosixPath
 
 import modal
@@ -204,17 +206,26 @@ def test_directory_pruning_behavior(mock_dir, ignore_config, expected_can_prune,
 
 
 def test_mount_dedupe_explicit(servicer, credentials, supports_dir, server_url_env):
-    normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
-    normally_not_included_file.touch(exist_ok=True)
-    print(
-        helpers.deploy_app_externally(
-            # two explicit mounts of the same package
-            servicer,
-            credentials,
-            "mount_dedupe.py",
-            cwd=supports_dir,
+    # Copy test files to a temp dir so symlinks (Bazel sandbox runfiles
+    # tree) are dereferenced and the subprocess sees a writable copy of
+    # mount_dedupe.py + pkg_a.  Without this, touch() on the .pyc fixture
+    # silently no-ops on read-only runfiles, both add_local_python_source
+    # calls produce the same file set, and the dedupe collapses two
+    # explicit mounts into one — the assertion expects three.
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        shutil.copy2(supports_dir / "mount_dedupe.py", tmp_path)
+        shutil.copytree(supports_dir / "pkg_a", tmp_path / "pkg_a")
+        (tmp_path / "pkg_a" / "normally_not_included.pyc").touch()
+        print(
+            helpers.deploy_app_externally(
+                # two explicit mounts of the same package
+                servicer,
+                credentials,
+                "mount_dedupe.py",
+                cwd=tmp_path,
+            )
         )
-    )
     assert servicer.n_mounts == 3
 
     # mounts are loaded in parallel, but there
@@ -237,7 +248,6 @@ def test_mount_dedupe_explicit(servicer, credentials, supports_dir, server_url_e
         assert fn.startswith("/root/pkg_a")
 
     assert len(mount_with_pyc) == len(remaining_mount) + 1
-    normally_not_included_file.unlink()  # cleanup
 
 
 def test_mount_dedupe_relative_path_entrypoint(servicer, credentials, supports_dir, server_url_env, monkeypatch):
