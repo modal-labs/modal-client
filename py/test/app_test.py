@@ -397,6 +397,10 @@ async def test_deploy_from_container(servicer, container_client):
 def test_app_create_bad_environment_name_error(client):
     environment_name = "this=is@not.allowed"
     app = App()
+
+    if sys.platform != "win32":
+        tasks_before = asyncio.all_tasks(synchronizer._loop)
+
     with pytest.raises(InvalidError, match="Invalid Environment name"):
         with run_app(
             app, environment_name=environment_name, client=client
@@ -404,7 +408,11 @@ def test_app_create_bad_environment_name_error(client):
             pass
 
     if sys.platform != "win32":  # proactor event loop has long lived helper tasks
-        assert len(asyncio.all_tasks(synchronizer._loop)) == 1  # no trailing tasks, except the `loop_inner` ever-task
+        # Check no new tasks leaked from this test. We compare against tasks_before rather
+        # than asserting an absolute count of 1, since the shared synchronizer loop may
+        # have tasks from other tests still running.
+        new_tasks = asyncio.all_tasks(synchronizer._loop) - tasks_before
+        assert len(new_tasks) == 0
 
 
 def test_overriding_function_warning(caplog):
