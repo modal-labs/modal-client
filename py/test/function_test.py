@@ -27,7 +27,6 @@ from modal.exception import (
     InternalFailure,
     InvalidError,
     NotFoundError,
-    PendingDeprecationError,
     RemoteError,
 )
 from modal.functions import Function, FunctionCall
@@ -2201,7 +2200,7 @@ def test_single_use_containers(client, servicer):
 def test_max_inputs(client, servicer):
     app = App(include_source=False)
 
-    with pytest.warns(PendingDeprecationError, match=r"`max_inputs`.+`single_use_containers=True`"):
+    with pytest.warns(DeprecationError, match=r"`max_inputs`.+`single_use_containers=True`"):
         decorator = app.function(serialized=True, max_inputs=1)
 
     @decorator

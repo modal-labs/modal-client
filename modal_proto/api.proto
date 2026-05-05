@@ -1610,7 +1610,7 @@ message Function {
 
   bool block_network = 44;
 
-  // In the SDK, we've deprecated `max_inputs` (which only every implemented `max_inputs=1`)
+  // In the SDK, we've deprecated `max_inputs` (which only ever implemented `max_inputs=1`)
   // in favor of a boolean `single_use_containers` parameter.
   uint32 max_inputs = 46;
 

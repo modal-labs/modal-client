@@ -778,7 +778,6 @@ class _App:
             deprecation_warning(
                 (2025, 12, 16),
                 "The `max_inputs` parameter is deprecated. Please set `single_use_containers=True` instead.",
-                pending=True,
             )
             single_use_containers = max_inputs == 1
 
@@ -987,7 +986,6 @@ class _App:
             deprecation_warning(
                 (2025, 12, 16),
                 "The `max_inputs` parameter is deprecated. Please set `single_use_containers=True` instead.",
-                pending=True,
             )
             single_use_containers = max_inputs == 1
 

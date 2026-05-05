@@ -7,6 +7,9 @@
 package pb
 
 import (
+	reflect "reflect"
+	unsafe "unsafe"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	anypb "google.golang.org/protobuf/types/known/anypb"
@@ -14,8 +17,6 @@ import (
 	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
-	reflect "reflect"
-	unsafe "unsafe"
 )
 
 const (
@@ -20079,7 +20080,7 @@ type Function_builder struct {
 	Checkpoint              *CheckpointInfo
 	ObjectDependencies      []*ObjectDependency
 	BlockNetwork            bool
-	// In the SDK, we've deprecated `max_inputs` (which only every implemented `max_inputs=1`)
+	// In the SDK, we've deprecated `max_inputs` (which only ever implemented `max_inputs=1`)
 	// in favor of a boolean `single_use_containers` parameter.
 	MaxInputs                            uint32
 	S3Mounts                             []*S3Mount
