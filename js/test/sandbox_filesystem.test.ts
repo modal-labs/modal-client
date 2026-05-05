@@ -1,5 +1,25 @@
+import type { ModalClient } from "../src/client";
+import { SandboxFile } from "../src/sandbox_filesystem";
 import { tc } from "../test-support/test-client";
-import { expect, test, onTestFinished } from "vitest";
+import { expect, test, onTestFinished, vi } from "vitest";
+
+test("WriteNonUint8ArrayThrowsTypeError", async () => {
+  const containerFilesystemExec = vi.fn(async () => {
+    throw new Error("containerFilesystemExec should not be called");
+  });
+  const file = new SandboxFile(
+    {
+      cpClient: { containerFilesystemExec },
+    } as unknown as ModalClient,
+    "fd",
+    "ta-test",
+  );
+
+  await expect(file.write("hello" as unknown as Uint8Array)).rejects.toThrow(
+    TypeError,
+  );
+  expect(containerFilesystemExec).not.toHaveBeenCalled();
+});
 
 test("WriteAndReadBinaryFile", async () => {
   const app = await tc.apps.fromName("libmodal-test", {

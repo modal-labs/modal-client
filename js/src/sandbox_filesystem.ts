@@ -52,9 +52,13 @@ export class SandboxFile {
 
   /**
    * Write data to the file.
-   * @param data - Data to write (string or Uint8Array)
+   * @param data - Data to write
    */
   async write(data: Uint8Array): Promise<void> {
+    if (!(data instanceof Uint8Array)) {
+      throw new TypeError("SandboxFile.write() expects a Uint8Array");
+    }
+
     await runFilesystemExec(this.#client.cpClient, {
       fileWriteRequest: {
         fileDescriptor: this.#fileDescriptor,
