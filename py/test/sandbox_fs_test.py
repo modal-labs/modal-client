@@ -78,10 +78,7 @@ def sandbox(app):
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_read_text_returns_expected_text(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_read_text_returns_expected_text(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "read-text.txt")
     text_payload = "hello from read_text\nsnowman: ☃\n"
     (tmp_path / "read-text.txt").write_text(text_payload, encoding="utf-8")
@@ -90,9 +87,8 @@ def test_sandbox_fs_read_text_returns_expected_text(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_read_text_returns_empty_string_for_empty_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_path = str(tmp_path / "empty.txt")
     (tmp_path / "empty.txt").write_text("", encoding="utf-8")
@@ -101,17 +97,13 @@ def test_sandbox_fs_read_text_returns_empty_string_for_empty_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_read_text_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+def test_sandbox_fs_read_text_errors_on_relative_remote_path(servicer, client, sandbox):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.read_text("relative/path.txt")
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_read_text_errors_when_remote_path_missing(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_read_text_errors_when_remote_path_missing(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "read-text-missing.txt")
 
     with pytest.raises(SandboxFilesystemNotFoundError):
@@ -119,9 +111,8 @@ def test_sandbox_fs_read_text_errors_when_remote_path_missing(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_read_text_errors_when_remote_path_is_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_dir = str(tmp_path / "read-text-dir")
     (tmp_path / "read-text-dir").mkdir()
@@ -131,9 +122,8 @@ def test_sandbox_fs_read_text_errors_when_remote_path_is_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_read_text_errors_when_file_too_large(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, monkeypatch
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, monkeypatch
 ):
     monkeypatch.setenv("_MODAL_TEST_MAX_READ_FILE_SIZE", "5")
     remote_path = str(tmp_path / "read-text-large.txt")
@@ -149,10 +139,7 @@ def test_sandbox_fs_read_text_errors_when_file_too_large(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_read_bytes_returns_expected_bytes(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_read_bytes_returns_expected_bytes(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "read-bytes.bin")
     payload = b"\x00\x01\x02binary\x00payload\xff"
     (tmp_path / "read-bytes.bin").write_bytes(payload)
@@ -161,9 +148,8 @@ def test_sandbox_fs_read_bytes_returns_expected_bytes(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_read_bytes_returns_empty_bytes_for_empty_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_path = str(tmp_path / "empty.bin")
     (tmp_path / "empty.bin").write_bytes(b"")
@@ -172,17 +158,13 @@ def test_sandbox_fs_read_bytes_returns_empty_bytes_for_empty_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_read_bytes_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+def test_sandbox_fs_read_bytes_errors_on_relative_remote_path(servicer, client, sandbox):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.read_bytes("relative/path.bin")
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_read_bytes_errors_when_remote_path_missing(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_read_bytes_errors_when_remote_path_missing(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "read-bytes-missing.bin")
 
     with pytest.raises(SandboxFilesystemNotFoundError):
@@ -190,9 +172,8 @@ def test_sandbox_fs_read_bytes_errors_when_remote_path_missing(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_read_bytes_errors_when_remote_path_is_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_dir = str(tmp_path / "read-bytes-dir")
     (tmp_path / "read-bytes-dir").mkdir()
@@ -202,9 +183,8 @@ def test_sandbox_fs_read_bytes_errors_when_remote_path_is_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_read_bytes_errors_when_file_too_large(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, monkeypatch
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, monkeypatch
 ):
     monkeypatch.setenv("_MODAL_TEST_MAX_READ_FILE_SIZE", "5")
     remote_path = str(tmp_path / "read-bytes-large.bin")
@@ -220,9 +200,8 @@ def test_sandbox_fs_read_bytes_errors_when_file_too_large(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_to_local_writes_file_to_correct_local_location(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     payload = _random_bytes(1024, seed=1)
     src = tmp_path / "source.bin"
@@ -236,9 +215,8 @@ def test_sandbox_fs_copy_to_local_writes_file_to_correct_local_location(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_to_local_creates_parent_directories_if_needed(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     payload = _random_bytes(2048, seed=2)
     src = tmp_path / "source-parent.bin"
@@ -251,9 +229,8 @@ def test_sandbox_fs_copy_to_local_creates_parent_directories_if_needed(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_to_local_copies_correct_contents_when_file_is_empty(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     src = tmp_path / "empty.bin"
     src.write_bytes(b"")
@@ -265,10 +242,7 @@ def test_sandbox_fs_copy_to_local_copies_correct_contents_when_file_is_empty(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_copy_to_local_overwrites_existing_local_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_copy_to_local_overwrites_existing_local_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     payload = _random_bytes(4096, seed=5)
     src = tmp_path / "overwrite-source.bin"
     src.write_bytes(payload)
@@ -281,9 +255,8 @@ def test_sandbox_fs_copy_to_local_overwrites_existing_local_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_to_local_preserves_existing_file_on_remote_error(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     local_path = tmp_path / "existing.bin"
     local_path.write_bytes(b"stable-content")
@@ -296,16 +269,14 @@ def test_sandbox_fs_copy_to_local_preserves_existing_file_on_remote_error(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_copy_to_local_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox, tmp_path):
+def test_sandbox_fs_copy_to_local_errors_on_relative_remote_path(servicer, client, sandbox, tmp_path):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.copy_to_local("relative/path.bin", tmp_path / "ignored.bin")
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_to_local_errors_if_remote_does_not_exist(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_path = str(tmp_path / "missing.bin")
     local_path = tmp_path / "missing-out.bin"
@@ -315,9 +286,8 @@ def test_sandbox_fs_copy_to_local_errors_if_remote_does_not_exist(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_to_local_errors_when_local_path_is_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     payload = _random_bytes(512, seed=6)
     src = tmp_path / "local-dir-source.bin"
@@ -334,9 +304,8 @@ def test_sandbox_fs_copy_to_local_errors_when_local_path_is_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_to_local_errors_when_remote_path_is_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_dir = str(tmp_path / "remote-dir")
     (tmp_path / "remote-dir").mkdir()
@@ -346,9 +315,8 @@ def test_sandbox_fs_copy_to_local_errors_when_remote_path_is_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_to_local_errors_when_file_too_large(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, monkeypatch
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, monkeypatch
 ):
     monkeypatch.setenv("_MODAL_TEST_MAX_READ_FILE_SIZE", "5")
     src = tmp_path / "copy-large.bin"
@@ -367,10 +335,7 @@ def test_sandbox_fs_copy_to_local_errors_when_file_too_large(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_bytes_writes_expected_bytes(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_write_bytes_writes_expected_bytes(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "write-bytes.bin")
     payload = b"\x00\x01\x02binary\x00payload\xff"
 
@@ -380,8 +345,7 @@ def test_sandbox_fs_write_bytes_writes_expected_bytes(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_bytes_writes_empty_data(servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools):
+def test_sandbox_fs_write_bytes_writes_empty_data(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "write-empty.bin")
 
     sandbox.filesystem.write_bytes(b"", remote_path)
@@ -390,10 +354,7 @@ def test_sandbox_fs_write_bytes_writes_empty_data(servicer, client, exec_backend
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_bytes_creates_parent_directories(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_write_bytes_creates_parent_directories(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "nested" / "deep" / "write.bin")
     payload = _random_bytes(1024, seed=20)
 
@@ -403,10 +364,7 @@ def test_sandbox_fs_write_bytes_creates_parent_directories(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_bytes_overwrites_existing_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_write_bytes_overwrites_existing_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "overwrite.bin")
     (tmp_path / "overwrite.bin").write_bytes(b"old-data")
 
@@ -416,8 +374,7 @@ def test_sandbox_fs_write_bytes_overwrites_existing_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_bytes_accepts_bytearray(servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools):
+def test_sandbox_fs_write_bytes_accepts_bytearray(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "write-bytearray.bin")
     payload = bytearray(b"\x00\x01\x02bytearray\xff")
 
@@ -427,8 +384,7 @@ def test_sandbox_fs_write_bytes_accepts_bytearray(servicer, client, exec_backend
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_bytes_accepts_memoryview(servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools):
+def test_sandbox_fs_write_bytes_accepts_memoryview(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "write-memoryview.bin")
     raw = b"\x00\x01\x02memoryview\xff"
 
@@ -438,9 +394,8 @@ def test_sandbox_fs_write_bytes_accepts_memoryview(servicer, client, exec_backen
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_write_bytes_handles_data_exceeding_stdin_buffer_limit(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_path = str(tmp_path / "write-large.bin")
     payload = _random_bytes(TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE + 1024, seed=40)
@@ -451,23 +406,20 @@ def test_sandbox_fs_write_bytes_handles_data_exceeding_stdin_buffer_limit(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_bytes_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+def test_sandbox_fs_write_bytes_errors_on_relative_remote_path(servicer, client, sandbox):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.write_bytes(b"payload", "relative/path.bin")
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_bytes_errors_on_unsupported_data_type(servicer, client, exec_backend, sandbox, tmp_path):
+def test_sandbox_fs_write_bytes_errors_on_unsupported_data_type(servicer, client, sandbox, tmp_path):
     with pytest.raises(TypeError):
         sandbox.filesystem.write_bytes("not-bytes", str(tmp_path / "unused.bin"))  # type: ignore[arg-type]
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_write_bytes_errors_when_remote_path_is_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_dir = str(tmp_path / "write-dir")
     (tmp_path / "write-dir").mkdir()
@@ -477,10 +429,7 @@ def test_sandbox_fs_write_bytes_errors_when_remote_path_is_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_bytes_errors_when_parent_is_a_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_write_bytes_errors_when_parent_is_a_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     blocker = tmp_path / "blocker"
     blocker.write_bytes(b"I am a file")
     remote_path = str(blocker / "child.txt")
@@ -495,10 +444,7 @@ def test_sandbox_fs_write_bytes_errors_when_parent_is_a_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_text_writes_expected_text(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_write_text_writes_expected_text(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "write-text.txt")
     text_payload = "hello from write_text\nsnowman: ☃\n"
 
@@ -508,8 +454,7 @@ def test_sandbox_fs_write_text_writes_expected_text(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_text_writes_empty_string(servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools):
+def test_sandbox_fs_write_text_writes_empty_string(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "write-empty.txt")
 
     sandbox.filesystem.write_text("", remote_path)
@@ -518,10 +463,7 @@ def test_sandbox_fs_write_text_writes_empty_string(servicer, client, exec_backen
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_text_creates_parent_directories(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_write_text_creates_parent_directories(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "nested" / "deep" / "write.txt")
 
     sandbox.filesystem.write_text("nested text", remote_path)
@@ -530,10 +472,7 @@ def test_sandbox_fs_write_text_creates_parent_directories(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_text_overwrites_existing_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_write_text_overwrites_existing_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "overwrite.txt")
     (tmp_path / "overwrite.txt").write_text("old-data", encoding="utf-8")
 
@@ -543,9 +482,8 @@ def test_sandbox_fs_write_text_overwrites_existing_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_write_text_handles_data_exceeding_stdin_buffer_limit(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_path = str(tmp_path / "write-large.txt")
     # Generate text larger than the stdin buffer limit
@@ -557,23 +495,20 @@ def test_sandbox_fs_write_text_handles_data_exceeding_stdin_buffer_limit(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_text_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+def test_sandbox_fs_write_text_errors_on_relative_remote_path(servicer, client, sandbox):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.write_text("data", "relative/path.txt")
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_text_errors_on_non_string_data(servicer, client, exec_backend, sandbox, tmp_path):
+def test_sandbox_fs_write_text_errors_on_non_string_data(servicer, client, sandbox, tmp_path):
     with pytest.raises(TypeError):
         sandbox.filesystem.write_text(b"not-text", str(tmp_path / "unused.txt"))  # type: ignore[arg-type]
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_write_text_errors_when_remote_path_is_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_dir = str(tmp_path / "write-text-dir")
     (tmp_path / "write-text-dir").mkdir()
@@ -583,10 +518,7 @@ def test_sandbox_fs_write_text_errors_when_remote_path_is_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_write_text_errors_when_parent_is_a_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_write_text_errors_when_parent_is_a_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     blocker = tmp_path / "blocker-text"
     blocker.write_bytes(b"I am a file")
     remote_path = str(blocker / "child.txt")
@@ -601,9 +533,8 @@ def test_sandbox_fs_write_text_errors_when_parent_is_a_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_from_local_writes_file_to_correct_remote_location(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     payload = _random_bytes(8192, seed=30)
     src = tmp_path / "source.bin"
@@ -616,10 +547,7 @@ def test_sandbox_fs_copy_from_local_writes_file_to_correct_remote_location(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_copy_from_local_copies_text_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_copy_from_local_copies_text_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     src = tmp_path / "source.txt"
     src.write_text("text content", encoding="utf-8")
     remote_path = str(tmp_path / "copied.txt")
@@ -630,10 +558,7 @@ def test_sandbox_fs_copy_from_local_copies_text_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_copy_from_local_copies_empty_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_copy_from_local_copies_empty_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     src = tmp_path / "empty.bin"
     src.write_bytes(b"")
     remote_path = str(tmp_path / "copied-empty.bin")
@@ -644,9 +569,8 @@ def test_sandbox_fs_copy_from_local_copies_empty_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_from_local_copies_file_opened_in_text_mode(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     src = tmp_path / "text-mode.txt"
     with open(src, "w") as f:
@@ -659,8 +583,7 @@ def test_sandbox_fs_copy_from_local_copies_file_opened_in_text_mode(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_copy_from_local_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox, tmp_path):
+def test_sandbox_fs_copy_from_local_errors_on_relative_remote_path(servicer, client, sandbox, tmp_path):
     src = tmp_path / "source.bin"
     src.write_bytes(b"data")
 
@@ -669,9 +592,8 @@ def test_sandbox_fs_copy_from_local_errors_on_relative_remote_path(servicer, cli
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_from_local_errors_when_local_path_missing(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     missing_local = tmp_path / "missing-local.bin"
     remote_path = str(tmp_path / "unused.bin")
@@ -681,9 +603,8 @@ def test_sandbox_fs_copy_from_local_errors_when_local_path_missing(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_copy_from_local_errors_when_local_path_is_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     local_dir = tmp_path / "source-dir"
     local_dir.mkdir()
@@ -699,10 +620,7 @@ def test_sandbox_fs_copy_from_local_errors_when_local_path_is_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_list_files_returns_expected_entries(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_list_files_returns_expected_entries(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_dir = str(tmp_path / "list-dir")
     (tmp_path / "list-dir").mkdir()
     (tmp_path / "list-dir" / "hello.txt").write_text("hello", encoding="utf-8")
@@ -729,17 +647,13 @@ def test_sandbox_fs_list_files_returns_expected_entries(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_list_files_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+def test_sandbox_fs_list_files_errors_on_relative_remote_path(servicer, client, sandbox):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.list_files("relative/path")
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_list_files_fileinfo_has_correct_metadata(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_list_files_fileinfo_has_correct_metadata(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_dir = str(tmp_path / "meta-dir")
     (tmp_path / "meta-dir").mkdir()
     file_content = "test content"
@@ -762,9 +676,8 @@ def test_sandbox_fs_list_files_fileinfo_has_correct_metadata(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_list_files_returns_empty_list_for_empty_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_dir = str(tmp_path / "empty-dir")
     (tmp_path / "empty-dir").mkdir()
@@ -775,10 +688,7 @@ def test_sandbox_fs_list_files_returns_empty_list_for_empty_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_list_files_includes_nested_directory_entries(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_list_files_includes_nested_directory_entries(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_dir = str(tmp_path / "nested-dir")
     (tmp_path / "nested-dir").mkdir()
     (tmp_path / "nested-dir" / "a").mkdir()
@@ -794,10 +704,7 @@ def test_sandbox_fs_list_files_includes_nested_directory_entries(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_list_files_errors_when_path_does_not_exist(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_list_files_errors_when_path_does_not_exist(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "nonexistent-dir")
 
     with pytest.raises(SandboxFilesystemNotFoundError):
@@ -805,10 +712,7 @@ def test_sandbox_fs_list_files_errors_when_path_does_not_exist(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_list_files_errors_when_path_is_a_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_list_files_errors_when_path_is_a_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_path = str(tmp_path / "not-a-dir.txt")
     (tmp_path / "not-a-dir.txt").write_text("I am a file", encoding="utf-8")
 
@@ -817,9 +721,8 @@ def test_sandbox_fs_list_files_errors_when_path_is_a_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_list_files_errors_when_path_component_is_a_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     blocker = tmp_path / "blocker.txt"
     blocker.write_text("I am a file", encoding="utf-8")
@@ -830,10 +733,7 @@ def test_sandbox_fs_list_files_errors_when_path_component_is_a_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_list_files_returns_correct_type_for_symlinks(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_list_files_returns_correct_type_for_symlinks(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     import os
 
     remote_dir = str(tmp_path / "symlink-type-dir")
@@ -848,9 +748,8 @@ def test_sandbox_fs_list_files_returns_correct_type_for_symlinks(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_list_files_shows_symlink_target_for_symlinked_files(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     import os
 
@@ -867,9 +766,8 @@ def test_sandbox_fs_list_files_shows_symlink_target_for_symlinked_files(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_list_files_does_not_show_symlink_target_for_nonsymlinked_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_dir = str(tmp_path / "no-symlink-file-dir")
     (tmp_path / "no-symlink-file-dir").mkdir()
@@ -882,9 +780,8 @@ def test_sandbox_fs_list_files_does_not_show_symlink_target_for_nonsymlinked_fil
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_list_files_does_not_show_symlink_target_for_nonsymlinked_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     remote_dir = str(tmp_path / "no-symlink-dir-dir")
     (tmp_path / "no-symlink-dir-dir").mkdir()
@@ -897,10 +794,7 @@ def test_sandbox_fs_list_files_does_not_show_symlink_target_for_nonsymlinked_dir
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_list_files_entries_sorted_by_name(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_list_files_entries_sorted_by_name(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     remote_dir = str(tmp_path / "sorted-dir")
     (tmp_path / "sorted-dir").mkdir()
     (tmp_path / "sorted-dir" / "zebra.txt").write_text("z", encoding="utf-8")
@@ -913,9 +807,8 @@ def test_sandbox_fs_list_files_entries_sorted_by_name(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_list_files_dangling_symlink_reported_as_symlink(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     import os
 
@@ -932,9 +825,8 @@ def test_sandbox_fs_list_files_dangling_symlink_reported_as_symlink(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_list_files_follows_symlink_if_path_is_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     import os
 
@@ -953,9 +845,8 @@ def test_sandbox_fs_list_files_follows_symlink_if_path_is_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_list_files_symlink_to_directory_reported_as_symlink(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     import os
 
@@ -979,11 +870,8 @@ def test_sandbox_fs_list_files_symlink_to_directory_reported_as_symlink(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 @pytest.mark.parametrize("recursive", [False, True])
-def test_sandbox_fs_remove_file_removes_a_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, recursive
-):
+def test_sandbox_fs_remove_file_removes_a_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive):
     file_path = tmp_path / "to-remove.txt"
     file_path.write_bytes(b"bye")
 
@@ -993,11 +881,8 @@ def test_sandbox_fs_remove_file_removes_a_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 @pytest.mark.parametrize("recursive", [False, True])
-def test_sandbox_fs_remove_errors_when_file_missing(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, recursive
-):
+def test_sandbox_fs_remove_errors_when_file_missing(servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive):
     missing = str(tmp_path / "missing.txt")
 
     with pytest.raises(SandboxFilesystemNotFoundError):
@@ -1005,11 +890,8 @@ def test_sandbox_fs_remove_errors_when_file_missing(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 @pytest.mark.parametrize("recursive", [False, True])
-def test_sandbox_fs_remove_removes_empty_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, recursive
-):
+def test_sandbox_fs_remove_removes_empty_directory(servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive):
     dir_path = tmp_path / "a-dir"
     dir_path.mkdir()
 
@@ -1019,9 +901,8 @@ def test_sandbox_fs_remove_removes_empty_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_remove_errors_when_target_is_nonempty_directory_and_not_recursive(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     dir_path = tmp_path / "nonempty-dir"
     dir_path.mkdir()
@@ -1032,10 +913,7 @@ def test_sandbox_fs_remove_errors_when_target_is_nonempty_directory_and_not_recu
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_remove_recursive_removes_directory_tree(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_remove_recursive_removes_directory_tree(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     dir_path = tmp_path / "tree"
     (dir_path / "nested").mkdir(parents=True)
     (dir_path / "nested" / "file.txt").write_bytes(b"hello")
@@ -1046,10 +924,7 @@ def test_sandbox_fs_remove_recursive_removes_directory_tree(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_remove_removes_symlink_without_following_it(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_remove_removes_symlink_without_following_it(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     import os
 
     target = tmp_path / "target.txt"
@@ -1064,8 +939,7 @@ def test_sandbox_fs_remove_removes_symlink_without_following_it(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_remove_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+def test_sandbox_fs_remove_errors_on_relative_remote_path(servicer, client, sandbox):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.remove("relative/path.txt")
 
@@ -1076,10 +950,7 @@ def test_sandbox_fs_remove_errors_on_relative_remote_path(servicer, client, exec
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_make_directory_no_parents_creates_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_make_directory_no_parents_creates_directory(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     new_dir = tmp_path / "new-dir"
 
     sandbox.filesystem.make_directory(str(new_dir), create_parents=False)
@@ -1088,10 +959,7 @@ def test_sandbox_fs_make_directory_no_parents_creates_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_make_directory_creates_nested_directories(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_make_directory_creates_nested_directories(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     nested = tmp_path / "a" / "b" / "c"
 
     sandbox.filesystem.make_directory(str(nested))
@@ -1100,9 +968,8 @@ def test_sandbox_fs_make_directory_creates_nested_directories(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_make_directory_is_idempotent_when_already_exists(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     existing = tmp_path / "existing"
     existing.mkdir()
@@ -1113,9 +980,8 @@ def test_sandbox_fs_make_directory_is_idempotent_when_already_exists(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_make_directory_no_parents_errors_when_already_exists(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     existing = tmp_path / "existing"
     existing.mkdir()
@@ -1125,9 +991,8 @@ def test_sandbox_fs_make_directory_no_parents_errors_when_already_exists(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 def test_sandbox_fs_make_directory_no_parents_errors_when_parent_missing(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
 ):
     missing = tmp_path / "missing-parent" / "child"
 
@@ -1136,10 +1001,9 @@ def test_sandbox_fs_make_directory_no_parents_errors_when_parent_missing(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 @pytest.mark.parametrize("parents", [False, True])
 def test_sandbox_fs_make_directory_errors_when_target_is_a_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, parents
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, parents
 ):
     file_path = tmp_path / "existing-file"
     file_path.write_bytes(b"I am a file")
@@ -1149,10 +1013,9 @@ def test_sandbox_fs_make_directory_errors_when_target_is_a_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
 @pytest.mark.parametrize("parents", [False, True])
 def test_sandbox_fs_make_directory_errors_when_ancestor_is_a_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools, parents
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, parents
 ):
     blocker = tmp_path / "blocker"
     blocker.write_bytes(b"I am a file")
@@ -1163,8 +1026,7 @@ def test_sandbox_fs_make_directory_errors_when_ancestor_is_a_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_make_directory_no_parents_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+def test_sandbox_fs_make_directory_no_parents_errors_on_relative_remote_path(servicer, client, sandbox):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.make_directory("relative/path", create_parents=False)
 
@@ -1175,10 +1037,7 @@ def test_sandbox_fs_make_directory_no_parents_errors_on_relative_remote_path(ser
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_returns_metadata_for_regular_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_stat_returns_metadata_for_regular_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     file_path = tmp_path / "stat-file.txt"
     file_path.write_text("hello", encoding="utf-8")
     file_path.chmod(0o644)
@@ -1202,10 +1061,7 @@ def test_sandbox_fs_stat_returns_metadata_for_regular_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_returns_metadata_for_directory(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_stat_returns_metadata_for_directory(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     dir_path = tmp_path / "stat-dir"
     dir_path.mkdir()
 
@@ -1221,10 +1077,7 @@ def test_sandbox_fs_stat_returns_metadata_for_directory(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_returns_metadata_for_empty_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_stat_returns_metadata_for_empty_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     file_path = tmp_path / "empty.txt"
     file_path.write_bytes(b"")
 
@@ -1235,10 +1088,7 @@ def test_sandbox_fs_stat_returns_metadata_for_empty_file(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_reports_symlink_to_file_as_symlink(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_stat_reports_symlink_to_file_as_symlink(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     import os
 
     target = tmp_path / "stat-target.txt"
@@ -1256,10 +1106,7 @@ def test_sandbox_fs_stat_reports_symlink_to_file_as_symlink(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_reports_symlink_to_directory_as_symlink(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_stat_reports_symlink_to_directory_as_symlink(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     import os
 
     target_dir = tmp_path / "stat-target-dir"
@@ -1275,10 +1122,7 @@ def test_sandbox_fs_stat_reports_symlink_to_directory_as_symlink(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_reports_dangling_symlink_as_symlink(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_stat_reports_dangling_symlink_as_symlink(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     import os
 
     missing = tmp_path / "stat-missing-target"
@@ -1293,10 +1137,7 @@ def test_sandbox_fs_stat_reports_dangling_symlink_as_symlink(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_preserves_relative_symlink_target(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_stat_preserves_relative_symlink_target(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     import os
 
     # Relative target, with no directory prefix. lstat reads the link text
@@ -1311,10 +1152,7 @@ def test_sandbox_fs_stat_preserves_relative_symlink_target(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_permissions_string_reflects_mode(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_stat_permissions_string_reflects_mode(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     file_path = tmp_path / "perm-file.txt"
     file_path.write_bytes(b"")
     file_path.chmod(0o755)
@@ -1325,17 +1163,13 @@ def test_sandbox_fs_stat_permissions_string_reflects_mode(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_errors_on_relative_remote_path(servicer, client, exec_backend, sandbox):
+def test_sandbox_fs_stat_errors_on_relative_remote_path(servicer, client, sandbox):
     with pytest.raises(InvalidError, match="absolute remote_path values"):
         sandbox.filesystem.stat("relative/path.txt")
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_errors_when_path_does_not_exist(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_stat_errors_when_path_does_not_exist(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     missing = str(tmp_path / "stat-missing")
 
     with pytest.raises(SandboxFilesystemNotFoundError):
@@ -1343,10 +1177,7 @@ def test_sandbox_fs_stat_errors_when_path_does_not_exist(
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_fs_stat_errors_when_ancestor_is_a_file(
-    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
-):
+def test_sandbox_fs_stat_errors_when_ancestor_is_a_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
     blocker = tmp_path / "stat-blocker"
     blocker.write_bytes(b"I am a file")
 

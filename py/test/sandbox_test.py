@@ -4,7 +4,6 @@ import inspect
 import pytest
 import time
 import typing
-from collections import deque
 from pathlib import Path
 from unittest import mock
 
@@ -12,9 +11,7 @@ from grpclib import GRPCError, Status
 
 import modal
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
-from modal._utils.async_utils import synchronizer
 from modal._utils.task_command_router_client import TaskCommandRouterClient
-from modal.container_process import ContainerProcess, _ContainerProcess
 from modal.exception import Error, InvalidError, TimeoutError
 from modal.sandbox import SandboxContainer
 from modal.stream_type import StreamType
@@ -321,8 +318,7 @@ async def test_sandbox_async_for(app, servicer, sandbox_subprocess):
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_stdout_bytes_mode(app, servicer, exec_backend):
+def test_sandbox_exec_stdout_bytes_mode(app, servicer):
     """Test that the stream reader works in bytes mode."""
 
     sb = Sandbox.create(app=app)
@@ -353,8 +349,7 @@ def test_app_sandbox(client, servicer, sandbox_subprocess):
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec(app, servicer, exec_backend):
+def test_sandbox_exec(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "while read line; do echo $line; done")
@@ -371,8 +366,7 @@ def test_sandbox_exec(app, servicer, exec_backend):
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_wait(app, servicer, exec_backend):
+def test_sandbox_exec_wait(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "sleep 0.5 && exit 42")
@@ -386,10 +380,8 @@ def test_sandbox_exec_wait(app, servicer, exec_backend):
     assert cp.poll() == 42
 
 
-@mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_wait_timeout(app, servicer, exec_backend):
+def test_sandbox_exec_wait_timeout(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("sleep", "999", timeout=1)
@@ -398,10 +390,8 @@ def test_sandbox_exec_wait_timeout(app, servicer, exec_backend):
     assert 0.8 < time.monotonic() - t0 <= 1.2
 
 
-@mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_poll_timeout(app, servicer, exec_backend):
+def test_sandbox_exec_poll_timeout(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("sleep", "999", timeout=1)
@@ -410,10 +400,8 @@ def test_sandbox_exec_poll_timeout(app, servicer, exec_backend):
     assert cp.poll() == -1
 
 
-@mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_output_timeout(app, servicer, exec_backend):
+def test_sandbox_exec_output_timeout(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     t1 = time.monotonic()
@@ -424,8 +412,7 @@ def test_sandbox_exec_output_timeout(app, servicer, exec_backend):
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_output_double_read(app, servicer, exec_backend):
+def test_sandbox_exec_output_double_read(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("sh", "-c", "echo hi")
@@ -574,8 +561,7 @@ def test_sandbox_gpu_fallbacks_support(client, servicer):
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_with_streamtype_stdout_and_text_true_prints_to_stdout(app, servicer, exec_backend, capsys):
+def test_sandbox_exec_with_streamtype_stdout_and_text_true_prints_to_stdout(app, servicer, capsys):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "echo hi", stdout=StreamType.STDOUT)
@@ -585,8 +571,7 @@ def test_sandbox_exec_with_streamtype_stdout_and_text_true_prints_to_stdout(app,
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_with_streamtype_stderr_and_text_true_prints_to_stdout(app, servicer, exec_backend, capsys):
+def test_sandbox_exec_with_streamtype_stderr_and_text_true_prints_to_stdout(app, servicer, capsys):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "echo hi >&2", stderr=StreamType.STDOUT)
@@ -596,10 +581,7 @@ def test_sandbox_exec_with_streamtype_stderr_and_text_true_prints_to_stdout(app,
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_with_streamtype_stdout_and_text_true_and_bufsize_1_prints_to_stdout(
-    app, servicer, exec_backend, capsys
-):
+def test_sandbox_exec_with_streamtype_stdout_and_text_true_and_bufsize_1_prints_to_stdout(app, servicer, capsys):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "echo hi && echo bye", stdout=StreamType.STDOUT, bufsize=1)
@@ -609,8 +591,7 @@ def test_sandbox_exec_with_streamtype_stdout_and_text_true_and_bufsize_1_prints_
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_with_streamtype_stdout_and_text_false_prints_to_stdout(app, servicer, exec_backend, capsysbinary):
+def test_sandbox_exec_with_streamtype_stdout_and_text_false_prints_to_stdout(app, servicer, capsysbinary):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec(
@@ -626,8 +607,7 @@ def test_sandbox_exec_with_streamtype_stdout_and_text_false_prints_to_stdout(app
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_with_streamtype_stdout_read_from_stdout_raises_error(app, servicer, exec_backend, capsys):
+def test_sandbox_exec_with_streamtype_stdout_read_from_stdout_raises_error(app, servicer, capsys):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "echo hi", stdout=StreamType.STDOUT)
@@ -787,32 +767,22 @@ def test_experimental_sandbox_create_memory_roundtrip(app, servicer):
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
-    pty_info = None
-    if exec_backend == "server":
-        with servicer.intercept() as ctx:
-            sb = Sandbox.create("sleep", "infinity", app=app)
-            sb.exec("echo", "hello", pty=True)
-            req = ctx.pop_request("ContainerExec")
-            pty_info = req.pty_info
-    else:
-        captured_request = None
-        original = FakeTaskCommandRouterClient.exec_start
+def test_sandbox_exec_pty(app, servicer, monkeypatch):
+    captured_request = None
+    original = FakeTaskCommandRouterClient.exec_start
 
-        async def _exec_start(self, request: tcr_pb2.TaskExecStartRequest) -> tcr_pb2.TaskExecStartResponse:
-            nonlocal captured_request
-            captured_request = request
-            return await original(self, request)
+    async def _exec_start(self, request: tcr_pb2.TaskExecStartRequest) -> tcr_pb2.TaskExecStartResponse:
+        nonlocal captured_request
+        captured_request = request
+        return await original(self, request)
 
-        monkeypatch.setattr(FakeTaskCommandRouterClient, "exec_start", _exec_start, raising=True)
+    monkeypatch.setattr(FakeTaskCommandRouterClient, "exec_start", _exec_start, raising=True)
 
-        # Router path: ensure exec succeeds with pty=True (pty details are handled on worker/router side).
-        sb = Sandbox.create("sleep", "infinity", app=app)
-        cp = sb.exec("echo", "hello", pty=True)
-        cp.wait()
-        assert captured_request is not None
-        pty_info = captured_request.pty_info
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    cp = sb.exec("echo", "hello", pty=True)
+    cp.wait()
+    assert captured_request is not None
+    pty_info = captured_request.pty_info
 
     assert pty_info is not None
     assert pty_info.enabled is True
@@ -821,117 +791,31 @@ def test_sandbox_exec_pty(app, servicer, exec_backend, monkeypatch):
 
 
 @skip_non_subprocess
-@pytest.mark.parametrize("exec_backend", ["server", "router"], indirect=True)
-def test_sandbox_exec_env_routing(app, servicer, exec_backend, monkeypatch):
-    if exec_backend == "server":
-        with servicer.intercept() as ctx:
-            sb = Sandbox.create("sleep", "infinity", app=app)
-            sb.exec("bash", "-c", "echo hello", env={"KEEP": "value", "DROP": None})
-            req = ctx.pop_request("ContainerExec")
-            assert list(req.secret_ids) != []
-    else:
-        router_client = FakeTaskCommandRouterClient(None)
+def test_sandbox_exec_env_routing(app, servicer, monkeypatch):
+    router_client = FakeTaskCommandRouterClient(None)
 
-        async def _mk_router(cls, server_client, task_id):
-            return router_client
+    async def _mk_router(cls, server_client, task_id):
+        return router_client
 
-        monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
 
-        secret = Secret.from_dict({"KEEP": "secret", "SECRET_ONLY": "present"})
-        sb = Sandbox.create("sleep", "infinity", app=app)
-        cp = sb.exec(
-            "bash",
-            "-c",
-            'printf "%s|%s|%s" "${KEEP:-missing}" "${PLAIN:-missing}" "${DROP:-missing}"',
-            env={"KEEP": "value", "PLAIN": "plain", "DROP": None},
-            secrets=[secret],
-        )
+    secret = Secret.from_dict({"KEEP": "secret", "SECRET_ONLY": "present"})
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    cp = sb.exec(
+        "bash",
+        "-c",
+        'printf "%s|%s|%s" "${KEEP:-missing}" "${PLAIN:-missing}" "${DROP:-missing}"',
+        env={"KEEP": "value", "PLAIN": "plain", "DROP": None},
+        secrets=[secret],
+    )
 
-        assert cp.stdout.read() == "value|plain|missing"
-        assert router_client.last_exec_start_request is not None
-        assert dict(router_client.last_exec_start_request.env) == {"KEEP": "value", "PLAIN": "plain"}
-        assert list(router_client.last_exec_start_request.secret_ids) == [secret.object_id]
+    assert cp.stdout.read() == "value|plain|missing"
+    assert router_client.last_exec_start_request is not None
+    assert dict(router_client.last_exec_start_request.env) == {"KEEP": "value", "PLAIN": "plain"}
+    assert list(router_client.last_exec_start_request.secret_ids) == [secret.object_id]
 
 
-@synchronizer.wrap
-async def makeprocess(client, text, by_line):
-    return _ContainerProcess(process_id="exec-123", task_id="ta-123", client=client, text=text, by_line=by_line)
-
-
-@pytest.mark.parametrize("text", [True, False])
-@pytest.mark.parametrize("by_line", [True, False])
-@pytest.mark.timeout(2)
-def test_sandbox_stdout_server_read_incremental_decode(servicer, client, by_line, text):
-    if not text and by_line:
-        pytest.skip(reason="Text mode and by_line mode are not supported together")
-
-    with servicer.intercept() as ctx:
-        queued_responses = deque(
-            [
-                api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"caf\xc3")]),
-                api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0),
-            ]
-        )
-
-        async def streamer(servicer, stream):
-            req: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
-            if req.file_descriptor != api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT or len(queued_responses) == 0:
-                await stream.send_message(
-                    api_pb2.RuntimeOutputBatch(exit_code=0),
-                )
-                return
-
-            await stream.send_message(queued_responses.popleft())
-
-        ctx.set_responder("ContainerExecGetOutput", streamer)
-        p: ContainerProcess[typing.Any] = makeprocess(client, text, by_line)  # type: ignore
-        res = p.stdout.read()
-        if text:
-            assert res == "café"
-        else:
-            assert res == "café".encode("utf8")
-
-
-@pytest.mark.parametrize("text", [True, False])
-@pytest.mark.parametrize("by_line", [True, False])
-def test_sandbox_stdout_read_incremental_iter(servicer, client, by_line, text):
-    # Reproduces what happens if output chunks are send without being individually
-    # string decodable
-    if not text and by_line:
-        pytest.skip(reason="Text mode and by_line mode are not supported together")
-
-    with servicer.intercept() as ctx:
-        queued_responses = deque(
-            [
-                api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"caf\xc3")]),
-                api_pb2.RuntimeOutputBatch(items=[api_pb2.RuntimeOutputMessage(message_bytes=b"\xa9")], exit_code=0),
-            ]
-        )
-
-        async def streamer(servicer, stream):
-            req: api_pb2.ContainerExecGetOutputRequest = await stream.recv_message()
-            if req.file_descriptor != api_pb2.FileDescriptor.FILE_DESCRIPTOR_STDOUT or len(queued_responses) == 0:
-                await stream.send_message(
-                    api_pb2.RuntimeOutputBatch(exit_code=0),
-                )
-                return
-
-            await stream.send_message(queued_responses.popleft())
-
-        ctx.set_responder("ContainerExecGetOutput", streamer)
-        p: ContainerProcess[typing.Any] = makeprocess(client, text, by_line)  # type: ignore
-        chunks = list(p.stdout)
-        if text:
-            if by_line:
-                assert chunks == ["café"]  # buffer until newline or eof
-            else:
-                assert chunks == ["caf", "é"]  # buffer until decodable
-        else:
-            assert chunks == [b"caf\xc3", b"\xa9"]  # no buffering
-
-
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_mount_image(servicer, client, exec_backend, app, monkeypatch):
+def test_mount_image(servicer, client, app, monkeypatch):
     """Test mounting an image at a path in the sandbox."""
     captured_requests = []
     original = FakeTaskCommandRouterClient.mount_image
@@ -1005,8 +889,7 @@ def test_mount_image(servicer, client, exec_backend, app, monkeypatch):
     sb.terminate()
 
 
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, exec_backend, app, monkeypatch):
+def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, app, monkeypatch):
     """Test mounting an explicit empty image via Image.from_scratch()."""
     captured_requests = []
     original = FakeTaskCommandRouterClient.mount_image
@@ -1027,8 +910,7 @@ def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, exec_bac
     sb.terminate()
 
 
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_snapshot_directory(servicer, client, exec_backend, app, monkeypatch):
+def test_snapshot_directory(servicer, client, app, monkeypatch):
     """Test snapshotting a directory to create a new image."""
     captured_requests = []
     original = FakeTaskCommandRouterClient.snapshot_directory
@@ -1068,8 +950,7 @@ def test_snapshot_directory(servicer, client, exec_backend, app, monkeypatch):
     sb.terminate()
 
 
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_sandbox_create_with_snapshot_directory_image(servicer, client, exec_backend, app):
+def test_sandbox_create_with_snapshot_directory_image(servicer, client, app):
     sb = Sandbox.create(app=app)
     image = sb.snapshot_directory("/tmp")
     sb.terminate()
@@ -1083,8 +964,7 @@ def test_sandbox_create_with_snapshot_directory_image(servicer, client, exec_bac
     assert servicer.sandbox_defs[-1].image_id == "im-snapshot-123"
 
 
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_unmount_image(servicer, client, exec_backend, app, monkeypatch):
+def test_unmount_image(servicer, client, app, monkeypatch):
     """Test unmounting an image from a path in the sandbox."""
     captured_requests = []
     original = FakeTaskCommandRouterClient.unmount_image
@@ -1108,8 +988,7 @@ def test_unmount_image(servicer, client, exec_backend, app, monkeypatch):
     sb.terminate()
 
 
-@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
-def test_exec_on_terminate_sandbox_raises(servicer, client, exec_backend, app):
+def test_exec_on_terminate_sandbox_raises(servicer, client, app):
     sb = Sandbox.create(app=app)
     sb.terminate()
 
@@ -1205,7 +1084,7 @@ def test_sandbox_container_terminate_wait(app, servicer, monkeypatch):
     async def _mk_router(cls, server_client, task_id):
         return FakeTaskCommandRouterClient(server_client)
 
-    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
 
     image = mock.Mock()
     image.object_id = "im-test-1"
@@ -1241,7 +1120,7 @@ def test_sandbox_container_wait_after_natural_exit(app, servicer, monkeypatch):
     async def _mk_router(cls, server_client, task_id):
         return FakeTaskCommandRouterClient(server_client)
 
-    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
 
     image = mock.Mock()
     image.object_id = "im-test-1"
@@ -1303,7 +1182,7 @@ def test_sandbox_container_get_and_list_forward_include_terminated(app, servicer
         list_request = request
         return await original_list(self, request)
 
-    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
     monkeypatch.setattr(FakeTaskCommandRouterClient, "container_get", _container_get, raising=True)
     monkeypatch.setattr(FakeTaskCommandRouterClient, "container_list", _container_list, raising=True)
 
@@ -1332,7 +1211,7 @@ def test_sandbox_container_create_accepts_prebuilt_image(app, servicer, monkeypa
     async def _mk_router(cls, server_client, task_id):
         return router_client
 
-    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
 
     image = mock.Mock()
     image.object_id = "im-test-1"
@@ -1354,7 +1233,7 @@ def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer, mon
     async def _mk_router(cls, server_client, task_id):
         return router_client
 
-    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
 
     image = mock.Mock()
     image.object_id = "im-test-1"

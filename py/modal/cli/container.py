@@ -278,9 +278,7 @@ async def _exec_impl(
 
     client = await _Client.from_env()
 
-    command_router_client = await TaskCommandRouterClient.try_init(client, container_id)
-    if command_router_client is None:
-        raise InvalidError(f"Command router access is not available for container {container_id}")
+    command_router_client = await TaskCommandRouterClient.init(client, container_id)
 
     process_id = str(uuid.uuid4())
 
