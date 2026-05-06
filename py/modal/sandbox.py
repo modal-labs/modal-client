@@ -1617,8 +1617,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     ):
         """[Alpha] Open a file in the Sandbox and return a FileIO handle.
 
-        .. deprecated:: 2026-03-09
-            Use the `Sandbox.filesystem` APIs instead.
+        **Deprecated (2026-03-09):** Use the `Sandbox.filesystem` APIs instead.
 
         See the [`FileIO`](https://modal.com/docs/reference/modal.file_io#modalfile_iofileio) docs for more information.
 
@@ -1642,8 +1641,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def ls(self, path: str) -> builtins.list[str]:
         """[Alpha] List the contents of a directory in the Sandbox.
 
-        .. deprecated:: 2026-04-15
-            Use `Sandbox.filesystem.list_files()` instead."""
+        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.list_files()` instead.
+        """
         self._ensure_v1("ls")
         deprecation_warning(
             (2026, 4, 15),
@@ -1656,8 +1655,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def mkdir(self, path: str, parents: bool = False) -> None:
         """[Alpha] Create a new directory in the Sandbox.
 
-        .. deprecated:: 2026-04-15
-            Use `Sandbox.filesystem.make_directory()` instead.
+        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.make_directory()` instead.
         """
         self._ensure_v1("mkdir")
         deprecation_warning(
@@ -1670,8 +1668,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def rm(self, path: str, recursive: bool = False) -> None:
         """[Alpha] Remove a file or directory in the Sandbox.
 
-        .. deprecated:: 2026-04-15
-            Use `Sandbox.filesystem.remove()` instead.
+        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.remove()` instead.
         """
         self._ensure_v1("rm")
         deprecation_warning(
