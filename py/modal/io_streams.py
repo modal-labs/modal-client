@@ -4,11 +4,13 @@ import codecs
 import contextlib
 import io
 import sys
+import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Generic,
+    Literal,
     Optional,
     TextIO,
     TypeVar,
@@ -18,7 +20,7 @@ from typing import (
 
 from grpclib.exceptions import StreamTerminatedError
 
-from modal.exception import ExecTimeoutError, InvalidError
+from modal.exception import ClientClosed, ExecTimeoutError, InvalidError
 from modal_proto import api_pb2
 
 from ._utils.async_utils import aclosing, synchronize_api, synchronizer
@@ -51,31 +53,72 @@ async def _sandbox_logs_iterator(
             break
 
 
+async def _container_process_logs_iterator(
+    process_id: str,
+    file_descriptor: "api_pb2.FileDescriptor.ValueType",
+    client: _Client,
+    last_index: int,
+    deadline: Optional[float] = None,
+) -> AsyncGenerator[tuple[Optional[bytes], int], None]:
+    req = api_pb2.ContainerExecGetOutputRequest(
+        exec_id=process_id,
+        timeout=55,
+        file_descriptor=file_descriptor,
+        get_raw_bytes=True,
+        last_batch_index=last_index,
+    )
+    stream = client.stub.ContainerExecGetOutput.unary_stream(req)
+    while True:
+        # Check deadline before attempting to receive the next batch
+        try:
+            remaining = (deadline - time.monotonic()) if deadline else None
+            batch = await asyncio.wait_for(stream.__anext__(), timeout=remaining)
+        except asyncio.TimeoutError:
+            yield None, -1
+            break
+        except StopAsyncIteration:
+            break
+
+        for item in batch.items:
+            yield item.message_bytes, batch.batch_index
+
+        if batch.HasField("exit_code"):
+            yield None, batch.batch_index
+            break
+
+
 T = TypeVar("T", str, bytes)
 
 
 class _StreamReaderThroughServer(Generic[T]):
-    """A StreamReader implementation that reads sandbox logs from the server."""
+    """A StreamReader implementation that reads from the server."""
 
     _stream: Optional[AsyncGenerator[T, None]]
 
     def __init__(
         self,
-        params: "_StreamReaderThroughServerParams",
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        client: _Client,
+        stream_type: StreamType = StreamType.PIPE,
         text: bool = True,
         by_line: bool = False,
+        deadline: Optional[float] = None,
     ) -> None:
         """mdmd:hidden"""
-        self._file_descriptor = params.file_descriptor
-        self._object_id = params.object_id
-        self._client = params.client
+        self._file_descriptor = file_descriptor
+        self._object_type = object_type
+        self._object_id = object_id
+        self._client = client
         self._stream = None
         self._last_entry_id: str = ""
         self._line_buffer = b""
+        self._deadline = deadline
 
         # Sandbox logs are streamed to the client as strings, so StreamReaders reading
         # them must have text mode enabled.
-        if not text:
+        if object_type == "sandbox" and not text:
             raise ValueError("Sandbox streams must have text mode enabled.")
 
         self._text = text
@@ -84,6 +127,21 @@ class _StreamReaderThroughServer(Generic[T]):
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
+
+        if not isinstance(stream_type, StreamType):
+            raise TypeError(f"stream_type must be of type StreamType, got {type(stream_type)}")
+
+        # We only support piping sandbox logs because they're meant to be durable logs stored
+        # on the user's application.
+        if object_type == "sandbox" and stream_type != StreamType.PIPE:
+            raise ValueError("Sandbox streams must be piped.")
+        self._stream_type = stream_type
+
+        if self._object_type == "container_process":
+            # TODO: we should not have this async code in constructors!
+            #  it only works as long as all the construction happens inside of synchronicity code
+            self._container_process_buffer: list[Optional[bytes]] = []  # TODO: change this to an asyncio.Queue
+            self._consume_container_process_task = asyncio.create_task(self._consume_container_process_stream())
 
     @property
     def file_descriptor(self) -> int:
@@ -106,14 +164,81 @@ class _StreamReaderThroughServer(Generic[T]):
             logger.debug(f"{self._object_id} StreamReader fd={self._file_descriptor} read completed after EOF")
             return cast(T, buffer.getvalue())
 
+    async def _consume_container_process_stream(self):
+        """Consume the container process stream and store messages in the buffer."""
+        if self._stream_type == StreamType.DEVNULL:
+            return
+
+        completed = False
+        retries_remaining = 10
+        last_index = 0
+        while not completed:
+            if self._deadline and time.monotonic() >= self._deadline:
+                break
+            try:
+                iterator = _container_process_logs_iterator(
+                    self._object_id, self._file_descriptor, self._client, last_index, self._deadline
+                )
+                async for message, batch_index in iterator:
+                    if self._stream_type == StreamType.STDOUT and message:
+                        # TODO: rearchitect this, since these bytes aren't necessarily decodable
+                        print(message.decode("utf-8"), end="")  # noqa: T201
+                    elif self._stream_type == StreamType.PIPE:
+                        self._container_process_buffer.append(message)
+
+                    if message is None:
+                        completed = True
+                        break
+                    else:
+                        last_index = batch_index
+
+            except (ServiceError, InternalError, StreamTerminatedError, ClientClosed) as exc:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, (ServiceError, InternalError)):
+                        await asyncio.sleep(1.0)
+                        continue
+                    elif isinstance(exc, StreamTerminatedError):
+                        continue
+                    elif isinstance(exc, ClientClosed):
+                        # If the client was closed, the user has triggered a cleanup.
+                        break
+                logger.error(f"{self._object_id} stream read failure while consuming process output: {exc}")
+                raise exc
+
+    async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
+        """Streams the container process buffer to the reader."""
+        # Container process streams need to be consumed as they are produced,
+        # otherwise the process will block. Use a buffer to store the stream
+        # until the client consumes it.
+        entry_id = 0
+        if self._last_entry_id:
+            entry_id = int(self._last_entry_id) + 1
+
+        while True:
+            if entry_id >= len(self._container_process_buffer):
+                await asyncio.sleep(0.1)
+                continue
+
+            item = self._container_process_buffer[entry_id]
+
+            yield (item, str(entry_id))
+            if item is None:
+                break
+
+            entry_id += 1
+
     async def _get_logs(self, skip_empty_messages: bool = True) -> AsyncGenerator[bytes, None]:
-        """Streams sandbox logs from the server to the reader.
+        """Streams sandbox or process logs from the server to the reader.
 
         Logs returned by this method may contain partial or multiple lines at a time.
 
         When the stream receives an EOF, it yields None. Once an EOF is received,
         subsequent invocations will not yield logs.
         """
+        if self._stream_type != StreamType.PIPE:
+            raise InvalidError("Logs can only be retrieved using the PIPE stream type.")
+
         if self.eof:
             return
 
@@ -122,9 +247,12 @@ class _StreamReaderThroughServer(Generic[T]):
         retries_remaining = 10
         while not completed:
             try:
-                iterator = _sandbox_logs_iterator(
-                    self._object_id, self._file_descriptor, self._last_entry_id, self._client
-                )
+                if self._object_type == "sandbox":
+                    iterator = _sandbox_logs_iterator(
+                        self._object_id, self._file_descriptor, self._last_entry_id, self._client
+                    )
+                else:
+                    iterator = self._stream_container_process()
 
                 async for message, entry_id in iterator:
                     self._last_entry_id = entry_id
@@ -221,20 +349,8 @@ async def _stream_by_line(stream: AsyncGenerator[bytes, None]) -> AsyncGenerator
         await stream.aclose()
 
 
-@dataclass(frozen=True)
-class _StreamReaderThroughServerParams:
-    """Parameters for a ``_StreamReader`` that reads sandbox logs through the server."""
-
-    file_descriptor: "api_pb2.FileDescriptor.ValueType"
-    object_id: str
-    client: _Client
-
-
-@dataclass(frozen=True)
+@dataclass
 class _StreamReaderThroughCommandRouterParams:
-    """Parameters for a ``_StreamReader`` that reads container-process stdio
-    directly from the worker via the task command router."""
-
     file_descriptor: "api_pb2.FileDescriptor.ValueType"
     task_id: str
     object_id: str
@@ -435,11 +551,16 @@ class _StreamReader(Generic[T]):
 
     def __init__(
         self,
-        params: Union[_StreamReaderThroughServerParams, _StreamReaderThroughCommandRouterParams],
-        *,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        client: _Client,
         stream_type: StreamType = StreamType.PIPE,
         text: bool = True,
         by_line: bool = False,
+        deadline: Optional[float] = None,
+        command_router_client: Optional[TaskCommandRouterClient] = None,
+        task_id: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
         # we can remove this once we ensure no constructors use async code
@@ -448,11 +569,22 @@ class _StreamReader(Generic[T]):
         if by_line and not text:
             raise ValueError("line-buffering is only supported when text=True")
 
-        if isinstance(params, _StreamReaderThroughCommandRouterParams):
+        if command_router_client is None:
+            self._impl = _StreamReaderThroughServer(
+                file_descriptor, object_id, object_type, client, stream_type, text, by_line, deadline
+            )
+        else:
+            # The only reason task_id is optional is because StreamReader is also used for sandbox
+            # logs, which don't have a task ID available when the StreamReader is created.
+            assert task_id is not None
+            assert object_type == "container_process"
             if stream_type == StreamType.DEVNULL:
-                self._impl = _DevnullStreamReader(params.file_descriptor)
+                self._impl = _DevnullStreamReader(file_descriptor)
             else:
                 assert stream_type == StreamType.PIPE or stream_type == StreamType.STDOUT
+                params = _StreamReaderThroughCommandRouterParams(
+                    file_descriptor, task_id, object_id, command_router_client, deadline
+                )
                 if text:
                     reader = _TextStreamReaderThroughCommandRouter(params, by_line)
                 else:
@@ -462,9 +594,6 @@ class _StreamReader(Generic[T]):
                     self._impl = _StdoutPrintingStreamReaderThroughCommandRouter(reader)
                 else:
                     self._impl = reader
-        else:
-            # Sandbox logs are read via the server.
-            self._impl = _StreamReaderThroughServer(params, text, by_line)
 
     @property
     def file_descriptor(self) -> int:
@@ -499,37 +628,20 @@ class _StreamReader(Generic[T]):
 
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
-# Larger buffer limit for the exec path via the task command router.
-# This applies only to task_exec_stdin_write; sandbox stdin via the server keeps MAX_BUFFER_SIZE.
+# Larger buffer limit for the new exec path via the task command router.
+# This applies only to task_exec_stdin_write; legacy ContainerExec paths keep MAX_BUFFER_SIZE.
 TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE = 16 * 1024 * 1024
 
 
-@dataclass(frozen=True)
-class _StreamWriterThroughServerParams:
-    """Parameters for a ``_StreamWriter`` that writes sandbox stdin through the server."""
-
-    object_id: str
-    client: _Client
-
-
-@dataclass(frozen=True)
-class _StreamWriterThroughCommandRouterParams:
-    """Parameters for a ``_StreamWriter`` that writes container-process stdin
-    directly to the worker via the task command router."""
-
-    task_id: str
-    object_id: str
-    command_router_client: TaskCommandRouterClient
-
-
 class _StreamWriterThroughServer:
-    """Provides an interface to buffer and write to a sandbox stream (`stdin`) via the server."""
+    """Provides an interface to buffer and write logs to a sandbox or container process stream (`stdin`)."""
 
-    def __init__(self, params: _StreamWriterThroughServerParams) -> None:
+    def __init__(self, object_id: str, object_type: Literal["sandbox", "container_process"], client: _Client) -> None:
         """mdmd:hidden"""
         self._index = 1
-        self._object_id = params.object_id
-        self._client = params.client
+        self._object_id = object_id
+        self._object_type = object_type
+        self._client = client
         self._is_closed = False
         self._buffer = bytearray()
 
@@ -575,20 +687,33 @@ class _StreamWriterThroughServer:
         index = self._get_next_index()
 
         try:
-            await self._client.stub.SandboxStdinWrite(
-                api_pb2.SandboxStdinWriteRequest(
-                    sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
-                ),
-            )
+            if self._object_type == "sandbox":
+                await self._client.stub.SandboxStdinWrite(
+                    api_pb2.SandboxStdinWriteRequest(
+                        sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
+                    ),
+                )
+            else:
+                await self._client.stub.ContainerExecPutInput(
+                    api_pb2.ContainerExecPutInputRequest(
+                        exec_id=self._object_id,
+                        input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
+                    ),
+                )
         except ConflictError as exc:
             raise ValueError(str(exc))
 
 
 class _StreamWriterThroughCommandRouter:
-    def __init__(self, params: _StreamWriterThroughCommandRouterParams) -> None:
-        self._object_id = params.object_id
-        self._command_router_client = params.command_router_client
-        self._task_id = params.task_id
+    def __init__(
+        self,
+        object_id: str,
+        command_router_client: TaskCommandRouterClient,
+        task_id: str,
+    ) -> None:
+        self._object_id = object_id
+        self._command_router_client = command_router_client
+        self._task_id = task_id
         self._is_closed = False
         self._buffer = bytearray()
         self._offset = 0
@@ -629,14 +754,19 @@ class _StreamWriter:
 
     def __init__(
         self,
-        params: Union[_StreamWriterThroughServerParams, _StreamWriterThroughCommandRouterParams],
+        object_id: str,
+        object_type: Literal["sandbox", "container_process"],
+        client: _Client,
+        command_router_client: Optional[TaskCommandRouterClient] = None,
+        task_id: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
-        if isinstance(params, _StreamWriterThroughCommandRouterParams):
-            self._impl = _StreamWriterThroughCommandRouter(params)
+        if command_router_client is None:
+            self._impl = _StreamWriterThroughServer(object_id, object_type, client)
         else:
-            # Sandbox stdin is written via the server.
-            self._impl = _StreamWriterThroughServer(params)
+            assert task_id is not None
+            assert object_type == "container_process"
+            self._impl = _StreamWriterThroughCommandRouter(object_id, command_router_client, task_id=task_id)
 
     def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
         """Write data to the stream but does not send it immediately.

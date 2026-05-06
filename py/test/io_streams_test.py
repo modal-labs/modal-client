@@ -1,64 +1,23 @@
 # Copyright Modal Labs 2024
+import asyncio
 import pytest
 import time
 import typing
 from typing import AsyncGenerator, Optional
 
+from grpclib import Status
+from grpclib.exceptions import GRPCError
+
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter, synchronizer
-from modal.io_streams import (
-    StreamReader,
-    _decode_bytes_stream_to_str,
-    _stream_by_line,
-    _StreamReaderThroughCommandRouterParams,
-    _StreamReaderThroughServerParams,
-    _StreamWriter,
-    _StreamWriterThroughCommandRouterParams,
-)
+from modal.io_streams import StreamReader, _decode_bytes_stream_to_str, _stream_by_line, _StreamWriter
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
-def _build_stream_reader_params(
-    *,
-    file_descriptor,
-    object_id,
-    client=None,
-    command_router_client=None,
-    task_id=None,
-    deadline=None,
-):
-    """Helper: build the right params dataclass for a stream reader test."""
-    if command_router_client is not None:
-        return _StreamReaderThroughCommandRouterParams(
-            file_descriptor=file_descriptor,
-            task_id=task_id,
-            object_id=object_id,
-            command_router_client=command_router_client,
-            deadline=deadline,
-        )
-    return _StreamReaderThroughServerParams(
-        file_descriptor=file_descriptor,
-        object_id=object_id,
-        client=client,
-    )
-
-
 @synchronizer.wrap
-async def _make_stream_reader(**kwargs) -> StreamReader:
+async def _make_stream_reader(**kwarg) -> StreamReader:
     # helper to make sure stream readers are constructed in the synchronizer event loop
-    params_kwargs = {
-        k: kwargs.pop(k, None)
-        for k in (
-            "file_descriptor",
-            "object_id",
-            "client",
-            "command_router_client",
-            "task_id",
-            "deadline",
-        )
-    }
-    params = _build_stream_reader_params(**params_kwargs)
-    return StreamReader(params, **kwargs)
+    return StreamReader(**kwarg)
 
 
 def make_stream_reader(**kwargs) -> StreamReader:
@@ -88,6 +47,7 @@ def test_stream_reader(servicer, client):
             stdout: StreamReader[str] = make_stream_reader(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="sb-123",
+                object_type="sandbox",
                 client=client,
             )
 
@@ -119,6 +79,7 @@ def test_stream_reader_processed(servicer, client):
             stdout: StreamReader[str] = make_stream_reader(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="sb-123",
+                object_type="sandbox",
                 client=client,
                 by_line=True,
             )
@@ -152,6 +113,7 @@ def test_stream_reader_processed_multiple(servicer, client):
             stdout: StreamReader[str] = make_stream_reader(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="sb-123",
+                object_type="sandbox",
                 client=client,
                 by_line=True,
             )
@@ -197,6 +159,7 @@ def test_stream_reader_processed_partial_lines(servicer, client):
             stdout: StreamReader[str] = make_stream_reader(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="sb-123",
+                object_type="sandbox",
                 client=client,
                 by_line=True,
             )
@@ -212,34 +175,38 @@ def test_stream_reader_processed_partial_lines(servicer, client):
 async def test_stream_reader_bytes_mode(servicer, client):
     """Test that the stream reader works in bytes mode."""
 
-    class _BytesRouter:
-        async def exec_stdio_read(self, task_id, exec_id, file_descriptor, deadline=None):
-            yield sr_pb2.TaskExecStdioReadResponse(data=b"foo\n")
+    async def container_exec_get_output(servicer, stream):
+        await stream.recv_message()
 
-    router = _BytesRouter()
-    with enable_output():
-        stdout: StreamReader[bytes] = await _make_stream_reader.aio(
-            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-            object_id="tp-123",
-            command_router_client=router,  # type: ignore[arg-type]
-            task_id="task-1",
-            text=False,
+        await stream.send_message(
+            api_pb2.RuntimeOutputBatch(batch_index=0, items=[api_pb2.RuntimeOutputMessage(message_bytes=b"foo\n")])
         )
-        assert await stdout.read.aio() == b"foo\n"
+
+        await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
+
+        with enable_output():
+            stdout: StreamReader[bytes] = await _make_stream_reader.aio(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="tp-123",
+                object_type="container_process",
+                client=client,
+                text=False,
+            )
+            assert await stdout.read.aio() == b"foo\n"
 
 
 def test_stream_reader_line_buffered_bytes(servicer, client):
     """Test that using line-buffering with bytes mode fails."""
 
-    class _DummyRouter:
-        pass
-
     with pytest.raises(ValueError):
         make_stream_reader(
             file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
             object_id="tp-123",
-            command_router_client=_DummyRouter(),  # type: ignore[arg-type]
-            task_id="task-1",
+            object_type="container_process",
+            client=client,
             by_line=True,
             text=False,
         )
@@ -275,6 +242,7 @@ async def test_stream_reader_async_iter(servicer, client):
         stdout: StreamReader[str] = await _make_stream_reader.aio(
             file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
             object_id="sb-123",
+            object_type="sandbox",
             client=client,
             by_line=True,
         )
@@ -288,60 +256,90 @@ async def test_stream_reader_async_iter(servicer, client):
 
 
 @pytest.mark.asyncio
-async def test_stream_reader_container_process_reads_all_messages():
-    """Test that StreamReader reads all messages from the command router."""
+async def test_stream_reader_container_process_retry(servicer, client):
+    """Test that StreamReader handles container process stream failures and retries."""
 
-    class _MultiMsgRouter:
-        async def exec_stdio_read(self, task_id, exec_id, file_descriptor, deadline=None):
-            for i in range(6):
-                yield sr_pb2.TaskExecStdioReadResponse(data=f"msg{i}\n".encode())
+    batch_idx = 0
 
-    router = _MultiMsgRouter()
-    with enable_output():
-        stdout: StreamReader[str] = await _make_stream_reader.aio(
-            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-            object_id="tp-123",
-            command_router_client=router,  # type: ignore[arg-type]
-            task_id="task-1",
-            by_line=True,
-        )
+    async def container_exec_get_output(servicer, stream):
+        nonlocal batch_idx
+        await stream.recv_message()
 
-        output = []
-        async for line in stdout:
-            output.append(line)
+        for _ in range(3):
+            await stream.send_message(
+                api_pb2.RuntimeOutputBatch(
+                    batch_index=batch_idx,
+                    items=[api_pb2.RuntimeOutputMessage(message_bytes=f"msg{batch_idx}\n".encode())],
+                )
+            )
+            batch_idx += 1
 
-        assert output == [f"msg{i}\n" for i in range(6)]
+        # Simulate failure on the first connection
+        if batch_idx == 3:
+            raise GRPCError(Status.INTERNAL, "internal error")
+
+        await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
+
+        with enable_output():
+            stdout: StreamReader[str] = await _make_stream_reader.aio(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="tp-123",
+                object_type="container_process",
+                client=client,
+                by_line=True,
+            )
+
+            output = []
+            async for line in stdout:
+                output.append(line)
+
+            assert output == [f"msg{i}\n" for i in range(6)]
 
 
 @pytest.mark.asyncio
-async def test_stream_reader_timeout():
+async def test_stream_reader_timeout(servicer, client):
     """Test that StreamReader stops reading messages after the given deadline, and that
     messages are received within the deadline"""
-    from modal.exception import ExecTimeoutError
 
-    class _SlowRouter:
-        async def exec_stdio_read(self, task_id, exec_id, file_descriptor, deadline=None):
-            for i in range(3):
-                if i == 2:
-                    # Simulate the router raising a timeout error when deadline is exceeded
-                    raise ExecTimeoutError("deadline exceeded")
-                yield sr_pb2.TaskExecStdioReadResponse(data=f"msg{i}\n".encode())
+    time_first_send = 0.0
 
-    router = _SlowRouter()
-    with enable_output():
-        stdout: StreamReader[str] = await _make_stream_reader.aio(
-            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-            object_id="tp-123",
-            command_router_client=router,  # type: ignore[arg-type]
-            task_id="task-1",
-            by_line=True,
-            deadline=time.monotonic() + 0.5,
-        )
-        output: list[str] = []
-        async for line in stdout:
-            output.append(line)
-        # message 3 should not be received, due to the timeout
-        assert output == [f"msg{i}\n" for i in range(2)]
+    async def container_exec_get_output(servicer, stream):
+        nonlocal time_first_send
+        await stream.recv_message()
+        # Send three messages, third one heavily delayed
+        for i in range(3):
+            if i == 2:
+                await asyncio.sleep(1)
+            await stream.send_message(
+                api_pb2.RuntimeOutputBatch(
+                    batch_index=i,
+                    items=[api_pb2.RuntimeOutputMessage(message_bytes=f"msg{i}\n".encode())],
+                )
+            )
+            if i == 0:
+                time_first_send = time.monotonic()
+        await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
+        with enable_output():
+            stdout: StreamReader[str] = await _make_stream_reader.aio(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="tp-123",
+                object_type="container_process",
+                client=client,
+                by_line=True,
+                deadline=time.monotonic() + 0.5,  # use a 2-second timeout
+            )
+            output: list[str] = []
+            async for line in stdout:
+                output.append(line)
+            # message 3 should not be received, due to the timeout
+            assert output == [f"msg{i}\n" for i in range(2)]
+            assert time.monotonic() - time_first_send <= 4
 
 
 async def _bytes_stream(items: list[bytes]):
@@ -475,11 +473,11 @@ class _FakeCommandRouterClient:
 async def test_stream_writer_drain_calls_exec_stdin_with_eof_when_closed_and_no_data():
     router = _FakeCommandRouterClient()
     writer = _StreamWriter(
-        _StreamWriterThroughCommandRouterParams(
-            task_id="task-1",
-            object_id="tp-123",
-            command_router_client=router,  # type: ignore[arg-type]
-        )
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,  # unused when command_router_client is provided
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
     )
 
     writer.write_eof()
@@ -498,11 +496,11 @@ async def test_stream_writer_drain_calls_exec_stdin_with_eof_when_closed_and_no_
 async def test_stream_writer_drain_writes_all_written_data_since_last_drain():
     router = _FakeCommandRouterClient()
     writer = _StreamWriter(
-        _StreamWriterThroughCommandRouterParams(
-            task_id="task-1",
-            object_id="tp-123",
-            command_router_client=router,  # type: ignore[arg-type]
-        )
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
     )
 
     writer.write(b"abc")
@@ -520,11 +518,11 @@ async def test_stream_writer_drain_writes_all_written_data_since_last_drain():
 async def test_stream_writer_drain_does_not_rewrite_data_written_prior_to_last_drain():
     router = _FakeCommandRouterClient()
     writer = _StreamWriter(
-        _StreamWriterThroughCommandRouterParams(
-            task_id="task-1",
-            object_id="tp-123",
-            command_router_client=router,  # type: ignore[arg-type]
-        )
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
     )
 
     writer.write(b"ab")
@@ -548,11 +546,11 @@ async def test_stream_writer_drain_does_not_rewrite_data_written_prior_to_last_d
 async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with_both():
     router = _FakeCommandRouterClient()
     writer = _StreamWriter(
-        _StreamWriterThroughCommandRouterParams(
-            task_id="task-1",
-            object_id="tp-123",
-            command_router_client=router,  # type: ignore[arg-type]
-        )
+        object_id="tp-123",
+        object_type="container_process",
+        client=None,
+        command_router_client=router,  # type: ignore[arg-type]
+        task_id="task-1",
     )
 
     writer.write(b"xyz")
@@ -572,6 +570,8 @@ def test_stream_reader_read_concatenates_chunks(text, expected_out):
     reader: typing.Union[StreamReader[str], StreamReader[bytes]] = make_stream_reader(
         file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
         object_id="tp-123",
+        object_type="container_process",
+        client=None,  # type: ignore[arg-type]
         command_router_client=router,  # type: ignore[arg-type]
         task_id="task-1",
         text=text,

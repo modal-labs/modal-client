@@ -78,7 +78,6 @@ class FakeTaskCommandRouterClient:
         self._exec_start_requests: list[sr_pb2.TaskExecStartRequest] = []
         self.last_exec_start_request: sr_pb2.TaskExecStartRequest | None = None
         self.last_container_create_request: sr_pb2.TaskContainerCreateRequest | None = None
-        self.shell_prompt: bytes | None = None
 
     async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
         # Mimic task_command_router behavior - we should remove this proto variant though.
@@ -108,10 +107,6 @@ class FakeTaskCommandRouterClient:
     ):
         proc = self._procs[exec_id]
         if file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
-            # Inject shell prompt as the first output chunk, matching the behavior of
-            # MockClientServicer.ContainerExecGetOutput for interactive shell tests.
-            if self.shell_prompt:
-                yield sr_pb2.TaskExecStdioReadResponse(data=self.shell_prompt)
             stream = proc.stdout
         elif file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
             stream = proc.stderr
@@ -324,18 +319,33 @@ class FakeTaskCommandRouterClient:
             await asyncio.sleep(0.05)
 
 
-@pytest.fixture(autouse=True)
-def _setup_command_router(monkeypatch):
-    """Autouse fixture that patches ``TaskCommandRouterClient.init`` to use
-    ``FakeTaskCommandRouterClient``.
+@pytest.fixture
+def exec_backend(request, monkeypatch, client):
+    """Parametrized fixture to toggle between server and command-router exec backends.
 
-    This ensures all tests that call sandbox.exec() get a working router by default.
+    Usage: add to test via parametrize with values ["server", "router"].
     """
+    backend = getattr(request, "param", "server")
 
-    async def _mk_router(cls, server_client, task_id):
-        return FakeTaskCommandRouterClient(server_client)
+    if backend == "server":
+        # Force server path by making try_init return None
+        async def _no_router(*args, **kwargs):
+            return None
 
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
+        async def _try_init(cls, *a, **k):
+            return await _no_router()
+
+        monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_try_init))
+    elif backend == "router":
+
+        async def _mk_router(cls, server_client, task_id):
+            return FakeTaskCommandRouterClient(server_client)
+
+        monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
+    else:
+        raise ValueError(f"Unknown exec backend: {backend}")
+
+    return backend
 
 
 @contextlib.contextmanager
@@ -2393,10 +2403,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SandboxRestoreResponse(sandbox_id="sb-123"))
 
     async def TaskGetCommandRouterAccess(self, stream):
+        # In tests, we disable command router access so client falls back to server RPCs,
+        # unless the exec_backend is "router".
         _request: api_pb2.TaskGetCommandRouterAccessRequest = await stream.recv_message()
-        await stream.send_message(
-            api_pb2.TaskGetCommandRouterAccessResponse(url="http://localhost:50051", jwt="fake-jwt-token")
-        )
+        raise GRPCError(Status.FAILED_PRECONDITION, "Command router access not enabled in tests")
 
     async def TaskGetInfo(self, stream):
         _request: api_pb2.TaskGetInfoRequest = await stream.recv_message()
@@ -3715,19 +3725,8 @@ def run_cli_command(args: list[str], expected_exit_code: int = 0, expected_stder
 
 
 @pytest.fixture
-def mock_shell_pty(servicer, monkeypatch):
-    shell_prompt = b"TEST_PROMPT# "
-    servicer.shell_prompt = shell_prompt
-
-    # Override the autouse _setup_command_router patch so the fake router injects
-    # ``shell_prompt`` as the first stdout chunk (matching ContainerExecGetOutput
-    # behavior for interactive shell tests).
-    async def _mk_router(cls, server_client, task_id):
-        client = FakeTaskCommandRouterClient(server_client)
-        client.shell_prompt = shell_prompt
-        return client
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
+def mock_shell_pty(servicer):
+    servicer.shell_prompt = b"TEST_PROMPT# "
 
     def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)

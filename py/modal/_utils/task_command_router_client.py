@@ -16,7 +16,7 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 
 from modal.config import logger
-from modal.exception import ExecTimeoutError
+from modal.exception import ConflictError, ExecTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
@@ -196,12 +196,21 @@ class TaskCommandRouterClient:
         return cls(server_client, task_id, url, jwt, channel, loop, jwt_refresh_lock, sandbox_id=sandbox_id)
 
     @classmethod
-    async def init(
+    async def try_init(
         cls,
         server_client,
         task_id: str,
-    ) -> "TaskCommandRouterClient":
-        resp = await fetch_command_router_access(server_client, task_id)
+    ) -> Optional["TaskCommandRouterClient"]:
+        """Attempt to initialize a TaskCommandRouterClient by fetching direct access.
+
+        Returns None if command router access is not enabled (FAILED_PRECONDITION).
+        """
+        try:
+            resp = await fetch_command_router_access(server_client, task_id)
+        except ConflictError:
+            logger.debug(f"Command router access is not enabled for task {task_id}")
+            return None
+
         logger.debug(f"Using command router access for task {task_id}")
         return await cls._connect(server_client, task_id, resp.url, resp.jwt)
 
@@ -232,7 +241,7 @@ class TaskCommandRouterClient:
         stream_stdio_retry_delay_factor: float = 2,
         stream_stdio_max_retries: int = 10,
     ) -> None:
-        """Callers should not use this directly. Use TaskCommandRouterClient.init() instead."""
+        """Callers should not use this directly. Use TaskCommandRouterClient.try_init() instead."""
         # Record the loop this instance is bound to so __del__ can safely schedule cleanup
         # even if finalization happens from a different thread (e.g. via synchronicity).
         self._loop = loop

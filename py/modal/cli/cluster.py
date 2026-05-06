@@ -16,6 +16,7 @@ from modal.cli.utils import display_table, env_option, is_tty
 from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
+from modal.exception import InvalidError
 from modal.output import OutputManager
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
@@ -78,7 +79,9 @@ async def shell(cluster_id: str, rank: int = 0):
 
     pty = is_tty()
 
-    command_router_client = await TaskCommandRouterClient.init(client, task_id)
+    command_router_client = await TaskCommandRouterClient.try_init(client, task_id)
+    if command_router_client is None:
+        raise InvalidError(f"Command router access is not available for container {task_id}")
 
     process_id = str(uuid.uuid4())
 

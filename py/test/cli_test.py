@@ -927,10 +927,8 @@ def test_environment_flag(test_dir, servicer, command):
                 mount_id="mo-123",
                 handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
             ),
-            request_filter=lambda req: (
-                req.deployment_name.startswith("modal-client-mount")
-                and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
-            ),
+            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount")
+            and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
             "SharedVolumeGetOrCreate",
@@ -963,17 +961,14 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
                 mount_id="mo-123",
                 handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123"),
             ),
-            request_filter=lambda req: (
-                req.deployment_name.startswith("modal-client-mount")
-                and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL
-            ),
+            request_filter=lambda req: req.deployment_name.startswith("modal-client-mount")
+            and req.namespace == api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )  # built-in client lookup
         ctx.add_response(
             "SharedVolumeGetOrCreate",
             api_pb2.SharedVolumeGetOrCreateResponse(shared_volume_id="sv-123"),
-            request_filter=lambda req: (
-                req.deployment_name == "volume_app" and req.environment_name == "some_weird_default_env"
-            ),
+            request_filter=lambda req: req.deployment_name == "volume_app"
+            and req.environment_name == "some_weird_default_env",
         )
         run_cli_command(command + [str(app_file)])
 
@@ -1338,7 +1333,7 @@ def test_container_exec(servicer, set_env_client, monkeypatch):
     async def _mk_router(cls, server_client, task_id):
         return mock_tcr
 
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
+    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
 
     # Test non-PTY path: runs the command and waits for exit
     run_cli_command(["container", "exec", "--no-pty", "ta-123", "echo", "Hello World"])
@@ -1360,7 +1355,7 @@ def test_container_exec_with_pty(servicer, set_env_client, mock_shell_pty, monke
     async def _mk_router(cls, server_client, task_id):
         return mock_tcr
 
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
+    monkeypatch.setattr(TaskCommandRouterClient, "try_init", classmethod(_mk_router))
 
     fake_stdin, captured_out = mock_shell_pty
     fake_stdin.clear()
