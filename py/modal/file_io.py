@@ -371,7 +371,6 @@ class _FileIO(Generic[T]):
             "`FileIO.seek()` is deprecated. Use the `Sandbox.filesystem` APIs instead."
             " If you specifically need the ability to write to specific offsets in a file,"
             " please contact support@modal.com.",
-            pending=True,
         )
         self._check_closed()
         resp = await self._client.stub.ContainerFilesystemExec(
@@ -392,7 +391,6 @@ class _FileIO(Generic[T]):
         deprecation_warning(
             (2026, 3, 9),
             "`FileIO.ls()` is deprecated. Use `Sandbox.filesystem.list_files()` instead.",
-            pending=True,
         )
         return await ls(path, client, task_id)
 
@@ -427,7 +425,6 @@ class _FileIO(Generic[T]):
         deprecation_warning(
             (2026, 3, 9),
             "`FileIO.watch()` is deprecated. Use `Sandbox.watch()` instead.",
-            pending=True,
         )
         async for event in watch(path, client, task_id, filter, recursive, timeout):
             yield event

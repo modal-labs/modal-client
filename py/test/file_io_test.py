@@ -325,7 +325,8 @@ def test_file_seek(servicer, client):
         f.close()
         f = FileIO.create("/test.txt", "r", client, "task-123")
         for i in range(4):
-            f.seek(3)
+            with pytest.warns(DeprecationError):
+                f.seek(3)
             with pytest.warns(DeprecationError):
                 assert f.read() == expected_outputs[i]
         f.close()
@@ -408,8 +409,9 @@ def test_file_watch(servicer, client):
 
         events = FileIO.watch("/test.txt", client, "task-123")
         seen_events: list[FileWatchEvent] = []
-        for event in events:
-            seen_events.append(event)
+        with pytest.warns(DeprecationError):
+            for event in events:
+                seen_events.append(event)
         assert len(seen_events) == len(expected_events)
         for e, se in zip(expected_events, seen_events):
             assert e.paths == se.paths
@@ -443,8 +445,9 @@ def test_file_watch_with_filter(servicer, client):
 
         events = FileIO.watch("/test.txt", client, "task-123", filter=[FileWatchEventType.Access])
         seen_events: list[FileWatchEvent] = []
-        for event in events:
-            seen_events.append(event)
+        with pytest.warns(DeprecationError):
+            for event in events:
+                seen_events.append(event)
         assert len(seen_events) == 1
         assert seen_events[0].paths == expected_events[0].paths
         assert seen_events[0].type == expected_events[0].type
@@ -479,8 +482,9 @@ def test_file_watch_ignore_invalid_events(servicer, client):
 
         events = FileIO.watch("/test.txt", client, "task-123")
         seen_events: list[FileWatchEvent] = []
-        for event in events:
-            seen_events.append(event)
+        with pytest.warns(DeprecationError):
+            for event in events:
+                seen_events.append(event)
         assert len(seen_events) == len(expected_events)
         for e, se in zip(expected_events, seen_events):
             assert e.paths == se.paths
@@ -567,7 +571,8 @@ def test_ls(servicer, client):
         ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
         ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
 
-        files = FileIO.ls("/test.txt", client, "task-123")
+        with pytest.warns(DeprecationError):
+            files = FileIO.ls("/test.txt", client, "task-123")
         assert files == ["foo", "bar", "baz"]
 
 

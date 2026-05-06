@@ -7,7 +7,7 @@ from typing import Any, Callable, TypeVar
 
 from typing_extensions import ParamSpec  # Needed for Python 3.9
 
-from ..exception import DeprecationError, PendingDeprecationError
+from ..exception import DeprecationError
 
 _INTERNAL_MODULES = ["modal", "synchronicity"]
 
@@ -21,12 +21,11 @@ def deprecation_error(deprecated_on: tuple[int, int, int], msg: str):
     raise DeprecationError(f"Deprecated on {date(*deprecated_on)}: {msg}")
 
 
-def deprecation_warning(
-    deprecated_on: tuple[int, int, int], msg: str, *, pending: bool = False, show_source: bool = True
-) -> None:
+def deprecation_warning(deprecated_on: tuple[int, int, int], msg: str, *, show_source: bool = True) -> None:
     """Issue a Modal deprecation warning with source optionally attributed to user code.
 
-    See the implementation of the built-in [warnings.warn](https://docs.python.org/3/library/warnings.html#available-functions).
+    See the implementation of the built-in warnings.warn:
+    https://docs.python.org/3/library/warnings.html#available-functions.
     """
     filename, lineno = "<unknown>", 0
     if show_source:
@@ -42,10 +41,8 @@ def deprecation_warning(
             # Use the defaults from above
             pass
 
-    warning_cls = PendingDeprecationError if pending else DeprecationError
-
     # This is a lower-level function that warnings.warn uses
-    warnings.warn_explicit(f"{date(*deprecated_on)}: {msg}", warning_cls, filename, lineno)
+    warnings.warn_explicit(f"{date(*deprecated_on)}: {msg}", DeprecationError, filename, lineno)
 
 
 P = ParamSpec("P")

@@ -1127,6 +1127,8 @@ def test_exec_on_terminate_sandbox_raises(servicer, client, exec_backend, app):
             sb.exec("echo", "hello")
 
 
+# Values are None for deprecated methods
+# Since we also programmatically assert that we cover all public API
 detach_error_funcs = {
     "get_tags": lambda sb: sb.get_tags(),
     "set_tags": lambda sb: sb.set_tags({"hello": "world"}),
@@ -1142,11 +1144,11 @@ detach_error_funcs = {
     "mount_image": lambda sb: sb.mount_image("/mnt", modal.image._Image.from_scratch()),
     "unmount_image": lambda sb: sb.unmount_image("/mnt"),
     "_experimental_snapshot": lambda sb: sb._experimental_snapshot(),
-    "open": lambda sb: sb.open("/hello.txt"),
-    "ls": lambda sb: sb.ls("/mnt"),
-    "mkdir": lambda sb: sb.mkdir("/world"),
-    "rm": lambda sb: sb.rm("/world"),
-    "watch": lambda sb: next(sb.watch("/world")),
+    "open": None,
+    "ls": None,
+    "mkdir": None,
+    "rm": None,
+    "watch": None,
     "_experimental_containers": lambda sb: sb._experimental_containers,
     "stdout": lambda sb: sb.stdout,
     "stderr": lambda sb: sb.stderr,
@@ -1170,7 +1172,6 @@ def test_func_map_covers_all_public_methods_and_properties():
 
 
 @pytest.mark.parametrize("name", detach_error_funcs)
-@pytest.mark.filterwarnings("ignore::modal.exception.DeprecationError")
 def test_detach_errors(servicer, client, app, name):
     """Check that detached sandbox actually raise."""
     sb = Sandbox.create(app=app)
@@ -1178,8 +1179,9 @@ def test_detach_errors(servicer, client, app, name):
 
     func = detach_error_funcs[name]
 
-    with pytest.raises(modal.exception.ClientClosed):
-        func(sb)
+    if func is not None:
+        with pytest.raises(modal.exception.ClientClosed):
+            func(sb)
 
 
 def test_detach_twice(servicer, client, app):

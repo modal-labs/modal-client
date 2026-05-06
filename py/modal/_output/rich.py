@@ -49,7 +49,7 @@ from modal._output.manager import (
 )
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal.config import logger
-from modal.exception import DeprecationError, PendingDeprecationError, ServerWarning
+from modal.exception import DeprecationError, ServerWarning
 from modal_proto import api_pb2
 
 if platform.system() == "Windows":
@@ -359,14 +359,14 @@ class RichOutputManager(OutputManager):
     ) -> None:
         """Display a warning, using rich formatting for Modal-specific warnings.
 
-        Modal warnings (DeprecationError, PendingDeprecationError, ServerWarning) are shown
+        Modal warnings (DeprecationError, ServerWarning) are shown
         in a yellow-bordered panel with source context. Other warnings fall back to the
         default Python warning display.
         """
         # For non-Modal warnings, fall back to the default display
         import modal
 
-        is_modal_warning = issubclass(category, (DeprecationError, PendingDeprecationError, ServerWarning))
+        is_modal_warning = issubclass(category, (DeprecationError, ServerWarning))
         filename_in_modal = modal.__path__ and Path(filename).is_relative_to(modal.__path__[0])
         if not is_modal_warning and not filename_in_modal:
             base_showwarning(warning, category, filename, lineno, file=None, line=None)
@@ -392,7 +392,7 @@ class RichOutputManager(OutputManager):
                 pass
 
         # Build title
-        if issubclass(category, (DeprecationError, PendingDeprecationError)):
+        if issubclass(category, DeprecationError):
             title = "Modal Deprecation Warning"
         else:
             title = "Modal Warning"

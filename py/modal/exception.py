@@ -99,7 +99,6 @@ class _GRPCErrorWrapper(grpclib.GRPCError):
             "Modal will stop propagating the `grpclib.GRPCError` type in the future. "
             f"Update your code so that it catches `modal.exception.{exc_type}` directly "
             "to avoid changes to error handling behavior in the future.",
-            pending=True,
         )
 
     @property
@@ -250,10 +249,6 @@ class DeprecationError(UserWarning):
     """UserWarning category emitted when a deprecated Modal feature or API is used."""
 
     # Overloading it to evade the default filter, which excludes __main__.
-
-
-class PendingDeprecationError(UserWarning):
-    """Soon to be deprecated feature. Only used intermittently because of multi-repo concerns."""
 
 
 class ServerWarning(UserWarning):

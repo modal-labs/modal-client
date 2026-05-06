@@ -1647,7 +1647,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         deprecation_warning(
             (2026, 4, 15),
             "`Sandbox.ls()` is deprecated. Use `Sandbox.filesystem.list_files()` instead.",
-            pending=True,
         )
         task_id = await self._get_task_id()
         return await ls(path, self._client, task_id)
