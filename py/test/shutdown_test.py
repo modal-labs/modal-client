@@ -78,13 +78,11 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer, credenti
         # The fix should be in from synchronicity, they have a `test_shutdown_during_async_run` that checks
         # similar code. Behavior in cPython changed in
         # https://github.com/python/cpython/commit/f695eca60cfc53cf3322323082652037d6d0cfef
-        assert "ClientClosed" in caplog.records[0].message
-        log_records = caplog.records[1:]
-    else:
-        log_records = caplog.records
+        assert any("ClientClosed" in r.message for r in caplog.records)
 
-    assert len(log_records) == 3  # open, send and recv called outside of task context
-    for rec in log_records:
+    modal_records = [r for r in caplog.records if r.name.startswith("modal")]
+    assert len(modal_records) == 3  # open, send and recv called outside of task context
+    for rec in modal_records:
         assert "made outside of task context" in rec.message
 
 

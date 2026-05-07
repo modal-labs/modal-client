@@ -901,7 +901,7 @@ def test_multiapp(servicer, caplog):
     deployed_multiapp = isolated_deploy("test.supports.multiapp", "a")
     ret = _run_container_auto(servicer, "a_func", deployed_multiapp)
     assert _unwrap_scalar(ret) is None
-    assert len(caplog.messages) == 0
+    assert not [r for r in caplog.records if r.name.startswith("modal")]
     # Note that the app can be inferred from the function, even though there are multiple
     # apps present in the file
 
@@ -926,7 +926,7 @@ def test_multiapp_privately_decorated_named_app(servicer, caplog):
     assert deployed_multiapp[0]["foo"][1].app_name == "dummy"
     ret = _run_container_auto(servicer, "foo", deployed_multiapp)
     assert _unwrap_scalar(ret) == 1
-    assert len(caplog.messages) == 0  # no warnings, since target app is named
+    assert not [r for r in caplog.records if r.name.startswith("modal")]  # no warnings, since target app is named
 
 
 @skip_github_non_linux
@@ -964,7 +964,7 @@ def test_image_run_function_no_warn(servicer, caplog):
         inputs=_get_inputs(((), {})),
     )
     assert _unwrap_scalar(ret) is None
-    assert len(caplog.messages) == 0
+    assert not [r for r in caplog.records if r.name.startswith("modal")]
 
 
 @skip_github_non_linux

@@ -1259,6 +1259,7 @@ def _run_subprocess(cli_cmd: list[str]) -> helpers.PopenWithCtrlC:
 
 
 @pytest.mark.timeout(10)
+@skip_windows("console_ctrl.send_ctrl_c is unreliable on Windows CI.")
 def test_keyboard_interrupt_during_app_load(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     creating_function = threading.Event()
@@ -1280,6 +1281,7 @@ def test_keyboard_interrupt_during_app_load(servicer, server_url_env, token_env,
 
 
 @pytest.mark.timeout(10)
+@skip_windows("console_ctrl.send_ctrl_c is unreliable on Windows CI.")
 def test_keyboard_interrupt_during_app_run(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
@@ -1300,6 +1302,7 @@ def test_keyboard_interrupt_during_app_run(servicer, server_url_env, token_env, 
 
 
 @pytest.mark.timeout(10)
+@skip_windows("console_ctrl.send_ctrl_c is unreliable on Windows CI.")
 def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()

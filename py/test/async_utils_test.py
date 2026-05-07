@@ -1310,6 +1310,7 @@ async def test_async_chain_cleanup():
     assert states == ["enter 1", "exit 1", "enter 2", "exit 2"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="console_ctrl cannot reach CREATE_NEW_CONSOLE subprocesses in CI")
 def test_sigint_run_async_gen_shuts_down_gracefully():
     code = textwrap.dedent(
         """
