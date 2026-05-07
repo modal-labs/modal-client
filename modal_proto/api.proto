@@ -2192,6 +2192,7 @@ message FunctionStats {
   uint32 backlog = 1;
   uint32 num_total_tasks = 3;
   uint32 num_running_inputs = 4;
+  uint32 input_headroom = 5;
 }
 
 message FunctionUpdateSchedulingParamsRequest {
