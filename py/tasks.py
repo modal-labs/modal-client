@@ -313,6 +313,12 @@ def test(ctx, pytest_args="-v"):
     ctx.run(f"pytest {pytest_args}", pty=sys.platform != "win32")  # win32 doesn't support the 'pty' module
 
 
+@task()
+def doctest(ctx):
+    """Exercise tests in docstring examples."""
+    ctx.run("pytest -v --markdown-docs -m markdown-docs modal", pty=sys.platform != "win32")
+
+
 @task(
     help={
         "fix": "Automatically add missing headers",

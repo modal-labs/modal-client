@@ -548,6 +548,18 @@ def test_run_commands(builder_version, servicer, client):
             assert layers[0].dockerfile_commands[i] == f"RUN {cmd}"
 
 
+def test_pipe(builder_version, servicer, client):
+    def add_commands(image: Image, message: str, *, env_value: str = "default") -> Image:
+        return image.run_commands(f"echo {message}").env({"FOO": env_value})
+
+    image = Image.debian_slim().pipe(add_commands, "piped", env_value="bar")
+    build_image(image, client)
+
+    commands = get_all_dockerfile_commands(image.object_id, servicer)
+    assert "RUN echo piped" in commands
+    assert "ENV FOO=bar" in commands
+
+
 def test_run_commands_with_volume(servicer, client):
     vol = modal.Volume.from_name("xyz", create_if_missing=True)
     image = modal.Image.debian_slim().run_commands("echo 'Hello Modal'", volumes={"/root/foo": vol})

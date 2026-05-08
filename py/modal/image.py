@@ -24,7 +24,7 @@ from typing import (
 import typing_extensions
 from google.protobuf.message import Message
 from grpclib.exceptions import StreamTerminatedError
-from typing_extensions import Self
+from typing_extensions import Concatenate, Self
 
 from modal._serialization import serialize_data_format
 from modal_proto import api_pb2
@@ -100,6 +100,8 @@ Use {replacement} instead, which is functionally and performance-wise equivalent
 
 See https://modal.com/docs/guide/modal-1-0-migration for more details.
 """
+
+P = typing_extensions.ParamSpec("P")
 
 
 def _validate_python_version(
@@ -2479,6 +2481,32 @@ class _Image(_Object, type_prefix="im"):
         dockerfile_cmd = f"CMD [{cmd_str}]"
 
         return self.dockerfile_commands(dockerfile_cmd)
+
+    def pipe(
+        self,
+        func: Callable[Concatenate["_Image", P], "_Image"],
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> "_Image":
+        """Apply a local function to expand the Image recipe.
+
+        This method can be useful for defining reusable Image build
+        recipes that compose well with the fluent Image builder interface.
+
+        **Example**
+
+        ```python
+        def workspace_setup(image: modal.Image, repo: str) -> modal.Image:
+            return image.run_commands(f"git clone {repo}").uv_pip_install(".")
+
+        image = (
+            modal.Image.debian_slim()
+            .apt_install("git")
+            .pipe(workspace_setup, "https://github.com/example/repo.git")
+        )
+        ```
+        """
+        return func(self, *args, **kwargs)
 
     # Live handle methods
 
