@@ -576,6 +576,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.blocks = blocks  # shared dict
         self.requests = []
         self.done = False
+        self.app_done_event = asyncio.Event()
         self.rate_limit_sleep_duration = None
         self.fail_get_inputs = False
         self.fail_put_inputs_with_grpc_error: GrpcErrorAndCount | None = None
@@ -992,6 +993,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppClientDisconnectRequest = await stream.recv_message()
         self.requests.append(request)
         self.done = True
+        self.app_done_event.set()
         self.app_client_disconnect_count += 1
         state_history = self.app_state_history[request.app_id]
         if state_history[-1] not in [api_pb2.APP_STATE_DETACHED, api_pb2.APP_STATE_DEPLOYED]:
@@ -1013,16 +1015,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             last_entry_id = "1"
         else:
             last_entry_id = str(int(request.last_entry_id) + 1)
-        for _ in range(50):
-            await asyncio.sleep(0.5)
-            log = api_pb2.TaskLogs(
-                data=f"hello, world ({last_entry_id})\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT
-            )
-            await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id, items=[log]))
-            last_entry_id = str(int(last_entry_id) + 1)
-            if self.done:
-                await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
-                return
+
+        if not self.done:
+            await self.app_done_event.wait()
+
+        log = api_pb2.TaskLogs(data=f"hello, world ({last_entry_id})\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
+        await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id, items=[log]))
+        await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
 
     async def AppRollback(self, stream):
         request: api_pb2.AppRollbackRequest = await stream.recv_message()
