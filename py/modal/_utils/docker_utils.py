@@ -40,9 +40,18 @@ def extract_copy_command_patterns(dockerfile_lines: Sequence[str]) -> list[str]:
 
                 # COPY --from=... commands reference external sources and do not need a context mount.
                 # https://docs.docker.com/reference/dockerfile/#copy---from
-                if parts[0].startswith("--from="):
+                if any(p.startswith("--from=") for p in parts):
                     current_command = ""
                     continue
+
+                # Strip known COPY flags (--chmod, --chown, --link) before processing sources.
+                known_flag_prefixes = ("--chmod=", "--chown=", "--link=")
+                parts = [
+                    p
+                    for p in parts
+                    # link has a special handling - it can be "--link" or like "--link=true"
+                    if p != "--link" and not any(p.startswith(prefix) for prefix in known_flag_prefixes)
+                ]
 
                 if len(parts) >= 2:
                     # Last part is destination, everything else is a mount source

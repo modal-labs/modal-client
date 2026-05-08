@@ -42,6 +42,22 @@ from modal._utils.docker_utils import extract_copy_command_patterns, find_docker
             ],
             set(),
         ),
+        (
+            ["COPY --chmod=755 files/script.sh /dest/"],
+            {"files/script.sh"},
+        ),
+        (
+            ["COPY --chown=1000:1000 files/data.txt /dest/"],
+            {"files/data.txt"},
+        ),
+        (
+            ["COPY --chmod=644 --chown=1000:1000 files/config.json /dest/"],
+            {"files/config.json"},
+        ),
+        (
+            ["COPY --link files/app.py /dest/"],
+            {"files/app.py"},
+        ),
     ],
 )
 def test_extract_copy_command_patterns(copy_commands, expected_patterns):
