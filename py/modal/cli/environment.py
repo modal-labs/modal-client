@@ -67,7 +67,8 @@ def list_(json: bool = False):
 def create(name: str, restricted: bool = False):
     check_environment_name(name)
     Environment.objects.create(name, restricted=restricted)
-    rich.print(f"[green]✓[/green] Environment created: {name}")
+    prefix = "Restricted " if restricted else ""
+    rich.print(f"[green]✓[/green] {prefix}Environment created: {name}")
 
 
 ENVIRONMENT_DELETE_HELP = """Delete an environment in the current workspace.
