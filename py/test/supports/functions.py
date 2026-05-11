@@ -205,7 +205,7 @@ def fastapi_app():
 
 
 @app.function()
-@web_server(8765, startup_timeout=1)
+@web_server(8765, startup_timeout=5)
 def non_blocking_web_server():
     subprocess.Popen([sys.executable, "-m", "http.server", "-b", "0.0.0.0", "8765"])
 
