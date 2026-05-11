@@ -360,6 +360,7 @@ def sandbox_subprocess_intercept(servicer):
 
     async def _SandboxCreate(servicer_self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
+        servicer_self.sandbox_tags["sb-123"] = {tag.tag_name: tag.tag_value for tag in request.tags}
         proc = await asyncio.subprocess.create_subprocess_exec(
             *(request.definition.entrypoint_args or ["sleep", f"{48 * 3600}"]),
             stdout=asyncio.subprocess.PIPE,
@@ -706,6 +707,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_app_id = None
         self.sandbox_result: api_pb2.GenericResult | None = None
         self._sandbox_terminated = False
+        self.sandbox_tags: dict[str, dict[str, str]] = {}
 
         self.shell_prompt = None
         self.container_exec: asyncio.subprocess.Process = None
@@ -2313,6 +2315,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._sandbox_terminated = False
         self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
+        self.sandbox_tags["sb-123"] = {tag.tag_name: tag.tag_value for tag in request.tags}
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
 
     async def SandboxCreateV2(self, stream):
@@ -2345,31 +2348,23 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
             return
 
-        for tag in request.tags:
-            if self.sandbox_tags.get(tag.tag_name) != tag.tag_value:
-                await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
-                return
-
-        await stream.send_message(
-            api_pb2.SandboxListResponse(
-                sandboxes=[
-                    api_pb2.SandboxInfo(
-                        id="sb-123", created_at=1, task_info=api_pb2.TaskInfo(result=self.sandbox_result)
-                    )
-                ]
-            )
-        )
+        sandboxes = [
+            api_pb2.SandboxInfo(id=sandbox_id, created_at=1, task_info=api_pb2.TaskInfo(result=self.sandbox_result))
+            for sandbox_id, tags in self.sandbox_tags.items()
+            if all(tags.get(tag.tag_name) == tag.tag_value for tag in request.tags)
+        ]
+        await stream.send_message(api_pb2.SandboxListResponse(sandboxes=sandboxes))
 
     async def SandboxTagsGet(self, stream):
-        _request: api_pb2.SandboxTagsGetRequest = await stream.recv_message()
-        tags = getattr(self, "sandbox_tags", {})
+        request: api_pb2.SandboxTagsGetRequest = await stream.recv_message()
+        tags = self.sandbox_tags.get(request.sandbox_id, {})
         await stream.send_message(
             api_pb2.SandboxTagsGetResponse(tags=[api_pb2.SandboxTag(tag_name=k, tag_value=v) for k, v in tags.items()])
         )
 
     async def SandboxTagsSet(self, stream):
         request: api_pb2.SandboxTagsSetRequest = await stream.recv_message()
-        self.sandbox_tags = {tag.tag_name: tag.tag_value for tag in request.tags}
+        self.sandbox_tags[request.sandbox_id] = {tag.tag_name: tag.tag_value for tag in request.tags}
         await stream.send_message(Empty())
 
     async def SandboxTerminate(self, stream):

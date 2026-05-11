@@ -3017,6 +3017,7 @@ message SandboxCreateRequest {
   string app_id = 1;
   Sandbox definition = 2;
   string environment_name = 3; // *DEPRECATED* 7/16/2025
+  repeated SandboxTag tags = 4;
 }
 
 message SandboxCreateResponse {

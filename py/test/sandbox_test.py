@@ -494,6 +494,18 @@ def test_sandbox_list_tags(app, client, servicer):
     assert not list(Sandbox.list(tags={"baz": "qux"}, client=client))
 
 
+def test_sandbox_create_with_tags(app, client, servicer):
+    tags = {"env": "prod", "team": "core"}
+    with servicer.intercept() as ctx:
+        sb = Sandbox.create("bash", "-c", "sleep 10000", app=app, tags=tags)
+
+    request: api_pb2.SandboxCreateRequest = ctx.pop_request("SandboxCreate")
+    assert {tag.tag_name: tag.tag_value for tag in request.tags} == tags
+
+    assert sb.get_tags() == tags
+    sb.terminate()
+
+
 def test_sandbox_network_access(app, servicer):
     with pytest.raises(InvalidError):
         Sandbox.create("echo", "test", block_network=True, cidr_allowlist=["10.0.0.0/8"], app=app)

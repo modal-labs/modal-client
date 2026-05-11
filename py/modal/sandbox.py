@@ -237,6 +237,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         readiness_probe: Optional[Probe] = None,
         experimental_options: Optional[dict[str, bool]] = None,
+        tags: Optional[dict[str, str]] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
         custom_domain: Optional[str] = None,
@@ -364,7 +365,11 @@ class _Sandbox(_Object, type_prefix="sb"):
                 include_oidc_identity_token=include_oidc_identity_token,
             )
 
-            create_req = api_pb2.SandboxCreateRequest(app_id=load_context.app_id, definition=definition)
+            tag_protos = [api_pb2.SandboxTag(tag_name=k, tag_value=v) for k, v in tags.items()] if tags else []
+
+            create_req = api_pb2.SandboxCreateRequest(
+                app_id=load_context.app_id, definition=definition, tags=tag_protos
+            )
             create_resp = await load_context.client.stub.SandboxCreate(create_req)
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, None)
@@ -377,6 +382,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Associate the sandbox with an app. Required unless creating from a container.
         app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
+        tags: Optional[dict[str, str]] = None,  # Tags to attach to the Sandbox.
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the Sandbox.
         secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the Sandbox as environment variables.
@@ -484,6 +490,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             proxy=proxy,
             readiness_probe=readiness_probe,
             experimental_options=experimental_options,
+            tags=tags,
             _experimental_enable_snapshot=_experimental_enable_snapshot,
             include_oidc_identity_token=include_oidc_identity_token,
             client=client,
@@ -497,6 +504,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         *args: str,
         app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,
+        tags: Optional[dict[str, str]] = None,
         image: Optional[_Image] = None,
         env: Optional[dict[str, Optional[str]]] = None,
         secrets: Optional[Collection[_Secret]] = None,
@@ -573,6 +581,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             proxy=proxy,
             readiness_probe=readiness_probe,
             experimental_options=experimental_options,
+            tags=tags,
             enable_snapshot=_experimental_enable_snapshot,
             verbose=verbose,
             custom_domain=custom_domain,
