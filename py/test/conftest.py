@@ -134,8 +134,12 @@ class FakeTaskCommandRouterClient:
             # For tests, assume sequential writes; ignore mismatches.
             pass
         if data:
-            proc.stdin.write(data)
-            await proc.stdin.drain()
+            try:
+                proc.stdin.write(data)
+                await proc.stdin.drain()
+            except ConnectionError:
+                # Ignore broken pipes/connection errors
+                pass
             self._stdin_offsets[exec_id] = current + len(data)
         if eof:
             try:

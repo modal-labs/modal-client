@@ -693,6 +693,35 @@ def test_sandbox_fs_copy_from_local_errors_when_local_path_is_directory(
         sandbox.filesystem.copy_from_local(local_dir, remote_path)
 
 
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_copy_from_local_errors_when_remote_path_is_directory(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    src = tmp_path / "copy-from-local-src.bin"
+    src.write_bytes(b"payload")
+    remote_dir = str(tmp_path / "copy-from-local-dir")
+    (tmp_path / "copy-from-local-dir").mkdir()
+
+    with pytest.raises(SandboxFilesystemIsADirectoryError):
+        sandbox.filesystem.copy_from_local(src, remote_dir)
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("exec_backend", ["router"], indirect=True)
+def test_sandbox_fs_copy_from_local_errors_when_parent_is_a_file(
+    servicer, client, exec_backend, sandbox, tmp_path, sandbox_fs_tools
+):
+    src = tmp_path / "copy-from-local-parent-src.bin"
+    src.write_bytes(b"payload")
+    blocker = tmp_path / "copy-from-local-blocker"
+    blocker.write_bytes(b"I am a file")
+    remote_path = str(blocker / "child.bin")
+
+    with pytest.raises(SandboxFilesystemNotADirectoryError):
+        sandbox.filesystem.copy_from_local(src, remote_path)
+
+
 # ---------------------------------------------------------------------------
 # list_files
 # ---------------------------------------------------------------------------

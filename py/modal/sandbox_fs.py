@@ -29,6 +29,7 @@ from ._utils.sandbox_fs_utils import (
     translate_exec_errors,
     validate_absolute_remote_path,
 )
+from .exception import ConflictError
 from .io_streams import TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE
 
 
@@ -127,19 +128,24 @@ class _SandboxFilesystem:
         with open(local_path, "rb") as file_obj:
             with translate_exec_errors("copy_from_local", remote_path):
                 process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
-                while True:
-                    # TODO(saltzm): If this fails, the ContainerProcess will remain alive indefinitely since
-                    # stdin will remain open. Unfortunately we can't just call write_eof either, since that
-                    # would lead to a partially written file being persisted. We should catch exceptions
-                    # from this and kill the ContainerProcess when we have a way to do this.
-                    chunk = file_obj.read(TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE)
-                    if not chunk:
-                        break
-                    total_bytes += len(chunk)
-                    process.stdin.write(chunk)
+                try:
+                    while True:
+                        # TODO(saltzm): If this fails, the ContainerProcess will remain alive indefinitely since
+                        # stdin will remain open. Unfortunately we can't just call write_eof either, since that
+                        # would lead to a partially written file being persisted. We should catch exceptions
+                        # from this and kill the ContainerProcess when we have a way to do this.
+                        chunk = file_obj.read(TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE)
+                        if not chunk:
+                            break
+                        total_bytes += len(chunk)
+                        process.stdin.write(chunk)
+                        await process.stdin.drain()
+                    process.stdin.write_eof()
                     await process.stdin.drain()
-                process.stdin.write_eof()
-                await process.stdin.drain()
+                # When the FS tools binary exits early on an error, the worker
+                # reports the dropped stdin write as ConflictError.
+                except ConflictError:
+                    pass
                 stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
 
             if returncode != 0:
@@ -499,11 +505,16 @@ class _SandboxFilesystem:
         t0 = time.monotonic()
         with translate_exec_errors("write_bytes", remote_path):
             process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
-            for offset in range(0, max(len(data), 1), TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE):
-                process.stdin.write(data[offset : offset + TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE])
+            try:
+                for offset in range(0, max(len(data), 1), TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE):
+                    process.stdin.write(data[offset : offset + TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE])
+                    await process.stdin.drain()
+                process.stdin.write_eof()
                 await process.stdin.drain()
-            process.stdin.write_eof()
-            await process.stdin.drain()
+            # When the FS tools binary exits early on an error, the worker
+            # reports the dropped stdin write as ConflictError.
+            except ConflictError:
+                pass
             stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
 
         if returncode != 0:
