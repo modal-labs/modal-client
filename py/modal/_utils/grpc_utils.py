@@ -403,7 +403,7 @@ async def _retry_transient_errors(
                 and isinstance(exc, GRPCError)
                 and (server_retry_policy := get_server_retry_policy(exc))
             ):
-                server_delay = server_retry_policy.retry_after_secs
+                server_delay = max(server_retry_policy.retry_after_secs, 0.1)
 
                 now = time.time()
 
@@ -417,6 +417,7 @@ async def _retry_transient_errors(
                 )
                 final_attempt = total_timeout_will_be_reached or max_throttle_will_be_reached
 
+                elapsed_time = time.monotonic() - attempt_started_at
                 with suppress_tb_frame():
                     process_exception_before_retry(
                         exc,
@@ -425,19 +426,22 @@ async def _retry_transient_errors(
                         n_retries,
                         server_delay,
                         idempotency_key,
-                        time.monotonic() - attempt_started_at,
+                        elapsed_time,
                     )
 
-                now = time.time()
                 if last_server_retry_warning_time is None or (
                     now - last_server_retry_warning_time >= SERVER_RETRY_WARNING_TIME_INTERVAL
                 ):
                     last_server_retry_warning_time = now
                     logger.warning(
-                        f"Warning: Received {exc.status}{os.linesep}"
-                        f"{exc.message}{os.linesep}"
-                        f"Will retry in {server_delay:0.2f} seconds."
+                        f"Warning: Received {exc.status}{os.linesep}{exc.message}{os.linesep}"
+                        f"for {fn.name} ({idempotency_key[:8]}). Retrying..."
                     )
+
+                logger.debug(
+                    f"Server-side retry triggered with {repr(exc)} {n_throttled_retries=} {server_delay=} "
+                    f"{elapsed_time=} for {fn.name} ({idempotency_key[:8]})."
+                )
 
                 n_throttled_retries += 1
                 await asyncio.sleep(server_delay)
