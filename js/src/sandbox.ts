@@ -259,6 +259,9 @@ export type SandboxCreateParams = {
   /** Optional name for the Sandbox. Unique within an App. */
   name?: string;
 
+  /** Tags to attach to the Sandbox. Filterable via {@link SandboxService#list Sandbox.list}. */
+  tags?: Record<string, string>;
+
   /** Optional experimental options. */
   experimentalOptions?: Record<string, any>;
 
@@ -457,8 +460,16 @@ export async function buildSandboxCreateRequestProto(
         )
       : {};
 
+  const tagsList = params.tags
+    ? Object.entries(params.tags).map(([tagName, tagValue]) => ({
+        tagName,
+        tagValue,
+      }))
+    : [];
+
   return SandboxCreateRequest.create({
     appId,
+    tags: tagsList,
     definition: {
       entrypointArgs: params.command ?? [],
       imageId,

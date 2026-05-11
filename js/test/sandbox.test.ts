@@ -712,6 +712,17 @@ test("buildSandboxCreateRequestProto includeOidcIdentityToken", async () => {
   expect(req.definition!.includeOidcIdentityToken).toBe(true);
 });
 
+test("buildSandboxCreateRequestProto with tags", async () => {
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    tags: { env: "prod", team: "infra" },
+  });
+  const got: Record<string, string> = {};
+  for (const tag of req.tags) {
+    got[tag.tagName] = tag.tagValue;
+  }
+  expect(got).toEqual({ env: "prod", team: "infra" });
+});
+
 test("ConnectToken", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
@@ -753,6 +764,7 @@ test("buildSandboxCreateRequestProto_defaults", async () => {
   expect(def.openPorts?.ports).toEqual([]);
   expect(def.name).toBeUndefined();
   expect(def.includeOidcIdentityToken).toBe(false);
+  expect(req.tags).toEqual([]);
 });
 
 test("sandboxInvalidTimeouts", async () => {

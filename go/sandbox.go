@@ -159,6 +159,7 @@ type SandboxCreateParams struct {
 	Proxy                    *Proxy                       // Reference to a Modal Proxy to use in front of this Sandbox.
 	ReadinessProbe           *Probe                       // Probe used to determine when the Sandbox is ready.
 	Name                     string                       // Optional name for the Sandbox. Unique within an App.
+	Tags                     map[string]string            // Tags to attach to the Sandbox. Filterable via SandboxList.
 	ExperimentalOptions      map[string]any               // Experimental options
 	CustomDomain             string                       // If non-empty, connections to this Sandbox will be subdomains of this domain rather than the default. This requires prior manual setup by Modal and is only available for Enterprise customers.
 	IncludeOidcIdentityToken bool                         // If true, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth (e.g. to AWS, GCP).
@@ -369,8 +370,14 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 		return nil, err
 	}
 
+	tagsList := make([]*pb.SandboxTag, 0, len(params.Tags))
+	for k, v := range params.Tags {
+		tagsList = append(tagsList, pb.SandboxTag_builder{TagName: k, TagValue: v}.Build())
+	}
+
 	return pb.SandboxCreateRequest_builder{
 		AppId: appID,
+		Tags:  tagsList,
 		Definition: pb.Sandbox_builder{
 			EntrypointArgs:           params.Command,
 			ImageId:                  imageID,

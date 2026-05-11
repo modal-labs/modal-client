@@ -5,6 +5,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 ## Unreleased
 
 - Added `Sandbox.UnmountImage` (Go) and `sandbox.unmountImage` (JS) to remove an image mount from a path in the Sandbox filesystem and reveal the underlying directory again.
+- `Sandboxes.Create` (Go) and `sandboxes.create` (JS) now accept a `Tags` / `tags` parameter to attach key-value tags to the Sandbox at creation time.
 
 ## js/v0.7.4, go/v0.7.4
 

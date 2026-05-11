@@ -369,6 +369,7 @@ func TestSandboxCreateRequestProto_DefaultValues(t *testing.T) {
 	g.Expect(def.GetOpenPorts().GetPorts()).To(gomega.BeEmpty())
 	g.Expect(def.GetName()).To(gomega.Equal(""))
 	g.Expect(def.GetIncludeOidcIdentityToken()).To(gomega.BeFalse())
+	g.Expect(req.GetTags()).To(gomega.BeEmpty())
 }
 
 func TestSandboxCreateRequestProto_CustomDomain(t *testing.T) {
@@ -395,4 +396,20 @@ func TestSandboxCreateRequestProto_IncludeOidcIdentityToken(t *testing.T) {
 
 	def := req.GetDefinition()
 	g.Expect(def.GetIncludeOidcIdentityToken()).To(gomega.BeTrue())
+}
+
+func TestSandboxCreateRequestProto_WithTags(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		Tags: map[string]string{"env": "prod", "team": "infra"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	got := map[string]string{}
+	for _, tag := range req.GetTags() {
+		got[tag.GetTagName()] = tag.GetTagValue()
+	}
+	g.Expect(got).To(gomega.Equal(map[string]string{"env": "prod", "team": "infra"}))
 }
