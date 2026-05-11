@@ -11,3 +11,4 @@
 - Fixed an issue where images returned by `Sandbox.snapshot_directory` could not be directly passed into `Sandbox.create`.
 - It's now possible to pass a custom App name for ephemeral Apps using the `--name` option in `modal run` / `modal serve` or by setting `name=` in `App.run()`.
 - Enabled --chmod and --chown flags for COPY commands, within modal.Image.from_dockerfile
+- Added an `inbound_cidr_allowlist` parameter to `Sandbox.create()` to restrict which source IPs can connect inbound to a sandbox's tunnels and connection tokens.
