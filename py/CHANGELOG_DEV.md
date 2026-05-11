@@ -10,3 +10,4 @@
 - Added an `Image.pipe` method to let you define reusable Image recipes that compose well with the fluent Image builder interface.
 - Fixed an issue where images returned by `Sandbox.snapshot_directory` could not be directly passed into `Sandbox.create`.
 - It's now possible to pass a custom App name for ephemeral Apps using the `--name` option in `modal run` / `modal serve` or by setting `name=` in `App.run()`.
+- Enabled --chmod and --chown flags for COPY commands, within modal.Image.from_dockerfile
