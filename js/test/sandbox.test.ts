@@ -308,6 +308,44 @@ test("CreateSandboxWithNetworkAccessParams", async () => {
   );
 });
 
+test("CreateSandboxWithInboundCidrAllowlist", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = tc.images.fromRegistry("alpine:3.21");
+
+  // Verify proto is correctly populated.
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    inboundCidrAllowlist: ["10.0.0.0/8", "192.168.0.0/16"],
+  });
+  expect(req.definition?.inboundCidrAllowlist).toEqual([
+    "10.0.0.0/8",
+    "192.168.0.0/16",
+  ]);
+
+  // Default: empty list (all IPs allowed).
+  const req2 = await buildSandboxCreateRequestProto("app-123", "img-456", {});
+  expect(req2.definition?.inboundCidrAllowlist).toEqual([]);
+
+  // Cannot be combined with blockNetwork.
+  await expect(
+    buildSandboxCreateRequestProto("app-123", "img-456", {
+      blockNetwork: true,
+      inboundCidrAllowlist: ["10.0.0.0/8"],
+    }),
+  ).rejects.toThrow(
+    "inboundCidrAllowlist cannot be used when blockNetwork is enabled",
+  );
+
+  // End-to-end: sandbox is created successfully with the param.
+  const sb = await tc.sandboxes.create(app, image, {
+    command: ["echo", "hello, inbound cidrs"],
+    inboundCidrAllowlist: ["10.0.0.0/8"],
+  });
+  onTestFinished(async () => await sb.terminate());
+  expect(await sb.wait()).toBe(0);
+});
+
 test("SandboxPollAndReturnCode", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,

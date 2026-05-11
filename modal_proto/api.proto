@@ -3000,7 +3000,7 @@ message Sandbox {
 
   // If set, only connections from these CIDRs will be allowed to connect to the sandbox
   // (tunnels and auth proxy).
-  repeated string allowed_inbound_cidrs = 39;
+  repeated string inbound_cidr_allowlist = 39;
 }
 
 message SandboxCreateConnectTokenRequest {

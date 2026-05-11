@@ -7,9 +7,6 @@
 package pb
 
 import (
-	reflect "reflect"
-	unsafe "unsafe"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	anypb "google.golang.org/protobuf/types/known/anypb"
@@ -17,6 +14,8 @@ import (
 	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
+	reflect "reflect"
+	unsafe "unsafe"
 )
 
 const (
@@ -36438,7 +36437,7 @@ type Sandbox struct {
 	xxx_hidden_CustomDomain                 string                   `protobuf:"bytes,36,opt,name=custom_domain,json=customDomain,proto3"`
 	xxx_hidden_IncludeOidcIdentityToken     bool                     `protobuf:"varint,37,opt,name=include_oidc_identity_token,json=includeOidcIdentityToken,proto3"`
 	xxx_hidden_ReadinessProbe               *Probe                   `protobuf:"bytes,38,opt,name=readiness_probe,json=readinessProbe,proto3,oneof"`
-	xxx_hidden_AllowedInboundCidrs          []string                 `protobuf:"bytes,39,rep,name=allowed_inbound_cidrs,json=allowedInboundCidrs,proto3"`
+	xxx_hidden_InboundCidrAllowlist         []string                 `protobuf:"bytes,39,rep,name=inbound_cidr_allowlist,json=inboundCidrAllowlist,proto3"`
 	XXX_raceDetectHookData                  protoimpl.RaceDetectHookData
 	XXX_presence                            [2]uint32
 	unknownFields                           protoimpl.UnknownFields
@@ -36748,9 +36747,9 @@ func (x *Sandbox) GetReadinessProbe() *Probe {
 	return nil
 }
 
-func (x *Sandbox) GetAllowedInboundCidrs() []string {
+func (x *Sandbox) GetInboundCidrAllowlist() []string {
 	if x != nil {
-		return x.xxx_hidden_AllowedInboundCidrs
+		return x.xxx_hidden_InboundCidrAllowlist
 	}
 	return nil
 }
@@ -36911,8 +36910,8 @@ func (x *Sandbox) SetReadinessProbe(v *Probe) {
 	x.xxx_hidden_ReadinessProbe = v
 }
 
-func (x *Sandbox) SetAllowedInboundCidrs(v []string) {
-	x.xxx_hidden_AllowedInboundCidrs = v
+func (x *Sandbox) SetInboundCidrAllowlist(v []string) {
+	x.xxx_hidden_InboundCidrAllowlist = v
 }
 
 func (x *Sandbox) HasResources() bool {
@@ -37160,7 +37159,7 @@ type Sandbox_builder struct {
 	ReadinessProbe *Probe
 	// If set, only connections from these CIDRs will be allowed to connect to the sandbox
 	// (tunnels and auth proxy).
-	AllowedInboundCidrs []string
+	InboundCidrAllowlist []string
 }
 
 func (b0 Sandbox_builder) Build() *Sandbox {
@@ -37226,7 +37225,7 @@ func (b0 Sandbox_builder) Build() *Sandbox {
 	x.xxx_hidden_CustomDomain = b.CustomDomain
 	x.xxx_hidden_IncludeOidcIdentityToken = b.IncludeOidcIdentityToken
 	x.xxx_hidden_ReadinessProbe = b.ReadinessProbe
-	x.xxx_hidden_AllowedInboundCidrs = b.AllowedInboundCidrs
+	x.xxx_hidden_InboundCidrAllowlist = b.InboundCidrAllowlist
 	return m0
 }
 
@@ -56289,7 +56288,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\n" +
 	"mount_path\x18\x02 \x01(\tR\tmountPath\x122\n" +
 	"\x15credentials_secret_id\x18\x03 \x01(\tR\x13credentialsSecretId\x12\x1b\n" +
-	"\tread_only\x18\x04 \x01(\bR\breadOnly\"\xb8\x10\n" +
+	"\tread_only\x18\x04 \x01(\bR\breadOnly\"\xba\x10\n" +
 	"\aSandbox\x12'\n" +
 	"\x0fentrypoint_args\x18\x01 \x03(\tR\x0eentrypointArgs\x12\x1b\n" +
 	"\tmount_ids\x18\x02 \x03(\tR\bmountIds\x12\x19\n" +
@@ -56330,8 +56329,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x16_restore_instance_type\x18# \x01(\tR\x13RestoreInstanceType\x12#\n" +
 	"\rcustom_domain\x18$ \x01(\tR\fcustomDomain\x12=\n" +
 	"\x1binclude_oidc_identity_token\x18% \x01(\bR\x18includeOidcIdentityToken\x12A\n" +
-	"\x0freadiness_probe\x18& \x01(\v2\x13.modal.client.ProbeH\tR\x0ereadinessProbe\x88\x01\x01\x122\n" +
-	"\x15allowed_inbound_cidrs\x18' \x03(\tR\x13allowedInboundCidrs\x1aF\n" +
+	"\x0freadiness_probe\x18& \x01(\v2\x13.modal.client.ProbeH\tR\x0ereadinessProbe\x88\x01\x01\x124\n" +
+	"\x16inbound_cidr_allowlist\x18' \x03(\tR\x14inboundCidrAllowlist\x1aF\n" +
 	"\x18ExperimentalOptionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\bR\x05value:\x028\x01B\x12\n" +

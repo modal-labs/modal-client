@@ -2583,12 +2583,15 @@ func (b0 TaskMountDirectoryRequest_builder) Build() *TaskMountDirectoryRequest {
 }
 
 type TaskSnapshotDirectoryRequest struct {
-	state                 protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_TaskId     string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
-	xxx_hidden_Path       []byte                 `protobuf:"bytes,2,opt,name=path,proto3"`
-	xxx_hidden_SnapshotId string                 `protobuf:"bytes,3,opt,name=snapshot_id,json=snapshotId,proto3"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_TaskId      string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_Path        []byte                 `protobuf:"bytes,2,opt,name=path,proto3"`
+	xxx_hidden_SnapshotId  string                 `protobuf:"bytes,3,opt,name=snapshot_id,json=snapshotId,proto3"`
+	xxx_hidden_TtlSeconds  int64                  `protobuf:"varint,4,opt,name=ttl_seconds,json=ttlSeconds,proto3,oneof"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *TaskSnapshotDirectoryRequest) Reset() {
@@ -2637,6 +2640,13 @@ func (x *TaskSnapshotDirectoryRequest) GetSnapshotId() string {
 	return ""
 }
 
+func (x *TaskSnapshotDirectoryRequest) GetTtlSeconds() int64 {
+	if x != nil {
+		return x.xxx_hidden_TtlSeconds
+	}
+	return 0
+}
+
 func (x *TaskSnapshotDirectoryRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -2652,6 +2662,23 @@ func (x *TaskSnapshotDirectoryRequest) SetSnapshotId(v string) {
 	x.xxx_hidden_SnapshotId = v
 }
 
+func (x *TaskSnapshotDirectoryRequest) SetTtlSeconds(v int64) {
+	x.xxx_hidden_TtlSeconds = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 4)
+}
+
+func (x *TaskSnapshotDirectoryRequest) HasTtlSeconds() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
+}
+
+func (x *TaskSnapshotDirectoryRequest) ClearTtlSeconds() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
+	x.xxx_hidden_TtlSeconds = 0
+}
+
 type TaskSnapshotDirectoryRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -2659,6 +2686,18 @@ type TaskSnapshotDirectoryRequest_builder struct {
 	Path   []byte
 	// A unique ID to ensure idempotency of directory snapshot requests.
 	SnapshotId string
+	// Lifetime for the resulting image, in seconds. When set, the
+	// image's expires_at is a hard cutoff: it is fixed at creation time
+	// and is not extended on use.
+	//
+	// When unset, the resulting image gets the legacy retention policy:
+	// a 30-day TTL that is bumped forward by 30 days on every use, so
+	// active images effectively never expire.
+	//
+	// Sentinel: -1 means "no expiry" (the image never expires).
+	// 0 and other negative values are invalid and rejected by the
+	// server.
+	TtlSeconds *int64
 }
 
 func (b0 TaskSnapshotDirectoryRequest_builder) Build() *TaskSnapshotDirectoryRequest {
@@ -2668,6 +2707,10 @@ func (b0 TaskSnapshotDirectoryRequest_builder) Build() *TaskSnapshotDirectoryReq
 	x.xxx_hidden_TaskId = b.TaskId
 	x.xxx_hidden_Path = b.Path
 	x.xxx_hidden_SnapshotId = b.SnapshotId
+	if b.TtlSeconds != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 4)
+		x.xxx_hidden_TtlSeconds = *b.TtlSeconds
+	}
 	return m0
 }
 
@@ -2916,12 +2959,15 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x19TaskMountDirectoryRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\fR\x04path\x12\x19\n" +
-	"\bimage_id\x18\x03 \x01(\tR\aimageId\"l\n" +
+	"\bimage_id\x18\x03 \x01(\tR\aimageId\"\xa2\x01\n" +
 	"\x1cTaskSnapshotDirectoryRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\fR\x04path\x12\x1f\n" +
 	"\vsnapshot_id\x18\x03 \x01(\tR\n" +
-	"snapshotId\":\n" +
+	"snapshotId\x12$\n" +
+	"\vttl_seconds\x18\x04 \x01(\x03H\x00R\n" +
+	"ttlSeconds\x88\x01\x01B\x0e\n" +
+	"\f_ttl_seconds\":\n" +
 	"\x1dTaskSnapshotDirectoryResponse\x12\x19\n" +
 	"\bimage_id\x18\x01 \x01(\tR\aimageId\"J\n" +
 	"\x1bTaskUnmountDirectoryRequest\x12\x17\n" +
@@ -3063,6 +3109,7 @@ func file_modal_proto_task_command_router_proto_init() {
 		(*taskExecWaitResponse_Code)(nil),
 		(*taskExecWaitResponse_Signal)(nil),
 	}
+	file_modal_proto_task_command_router_proto_msgTypes[26].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

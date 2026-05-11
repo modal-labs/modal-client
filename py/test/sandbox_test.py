@@ -534,6 +534,28 @@ def test_sandbox_network_access(app, servicer):
     sb.terminate()
 
 
+@skip_non_subprocess
+def test_sandbox_inbound_cidr_allowlist(app, servicer):
+    # Cannot combine with block_network
+    with pytest.raises(InvalidError, match="`inbound_cidr_allowlist` cannot be used when `block_network` is enabled"):
+        Sandbox.create("echo", "test", block_network=True, inbound_cidr_allowlist=["10.0.0.0/8"], app=app)
+
+    # Single CIDR is set on the proto
+    sb = Sandbox.create("echo", "test", inbound_cidr_allowlist=["10.0.0.0/8"], app=app)
+    assert list(servicer.sandbox_defs[0].inbound_cidr_allowlist) == ["10.0.0.0/8"]
+    sb.terminate()
+
+    # Multiple CIDRs
+    sb = Sandbox.create("echo", "test", inbound_cidr_allowlist=["10.0.0.0/8", "192.168.0.0/16"], app=app)
+    assert list(servicer.sandbox_defs[1].inbound_cidr_allowlist) == ["10.0.0.0/8", "192.168.0.0/16"]
+    sb.terminate()
+
+    # No restriction when omitted
+    sb = Sandbox.create("echo", "test", app=app)
+    assert list(servicer.sandbox_defs[2].inbound_cidr_allowlist) == []
+    sb.terminate()
+
+
 def test_sandbox_block_network_with_ports(app, servicer):
     """Test that specifying open ports when block_network is enabled raises an error."""
 

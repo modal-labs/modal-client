@@ -398,6 +398,31 @@ func TestSandboxCreateRequestProto_IncludeOidcIdentityToken(t *testing.T) {
 	g.Expect(def.GetIncludeOidcIdentityToken()).To(gomega.BeTrue())
 }
 
+func TestSandboxCreateRequestProto_InboundCIDRAllowlist(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// InboundCIDRAllowlist is set on the definition.
+	req, err := buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		InboundCIDRAllowlist: []string{"10.0.0.0/8", "192.168.0.0/16"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetInboundCidrAllowlist()).To(gomega.Equal([]string{"10.0.0.0/8", "192.168.0.0/16"}))
+
+	// Empty by default.
+	req, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetDefinition().GetInboundCidrAllowlist()).To(gomega.BeEmpty())
+
+	// Cannot be combined with BlockNetwork.
+	_, err = buildSandboxCreateRequestProto("app-123", "img-456", SandboxCreateParams{
+		BlockNetwork:         true,
+		InboundCIDRAllowlist: []string{"10.0.0.0/8"},
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("InboundCIDRAllowlist cannot be used when BlockNetwork is enabled"))
+}
+
 func TestSandboxCreateRequestProto_WithTags(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

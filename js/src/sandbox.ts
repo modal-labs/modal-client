@@ -241,6 +241,9 @@ export type SandboxCreateParams = {
   /** List of CIDRs the Sandbox is allowed to access. If None, all CIDRs are allowed. Cannot be used with blockNetwork. */
   cidrAllowlist?: string[];
 
+  /** List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If not set, all IPs are allowed. Cannot be used with blockNetwork. */
+  inboundCidrAllowlist?: string[];
+
   /** Cloud provider to run the Sandbox on. */
   cloud?: string;
 
@@ -367,6 +370,11 @@ export async function buildSandboxCreateRequestProto(
     if (params.cidrAllowlist) {
       throw new Error(
         "cidrAllowlist cannot be used when blockNetwork is enabled",
+      );
+    }
+    if (params.inboundCidrAllowlist) {
+      throw new Error(
+        "inboundCidrAllowlist cannot be used when blockNetwork is enabled",
       );
     }
     networkAccess = {
@@ -502,6 +510,7 @@ export async function buildSandboxCreateRequestProto(
       experimentalOptions: protoExperimentalOptions,
       customDomain: params.customDomain,
       includeOidcIdentityToken: params.includeOidcIdentityToken ?? false,
+      inboundCidrAllowlist: params.inboundCidrAllowlist ?? [],
     },
   });
 }

@@ -153,6 +153,7 @@ type SandboxCreateParams struct {
 	UnencryptedPorts         []int                        // List of ports to tunnel into the Sandbox without encryption.
 	BlockNetwork             bool                         // Whether to block all network access from the Sandbox.
 	CIDRAllowlist            []string                     // List of CIDRs the Sandbox is allowed to access. Cannot be used with BlockNetwork.
+	InboundCIDRAllowlist     []string                     // List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If empty, all IPs are allowed.
 	Cloud                    string                       // Cloud provider to run the Sandbox on.
 	Regions                  []string                     // Region(s) to run the Sandbox on.
 	Verbose                  bool                         // Enable verbose logging.
@@ -242,6 +243,9 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 	if params.BlockNetwork {
 		if len(params.CIDRAllowlist) > 0 {
 			return nil, fmt.Errorf("CIDRAllowlist cannot be used when BlockNetwork is enabled")
+		}
+		if len(params.InboundCIDRAllowlist) > 0 {
+			return nil, fmt.Errorf("InboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
 		}
 		networkAccess = pb.NetworkAccess_builder{
 			NetworkAccessType: pb.NetworkAccess_BLOCKED,
@@ -400,6 +404,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			ExperimentalOptions:      protoExperimentalOptions,
 			CustomDomain:             params.CustomDomain,
 			IncludeOidcIdentityToken: params.IncludeOidcIdentityToken,
+			InboundCidrAllowlist:     params.InboundCIDRAllowlist,
 		}.Build(),
 	}.Build(), nil
 }
