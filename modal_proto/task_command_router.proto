@@ -252,6 +252,24 @@ message TaskSnapshotDirectoryResponse {
   string image_id = 1;
 }
 
+message TaskSnapshotFilesystemRequest {
+  string task_id = 1;
+  // A unique ID to ensure idempotency of filesystem snapshot requests.
+  string snapshot_id = 2;
+  // Lifetime for the resulting image, in seconds. Must be set. When positive,
+  // the image expiry is a hard cutoff: it is fixed at creation time and is
+  // not extended on use.
+  //
+  // Sentinel: -1 means "no expiry" (the image never expires).
+  // 0 and other negative values are invalid and rejected by the
+  // server.
+  optional int64 ttl_seconds = 3;
+}
+
+message TaskSnapshotFilesystemResponse {
+  string image_id = 1;
+}
+
 message TaskUnmountDirectoryRequest {
   string task_id = 1;
   bytes path = 2;
@@ -284,6 +302,8 @@ service TaskCommandRouter {
   rpc TaskMountDirectory(TaskMountDirectoryRequest) returns (google.protobuf.Empty);
   // Snapshot a directory with a mounted image, including any local changes, into a new image.
   rpc TaskSnapshotDirectory(TaskSnapshotDirectoryRequest) returns (TaskSnapshotDirectoryResponse);
+  // Snapshot the full task filesystem into a new image.
+  rpc TaskSnapshotFilesystem(TaskSnapshotFilesystemRequest) returns (TaskSnapshotFilesystemResponse);
   // Unmount an image previously mounted at a directory in the container.
   rpc TaskUnmountDirectory(TaskUnmountDirectoryRequest) returns (google.protobuf.Empty);
 }
