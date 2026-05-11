@@ -2353,7 +2353,7 @@ async def test_function_call_from_id_is_not_async(monkeypatch):
 def test_function_get_current_stats(client, servicer):
     f = Function.from_name("dummy-app", "func", client=client)
     function_id = "fu-1"
-    function_stats_msg = api_pb2.FunctionStats(backlog=1, num_total_tasks=2, num_running_inputs=3)
+    function_stats_msg = api_pb2.FunctionStats(backlog=1, num_total_tasks=2, num_running_inputs=3, input_headroom=4)
 
     async def get_current_stats(servicer, stream):
         msg = await stream.recv_message()
@@ -2369,6 +2369,7 @@ def test_function_get_current_stats(client, servicer):
     assert function_stats.backlog == function_stats_msg.backlog
     assert function_stats.num_total_runners == function_stats_msg.num_total_tasks
     assert function_stats.num_running_inputs == function_stats_msg.num_running_inputs
+    assert function_stats.input_headroom == function_stats_msg.input_headroom
 
 
 def test_function_duplicate_volume_mounts(client, servicer):

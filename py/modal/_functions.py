@@ -549,6 +549,7 @@ class FunctionStats:
     backlog: int
     num_total_runners: int
     num_running_inputs: int
+    input_headroom: int
 
 
 def _parse_retries(
@@ -1851,7 +1852,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             retry=Retry(total_timeout=10.0),
         )
         return FunctionStats(
-            backlog=resp.backlog, num_total_runners=resp.num_total_tasks, num_running_inputs=resp.num_running_inputs
+            backlog=resp.backlog,
+            num_total_runners=resp.num_total_tasks,
+            num_running_inputs=resp.num_running_inputs,
+            input_headroom=resp.input_headroom,
         )
 
     @live_method
