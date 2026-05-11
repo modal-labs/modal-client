@@ -46,7 +46,14 @@ from .exception import (
 )
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO, ls, mkdir, rm, watch
 from .image import _Image
-from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
+from .io_streams import (
+    StreamReader,
+    StreamWriter,
+    _StreamReader,
+    _StreamReaderThroughServerParams,
+    _StreamWriter,
+    _StreamWriterThroughServerParams,
+)
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .proxy import _Proxy
 from .sandbox_fs import _SandboxFilesystem
@@ -65,10 +72,6 @@ _default_image: _Image = _Image.debian_slim()
 # We need some bytes of overhead for the rest of the command line besides the args,
 # e.g. 'runsc exec ...'. So we use 2**16 as the limit.
 ARG_MAX_BYTES = 2**16
-
-# This buffer extends the user-supplied timeout on ContainerExec-related RPCs. This was introduced to
-# give any in-flight status codes/IO data more time to reach the client before the stream is closed.
-CONTAINER_EXEC_TIMEOUT_BUFFER = 5
 
 
 if TYPE_CHECKING:
@@ -803,12 +806,22 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
         self._stdout = StreamReader(
-            api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client, by_line=True
+            _StreamReaderThroughServerParams(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id=self.object_id,
+                client=self._client,
+            ),
+            by_line=True,
         )
         self._stderr = StreamReader(
-            api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client, by_line=True
+            _StreamReaderThroughServerParams(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDERR,
+                object_id=self.object_id,
+                client=self._client,
+            ),
+            by_line=True,
         )
-        self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
+        self._stdin = StreamWriter(_StreamWriterThroughServerParams(object_id=self.object_id, client=self._client))
         self._result = None
         self._task_id = None
         self._tunnels = None
@@ -990,11 +1003,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
         task_id = await self._get_task_id()
-        if (command_router_client := await self._get_command_router_client(task_id)) is None:
-            # It used to be the case that sandboxes could either be controlled through the control
-            # plane or through direct connections, but nowadays they should always use direct control
-            # so this error should be unexpected
-            raise InvalidError("Mounting directories requires direct Sandbox control - please contact Modal support.")
+        command_router_client = await self._get_command_router_client(task_id)
 
         posix_path = PurePosixPath(path)
         if not posix_path.is_absolute():
@@ -1014,8 +1023,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._ensure_v1("unmount_image")
 
         task_id = await self._get_task_id()
-        if (command_router_client := await self._get_command_router_client(task_id)) is None:
-            raise InvalidError("Unmounting directories requires direct Sandbox control - please contact Modal support.")
+        command_router_client = await self._get_command_router_client(task_id)
 
         posix_path = PurePosixPath(path)
         if not posix_path.is_absolute():
@@ -1043,10 +1051,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._ensure_v1("snapshot_directory")
 
         task_id = await self._get_task_id()
-        if (command_router_client := await self._get_command_router_client(task_id)) is None:
-            raise InvalidError(
-                "Snapshotting directories requires direct Sandbox control - please contact Modal support."
-            )
+        command_router_client = await self._get_command_router_client(task_id)
 
         posix_path = PurePosixPath(path)
         if not posix_path.is_absolute():
@@ -1254,15 +1259,14 @@ class _Sandbox(_Object, type_prefix="sb"):
                 await asyncio.sleep(0.5)
         return self._task_id
 
-    async def _get_command_router_client(self, task_id: str) -> Optional[TaskCommandRouterClient]:
+    async def _get_command_router_client(self, task_id: str) -> TaskCommandRouterClient:
         if self._command_router_client is None:
             if self._is_v2:
                 self._command_router_client = await TaskCommandRouterClient.init_v2(
                     self._client, self.object_id, task_id
                 )
             else:
-                # Returns None if command router access is not enabled for this sandbox.
-                self._command_router_client = await TaskCommandRouterClient.try_init(self._client, task_id)
+                self._command_router_client = await TaskCommandRouterClient.init(self._client, task_id)
         return self._command_router_client
 
     @property
@@ -1393,73 +1397,26 @@ class _Sandbox(_Object, type_prefix="sb"):
         await TaskContext.gather(*secret_coros)
 
         task_id = await self._get_task_id(raise_if_task_complete=True)
-        kwargs = {
-            "task_id": task_id,
-            "pty_info": pty_info,
-            "stdout": stdout,
-            "stderr": stderr,
-            "timeout": timeout,
-            "workdir": workdir,
-            "secret_ids": [secret.object_id for secret in secrets],
-            "env": env_dict,
-            "text": text,
-            "bufsize": bufsize,
-            "runtime_debug": config.get("function_runtime_debug"),
-            "container_id": container_id,
-        }
+
         # NB: This must come after the task ID is set, since the sandbox must be
         # scheduled before we can create a router client.
-        if (command_router_client := await self._get_command_router_client(task_id)) is not None:
-            kwargs["command_router_client"] = command_router_client
-            return await self._exec_through_command_router(*args, **kwargs)
-        else:
-            if env_dict:
-                env_secret = _Secret.from_dict(env)
-                await env_secret.hydrate(client=self._client)
-                kwargs["secret_ids"] = [*kwargs["secret_ids"], env_secret.object_id]
-            kwargs.pop("env", None)
-            return await self._exec_through_server(*args, **kwargs)
+        command_router_client = await self._get_command_router_client(task_id)
 
-    async def _exec_through_server(
-        self,
-        *args: str,
-        task_id: str,
-        pty_info: Optional[api_pb2.PTYInfo] = None,
-        stdout: StreamType = StreamType.PIPE,
-        stderr: StreamType = StreamType.PIPE,
-        timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        secret_ids: Optional[Collection[str]] = None,
-        text: bool = True,
-        bufsize: Literal[-1, 1] = -1,
-        runtime_debug: bool = False,
-        container_id: Optional[str] = None,
-    ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
-        """Execute a command through the Modal server."""
-        if container_id:
-            raise RuntimeError("Internal error: additional container exec requires task command router support")
-        req = api_pb2.ContainerExecRequest(
+        return await self._exec_through_command_router(
+            *args,
             task_id=task_id,
-            command=args,
+            command_router_client=command_router_client,
             pty_info=pty_info,
-            runtime_debug=runtime_debug,
-            timeout_secs=timeout or 0,
-            workdir=workdir,
-            secret_ids=secret_ids,
-        )
-        resp = await self._client.stub.ContainerExec(req)
-        by_line = bufsize == 1
-        exec_deadline = time.monotonic() + int(timeout) + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
-        logger.debug(f"Created ContainerProcess for exec_id {resp.exec_id} on Sandbox {self.object_id}")
-        return _ContainerProcess(
-            resp.exec_id,
-            task_id,
-            self._client,
             stdout=stdout,
             stderr=stderr,
+            timeout=timeout,
+            workdir=workdir,
+            secret_ids=[secret.object_id for secret in secrets],
+            env=env_dict,
             text=text,
-            exec_deadline=exec_deadline,
-            by_line=by_line,
+            bufsize=bufsize,
+            runtime_debug=config.get("function_runtime_debug"),
+            container_id=container_id,
         )
 
     async def _exec_through_command_router(
@@ -1812,11 +1769,9 @@ class _SandboxContainer:
         return _SandboxContainer(sandbox, container_info.container_id, container_info.container_name, result)
 
     async def _get_command_router(self) -> tuple[str, "TaskCommandRouterClient"]:
-        """Get task ID and command router client, raising if unavailable."""
+        """Get task ID and command router client."""
         task_id = await self._sandbox._get_task_id()
         command_router_client = await self._sandbox._get_command_router_client(task_id)
-        if command_router_client is None:
-            raise RuntimeError("Internal error: additional container operations require task command router support")
         return task_id, command_router_client
 
     async def exec(
@@ -1924,11 +1879,9 @@ class _SandboxContainerManager:
         self._sandbox = sandbox
 
     async def _get_command_router(self) -> tuple[str, "TaskCommandRouterClient"]:
-        """Get task ID and command router client, raising if unavailable."""
+        """Get task ID and command router client."""
         task_id = await self._sandbox._get_task_id()
         command_router_client = await self._sandbox._get_command_router_client(task_id)
-        if command_router_client is None:
-            raise RuntimeError("Internal error: additional container operations require task command router support")
         return task_id, command_router_client
 
     async def create(
