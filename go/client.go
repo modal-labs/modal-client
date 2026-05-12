@@ -88,11 +88,12 @@ func NewClient() (*Client, error) {
 
 // ClientParams defines credentials and options for initializing the Modal client.
 type ClientParams struct {
-	TokenID     string
-	TokenSecret string
-	Environment string
-	Config      *config
-	Logger      *slog.Logger
+	TokenID         string
+	TokenSecret     string
+	Environment     string
+	Config          *config
+	Logger          *slog.Logger
+	MaxThrottleWait *time.Duration
 	// ControlPlaneClient is a custom gRPC client for testing.
 	// If provided, the client will use this instead of creating its own connection.
 	// Typically used with mock clients in tests.
@@ -139,6 +140,9 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 	}
 	if params.Environment != "" {
 		profile.Environment = params.Environment
+	}
+	if params.MaxThrottleWait != nil {
+		profile.MaxThrottleWait = params.MaxThrottleWait
 	}
 
 	var logger *slog.Logger
@@ -270,13 +274,14 @@ type retryCallOption struct {
 }
 
 const (
-	apiEndpoint            = "api.modal.com:443"
-	maxMessageSize         = 100 * 1024 * 1024 // 100 MB
-	windowSize             = 64 * 1024 * 1024  // 64 MiB
-	defaultRetryAttempts   = 3
-	defaultRetryBaseDelay  = 100 * time.Millisecond
-	defaultRetryMaxDelay   = 1 * time.Second
-	defaultRetryBackoffMul = 2.0
+	apiEndpoint                = "api.modal.com:443"
+	maxMessageSize             = 100 * 1024 * 1024 // 100 MB
+	windowSize                 = 64 * 1024 * 1024  // 64 MiB
+	defaultRetryAttempts       = 3
+	defaultRetryBaseDelay      = 100 * time.Millisecond
+	defaultRetryMaxDelay       = 1 * time.Second
+	defaultRetryBackoffMul     = 2.0
+	serverRetryWarningInterval = 30 * time.Second
 )
 
 var retryableGrpcStatusCodes = map[codes.Code]struct{}{
@@ -456,6 +461,20 @@ func timeoutInterceptor() grpc.UnaryClientInterceptor {
 	}
 }
 
+// getServerRetryPolicy extracts RPCRetryPolicy from gRPC error details, returning nil if absent.
+func getServerRetryPolicy(err error) *pb.RPCRetryPolicy {
+	st, ok := status.FromError(err)
+	if !ok {
+		return nil
+	}
+	for _, detail := range st.Details() {
+		if policy, ok := detail.(*pb.RPCRetryPolicy); ok {
+			return policy
+		}
+	}
+	return nil
+}
+
 func retryInterceptor(c *Client) grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,
@@ -504,18 +523,66 @@ func retryInterceptor(c *Client) grpc.UnaryClientInterceptor {
 		idempotency := uuid.NewString()
 		start := time.Now()
 		delay := baseDelay
+		throttleRetries := 0
+		maxThrottleWait := c.profile.MaxThrottleWait
+		// MODAL_MAX_THROTTLE_WAIT=0 disables server-driven retries entirely
+		throttleEnabled := maxThrottleWait == nil || *maxThrottleWait != 0
 
-		for attempt := 0; attempt <= retries; attempt++ {
-			aCtx := metadata.AppendToOutgoingContext(
-				ctx,
+		var lastServerRetryWarnTime time.Time
+
+		attempt := 0
+		for attempt <= retries {
+			mdPairs := []string{
 				"x-idempotency-key", idempotency,
 				"x-retry-attempt", strconv.Itoa(attempt),
-				"x-retry-delay", strconv.FormatFloat(time.Since(start).Seconds(), 'f', 3, 64),
-			)
+				"x-throttle-retry-attempt", strconv.Itoa(throttleRetries),
+			}
+			if attempt > 0 {
+				mdPairs = append(mdPairs, "x-retry-delay", strconv.FormatFloat(time.Since(start).Seconds(), 'f', 3, 64))
+			}
+			if throttleRetries > 0 {
+				mdPairs = append(mdPairs, "x-throttle-retry-delay", strconv.FormatFloat(time.Since(start).Seconds(), 'f', 3, 64))
+			}
+			aCtx := metadata.AppendToOutgoingContext(ctx, mdPairs...)
 
 			err := inv(aCtx, method, req, reply, cc, opts...)
 			if err == nil {
 				return nil
+			}
+
+			// Check for server-directed retry via RPCRetryPolicy in error details.
+			// These are handled independently of the client retry counter (attempt).
+			if serverPolicy := getServerRetryPolicy(err); serverPolicy != nil && throttleEnabled {
+				serverDelay := max(time.Duration(float64(serverPolicy.GetRetryAfterSecs())*float64(time.Second)), defaultRetryBaseDelay)
+
+				// If sleeping serverDelay would push total elapsed time past the cap, stop now.
+				if maxThrottleWait != nil {
+					if time.Since(start)+serverDelay >= *maxThrottleWait {
+						return err
+					}
+				}
+
+				var errArgs []any
+				if st, ok := status.FromError(err); ok {
+					errArgs = []any{"status", st.Code(), "message", st.Message()}
+				} else {
+					errArgs = []any{"error", err}
+				}
+				errArgs = append(errArgs, "elapsed", time.Since(start), "throttle_retries", throttleRetries, "idempotency_key", idempotency[:8], "method", method)
+				c.logger.DebugContext(ctx, "Server requested retry delay",
+					append(errArgs, "serverDelay", serverDelay)...)
+
+				now := time.Now()
+				if lastServerRetryWarnTime.IsZero() || now.Sub(lastServerRetryWarnTime) >= serverRetryWarningInterval {
+					lastServerRetryWarnTime = now
+					c.logger.WarnContext(ctx, "Server requested retry delay. Retrying...", errArgs...)
+				}
+
+				throttleRetries++
+				if sleepCtx(ctx, serverDelay) != nil {
+					return err
+				}
+				continue // don't increment attempt; server-driven retries are unlimited
 			}
 
 			if st, ok := status.FromError(err); ok { // gRPC error
@@ -549,6 +616,7 @@ func retryInterceptor(c *Client) grpc.UnaryClientInterceptor {
 
 			// exponential back-off
 			delay = min(delay*time.Duration(factor), maxDelay)
+			attempt++
 		}
 		return nil // unreachable
 	}

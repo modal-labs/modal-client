@@ -1,15 +1,22 @@
 package modal
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
 	"sync"
 	"testing"
+	"time"
 
+	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 func TestClientWithLogger(t *testing.T) {
@@ -88,4 +95,243 @@ func TestClientWithCustomInterceptors(t *testing.T) {
 	g.Expect(secondCalled).To(gomega.BeTrue())
 	g.Expect(secondMethod).To(gomega.ContainSubstring("ModalClient/"))
 	mu.Unlock()
+}
+
+// makeThrottleError builds a gRPC RESOURCE_EXHAUSTED error carrying an RPCRetryPolicy detail.
+func makeThrottleError(t *testing.T, delaySecs float32) error {
+	t.Helper()
+	policy := pb.RPCRetryPolicy_builder{RetryAfterSecs: delaySecs}.Build()
+	st, err := status.New(codes.ResourceExhausted, "server throttled").WithDetails(policy)
+	if err != nil {
+		t.Fatalf("failed to attach RPCRetryPolicy to status: %v", err)
+	}
+	return st.Err()
+}
+
+func TestGetServerRetryPolicy(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// Non-gRPC error returns nil.
+	g.Expect(getServerRetryPolicy(errors.New("plain error"))).To(gomega.BeNil())
+
+	// gRPC error without details returns nil.
+	g.Expect(getServerRetryPolicy(status.Error(codes.Unavailable, "down"))).To(gomega.BeNil())
+
+	// gRPC error with RPCRetryPolicy returns the policy.
+	throttleErr := makeThrottleError(t, 2.5)
+	result := getServerRetryPolicy(throttleErr)
+	g.Expect(result).NotTo(gomega.BeNil())
+	g.Expect(result.GetRetryAfterSecs()).To(gomega.BeNumerically("~", 2.5, 0.01))
+}
+
+func TestRetryInterceptorServerDrivenRetry(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	throttleErr := makeThrottleError(t, 0.01)
+
+	callCount := 0
+	var lastMD metadata.MD
+	c := &Client{logger: slog.New(slog.DiscardHandler)}
+	interceptor := retryInterceptor(c)
+
+	invoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		callCount++
+		lastMD, _ = metadata.FromOutgoingContext(ctx)
+		if callCount <= 3 {
+			return throttleErr
+		}
+		return nil
+	}
+
+	err := interceptor(context.Background(), "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(callCount).To(gomega.Equal(4)) // 3 throttle failures + 1 success
+
+	// Server-driven retries tracked separately; client attempt counter stays at 0.
+	g.Expect(lastMD.Get("x-throttle-retry-attempt")).To(gomega.Equal([]string{"3"}))
+	g.Expect(lastMD.Get("x-retry-attempt")).To(gomega.Equal([]string{"0"}))
+	g.Expect(lastMD.Get("x-throttle-retry-delay")).NotTo(gomega.BeEmpty())
+	g.Expect(lastMD.Get("x-retry-delay")).To(gomega.BeEmpty()) // only sent when attempt > 0
+}
+
+func TestRetryInterceptorServerDrivenRetryDoesNotCountAgainstClientLimit(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	throttleErr := makeThrottleError(t, 0.01)
+	unavailableErr := status.Error(codes.Unavailable, "unavailable")
+
+	callCount := 0
+	c := &Client{logger: slog.New(slog.DiscardHandler)}
+	interceptor := retryInterceptor(c)
+
+	invoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		callCount++
+		if callCount == 1 {
+			return throttleErr
+		}
+		return unavailableErr
+	}
+
+	err := interceptor(context.Background(), "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
+	g.Expect(err).Should(gomega.HaveOccurred())
+	// 1 throttle retry + (defaultRetryAttempts+1) client attempts (attempts 0 through defaultRetryAttempts).
+	g.Expect(callCount).To(gomega.Equal(1 + defaultRetryAttempts + 1))
+}
+
+func TestRetryInterceptorServerDrivenRetryContextCancelled(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	throttleErr := makeThrottleError(t, 60.0) // long delay so the cancel fires first
+
+	ctx, cancel := context.WithCancel(context.Background())
+	callCount := 0
+	c := &Client{logger: slog.New(slog.DiscardHandler)}
+	interceptor := retryInterceptor(c)
+
+	invoker := func(_ context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		callCount++
+		cancel()
+		return throttleErr
+	}
+
+	err := interceptor(ctx, "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(callCount).To(gomega.Equal(1)) // sleep cancelled immediately, no second attempt
+}
+
+func TestRetryInterceptorMaxThrottleWaitDisabled(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	throttleErr := makeThrottleError(t, 0.01)
+
+	callCount := 0
+	zero := time.Duration(0)
+	c, err := NewClientWithOptions(&ClientParams{Logger: slog.New(slog.DiscardHandler), MaxThrottleWait: &zero})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	interceptor := retryInterceptor(c)
+
+	invoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		callCount++
+		return throttleErr
+	}
+
+	err = interceptor(context.Background(), "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
+	// Server-driven retries are disabled; the throttle error is returned immediately.
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(callCount).To(gomega.Equal(1))
+}
+
+func TestRetryInterceptorMaxThrottleWaitExceeded(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// Server asks for a 60-second delay; cap is 10 seconds → should stop immediately.
+	throttleErr := makeThrottleError(t, 60.0)
+
+	callCount := 0
+	cap := 10 * time.Second
+	c, err := NewClientWithOptions(&ClientParams{Logger: slog.New(slog.DiscardHandler), MaxThrottleWait: &cap})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	interceptor := retryInterceptor(c)
+
+	invoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		callCount++
+		return throttleErr
+	}
+
+	err = interceptor(context.Background(), "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(callCount).To(gomega.Equal(1)) // stopped before sleeping
+}
+
+func TestRetryInterceptorMaxThrottleWaitNotExceeded(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// Server asks for a 0.01-second delay; cap is 10 seconds → retries should proceed normally.
+	throttleErr := makeThrottleError(t, 0.01)
+
+	callCount := 0
+	cap := 10 * time.Second
+	c, err := NewClientWithOptions(&ClientParams{Logger: slog.New(slog.DiscardHandler), MaxThrottleWait: &cap})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	interceptor := retryInterceptor(c)
+
+	invoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		callCount++
+		if callCount <= 2 {
+			return throttleErr
+		}
+		return nil
+	}
+
+	err = interceptor(context.Background(), "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(callCount).To(gomega.Equal(3)) // 2 throttle failures + 1 success
+}
+
+func TestRetryInterceptorMaxThrottleWaitNil(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	// nil means no cap: retries should proceed normally regardless of server delay.
+	throttleErr := makeThrottleError(t, 0.01)
+
+	callCount := 0
+	c, err := NewClientWithOptions(&ClientParams{Logger: slog.New(slog.DiscardHandler), MaxThrottleWait: nil})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	interceptor := retryInterceptor(c)
+
+	invoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		callCount++
+		if callCount <= 2 {
+			return throttleErr
+		}
+		return nil
+	}
+
+	err = interceptor(context.Background(), "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(callCount).To(gomega.Equal(3)) // 2 throttle failures + 1 success
+}
+
+func TestRetryInterceptorMaxThrottleWaitConfigHigherPrecedence(t *testing.T) {
+	t.Setenv("MODAL_MAX_THROTTLE_WAIT", "30")
+	g := gomega.NewWithT(t)
+
+	cap := 10 * time.Second
+	c, err := NewClientWithOptions(&ClientParams{Logger: slog.New(slog.DiscardHandler), MaxThrottleWait: &cap})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(*c.profile.MaxThrottleWait).Should(gomega.Equal(cap))
+}
+
+func TestRetryInterceptorServerDrivenRetryLogsWarning(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	throttleErr := makeThrottleError(t, 0.01)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	callCount := 0
+	c := &Client{logger: logger}
+	interceptor := retryInterceptor(c)
+
+	invoker := func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		callCount++
+		if callCount <= 2 {
+			return throttleErr
+		}
+		return nil
+	}
+
+	err := interceptor(context.Background(), "/modal.client.ModalClient/AppGetOrCreate", nil, nil, nil, invoker)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(buf.String()).To(gomega.ContainSubstring("Server requested retry delay"))
 }

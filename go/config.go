@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -21,6 +23,9 @@ type Profile struct {
 	Environment         string
 	ImageBuilderVersion string
 	LogLevel            string
+	// MaxThrottleWait controls server-driven (throttle) retries.
+	// nil = no limit; 0 = disable server-driven retries entirely; >0 = cap total wait to this many seconds.
+	MaxThrottleWait *time.Duration
 }
 
 func (p Profile) isLocalhost() bool {
@@ -106,6 +111,14 @@ func getProfile(name string, cfg config) Profile {
 	imageBuilderVersion := firstNonEmpty(os.Getenv("MODAL_IMAGE_BUILDER_VERSION"), raw.ImageBuilderVersion)
 	logLevel := firstNonEmpty(os.Getenv("MODAL_LOGLEVEL"), raw.LogLevel)
 
+	var maxThrottleWait *time.Duration
+	if s := os.Getenv("MODAL_MAX_THROTTLE_WAIT"); s != "" {
+		if v, err := strconv.ParseInt(s, 10, 64); err == nil && v >= 0 {
+			d := time.Duration(v) * time.Second
+			maxThrottleWait = &d
+		}
+	}
+
 	return Profile{
 		ServerURL:           serverURL,
 		TokenID:             tokenID,
@@ -113,6 +126,7 @@ func getProfile(name string, cfg config) Profile {
 		Environment:         environment,
 		ImageBuilderVersion: imageBuilderVersion,
 		LogLevel:            logLevel,
+		MaxThrottleWait:     maxThrottleWait,
 	}
 }
 

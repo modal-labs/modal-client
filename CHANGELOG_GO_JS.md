@@ -5,6 +5,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 ## Unreleased
 
 - Added `Sandbox.UnmountImage` (Go) and `sandbox.unmountImage` (JS) to remove an image mount from a path in the Sandbox filesystem and reveal the underlying directory again.
+- The Go SDK client can now respond more gracefully to server throttling (e.g., rate limiting) by backing off and automatically retrying.
 - `Sandboxes.Create` (Go) and `sandboxes.create` (JS) now accept a `Tags` / `tags` parameter to attach key-value tags to the Sandbox at creation time.
 - `Sandboxes.Create` (Go) and `sandboxes.create` (JS) now accept an `InboundCIDRAllowlist` / `inboundCidrAllowlist` parameter to restrict which source IPs can connect inbound to a sandbox's tunnels and connection tokens.
 
