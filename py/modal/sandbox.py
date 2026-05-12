@@ -37,9 +37,11 @@ from .client import _Client
 from .container_process import _ContainerProcess
 from .exception import (
     ClientClosed,
+    ConflictError,
     Error,
     ExecutionError,
     InvalidError,
+    NotFoundError,
     SandboxTerminatedError,
     SandboxTimeoutError,
     TimeoutError,
@@ -1261,12 +1263,15 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def _get_command_router_client(self, task_id: str) -> TaskCommandRouterClient:
         if self._command_router_client is None:
-            if self._is_v2:
-                self._command_router_client = await TaskCommandRouterClient.init_v2(
-                    self._client, self.object_id, task_id
-                )
-            else:
-                self._command_router_client = await TaskCommandRouterClient.init(self._client, task_id)
+            try:
+                if self._is_v2:
+                    self._command_router_client = await TaskCommandRouterClient.init_v2(
+                        self._client, self.object_id, task_id
+                    )
+                else:
+                    self._command_router_client = await TaskCommandRouterClient.init(self._client, task_id)
+            except (ConflictError, NotFoundError):
+                raise NotFoundError("Sandbox already finished")
         return self._command_router_client
 
     @property
