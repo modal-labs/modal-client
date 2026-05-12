@@ -112,7 +112,7 @@ class _SandboxFilesystem:
 
         **Usage**
 
-        ```python fixture:sandbox
+        ```python fixture:sandbox fixture:tmpdir
         import tempfile
         from pathlib import Path
 
@@ -173,7 +173,7 @@ class _SandboxFilesystem:
 
         **Usage**
 
-        ```python fixture:sandbox
+        ```python fixture:sandbox fixture:tmpdir
         sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
         sandbox.filesystem.copy_to_local("/tmp/hello.txt", "/tmp/local-hello.txt")
         ```
