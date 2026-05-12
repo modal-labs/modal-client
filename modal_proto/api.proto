@@ -121,6 +121,20 @@ enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_GLOBAL = 3;
 }
 
+enum EndpointApiSurface {
+  ENDPOINT_API_SURFACE_UNSPECIFIED = 0;
+  ENDPOINT_API_SURFACE_OPENAI_CHAT_COMPLETIONS = 1;
+  ENDPOINT_API_SURFACE_OPENAI_RESPONSES = 2;
+  ENDPOINT_API_SURFACE_ANTHROPIC_MESSAGES = 3;
+}
+
+enum EndpointInputModality {
+  ENDPOINT_INPUT_MODALITY_UNSPECIFIED = 0;
+  ENDPOINT_INPUT_MODALITY_TEXT = 1;
+  ENDPOINT_INPUT_MODALITY_IMAGE = 2;
+  ENDPOINT_INPUT_MODALITY_AUDIO = 3;
+}
+
 enum EnvironmentRole {
   ENVIRONMENT_ROLE_UNSPECIFIED = 0;
   ENVIRONMENT_ROLE_VIEWER = 1;
@@ -1370,6 +1384,59 @@ message DomainListRequest {
 
 message DomainListResponse {
   repeated Domain domains = 1;
+}
+
+message EndpointComputeRegionSpec {
+  message ExplicitRegions {
+    repeated string regions = 1;
+  }
+
+  oneof placement {
+    google.protobuf.Empty auto = 1;
+    google.protobuf.Empty colocated = 2;
+    ExplicitRegions explicit = 3;
+  }
+}
+
+message EndpointCreateRequest {
+  string name = 1;
+  string description = 2;
+  repeated string proxy_regions = 3;
+  EndpointComputeRegionSpec compute_region = 4;
+  EndpointModelSource model = 5;
+  repeated EndpointApiSurface api_surfaces = 6;
+  repeated EndpointInputModality input_modalities = 7;
+  string environment_name = 8;
+}
+
+message EndpointCreateResponse {
+  string endpoint_id = 1;
+}
+
+message EndpointCustomModelSource {
+  string base_model_repo_id = 1;
+  oneof location {
+    EndpointHuggingFaceModelSource huggingface = 2;
+    EndpointModalVolumeModelSource modal_volume = 3;
+  }
+}
+
+message EndpointHuggingFaceModelSource {
+  string repo_id = 1;
+  string revision = 2;
+  string huggingface_token = 3;
+}
+
+message EndpointModalVolumeModelSource {
+  string volume_id = 1;
+  string model_path = 2;
+}
+
+message EndpointModelSource {
+  oneof source {
+    string base_model_repo_id = 1;
+    EndpointCustomModelSource custom = 2;
+  }
 }
 
 message EnvironmentCreateRequest {
@@ -4071,6 +4138,9 @@ service ModalClient {
   rpc DomainCertificateVerify(DomainCertificateVerifyRequest) returns (DomainCertificateVerifyResponse);
   rpc DomainCreate(DomainCreateRequest) returns (DomainCreateResponse);
   rpc DomainList(DomainListRequest) returns (DomainListResponse);
+
+  // Endpoints
+  rpc EndpointCreate(EndpointCreateRequest) returns (EndpointCreateResponse);
 
   // Environments
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
