@@ -201,7 +201,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/modal-labs/libmodal/modal-go"
+	"github.com/modal-labs/modal-client/go"
 )
 
 func main() {
@@ -248,7 +248,7 @@ func main() {
 ### Client
 
 ```go
-import "github.com/modal-labs/libmodal/modal-go"
+import "github.com/modal-labs/modal-client/go"
 client, err := modal.NewClient()
 // or customized:
 client, err := modal.NewClientWithOptions(&modal.ClientParams{
