@@ -10,6 +10,7 @@ import {
   Metadata,
   Status,
 } from "nice-grpc";
+import { RPCRetryPolicy, RPCStatus } from "../proto/modal_proto/api";
 import { AppService } from "./app";
 import { CloudBucketMountService } from "./cloud_bucket_mount";
 import { ClsService } from "./cls";
@@ -36,6 +37,7 @@ export interface ModalClientParams {
   endpoint?: string;
   timeoutMs?: number;
   maxRetries?: number;
+  maxThrottleWaitSecs?: number;
   logger?: Logger;
   logLevel?: LogLevel;
   /**
@@ -106,6 +108,9 @@ export class ModalClient {
       ...(params?.tokenId && { tokenId: params.tokenId }),
       ...(params?.tokenSecret && { tokenSecret: params.tokenSecret }),
       ...(params?.environment && { environment: params.environment }),
+      ...(params?.maxThrottleWaitSecs !== undefined && {
+        maxThrottleWaitSecs: params.maxThrottleWaitSecs,
+      }),
     };
 
     const logLevelValue = params?.logLevel || this.profile.logLevel || "";
@@ -195,6 +200,7 @@ export class ModalClient {
   /** Middleware to retry transient errors and timeouts for unary requests. */
   private retryMiddleware(): ClientMiddleware<RetryOptions> {
     const logger = this.logger;
+    const maxThrottleWaitSecs = this.profile.maxThrottleWaitSecs;
     return async function* retryMiddleware<Request, Response>(
       call: ClientMiddlewareCall<Request, Response>,
       options: CallOptions & RetryOptions,
@@ -222,9 +228,15 @@ export class ModalClient {
       // One idempotency key for the whole call (all attempts).
       const idempotencyKey = uuidv4();
 
+      // Determine max throttle wait: option > MODAL_MAX_THROTTLE_WAIT env var > null (unlimited).
+      // 0 disables server-directed retries entirely; null means unlimited.
+      const throttleEnabled = maxThrottleWaitSecs !== 0;
+
       const startTime = Date.now();
       let attempt = 0;
       let delayMs = baseDelay;
+      let throttleRetries = 0;
+      let lastServerRetryWarnTime = 0;
 
       logger.debug("Sending gRPC request", "method", call.method.path);
 
@@ -234,12 +246,27 @@ export class ModalClient {
 
         metadata.set("x-idempotency-key", idempotencyKey);
         metadata.set("x-retry-attempt", String(attempt));
+        metadata.set("x-throttle-retry-attempt", String(throttleRetries));
         if (attempt > 0) {
           metadata.set(
             "x-retry-delay",
             ((Date.now() - startTime) / 1000).toFixed(3),
           );
         }
+        if (throttleRetries > 0) {
+          metadata.set(
+            "x-throttle-retry-delay",
+            ((Date.now() - startTime) / 1000).toFixed(3),
+          );
+        }
+
+        // Capture grpc-status-details-bin for server retry policy extraction.
+        let capturedStatusDetails: Uint8Array | undefined;
+        const onTrailer = (trailer: Metadata) => {
+          const raw = trailer.get("grpc-status-details-bin");
+          if (raw != null) capturedStatusDetails = raw as Uint8Array;
+          restOptions.onTrailer?.(trailer);
+        };
 
         try {
           // Forward the call.
@@ -247,12 +274,87 @@ export class ModalClient {
             ...restOptions,
             metadata,
             signal,
+            onTrailer,
           });
         } catch (err) {
+          // Check for server-directed retry via RPCRetryPolicy in error details.
+          // These are handled independently of the client retry counter.
+          // maxThrottleWaitSecs === 0 disables server-directed retries entirely.
+          const serverPolicy = getServerRetryPolicy(capturedStatusDetails);
+          if (serverPolicy && throttleEnabled) {
+            const serverDelayMs = Math.max(
+              serverPolicy.retryAfterSecs * 1000,
+              baseDelay,
+            );
+            const serverDelaySecs = serverDelayMs / 1000;
+            const elapsedSecs = (Date.now() - startTime) / 1000;
+
+            // If max throttle wait is set, stop retrying once the cumulative elapsed
+            // time plus the next server delay would exceed the limit.
+            if (
+              maxThrottleWaitSecs &&
+              elapsedSecs + serverDelaySecs >= maxThrottleWaitSecs
+            ) {
+              logger.debug(
+                "Max throttle wait exceeded, not retrying",
+                "method",
+                call.method.path,
+                "elapsed_secs",
+                elapsedSecs,
+                "server_delay_secs",
+                serverDelaySecs,
+                "throttle_retries",
+                throttleRetries,
+                "idempotency_key",
+                idempotencyKey.substring(0, 8),
+              );
+              throw err;
+            }
+
+            logger.debug(
+              "Server requested retry delay",
+              "method",
+              call.method.path,
+              "elapsed_secs",
+              elapsedSecs,
+              "server_delay_secs",
+              serverDelaySecs,
+              "throttle_retries",
+              throttleRetries,
+              "idempotency_key",
+              idempotencyKey.substring(0, 8),
+            );
+
+            const now = Date.now();
+            if (
+              !lastServerRetryWarnTime ||
+              now - lastServerRetryWarnTime >= SERVER_RETRY_WARNING_INTERVAL_MS
+            ) {
+              lastServerRetryWarnTime = now;
+              const clientError: ClientError | null =
+                err instanceof ClientError ? err : null;
+              logger.warn(
+                "Server requested retry delay. Retrying...",
+                "status",
+                clientError?.code ?? "unknown",
+                "message",
+                clientError?.details ?? String(err),
+                "method",
+                call.method.path,
+              );
+            }
+
+            throttleRetries++;
+            await sleep(serverDelayMs, signal);
+            continue;
+          }
+
           // Immediately propagate non-retryable situations.
+          const clientError: ClientError | null =
+            err instanceof ClientError ? err : null;
           if (
-            !(err instanceof ClientError) ||
-            !retryableCodes.has(err.code) ||
+            !clientError ||
+            !retryableCodes.has(clientError.code) ||
             attempt >= retries
           ) {
             if (attempt === retries && attempt > 0) {
@@ -399,6 +501,26 @@ const retryableGrpcStatusCodes = new Set([
   Status.INTERNAL,
   Status.UNKNOWN,
 ]);
+
+const SERVER_RETRY_WARNING_INTERVAL_MS = 30_000;
+
+/** Extract RPCRetryPolicy from the grpc-status-details-bin trailer bytes, or null if absent. */
+function getServerRetryPolicy(
+  statusDetails: Uint8Array | undefined,
+): RPCRetryPolicy | null {
+  if (!statusDetails) return null;
+  try {
+    const rpcStatus = RPCStatus.decode(statusDetails);
+    for (const detail of rpcStatus.details) {
+      if (detail.typeUrl.endsWith("/modal.client.RPCRetryPolicy")) {
+        return RPCRetryPolicy.decode(detail.value);
+      }
+    }
+  } catch {
+    // Ignore decode errors; server may send unexpected format.
+  }
+  return null;
+}
 
 export function isRetryableGrpc(err: unknown) {
   if (err instanceof ClientError) {

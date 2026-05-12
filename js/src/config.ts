@@ -1,3 +1,4 @@
+import { warn } from "node:console";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -25,6 +26,8 @@ export interface Profile {
   environment?: string;
   imageBuilderVersion?: string;
   logLevel?: string;
+  /** Parsed from MODAL_MAX_THROTTLE_WAIT. null means unlimited. */
+  maxThrottleWaitSecs?: number;
 }
 
 export function isLocalhost(profile: Profile): boolean {
@@ -96,6 +99,19 @@ export function getProfile(profileName?: string): Profile {
       process.env["MODAL_IMAGE_BUILDER_VERSION"] ||
       profileData.imageBuilderVersion,
     logLevel: process.env["MODAL_LOGLEVEL"] || profileData.loglevel,
+    maxThrottleWaitSecs: (() => {
+      const val = process.env["MODAL_MAX_THROTTLE_WAIT"];
+      if (!val) return undefined;
+      const parsed = parseInt(val, 10);
+      if (isNaN(parsed) || parsed < 0) {
+        // We use `warn` here because Modal's logger is constructed after the profile is constructed
+        warn(
+          `MODAL_MAX_THROTTLE_WAIT="${val}" is not a valid non-negative integer; ignoring.`,
+        );
+        return undefined;
+      }
+      return parsed;
+    })(),
   };
   return profile as Profile; // safe to null-cast because of check above
 }
