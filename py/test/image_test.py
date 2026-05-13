@@ -1781,7 +1781,6 @@ def test_image_parallel_build(builder_version, servicer, client):
             pass
 
 
-@pytest.mark.asyncio
 def test_logs(client):
     image = Image.debian_slim().pip_install("foobarbaz")
     build_image(image, client)
