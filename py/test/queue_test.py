@@ -7,7 +7,7 @@ import time
 from modal import Queue
 from modal.exception import AlreadyExistsError, InvalidError, NotFoundError
 
-from .supports.skip import skip_macos, skip_windows
+from .supports.skip import skip_windows
 
 
 def test_queue_named(servicer, client):
@@ -101,7 +101,6 @@ def test_queue_from_id_not_found(servicer, client):
         Queue.from_id("qu-nonexistent", client=client).hydrate()
 
 
-@skip_macos("TODO(erikbern): this consistently fails on OSX. Unclear why.")
 @skip_windows("TODO(Jonathon): figure out why timeouts don't occur on Windows.")
 @pytest.mark.parametrize(
     ["put_timeout_secs", "min_queue_full_exc_count", "max_queue_full_exc_count"],
@@ -120,19 +119,29 @@ def test_queue_blocking_put(put_timeout_secs, min_queue_full_exc_count, max_queu
     consumer_delay = producer_delay * 5
 
     queue_full_exceptions = 0
+    # Hold the consumer back until the producer has issued enough puts to fill the queue.
+    # Without this gate, GIL/event-loop scheduling can let the consumer drain in lockstep
+    # with the producer so the queue never reaches capacity and we observe zero Full exceptions.
+    consumer_can_start = threading.Event()
     with Queue.ephemeral(client=client) as q:
 
         def producer():
             nonlocal queue_full_exceptions
-            for i in range(servicer.queue_max_len * 2):
-                item = f"Item {i}"
-                try:
-                    q.put(item, block=True, timeout=put_timeout_secs)  # type: ignore
-                except queue.Full:
-                    queue_full_exceptions += 1
-                time.sleep(producer_delay)
+            try:
+                for i in range(servicer.queue_max_len * 2):
+                    if i == servicer.queue_max_len:
+                        consumer_can_start.set()
+                    item = f"Item {i}"
+                    try:
+                        q.put(item, block=True, timeout=put_timeout_secs)  # type: ignore
+                    except queue.Full:
+                        queue_full_exceptions += 1
+                    time.sleep(producer_delay)
+            finally:
+                consumer_can_start.set()
 
         def consumer():
+            consumer_can_start.wait()
             while True:
                 time.sleep(consumer_delay)
                 item = q.get(block=True)  # type: ignore
