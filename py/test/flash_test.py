@@ -412,7 +412,7 @@ class TestFlashManagerStopping:
         flash_manager.is_port_connection_healthy = AsyncMock(return_value=(False, None))
         flash_manager.client.stub.FlashContainerDeregister = AsyncMock()
 
-        with pytest.raises(TimeoutError, match="Waited too long for port"):
+        with pytest.raises(TimeoutError, match="Timed out while waiting for port"):
             await flash_manager._start()
             await asyncio.sleep(0.2)
 
@@ -523,7 +523,8 @@ class TestFlashManagerStopping:
             patch("asyncio.sleep", return_value=None),
         ):
             with pytest.raises(
-                TimeoutError, match="Waited too long for port to start accepting connections. Shutting down..."
+                TimeoutError,
+                match="Timed out while waiting for port to accept connections. Shutting down...",
             ):
                 await flash_manager._wait_for_port_success("test.modal.test", 443)
 

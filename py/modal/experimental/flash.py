@@ -76,7 +76,7 @@ class _FlashManager:
             except (OSError, asyncio.TimeoutError):
                 await asyncio.sleep(0.1)
 
-        return False, Exception(f"Waited too long for port {self.port} to start accepting connections")
+        return False, Exception(f"Waited too long for port {self.port} to accept connections")
 
     async def _start(self):
         self.tunnel = await self.tunnel_manager.__aenter__()
@@ -152,16 +152,16 @@ class _FlashManager:
                     logger.warning(f"Listening at {resp.url} over {self.tunnel.url} for task_id {self.task_id}")
                     return True
             except asyncio.CancelledError:
-                logger.warning("Waited too long for port to start accepting connections. Shutting down...")
+                logger.warning("Healthcheck cancelled while waiting for port to accept connections. Shutting down...")
                 raise
             except Exception as e:
-                logger.error(f"Error waiting for port to start accepting connections: {e}")
+                logger.error(f"Error waiting for port to accept connections: {e}")
             try:
                 await asyncio.sleep(1)
             except asyncio.CancelledError:
-                logger.warning("Waited too long for port to start accepting connections. Shutting down...")
+                logger.warning("Healthcheck cancelled while waiting for port to accept connections. Shutting down...")
                 raise
-        raise TimeoutError("Waited too long for port to start accepting connections. Shutting down...")
+        raise TimeoutError("Timed out while waiting for port to accept connections. Shutting down...")
 
     async def _run_heartbeat(self, host: str, port: int):
         while True:
