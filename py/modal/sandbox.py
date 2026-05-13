@@ -1280,8 +1280,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                     )
                 else:
                     self._command_router_client = await TaskCommandRouterClient.init(self._client, task_id)
-            except (ConflictError, NotFoundError):
-                raise NotFoundError("Sandbox already finished")
+            except ConflictError as e:
+                raise NotFoundError(str(e)) from e
         return self._command_router_client
 
     @property
