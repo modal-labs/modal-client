@@ -152,7 +152,7 @@ type SandboxCreateParams struct {
 	H2Ports                  []int                        // List of encrypted ports to tunnel into the Sandbox, using HTTP/2.
 	UnencryptedPorts         []int                        // List of ports to tunnel into the Sandbox without encryption.
 	BlockNetwork             bool                         // Whether to block all network access from the Sandbox.
-	CIDRAllowlist            []string                     // List of CIDRs the Sandbox is allowed to access. Cannot be used with BlockNetwork.
+	OutboundCIDRAllowlist    []string                     // List of CIDRs the Sandbox is allowed to access. Cannot be used with BlockNetwork.
 	InboundCIDRAllowlist     []string                     // List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If empty, all IPs are allowed.
 	Cloud                    string                       // Cloud provider to run the Sandbox on.
 	Regions                  []string                     // Region(s) to run the Sandbox on.
@@ -241,8 +241,8 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 
 	var networkAccess *pb.NetworkAccess
 	if params.BlockNetwork {
-		if len(params.CIDRAllowlist) > 0 {
-			return nil, fmt.Errorf("CIDRAllowlist cannot be used when BlockNetwork is enabled")
+		if len(params.OutboundCIDRAllowlist) > 0 {
+			return nil, fmt.Errorf("OutboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
 		}
 		if len(params.InboundCIDRAllowlist) > 0 {
 			return nil, fmt.Errorf("InboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
@@ -251,10 +251,10 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 			NetworkAccessType: pb.NetworkAccess_BLOCKED,
 			AllowedCidrs:      []string{},
 		}.Build()
-	} else if len(params.CIDRAllowlist) > 0 {
+	} else if len(params.OutboundCIDRAllowlist) > 0 {
 		networkAccess = pb.NetworkAccess_builder{
 			NetworkAccessType: pb.NetworkAccess_ALLOWLIST,
-			AllowedCidrs:      params.CIDRAllowlist,
+			AllowedCidrs:      params.OutboundCIDRAllowlist,
 		}.Build()
 	} else {
 		networkAccess = pb.NetworkAccess_builder{

@@ -282,7 +282,7 @@ test("CreateSandboxWithNetworkAccessParams", async () => {
   const sb = await tc.sandboxes.create(app, image, {
     command: ["echo", "hello, network access"],
     blockNetwork: false,
-    cidrAllowlist: ["10.0.0.0/8", "192.168.0.0/16"],
+    outboundCidrAllowlist: ["10.0.0.0/8", "192.168.0.0/16"],
   });
   onTestFinished(async () => await sb.terminate());
 
@@ -294,18 +294,27 @@ test("CreateSandboxWithNetworkAccessParams", async () => {
   await expect(
     tc.sandboxes.create(app, image, {
       blockNetwork: false,
-      cidrAllowlist: ["not-an-ip/8"],
+      outboundCidrAllowlist: ["not-an-ip/8"],
     }),
   ).rejects.toThrow("Invalid CIDR: not-an-ip/8");
 
   await expect(
     tc.sandboxes.create(app, image, {
       blockNetwork: true,
-      cidrAllowlist: ["10.0.0.0/8"],
+      outboundCidrAllowlist: ["10.0.0.0/8"],
     }),
   ).rejects.toThrow(
-    "cidrAllowlist cannot be used when blockNetwork is enabled",
+    "outboundCidrAllowlist cannot be used when blockNetwork is enabled",
   );
+
+  // Backward compat: deprecated cidrAllowlist still works.
+  const sbDeprecated = await tc.sandboxes.create(app, image, {
+    command: ["echo", "hello, deprecated"],
+    blockNetwork: false,
+    cidrAllowlist: ["10.0.0.0/8"],
+  });
+  onTestFinished(async () => await sbDeprecated.terminate());
+  expect(sbDeprecated.sandboxId).toMatch(/^sb-/);
 });
 
 test("CreateSandboxWithInboundCidrAllowlist", async () => {

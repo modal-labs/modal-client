@@ -232,7 +232,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         mounts: Sequence[_Mount] = (),
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
-        cidr_allowlist: Optional[Sequence[str]] = None,
+        outbound_cidr_allowlist: Optional[Sequence[str]] = None,
         inbound_cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty: bool = False,
@@ -321,15 +321,14 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
             if block_network:
-                # If the network is blocked, cidr_allowlist is invalid as we don't allow any network access.
-                if cidr_allowlist is not None:
-                    raise InvalidError("`cidr_allowlist` cannot be used when `block_network` is enabled")
+                if outbound_cidr_allowlist is not None:
+                    raise InvalidError("`outbound_cidr_allowlist` cannot be used when `block_network` is enabled")
                 if inbound_cidr_allowlist is not None:
                     raise InvalidError("`inbound_cidr_allowlist` cannot be used when `block_network` is enabled")
                 network_access = api_pb2.NetworkAccess(
                     network_access_type=api_pb2.NetworkAccess.NetworkAccessType.BLOCKED,
                 )
-            elif cidr_allowlist is None:
+            elif outbound_cidr_allowlist is None:
                 # If the allowlist is empty, we allow all network access.
                 network_access = api_pb2.NetworkAccess(
                     network_access_type=api_pb2.NetworkAccess.NetworkAccessType.OPEN,
@@ -337,7 +336,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             else:
                 network_access = api_pb2.NetworkAccess(
                     network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
-                    allowed_cidrs=cidr_allowlist,
+                    allowed_cidrs=outbound_cidr_allowlist,
                 )
 
             ephemeral_disk = None  # Ephemeral disk requests not supported on Sandboxes.
@@ -412,7 +411,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         memory: Optional[Union[int, tuple[int, int]]] = None,
         block_network: bool = False,  # Whether to block network access
         # List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
-        cidr_allowlist: Optional[Sequence[str]] = None,
+        outbound_cidr_allowlist: Optional[Sequence[str]] = None,
         # List of CIDRs allowed to connect inbound to the sandbox (tunnels and connection tokens).
         inbound_cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: dict[
@@ -443,6 +442,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
+        cidr_allowlist: Optional[Sequence[str]] = None,  # *DEPRECATED* Use outbound_cidr_allowlist instead.
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
@@ -472,6 +472,16 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "Set the `pty` parameter to `True` instead.",
             )
 
+        if cidr_allowlist is not None:
+            if outbound_cidr_allowlist is not None:
+                raise InvalidError("Cannot specify both `cidr_allowlist` and `outbound_cidr_allowlist`.")
+            deprecation_warning(
+                (2026, 5, 11),
+                "The `cidr_allowlist` parameter has been renamed to `outbound_cidr_allowlist`. "
+                "`cidr_allowlist` will be removed in a future release.",
+            )
+            outbound_cidr_allowlist = cidr_allowlist
+
         secrets = secrets or []
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
@@ -492,7 +502,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             cpu=cpu,
             memory=memory,
             block_network=block_network,
-            cidr_allowlist=cidr_allowlist,
+            outbound_cidr_allowlist=outbound_cidr_allowlist,
             inbound_cidr_allowlist=inbound_cidr_allowlist,
             volumes=volumes,
             pty=pty,
@@ -531,7 +541,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
         block_network: bool = False,
-        cidr_allowlist: Optional[Sequence[str]] = None,
+        outbound_cidr_allowlist: Optional[Sequence[str]] = None,
         inbound_cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty: bool = False,
@@ -584,7 +594,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             mounts=mounts,
             network_file_systems=network_file_systems,
             block_network=block_network,
-            cidr_allowlist=cidr_allowlist,
+            outbound_cidr_allowlist=outbound_cidr_allowlist,
             inbound_cidr_allowlist=inbound_cidr_allowlist,
             volumes=volumes,
             pty=pty,

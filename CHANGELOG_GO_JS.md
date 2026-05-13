@@ -8,6 +8,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 - The Go and JS SDKs can now respond more gracefully to server throttling (e.g., rate limiting) by backing off and automatically retrying.
 - `Sandboxes.Create` (Go) and `sandboxes.create` (JS) now accept a `Tags` / `tags` parameter to attach key-value tags to the Sandbox at creation time.
 - `Sandboxes.Create` (Go) and `sandboxes.create` (JS) now accept an `InboundCIDRAllowlist` / `inboundCidrAllowlist` parameter to restrict which source IPs can connect inbound to a sandbox's tunnels and connection tokens.
+- Renamed `cidrAllowlist` to `outboundCidrAllowlist`  (JS) and `CIDRAllowlist` to `OutboundCIDRAllowlist` (Go) to distinguish from the corresponding inbound allowlists.
 
 ## js/v0.7.4, go/v0.7.4
 

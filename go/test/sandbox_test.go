@@ -425,9 +425,9 @@ func TestCreateSandboxWithNetworkAccessParams(t *testing.T) {
 	image := tc.Images.FromRegistry("alpine:3.21", nil)
 
 	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
-		Command:       []string{"echo", "hello, network access"},
-		BlockNetwork:  false,
-		CIDRAllowlist: []string{"10.0.0.0/8", "192.168.0.0/16"},
+		Command:               []string{"echo", "hello, network access"},
+		BlockNetwork:          false,
+		OutboundCIDRAllowlist: []string{"10.0.0.0/8", "192.168.0.0/16"},
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sb)
@@ -440,18 +440,19 @@ func TestCreateSandboxWithNetworkAccessParams(t *testing.T) {
 	g.Expect(exitCode).Should(gomega.Equal(0))
 
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
-		BlockNetwork:  false,
-		CIDRAllowlist: []string{"not-an-ip/8"},
+		BlockNetwork:          false,
+		OutboundCIDRAllowlist: []string{"not-an-ip/8"},
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("Invalid CIDR: not-an-ip/8"))
 
 	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
-		BlockNetwork:  true,
-		CIDRAllowlist: []string{"10.0.0.0/8"},
+		BlockNetwork:          true,
+		OutboundCIDRAllowlist: []string{"10.0.0.0/8"},
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
-	g.Expect(err.Error()).Should(gomega.ContainSubstring("CIDRAllowlist cannot be used when BlockNetwork is enabled"))
+	g.Expect(err.Error()).Should(gomega.ContainSubstring("OutboundCIDRAllowlist cannot be used when BlockNetwork is enabled"))
+
 }
 
 func TestSandboxExecSecret(t *testing.T) {

@@ -284,7 +284,7 @@ test("CreateSandboxWithNetworkAccessParams", async () => {
       cidrAllowlist: ["10.0.0.0/8"],
     }),
   ).rejects.toThrow(
-    "cidrAllowlist cannot be used when blockNetwork is enabled",
+    "outboundCidrAllowlist cannot be used when blockNetwork is enabled",
   );
 });
 

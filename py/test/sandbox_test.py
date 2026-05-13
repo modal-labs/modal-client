@@ -12,7 +12,7 @@ from grpclib import GRPCError, Status
 import modal
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal._utils.task_command_router_client import TaskCommandRouterClient
-from modal.exception import Error, InvalidError, TimeoutError
+from modal.exception import DeprecationError, Error, InvalidError, TimeoutError
 from modal.sandbox import SandboxContainer
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
@@ -495,7 +495,7 @@ def test_sandbox_create_with_tags(app, client, servicer):
 
 def test_sandbox_network_access(app, servicer):
     with pytest.raises(InvalidError):
-        Sandbox.create("echo", "test", block_network=True, cidr_allowlist=["10.0.0.0/8"], app=app)
+        Sandbox.create("echo", "test", block_network=True, outbound_cidr_allowlist=["10.0.0.0/8"], app=app)
 
     # Test that blocking works
     sb = Sandbox.create("echo", "test", block_network=True, app=app)
@@ -505,8 +505,8 @@ def test_sandbox_network_access(app, servicer):
     assert len(servicer.sandbox_defs[0].network_access.allowed_cidrs) == 0
     sb.terminate()
 
-    # Test that allowlisting works
-    sb = Sandbox.create("echo", "test", block_network=False, cidr_allowlist=["10.0.0.0/8"], app=app)
+    # Test that allowlisting works via outbound_cidr_allowlist
+    sb = Sandbox.create("echo", "test", block_network=False, outbound_cidr_allowlist=["10.0.0.0/8"], app=app)
     assert (
         servicer.sandbox_defs[1].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
     )
@@ -519,6 +519,19 @@ def test_sandbox_network_access(app, servicer):
     assert servicer.sandbox_defs[2].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
     assert len(servicer.sandbox_defs[2].network_access.allowed_cidrs) == 0
     sb.terminate()
+
+    # Test backward compat: deprecated cidr_allowlist still works with a warning
+    with pytest.warns(DeprecationError):
+        sb = Sandbox.create("echo", "test", block_network=False, cidr_allowlist=["10.0.0.0/8"], app=app)
+    assert (
+        servicer.sandbox_defs[3].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    )
+    assert servicer.sandbox_defs[3].network_access.allowed_cidrs[0] == "10.0.0.0/8"
+    sb.terminate()
+
+    # Test that passing both raises an error
+    with pytest.raises(InvalidError, match="Cannot specify both"):
+        Sandbox.create("echo", "test", cidr_allowlist=["10.0.0.0/8"], outbound_cidr_allowlist=["10.0.0.0/8"], app=app)
 
 
 @skip_non_subprocess
