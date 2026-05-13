@@ -94,7 +94,19 @@ async def shell(cluster_id: str, rank: int = 0):
     await command_router_client.exec_start(start_req)
 
     if pty:
-        await _ContainerProcess(process_id, task_id, client, command_router_client=command_router_client).attach()
+        # PTY output is raw terminal bytes (control sequences, mouse events,
+        # glyphs in non-UTF-8 locales, etc.) — not text. Strict UTF-8 decode on
+        # this stream crashes the shell as soon as anything emits a byte that
+        # isn't valid UTF-8, e.g. vim drawing a Latin-1 file under LC_CTYPE=C.
+        # Pass bytes through unmodified; `attach()` writes them straight to the
+        # local fd.
+        await _ContainerProcess(
+            process_id,
+            task_id,
+            client,
+            command_router_client=command_router_client,
+            text=False,
+        ).attach()
     else:
         await _ContainerProcess(
             process_id,

@@ -100,7 +100,10 @@ def _start_shell_in_sandbox_container(sandbox_id: str, container_name: str, cmd:
     try:
         sandbox_container = sandbox._experimental_containers.get(name=container_name)
         if pty:
-            process = sandbox_container.exec(*shlex.split(cmd), pty=pty)
+            # PTY output is raw terminal bytes, not text; strict UTF-8 decode
+            # crashes on the first non-UTF-8 byte (e.g. vim drawing a Latin-1
+            # file under LC_CTYPE=C). See the matching call in `_exec_impl`.
+            process = sandbox_container.exec(*shlex.split(cmd), pty=pty, text=False)
             process.attach()
         else:
             process = sandbox_container.exec(
