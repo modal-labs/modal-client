@@ -1799,11 +1799,14 @@ async def test_cancelling_aexit_propagates_cancellation():
             tc.create_task(longrunning())
             raise Exception()  # we exit with an exception
 
+    t0 = time.monotonic()
     t = asyncio.create_task(context_task())
     await asyncio.sleep(0.01)
     t.cancel()
-    t0 = time.monotonic()
     with pytest.raises(asyncio.CancelledError):
         await t
     dur = time.monotonic() - t0
-    assert 0.15 < dur < 0.25, "cancellation of aexit will still run the full cancellation"
+    # Time from before the sleep so dur captures the full grace period: the
+    # TaskContext grace timer starts when context_task first hits its internal
+    # wait_for (during the sleep), not when t.cancel() is called.
+    assert 0.15 < dur < 0.5, "cancellation of aexit will still run the full cancellation"
