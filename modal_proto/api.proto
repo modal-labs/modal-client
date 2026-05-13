@@ -3111,6 +3111,10 @@ message SandboxGetCommandRouterAccessRequest {
 message SandboxGetCommandRouterAccessResponse {
   string jwt = 1;
   string url = 2;
+  // Worker's public IPv4 address. When set, clients should connect directly
+  // to this IP while still using the URL's hostname for TLS SNI and the
+  // HTTP/2 :authority header.
+  string worker_ipv4_address = 3;
 }
 
 message SandboxGetFromNameRequest {
