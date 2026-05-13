@@ -3883,6 +3883,7 @@ message VolumeMount {
   string mount_path = 2;
   bool allow_background_commits = 3;
   bool read_only = 4;
+  optional string sub_path = 5;
 }
 
 message VolumePutFiles2Request {
