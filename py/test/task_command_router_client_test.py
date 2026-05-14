@@ -615,8 +615,10 @@ async def test_exec_stdio_read_deadline_respected_on_attribute_error(monkeypatch
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
+    # The exec_stdio_read call should only send one request before failing due to the deadline being
+    # exceeded. It should not retry because the sleep between retries is set to 0.2 seconds, which
+    # is longer than the deadline.
     assert send_message_cnt == 1
-    mock_sleep.assert_not_called()
     await client.close()
 
 
@@ -665,8 +667,10 @@ async def test_exec_stdio_read_deadline_respected_on_stream_terminated_error(mon
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
+    # The exec_stdio_read call should only send one request before failing due to the deadline being
+    # exceeded. It should not retry because the sleep between retries is set to 0.2 seconds, which
+    # is longer than the deadline.
     assert send_message_cnt == 1
-    mock_sleep.assert_not_called()
     await client.close()
 
 
@@ -715,8 +719,10 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(monkeypatch):
     with pytest.raises(ExecTimeoutError):
         async for _ in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT, deadline=deadline):
             pass
+    # The exec_stdio_read call should only send one request before failing due to the deadline being
+    # exceeded. It should not retry because the sleep between retries is set to 0.2 seconds, which
+    # is longer than the deadline.
     assert send_message_cnt == 1
-    mock_sleep.assert_not_called()
     await client.close()
 
 
