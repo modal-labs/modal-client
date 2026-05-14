@@ -266,8 +266,8 @@ export class Function_ {
   }
 
   /**
-   * URL of a Function running as a web endpoint.
-   * @returns The web URL if this Function is a web endpoint, otherwise undefined
+   * URL for addressing the Web Function via HTTP.
+   * @returns The web URL, or undefined if this is not a Web Function
    */
   async getWebUrl(): Promise<string | undefined> {
     return this.#handleMetadata?.webUrl || undefined;

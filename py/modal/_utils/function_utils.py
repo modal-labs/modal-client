@@ -321,7 +321,7 @@ class FunctionInfo:
             return api_pb2.ClassParameterInfo(format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE)
 
         # annotation parameters trigger strictly typed parametrization
-        # which enables web endpoint for parametrized classes
+        # which enables parameterized Web Functions
         signature = _get_class_constructor_signature(self.user_cls)
         # at this point, the types in the signature should already have been validated (see Cls.from_local())
         parameter_specs = signature_to_parameter_specs(signature)

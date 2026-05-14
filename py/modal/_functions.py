@@ -719,9 +719,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if retry_policy is not None:
             if webhook_config is not None:
-                raise InvalidError("Web endpoints do not support retries.")
+                raise InvalidError("Web Functions do not support retries.")
             if is_generator:
-                raise InvalidError("Generator functions do not support retries.")
+                raise InvalidError("Generator Functions do not support retries.")
 
         if timeout is None:  # type: ignore[unreachable]  # Help users who aren't using type checkers
             raise InvalidError("The `timeout` parameter cannot be set to None: https://modal.com/docs/guide/timeouts")
@@ -1391,7 +1391,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @live_method
     async def get_web_url(self) -> Optional[str]:
-        """URL of a Function running as a web endpoint."""
+        """URL for addressing a Web Function via HTTP.
+
+        Returns None when this is not a Web Function.
+        """
         return self._web_url
 
     @live_method

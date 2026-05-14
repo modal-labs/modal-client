@@ -592,7 +592,7 @@ def get_callable_schema(
 ) -> typing.Optional[api_pb2.FunctionSchema]:
     # ignore_first_argument can be used in case of unbound methods where we want to ignore the first (self) argument
     if is_web_endpoint:
-        # we don't support schemas on web endpoints for now
+        # we don't support schemas on Web Functions for now
         return None
 
     try:

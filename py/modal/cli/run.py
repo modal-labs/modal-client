@@ -597,7 +597,7 @@ def serve(
     use_module_mode: bool = False,
     timestamps: bool = False,
 ):
-    """Serve web endpoints and hot-reload on code changes.
+    """Expose Web Functions with hot-reloading on code changes.
 
     **Examples:**
 

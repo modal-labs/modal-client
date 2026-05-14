@@ -231,7 +231,7 @@ def construct_webhook_callable(
         asgi.wait_for_web_server(host, port, timeout=startup_timeout)
         return asgi.asgi_app_wrapper(asgi.web_server_proxy(host, port), container_io_manager)
     else:
-        raise InvalidError(f"Unrecognized web endpoint type {webhook_config.type}")
+        raise InvalidError(f"Unrecognized Web Function type {webhook_config.type}")
 
 
 def maybe_snapshot(
@@ -451,7 +451,7 @@ def import_single_function_service(
     * Normal functions
     * Methods on classes (in which case we need to instantiate the object)
 
-    This helper also handles web endpoints, ASGI/WSGI servers, and HTTP servers.
+    This helper also handles Web Functions (fastapi_endpoint, asgi_app, wsgi_app, web_server).
 
     In order to locate the app, we try two things:
     * If the function is a Function, we can get the app directly from it

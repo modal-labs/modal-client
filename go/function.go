@@ -240,8 +240,8 @@ func (f *Function) getSupportedInputFormats() []pb.DataFormat {
 	return []pb.DataFormat{}
 }
 
-// getWebURL returns the web URL for this function, if it's a web endpoint.
-// Returns empty string if metadata is not available or if not a web endpoint.
+// getWebURL returns the web URL for this function, if it's a Web Function.
+// Returns empty string if metadata is not available or if not a Web Function.
 func (f *Function) getWebURL() string {
 	metadata, err := f.getHandleMetadata()
 	if err != nil {
@@ -375,8 +375,8 @@ func (f *Function) UpdateAutoscaler(ctx context.Context, params *FunctionUpdateA
 	return err
 }
 
-// GetWebURL returns the URL of a Function running as a web endpoint.
-// Returns empty string if this Function is not a web endpoint.
+// GetWebURL returns the URL of a Function running as a Web Function.
+// Returns empty string if this Function is not a Web Function.
 func (f *Function) GetWebURL() string {
 	return f.getWebURL()
 }

@@ -151,7 +151,7 @@ def list_cli_commands(
     """
     Extracts all runnables found either directly in the input module, or in any of the Apps listed in that module
 
-    Runnables includes all Functions, (class) Methods and Local Entrypoints, including web endpoints.
+    Runnables includes all Functions, (class) Methods and Local Entrypoints.
 
     The returned list consists of tuples:
     ([name1, name2...], Runnable)

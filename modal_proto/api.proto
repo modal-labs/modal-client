@@ -598,9 +598,9 @@ message AppStopRequest {
   AppStopSource source = 2;
 }
 
-// A web endpoint connection-related message.
+// A Web Function connection-related message.
 //
-// Modal's internal web endpoint runtime effectively acts as a global web server
+// Modal's internal Web Function runtime effectively acts as a global web server
 // that schedules requests to tasks that are spawned on-demand, so we need an
 // internal protocol to model HTTP requests. This is that protocol.
 //

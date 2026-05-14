@@ -595,7 +595,7 @@ class _App:
         All modal.Function objects registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
-        expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        expected to work when a deployed App has been retrieved via `modal.App.lookup`.
         This method is likely to be deprecated in the future in favor of a different
         approach for retrieving the layout of a deployed App.
         """
@@ -607,7 +607,7 @@ class _App:
         All modal.Cls objects registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
-        expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        expected to work when a deployed App has been retrieved via `modal.App.lookup`.
         This method is likely to be deprecated in the future in favor of a different
         approach for retrieving the layout of a deployed App.
         """
@@ -619,7 +619,7 @@ class _App:
         All local CLI entrypoints registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
-        expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        expected to work when a deployed App has been retrieved via `modal.App.lookup`.
         This method is likely to be deprecated in the future.
         """
         return self._local_state.local_entrypoints
@@ -627,10 +627,10 @@ class _App:
     @property
     def registered_web_endpoints(self) -> list[str]:
         """mdmd:hidden
-        Names of web endpoint (ie. webhook) functions registered on the app.
+        Names of Web Functions registered on the app.
 
         Note: this property is populated only during the build phase, and it is not
-        expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        expected to work when a deployed App has been retrieved via `modal.App.lookup`.
         This method is likely to be deprecated in the future in favor of a different
         approach for retrieving the layout of a deployed App.
         """
@@ -802,7 +802,7 @@ class _App:
                 if is_method_fn(f.raw_f.__qualname__):
                     raise InvalidError(
                         "The `@app.function` decorator cannot be used on class methods. "
-                        "Swap with `@modal.method` or one of the web endpoint decorators. "
+                        "Swap with `@modal.method` or one of the Web Function decorators. "
                         "Example: "
                         "\n\n"
                         "```python\n"

@@ -26,7 +26,7 @@ def test_import_function(supports_dir, monkeypatch):
     assert service.user_cls_instance is None
 
     # TODO (elias): shouldn't have to pass the function definition again!
-    io_manager = MagicMock()  # shouldn't actually be used except by web endpoints - indicates some need for refactoring
+    io_manager = MagicMock()  # shouldn't actually be used except by Web Functions - indicates some need for refactoring
     finalized_funcs = service.get_finalized_functions(fun, container_io_manager=io_manager)
     assert len(finalized_funcs) == 1
     finalized_func = finalized_funcs[""]
@@ -84,7 +84,7 @@ def test_import_class(monkeypatch, supports_dir, client):
     assert isinstance(service.user_cls_instance, UndecoratedC)
 
     # TODO (elias): shouldn't have to pass the function definition again!
-    io_manager = MagicMock()  # shouldn't actually be used except by web endpoints - indicates some need for refactoring
+    io_manager = MagicMock()  # shouldn't actually be used except by Web Functions - indicates some need for refactoring
     finalized_funcs = service.get_finalized_functions(function_def, container_io_manager=io_manager)
     io_manager.assert_not_called()
     assert len(finalized_funcs) == 4
@@ -102,7 +102,7 @@ def test_import_class(monkeypatch, supports_dir, client):
     assert isinstance(callable_self, UndecoratedC)  # Arguably this could/should be an Obj instead?
 
 
-# TODO: add test cases for serialized functions, web endpoints, explicit/implicit generators etc.
+# TODO: add test cases for serialized functions, Web Functions, explicit/implicit generators etc.
 #   with and without decorators in globals scope...
 
 

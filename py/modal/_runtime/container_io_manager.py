@@ -705,9 +705,7 @@ class _ContainerIOManager:
     ) -> None:
         """Put data onto the `data_out` stream of a function call.
 
-        This is used for generator outputs, which includes web endpoint responses. Note that this
-        was introduced as a performance optimization in client version 0.57, so older clients will
-        still use the previous Postgres-backed system based on `FunctionPutOutputs()`.
+        This is used for generator outputs, which includes Web Function responses.
         """
         data_chunks: list[api_pb2.DataChunk] = []
         for i, message_bytes in enumerate(serialized_messages):

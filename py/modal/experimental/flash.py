@@ -241,7 +241,7 @@ async def flash_forward(
     h2_enabled: bool = False,
 ) -> _FlashManager:
     """
-    Forward a port to the Modal Flash service, exposing that port as a stable web endpoint.
+    Forward a port to the Modal Flash service, exposing that port as a stable endpoint.
     This is a highly experimental method that can break or be removed at any time without warning.
     Do not use this method unless explicitly instructed to do so by Modal support.
     """

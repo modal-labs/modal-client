@@ -2002,8 +2002,8 @@ def test_function_supported_input_formats(client, servicer):
     }
 
 
-def test_function_schema_excludes_web_endpoints(client, servicer):
-    # for now we exclude web endpoints since they don't use straight-forward arguments
+def test_function_schema_excludes_web_functions(client, servicer):
+    # for now we exclude Web Functions since they don't use straight-forward arguments
     # in the same way as regular modal functions
     app = App("app", include_source=False)
 

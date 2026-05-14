@@ -76,7 +76,7 @@ Other possible configuration options are:
   See https://docs.python.org/3/library/logging.html#logrecord-attributes for available
   log attributes.
 * `dev_suffix` (in the .toml file) / `MODAL_DEV_SUFFIX` (as an env var).
-  Overrides the default `-dev` suffix added to URLs generated for web endpoints
+  Overrides the default `-dev` suffix added to URLs generated for Web Functions
   when the App is ephemeral (i.e., created via `modal serve`). Must be a short
   alphanumeric string.
 
