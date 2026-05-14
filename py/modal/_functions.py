@@ -5,7 +5,7 @@ import inspect
 import time
 import typing
 import warnings
-from collections.abc import AsyncGenerator, Collection, Sequence, Sized
+from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Union
@@ -18,6 +18,7 @@ from synchronicity.combined_types import MethodWithAio
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
+from ._function_variants import _FunctionOptions, _make_function_variant
 from ._load_context import LoadContext
 from ._object import _Object, live_method, live_method_gen
 from ._output.pty import get_pty_info
@@ -26,11 +27,8 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
 from ._serialization import (
-    apply_defaults,
     get_callable_schema,
     serialize,
-    serialize_proto_params,
-    validate_parameter_values,
 )
 from ._traceback import print_server_warnings
 from ._utils.async_utils import (
@@ -48,6 +46,7 @@ from ._utils.function_utils import (
     OUTPUTS_TIMEOUT,
     FunctionInfo,
     _create_input,
+    _parse_retries,
     _process_result,
     _stream_function_call_data,
     get_function_type,
@@ -552,26 +551,6 @@ class FunctionStats:
     input_headroom: int
 
 
-def _parse_retries(
-    retries: Optional[Union[int, Retries]],
-    source: str = "",
-) -> Optional[api_pb2.FunctionRetryPolicy]:
-    if isinstance(retries, int):
-        return Retries(
-            max_retries=retries,
-            initial_delay=1.0,
-            backoff_coefficient=1.0,
-        )._to_proto()
-    elif isinstance(retries, Retries):
-        return retries._to_proto()
-    elif retries is None:
-        return None
-    else:
-        extra = f" on {source}" if source else ""
-        msg = f"Retries parameter must be an integer or instance of modal.Retries. Found: {type(retries)}{extra}."
-        raise InvalidError(msg)
-
-
 @dataclass
 class _FunctionSpec:
     """
@@ -655,6 +634,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         None  # set for 0.67+ class service functions
     )
     _metadata: Optional[api_pb2.FunctionHandleMetadata] = None
+    _options: _FunctionOptions
+    _base_function: Optional["_Function"] = None
 
     @staticmethod
     def from_local(
@@ -1172,130 +1153,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         return obj
 
-    def _bind_parameters(
-        self,
-        obj: "modal.cls._Obj",
-        options: Optional["modal.cls._ServiceOptions"],
-        args: Sized,
-        kwargs: dict[str, Any],
-    ) -> "_Function":
-        """mdmd:hidden
-
-        Binds a class-function to a specific instance of (init params, options) or a new workspace
-        """
-
-        parent = self
-
-        async def _load(
-            param_bound_func: _Function,
-            resolver: Resolver,
-            load_context: LoadContext,
-            existing_object_id: Optional[str],
-        ):
-            if not parent.is_hydrated:
-                # While the base Object.hydrate() method appears to be idempotent, it's not always safe
-                await parent.hydrate()
-
-            assert parent._client and parent._client.stub
-
-            if (
-                parent._class_parameter_info
-                and parent._class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
-            ):
-                if args:
-                    # TODO(elias) - We could potentially support positional args as well, if we want to?
-                    raise InvalidError(
-                        "Can't use positional arguments with modal.parameter-based synthetic constructors.\n"
-                        "Use (<parameter_name>=value) keyword arguments when constructing classes instead."
-                    )
-                schema = parent._class_parameter_info.schema
-                kwargs_with_defaults = apply_defaults(kwargs, schema)
-                validate_parameter_values(kwargs_with_defaults, schema)
-                serialized_params = serialize_proto_params(kwargs_with_defaults)
-                can_use_parent = len(parent._class_parameter_info.schema) == 0  # no parameters
-            else:
-                from modal.cls import _ServiceOptions  # Should probably define this dataclass here?
-
-                can_use_parent = len(args) + len(kwargs) == 0 and (options == _ServiceOptions())
-                serialized_params = serialize((args, kwargs))
-
-            if can_use_parent:
-                # We can end up here if parent wasn't hydrated when class was instantiated, but has been since.
-                param_bound_func._hydrate_from_other(parent)
-                return
-
-            assert parent is not None and parent.is_hydrated
-
-            if options:
-                # Validate that the same volume (by object_id) isn't mounted at multiple paths
-                validate_volumes_by_object_id(options.validated_volumes)
-
-                volume_mounts = [
-                    api_pb2.VolumeMount(
-                        mount_path=path,
-                        volume_id=volume.object_id,
-                        allow_background_commits=True,
-                        read_only=volume._read_only,
-                    )
-                    for path, volume in options.validated_volumes
-                ]
-                options_pb = api_pb2.FunctionOptions(
-                    secret_ids=[s.object_id for s in options.secrets],
-                    replace_secret_ids=bool(options.secrets),
-                    replace_volume_mounts=len(volume_mounts) > 0,
-                    volume_mounts=volume_mounts,
-                    cloud_bucket_mounts=cloud_bucket_mounts_to_proto(options.cloud_bucket_mounts),
-                    replace_cloud_bucket_mounts=bool(options.cloud_bucket_mounts),
-                    resources=options.resources,
-                    retry_policy=options.retry_policy,
-                    concurrency_limit=options.max_containers,
-                    buffer_containers=options.buffer_containers,
-                    task_idle_timeout_secs=options.scaledown_window,
-                    timeout_secs=options.timeout_secs,
-                    max_concurrent_inputs=options.max_concurrent_inputs,
-                    target_concurrent_inputs=options.target_concurrent_inputs,
-                    batch_max_size=options.batch_max_size,
-                    batch_linger_ms=options.batch_wait_ms,
-                    scheduler_placement=options.scheduler_placement,
-                    cloud_provider_str=options.cloud,
-                )
-            else:
-                options_pb = None
-
-            req = api_pb2.FunctionBindParamsRequest(
-                function_id=parent.object_id,
-                serialized_params=serialized_params,
-                function_options=options_pb,
-                environment_name=load_context.environment_name
-                or "",  # TODO: investigate shouldn't environment name always be specified here?
-            )
-
-            response = await parent._client.stub.FunctionBindParams(req)
-            param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
-
-        def _deps():
-            if options:
-                all_deps = (
-                    [v for _, v in options.validated_volumes]
-                    + list(options.secrets)
-                    + [mount.secret for _, mount in options.cloud_bucket_mounts if mount.secret]
-                )
-                return [dep for dep in all_deps if not dep.is_hydrated]
-            return []
-
-        fun: _Function = _Function._from_loader(
-            _load,
-            "Function(parametrized)",
-            hydrate_lazily=True,
-            deps=_deps,
-            load_context_overrides=self._load_context_overrides,
-        )
-
-        fun._info = self._info
-        fun._obj = obj
-        fun._spec = self._spec  # TODO (elias): fix - this is incorrect when using with_options
-        return fun
-
     @live_method
     async def update_autoscaler(
         self,
@@ -1472,6 +1329,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._serve_mounts = frozenset()
         self._metadata = None
         self._experimental_flash_urls = None
+        self._options = _FunctionOptions()
+        self._base_function = None
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
@@ -1539,6 +1398,143 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def _experimental_get_flash_urls(self) -> Optional[list[str]]:
         """URL of the flash service for the function."""
         return list(self._experimental_flash_urls) if self._experimental_flash_urls else None
+
+    def _apply_dynamic_config(
+        self,
+        new_options: _FunctionOptions,
+        config_method_name: str,
+    ) -> "_Function[P, ReturnType, OriginalReturnType]":
+        base_function = self._base_function or self
+        combined_options = self._options.merge_options(new_options)
+
+        # For "True Functions" (i.e. not the Function inside a Cls), we will use
+        # `parameter_schema=[]` when the Function is un-parameterized. Note that
+        # `parameter_schema=Null` has different semantics that preserve Cls backwards compatibility.
+        parameter_schema: Sequence[api_pb2.ClassParameterSpec] = []
+        args = ()
+        kwargs: dict[str, Any] = {}
+
+        # The main reason to have two layers here (_apply_dynamic_config -> _make_function_variant)
+        # is because the _make_function_variant logic is shared between a true Function and a
+        # "class service function", but we need to propagate different instance metadata to the
+        # new object in each case. There's likely a cleaner way to do this, and then we could just
+        # collapse the dynamic configuration into a single layer.
+        new_function = _make_function_variant(base_function, combined_options, parameter_schema, args, kwargs)
+
+        new_function._options = combined_options
+        new_function._base_function = base_function
+        new_function._rep = f"{self._rep}.{config_method_name}(...)"
+
+        new_function._app = self._app
+        new_function._obj = self._obj
+
+        new_function._is_generator = self._is_generator
+        new_function._webhook_config = self._webhook_config
+
+        # Other fields not necessarily initialized
+        if self._info is not None:
+            new_function._build_args = self._build_args
+            new_function._is_method = self._is_method
+            new_function._raw_f = self._raw_f
+            new_function._tag = self._tag
+
+        return new_function
+
+    def with_options(
+        self,
+        *,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
+        gpu: Optional[str] = None,
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
+        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
+        retries: Optional[Union[int, Retries]] = None,
+        max_containers: Optional[int] = None,
+        buffer_containers: Optional[int] = None,
+        scaledown_window: Optional[int] = None,
+        timeout: Optional[int] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,
+        cloud: Optional[str] = None,
+    ) -> "_Function[P, ReturnType, OriginalReturnType]":
+        """Dynamically override the static Function configuration with invocation-specific values.
+
+        This method returns a new Function instance with the dynamic configuration. Invocations of
+        the new Function will run in a distinct container pool and autoscale independently from the
+        base Function (and from other dynamic configurations).
+
+        Note that options cannot be "unset" with this method (i.e., if a GPU is configured in the
+        `@app.cls()` decorator, passing `gpu=None` here will not create a CPU-only instance).
+        Additionally, container arguments like `volumes` and `secrets` will _replace_ the base
+        configuration or any previous use of this method rather than extending it.
+
+        **Usage:**
+
+        You can use this method after looking up a deployed Function:
+
+        ```python notest
+        fn = modal.Function.from_name("my_app", "fn").with_options(gpu="H100")
+        fn.remote()  # will run on a H100 GPU
+        ```
+
+        Or by referencing another Function defined in the same App:
+
+        ```python notest
+        @app.function()
+        def fn():
+            ...
+
+        # From a local entrypoint or another Function
+        fn.with_options(gpu="H100").remote()  # Uses an H100 GPU
+        fn.remote()  # Uses the static configuration with no GPU
+        ```
+
+        """
+        options = _FunctionOptions.new(
+            cpu=cpu,
+            memory=memory,
+            gpu=gpu,
+            env=env,
+            secrets=secrets,
+            volumes=volumes,
+            retries=retries,
+            max_containers=max_containers,
+            buffer_containers=buffer_containers,
+            scaledown_window=scaledown_window,
+            timeout=timeout,
+            region=region,
+            cloud=cloud,
+        )
+
+        return self._apply_dynamic_config(options, "with_options")
+
+    def with_concurrency(
+        self,
+        *,
+        max_inputs: int,
+        target_inputs: Optional[int] = None,
+    ) -> "_Function[P, ReturnType, OriginalReturnType]":
+        """Override the static Function configuration with invocation-specific input concurrency.
+
+        Returns a new Function instance that is dynamically configured to behave like a Function using
+        the `@modal.concurrent` decorator. This instance will autoscale independently from the base Function.
+        """
+        options = _FunctionOptions.new(max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs)
+        return self._apply_dynamic_config(options, "with_concurrency")
+
+    def with_batching(
+        self,
+        *,
+        max_batch_size: int,
+        wait_ms: int,
+    ) -> "_Function[P, ReturnType, OriginalReturnType]":
+        """Override the static Function configuration with invocation-specific dynamic batching.
+
+        Returns a new Function instance that is dynamically configured to behave like a Function using
+        the `@modal.batched` decorator. This instance will autoscale independently from the base Function.
+        """
+        options = _FunctionOptions.new(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
+        return self._apply_dynamic_config(options, "with_batching")
 
     @property
     async def is_generator(self) -> bool:

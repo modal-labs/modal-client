@@ -5,6 +5,7 @@
 - Added a `tags` parameter to `Sandbox.create` so tags can be set at creation time instead of via a separate `Sandbox.set_tags` call.
 - Added `SandboxFilesystem.list_files()` for listing all entries (and their metadata) in a directory in a Sandbox's filesystem.
 - Added `SandboxFilesystem.stat()` for summarizing the metadata of a given file/symlink/directory a Sandbox's filesystem.
+- It is now possible to dynamically configure `modal.Function` behavior using `Function.with_options`, `Function.with_concurrency`, and `Function.with_batching`.
 - Added a new `modal.Environment` object for environment management, including RBAC configuration.
 - Improved reliability and latency of `modal container exec`, `modal shell`, and `modal cluster shell`.
 - Added an `Image.pipe` method to let you define reusable Image recipes that compose well with the fluent Image builder interface.

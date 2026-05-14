@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import dataclasses
 import inspect
 import typing
 from collections.abc import Collection
@@ -10,7 +9,8 @@ from google.protobuf.message import Message
 
 from modal_proto import api_pb2
 
-from ._functions import _Function, _parse_retries
+from ._function_variants import _FunctionOptions, _make_function_variant
+from ._functions import _Function
 from ._load_context import LoadContext
 from ._object import _Object, live_method
 from ._partial_function import (
@@ -20,7 +20,6 @@ from ._partial_function import (
     _PartialFunctionFlags,
 )
 from ._resolver import Resolver
-from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._type_manager import parameter_serde_registry
@@ -29,7 +28,6 @@ from ._utils.deprecation import (
     deprecation_warning,
     handle_deprecated_parameters,
 )
-from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .exception import ExecutionError, InvalidError, NotFoundError
@@ -72,52 +70,6 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
                     constructor_parameters.append(param)
 
         return inspect.Signature(constructor_parameters)
-
-
-@dataclasses.dataclass()
-class _ServiceOptions:
-    # Note that default values should always be "untruthy" so we can detect when they are not set
-    secrets: Collection[_Secret] = ()
-    validated_volumes: typing.Sequence[tuple[str, _Volume]] = ()
-    resources: Optional[api_pb2.Resources] = None
-    retry_policy: Optional[api_pb2.FunctionRetryPolicy] = None
-    max_containers: Optional[int] = None
-    buffer_containers: Optional[int] = None
-    scaledown_window: Optional[int] = None
-    timeout_secs: Optional[int] = None
-    max_concurrent_inputs: Optional[int] = None
-    target_concurrent_inputs: Optional[int] = None
-    batch_max_size: Optional[int] = None
-    batch_wait_ms: Optional[int] = None
-    scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
-    cloud: Optional[str] = None
-    cloud_bucket_mounts: typing.Sequence[tuple[str, _CloudBucketMount]] = ()
-
-    def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
-        """Implement protobuf-like MergeFrom semantics for this dataclass.
-
-        This mostly exists to support "stacking" of `.with_options()` calls.
-        Returns a new _ServiceOptions instance without modifying self.
-        """
-        # Create a shallow copy of self to start with
-        merged = dataclasses.replace(self)
-
-        # Don't use dataclasses.asdict() because it does a deepcopy(), which chokes on a hydrated object
-        new_options_dict = {k.name: getattr(new_options, k.name) for k in dataclasses.fields(new_options)}
-
-        # Resources needs special merge handling because individual fields are parameters in the public API
-        merged_resources = api_pb2.Resources()
-        if merged.resources:
-            merged_resources.MergeFrom(merged.resources)
-        if new_resources := new_options_dict.pop("resources"):
-            merged_resources.MergeFrom(new_resources)
-        merged.resources = merged_resources
-
-        for key, value in new_options_dict.items():
-            if value:  # Only overwrite data when the value was set in the new options
-                setattr(merged, key, value)
-
-        return merged
 
 
 def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name: str):
@@ -200,13 +152,13 @@ class _Obj:
     _kwargs: dict[str, Any]
 
     _instance_service_function: Optional[_Function] = None  # this gets set lazily
-    _options: Optional[_ServiceOptions]
+    _options: Optional[_FunctionOptions]
 
     def __init__(
         self,
         cls: "_Cls",
         user_cls: Optional[type],  # this would be None in case of lookups
-        options: Optional[_ServiceOptions],
+        options: Optional[_FunctionOptions],
         args,
         kwargs,
     ):
@@ -225,14 +177,74 @@ class _Obj:
         self._kwargs = kwargs
         self._options = options
 
-    def _cached_service_function(self) -> "modal.functions._Function":
+    def _cached_service_function(self) -> _Function:
         # Returns a service function for this _Obj, serving all its methods
         # In case of methods without parameters or options, this is simply proxying to the class service function
+        if not self._cls.is_hydrated and not self._cls._is_local():
+            raise ExecutionError("Class is not hydrated - this is probably a bug in the Modal client. Contact support")
+
         if not self._instance_service_function:
-            assert self._cls._class_service_function
-            self._instance_service_function = self._cls._class_service_function._bind_parameters(
-                self, self._options, self._args, self._kwargs
+            parent = self._cls._get_class_service_function()
+
+            parameter_schema = None
+            if parent._class_parameter_info is None:
+                parameter_format = api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED
+            else:
+                parameter_format = parent._class_parameter_info.format
+                if parameter_format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
+                    parameter_schema = parent._class_parameter_info.schema
+                    if self._args:
+                        raise InvalidError(
+                            "Can't use positional arguments with modal.parameter-based synthetic constructors.\n"
+                            "Use (<parameter_name>=value) keyword arguments when constructing classes instead."
+                        )
+
+            instance_uses_function_variant = (
+                # Cls uses explicit modal.parameter() annotations for parameterization
+                parameter_format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
+                # This is an un-parameterized class *or* it uses an "old-style" custom constructor.
+                # A Cls with a custom constructor will use the base_function_id for the instance
+                # with all *default* parameter values, whereas new style classes with an explicit schema
+                # will always use a function variant even when parameters are left at their defaults.
+                # Custom constructors were deprecated pre-1.0 and will eventually be removed.
+                or (self._args or self._kwargs)
+                # Cls uses dynamic configuration so it is a variant regardless of parameterization
+                or (self._options != _FunctionOptions())
             )
+
+            if instance_uses_function_variant:
+                fun = _make_function_variant(
+                    parent,
+                    self._options,
+                    parameter_schema,
+                    self._args,
+                    self._kwargs,
+                )
+                fun._obj = self
+            else:
+                # Make a loadable version of the class service function, skipping FunctionBindParams
+                async def _load(
+                    function: _Function,
+                    resolver: Resolver,
+                    load_context: LoadContext,
+                    existing_object_id: Optional[str],
+                ):
+                    if not parent.is_hydrated:
+                        await parent.hydrate(load_context.client)
+                    function._hydrate_from_other(parent)
+
+                fun = _Function._from_loader(
+                    _load,
+                    rep="Function()",
+                    hydrate_lazily=True,
+                    load_context_overrides=parent._load_context_overrides,
+                )
+                fun._obj = self
+                fun._info = parent._info
+                fun._spec = parent._spec
+
+            self._instance_service_function = fun
+
         return self._instance_service_function
 
     def _get_parameter_values(self) -> dict[str, Any]:
@@ -302,6 +314,8 @@ class _Obj:
         ```
 
         """
+        if not self._cls.is_hydrated and not self._cls._is_local():
+            await self._cls.hydrate()
         return await self._cached_service_function().update_autoscaler(
             min_containers=min_containers,
             max_containers=max_containers,
@@ -434,7 +448,7 @@ class _Cls(_Object, type_prefix="cs"):
     """
 
     _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
-    _options: _ServiceOptions
+    _options: _FunctionOptions
 
     _app: Optional["modal.app._App"] = None  # not set for lookups
     _name: Optional[str]
@@ -450,7 +464,7 @@ class _Cls(_Object, type_prefix="cs"):
     def _initialize_from_empty(self):
         self._user_cls = None
         self._class_service_function = None
-        self._options = _ServiceOptions()
+        self._options = _FunctionOptions()
         self._callables = {}
         self._name = None
 
@@ -490,6 +504,29 @@ class _Cls(_Object, type_prefix="cs"):
     def _get_method_names(self) -> Collection[str]:
         # returns method names for a *local* class only for now (used by cli)
         return self._method_partials.keys()
+
+    def _apply_dynamic_config(self: "_Cls", new_options: _FunctionOptions, method_name: str) -> "_Cls":
+        """Clone the parent Cls and add updated _FunctionOptions from builder-pattern configuration."""
+        combined_options = self._options.merge_options(new_options)
+
+        async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
+            if not self.is_hydrated:
+                await resolver.load(self, load_context)
+
+            new_cls._initialize_from_other(self)
+            new_cls._options = combined_options
+
+        new_cls = _Cls._from_loader(
+            _load_from_base,
+            rep=f"{self._name}.{method_name}(...)",
+            is_another_app=True,
+            deps=lambda: [],
+            load_context_overrides=self._load_context_overrides,
+            hydrate_lazily=True,
+        )
+        new_cls._initialize_from_other(self)
+        new_cls._options = combined_options
+        return new_cls
 
     @live_method
     async def _experimental_get_flash_urls(self) -> Optional[list[str]]:
@@ -675,12 +712,13 @@ More information on class parameterization can be found here: https://modal.com/
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
     ) -> "_Cls":
-        """Override the static Function configuration at runtime.
+        """Override the static Cls configuration with invocation-specific values.
 
-        This method will return a new instance of the cls that will autoscale independently of the
-        original instance. Note that options cannot be "unset" with this method (i.e., if a GPU
-        is configured in the `@app.cls()` decorator, passing `gpu=None` here will not create a
-        CPU-only instance).
+        This method will return a new variant of the Cls that will autoscale independently of the
+        base configuration.
+
+        Note that options cannot be "unset" with this method (i.e., if a GPU is configured in the
+        `@app.cls()` decorator, passing `gpu=None` here will not create a CPU-only instance).
 
         **Usage:**
 
@@ -702,74 +740,26 @@ More information on class parameterization can be found here: https://modal.com/
         Note that container arguments (i.e. `volumes` and `secrets`) passed in subsequent calls
         will not be merged.
         """
-        retry_policy = _parse_retries(retries, f"Class {self.__name__}" if self._user_cls else "")
-        if gpu or cpu or memory:
-            resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=None)
-        else:
-            resources = None
-
-        # Validate volumes
-        validated_volumes = validate_volumes(volumes)
-        cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
-        validated_volumes_no_cloud_buckets = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
-
-        secrets = secrets or []
-        if env:
-            secrets = [*secrets, _Secret.from_dict(env)]
-
-        scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
-        if region:
-            regions = [region] if isinstance(region, str) else list(region)
-            scheduler_placement = api_pb2.SchedulerPlacement(regions=regions)
-
-        new_options = _ServiceOptions(
+        options = _FunctionOptions.new(
+            cpu=cpu,
+            memory=memory,
+            gpu=gpu,
+            env=env,
             secrets=secrets,
-            validated_volumes=validated_volumes_no_cloud_buckets,
-            cloud_bucket_mounts=cloud_bucket_mounts,
-            resources=resources,
-            retry_policy=retry_policy,
+            volumes=volumes,
+            retries=retries,
             max_containers=max_containers,
             buffer_containers=buffer_containers,
             scaledown_window=scaledown_window,
-            timeout_secs=timeout,
-            scheduler_placement=scheduler_placement,
+            timeout=timeout,
+            region=region,
             cloud=cloud,
         )
 
-        combined_options = self._options.merge_options(new_options)
-
-        async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
-            # this is a bit confusing, the cls will always have the same metadata
-            # since it has the same *class* service function (i.e. "template")
-            # But the (instance) service function for each Obj will be different
-            # since it will rebind to whatever `_options` have been assigned on
-            # the particular Cls parent
-            if not self.is_hydrated:
-                # this should only happen for Cls.from_name instances
-                # other classes should already be hydrated!
-                await resolver.load(self, load_context)
-
-            new_cls._initialize_from_other(self)
-            # Restore the merged options after _initialize_from_other overwrites them
-            new_cls._options = combined_options
-
-        def _deps():
-            return []
-
-        new_cls = _Cls._from_loader(
-            _load_from_base,
-            rep=f"{self._name}.with_options(...)",
-            is_another_app=True,
-            deps=_deps,
-            load_context_overrides=self._load_context_overrides,
-            hydrate_lazily=True,
-        )
-        new_cls._initialize_from_other(self)
-        new_cls._options = combined_options
-        return new_cls
+        return self._apply_dynamic_config(options, "with_options")
 
     def with_concurrency(self: "_Cls", *, max_inputs: int, target_inputs: Optional[int] = None) -> "_Cls":
-        """Create an instance of the Cls with input concurrency enabled or overridden with new values.
+        """Override the static Cls configuration with invocation-specific input concurrency settings.
 
         **Usage:**
 
@@ -779,33 +769,11 @@ More information on class parameterization can be found here: https://modal.com/
         ModelUsingGPU().generate.remote(42)  # will run on an A100 GPU with input concurrency enabled
         ```
         """
-        concurrency_options = _ServiceOptions(max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs)
-        combined_options = self._options.merge_options(concurrency_options)
-
-        async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
-            if not self.is_hydrated:
-                await resolver.load(self, load_context)
-            new_cls._initialize_from_other(self)
-            # Restore the merged options after _initialize_from_other overwrites them
-            new_cls._options = combined_options
-
-        def _deps():
-            return []
-
-        new_cls = _Cls._from_loader(
-            _load_from_base,
-            rep=f"{self._name}.with_concurrency(...)",
-            is_another_app=True,
-            deps=_deps,
-            load_context_overrides=self._load_context_overrides,
-            hydrate_lazily=True,
-        )
-        new_cls._initialize_from_other(self)
-        new_cls._options = combined_options
-        return new_cls
+        options = _FunctionOptions.new(max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs)
+        return self._apply_dynamic_config(options, "with_concurrency")
 
     def with_batching(self: "_Cls", *, max_batch_size: int, wait_ms: int) -> "_Cls":
-        """Create an instance of the Cls with dynamic batching enabled or overridden with new values.
+        """Override the static Cls configuration with invocation-specific dynamic batching settings.
 
         **Usage:**
 
@@ -815,30 +783,8 @@ More information on class parameterization can be found here: https://modal.com/
         ModelUsingGPU().generate.remote(42)  # will run on an A100 GPU with input concurrency enabled
         ```
         """
-        batching_options = _ServiceOptions(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
-        combined_options = self._options.merge_options(batching_options)
-
-        async def _load_from_base(new_cls, resolver, load_context, existing_object_id):
-            if not self.is_hydrated:
-                await resolver.load(self, load_context)
-            new_cls._initialize_from_other(self)
-            # Restore the merged options after _initialize_from_other overwrites them
-            new_cls._options = combined_options
-
-        def _deps():
-            return []
-
-        new_cls = _Cls._from_loader(
-            _load_from_base,
-            rep=f"{self._name}.with_batching(...)",
-            is_another_app=True,
-            deps=_deps,
-            load_context_overrides=self._load_context_overrides,
-            hydrate_lazily=True,
-        )
-        new_cls._initialize_from_other(self)
-        new_cls._options = combined_options
-        return new_cls
+        options = _FunctionOptions.new(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
+        return self._apply_dynamic_config(options, "with_batching")
 
     @synchronizer.no_input_translation
     def __call__(self, *args, **kwargs) -> _Obj:

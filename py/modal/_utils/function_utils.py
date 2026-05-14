@@ -6,7 +6,7 @@ import typing
 from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Literal, Optional, Union
 
 from grpclib.exceptions import StreamTerminatedError
 
@@ -35,6 +35,7 @@ from ..exception import (
     ServiceError,
 )
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
+from ..retries import Retries
 from .blob_utils import (
     MAX_ASYNC_OBJECT_SIZE_BYTES,
     blob_download,
@@ -115,6 +116,26 @@ def is_async(function):
 
 def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.FunctionType.ValueType":
     return api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
+
+def _parse_retries(
+    retries: Optional[Union[int, Retries]],
+    source: str = "",
+) -> Optional[api_pb2.FunctionRetryPolicy]:
+    if isinstance(retries, int):
+        return Retries(
+            max_retries=retries,
+            initial_delay=1.0,
+            backoff_coefficient=1.0,
+        )._to_proto()
+    elif isinstance(retries, Retries):
+        return retries._to_proto()
+    elif retries is None:
+        return None
+    else:
+        extra = f" on {source}" if source else ""
+        msg = f"Retries parameter must be an integer or instance of modal.Retries. Found: {type(retries)}{extra}."
+        raise InvalidError(msg)
 
 
 class FunctionInfo:

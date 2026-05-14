@@ -17,6 +17,7 @@ import modal
 import modal.experimental
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._functions import MAX_INTERNAL_FAILURE_COUNT
+from modal._partial_function import MAX_MAX_BATCH_SIZE
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.client import Client
@@ -88,6 +89,112 @@ def test_run_function(client, servicer):
     with app.run(client=client):
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
+
+
+def test_function_with_options(client, servicer):
+    unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
+    unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
+    optioned = foo.with_options(
+        cpu=8,
+        memory=2048,
+        max_containers=10,
+        buffer_containers=2,
+        volumes={"/vol": unhydrated_volume},
+        secrets=[unhydrated_secret],
+        region="us-east-1",
+        cloud="aws",
+    )
+    assert optioned is not foo
+
+    with servicer.intercept() as ctx, app.run(client=client):
+        assert len(ctx.get_requests("FunctionBindParams")) == 0
+
+        assert optioned.remote(2, 4) == 20
+
+        (bind_req,) = ctx.get_requests("FunctionBindParams")
+        assert bind_req.function_id == foo.object_id
+        assert bind_req.function_options.resources.milli_cpu == 8000
+        assert bind_req.function_options.resources.memory_mb == 2048
+        assert bind_req.function_options.concurrency_limit == 10
+        assert bind_req.function_options.buffer_containers == 2
+        assert bind_req.function_options.replace_volume_mounts
+        assert bind_req.function_options.volume_mounts[0].mount_path == "/vol"
+        assert bind_req.function_options.volume_mounts[0].volume_id == unhydrated_volume.object_id
+        assert bind_req.function_options.replace_secret_ids
+        assert bind_req.function_options.secret_ids == [unhydrated_secret.object_id]
+        assert bind_req.function_options.scheduler_placement.regions == ["us-east-1"]
+        assert bind_req.function_options.cloud_provider_str == "aws"
+
+        assert foo.remote(2, 4) == 20
+        assert optioned.remote(2, 4) == 20
+        assert len(ctx.get_requests("FunctionBindParams")) == 1
+
+
+def test_function_multiple_with_options_calls(client, servicer):
+    optioned = foo.with_options(cpu=4, max_containers=5).with_options(memory=2048, max_containers=10)
+
+    with servicer.intercept() as ctx, app.run(client=client):
+        assert optioned.remote(2, 4) == 20
+
+        (bind_req,) = ctx.get_requests("FunctionBindParams")
+        assert bind_req.function_id == foo.object_id
+        assert bind_req.function_options.resources.milli_cpu == 4000
+        assert bind_req.function_options.resources.memory_mb == 2048
+        assert bind_req.function_options.concurrency_limit == 10
+
+
+def test_function_multiple_dynamic_config_methods(client, servicer):
+    optioned = (
+        foo.with_options(max_containers=1)
+        .with_batching(max_batch_size=10, wait_ms=20)
+        .with_concurrency(max_inputs=100, target_inputs=50)
+    )
+
+    with servicer.intercept() as ctx, app.run(client=client):
+        assert optioned.remote(2, 4) == 20
+
+        (bind_req,) = ctx.get_requests("FunctionBindParams")
+        assert bind_req.function_id == foo.object_id
+        assert bind_req.function_options.concurrency_limit == 1
+        assert bind_req.function_options.batch_max_size == 10
+        assert bind_req.function_options.batch_linger_ms == 20
+        assert bind_req.function_options.max_concurrent_inputs == 100
+        assert bind_req.function_options.target_concurrent_inputs == 50
+
+
+def test_function_dynamic_config_validation():
+    with pytest.raises(InvalidError, match="CPU limit lower than request"):
+        foo.with_options(cpu=(2, 1))
+
+    with pytest.raises(InvalidError, match="target_inputs.*max_inputs"):
+        foo.with_concurrency(max_inputs=10, target_inputs=11)
+
+    with pytest.raises(InvalidError, match=f"max_batch_size cannot be greater than {MAX_MAX_BATCH_SIZE}"):
+        foo.with_batching(max_batch_size=MAX_MAX_BATCH_SIZE + 1, wait_ms=1)
+
+
+def test_function_callsite_config_from_name_is_lazy(client, servicer):
+    deploy_app(app, "my-function-app", client=client)
+
+    with servicer.intercept() as ctx:
+        function = Function.from_name("my-function-app", "foo", client=client)
+        optioned = (
+            function.with_options(cpu=2).with_concurrency(max_inputs=10).with_batching(max_batch_size=4, wait_ms=5)
+        )
+
+        assert len(ctx.calls) == 0
+
+        optioned.hydrate()
+
+        (function_get_req,) = ctx.get_requests("FunctionGet")
+        assert function_get_req.app_name == "my-function-app"
+        assert function_get_req.object_tag == "foo"
+
+        (bind_req,) = ctx.get_requests("FunctionBindParams")
+        assert bind_req.function_options.resources.milli_cpu == 2000
+        assert bind_req.function_options.max_concurrent_inputs == 10
+        assert bind_req.function_options.batch_max_size == 4
+        assert bind_req.function_options.batch_linger_ms == 5
 
 
 def _attempt_await_response(status: "api_pb2.GenericResult.GenericStatus.ValueType"):

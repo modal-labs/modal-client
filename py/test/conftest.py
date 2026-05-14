@@ -1629,8 +1629,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionBindParams(self, stream):
         request: api_pb2.FunctionBindParamsRequest = await stream.recv_message()
         assert request.function_id
-        assert request.serialized_params
         base_function = self.app_functions[request.function_id]
+        if base_function.is_class:
+            # Backwards compatibility: Cls() always sends serialized empty args/kwargs
+            # even when it is not parameterized. True Function variants will not have this debt.
+            assert request.serialized_params
         existing_func_id = self.bound_functions.get((request.function_id, request.serialized_params), None)
         if existing_func_id:
             function_id = existing_func_id

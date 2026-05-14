@@ -13,15 +13,15 @@ from typing_extensions import assert_type
 import modal.experimental
 import modal.partial_function
 from modal import App, Cls, Function, Image, Volume, enter, exit, method
+from modal._function_variants import _FunctionOptions
 from modal._partial_function import (
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
-from modal._serialization import deserialize, deserialize_params, serialize
+from modal._serialization import deserialize, deserialize_params, deserialize_proto_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
-from modal.cls import _ServiceOptions
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import (
     PartialFunction,
@@ -331,10 +331,10 @@ def test_with_options_prehydrated_payload(client, servicer):
 
 def test_service_options_defaults_untruthiness():
     # For `.with_options()` stacking (method-chaining) to work, the default values of the
-    # internal _ServiceOptions dataclass should be be untruthy. This test just asserts that.
+    # internal _FunctionOptions dataclass should be untruthy. This test just asserts that.
     # In the future we may change the implementation to use an "Unset" sentinel default, in
     # which case we wouldn't need this assertion.
-    default_options = _ServiceOptions()
+    default_options = _FunctionOptions()
     for value in dataclasses.asdict(default_options).values():  # type: ignore  # synchronicity type stubs
         assert not value
 
@@ -818,8 +818,11 @@ def test_cls_lookup_update_autoscaler(client, servicer, set_env_client):
     deploy_app(app, name, client=client)
 
     C = Cls.from_name(name, "ClsWithMethod", client=client)
-    obj = C()
-    obj.update_autoscaler(min_containers=3)
+    obj = C(arg="other-instance")
+    with servicer.intercept() as ctx:
+        obj.update_autoscaler(min_containers=3)
+        (bind_req,) = ctx.get_requests("FunctionBindParams")
+        assert deserialize_proto_params(bind_req.serialized_params) == {"arg": "other-instance"}
 
     service_function_id = obj._cached_service_function().object_id
     assert servicer.app_functions[service_function_id].warm_pool_size == 3
@@ -1572,7 +1575,7 @@ def test_cls_duplicate_volume_mounts_with_options(client, servicer):
         OptionedClass = SomeClass.with_options(volumes={"/a": vol_a, "/b": vol_b})
         inst = OptionedClass(x=10)
 
-        # Should raise an error when calling a method (which triggers _bind_parameters)
+        # Should raise an error when calling a method (which triggers _make_function_variant)
         with pytest.raises(InvalidError, match="same.*[Vv]olume.*multiple"):
             inst.some_method.remote()
 

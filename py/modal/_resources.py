@@ -12,7 +12,7 @@ def convert_fn_config_to_resources_config(
     cpu: Optional[Union[float, tuple[float, float]]],
     memory: Optional[Union[int, tuple[int, int]]],
     gpu: Optional[str],
-    ephemeral_disk: Optional[int],
+    ephemeral_disk: Optional[int] = None,
     rdma: Optional[bool] = None,
 ) -> api_pb2.Resources:
     if cpu and isinstance(cpu, tuple):
