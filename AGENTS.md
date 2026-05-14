@@ -4,6 +4,8 @@ This file provides guidance to LLMs when working with code in this repository.
 
 ## Common Development Commands
 
+All `inv` commands below should be run from the `client/py/` directory.
+
 **Code Quality:**
 
 Before making a pull request, the following checks must pass:
