@@ -30,7 +30,7 @@ import {
 import {
   TaskGetCommandRouterAccessRequest,
   FileDescriptor,
-  TaskGetCommandRouterAccessResponse,
+  SandboxGetCommandRouterAccessRequest,
 } from "../proto/modal_proto/api";
 import type { ModalGrpcClient } from "./client";
 import { timeoutMiddleware, type TimeoutOptions } from "./client";
@@ -40,6 +40,11 @@ import { isLocalhost } from "./config";
 import { ClientClosedError } from "./errors";
 
 type TaskCommandRouterClient = Client<typeof TaskCommandRouterDefinition>;
+
+type CommandRouterAccess = {
+  url: string;
+  jwt: string;
+};
 
 export function parseJwtExpiration(
   jwtToken: string,
@@ -126,6 +131,8 @@ export class TaskCommandRouterClientImpl {
   private channel: ReturnType<typeof createChannel>;
   private serverClient: ModalGrpcClient;
   private taskId: string;
+  private sandboxId: string;
+  private isV2: boolean;
   private serverUrl: string;
   private jwt: string;
   private jwtExp: number | null;
@@ -136,13 +143,18 @@ export class TaskCommandRouterClientImpl {
   static async tryInit(
     serverClient: ModalGrpcClient,
     taskId: string,
+    sandboxId: string,
+    isV2: boolean,
     logger: Logger,
     profile: Profile,
   ): Promise<TaskCommandRouterClientImpl | null> {
-    let resp: TaskGetCommandRouterAccessResponse;
+    let resp: CommandRouterAccess;
     try {
-      resp = await serverClient.taskGetCommandRouterAccess(
-        TaskGetCommandRouterAccessRequest.create({ taskId }),
+      resp = await getCommandRouterAccess(
+        serverClient,
+        taskId,
+        sandboxId,
+        isV2,
       );
     } catch (err) {
       if (
@@ -205,6 +217,8 @@ export class TaskCommandRouterClientImpl {
     const client = new TaskCommandRouterClientImpl(
       serverClient,
       taskId,
+      sandboxId,
+      isV2,
       resp.url,
       resp.jwt,
       channel,
@@ -223,6 +237,8 @@ export class TaskCommandRouterClientImpl {
   private constructor(
     serverClient: ModalGrpcClient,
     taskId: string,
+    sandboxId: string,
+    isV2: boolean,
     serverUrl: string,
     jwt: string,
     channel: ReturnType<typeof createChannel>,
@@ -230,6 +246,8 @@ export class TaskCommandRouterClientImpl {
   ) {
     this.serverClient = serverClient;
     this.taskId = taskId;
+    this.sandboxId = sandboxId;
+    this.isV2 = isV2;
     this.serverUrl = serverUrl;
     this.jwt = jwt;
     this.jwtExp = parseJwtExpiration(jwt, logger);
@@ -443,8 +461,11 @@ export class TaskCommandRouterClientImpl {
       }
 
       try {
-        const resp = await this.serverClient.taskGetCommandRouterAccess(
-          TaskGetCommandRouterAccessRequest.create({ taskId: this.taskId }),
+        const resp = await getCommandRouterAccess(
+          this.serverClient,
+          this.taskId,
+          this.sandboxId,
+          this.isV2,
         );
 
         if (resp.url !== this.serverUrl) {
@@ -577,4 +598,22 @@ export class TaskCommandRouterClientImpl {
       }
     }
   }
+}
+
+async function getCommandRouterAccess(
+  serverClient: ModalGrpcClient,
+  taskId: string,
+  sandboxId: string,
+  isV2: boolean,
+): Promise<CommandRouterAccess> {
+  if (isV2) {
+    const resp = await serverClient.sandboxGetCommandRouterAccess(
+      SandboxGetCommandRouterAccessRequest.create({ sandboxId }),
+    );
+    return { url: resp.url, jwt: resp.jwt };
+  }
+  const resp = await serverClient.taskGetCommandRouterAccess(
+    TaskGetCommandRouterAccessRequest.create({ taskId }),
+  );
+  return { url: resp.url, jwt: resp.jwt };
 }

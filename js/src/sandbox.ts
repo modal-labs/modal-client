@@ -8,6 +8,7 @@ import {
   PTYInfo_PTYType,
   SandboxTagsGetResponse,
   SandboxCreateRequest,
+  SandboxCreateV2Request,
   NetworkAccess,
   NetworkAccess_NetworkAccessType,
   VolumeMount,
@@ -536,6 +537,45 @@ export async function buildSandboxCreateRequestProto(
   });
 }
 
+export async function buildSandboxCreateV2RequestProto(
+  appId: string,
+  imageId: string,
+  params: SandboxCreateParams = {},
+): Promise<SandboxCreateV2Request> {
+  if (params.tags && Object.keys(params.tags).length > 0) {
+    throw new Error("tags are not supported by experimentalCreate");
+  }
+  if (params.volumes && Object.keys(params.volumes).length > 0) {
+    throw new Error("volumes are not supported by experimentalCreate");
+  }
+  if (
+    params.cloudBucketMounts &&
+    Object.keys(params.cloudBucketMounts).length > 0
+  ) {
+    throw new Error(
+      "cloud bucket mounts are not supported by experimentalCreate",
+    );
+  }
+  if (params.gpu) {
+    throw new Error("GPUs are not supported by experimentalCreate");
+  }
+  if (params.customDomain) {
+    throw new Error("custom domains are not supported by experimentalCreate");
+  }
+  if (params.proxy) {
+    throw new Error("proxies are not supported by experimentalCreate");
+  }
+  if (params.readinessProbe) {
+    throw new Error("readiness probes are not supported by experimentalCreate");
+  }
+
+  const req = await buildSandboxCreateRequestProto(appId, imageId, params);
+  return SandboxCreateV2Request.create({
+    appId: req.appId,
+    definition: req.definition,
+  });
+}
+
 /**
  * Service for managing {@link Sandbox}es.
  *
@@ -593,6 +633,65 @@ export class SandboxService {
       createResp.sandboxId,
     );
     return new Sandbox(this.#client, createResp.sandboxId);
+  }
+
+  /**
+   * Create a new {@link Sandbox} using the experimental V2 backend.
+   */
+  async experimentalCreate(
+    app: App,
+    image: Image,
+    params: SandboxCreateParams = {},
+  ): Promise<Sandbox> {
+    await image.build(app);
+
+    const mergedSecrets = await mergeEnvIntoSecrets(
+      this.#client,
+      params.env,
+      params.secrets,
+    );
+    const mergedParams = {
+      ...params,
+      secrets: mergedSecrets,
+      env: undefined, // setting env to undefined just to clarify it's not needed anymore
+    };
+
+    const createReq = await buildSandboxCreateV2RequestProto(
+      app.appId,
+      image.imageId,
+      mergedParams,
+    );
+    let createResp;
+    try {
+      createResp = await this.#client.cpClient.sandboxCreateV2(createReq);
+    } catch (err) {
+      if (err instanceof ClientError && err.code === Status.ALREADY_EXISTS) {
+        throw new AlreadyExistsError(err.details || err.message);
+      }
+      throw err;
+    }
+
+    this.#client.logger.debug(
+      "Created experimental V2 Sandbox",
+      "sandbox_id",
+      createResp.sandboxId,
+    );
+
+    const tunnels =
+      createResp.tunnels.length > 0
+        ? Object.fromEntries(
+            createResp.tunnels.map((t) => [
+              t.containerPort,
+              new Tunnel(t.host, t.port, t.unencryptedHost, t.unencryptedPort),
+            ]),
+          )
+        : undefined;
+
+    return new Sandbox(this.#client, createResp.sandboxId, {
+      isV2: true,
+      taskId: createResp.taskId,
+      tunnels,
+    });
   }
 
   /** Returns a running {@link Sandbox} object from an ID.
@@ -883,17 +982,30 @@ export class Sandbox {
 
   #taskId: string | undefined;
   #tunnels: Record<number, Tunnel> | undefined;
+  #isV2: boolean;
   #commandRouterClient: TaskCommandRouterClientImpl | undefined;
   #commandRouterClientPromise: Promise<TaskCommandRouterClientImpl> | undefined;
   #attached: boolean = true;
 
   /** @ignore */
-  constructor(client: ModalClient, sandboxId: string) {
+  constructor(
+    client: ModalClient,
+    sandboxId: string,
+    params: {
+      isV2?: boolean;
+      taskId?: string;
+      tunnels?: Record<number, Tunnel>;
+    } = {},
+  ) {
     this.#client = client;
     this.sandboxId = sandboxId;
+    this.#isV2 = params.isV2 ?? false;
+    this.#taskId = params.taskId || undefined;
+    this.#tunnels = params.tunnels;
   }
 
   get stdin(): ModalWriteStream<string> {
+    this.#ensureV1("stdin");
     if (!this.#stdin) {
       this.#stdin = toModalWriteStream(
         inputStreamSb(this.#client.cpClient, this.sandboxId),
@@ -903,6 +1015,7 @@ export class Sandbox {
   }
 
   get stdout(): ModalReadStream<string> {
+    this.#ensureV1("stdout");
     if (!this.#stdout) {
       this.#stdoutAbort = new AbortController();
       const bytesStream = streamConsumingIter(
@@ -922,6 +1035,7 @@ export class Sandbox {
   }
 
   get stderr(): ModalReadStream<string> {
+    this.#ensureV1("stderr");
     if (!this.#stderr) {
       this.#stderrAbort = new AbortController();
       const bytesStream = streamConsumingIter(
@@ -943,6 +1057,7 @@ export class Sandbox {
   /** Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in {@link SandboxService#list Sandbox.list}. */
   async setTags(tags: Record<string, string>): Promise<void> {
     this.#ensureAttached();
+    this.#ensureV1("setTags");
     const tagsList = Object.entries(tags).map(([tagName, tagValue]) => ({
       tagName,
       tagValue,
@@ -964,6 +1079,7 @@ export class Sandbox {
   /** Get tags (key-value pairs) currently attached to this Sandbox from the server. */
   async getTags(): Promise<Record<string, string>> {
     this.#ensureAttached();
+    this.#ensureV1("getTags");
     let resp: SandboxTagsGetResponse;
     try {
       resp = await this.#client.cpClient.sandboxTagsGet({
@@ -1011,6 +1127,7 @@ export class Sandbox {
    */
   async open(path: string, mode: SandboxFileMode = "r"): Promise<SandboxFile> {
     this.#ensureAttached();
+    this.#ensureV1("open");
     const taskId = await this.#getTaskId();
     const resp = await runFilesystemExec(this.#client.cpClient, {
       fileOpenRequest: {
@@ -1082,6 +1199,47 @@ export class Sandbox {
     }
   }
 
+  #ensureV1(methodName: string): void {
+    if (this.#isV2) {
+      throw new InvalidError(
+        `Sandbox.${methodName} is not supported for V2 sandboxes`,
+      );
+    }
+  }
+
+  #sandboxWait(timeout: number) {
+    const req = { sandboxId: this.sandboxId, timeout };
+    if (this.#isV2) {
+      return this.#client.cpClient.sandboxWaitV2(req);
+    }
+    return this.#client.cpClient.sandboxWait(req);
+  }
+
+  #sandboxGetTaskId() {
+    const req = { sandboxId: this.sandboxId };
+    if (this.#isV2) {
+      return this.#client.cpClient.sandboxGetTaskIdV2(req);
+    }
+    return this.#client.cpClient.sandboxGetTaskId(req);
+  }
+
+  #sandboxGetTunnels(timeoutMs: number) {
+    const req = { sandboxId: this.sandboxId, timeout: timeoutMs / 1000 };
+    if (this.#isV2) {
+      return this.#client.cpClient.sandboxGetTunnelsV2(req);
+    }
+    return this.#client.cpClient.sandboxGetTunnels(req);
+  }
+
+  async #sandboxTerminate(): Promise<void> {
+    const req = { sandboxId: this.sandboxId };
+    if (this.#isV2) {
+      await this.#client.cpClient.sandboxTerminateV2(req);
+      return;
+    }
+    await this.#client.cpClient.sandboxTerminate(req);
+  }
+
   static readonly #maxGetTaskIdAttempts = 600; // 5 minutes at 500ms intervals
 
   async #getTaskId(): Promise<string> {
@@ -1089,9 +1247,7 @@ export class Sandbox {
       return this.#taskId;
     }
     for (let i = 0; i < Sandbox.#maxGetTaskIdAttempts; i++) {
-      const resp = await this.#client.cpClient.sandboxGetTaskId({
-        sandboxId: this.sandboxId,
-      });
+      const resp = await this.#sandboxGetTaskId();
       if (resp.taskResult) {
         if (
           resp.taskResult.status ===
@@ -1130,6 +1286,8 @@ export class Sandbox {
       const client = await TaskCommandRouterClientImpl.tryInit(
         this.#client.cpClient,
         taskId,
+        this.sandboxId,
+        this.#isV2,
         this.#client.logger,
         this.#client.profile,
       );
@@ -1165,6 +1323,7 @@ export class Sandbox {
     params?: SandboxCreateConnectTokenParams,
   ): Promise<SandboxCreateConnectCredentials> {
     this.#ensureAttached();
+    this.#ensureV1("createConnectToken");
     const resp = await this.#client.cpClient.sandboxCreateConnectToken({
       sandboxId: this.sandboxId,
       userMetadata: params?.userMetadata,
@@ -1176,7 +1335,7 @@ export class Sandbox {
   async terminate(params: { wait: true }): Promise<number>;
   async terminate(params?: SandboxTerminateParams): Promise<number | void> {
     this.#ensureAttached();
-    await this.#client.cpClient.sandboxTerminate({ sandboxId: this.sandboxId });
+    await this.#sandboxTerminate();
 
     let exitCode: number | undefined;
     if (params?.wait) {
@@ -1202,10 +1361,7 @@ export class Sandbox {
 
   async wait(): Promise<number> {
     while (true) {
-      const resp = await this.#client.cpClient.sandboxWait({
-        sandboxId: this.sandboxId,
-        timeout: 10,
-      });
+      const resp = await this.#sandboxWait(10);
       if (resp.result) {
         const returnCode = Sandbox.#getReturnCode(resp.result)!;
         this.#client.logger.debug(
@@ -1233,6 +1389,7 @@ export class Sandbox {
    */
   async waitUntilReady(timeoutMs = 300_000): Promise<void> {
     this.#ensureAttached();
+    this.#ensureV1("waitUntilReady");
     if (timeoutMs <= 0) {
       throw new InvalidError(`timeoutMs must be positive, got ${timeoutMs}`);
     }
@@ -1275,10 +1432,7 @@ export class Sandbox {
       return this.#tunnels;
     }
 
-    const resp = await this.#client.cpClient.sandboxGetTunnels({
-      sandboxId: this.sandboxId,
-      timeout: timeoutMs / 1000,
-    });
+    const resp = await this.#sandboxGetTunnels(timeoutMs);
 
     if (
       resp.result?.status === GenericResult_GenericStatus.GENERIC_STATUS_TIMEOUT
@@ -1309,6 +1463,7 @@ export class Sandbox {
    */
   async snapshotFilesystem(timeoutMs = 55000): Promise<Image> {
     this.#ensureAttached();
+    this.#ensureV1("snapshotFilesystem");
     const resp = await this.#client.cpClient.sandboxSnapshotFs({
       sandboxId: this.sandboxId,
       timeout: timeoutMs / 1000,
@@ -1337,6 +1492,7 @@ export class Sandbox {
    */
   async mountImage(path: string, image?: Image): Promise<void> {
     this.#ensureAttached();
+    this.#ensureV1("mountImage");
     const taskId = await this.#getTaskId();
     const commandRouterClient =
       await this.#getOrCreateCommandRouterClient(taskId);
@@ -1364,6 +1520,7 @@ export class Sandbox {
    */
   async unmountImage(path: string): Promise<void> {
     this.#ensureAttached();
+    this.#ensureV1("unmountImage");
     const taskId = await this.#getTaskId();
     const commandRouterClient =
       await this.#getOrCreateCommandRouterClient(taskId);
@@ -1384,6 +1541,7 @@ export class Sandbox {
    */
   async snapshotDirectory(path: string): Promise<Image> {
     this.#ensureAttached();
+    this.#ensureV1("snapshotDirectory");
     const taskId = await this.#getTaskId();
     const commandRouterClient =
       await this.#getOrCreateCommandRouterClient(taskId);
@@ -1409,10 +1567,7 @@ export class Sandbox {
    */
   async poll(): Promise<number | null> {
     this.#ensureAttached();
-    const resp = await this.#client.cpClient.sandboxWait({
-      sandboxId: this.sandboxId,
-      timeout: 0,
-    });
+    const resp = await this.#sandboxWait(0);
 
     return Sandbox.#getReturnCode(resp.result);
   }

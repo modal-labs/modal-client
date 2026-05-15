@@ -2,9 +2,11 @@ import { tc } from "../test-support/test-client";
 import { parseGpuConfig } from "../src/app";
 import {
   buildSandboxCreateRequestProto,
+  buildSandboxCreateV2RequestProto,
   buildTaskExecStartRequestProto,
   validateExecArgs,
   Probe,
+  Sandbox,
 } from "../src/sandbox";
 import { expect, test, onTestFinished } from "vitest";
 import {
@@ -15,6 +17,7 @@ import {
   ImageGetOrCreateResponse,
   AppGetOrCreateResponse,
   SandboxCreateResponse,
+  SandboxCreateV2Response,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
 
@@ -940,6 +943,140 @@ test("testSandboxExperimentalDockerMock", async () => {
   expect(sb.sandboxId).toEqual("sb-1234");
 
   mock.assertExhausted();
+});
+
+test("buildSandboxCreateV2RequestProto", async () => {
+  const req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
+    command: ["sleep", "60"],
+    timeoutMs: 600_000,
+  });
+
+  expect(req.appId).toBe("app-123");
+  expect(req.definition?.imageId).toBe("img-456");
+  expect(req.definition?.entrypointArgs).toEqual(["sleep", "60"]);
+  expect(req.definition?.timeoutSecs).toBe(600);
+});
+
+test.each([
+  ["tags", { tags: { key: "value" } }, "tags are not supported"],
+  [
+    "volumes",
+    { volumes: { "/vol": { volumeId: "vo-123" } as any } },
+    "volumes are not supported",
+  ],
+  [
+    "cloud bucket mounts",
+    { cloudBucketMounts: { "/bucket": { bucketName: "bucket" } as any } },
+    "cloud bucket mounts are not supported",
+  ],
+  ["gpu", { gpu: "A10G" }, "GPUs are not supported"],
+  [
+    "custom domain",
+    { customDomain: "example.com" },
+    "custom domains are not supported",
+  ],
+  [
+    "proxy",
+    { proxy: { proxyId: "pr-123" } as any },
+    "proxies are not supported",
+  ],
+  [
+    "readiness probe",
+    { readinessProbe: Probe.withExec(["true"]) },
+    "readiness probes are not supported",
+  ],
+])(
+  "buildSandboxCreateV2RequestProto rejects unsupported option %s",
+  async (_name, params, expectedError) => {
+    await expect(
+      buildSandboxCreateV2RequestProto("app-123", "img-456", params),
+    ).rejects.toThrow(expectedError);
+  },
+);
+
+test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/AppGetOrCreate", (_: any): AppGetOrCreateResponse => {
+    return { appId: "ap-1234" };
+  });
+  mock.handleUnary("ImageGetOrCreate", (_: any): ImageGetOrCreateResponse => {
+    return {
+      imageId: "im-123",
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exception: "",
+        exitcode: 0,
+        traceback: "",
+        serializedTb: new Uint8Array(0),
+        tbLineCache: new Uint8Array(0),
+        propagationReason: "",
+      },
+      metadata: undefined,
+    };
+  });
+  mock.handleUnary("/SandboxCreateV2", (req: any): SandboxCreateV2Response => {
+    expect(req.appId).toBe("ap-1234");
+    return { sandboxId: "sb-v2-123", taskId: "ta-v2-123", tunnels: [] };
+  });
+  mock.handleUnary("/SandboxWaitV2", (req: any) => {
+    expect(req.sandboxId).toBe("sb-v2-123");
+    return {
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exitcode: 0,
+      },
+    };
+  });
+  mock.handleUnary("/SandboxWaitV2", (req: any) => {
+    expect(req.sandboxId).toBe("sb-v2-123");
+    expect(req.timeout).toBe(0);
+    return {};
+  });
+  mock.handleUnary("/SandboxGetTunnelsV2", (req: any) => {
+    expect(req.sandboxId).toBe("sb-v2-123");
+    return { tunnels: [] };
+  });
+  mock.handleUnary("/SandboxTerminateV2", (req: any) => {
+    expect(req.sandboxId).toBe("sb-v2-123");
+    return {};
+  });
+
+  const app = await mc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = mc.images.fromRegistry("alpine:3.21");
+
+  const sb = await mc.sandboxes.experimentalCreate(app, image);
+  expect(sb.sandboxId).toBe("sb-v2-123");
+  expect(await sb.wait()).toBe(0);
+  expect(await sb.poll()).toBeNull();
+  expect(await sb.tunnels()).toEqual({});
+  await sb.terminate();
+
+  mock.assertExhausted();
+});
+
+test("V2 Sandbox rejects V1-only runtime methods", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const sb = new Sandbox(mc, "sb-v2-123", {
+    isV2: true,
+    taskId: "ta-v2-123",
+  });
+  const expectedError = "not supported for V2 sandboxes";
+
+  expect(() => sb.stdin).toThrow(expectedError);
+  expect(() => sb.stdout).toThrow(expectedError);
+  expect(() => sb.stderr).toThrow(expectedError);
+  await expect(sb.setTags({})).rejects.toThrow(expectedError);
+  await expect(sb.getTags()).rejects.toThrow(expectedError);
+  await expect(sb.open("/tmp/file", "r")).rejects.toThrow(expectedError);
+  await expect(sb.createConnectToken()).rejects.toThrow(expectedError);
+  await expect(sb.waitUntilReady(5000)).rejects.toThrow(expectedError);
+  await expect(sb.snapshotFilesystem()).rejects.toThrow(expectedError);
+  await expect(sb.mountImage("/mnt")).rejects.toThrow(expectedError);
+  await expect(sb.unmountImage("/mnt")).rejects.toThrow(expectedError);
+  await expect(sb.snapshotDirectory("/mnt")).rejects.toThrow(expectedError);
 });
 
 test("SandboxGetTaskIdPolling", async () => {
