@@ -97,8 +97,7 @@ def render(
                 + """client: "modal.client._Client", server_url: str) -> None:"""
             )
             with buf.indent():
-                if len(service.methods) == 0:
-                    buf.add("pass")
+                num_methods_added = 0
                 for method in service.methods:
                     name, cardinality, request_type, reply_type = method
                     wrapper_cls: str
@@ -106,8 +105,10 @@ def render(
                         wrapper_cls = "modal._grpc_client.UnaryUnaryWrapper"
                     elif cardinality is const.Cardinality.UNARY_STREAM:
                         wrapper_cls = "modal._grpc_client.UnaryStreamWrapper"
-                    # elif cardinality is const.Cardinality.STREAM_UNARY:
-                    #     wrapper_cls = StreamUnaryWrapper
+                    elif cardinality is const.Cardinality.STREAM_UNARY:
+                        # StreamUnaryWrapper is not implemented - right now only TaskCommandRouter uses StreamUnary,
+                        # and it doesn't actually use the wrapper. continue (rather than raise) to satisfy bazel.
+                        continue
                     # elif cardinality is const.Cardinality.STREAM_STREAM:
                     #     wrapper_cls = StreamStreamWrapper
                     else:
@@ -115,6 +116,10 @@ def render(
 
                     original_method = f"grpclib_stub.{name}"
                     buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, server_url)")
+                    num_methods_added += 1
+
+                if num_methods_added == 0:
+                    buf.add("pass")
 
     return buf.content()
 

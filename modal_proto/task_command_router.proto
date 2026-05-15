@@ -172,6 +172,22 @@ message TaskExecStartRequest {
 
 message TaskExecStartResponse { }
 
+message TaskExecStdinStatusRequest {
+  // The ID of the task running the exec'd command.
+  string task_id = 1;
+  // The execution ID of the command to query.
+  string exec_id = 2;
+}
+
+message TaskExecStdinStatusResponse {
+  // Number of bytes the server has accepted for this exec so far.
+  // A streaming client that lost its connection should resume sending at this
+  // offset.
+  uint64 num_bytes_written = 1;
+  // True if stdin has already been closed (EOF sent) for this exec.
+  bool closed = 2;
+}
+
 message TaskExecStdinWriteRequest {
   // The ID of the task running the exec'd command.
   string task_id = 1;
@@ -187,6 +203,27 @@ message TaskExecStdinWriteRequest {
 }
 
 message TaskExecStdinWriteResponse { }
+
+message TaskExecStdinWriteStreamRequest {
+  // First message must be `start`; subsequent messages must be `data`.
+  oneof payload {
+    // Start of a stdin write stream. Includes task_id, exec_id, and offset to write to.
+    TaskExecStdinWriteStreamStart start = 1;
+    // A chunk of stdin data to write to the exec'd command.
+    bytes data = 2;
+  }
+}
+
+message TaskExecStdinWriteStreamResponse { }
+
+message TaskExecStdinWriteStreamStart {
+  // The ID of the task running the exec'd command.
+  string task_id = 1;
+  // The execution ID of the command to write to.
+  string exec_id = 2;
+  // The byte offset at which the stream begins. Will be 0 unless resuming a broken stream.
+  uint64 offset = 3;
+}
 
 message TaskExecStdioReadRequest {
   // The ID of the task running the exec'd command.
@@ -292,8 +329,14 @@ service TaskCommandRouter {
   rpc TaskExecPoll(TaskExecPollRequest) returns (TaskExecPollResponse);
   // Execute a command in the task.
   rpc TaskExecStart(TaskExecStartRequest) returns (TaskExecStartResponse);
+  // Get the current stdin write status for an exec'd command. Used to resume
+  // a TaskExecStdinWriteStream after a stream failure.
+  rpc TaskExecStdinStatus(TaskExecStdinStatusRequest) returns (TaskExecStdinStatusResponse);
   // Write to the stdin stream of an exec'd command.
   rpc TaskExecStdinWrite(TaskExecStdinWriteRequest) returns (TaskExecStdinWriteResponse);
+  // Stream stdin bytes to an exec'd command. First message carries the
+  // start envelope (task_id, exec_id, offset); subsequent messages carry data.
+  rpc TaskExecStdinWriteStream(stream TaskExecStdinWriteStreamRequest) returns (TaskExecStdinWriteStreamResponse);
   // Get a stream of output from the stdout or stderr stream of an exec'd command.
   rpc TaskExecStdioRead(TaskExecStdioReadRequest) returns (stream TaskExecStdioReadResponse);
   // Wait for an exec'd command to exit and return the exit code.
