@@ -2015,18 +2015,26 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
 async def test_input_slots():
     slots = InputSlots(10)
 
-    async def acquire_for(cm, secs):
+    release1 = asyncio.Event()
+    release2 = asyncio.Event()
+
+    async def acquire_and_wait(cm, release_event, acquired_event):
         await cm.acquire()
-        await asyncio.sleep(secs)
+        acquired_event.set()
+        await release_event.wait()
         cm.release()
 
-    tasks1 = asyncio.gather(*[acquire_for(slots, 0.1) for _ in range(4)])
-    tasks2 = asyncio.gather(*[acquire_for(slots, 0.2) for _ in range(4)])
-    await asyncio.sleep(0.01)
+    acquired1 = [asyncio.Event() for _ in range(4)]
+    acquired2 = [asyncio.Event() for _ in range(4)]
+    tasks1 = asyncio.gather(*[acquire_and_wait(slots, release1, e) for e in acquired1])
+    tasks2 = asyncio.gather(*[acquire_and_wait(slots, release2, e) for e in acquired2])
+    await asyncio.gather(*[e.wait() for e in acquired1 + acquired2])
 
     slots.set_value(1)
     assert slots.value == 1
     assert slots.active == 8
+
+    release1.set()
     await tasks1
     assert slots.active == 4
 
@@ -2034,6 +2042,7 @@ async def test_input_slots():
     assert slots.active == 4
 
     slots.set_value(10)
+    release2.set()
     await tasks2
     assert slots.active == 0
 
