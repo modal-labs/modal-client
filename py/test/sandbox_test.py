@@ -4,6 +4,7 @@ import inspect
 import pytest
 import time
 import typing
+import uuid
 from pathlib import Path
 from unittest import mock
 
@@ -683,16 +684,54 @@ def test_sandbox_snapshot(app, client, servicer):
     sb.terminate()
 
 
-def test_sandbox_snapshot_fs(app, servicer):
+def test_sandbox_snapshot_fs(app, servicer, monkeypatch):
+    captured_requests = []
+    original = FakeTaskCommandRouterClient.snapshot_filesystem
+
+    async def _snapshot_filesystem(self, request, *, timeout):
+        assert timeout == 55
+        captured_requests.append(request)
+        return await original(self, request)
+
+    monkeypatch.setattr(FakeTaskCommandRouterClient, "snapshot_filesystem", _snapshot_filesystem, raising=True)
+
     sb = Sandbox.create(app=app)
     image = sb.snapshot_filesystem()
+    assert image.object_id == "im-snapshot-fs-123"
+
+    # The SDK sends ttl_seconds=-1 (no expiry) on the wire.
+    assert len(captured_requests) == 1
+    assert captured_requests[0].HasField("ttl_seconds")
+    assert captured_requests[0].ttl_seconds == -1
+    snapshot_id = captured_requests[0].snapshot_id
+    assert snapshot_id, "snapshot_id must be non-empty"
+    uuid.UUID(snapshot_id)  # Raises ValueError if not a valid UUID
+
+    # Each call generates a unique snapshot_id.
+    sb.snapshot_filesystem()
+    assert captured_requests[-1].snapshot_id != snapshot_id
+
     sb.terminate()
 
-    sb2 = Sandbox.create(image=image, app=app)
-    sb2.terminate()
+
+def test_sandbox_snapshot_fs_legacy_env_var(app, servicer, monkeypatch):
+    async def _snapshot_filesystem(self, request, *, timeout):
+        raise AssertionError("legacy snapshot path should not use the command router")
+
+    monkeypatch.setenv("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT", "1")
+    monkeypatch.setattr(FakeTaskCommandRouterClient, "snapshot_filesystem", _snapshot_filesystem, raising=True)
+
+    sb = Sandbox.create(app=app)
+
+    with servicer.intercept() as ctx:
+        image = sb.snapshot_filesystem(timeout=17)
 
     assert image.object_id == "im-123"
-    assert servicer.sandbox_defs[1].image_id == "im-123"
+    (snapshot_req,) = ctx.get_requests("SandboxSnapshotFs")
+    assert snapshot_req.sandbox_id == sb.object_id
+    assert snapshot_req.timeout == 17
+
+    sb.terminate()
 
 
 def test_sandbox_cpu_request(app, servicer):
@@ -975,13 +1014,10 @@ def test_snapshot_directory(servicer, client, app, monkeypatch):
 
     assert image.object_id == "im-snapshot-123"  # From mock
 
-    # Verify snapshot_id is set and is a valid UUID
+    # Verify snapshot_id is set
     assert len(captured_requests) == 1
     snapshot_id = captured_requests[0].snapshot_id
     assert snapshot_id, "snapshot_id must be non-empty"
-    import uuid
-
-    uuid.UUID(snapshot_id)  # Raises ValueError if not a valid UUID
 
     # Verify each call generates a unique snapshot_id
     image2 = sb.snapshot_directory("/var")
@@ -993,6 +1029,9 @@ def test_snapshot_directory(servicer, client, app, monkeypatch):
     # Test validation: non-absolute path should raise
     with pytest.raises(InvalidError, match="must be absolute"):
         sb.snapshot_directory("relative/path")
+
+    # The SDK sends ttl_seconds=None for now, pretending to be old client
+    assert not captured_requests[0].HasField("ttl_seconds")
 
     sb.terminate()
 

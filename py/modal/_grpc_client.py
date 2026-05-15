@@ -44,6 +44,10 @@ _STATUS_TO_EXCEPTION: dict[Status, type[exception._GRPCErrorWrapper]] = {
 
 
 class grpc_error_converter:
+    def __init__(self, *, expect_timeouts: bool = False):
+        """expect_timeouts: if this is set we convert cancelled/deadline_exceeded statuses to exception.TimeoutError"""
+        self._expect_timeouts = expect_timeouts
+
     def __enter__(self):
         pass
 
@@ -52,6 +56,9 @@ class grpc_error_converter:
         use_full_traceback = config.get("traceback")
         with suppress_tb_frame():
             if isinstance(exc, GRPCError):
+                if self._expect_timeouts and exc.status in (Status.CANCELLED, Status.DEADLINE_EXCEEDED):
+                    raise exception.TimeoutError("Timeout expired")
+
                 modal_exc = _STATUS_TO_EXCEPTION[exc.status](exc.message)
                 modal_exc._grpc_message = exc.message
                 modal_exc._grpc_status = exc.status

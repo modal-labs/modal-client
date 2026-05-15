@@ -196,13 +196,19 @@ class FakeTaskCommandRouterClient:
         return None
 
     async def snapshot_directory(
-        self, request: sr_pb2.TaskSnapshotDirectoryRequest
+        self, request: sr_pb2.TaskSnapshotDirectoryRequest, timeout: Optional[float] = None
     ) -> sr_pb2.TaskSnapshotDirectoryResponse:
         """Mock snapshot_directory for testing - returns a fake image ID."""
         if not hasattr(self, "_snapshot_requests"):
             self._snapshot_requests = []
         self._snapshot_requests.append(request)
         return sr_pb2.TaskSnapshotDirectoryResponse(image_id="im-snapshot-123")
+
+    async def snapshot_filesystem(
+        self, request: sr_pb2.TaskSnapshotFilesystemRequest, timeout: Optional[float] = None
+    ) -> sr_pb2.TaskSnapshotFilesystemResponse:
+        """Mock snapshot_filesystem for testing - returns a fake image ID."""
+        return sr_pb2.TaskSnapshotFilesystemResponse(image_id="im-snapshot-fs-123")
 
     def _container_result(self, container_id: str) -> api_pb2.GenericResult | None:
         if container_id in self._container_results:

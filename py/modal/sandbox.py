@@ -74,7 +74,7 @@ _default_image: _Image = _Image.debian_slim()
 # We need some bytes of overhead for the rest of the command line besides the args,
 # e.g. 'runsc exec ...'. So we use 2**16 as the limit.
 ARG_MAX_BYTES = 2**16
-
+TTL_NO_EXPIRY_SENTINEL = -1
 
 if TYPE_CHECKING:
     import modal.app
@@ -955,9 +955,29 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
         can be used to spawn a new Sandbox with the same filesystem.
+
+        `timeout` If the snapshot does not return within that window, the call is cancelled
+        and `modal.exception.TimeoutError` is raised.
         """
+        if os.environ.get("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT") == "1":
+            return await self._legacy_snapshot_filesystem(timeout)
+
         self._ensure_v1("snapshot_filesystem")
-        await self._get_task_id()  # Ensure the sandbox has started
+
+        task_id = await self._get_task_id()
+        command_router_client = await self._get_command_router_client(task_id)
+
+        req = sr_pb2.TaskSnapshotFilesystemRequest(
+            task_id=task_id,
+            snapshot_id=str(uuid.uuid4()),
+            ttl_seconds=TTL_NO_EXPIRY_SENTINEL,
+        )
+        res = await command_router_client.snapshot_filesystem(req, timeout=float(timeout))
+        return _Image._new_hydrated(res.image_id, self._client, None)
+
+    async def _legacy_snapshot_filesystem(self, timeout: int = 55) -> _Image:
+        self._ensure_v1("snapshot_filesystem")
+        await self._get_task_id()
         req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout)
         resp = await self._client.stub.SandboxSnapshotFs(req)
 
@@ -1048,7 +1068,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
         """Snapshot a directory in a running Sandbox, creating a new Image with its content.
 
-        Directory snapshots are currently persisted for 30 days after they were last created or used.
+        Directory snapshots are currently persisted for 30 days after they were created.
 
         Usage:
         ```py notest
@@ -1071,7 +1091,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         path_bytes = posix_path.as_posix().encode("utf8")
 
         snapshot_id = str(uuid.uuid4())
-        req = sr_pb2.TaskSnapshotDirectoryRequest(task_id=task_id, path=path_bytes, snapshot_id=snapshot_id)
+        req = sr_pb2.TaskSnapshotDirectoryRequest(
+            task_id=task_id,
+            path=path_bytes,
+            snapshot_id=snapshot_id,
+            ttl_seconds=None,  # pretending to be old client for now - set server decide on retention
+        )
         res = await command_router_client.snapshot_directory(req)
         return _Image._new_hydrated(res.image_id, self._client, None)
 
