@@ -75,7 +75,7 @@ class _EnvironmentManager:
                 item.environment_id,
                 client,
                 metadata,
-                is_another_app=True,
+                skip_reload=True,
                 rep=f"Environment.from_name({item.name!r})",
             )
             environments.append(env)
@@ -351,7 +351,7 @@ class _Environment(_Object, type_prefix="en"):
         return _Environment._from_loader(
             _load,
             repr,
-            is_another_app=True,
+            skip_reload=True,
             hydrate_lazily=True,
             name=name,
             load_context_overrides=LoadContext(client=client),

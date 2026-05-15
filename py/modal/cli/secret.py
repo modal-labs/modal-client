@@ -55,7 +55,7 @@ async def list_(env: Optional[str] = None, json: bool = False):
             break
         finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
 
-    secrets = [_Secret._new_hydrated(item.secret_id, client, item.metadata, is_another_app=True) for item in items]
+    secrets = [_Secret._new_hydrated(item.secret_id, client, item.metadata, skip_reload=True) for item in items]
 
     rows = []
     for obj, resp_data in zip(secrets, items):

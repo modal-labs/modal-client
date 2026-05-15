@@ -44,8 +44,7 @@ class Resolver:
         *,
         existing_object_id: Optional[str] = None,
     ):
-        if obj._is_hydrated and obj._is_another_app:
-            # No need to reload this, it won't typically change
+        if obj._is_hydrated and obj._skip_reload:
             if obj.local_uuid not in self._local_uuid_to_future:
                 # a bit dumb - but we still need to store a reference to the object here
                 # to be able to include all referenced objects when setting up the app
@@ -89,12 +88,11 @@ class Resolver:
                     await obj._load(obj, self, load_context, existing_object_id)
 
                     # Check that the id of functions didn't change
-                    # Persisted refs are ignored because their life cycle is managed independently.
                     if (
-                        not obj._is_another_app
-                        and existing_object_id is not None
+                        existing_object_id is not None
                         and existing_object_id.startswith("fu-")
                         and obj.object_id != existing_object_id
+                        and not obj._skip_reload
                     ):
                         raise Exception(
                             f"Tried creating an object using existing id {existing_object_id} "

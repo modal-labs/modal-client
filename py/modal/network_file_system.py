@@ -134,7 +134,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         return _NetworkFileSystem._from_loader(
             _load,
             "NetworkFileSystem()",
-            is_another_app=True,
+            skip_reload=True,
             hydrate_lazily=True,
             load_context_overrides=LoadContext(environment_name=environment_name, client=client),
         )
@@ -174,7 +174,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 response.shared_volume_id,
                 client,
                 None,
-                is_another_app=True,
+                skip_reload=True,
                 rep="modal.NetworkFileSystem.ephemeral()",
             )
 

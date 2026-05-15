@@ -664,7 +664,7 @@ class _Mount(_Object, type_prefix="mo"):
         return _Mount._from_loader(
             _load,
             "Mount()",
-            is_another_app=True,
+            skip_reload=True,
             hydrate_lazily=True,
             load_context_overrides=LoadContext(environment_name=environment_name, client=client),
         )

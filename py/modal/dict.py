@@ -198,7 +198,7 @@ class _DictManager:
                 item.dict_id,
                 client,
                 item.metadata,
-                is_another_app=True,
+                skip_reload=True,
                 rep=_Dict._repr(item.name, environment_name),
             )
             for item in items
@@ -354,7 +354,7 @@ class _Dict(_Object, type_prefix="di"):
                 response.dict_id,
                 client,
                 response.metadata,
-                is_another_app=True,
+                skip_reload=True,
                 rep="modal.Dict.ephemeral()",
             )
 
@@ -393,7 +393,7 @@ class _Dict(_Object, type_prefix="di"):
         return _Dict._from_loader(
             _load,
             rep,
-            is_another_app=True,
+            skip_reload=True,
             hydrate_lazily=True,
             name=name,
             load_context_overrides=LoadContext(environment_name=environment_name, client=client),
@@ -436,7 +436,7 @@ class _Dict(_Object, type_prefix="di"):
         return _Dict._from_loader(
             _load,
             rep,
-            is_another_app=True,
+            skip_reload=True,
             hydrate_lazily=True,
             load_context_overrides=LoadContext(client=client),
         )

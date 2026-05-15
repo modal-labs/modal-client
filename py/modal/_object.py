@@ -82,7 +82,7 @@ class _Object:
     _load: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None
     _preload: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]]
     _rep: str
-    _is_another_app: bool
+    _skip_reload: bool
     _hydrate_lazily: bool
     _deps: Optional[Callable[..., Sequence["_Object"]]]
     _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
@@ -113,9 +113,9 @@ class _Object:
         self,
         rep: str,
         load: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None,
-        is_another_app: bool = False,
         preload: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
+        skip_reload: bool = False,
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
         name: Optional[str] = None,
@@ -123,10 +123,10 @@ class _Object:
         load_context_overrides: Optional[LoadContext] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
+        self._rep = rep
         self._load = load
         self._preload = preload
-        self._rep = rep
-        self._is_another_app = is_another_app
+        self._skip_reload = skip_reload
         self._hydrate_lazily = hydrate_lazily
         self._deps = deps
         self._deduplication_key = deduplication_key
@@ -218,7 +218,7 @@ class _Object:
         cls,
         load: Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]],
         rep: str,
-        is_another_app: bool = False,
+        skip_reload: bool = False,
         preload: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
@@ -232,12 +232,12 @@ class _Object:
         obj._init(
             rep,
             load,
-            is_another_app,
-            preload,
-            hydrate_lazily,
-            deps,
-            deduplication_key,
-            name,
+            skip_reload=skip_reload,
+            preload=preload,
+            hydrate_lazily=hydrate_lazily,
+            deps=deps,
+            deduplication_key=deduplication_key,
+            name=name,
             load_context_overrides=load_context_overrides,
         )
         return obj
@@ -268,7 +268,7 @@ class _Object:
         object_id: str,
         client: _Client,
         handle_metadata: Optional[Message],
-        is_another_app: bool = False,
+        skip_reload: bool = False,
         rep: Optional[str] = None,
     ) -> Self:
         obj_cls: type[Self]
@@ -287,7 +287,7 @@ class _Object:
         # Instantiate provider
         obj = _Object.__new__(obj_cls)
         rep = rep or f"modal.{obj_cls.__name__.strip('_')}.from_id({object_id!r})"
-        obj._init(rep, is_another_app=is_another_app)
+        obj._init(rep, skip_reload=skip_reload)
         obj._hydrate(object_id, client, handle_metadata)
 
         return obj

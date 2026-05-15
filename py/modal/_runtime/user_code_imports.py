@@ -570,7 +570,7 @@ def import_class_service(
             service_function_hydration_data.object_id,
             _client,
             service_function_hydration_data.function_handle_metadata,
-            is_another_app=True,  # this skips re-loading the function, which is required since it doesn't have a loader
+            skip_reload=True,  # this skips re-loading the function, which is required since it doesn't have a loader
         )
         _cls = modal.cls._Cls.from_local(cls_or_user_cls, active_app, _service_function)
         # hydration of the class itself - just sets the id and triggers some side effects
@@ -625,7 +625,7 @@ def import_server_service(
             service_function_hydration_data.object_id,
             _client,
             service_function_hydration_data.function_handle_metadata,
-            is_another_app=True,  # this skips re-loading the function, which is required since it doesn't have a loader
+            skip_reload=True,  # this skips re-loading the function, which is required since it doesn't have a loader
         )
 
         _server = modal._server._Server._from_local(cls_or_user_cls, active_app, _service_function)

@@ -292,7 +292,7 @@ class _VolumeManager:
                 item.volume_id,
                 client,
                 item.metadata,
-                is_another_app=True,
+                skip_reload=True,
                 rep=_Volume._repr(item.label, environment_name),
             )
             for item in items
@@ -509,7 +509,7 @@ class _Volume(_Object, type_prefix="vo"):
         return _Volume._from_loader(
             _load,
             rep,
-            is_another_app=True,
+            skip_reload=True,
             hydrate_lazily=True,
             name=name,
             load_context_overrides=LoadContext(client=client, environment_name=environment_name),
@@ -554,7 +554,7 @@ class _Volume(_Object, type_prefix="vo"):
         return _Volume._from_loader(
             _load,
             rep,
-            is_another_app=True,
+            skip_reload=True,
             hydrate_lazily=True,
             load_context_overrides=LoadContext(client=client),
         )
@@ -597,7 +597,7 @@ class _Volume(_Object, type_prefix="vo"):
                 response.volume_id,
                 client,
                 response.metadata,
-                is_another_app=True,
+                skip_reload=True,
                 rep="modal.Volume.ephemeral()",
             )
 

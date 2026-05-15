@@ -128,7 +128,7 @@ def test_secret_from_name(servicer, client):
 def test_secret_from_name_double_resolve(client, servicer):
     # Checks that Resolver logic is set up to *not* re-lookup
     # secrets that are defined by name, since those are unlikely
-    # to change their id ("is_another_app")
+    # to change their id (`skip_reload=True`).
     name = "my-secret"
     Secret.objects.create(name, {"FOO": "123"}, client=client)
     secret = Secret.from_name(name)

@@ -519,7 +519,7 @@ class _Cls(_Object, type_prefix="cs"):
         new_cls = _Cls._from_loader(
             _load_from_base,
             rep=f"{self._name}.{method_name}(...)",
-            is_another_app=True,
+            skip_reload=True,
             deps=lambda: [],
             load_context_overrides=self._load_context_overrides,
             hydrate_lazily=True,
@@ -680,7 +680,7 @@ More information on class parameterization can be found here: https://modal.com/
         cls = cls._from_loader(
             _load_remote,
             rep,
-            is_another_app=True,
+            skip_reload=True,
             hydrate_lazily=True,
             load_context_overrides=load_context_overrides,
         )

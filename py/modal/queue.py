@@ -163,7 +163,7 @@ class _QueueManager:
                 item.queue_id,
                 client,
                 item.metadata,
-                is_another_app=True,
+                skip_reload=True,
                 rep=_Queue._repr(item.name, environment_name),
             )
             for item in items
@@ -353,7 +353,7 @@ class _Queue(_Object, type_prefix="qu"):
         async with TaskContext() as tc:
             request = api_pb2.QueueHeartbeatRequest(queue_id=response.queue_id)
             tc.infinite_loop(lambda: client.stub.QueueHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.queue_id, client, response.metadata, is_another_app=True)
+            yield cls._new_hydrated(response.queue_id, client, response.metadata, skip_reload=True)
 
     @staticmethod
     def from_name(
@@ -389,7 +389,7 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(
             _load,
             rep,
-            is_another_app=True,
+            skip_reload=True,
             hydrate_lazily=True,
             name=name,
             load_context_overrides=LoadContext(environment_name=environment_name, client=client),
@@ -432,7 +432,7 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(
             _load,
             rep,
-            is_another_app=True,
+            skip_reload=True,
             hydrate_lazily=True,
             load_context_overrides=LoadContext(client=client),
         )

@@ -157,7 +157,7 @@ class _SecretManager:
                 item.secret_id,
                 client,
                 item.metadata,
-                is_another_app=True,
+                skip_reload=True,
                 rep=_Secret._repr(item.label, environment_name),
             )
             for item in items
@@ -405,7 +405,7 @@ class _Secret(_Object, type_prefix="st"):
             hydrate_lazily=True,
             name=name,
             load_context_overrides=LoadContext(environment_name=environment_name, client=client),
-            is_another_app=True,
+            skip_reload=True,
         )
 
     @staticmethod

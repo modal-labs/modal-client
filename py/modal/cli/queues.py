@@ -106,7 +106,7 @@ async def list_(*, json: bool = False, env: Optional[str] = None):
             break
         finished = await retrieve_page(items[-1].metadata.creation_info.created_at)
 
-    queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, is_another_app=True) for item in items]
+    queues = [_Queue._new_hydrated(item.queue_id, client, item.metadata, skip_reload=True) for item in items]
 
     rows = []
     for obj, resp_data in zip(queues, items):
