@@ -2,6 +2,7 @@ package modal
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 	"time"
 
@@ -19,6 +20,167 @@ func TestSandboxCreateRequestProto_WithoutPTY(t *testing.T) {
 	definition := req.GetDefinition()
 	ptyInfo := definition.GetPtyInfo()
 	g.Expect(ptyInfo).Should(gomega.BeNil())
+}
+
+func TestSandboxCreateV2RequestProto(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
+		Command: []string{"sleep", "60"},
+		Timeout: 10 * time.Minute,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(req.GetAppId()).To(gomega.Equal("app-123"))
+	g.Expect(req.GetDefinition().GetImageId()).To(gomega.Equal("img-456"))
+	g.Expect(req.GetDefinition().GetEntrypointArgs()).To(gomega.Equal([]string{"sleep", "60"}))
+	g.Expect(req.GetDefinition().GetTimeoutSecs()).To(gomega.Equal(uint32(600)))
+}
+
+func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		params  SandboxCreateParams
+		wantErr string
+	}{
+		{
+			name:    "tags",
+			params:  SandboxCreateParams{Tags: map[string]string{"key": "value"}},
+			wantErr: "tags are not supported",
+		},
+		{
+			name:    "volumes",
+			params:  SandboxCreateParams{Volumes: map[string]*Volume{"/vol": {VolumeID: "vo-123"}}},
+			wantErr: "volumes are not supported",
+		},
+		{
+			name:    "cloud bucket mounts",
+			params:  SandboxCreateParams{CloudBucketMounts: map[string]*CloudBucketMount{"/bucket": {BucketName: "bucket"}}},
+			wantErr: "cloud bucket mounts are not supported",
+		},
+		{
+			name:    "gpu",
+			params:  SandboxCreateParams{GPU: "A10G"},
+			wantErr: "GPUs are not supported",
+		},
+		{
+			name:    "custom domain",
+			params:  SandboxCreateParams{CustomDomain: "example.com"},
+			wantErr: "custom domains are not supported",
+		},
+		{
+			name:    "proxy",
+			params:  SandboxCreateParams{Proxy: &Proxy{ProxyID: "pr-123"}},
+			wantErr: "proxies are not supported",
+		},
+		{
+			name:    "readiness probe",
+			params:  SandboxCreateParams{ReadinessProbe: &Probe{}},
+			wantErr: "readiness probes are not supported",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+
+			_, err := buildSandboxCreateV2RequestProto("app-123", "img-456", tt.params)
+			g.Expect(err).Should(gomega.HaveOccurred())
+			g.Expect(err.Error()).To(gomega.ContainSubstring(tt.wantErr))
+		})
+	}
+}
+
+func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	sb := newSandbox(&Client{}, "sb-v2-123")
+	sb.isV2 = true
+	sb.taskID = "ta-v2-123"
+
+	wantErr := "not supported for V2 sandboxes"
+
+	_, err := sb.CreateConnectToken(ctx, nil)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	_, err = sb.Open(ctx, "/tmp/file", "r")
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	_, err = sb.SnapshotFilesystem(ctx, time.Second)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	err = sb.MountImage(ctx, "/mnt", nil)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	err = sb.UnmountImage(ctx, "/mnt")
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	_, err = sb.SnapshotDirectory(ctx, "/mnt")
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	err = sb.SetTags(ctx, map[string]string{})
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	_, err = sb.GetTags(ctx)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	err = sb.WaitUntilReady(ctx, time.Second)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+}
+
+func TestSandboxV2StdioUnsupported(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	sb := newSandboxV2(&Client{}, "sb-v2-123", "ta-v2-123")
+	wantErr := "not supported for V2 sandboxes"
+
+	_, err := sb.Stdin.Write([]byte("hello"))
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stdin"))
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+	var invalidErr InvalidError
+	g.Expect(errors.As(err, &invalidErr)).To(gomega.BeTrue())
+
+	err = sb.Stdin.Close()
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stdin"))
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	buf := make([]byte, 1)
+	_, err = sb.Stdout.Read(buf)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stdout"))
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	err = sb.Stdout.Close()
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stdout"))
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	_, err = sb.Stderr.Read(buf)
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stderr"))
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+
+	err = sb.Stderr.Close()
+	g.Expect(err).To(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("Sandbox.Stderr"))
+	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 }
 
 func TestSandboxCreateRequestProto_WithPTY(t *testing.T) {

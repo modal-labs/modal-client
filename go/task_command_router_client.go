@@ -153,6 +153,8 @@ type taskCommandRouterClient struct {
 	conn         *grpc.ClientConn
 	serverClient pb.ModalClientClient
 	taskID       string
+	sandboxID    string
+	isV2         bool
 	serverURL    string
 	jwt          atomic.Pointer[string]
 	jwtExp       atomic.Pointer[int64]
@@ -168,31 +170,31 @@ func initTaskCommandRouterClient(
 	ctx context.Context,
 	serverClient pb.ModalClientClient,
 	taskID string,
+	sandboxID string,
+	isV2 bool,
 	logger *slog.Logger,
 	profile Profile,
 ) (*taskCommandRouterClient, error) {
-	resp, err := serverClient.TaskGetCommandRouterAccess(ctx, pb.TaskGetCommandRouterAccessRequest_builder{
-		TaskId: taskID,
-	}.Build())
+	resp, err := getCommandRouterAccess(ctx, serverClient, taskID, sandboxID, isV2)
 	if err != nil {
 		return nil, err
 	}
 
-	logger.DebugContext(ctx, "Using command router access for task", "task_id", taskID, "url", resp.GetUrl())
+	logger.DebugContext(ctx, "Using command router access for task", "task_id", taskID, "url", resp.url)
 
-	jwt := resp.GetJwt()
+	jwt := resp.jwt
 	jwtExp, err := parseJwtExpiration(jwt)
 	if err != nil {
 		return nil, fmt.Errorf("parseJwtExpiration: %w", err)
 	}
 
-	url, err := url.Parse(resp.GetUrl())
+	url, err := url.Parse(resp.url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse task router URL: %w", err)
 	}
 
 	if url.Scheme != "https" {
-		return nil, fmt.Errorf("task router URL must be https, got: %s", resp.GetUrl())
+		return nil, fmt.Errorf("task router URL must be https, got: %s", resp.url)
 	}
 
 	host := url.Hostname()
@@ -235,7 +237,9 @@ func initTaskCommandRouterClient(
 		conn:         conn,
 		serverClient: serverClient,
 		taskID:       taskID,
-		serverURL:    resp.GetUrl(),
+		sandboxID:    sandboxID,
+		isV2:         isV2,
+		serverURL:    resp.url,
 		logger:       logger,
 	}
 	client.jwt.Store(&jwt)
@@ -243,6 +247,37 @@ func initTaskCommandRouterClient(
 
 	logger.DebugContext(ctx, "Successfully initialized command router client", "task_id", taskID)
 	return client, nil
+}
+
+type commandRouterAccess struct {
+	jwt string
+	url string
+}
+
+func getCommandRouterAccess(
+	ctx context.Context,
+	serverClient pb.ModalClientClient,
+	taskID string,
+	sandboxID string,
+	isV2 bool,
+) (*commandRouterAccess, error) {
+	if isV2 {
+		resp, err := serverClient.SandboxGetCommandRouterAccess(ctx, pb.SandboxGetCommandRouterAccessRequest_builder{
+			SandboxId: sandboxID,
+		}.Build())
+		if err != nil {
+			return nil, err
+		}
+		return &commandRouterAccess{jwt: resp.GetJwt(), url: resp.GetUrl()}, nil
+	}
+
+	resp, err := serverClient.TaskGetCommandRouterAccess(ctx, pb.TaskGetCommandRouterAccessRequest_builder{
+		TaskId: taskID,
+	}.Build())
+	if err != nil {
+		return nil, err
+	}
+	return &commandRouterAccess{jwt: resp.GetJwt(), url: resp.GetUrl()}, nil
 }
 
 // Close closes the gRPC connection and cancels all in-flight operations.
@@ -278,18 +313,16 @@ func (c *taskCommandRouterClient) refreshJwt(ctx context.Context) error {
 			return nil, nil
 		}
 
-		resp, err := c.serverClient.TaskGetCommandRouterAccess(ctx, pb.TaskGetCommandRouterAccessRequest_builder{
-			TaskId: c.taskID,
-		}.Build())
+		resp, err := getCommandRouterAccess(ctx, c.serverClient, c.taskID, c.sandboxID, c.isV2)
 		if err != nil {
 			return nil, fmt.Errorf("failed to refresh JWT: %w", err)
 		}
 
-		if resp.GetUrl() != c.serverURL {
+		if resp.url != c.serverURL {
 			c.logger.WarnContext(ctx, "Task router URL changed during session")
 		}
 
-		jwt := resp.GetJwt()
+		jwt := resp.jwt
 		c.jwt.Store(&jwt)
 		jwtExp, err := parseJwtExpiration(jwt)
 		if err != nil {

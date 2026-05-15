@@ -23,6 +23,7 @@ import (
 // SandboxService provides Sandbox related operations.
 type SandboxService interface {
 	Create(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error)
+	ExperimentalCreate(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error)
 	FromID(ctx context.Context, sandboxID string) (*Sandbox, error)
 	FromName(ctx context.Context, appName, name string, params *SandboxFromNameParams) (*Sandbox, error)
 	List(ctx context.Context, params *SandboxListParams) (iter.Seq2[*Sandbox, error], error)
@@ -409,6 +410,40 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 	}.Build(), nil
 }
 
+func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreateParams) (*pb.SandboxCreateV2Request, error) {
+	if len(params.Tags) > 0 {
+		return nil, fmt.Errorf("tags are not supported by ExperimentalCreate")
+	}
+	if len(params.Volumes) > 0 {
+		return nil, fmt.Errorf("volumes are not supported by ExperimentalCreate")
+	}
+	if len(params.CloudBucketMounts) > 0 {
+		return nil, fmt.Errorf("cloud bucket mounts are not supported by ExperimentalCreate")
+	}
+	if params.GPU != "" {
+		return nil, fmt.Errorf("GPUs are not supported by ExperimentalCreate")
+	}
+	if params.CustomDomain != "" {
+		return nil, fmt.Errorf("custom domains are not supported by ExperimentalCreate")
+	}
+	if params.Proxy != nil {
+		return nil, fmt.Errorf("proxies are not supported by ExperimentalCreate")
+	}
+	if params.ReadinessProbe != nil {
+		return nil, fmt.Errorf("readiness probes are not supported by ExperimentalCreate")
+	}
+
+	req, err := buildSandboxCreateRequestProto(appID, imageID, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return pb.SandboxCreateV2Request_builder{
+		AppId:      req.GetAppId(),
+		Definition: req.GetDefinition(),
+	}.Build(), nil
+}
+
 // Create creates a new Sandbox in the App with the specified Image and options.
 func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error) {
 	if params == nil {
@@ -444,6 +479,60 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 
 	s.client.logger.DebugContext(ctx, "Created Sandbox", "sandbox_id", createResp.GetSandboxId())
 	return newSandbox(s.client, createResp.GetSandboxId()), nil
+}
+
+// ExperimentalCreate creates a new Sandbox using the experimental V2 backend.
+//
+// V2 sandbox creation does not yet support every option accepted by
+// SandboxCreateParams. In particular, tags, snapshots, volumes, network file
+// systems, GPUs, custom domains, proxies, and readiness probes are not supported.
+func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error) {
+	if params == nil {
+		params = &SandboxCreateParams{}
+	}
+
+	image, err := image.Build(ctx, app)
+	if err != nil {
+		return nil, err
+	}
+
+	mergedSecrets, err := mergeEnvIntoSecrets(ctx, s.client, &params.Env, &params.Secrets)
+	if err != nil {
+		return nil, err
+	}
+
+	mergedParams := *params
+	mergedParams.Secrets = mergedSecrets
+	mergedParams.Env = nil // nil'ing Env just to clarify it's not needed anymore
+
+	req, err := buildSandboxCreateV2RequestProto(app.AppID, image.ImageID, mergedParams)
+	if err != nil {
+		return nil, err
+	}
+
+	createResp, err := s.client.cpClient.SandboxCreateV2(ctx, req)
+	if err != nil {
+		if status, ok := status.FromError(err); ok && status.Code() == codes.AlreadyExists {
+			return nil, AlreadyExistsError{Exception: status.Message()}
+		}
+		return nil, err
+	}
+
+	sb := newSandboxV2(s.client, createResp.GetSandboxId(), createResp.GetTaskId())
+	if len(createResp.GetTunnels()) > 0 {
+		sb.tunnels = make(map[int]*Tunnel, len(createResp.GetTunnels()))
+		for _, t := range createResp.GetTunnels() {
+			sb.tunnels[int(t.GetContainerPort())] = &Tunnel{
+				Host:            t.GetHost(),
+				Port:            int(t.GetPort()),
+				UnencryptedHost: t.GetUnencryptedHost(),
+				UnencryptedPort: int(t.GetUnencryptedPort()),
+			}
+		}
+	}
+
+	s.client.logger.DebugContext(ctx, "Created experimental V2 Sandbox", "sandbox_id", createResp.GetSandboxId())
+	return sb, nil
 }
 
 // StdioBehavior defines how the standard input/output/error streams should behave.
@@ -497,6 +586,7 @@ type Sandbox struct {
 
 	taskID  string
 	tunnels map[int]*Tunnel
+	isV2    bool
 
 	client *Client
 
@@ -534,6 +624,82 @@ func newSandbox(client *Client, sandboxID string) *Sandbox {
 		},
 	}
 	return sb
+}
+
+func newSandboxV2(client *Client, sandboxID, taskID string) *Sandbox {
+	sb := newSandbox(client, sandboxID)
+	sb.isV2 = true
+	sb.taskID = taskID
+	sb.Stdin = unsupportedSandboxWriteCloser{name: "Stdin"}
+	sb.Stdout = unsupportedSandboxReadCloser{name: "Stdout"}
+	sb.Stderr = unsupportedSandboxReadCloser{name: "Stderr"}
+	return sb
+}
+
+type unsupportedSandboxWriteCloser struct {
+	name string
+}
+
+func (u unsupportedSandboxWriteCloser) Write(_ []byte) (int, error) {
+	return 0, unsupportedSandboxStdioError(u.name)
+}
+
+func (u unsupportedSandboxWriteCloser) Close() error {
+	return unsupportedSandboxStdioError(u.name)
+}
+
+type unsupportedSandboxReadCloser struct {
+	name string
+}
+
+func (u unsupportedSandboxReadCloser) Read(_ []byte) (int, error) {
+	return 0, unsupportedSandboxStdioError(u.name)
+}
+
+func (u unsupportedSandboxReadCloser) Close() error {
+	return unsupportedSandboxStdioError(u.name)
+}
+
+func unsupportedSandboxStdioError(name string) error {
+	return InvalidError{Exception: fmt.Sprintf("Sandbox.%s is not supported for V2 sandboxes; use Sandbox.Exec(...) to access process streams", name)}
+}
+
+func (sb *Sandbox) sandboxWait(ctx context.Context, timeout float32) (*pb.SandboxWaitResponse, error) {
+	req := pb.SandboxWaitRequest_builder{
+		SandboxId: sb.SandboxID,
+		Timeout:   timeout,
+	}.Build()
+	if sb.isV2 {
+		return sb.client.cpClient.SandboxWaitV2(ctx, req)
+	}
+	return sb.client.cpClient.SandboxWait(ctx, req)
+}
+
+func (sb *Sandbox) sandboxTerminate(ctx context.Context) (*pb.SandboxTerminateResponse, error) {
+	req := pb.SandboxTerminateRequest_builder{SandboxId: sb.SandboxID}.Build()
+	if sb.isV2 {
+		return sb.client.cpClient.SandboxTerminateV2(ctx, req)
+	}
+	return sb.client.cpClient.SandboxTerminate(ctx, req)
+}
+
+func (sb *Sandbox) sandboxGetTaskID(ctx context.Context) (*pb.SandboxGetTaskIdResponse, error) {
+	req := pb.SandboxGetTaskIdRequest_builder{SandboxId: sb.SandboxID}.Build()
+	if sb.isV2 {
+		return sb.client.cpClient.SandboxGetTaskIdV2(ctx, req)
+	}
+	return sb.client.cpClient.SandboxGetTaskId(ctx, req)
+}
+
+func (sb *Sandbox) sandboxGetTunnels(ctx context.Context, timeout time.Duration) (*pb.SandboxGetTunnelsResponse, error) {
+	req := pb.SandboxGetTunnelsRequest_builder{
+		SandboxId: sb.SandboxID,
+		Timeout:   float32(timeout.Seconds()),
+	}.Build()
+	if sb.isV2 {
+		return sb.client.cpClient.SandboxGetTunnelsV2(ctx, req)
+	}
+	return sb.client.cpClient.SandboxGetTunnels(ctx, req)
 }
 
 // FromID returns a running Sandbox object from an ID.
@@ -756,6 +922,9 @@ func (sb *Sandbox) CreateConnectToken(ctx context.Context, params *SandboxCreate
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
+	if err := sb.ensureV1("CreateConnectToken"); err != nil {
+		return nil, err
+	}
 
 	if params == nil {
 		params = &SandboxCreateConnectTokenParams{}
@@ -775,6 +944,9 @@ func (sb *Sandbox) CreateConnectToken(ctx context.Context, params *SandboxCreate
 // "r" for read-only, "w" for write-only (truncates), "a" for append, etc.
 func (sb *Sandbox) Open(ctx context.Context, path, mode string) (*SandboxFile, error) {
 	if err := sb.ensureAttached(); err != nil {
+		return nil, err
+	}
+	if err := sb.ensureV1("Open"); err != nil {
 		return nil, err
 	}
 
@@ -808,9 +980,7 @@ func (sb *Sandbox) ensureTaskID(ctx context.Context) error {
 		return nil
 	}
 	for range maxGetTaskIDAttempts {
-		resp, err := sb.client.cpClient.SandboxGetTaskId(ctx, pb.SandboxGetTaskIdRequest_builder{
-			SandboxId: sb.SandboxID,
-		}.Build())
+		resp, err := sb.sandboxGetTaskID(ctx)
 		if err != nil {
 			return err
 		}
@@ -843,6 +1013,8 @@ func (sb *Sandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID st
 			ctx,
 			sb.client.cpClient,
 			taskID,
+			sb.SandboxID,
+			sb.isV2,
 			sb.client.logger,
 			sb.client.profile,
 		)
@@ -856,6 +1028,13 @@ func (sb *Sandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID st
 func (sb *Sandbox) ensureAttached() error {
 	if !sb.attached.Load() {
 		return ClientClosedError{Exception: "Unable to perform operation on a detached sandbox"}
+	}
+	return nil
+}
+
+func (sb *Sandbox) ensureV1(methodName string) error {
+	if sb.isV2 {
+		return InvalidError{Exception: fmt.Sprintf("Sandbox.%s is not supported for V2 sandboxes", methodName)}
 	}
 	return nil
 }
@@ -896,9 +1075,7 @@ func (sb *Sandbox) Terminate(ctx context.Context, params *SandboxTerminateParams
 	}
 
 	// Terminate the sandbox even if detach fails.
-	_, err := sb.client.cpClient.SandboxTerminate(ctx, pb.SandboxTerminateRequest_builder{
-		SandboxId: sb.SandboxID,
-	}.Build())
+	_, err := sb.sandboxTerminate(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -928,10 +1105,7 @@ func (sb *Sandbox) Wait(ctx context.Context) (int, error) {
 			return 0, err
 		}
 
-		resp, err := sb.client.cpClient.SandboxWait(ctx, pb.SandboxWaitRequest_builder{
-			SandboxId: sb.SandboxID,
-			Timeout:   10,
-		}.Build())
+		resp, err := sb.sandboxWait(ctx, 10)
 		if err != nil {
 			return 0, err
 		}
@@ -952,6 +1126,9 @@ func (sb *Sandbox) Wait(ctx context.Context) (int, error) {
 // WaitUntilReady blocks until the Sandbox readiness probe reports ready.
 func (sb *Sandbox) WaitUntilReady(ctx context.Context, timeout time.Duration) error {
 	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
+	if err := sb.ensureV1("WaitUntilReady"); err != nil {
 		return err
 	}
 	if timeout <= 0 {
@@ -1001,10 +1178,7 @@ func (sb *Sandbox) Tunnels(ctx context.Context, timeout time.Duration) (map[int]
 		return sb.tunnels, nil
 	}
 
-	resp, err := sb.client.cpClient.SandboxGetTunnels(ctx, pb.SandboxGetTunnelsRequest_builder{
-		SandboxId: sb.SandboxID,
-		Timeout:   float32(timeout.Seconds()),
-	}.Build())
+	resp, err := sb.sandboxGetTunnels(ctx, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -1032,6 +1206,9 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, timeout time.Duration
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
+	if err := sb.ensureV1("SnapshotFilesystem"); err != nil {
+		return nil, err
+	}
 	resp, err := sb.client.cpClient.SandboxSnapshotFs(ctx, pb.SandboxSnapshotFsRequest_builder{
 		SandboxId: sb.SandboxID,
 		Timeout:   float32(timeout.Seconds()),
@@ -1056,6 +1233,9 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, timeout time.Duration
 // If image is nil, mounts an empty directory.
 func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image) error {
 	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
+	if err := sb.ensureV1("MountImage"); err != nil {
 		return err
 	}
 	if err := sb.ensureTaskID(ctx); err != nil {
@@ -1089,6 +1269,9 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string) error {
 	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
+	if err := sb.ensureV1("UnmountImage"); err != nil {
+		return err
+	}
 	if err := sb.ensureTaskID(ctx); err != nil {
 		return err
 	}
@@ -1109,6 +1292,9 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string) error {
 // SnapshotDirectory snapshots and creates a new image from a directory in the running sandbox.
 func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string) (*Image, error) {
 	if err := sb.ensureAttached(); err != nil {
+		return nil, err
+	}
+	if err := sb.ensureV1("SnapshotDirectory"); err != nil {
 		return nil, err
 	}
 	if err := sb.ensureTaskID(ctx); err != nil {
@@ -1143,10 +1329,7 @@ func (sb *Sandbox) Poll(ctx context.Context) (*int, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
-	resp, err := sb.client.cpClient.SandboxWait(ctx, pb.SandboxWaitRequest_builder{
-		SandboxId: sb.SandboxID,
-		Timeout:   0,
-	}.Build())
+	resp, err := sb.sandboxWait(ctx, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -1157,6 +1340,9 @@ func (sb *Sandbox) Poll(ctx context.Context) (*int, error) {
 // SetTags sets key-value tags on the Sandbox. Tags can be used to filter results in SandboxList.
 func (sb *Sandbox) SetTags(ctx context.Context, tags map[string]string) error {
 	if err := sb.ensureAttached(); err != nil {
+		return err
+	}
+	if err := sb.ensureV1("SetTags"); err != nil {
 		return err
 	}
 	tagsList := make([]*pb.SandboxTag, 0, len(tags))
@@ -1174,6 +1360,9 @@ func (sb *Sandbox) SetTags(ctx context.Context, tags map[string]string) error {
 // GetTags fetches any tags (key-value pairs) currently attached to this Sandbox from the server.
 func (sb *Sandbox) GetTags(ctx context.Context) (map[string]string, error) {
 	if err := sb.ensureAttached(); err != nil {
+		return nil, err
+	}
+	if err := sb.ensureV1("GetTags"); err != nil {
 		return nil, err
 	}
 	resp, err := sb.client.cpClient.SandboxTagsGet(ctx, pb.SandboxTagsGetRequest_builder{
