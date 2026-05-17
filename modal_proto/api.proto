@@ -1770,6 +1770,8 @@ message Function {
   bool single_use_containers = 91; // When True, containers will shut down after handling a single input
 
   bool is_server = 92; // When True, the function is a server function
+
+  string routing_region = 93; // Where calls to a function should be routed through.
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1955,6 +1957,8 @@ message FunctionData {
   string implementation_name = 40;
 
   bool is_server = 41; // When True, the function is a server function
+
+  string routing_region = 42; // Where calls to a function should be routed through.
 }
 
 message FunctionExtended {
