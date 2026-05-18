@@ -27,7 +27,7 @@ def bytelength(buf: bytes) -> int:
     return len(buf)
 
 
-@app.function(min_containers=1, experimental_options={"input_plane_region": "us-west"})
+@app.function(min_containers=1, routing_region="us-west")
 def input_plane(s: str) -> str:
     return "output: " + s
 
@@ -39,7 +39,7 @@ class EchoCls:
         return "output: " + s
 
 
-@app.cls(min_containers=1, experimental_options={"input_plane_region": "us-west"})
+@app.cls(min_containers=1, routing_region="us-west")
 class EchoClsInputPlane:
     @modal.method()
     def echo_string(self, s: str) -> str:

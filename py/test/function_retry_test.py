@@ -68,9 +68,9 @@ def fetch_input_plane_request_counts(ctx):
 def setup_app_and_function_inputplane(servicer):
     app = App(include_source=False)
     servicer.function_body(counting_function)
-    f = app.function(
-        experimental_options={"input_plane_region": "us-east"}, retries=modal.Retries(max_retries=3, initial_delay=0.01)
-    )(counting_function)
+    f = app.function(routing_region="us-east", retries=modal.Retries(max_retries=3, initial_delay=0.01))(
+        counting_function
+    )
     return app, f
 
 

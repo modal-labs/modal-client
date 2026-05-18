@@ -14,3 +14,4 @@
 - Enabled --chmod and --chown flags for COPY commands, within modal.Image.from_dockerfile
 - Added an `inbound_cidr_allowlist` parameter to `Sandbox.create()` to restrict which source IPs can connect inbound to a sandbox's tunnels and connection tokens.
 - Renamed the `cidr_allowlist` parameter in `Sandbox.create()` to `outbound_cidr_allowlist` to distinguish from the inbound allowlist. The old name is deprecated and will be removed in a future release.
+- Added a `routing_region` parameter to `@app.function()` and `@app.cls()` to allow users to specify which Modal servers they would like their Function's inputs to be routed through. Once set, the `routing_region` cannot be changed. These functions can only be used for `.remote()` and `.map()` calls (unless the default "us-east" region is used). `routing_region` can be set to any of "us-east", "us-west", "eu-west", and "ap-south".

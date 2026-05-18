@@ -667,6 +667,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         batch_wait_ms: Optional[int] = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,
+        routing_region: Optional[str] = None,
         nonpreemptible: bool = False,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
@@ -1027,6 +1028,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     supported_output_formats=supported_output_formats,
                     http_config=http_config,
                     is_server=is_server,
+                    routing_region=routing_region or "",
                 )
 
                 if isinstance(gpu, list):
@@ -1066,6 +1068,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         supported_output_formats=supported_output_formats,
                         http_config=http_config,
                         is_server=function_definition.is_server,
+                        routing_region=function_definition.routing_region,
                     )
 
                     ranked_functions = []

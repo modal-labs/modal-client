@@ -9,7 +9,7 @@ from test.conftest import MockClientServicer
 app = App()
 
 
-@app.function(experimental_options={"input_plane_region": "us-east"})
+@app.function(routing_region="us-east")
 def foo():
     return "foo"
 

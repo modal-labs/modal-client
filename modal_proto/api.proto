@@ -1771,7 +1771,7 @@ message Function {
 
   bool is_server = 92; // When True, the function is a server function
 
-  string routing_region = 93; // Where calls to a function should be routed through.
+  string routing_region = 93; // Where inputs to a function should be routed through.
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1958,7 +1958,7 @@ message FunctionData {
 
   bool is_server = 41; // When True, the function is a server function
 
-  string routing_region = 42; // Where calls to a function should be routed through.
+  string routing_region = 42; // Where inputs to a function should be routed through.
 }
 
 message FunctionExtended {

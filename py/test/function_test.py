@@ -58,18 +58,18 @@ def plain_function_for_volume_test():
     return "test"
 
 
-@app.function(experimental_options={"input_plane_region": "us-east"})
+@app.function(routing_region="us-east")
 def input_plane_func():
     return "DEADBEEF"
 
 
-@app.function(experimental_options={"input_plane_region": "us-east"}, retries=modal.Retries(max_retries=1))
+@app.function(routing_region="us-east", retries=modal.Retries(max_retries=1))
 def input_plane_failing_func_with_retry():
     raise ValueError()
 
 
 @app.function(
-    experimental_options={"input_plane_region": "us-east"},
+    routing_region="us-east",
     retries=modal.Retries(max_retries=1, initial_delay=0, backoff_coefficient=1.0),
 )
 def input_plane_func_with_immediate_retry():
@@ -78,7 +78,7 @@ def input_plane_func_with_immediate_retry():
 
 # Set the timeout and sleep to more than the outputs_timeout_override of the
 # "long running" test_remote_input_plane() test case.
-@app.function(timeout=2, experimental_options={"input_plane_region": "us-east"})
+@app.function(timeout=2, routing_region="us-east")
 def input_plane_func_long_running():
     time.sleep(2)
     return "DEADBEEF"
@@ -407,7 +407,7 @@ def test_map_input_plane(client, servicer, slow_put_inputs):
     servicer.slow_put_inputs = slow_put_inputs
 
     app = App(include_source=False)
-    dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
+    dummy_modal = app.function(routing_region="us-east")(dummy)
 
     assert len(servicer.cleared_function_calls) == 0
     with app.run(client=client):
@@ -427,7 +427,7 @@ def test_nested_map(client):
 
 def test_nested_map_input_plane(client):
     app = App(include_source=False)
-    dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
+    dummy_modal = app.function(routing_region="us-east")(dummy)
 
     with app.run(client=client):
         res1 = dummy_modal.map([1, 2])
@@ -467,7 +467,7 @@ def test_exception_in_input_iterator_input_plane(client, map_type):
         raise CustomException()
 
     app = App(include_source=False)
-    dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
+    dummy_modal = app.function(routing_region="us-east")(dummy)
 
     with app.run(client=client):
         with pytest.raises(CustomException):
@@ -494,7 +494,7 @@ async def test_map_async_generator(client):
 @pytest.mark.asyncio
 async def test_map_async_generator_input_plane(client):
     app = App(include_source=False)
-    dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
+    dummy_modal = app.function(routing_region="us-east")(dummy)
 
     async def gen_num():
         yield 2
@@ -613,7 +613,7 @@ def test_map_none_values(client, servicer):
 def test_map_none_values_input_plane(client, servicer):
     app = App(include_source=False)
     servicer.function_body(custom_function)
-    custom_function_modal = app.function(experimental_options={"input_plane_region": "us-east"})(custom_function)
+    custom_function_modal = app.function(routing_region="us-east")(custom_function)
 
     with app.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
@@ -838,7 +838,7 @@ def test_generator_map_invalid(client, servicer):
 def test_generator_map_invalid_input_plane(client, servicer):
     app = App(include_source=False)
 
-    later_gen_modal = app.function(experimental_options={"input_plane_region": "us-east"})(later_gen)
+    later_gen_modal = app.function(routing_region="us-east")(later_gen)
 
     def dummy(x):
         yield x
@@ -997,9 +997,7 @@ def test_map_exceptions_input_plane(client, servicer):
     app = App(include_source=False)
 
     servicer.function_body(custom_exception_function)
-    custom_function_modal = app.function(experimental_options={"input_plane_region": "us-east"})(
-        custom_exception_function
-    )
+    custom_function_modal = app.function(routing_region="us-east")(custom_exception_function)
 
     with app.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, 1, 4, 9]
@@ -1050,9 +1048,7 @@ async def test_async_map_wrap_exceptions_deprecation_warning_input_plane(client,
     app = App(include_source=False)
 
     servicer.function_body(custom_exception_function)
-    custom_function_modal = app.function(experimental_options={"input_plane_region": "us-east"})(
-        custom_exception_function
-    )
+    custom_function_modal = app.function(routing_region="us-east")(custom_exception_function)
 
     async with app.run(client=client):
         # No warning when wrap_returned_exceptions is not passed
@@ -1596,7 +1592,7 @@ async def test_non_aio_map_in_async_caller_error(client):
 # This test is somewhat redundant, but it's good to have when we remove the old python server.
 @pytest.mark.asyncio
 async def test_non_aio_map_in_async_caller_error_input_plane(client):
-    dummy_function = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
+    dummy_function = app.function(routing_region="us-east")(dummy)
 
     async with app.run(client=client):
         with pytest.raises(InvalidError, match=".map.aio"):

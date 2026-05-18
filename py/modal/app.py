@@ -743,6 +743,7 @@ class _App:
         ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
+        routing_region: Optional[str] = None,  # Region to route inputs to the function through.
         nonpreemptible: bool = False,  # Whether to run the function on a nonpreemptible instance.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
@@ -902,6 +903,7 @@ class _App:
                 startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
                 region=region,
+                routing_region=routing_region,
                 nonpreemptible=nonpreemptible,
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
@@ -957,6 +959,7 @@ class _App:
         startup_timeout: Optional[int] = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
+        routing_region: Optional[str] = None,  # Region to route inputs to the function through.
         nonpreemptible: bool = False,  # Whether to run the function on a non-preemptible instance.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
@@ -1100,6 +1103,7 @@ class _App:
                 startup_timeout=startup_timeout or timeout,
                 cloud=cloud,
                 region=region,
+                routing_region=routing_region,
                 nonpreemptible=nonpreemptible,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,

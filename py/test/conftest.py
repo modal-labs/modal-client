@@ -846,14 +846,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_heartbeat_response = response
         self.container_heartbeat_abort.set()
 
-    def _get_input_plane_url(self, definition: Union[api_pb2.Function, api_pb2.FunctionData]) -> Optional[str]:
-        input_plane_region = definition.experimental_options.get("input_plane_region")
-        return f"http://127.0.0.1:{self.port}" if input_plane_region else None
-
-    def _get_input_plane_region(self, definition: Union[api_pb2.Function, api_pb2.FunctionData]) -> Optional[str]:
-        input_plane_region = definition.experimental_options.get("input_plane_region")
-        return input_plane_region
-
     def _get_experimental_flash_urls(self, definition: Union[api_pb2.Function, api_pb2.FunctionData]) -> list[str]:
         """Generate mock flash URLs for functions with http_config."""
         if not definition.HasField("http_config") or not definition.http_config.proxy_regions:
@@ -891,8 +883,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 for method_name, method_definition in function_proto.method_definitions.items()
             },
             function_schema=function_proto.function_schema,
-            input_plane_url=self._get_input_plane_url(function_proto),
-            input_plane_region=self._get_input_plane_region(function_proto),
+            input_plane_url=f"http://127.0.0.1:{self.port}" if function_proto.routing_region else None,
+            input_plane_region=function_proto.routing_region,
             max_object_size_bytes=self.max_object_size_bytes,
             definition_id=definition_id,
             supported_input_formats=function_proto.supported_input_formats,
