@@ -4,6 +4,26 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.4.3 (2026-05-18)
+
+- This release introduces a new "regional routing" concept for Function inputs, which is now in Public Beta. By setting `routing_region="..."` in the `@app.function()` or `@app.cls()` decorators, you can configure the Function to route its inputs through servers in `us-west`, `eu-west`, or `ap-south` instead of `us-east`. This can reduce network latency and help you meet data residency obligations. While in Beta, this feature has a few constraints:
+  - A `routing_region` can be set only during the initial deployment of a Function and cannot be changed in a subsequent redeployment.
+  - Functions using regional routing can only be invoked with the `.remote()` and `.map()` methods.
+- We've added a new `modal.Environment` object for programmatically managing Environments, and we've expanded the `modal environment` CLI to support [RBAC](https://modal.com/docs/guide/rbac) configuration.
+- It is now possible to dynamically configure `modal.Function` behavior using `Function.with_options()`, `Function.with_concurrency()`, and `Function.with_batching()`.
+- The new `modal.Volume.with_mount_options()` method allows you to configure a Volume mount as read-only (`read_only=True`) and / or limit the mount to a subdirectory of the Volume (`sub_path="/some/path"`).
+- It's now possible to pass a custom App name for ephemeral Apps using the `--name` option in `modal run`/`modal serve` or by setting `name=` in `App.run()`.
+- We've added two new methods to the `modal.Sandbox` [Filesystem API](https://modal.com/docs/guide/sandbox-files):
+  - `sandbox.filesystem.list_files(path)` lists entries (with metadata) in a given directory on the Sandbox filesystem. This replaces the alpha `modal.Sandbox.ls` method.
+  - `sandbox.filesystem.stat(path)` returns metadata for a specific file/symlink/directory on the Sandbox's filesystem.
+- It's now possible to place restrictions on *inbound* Sandbox connections by setting `inbound_cidr_allowlist=[...]` in `modal.Sandbox.create()`. We are also adding a new `outbound_cidr_allowlist=[...]` parameter and deprecating the existing `cidr_allowlist=[...]` to avoid confusion.
+- We've improved the reliability of the `modal.Sandbox.snapshot_filesystem()` operation, especially for large snapshots, and we now support setting a `timeout=` longer than 55s when necessary.
+- Images returned by `modal.Sandbox.snapshot_directory()` can now be passed to `modal.Sandbox.create()` to use as a root filesystem for the new Sandbox.
+- We've added a `modal.Image.pipe()` method to let you define reusable Image recipes that compose well with the fluent Image builder interface.
+- It's now possible to assign Sandbox tags at creation with `modal.Sandbox.create(..., tags=tags)`.
+- It's now possible to use `--chmod` and `--chown` flags on `COPY` commands within `modal.Image.from_dockerfile()`.
+- We've improved the reliability and latency for `modal shell` and `modal container exec` CLI commands.
+
 ### 1.4.2 (2026-04-16)
 
 - We've added a new `modal app rollover` CLI command for triggering a redeployment of an App without making any code or configuration changes. A rollover replaces existing containers with fresh ones. As with `modal deploy`, there are two strategies for switching between deployments:
