@@ -26,6 +26,14 @@ def sync_error():
     raise DummyException()
 
 
+@app.get("/async_index")
+async def async_index():
+    # Yield to the event loop so background tasks (like fetch_data_in) can run before
+    # this handler returns. Without this, TaskContext cancels them before they log.
+    await asyncio.sleep(0.01)
+    return {"some_result": "foo"}
+
+
 @app.post("/async_reading_body")
 async def async_index_reading_body(req: fastapi.Request):
     body = await req.body()
@@ -123,7 +131,7 @@ async def test_broken_io_unused(caplog):
     mock_manager = BrokenIOManager()
     _set_current_context_ids(["in-123"], ["fc-123"], ["fake-attempt-token"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(app, mock_manager)
-    asgi_scope = _asgi_get_scope("/")
+    asgi_scope = _asgi_get_scope("/async_index")
     outputs = []
 
     async for output in wrapped_app(asgi_scope):
