@@ -74,7 +74,7 @@ async def call_with_retries_on_transient_errors(
     delay_factor: float = 2,
     max_retries: Optional[int] = 10,
     exclude_status_codes: Optional[list[Status]] = None,
-    expect_timeouts: bool = False,  # when True we convert TimeoutError to exception.TimeoutError and don't retry"""
+    timeout_deadline: Optional[float] = None,
 ):
     """Call func() with transient error retries and exponential backoff.
 
@@ -84,6 +84,13 @@ async def call_with_retries_on_transient_errors(
         exclude_status_codes: gRPC status codes to exclude from retry logic even if
             they are in RETRYABLE_GRPC_STATUS_CODES. Use this to let certain errors
             (e.g. DEADLINE_EXCEEDED) propagate immediately rather than being retried.
+        timeout_deadline: Optional monotonic deadline (`time.monotonic()` value).
+            When set, retries are not attempted once the deadline is reached and
+            the backoff sleep is clamped so we don't sleep past it. It's up to
+            the caller to decide whether to further translate the surfaced
+            exception (e.g., into a TimeoutError) based on the deadline check.
+            The caller is also responsible for propagating the remaining budget
+            into `func()` (typically as the per-call gRPC timeout).
     """
     delay_secs = base_delay_secs
     num_retries = 0
@@ -92,10 +99,22 @@ async def call_with_retries_on_transient_errors(
     def is_retryable_status(status: Status) -> bool:
         return status in RETRYABLE_GRPC_STATUS_CODES and status not in exclude_status_codes
 
-    async def sleep_and_update_delay_and_num_retries_remaining(e: Exception):
+    def can_retry() -> bool:
+        if max_retries is not None and num_retries >= max_retries:
+            return False
+        if timeout_deadline is not None and time.monotonic() >= timeout_deadline:
+            return False
+        return True
+
+    async def sleep_and_advance(e: Exception):
         nonlocal delay_secs, num_retries
-        logger.debug(f"Retrying RPC with delay {delay_secs}s due to error: {e}")
-        await asyncio.sleep(delay_secs)
+        # Clamp the backoff sleep to the remaining deadline so we don't sleep
+        # past it just to fail on the next iteration's deadline check.
+        sleep_for = delay_secs
+        if timeout_deadline is not None:
+            sleep_for = min(sleep_for, max(0.0, timeout_deadline - time.monotonic()))
+        logger.debug(f"Retrying RPC with delay {sleep_for}s due to error: {e}")
+        await asyncio.sleep(sleep_for)
         delay_secs *= delay_factor
         num_retries += 1
 
@@ -103,37 +122,28 @@ async def call_with_retries_on_transient_errors(
         try:
             return await func()
         except GRPCError as e:
-            if (max_retries is None or num_retries < max_retries) and is_retryable_status(e.status):
-                await sleep_and_update_delay_and_num_retries_remaining(e)
-            else:
-                raise e
+            if not is_retryable_status(e.status) or not can_retry():
+                raise
+            await sleep_and_advance(e)
         except AttributeError as e:
             # StreamTerminatedError are not properly raised in grpclib<=0.4.7
             # fixed in https://github.com/vmagamedov/grpclib/issues/185
             # TODO: update to newer version (>=0.4.8) once stable
-            if (max_retries is None or num_retries < max_retries) and "_write_appdata" in str(e):
-                await sleep_and_update_delay_and_num_retries_remaining(e)
-            else:
-                raise e
+            if "_write_appdata" not in str(e) or not can_retry():
+                raise
+            await sleep_and_advance(e)
         except StreamTerminatedError as e:
-            if max_retries is None or num_retries < max_retries:
-                await sleep_and_update_delay_and_num_retries_remaining(e)
-            else:
-                raise e
-        except asyncio.TimeoutError as e:
-            if expect_timeouts:
-                # grpclib raises TimeoutError for the client-side timeout/deadlines
-                raise ModalTimeoutError("Timeout expired")
-
-            if max_retries is None or num_retries < max_retries:
-                await sleep_and_update_delay_and_num_retries_remaining(e)
-            else:
+            if not can_retry():
+                raise
+            await sleep_and_advance(e)
+        except (asyncio.TimeoutError, OSError) as e:
+            if not can_retry():
+                # Client-side timeout / network OSError surfaces as a generic
+                # ConnectionError once we stop retrying. Callers that pass
+                # `timeout_deadline` can further translate this based on
+                # whether the deadline has elapsed.
                 raise ConnectionError(str(e))
-        except OSError as e:
-            if max_retries is None or num_retries < max_retries:
-                await sleep_and_update_delay_and_num_retries_remaining(e)
-            else:
-                raise ConnectionError(str(e))
+            await sleep_and_advance(e)
 
 
 async def fetch_command_router_access(server_client, task_id: str) -> api_pb2.TaskGetCommandRouterAccessResponse:
@@ -656,20 +666,34 @@ class TaskCommandRouterClient:
             )
 
     async def snapshot_filesystem(
-        self, request: sr_pb2.TaskSnapshotFilesystemRequest, *, timeout: Optional[int] = None, **kwargs
+        self, request: sr_pb2.TaskSnapshotFilesystemRequest, *, timeout: float, **kwargs
     ) -> sr_pb2.TaskSnapshotFilesystemResponse:
-        expect_timeouts = timeout is not None
-        with grpc_error_converter(expect_timeouts=expect_timeouts):
-            # note: TaskSnapshotFilesystem has a timeout concept with multiple variants:
-            # * Normally it would time out on the client side inside of grpclib - this causes an asyncio.TimeoutError
-            # * It also propagates the timeout to the server however, which could potentially trigger, in particular
-            #   if an in-progress requests is idempotently rejoined as a retry. These errors appear to be propagated
-            #   as Status.CANCELLED at the time of writing this, but we may change the backend to return
-            #   DEADLINE_EXCEEDED in the future, so we want to make the code compatible with both here:
-            return await call_with_retries_on_transient_errors(
-                lambda: self._call_with_auth_retry(
-                    self._stub.TaskSnapshotFilesystem, request, timeout=timeout, **kwargs
-                ),
-                exclude_status_codes=[Status.DEADLINE_EXCEEDED, Status.CANCELLED],
-                expect_timeouts=expect_timeouts,  # client wanted a timeout - raise as such immediately
+        # Compute the overall deadline once; each retry attempt passes the
+        # remaining budget as the per-call gRPC timeout so we honor the
+        # caller-specified `timeout` across retries instead of giving each
+        # attempt a fresh full window.
+        timeout_deadline = time.monotonic() + timeout
+
+        def call():
+            call_timeout = timeout_deadline - time.monotonic()
+            if call_timeout <= 0.0:
+                # doesn't matter which exception type this is
+                # as it will be caught by the catch all below
+                raise ModalTimeoutError("Timeout expired")
+
+            return self._call_with_auth_retry(
+                self._stub.TaskSnapshotFilesystem, request, timeout=call_timeout, **kwargs
             )
+
+        # Any failure observed at or after the deadline is treated as a timeout
+        try:
+            with grpc_error_converter():
+                return await call_with_retries_on_transient_errors(
+                    call,
+                    exclude_status_codes=[Status.DEADLINE_EXCEEDED, Status.CANCELLED],
+                    timeout_deadline=timeout_deadline,
+                )
+        except Exception:
+            if time.monotonic() >= timeout_deadline:
+                raise ModalTimeoutError("Timeout expired")
+            raise

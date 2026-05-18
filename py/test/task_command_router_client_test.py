@@ -817,20 +817,22 @@ async def test_snapshot_filesystem_grpclib_timeout_raises_timeout_error(make_rou
         ):
             nonlocal attempts
             attempts += 1
-            assert timeout == 0.1
+            # Simulate the per-call deadline elapsing: sleep past the overall
+            # timeout before the (mocked) grpclib timeout fires.
+            await asyncio.sleep(1.0)
             raise asyncio.TimeoutError()
 
     monkeypatch.setattr(client._stub, "TaskSnapshotFilesystem", _SnapshotFilesystemMethod(), raising=True)
 
     request = sr_pb2.TaskSnapshotFilesystemRequest(task_id="task-1", snapshot_id="snapshot-1")
     with pytest.raises(ModalTimeoutError, match="Timeout expired"):
-        await client.snapshot_filesystem(request, timeout=0.1)
+        await client.snapshot_filesystem(request, timeout=0.5)
 
     assert attempts == 1
 
 
 @pytest.mark.asyncio
-async def test_snapshot_filesystem_cancelled_raises_timeout_error_without_retry(make_router_client, monkeypatch):
+async def test_snapshot_filesystem_cancelled_after_deadline_raises_timeout_error(make_router_client, monkeypatch):
     client = make_router_client()
 
     attempts = 0
@@ -845,20 +847,20 @@ async def test_snapshot_filesystem_cancelled_raises_timeout_error_without_retry(
         ):
             nonlocal attempts
             attempts += 1
-            assert timeout == 0.1
+            await asyncio.sleep(1.0)  # well past the 0.5s deadline
             raise GRPCError(Status.CANCELLED, "cancelled")
 
     monkeypatch.setattr(client._stub, "TaskSnapshotFilesystem", _SnapshotFilesystemMethod(), raising=True)
 
     request = sr_pb2.TaskSnapshotFilesystemRequest(task_id="task-1", snapshot_id="snapshot-1")
     with pytest.raises(ModalTimeoutError, match="Timeout expired"):
-        await client.snapshot_filesystem(request, timeout=0.1)
+        await client.snapshot_filesystem(request, timeout=0.5)
 
     assert attempts == 1
 
 
 @pytest.mark.asyncio
-async def test_snapshot_filesystem_deadline_exceeded_raises_timeout_error_without_retry(
+async def test_snapshot_filesystem_deadline_exceeded_after_deadline_raises_timeout_error(
     make_router_client, monkeypatch
 ):
     client = make_router_client()
@@ -875,14 +877,43 @@ async def test_snapshot_filesystem_deadline_exceeded_raises_timeout_error_withou
         ):
             nonlocal attempts
             attempts += 1
-            assert timeout == 0.1
+            await asyncio.sleep(1.0)  # well past the 0.5s deadline
             raise GRPCError(Status.DEADLINE_EXCEEDED, "deadline exceeded")
 
     monkeypatch.setattr(client._stub, "TaskSnapshotFilesystem", _SnapshotFilesystemMethod(), raising=True)
 
     request = sr_pb2.TaskSnapshotFilesystemRequest(task_id="task-1", snapshot_id="snapshot-1")
     with pytest.raises(ModalTimeoutError, match="Timeout expired"):
-        await client.snapshot_filesystem(request, timeout=0.1)
+        await client.snapshot_filesystem(request, timeout=0.5)
+
+    assert attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_snapshot_filesystem_cancelled_before_deadline_propagates_original(make_router_client, monkeypatch):
+    from modal.exception import ServiceError
+
+    client = make_router_client()
+
+    attempts = 0
+
+    class _SnapshotFilesystemMethod:
+        async def __call__(
+            self,
+            request: sr_pb2.TaskSnapshotFilesystemRequest,
+            *,
+            timeout: Optional[float] = None,
+            metadata: Optional[dict] = None,
+        ):
+            nonlocal attempts
+            attempts += 1
+            raise GRPCError(Status.CANCELLED, "cancelled")
+
+    monkeypatch.setattr(client._stub, "TaskSnapshotFilesystem", _SnapshotFilesystemMethod(), raising=True)
+
+    request = sr_pb2.TaskSnapshotFilesystemRequest(task_id="task-1", snapshot_id="snapshot-1")
+    with pytest.raises(ServiceError):
+        await client.snapshot_filesystem(request, timeout=10.0)  # generous timeout
 
     assert attempts == 1
 
@@ -903,7 +934,9 @@ async def test_snapshot_filesystem_internal_retries_and_succeeds(make_router_cli
         ):
             nonlocal attempts
             attempts += 1
-            assert timeout == 0.1
+            # The per-call timeout is the remaining time on the overall
+            # deadline, so it's at most the originally specified value.
+            assert timeout is not None and timeout <= 0.5
             if attempts == 1:
                 raise GRPCError(Status.INTERNAL, "transient internal error")
             return sr_pb2.TaskSnapshotFilesystemResponse(image_id="im-123")
@@ -911,10 +944,76 @@ async def test_snapshot_filesystem_internal_retries_and_succeeds(make_router_cli
     monkeypatch.setattr(client._stub, "TaskSnapshotFilesystem", _SnapshotFilesystemMethod(), raising=True)
 
     request = sr_pb2.TaskSnapshotFilesystemRequest(task_id="task-1", snapshot_id="snapshot-1")
-    response = await client.snapshot_filesystem(request, timeout=0.1)
+    response = await client.snapshot_filesystem(request, timeout=0.5)
 
     assert response.image_id == "im-123"
     assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_snapshot_filesystem_retry_uses_remaining_deadline(make_router_client, monkeypatch):
+    client = make_router_client()
+
+    per_call_timeouts: list[float] = []
+
+    class _SnapshotFilesystemMethod:
+        async def __call__(
+            self,
+            request: sr_pb2.TaskSnapshotFilesystemRequest,
+            *,
+            timeout: Optional[float] = None,
+            metadata: Optional[dict] = None,
+        ):
+            assert timeout is not None
+            per_call_timeouts.append(timeout)
+            if len(per_call_timeouts) == 1:
+                # Burn ~half the overall budget then return a retryable error.
+                await asyncio.sleep(0.4)
+                raise GRPCError(Status.INTERNAL, "transient internal error")
+            return sr_pb2.TaskSnapshotFilesystemResponse(image_id="im-123")
+
+    monkeypatch.setattr(client._stub, "TaskSnapshotFilesystem", _SnapshotFilesystemMethod(), raising=True)
+
+    request = sr_pb2.TaskSnapshotFilesystemRequest(task_id="task-1", snapshot_id="snapshot-1")
+    response = await client.snapshot_filesystem(request, timeout=1.0)
+    assert response.image_id == "im-123"
+
+    assert len(per_call_timeouts) == 2
+    assert per_call_timeouts[0] <= 1.0
+    # The retry must see strictly less than the original timeout because
+    # ~0.4s of the budget was already consumed by the first attempt.
+    assert per_call_timeouts[1] < 0.7
+
+
+@pytest.mark.asyncio
+async def test_snapshot_filesystem_deadline_aborts_retries(make_router_client, monkeypatch):
+    client = make_router_client()
+
+    attempts = 0
+
+    class _SnapshotFilesystemMethod:
+        async def __call__(
+            self,
+            request: sr_pb2.TaskSnapshotFilesystemRequest,
+            *,
+            timeout: Optional[float] = None,
+            metadata: Optional[dict] = None,
+        ):
+            nonlocal attempts
+            attempts += 1
+            # Burn the full budget on the first call, then return a retryable error.
+            await asyncio.sleep(1.0)
+            raise GRPCError(Status.INTERNAL, "transient internal error")
+
+    monkeypatch.setattr(client._stub, "TaskSnapshotFilesystem", _SnapshotFilesystemMethod(), raising=True)
+
+    request = sr_pb2.TaskSnapshotFilesystemRequest(task_id="task-1", snapshot_id="snapshot-1")
+    with pytest.raises(ModalTimeoutError, match="Timeout expired"):
+        await client.snapshot_filesystem(request, timeout=0.5)
+
+    # Only the first call ran; the retry was aborted because the deadline had
+    # already elapsed by the time we got back to the retry loop.
+    assert attempts == 1
 
 
 @pytest.mark.asyncio
