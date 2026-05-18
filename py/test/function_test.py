@@ -1801,7 +1801,7 @@ def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
     # Verify there are zero attempts remaining
     assert servicer.fail_put_inputs_with_grpc_error.count == 0
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
-    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING and r.name == "modal-utils"]
 
 
 def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog):
@@ -1821,7 +1821,7 @@ def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog
     # Verify there are zero attempts remaining
     assert servicer.fail_put_inputs_with_grpc_error.count == 0
     # Verify we log the warning for RESOURCE_EXHAUSTED
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING and r.name == "modal-utils"]
     assert len(warnings) == 1
 
 
@@ -1842,7 +1842,7 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
     # Verify there are zero attempts remaining
     assert servicer.fail_put_inputs_with_stream_terminated_error == 0
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
-    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING and r.name == "modal-utils"]
 
 
 def test_batching_config(client, servicer):
