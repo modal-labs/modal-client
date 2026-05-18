@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import click
 
-from modal.cli.shell import _parse_sandbox_container_ref, _passed_forbidden_args, shell
+from modal.cli.shell import _parse_experimental_options, _parse_sandbox_container_ref, _passed_forbidden_args, shell
 
 from .conftest import run_cli_command
 from .supports.skip import skip_windows
@@ -98,6 +98,7 @@ def test_shell_unsuported_cmds_fails_on_windows(servicer, set_env_client, mock_s
         (["--add-python", "3.11"]),
         (["--env", "main"]),
         (["--add-local", "/tmp/file.txt"]),
+        (["--experimental-option", "sparkle_mode=true"]),
         (["-m"]),
     ],
 )
@@ -197,6 +198,21 @@ def test_passed_forbidden_args_with_predicate():
             "--cpu",
         ]
         assert _pfa(params, ctx, {"image": None, "cpu": None}, allowed=lambda _: False) == []
+
+
+def test_parse_experimental_options():
+    assert _parse_experimental_options(["sparkle_mode=true", "waffle_fs=false", "foo=1", "bar=0"]) == {
+        "sparkle_mode": True,
+        "waffle_fs": False,
+        "foo": True,
+        "bar": False,
+    }
+
+
+@pytest.mark.parametrize("option", ["sparkle_mode", "=true", "foo=maybe"])
+def test_parse_experimental_options_rejects_invalid_values(option):
+    with pytest.raises(click.BadParameter):
+        _parse_experimental_options([option])
 
 
 def test_shell_params_have_concrete_defaults():
@@ -312,6 +328,31 @@ def test_shell_function_ref_routes_to_function_spec(servicer, set_env_client, mo
     mock_shell_routing["start_running_container"].assert_not_called()
     mock_shell_routing["start_from_function_spec"].assert_called_once()
     mock_shell_routing["start_from_image"].assert_not_called()
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_experimental_options_with_function_ref(servicer, set_env_client, mock_shell_routing):
+    run_cli_command(
+        [
+            "shell",
+            "--experimental-option",
+            "sparkle_mode=true",
+            "--experimental-option",
+            "waffle_fs=false",
+            "app.py::my_func",
+        ]
+    )
+
+    call = mock_shell_routing["start_from_function_spec"].call_args
+    assert call.args[-1] == {"sparkle_mode": True, "waffle_fs": False}
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_experimental_options_with_image(servicer, set_env_client, mock_shell_routing):
+    run_cli_command(["shell", "--experimental-option", "sparkle_mode=true"])
+
+    call = mock_shell_routing["start_from_image"].call_args
+    assert call.args[-1] == {"sparkle_mode": True}
 
 
 @skip_windows("modal shell is not supported on Windows.")

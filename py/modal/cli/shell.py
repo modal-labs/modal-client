@@ -58,6 +58,23 @@ def _passed_forbidden_args(
     return passed_forbidden
 
 
+def _parse_experimental_options(options: Iterable[str]) -> dict[str, bool]:
+    parsed: dict[str, bool] = {}
+    for option in options:
+        key, sep, raw_value = option.partition("=")
+        if not key or not sep:
+            raise click.BadParameter("must use KEY=VALUE")
+
+        value = raw_value.lower()
+        if value in {"1", "true"}:
+            parsed[key] = True
+        elif value in {"0", "false"}:
+            parsed[key] = False
+        else:
+            raise click.BadParameter("BOOL must be one of true, false, 1, or 0")
+    return parsed
+
+
 def _is_valid_modal_id(ref: str, prefix: str) -> bool:
     assert prefix.endswith("-")
     return ref.startswith(prefix) and len(ref[len(prefix) :]) > 0 and ref[len(prefix) :].isalnum()
@@ -180,6 +197,7 @@ def _start_shell_from_function_spec(
     timeout: int,
     function_spec: _FunctionSpec,
     pty: bool,
+    experimental_options: dict[str, bool],
 ) -> None:
     interactive_shell(
         app,
@@ -198,6 +216,7 @@ def _start_shell_from_function_spec(
         region=function_spec.scheduler_placement.regions if function_spec.scheduler_placement else None,
         pty=pty,
         proxy=function_spec.proxy,
+        experimental_options=experimental_options,
     )
 
 
@@ -216,6 +235,7 @@ def _start_shell_from_image(
     cloud: Optional[str],
     region: Optional[str],
     pty: bool,
+    experimental_options: dict[str, bool],
 ) -> None:
     volumes = {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
     secrets = [Secret.from_name(s) for s in secret]
@@ -246,6 +266,7 @@ def _start_shell_from_image(
         secrets=secrets,
         region=region.split(",") if region else [],
         pty=pty,
+        experimental_options=experimental_options,
     )
 
 
@@ -298,6 +319,14 @@ def _start_shell_from_image(
     default=False,
     help="Interpret argument as a Python module path instead of a file/script path",
 )
+@click.option(
+    "--experimental-option",
+    "experimental_options",
+    multiple=True,
+    default=(),
+    hidden=True,
+    metavar="KEY=VALUE",
+)
 def shell(
     ref: Optional[str] = None,
     cmd: str = "/bin/bash",
@@ -314,6 +343,7 @@ def shell(
     region: Optional[str] = None,
     pty: Optional[bool] = None,
     use_module_mode: bool = False,
+    experimental_options: tuple[str, ...] = (),
 ):
     """Run a command or interactive shell inside a Modal container.
 
@@ -384,12 +414,16 @@ def shell(
     # NB: invoking under bash makes --cmd a lot more flexible.
     cmds = shlex.split(f'/bin/bash -c "{cmd}"')
     timeout = 3600
+    parsed_experimental_options = _parse_experimental_options(experimental_options)
 
     if ref is not None and not _is_valid_modal_id(ref, "im-"):
         # If ref it not a Modal Image ID, then it's a function reference, and we'll start a new container from its spec.
         ctx = click.get_current_context()
         if passed_forbidden := _passed_forbidden_args(
-            shell.params, ctx, locals(), allowed=lambda p: p in {"cmd", "env", "pty", "ref", "use_module_mode"}
+            shell.params,
+            ctx,
+            locals(),
+            allowed=lambda p: p in {"cmd", "env", "pty", "ref", "use_module_mode", "experimental_options"},
         ):
             raise ClickException(
                 f"Cannot specify container configuration arguments ({', '.join(passed_forbidden)}) "
@@ -397,7 +431,7 @@ def shell(
             )
 
         function_spec = _function_spec_from_ref(ref, use_module_mode)
-        _start_shell_from_function_spec(app, cmds, env, timeout, function_spec, pty)
+        _start_shell_from_function_spec(app, cmds, env, timeout, function_spec, pty, parsed_experimental_options)
         return
 
     if ref is not None and _is_valid_modal_id(ref, "im-"):
@@ -428,4 +462,5 @@ def shell(
         cloud,
         region,
         pty,
+        parsed_experimental_options,
     )
