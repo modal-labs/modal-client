@@ -340,6 +340,24 @@ class _VolumeManager:
 VolumeManager = synchronize_api(_VolumeManager)
 
 
+@dataclass(frozen=True)
+class _VolumeMountOptions:
+    read_only: bool = False
+    sub_path: Optional[str] = None
+
+
+def _volume_to_mount_proto(path: str, volume: "_Volume") -> api_pb2.VolumeMount:
+    """Convert a Volume to a VolumeMount proto for use in Function/Sandbox definitions."""
+    mount_options = volume._mount_options or _VolumeMountOptions()
+    return api_pb2.VolumeMount(
+        mount_path=path,
+        volume_id=volume.object_id,
+        allow_background_commits=True,
+        read_only=mount_options.read_only,
+        sub_path=mount_options.sub_path,
+    )
+
+
 class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
@@ -384,7 +402,23 @@ class _Volume(_Object, type_prefix="vo"):
 
     _lock: Optional[asyncio.Lock] = None
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
+    _mount_options: Optional[_VolumeMountOptions] = None
+    # Client-side read-only flag from the deprecated .read_only() method. Unlike
+    # _mount_options.read_only (which only configures the server-side mount), this
+    # flag triggers client-side InvalidError on mutating calls like batch_upload().
     _read_only: bool = False
+
+    def _initialize_from_empty(self):
+        self._metadata = None
+        self._mount_options = None
+        self._read_only = False
+
+    def _initialize_from_other(self, other):
+        super()._initialize_from_other(other)
+        self._metadata = other._metadata
+        self._mount_options = other._mount_options
+        self._read_only = other._read_only
+        self._name = other._name
 
     @classproperty
     @classmethod
@@ -396,41 +430,105 @@ class _Volume(_Object, type_prefix="vo"):
         return self._name
 
     def read_only(self) -> "_Volume":
-        """Configure Volume to mount as read-only.
+        """mdmd:hidden"""
 
-        **Example**
-
-        ```python
-        import modal
-
-        volume = modal.Volume.from_name("my-volume", create_if_missing=True)
-
-        @app.function(volumes={"/mnt/items": volume.read_only()})
-        def f():
-            with open("/mnt/items/my-file.txt") as f:
-                return f.read()
-        ```
-
-        The Volume is mounted as a read-only volume in a function. Any file system write operation into the
-        mounted volume will result in an error.
-
-        Added in v1.0.5.
-        """
+        # Silently deprecated in favor of `with_mount_options(read_only=True)`.
+        if self._mount_options is not None:
+            raise InvalidError(
+                "Cannot call read_only() on a Volume that has with_mount_options() applied. "
+                "Use with_mount_options(read_only=True, ...) instead. Note that with_mount_options(read_only=True) "
+                "only configures the server-side mount and does not block client-side Volume SDK methods."
+            )
+        mount_options = _VolumeMountOptions(read_only=True)
 
         async def _load(
             new_volume: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
         ):
             new_volume._initialize_from_other(self)
+            new_volume._mount_options = mount_options
             new_volume._read_only = True
 
-        obj = _Volume._from_loader(
+        new_volume = _Volume._from_loader(
             _load,
             "Volume()",
             hydrate_lazily=True,
             deps=lambda: [self],
             load_context_overrides=self._load_context_overrides,
         )
-        return obj
+        new_volume._initialize_from_other(self)
+        new_volume._mount_options = mount_options
+        new_volume._read_only = True
+        return new_volume
+
+    def with_mount_options(
+        self,
+        *,
+        read_only: Optional[bool] = None,
+        sub_path: Optional[Union[str, PurePosixPath]] = None,
+    ) -> "_Volume":
+        """Configure options used when mounting this Volume.
+
+        Note that these options are not properties stored with the Volume itself - they can be individually configured
+        for each Volume - container association.
+
+        read_only: bool (optional) - set this to True to make the Volume read only from within containers
+        sub_path: str | PurePosixPath (optional) - only mount this sub_path directory from the Volume.
+            If the directory doesn't exist in the Volume, it will be created when the container starts up
+
+
+        **Mount Volume in read-only mode**
+        ```python
+        import modal
+
+        volume = modal.Volume.from_name("my-volume")
+
+        @app.function(volumes={"/mnt": volume.with_mount_options(read_only=True)})
+        def f():
+            return os.mkdir("/mnt/foo")  # not possible!
+        ```
+
+        **Mount only part of a Volume using sub_path**
+        ```python
+        import modal
+
+        volume = modal.Volume.from_name("my-volume")
+
+        @app.function(volumes={"/user_data": volume.with_mount_options(sub_path="/users/my_user")})
+        def f():
+            return os.listdir("/user_data")  # lists data from /users/my_user
+        ```
+        """
+        if self._read_only:
+            raise InvalidError(
+                "Cannot call with_mount_options() on a Volume that has .read_only() applied. "
+                "Use with_mount_options(read_only=True, ...) instead. Note that with_mount_options(read_only=True) "
+                "only configures the server-side mount and does not block client-side Volume SDK methods."
+            )
+        current_mount_options = self._mount_options or _VolumeMountOptions()
+        normalized_sub_path = current_mount_options.sub_path
+        if sub_path is not None:
+            # Normalize sub_path: "/" means whole volume (same as None)
+            path_str = PurePosixPath(sub_path).as_posix()
+            normalized_sub_path = None if path_str == "/" else path_str
+        read_only = current_mount_options.read_only if read_only is None else read_only
+        mount_options = _VolumeMountOptions(read_only=read_only, sub_path=normalized_sub_path)
+
+        async def _load(
+            new_volume: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        ):
+            new_volume._initialize_from_other(self)
+            new_volume._mount_options = mount_options
+
+        new_volume = _Volume._from_loader(
+            _load,
+            "Volume()",
+            hydrate_lazily=True,
+            deps=lambda: [self],
+            load_context_overrides=self._load_context_overrides,
+        )
+        new_volume._initialize_from_other(self)
+        new_volume._mount_options = mount_options
+        return new_volume
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         if metadata:

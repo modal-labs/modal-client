@@ -89,7 +89,7 @@ from .proxy import _Proxy
 from .retries import Retries, RetryManager
 from .schedule import Schedule
 from .secret import _Secret
-from .volume import _Volume
+from .volume import _Volume, _volume_to_mount_proto
 
 if TYPE_CHECKING:
     import modal.app
@@ -946,13 +946,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
                 # Relies on dicts being ordered (true as of Python 3.6).
                 volume_mounts = [
-                    api_pb2.VolumeMount(
-                        mount_path=path,
-                        volume_id=volume.object_id,
-                        allow_background_commits=True,
-                        read_only=volume._read_only,
-                    )
-                    for path, volume in validated_volumes_no_cloud_buckets
+                    _volume_to_mount_proto(path, volume) for path, volume in validated_volumes_no_cloud_buckets
                 ]
                 loaded_mount_ids = {m.object_id for m in all_mounts} | {m.object_id for m in image._mount_layers}
 

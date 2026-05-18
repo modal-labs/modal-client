@@ -21,7 +21,7 @@ from google.protobuf.message import Message
 from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.mount import _Mount
-from modal.volume import _Volume
+from modal.volume import _Volume, _volume_to_mount_proto
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 from ._load_context import LoadContext
@@ -301,15 +301,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             validate_volumes_by_object_id(validated_volumes)
 
             # Relies on dicts being ordered (true as of Python 3.6).
-            volume_mounts = [
-                api_pb2.VolumeMount(
-                    mount_path=path,
-                    volume_id=volume.object_id,
-                    allow_background_commits=True,
-                    read_only=volume._read_only,
-                )
-                for path, volume in validated_volumes
-            ]
+            volume_mounts = [_volume_to_mount_proto(path, volume) for path, volume in validated_volumes]
 
             open_ports = [api_pb2.PortSpec(port=port, unencrypted=False) for port in encrypted_ports]
             open_ports.extend([api_pb2.PortSpec(port=port, unencrypted=True) for port in unencrypted_ports])

@@ -18,7 +18,7 @@ from ._utils.mount_utils import validate_volumes, validate_volumes_by_object_id
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .retries import Retries
 from .secret import _Secret
-from .volume import _Volume
+from .volume import _Volume, _volume_to_mount_proto
 
 if TYPE_CHECKING:
     from ._functions import _Function
@@ -162,15 +162,7 @@ class _FunctionOptions:
         # Needs to be called late so that volumes are hydrated
         validate_volumes_by_object_id(self.validated_volumes)
 
-        volume_mounts = [
-            api_pb2.VolumeMount(
-                mount_path=path,
-                volume_id=volume.object_id,
-                allow_background_commits=True,
-                read_only=volume._read_only,
-            )
-            for path, volume in self.validated_volumes
-        ]
+        volume_mounts = [_volume_to_mount_proto(path, volume) for path, volume in self.validated_volumes]
         return api_pb2.FunctionOptions(
             secret_ids=[secret.object_id for secret in self.secrets],
             replace_secret_ids=bool(self.secrets),

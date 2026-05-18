@@ -25,7 +25,7 @@ from modal.exception import (
     ServiceError,
     VolumeUploadTimeoutError,
 )
-from modal.volume import _open_files_error_annotation
+from modal.volume import _open_files_error_annotation, _Volume
 from modal_proto import api_pb2
 
 VERSIONS = [
@@ -100,7 +100,7 @@ def test_volume_mount(client, servicer, version, read_only):
 
     vol = modal.Volume.from_name("xyz", create_if_missing=True, version=version)
     if read_only:
-        vol = vol.read_only()
+        vol = vol.with_mount_options(read_only=True)
 
     _ = app.function(volumes={"/root/foo": vol})(dummy)
 
@@ -108,6 +108,120 @@ def test_volume_mount(client, servicer, version, read_only):
         with app.run(client=client):
             req = ctx.pop_request("FunctionCreate")
             assert req.function.volume_mounts[0].read_only == read_only
+            # Verify sub_path is NOT sent when not specified (wire format preservation)
+            assert req.function.volume_mounts[0].sub_path == ""
+
+
+def test_volume_subdirectory_mount(client, servicer):
+    app = modal.App(include_source=False)
+
+    vol = modal.Volume.from_name("xyz", create_if_missing=True).with_mount_options(sub_path="/nested")
+
+    _ = app.function(volumes={"/root/foo": vol})(dummy)
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            req = ctx.pop_request("FunctionCreate")
+            assert req.function.volume_mounts[0].sub_path == "/nested"
+
+
+def test_volume_mount_options_read_only_subdirectory(client, servicer):
+    app = modal.App(include_source=False)
+    vol = modal.Volume.from_name("xyz", create_if_missing=True).with_mount_options(read_only=True, sub_path="/nested")
+
+    _ = app.function(volumes={"/root/foo": vol})(dummy)
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            req = ctx.pop_request("FunctionCreate")
+            assert req.function.volume_mounts[0].read_only
+            assert req.function.volume_mounts[0].sub_path == "/nested"
+
+
+def test_volume_mount_options_are_stored_on_volume_copy():
+    vol = modal.Volume.from_name("xyz", create_if_missing=True)
+    vol_mount = vol.with_mount_options(read_only=True, sub_path="/nested")
+
+    assert isinstance(vol_mount, modal.Volume)
+    assert vol_mount is not vol
+    assert hasattr(vol_mount, "batch_upload")
+    assert hasattr(vol_mount, "remove_file")
+    assert hasattr(vol_mount, "copy_files")
+
+
+def test_volume_mount_options_set_state_on_volume_copy():
+    vol = _Volume.from_name("xyz", create_if_missing=True)
+    vol_mount = vol.with_mount_options(read_only=True, sub_path="/nested")
+
+    assert vol._mount_options is None
+    assert vol_mount._mount_options is not None
+    assert vol_mount._mount_options.read_only
+    assert vol_mount._mount_options.sub_path == "/nested"
+
+
+def test_volume_mount_options_merge_on_repeated_calls():
+    vol = _Volume.from_name("xyz", create_if_missing=True).with_mount_options(read_only=True, sub_path="/nested")
+
+    vol_with_new_subpath = vol.with_mount_options(sub_path="/other")
+    assert vol_with_new_subpath._mount_options.read_only
+    assert vol_with_new_subpath._mount_options.sub_path == "/other"
+
+    vol_with_new_read_only = vol.with_mount_options(read_only=False)
+    assert not vol_with_new_read_only._mount_options.read_only
+    assert vol_with_new_read_only._mount_options.sub_path == "/nested"
+
+    vol_with_none_subpath = vol.with_mount_options(sub_path=None)
+    assert vol_with_none_subpath._mount_options.read_only
+    assert vol_with_none_subpath._mount_options.sub_path == "/nested"
+
+    vol_with_cleared_subpath = vol.with_mount_options(sub_path="/")
+    assert vol_with_cleared_subpath._mount_options.read_only
+    assert vol_with_cleared_subpath._mount_options.sub_path is None
+
+
+def test_volume_read_only_sets_state_on_volume_copy():
+    vol = _Volume.from_name("xyz", create_if_missing=True)
+    read_only_vol = vol.read_only()
+
+    assert read_only_vol._read_only
+    assert read_only_vol._mount_options is not None
+    assert read_only_vol._mount_options.read_only
+
+
+def test_volume_read_only_rejects_mount_options_immediately():
+    vol = modal.Volume.from_name("xyz", create_if_missing=True)
+    vol_with_mount_options = vol.with_mount_options(sub_path="/nested")
+
+    with pytest.raises(InvalidError, match="Cannot call read_only.*with_mount_options"):
+        vol_with_mount_options.read_only()
+
+
+def test_volume_with_mount_options_copies_metadata(client, servicer):
+    """Test that with_mount_options copies _metadata and _name for live methods."""
+    vol = modal.Volume.from_name("xyz", create_if_missing=True)
+    vol.hydrate(client)
+
+    # with_mount_options without read_only should still allow calling live methods
+    vol_with_subpath = vol.with_mount_options(sub_path="/nested")
+    vol_with_subpath.hydrate(client)
+
+    # Verify that _name is copied correctly
+    assert vol_with_subpath.name == vol.name == "xyz"
+
+    # These should not raise AttributeError - they access _metadata internally
+    vol_with_subpath.listdir("/")
+
+    # remove_file also accesses _metadata; FileNotFoundError means it worked (no AttributeError)
+    with pytest.raises(FileNotFoundError):
+        vol_with_subpath.remove_file("nonexistent", recursive=True)
+
+
+def test_volume_with_mount_options_rejects_legacy_read_only_immediately():
+    vol = modal.Volume.from_name("xyz", create_if_missing=True)
+    read_only_vol = vol.read_only()
+
+    with pytest.raises(InvalidError, match="Cannot call with_mount_options.*read_only"):
+        read_only_vol.with_mount_options(sub_path="/nested")
 
 
 def test_volume_bad_paths():

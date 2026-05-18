@@ -59,7 +59,7 @@ from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .output import OutputManager
 from .secret import _Secret
-from .volume import _Volume
+from .volume import _Volume, _volume_to_mount_proto
 
 if typing.TYPE_CHECKING:
     import modal._functions
@@ -631,15 +631,7 @@ class _Image(_Object, type_prefix="im"):
             validate_volumes_by_object_id(validated_volumes)
 
             # Relies on dicts being ordered (true as of Python 3.6).
-            volume_mounts = [
-                api_pb2.VolumeMount(
-                    mount_path=path,
-                    volume_id=volume.object_id,
-                    allow_background_commits=True,
-                    read_only=volume._read_only,
-                )
-                for path, volume in validated_volumes
-            ]
+            volume_mounts = [_volume_to_mount_proto(path, volume) for path, volume in validated_volumes]
 
             image_definition = api_pb2.Image(
                 base_images=base_images_pb2s,
