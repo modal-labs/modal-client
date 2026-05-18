@@ -1847,7 +1847,10 @@ def test_sigint_termination_enter_handler(servicer, tmp_path, method, enter_type
         cls_params=((), {"print_at_exit": 1, f"{enter_type}_duration": 10}),
         is_class=True,
     )
-    time.sleep(1)  # should be enough to start the enter method
+    # Wait for the container to connect before sleeping, eliminating the uncertainty
+    # of Python interpreter startup time which varies on loaded CI machines.
+    assert servicer.container_hello_event.wait(timeout=30), "Container never connected to servicer"
+    time.sleep(1)  # allow module imports to complete so SIGINT arrives during the enter handler
     signal_time = time.monotonic()
     os.kill(container_process.pid, signal.SIGINT)
     stdout, stderr = container_process.communicate(timeout=5)
