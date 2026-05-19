@@ -714,6 +714,36 @@ def test_sandbox_snapshot_fs(app, servicer, monkeypatch):
     sb.terminate()
 
 
+@pytest.mark.parametrize("legacy_env_var", [False, True])
+def test_sandbox_snapshot_fs_v2(app, monkeypatch, legacy_env_var):
+    router_client = FakeTaskCommandRouterClient(None)
+    captured_router_args = None
+
+    async def _mk_router_v2(cls, server_client, sandbox_id, task_id):
+        nonlocal captured_router_args
+        captured_router_args = (sandbox_id, task_id)
+        return router_client
+
+    if legacy_env_var:
+        monkeypatch.setenv("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT", "1")
+    monkeypatch.setattr(TaskCommandRouterClient, "init_v2", classmethod(_mk_router_v2))
+
+    sb = Sandbox._experimental_create("sleep", "infinity", app=app)
+    image = sb.snapshot_filesystem()
+
+    assert image.object_id == "im-snapshot-fs-123"
+    assert captured_router_args == ("sb-v2-123", "ta-v2-123")
+
+    req = router_client.last_snapshot_filesystem_request
+    assert req.task_id == "ta-v2-123"
+    assert req.HasField("ttl_seconds")
+    assert req.ttl_seconds == -1
+    # Validate that the client generates a fresh UUID idempotency key.
+    uuid.UUID(req.snapshot_id)
+
+    sb.terminate()
+
+
 def test_sandbox_snapshot_fs_legacy_env_var(app, servicer, monkeypatch):
     async def _snapshot_filesystem(self, request, *, timeout):
         raise AssertionError("legacy snapshot path should not use the command router")

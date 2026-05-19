@@ -208,6 +208,7 @@ class FakeTaskCommandRouterClient:
         self, request: sr_pb2.TaskSnapshotFilesystemRequest, timeout: Optional[float] = None
     ) -> sr_pb2.TaskSnapshotFilesystemResponse:
         """Mock snapshot_filesystem for testing - returns a fake image ID."""
+        self.last_snapshot_filesystem_request = request
         return sr_pb2.TaskSnapshotFilesystemResponse(image_id="im-snapshot-fs-123")
 
     def _container_result(self, container_id: str) -> api_pb2.GenericResult | None:
@@ -345,7 +346,11 @@ def _setup_command_router(monkeypatch):
     async def _mk_router(cls, server_client, task_id):
         return FakeTaskCommandRouterClient(server_client)
 
+    async def _mk_router_v2(cls, server_client, sandbox_id, task_id):
+        return FakeTaskCommandRouterClient(server_client)
+
     monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
+    monkeypatch.setattr(TaskCommandRouterClient, "init_v2", classmethod(_mk_router_v2))
 
 
 @contextlib.contextmanager
@@ -2368,6 +2373,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._sandbox_terminated = True
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
+    async def SandboxTerminateV2(self, stream):
+        self._sandbox_terminated = True
+        await stream.send_message(api_pb2.SandboxTerminateResponse())
+
     async def SandboxSnapshot(self, stream):
         _request: api_pb2.SandboxSnapshotRequest = await stream.recv_message()
         await stream.send_message(api_pb2.SandboxSnapshotResponse(snapshot_id="sn-123"))
@@ -2397,6 +2406,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         _request: api_pb2.TaskGetCommandRouterAccessRequest = await stream.recv_message()
         await stream.send_message(
             api_pb2.TaskGetCommandRouterAccessResponse(url="http://localhost:50051", jwt="fake-jwt-token")
+        )
+
+    async def SandboxGetCommandRouterAccess(self, stream):
+        _request: api_pb2.SandboxGetCommandRouterAccessRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxGetCommandRouterAccessResponse(url="http://localhost:50051", jwt="fake-jwt-token")
         )
 
     async def TaskGetInfo(self, stream):

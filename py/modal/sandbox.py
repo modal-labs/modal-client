@@ -669,8 +669,12 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> "_Sandbox":
         """Create a sandbox using the V2 backend.
 
-        Features like tags, snapshots, exec, volumes, network file systems,
-        GPUs, custom domains, and proxies are not supported.
+        Supported features include exec, encrypted tunnels, wait/poll/terminate,
+        CPU and memory configuration, region placement,
+        and filesystem snapshots.
+
+        Features like tags, memory snapshots, volumes, network file systems, GPUs,
+        custom domains, OIDC identity tokens, and proxies are not supported.
         """
         from .app import _App
 
@@ -951,10 +955,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         `timeout` If the snapshot does not return within that window, the call is cancelled
         and `modal.exception.TimeoutError` is raised.
         """
-        if os.environ.get("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT") == "1":
+        if os.environ.get("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT") == "1" and not self._is_v2:
             return await self._legacy_snapshot_filesystem(timeout)
-
-        self._ensure_v1("snapshot_filesystem")
 
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
