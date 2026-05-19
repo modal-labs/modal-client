@@ -37,6 +37,7 @@ class _FlashManager:
         startup_timeout: int = 30,
         exit_grace_period: int = 0,
         h2_enabled: bool = False,
+        is_server: bool = False,
     ):
         self.client = client
         self.port = port
@@ -46,6 +47,7 @@ class _FlashManager:
         self.startup_timeout = startup_timeout
         self.exit_grace_period = exit_grace_period
         self.tunnel_manager = _forward_tunnel(port, h2_enabled=h2_enabled, client=client)
+        self.is_server = is_server
         self.stopped = False
         self.num_heartbeat_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
@@ -222,7 +224,10 @@ class _FlashManager:
         if not self.stopped:
             await self.stop()
 
-        await asyncio.sleep(self.exit_grace_period)
+        # Server tasks drain via the worker-side HTTP relay, so skip the
+        # Python-side sleep here to avoid double-counting the grace period.
+        if not self.is_server:
+            await asyncio.sleep(self.exit_grace_period)
 
         logger.warning(f"[Modal Flash] Closing tunnel on {self.tunnel.url}.")
         await self.tunnel_manager.__aexit__(*sys.exc_info())
@@ -239,6 +244,7 @@ async def flash_forward(
     startup_timeout: int = 30,
     exit_grace_period: int = 0,
     h2_enabled: bool = False,
+    is_server: bool = False,
 ) -> _FlashManager:
     """
     Forward a port to the Modal Flash service, exposing that port as a stable endpoint.
@@ -255,6 +261,7 @@ async def flash_forward(
         startup_timeout=startup_timeout,
         exit_grace_period=exit_grace_period,
         h2_enabled=h2_enabled,
+        is_server=is_server,
     )
     await manager._start()
     return manager
@@ -757,9 +764,10 @@ class _FlashContainerEntry:
 
     flash_manager: Optional[FlashManager]  # type: ignore
 
-    def __init__(self, http_config: api_pb2.HTTPConfig):
+    def __init__(self, http_config: api_pb2.HTTPConfig, is_server: bool = False):
         self.http_config: api_pb2.HTTPConfig = http_config
         self.flash_manager = None
+        self.is_server = is_server
 
     def enter(self):
         if self.http_config != api_pb2.HTTPConfig():
@@ -775,6 +783,7 @@ class _FlashContainerEntry:
                     startup_timeout=self.http_config.startup_timeout,
                     exit_grace_period=self.http_config.exit_grace_period,
                     h2_enabled=self.http_config.h2_enabled,
+                    is_server=self.is_server,
                 )
             except Exception as e:
                 logger.warning(f"[Modal Flash] Startup failed: {e}")

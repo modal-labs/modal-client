@@ -667,6 +667,7 @@ class TestFlashClusteredEntry:
             startup_timeout=http_config.startup_timeout,
             exit_grace_period=http_config.exit_grace_period,
             h2_enabled=http_config.h2_enabled,
+            is_server=False,
         )
 
         flash_forward_mock.reset_mock()

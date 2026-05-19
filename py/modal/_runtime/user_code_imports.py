@@ -337,7 +337,7 @@ class _LifecycleManager:
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ):
         # Identify the "enter" methods to run after resuming from a snapshot.
-        flash_entry = _FlashContainerEntry(self.function_def.http_config)
+        flash_entry = _FlashContainerEntry(self.function_def.http_config, is_server=self.function_def.is_server)
         if not self.function_def.is_auto_snapshot:
             post_snapshot_methods = _find_callables_for_obj(
                 self.user_cls_instance, _PartialFunctionFlags.ENTER_POST_SNAPSHOT
