@@ -34,6 +34,7 @@ type sandboxServiceImpl struct{ client *Client }
 const (
 	defaultProbeInterval                = 100 * time.Millisecond
 	maxProbeIntervalMilliseconds uint64 = ^uint64(0) >> 32
+	ttlNoExpirySentinel          int64  = -1
 )
 
 // Probe configures a sandbox readiness probe.
@@ -1202,6 +1203,10 @@ func (sb *Sandbox) Tunnels(ctx context.Context, timeout time.Duration) (map[int]
 
 // SnapshotFilesystem takes a snapshot of the Sandbox's filesystem.
 // Returns an Image object which can be used to spawn a new Sandbox with the same filesystem.
+//
+// `timeout` is the overall budget across all retry attempts. If it
+// elapses before a snapshot completes, a TimeoutError is returned. The
+// caller's own ctx cancellation is propagated as-is.
 func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, timeout time.Duration) (*Image, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
@@ -1209,23 +1214,32 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, timeout time.Duration
 	if err := sb.ensureV1("SnapshotFilesystem"); err != nil {
 		return nil, err
 	}
-	resp, err := sb.client.cpClient.SandboxSnapshotFs(ctx, pb.SandboxSnapshotFsRequest_builder{
-		SandboxId: sb.SandboxID,
-		Timeout:   float32(timeout.Seconds()),
-	}.Build())
+	if err := sb.ensureTaskID(ctx); err != nil {
+		return nil, err
+	}
+
+	crClient, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
 	if err != nil {
 		return nil, err
 	}
 
-	if resp.GetResult() != nil && resp.GetResult().GetStatus() != pb.GenericResult_GENERIC_STATUS_SUCCESS {
-		return nil, ExecutionError{Exception: fmt.Sprintf("Sandbox snapshot failed: %s", resp.GetResult().GetException())}
+	ttl := ttlNoExpirySentinel
+	request := pb.TaskSnapshotFilesystemRequest_builder{
+		TaskId:     sb.taskID,
+		SnapshotId: uuid.NewString(),
+		TtlSeconds: &ttl,
+	}.Build()
+
+	response, err := crClient.SnapshotFilesystem(ctx, request, timeout)
+	if err != nil {
+		return nil, err
 	}
 
-	if resp.GetImageId() == "" {
-		return nil, ExecutionError{Exception: "Sandbox snapshot response missing image ID"}
+	if response.GetImageId() == "" {
+		return nil, ExecutionError{Exception: "Sandbox snapshot filesystem response missing image ID"}
 	}
 
-	return &Image{ImageID: resp.GetImageId(), client: sb.client}, nil
+	return &Image{ImageID: response.GetImageId(), client: sb.client}, nil
 }
 
 // MountImage mounts an Image at a path in the Sandbox filesystem.
@@ -1290,6 +1304,9 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string) error {
 }
 
 // SnapshotDirectory snapshots and creates a new image from a directory in the running sandbox.
+//
+// Directory snapshots are currently persisted for 30 days after they
+// were created.
 func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string) (*Image, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
@@ -1306,9 +1323,13 @@ func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string) (*Image, 
 		return nil, err
 	}
 
+	// TtlSeconds is left unset; the server applies its default retention
+	// policy. SnapshotId guarantees idempotency under retries.
+	snapshotID := uuid.NewString()
 	request := pb.TaskSnapshotDirectoryRequest_builder{
-		TaskId: sb.taskID,
-		Path:   []byte(path),
+		TaskId:     sb.taskID,
+		Path:       []byte(path),
+		SnapshotId: snapshotID,
 	}.Build()
 
 	response, err := crClient.SnapshotDirectory(ctx, request)

@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -126,6 +128,58 @@ func TestCallWithRetriesOnTransientErrorsRetriesOnTransientCodes(t *testing.T) {
 			g.Expect(callCount).To(gomega.Equal(2))
 		})
 	}
+}
+
+func TestCallWithRetriesOnTransientErrorsExcludeCodes(t *testing.T) {
+	t.Parallel()
+
+	excluded := []codes.Code{codes.DeadlineExceeded, codes.Canceled}
+	for _, code := range excluded {
+		t.Run(code.String(), func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			ctx := t.Context()
+			callCount := 0
+			_, err := callWithRetriesOnTransientErrors(ctx, func() (*string, error) {
+				callCount++
+				return nil, status.Error(code, "")
+			}, retryOptions{
+				BaseDelay:    time.Millisecond,
+				DelayFactor:  1,
+				MaxRetries:   intPtr(10),
+				ExcludeCodes: excluded,
+			}, nil)
+
+			g.Expect(err).To(gomega.HaveOccurred())
+			// Excluded codes are not retried, even if they're in the
+			// general retryable set.
+			g.Expect(callCount).To(gomega.Equal(1))
+		})
+	}
+}
+
+func TestCallWithRetriesOnTransientErrorsExcludeCodesDoesNotAffectOtherRetryableCodes(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	callCount := 0
+	result, err := callWithRetriesOnTransientErrors(ctx, func() (*string, error) {
+		callCount++
+		if callCount == 1 {
+			return nil, status.Error(codes.Unavailable, "unavailable")
+		}
+		out := "ok"
+		return &out, nil
+	}, retryOptions{
+		BaseDelay:    time.Millisecond,
+		DelayFactor:  1,
+		MaxRetries:   intPtr(10),
+		ExcludeCodes: []codes.Code{codes.DeadlineExceeded, codes.Canceled},
+	}, nil)
+
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(*result).To(gomega.Equal("ok"))
+	g.Expect(callCount).To(gomega.Equal(2))
 }
 
 func TestCallWithRetriesOnTransientErrorsNonRetryableError(t *testing.T) {
@@ -284,4 +338,57 @@ func TestCallWithAuthRetryDoesNotRetryErrorIfUNAUTHENTICATEDAfterRetry(t *testin
 
 	g.Expect(c.authContextCallCount).To(gomega.Equal(2))
 	g.Expect(c.refreshJwtCallCount).To(gomega.Equal(1))
+}
+
+// mockSnapshotFsStub embeds pb.TaskCommandRouterClient so unused methods
+// inherit nil stubs (calling them would panic). Only TaskSnapshotFilesystem
+// is overridden.
+type mockSnapshotFsStub struct {
+	pb.TaskCommandRouterClient
+	fn func(ctx context.Context, in *pb.TaskSnapshotFilesystemRequest, opts ...grpc.CallOption) (*pb.TaskSnapshotFilesystemResponse, error)
+}
+
+func (m *mockSnapshotFsStub) TaskSnapshotFilesystem(
+	ctx context.Context,
+	in *pb.TaskSnapshotFilesystemRequest,
+	opts ...grpc.CallOption,
+) (*pb.TaskSnapshotFilesystemResponse, error) {
+	return m.fn(ctx, in, opts...)
+}
+
+// Regression test for a preemptive-deadline error-translation bug.
+//
+// `callWithRetriesOnTransientErrors` returns `errDeadlineExceeded` as
+// soon as the *next* backoff sleep would overshoot the deadline — at
+// that moment `time.Now()` is still strictly before the deadline.
+// SnapshotFilesystem's outer error translation only converts to
+// TimeoutError when `time.Now().After(overallDeadline)`, so the raw
+// sentinel leaks through to the caller instead of TimeoutError.
+func TestSnapshotFilesystemPreemptiveDeadlineReturnsTimeoutError(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	stub := &mockSnapshotFsStub{
+		fn: func(_ context.Context, _ *pb.TaskSnapshotFilesystemRequest, _ ...grpc.CallOption) (*pb.TaskSnapshotFilesystemResponse, error) {
+			return nil, status.Error(codes.Unavailable, "transient")
+		},
+	}
+
+	client := &taskCommandRouterClient{stub: stub}
+	jwt := "fake-jwt"
+	client.jwt.Store(&jwt)
+
+	// With BaseDelay=10ms doubling each retry, a 100ms timeout will
+	// produce attempts at t≈0,10,30,70 — and the 5th retry's 80ms wait
+	// pushes past the 100ms deadline before time.Now() crosses it.
+	_, err := client.SnapshotFilesystem(
+		context.Background(),
+		&pb.TaskSnapshotFilesystemRequest{},
+		100*time.Millisecond,
+	)
+	g.Expect(err).To(gomega.HaveOccurred())
+
+	_, isTimeout := err.(TimeoutError)
+	g.Expect(isTimeout).To(gomega.BeTrue(),
+		"expected TimeoutError, got %T: %v", err, err)
 }

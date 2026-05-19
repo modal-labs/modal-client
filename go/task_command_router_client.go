@@ -32,6 +32,11 @@ type retryOptions struct {
 	DelayFactor float64
 	MaxRetries  *int // nil means retry forever
 	Deadline    *time.Time
+	// ExcludeCodes lists gRPC status codes to exclude from retries even
+	// if they would otherwise be retryable. Use this to let errors like
+	// DeadlineExceeded propagate immediately when the caller has
+	// specified their own deadline.
+	ExcludeCodes []codes.Code
 }
 
 // defaultRetryOptions returns the default retry options.
@@ -127,19 +132,34 @@ func callWithRetriesOnTransientErrors[T any](
 		if _, retryable := commandRouterRetryableCodes[st.Code()]; !retryable {
 			return nil, err
 		}
+		for _, excluded := range opts.ExcludeCodes {
+			if excluded == st.Code() {
+				return nil, err
+			}
+		}
 
 		if opts.MaxRetries != nil && numRetries >= *opts.MaxRetries {
 			return nil, err
 		}
 
-		if opts.Deadline != nil && time.Now().Add(delay).After(*opts.Deadline) {
-			return nil, errDeadlineExceeded
+		// Clamp the backoff to the remaining deadline budget so we don't
+		// sleep past the deadline. If the budget is already exhausted, the
+		// next iteration's top-of-loop check returns errDeadlineExceeded
+		// with `time.Now()` actually past the deadline — letting callers
+		// translate consistently against the wall clock.
+		sleepFor := delay
+		if opts.Deadline != nil {
+			if remaining := time.Until(*opts.Deadline); remaining < sleepFor {
+				sleepFor = remaining
+			}
 		}
-
+		if sleepFor < 0 {
+			sleepFor = 0
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(delay):
+		case <-time.After(sleepFor):
 		}
 
 		delay = time.Duration(float64(delay) * opts.DelayFactor)
@@ -380,6 +400,42 @@ func (c *taskCommandRouterClient) SnapshotDirectory(ctx context.Context, request
 			return c.stub.TaskSnapshotDirectory(authCtx, request)
 		})
 	}, defaultRetryOptions(), &c.closed)
+}
+
+// SnapshotFilesystem snapshots the full container filesystem into a new image.
+//
+// `timeout` is the overall budget across all retry attempts: each
+// attempt receives the *remaining* budget as its per-call gRPC
+// deadline, and retries are aborted once the deadline elapses (rather
+// than granting another fresh full window). DeadlineExceeded / Canceled
+// responses are excluded from retries so the deadline isn't reset by
+// another attempt.
+//
+// Any error observed at or after the deadline is translated into a
+// TimeoutError. Errors observed *before* the deadline are propagated
+// unchanged — that includes the caller's own ctx cancellation (which
+// grpc-go surfaces as codes.Canceled), so callers see their cancel
+// rather than a misleading timeout.
+func (c *taskCommandRouterClient) SnapshotFilesystem(ctx context.Context, request *pb.TaskSnapshotFilesystemRequest, timeout time.Duration) (*pb.TaskSnapshotFilesystemResponse, error) {
+	overallDeadline := time.Now().Add(timeout)
+	opts := defaultRetryOptions()
+	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
+	opts.Deadline = &overallDeadline
+	resp, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskSnapshotFilesystemResponse, error) {
+		// Per-call timeout = remaining budget on the overall deadline.
+		// A zero or negative remaining time would still create a usable
+		// (already-expired) context, which grpc-go reports as DeadlineExceeded.
+		remaining := time.Until(overallDeadline)
+		callCtx, cancel := context.WithTimeout(ctx, remaining)
+		defer cancel()
+		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskSnapshotFilesystemResponse, error) {
+			return c.stub.TaskSnapshotFilesystem(authCtx, request)
+		})
+	}, opts, &c.closed)
+	if err != nil && time.Now().After(overallDeadline) {
+		return nil, TimeoutError{Exception: "Timeout expired"}
+	}
+	return resp, err
 }
 
 // ExecStart starts a command execution.

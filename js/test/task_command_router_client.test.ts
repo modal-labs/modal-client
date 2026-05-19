@@ -5,6 +5,8 @@ import {
   TaskCommandRouterClientImpl,
 } from "../src/task_command_router_client";
 import { ClientError, Status } from "nice-grpc";
+import { TaskSnapshotFilesystemRequest } from "../proto/modal_proto/task_command_router";
+import { TimeoutError } from "../src/errors";
 
 const mockLogger = {
   debug: vi.fn(),
@@ -98,13 +100,79 @@ test("callWithRetriesOnTransientErrors max retries exceeded", async () => {
   expect(func).toHaveBeenCalledTimes(maxRetries + 1);
 });
 
+test.each([Status.DEADLINE_EXCEEDED, Status.CANCELLED])(
+  "callWithRetriesOnTransientErrors does not retry excluded status %s",
+  async (excludedStatus) => {
+    const error = new ClientError("/test", excludedStatus, "excluded");
+    const func = vi.fn().mockRejectedValue(error);
+    await expect(
+      callWithRetriesOnTransientErrors(func, 10, 2, 10, null, undefined, [
+        Status.DEADLINE_EXCEEDED,
+        Status.CANCELLED,
+      ]),
+    ).rejects.toThrow(error);
+    // Excluded codes are not retried, even though they're in the
+    // general retryable set.
+    expect(func).toHaveBeenCalledTimes(1);
+  },
+);
+
+test("callWithRetriesOnTransientErrors exclude codes does not affect other retryable codes", async () => {
+  const transient = new ClientError("/test", Status.UNAVAILABLE, "unavailable");
+  const func = vi.fn().mockRejectedValueOnce(transient).mockResolvedValue("ok");
+  const result = await callWithRetriesOnTransientErrors(
+    func,
+    10,
+    2,
+    10,
+    null,
+    undefined,
+    [Status.DEADLINE_EXCEEDED, Status.CANCELLED],
+  );
+  expect(result).toBe("ok");
+  expect(func).toHaveBeenCalledTimes(2);
+});
+
 test("callWithRetriesOnTransientErrors deadline exceeded", async () => {
   const error = new ClientError("/test", Status.UNAVAILABLE, "unavailable");
   const func = vi.fn().mockRejectedValue(error);
   const deadline = Date.now() + 50;
   await expect(
     callWithRetriesOnTransientErrors(func, 100, 2, null, deadline),
-  ).rejects.toThrow("Deadline exceeded");
+  ).rejects.toThrow();
+});
+
+// Regression test for a preemptive-deadline error-translation bug.
+//
+// `callWithRetriesOnTransientErrors` throws `RetryDeadlineExceededError`
+// as soon as the *next* backoff sleep would overshoot the deadline — at
+// that moment `Date.now()` is still strictly before the deadline.
+// `snapshotFilesystem`'s outer translation only converts to TimeoutError
+// when `Date.now() >= overallDeadlineMs`, so the internal sentinel leaks
+// through to the caller instead of TimeoutError.
+test("snapshotFilesystem preemptive deadline returns TimeoutError", async () => {
+  const mockStub = {
+    taskSnapshotFilesystem: vi
+      .fn()
+      .mockRejectedValue(
+        new ClientError("/test", Status.UNAVAILABLE, "transient"),
+      ),
+  };
+
+  const client = Object.create(TaskCommandRouterClientImpl.prototype) as any;
+  client.stub = mockStub;
+  client.jwt = "fake-jwt";
+  client.closed = false;
+
+  // With baseDelay=10ms doubling each retry, a 100ms timeout will reach
+  // a point where Date.now()+nextDelay >= deadline before Date.now()
+  // itself crosses it, triggering the preemptive throw.
+  await expect(
+    client.snapshotFilesystem(
+      TaskSnapshotFilesystemRequest.create({ taskId: "t" }),
+      { timeoutMs: 100 },
+    ),
+  ).rejects.toBeInstanceOf(TimeoutError);
 });
 
 test("refreshJwt recovers after transient failure", async () => {

@@ -26,6 +26,7 @@ import {
   TaskExecStderrConfig,
   TaskMountDirectoryRequest,
   TaskSnapshotDirectoryRequest,
+  TaskSnapshotFilesystemRequest,
   TaskUnmountDirectoryRequest,
 } from "../proto/modal_proto/task_command_router";
 import { TaskCommandRouterClientImpl } from "./task_command_router_client";
@@ -69,6 +70,8 @@ import { checkForRenamedParams } from "./validation";
 const SB_LOGS_INITIAL_DELAY_MS = 10;
 const SB_LOGS_DELAY_FACTOR = 2;
 const SB_LOGS_MAX_RETRIES = 10;
+
+const TTL_NO_EXPIRY_SENTINEL = -1;
 
 /**
  * Stdin is always present, but this option allow you to drop stdout or stderr
@@ -1458,30 +1461,35 @@ export class Sandbox {
    *
    * Returns an {@link Image} object which can be used to spawn a new Sandbox with the same filesystem.
    *
-   * @param timeoutMs - Timeout for the snapshot operation in milliseconds
+   * `timeoutMs` is propagated as the gRPC deadline. If the snapshot does
+   * not return within that window, the call is cancelled and an error is
+   * thrown.
+   *
+   * @param timeoutMs - Timeout for the snapshot operation in milliseconds.
    * @returns Promise that resolves to an {@link Image}
    */
   async snapshotFilesystem(timeoutMs = 55000): Promise<Image> {
     this.#ensureAttached();
     this.#ensureV1("snapshotFilesystem");
-    const resp = await this.#client.cpClient.sandboxSnapshotFs({
-      sandboxId: this.sandboxId,
-      timeout: timeoutMs / 1000,
+    const taskId = await this.#getTaskId();
+    const commandRouterClient =
+      await this.#getOrCreateCommandRouterClient(taskId);
+
+    const request = TaskSnapshotFilesystemRequest.create({
+      taskId,
+      snapshotId: uuidv4(),
+      ttlSeconds: TTL_NO_EXPIRY_SENTINEL,
     });
 
-    if (
-      resp.result?.status !== GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS
-    ) {
-      throw new Error(
-        `Sandbox snapshot failed: ${resp.result?.exception || "Unknown error"}`,
-      );
+    const response = await commandRouterClient.snapshotFilesystem(request, {
+      timeoutMs,
+    });
+
+    if (!response.imageId) {
+      throw new Error("Sandbox snapshot filesystem response missing `imageId`");
     }
 
-    if (!resp.imageId) {
-      throw new Error("Sandbox snapshot response missing `imageId`");
-    }
-
-    return new Image(this.#client, resp.imageId, "");
+    return new Image(this.#client, response.imageId, "");
   }
 
   /**
@@ -1536,6 +1544,9 @@ export class Sandbox {
   /**
    * Snapshots and creates a new {@link Image} from a directory in the running sandbox.
    *
+   * Directory snapshots are currently persisted for 30 days after they
+   * were created.
+   *
    * @param path - The path of the directory to snapshot
    * @returns Promise that resolves to an {@link Image}
    */
@@ -1547,9 +1558,12 @@ export class Sandbox {
       await this.#getOrCreateCommandRouterClient(taskId);
 
     const pathBytes = new TextEncoder().encode(path);
+    // ttlSeconds is left unset; the server applies its default retention
+    // policy. snapshotId guarantees idempotency under retries.
     const request = TaskSnapshotDirectoryRequest.create({
       taskId,
       path: pathBytes,
+      snapshotId: uuidv4(),
     });
     const response = await commandRouterClient.snapshotDirectory(request);
 

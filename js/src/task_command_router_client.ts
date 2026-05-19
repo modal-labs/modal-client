@@ -25,6 +25,8 @@ import {
   TaskMountDirectoryRequest,
   TaskSnapshotDirectoryRequest,
   TaskSnapshotDirectoryResponse,
+  TaskSnapshotFilesystemRequest,
+  TaskSnapshotFilesystemResponse,
   TaskUnmountDirectoryRequest,
 } from "../proto/modal_proto/task_command_router";
 import {
@@ -37,7 +39,7 @@ import { timeoutMiddleware, type TimeoutOptions } from "./client";
 import type { Logger } from "./logger";
 import type { Profile } from "./config";
 import { isLocalhost } from "./config";
-import { ClientClosedError } from "./errors";
+import { ClientClosedError, TimeoutError } from "./errors";
 
 type TaskCommandRouterClient = Client<typeof TaskCommandRouterDefinition>;
 
@@ -72,6 +74,8 @@ export function parseJwtExpiration(
   return null;
 }
 
+class RetryDeadlineExceededError extends Error {}
+
 export async function callWithRetriesOnTransientErrors<T>(
   func: () => Promise<T>,
   baseDelayMs: number = 10,
@@ -79,6 +83,12 @@ export async function callWithRetriesOnTransientErrors<T>(
   maxRetries: number | null = 10,
   deadlineMs: number | null = null,
   isClosed?: () => boolean,
+  /**
+   * gRPC status codes to exclude from retry logic even if they would
+   * otherwise be retryable. Use this to let errors like DEADLINE_EXCEEDED
+   * propagate immediately when the caller specified their own timeout.
+   */
+  excludeStatusCodes: Status[] = [],
 ): Promise<T> {
   let delayMs = baseDelayMs;
   let numRetries = 0;
@@ -90,10 +100,11 @@ export async function callWithRetriesOnTransientErrors<T>(
     Status.INTERNAL,
     Status.UNKNOWN,
   ]);
+  const excluded = new Set(excludeStatusCodes);
 
   while (true) {
     if (deadlineMs !== null && Date.now() >= deadlineMs) {
-      throw new Error("Deadline exceeded");
+      throw new RetryDeadlineExceededError();
     }
 
     try {
@@ -109,13 +120,20 @@ export async function callWithRetriesOnTransientErrors<T>(
       if (
         err instanceof ClientError &&
         retryableStatusCodes.has(err.code) &&
+        !excluded.has(err.code) &&
         (maxRetries === null || numRetries < maxRetries)
       ) {
-        if (deadlineMs !== null && Date.now() + delayMs >= deadlineMs) {
-          throw new Error("Deadline exceeded");
+        // Clamp the backoff to the remaining deadline budget so we don't
+        // sleep past it. If the budget is already exhausted, the next
+        // iteration's top-of-loop check throws RetryDeadlineExceededError
+        // with Date.now() actually past the deadline — letting callers
+        // translate consistently against the wall clock.
+        let sleepMs = delayMs;
+        if (deadlineMs !== null) {
+          sleepMs = Math.min(sleepMs, deadlineMs - Date.now());
         }
-
-        await setTimeout(delayMs);
+        if (sleepMs < 0) sleepMs = 0;
+        await setTimeout(sleepMs);
         delayMs *= delayFactor;
         numRetries++;
       } else {
@@ -425,6 +443,58 @@ export class TaskCommandRouterClientImpl {
       null,
       () => this.closed,
     );
+  }
+
+  async snapshotFilesystem(
+    request: TaskSnapshotFilesystemRequest,
+    options?: TimeoutOptions,
+  ): Promise<TaskSnapshotFilesystemResponse> {
+    // TaskSnapshotFilesystem has a caller-controllable timeout. We treat
+    // it as the overall budget across all retry attempts: each attempt
+    // receives the *remaining* budget as its per-call gRPC deadline, and
+    // retries are aborted once the deadline elapses — otherwise a
+    // transient retryable error would grant another fresh full window and
+    // the caller's intent would be violated. DEADLINE_EXCEEDED / CANCELLED
+    // are excluded from the retry set so another attempt cannot reset the
+    // deadline.
+    //
+    // Any error observed at or after the deadline is translated into a
+    // TimeoutError. Errors observed *before* the deadline are propagated
+    // unchanged — including a caller-driven AbortSignal cancellation
+    // (which nice-grpc surfaces as Status.CANCELLED), so callers see
+    // their cancel rather than a misleading timeout.
+    const overallDeadlineMs =
+      options?.timeoutMs !== undefined ? Date.now() + options.timeoutMs : null;
+    try {
+      return await callWithRetriesOnTransientErrors(
+        () =>
+          this.callWithAuthRetry(() => {
+            // At least 1ms so the timeoutMiddleware's `!options.timeoutMs`
+            // truthy check doesn't skip the deadline entirely; if the
+            // budget really is exhausted the outer retry loop's pre-check
+            // will short-circuit on the next iteration.
+            const remainingMs =
+              overallDeadlineMs !== null
+                ? Math.max(1, overallDeadlineMs - Date.now())
+                : options?.timeoutMs;
+            return this.stub.taskSnapshotFilesystem(request, {
+              ...options,
+              timeoutMs: remainingMs,
+            } as CallOptions & TimeoutOptions);
+          }),
+        10,
+        2,
+        10,
+        overallDeadlineMs,
+        () => this.closed,
+        [Status.DEADLINE_EXCEEDED, Status.CANCELLED],
+      );
+    } catch (err) {
+      if (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs) {
+        throw new TimeoutError("Timeout expired");
+      }
+      throw err;
+    }
   }
 
   async unmountDirectory(request: TaskUnmountDirectoryRequest): Promise<void> {
