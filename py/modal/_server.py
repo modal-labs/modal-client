@@ -24,6 +24,7 @@ def validate_http_server_config(
     proxy_regions: list[str],  # The regions to proxy the HTTP server to.
     startup_timeout: int,  # Maximum number of seconds to wait for the HTTP server to start.
     exit_grace_period: Optional[int],  # The time to wait for the HTTP server to exit gracefully.
+    is_server: bool = False,  # Whether this validates a `_experimental_server` config.
 ):
     if not isinstance(port, int) or port < 1 or port > 65535:
         raise InvalidError("Port must be a positive integer between 1 and 65535.")
@@ -31,7 +32,7 @@ def validate_http_server_config(
         raise InvalidError("The `startup_timeout` argument must be positive.")
     if exit_grace_period is not None and exit_grace_period < 0:
         raise InvalidError("The `exit_grace_period` argument must be non-negative.")
-    if exit_grace_period is not None and exit_grace_period > 25:
+    if not is_server and exit_grace_period is not None and exit_grace_period > 25:
         raise InvalidError("The `exit_grace_period` argument must not exceed 25 seconds.")
 
     if not proxy_regions:

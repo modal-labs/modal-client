@@ -1198,6 +1198,7 @@ class _App:
             proxy_regions=proxy_regions,
             startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
+            is_server=True,
         )
 
         if target_concurrency is not None:
