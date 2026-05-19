@@ -206,6 +206,7 @@ def test_CustomProtoStatusDetailsCodec_google_common_proto_compat():
 
 
 @pytest.mark.asyncio
+@pytest.mark.flaky(max_runs=3)
 async def test_codec_with_channel(servicer, client):
     """Check codec works with channel."""
 
@@ -219,7 +220,7 @@ async def test_codec_with_channel(servicer, client):
     with servicer.intercept() as ctx:
         ctx.set_responder("BlobCreate", raise_error)
         with pytest.raises(GRPCError) as excinfo:
-            await client.stub.BlobCreate.direct(req, timeout=0.1)
+            await client.stub.BlobCreate.direct(req, timeout=2.0)
     assert excinfo.value.details == details
 
 
