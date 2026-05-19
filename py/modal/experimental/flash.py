@@ -723,7 +723,7 @@ def _http_server(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.http_server()`."
         )
-    validate_http_server_config(port, proxy_regions, startup_timeout, exit_grace_period)
+    validate_http_server_config(port, proxy_regions, startup_timeout, exit_grace_period, is_server=False)
 
     from modal._partial_function import _PartialFunction, _PartialFunctionParams
 

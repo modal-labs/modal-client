@@ -1156,7 +1156,7 @@ class _App:
         port: int = 8000,  # Port the HTTP server listens on
         startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: int = 0,  # Grace period for in-flight requests on shutdown
-        proxy_regions: Optional[Sequence[str]] = ["us-east"],  # Required: Regions to deploy proxy endpoints
+        routing_regions: list[str] = ["us-east"],  # Required: Regions to deploy proxy endpoints
         h2_enabled: bool = False,  # Enable HTTP/2
         target_concurrency: Optional[int] = None,  # Target concurrency for the server
         cloud: Optional[str] = None,  # Cloud provider (aws, gcp, oci, auto)
@@ -1178,7 +1178,7 @@ class _App:
         Example:
 
         ```python
-        @app._experimental_server(port=8000, proxy_regions=["us-east"])
+        @app._experimental_server(port=8000, routing_regions=["us-east"])
         class MyServer:
             @modal.enter()
             def start(self):
@@ -1195,7 +1195,7 @@ class _App:
         # Validate HTTP server config
         validate_http_server_config(
             port=port,
-            proxy_regions=proxy_regions,
+            proxy_regions=routing_regions,
             startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
             is_server=True,
@@ -1207,7 +1207,7 @@ class _App:
 
         http_config = api_pb2.HTTPConfig(
             port=port,
-            proxy_regions=proxy_regions,
+            proxy_regions=routing_regions,
             startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
             h2_enabled=h2_enabled,

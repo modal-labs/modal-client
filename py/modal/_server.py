@@ -36,6 +36,8 @@ def validate_http_server_config(
         raise InvalidError("The `exit_grace_period` argument must not exceed 25 seconds.")
 
     if not proxy_regions:
+        if is_server:
+            raise InvalidError("The `routing_regions` argument must be non-empty.")
         raise InvalidError("The `proxy_regions` argument must be non-empty.")
 
 
@@ -48,7 +50,7 @@ class _Server:
     Instead, use the [`@app._experimental_server()`](https://modal.com/docs/reference/modal.App#server) decorator.
 
     ```python notest
-    @app._experimental_server(port=8000, proxy_regions=["us-east", "us-west"])
+    @app._experimental_server(port=8000, routing_regions=["us-east", "us-west"])
     class MyServer:
         @modal.enter()
         def start_server(self):
