@@ -13,7 +13,7 @@ from ._serialization import (
     serialize_proto_params,
     validate_parameter_values,
 )
-from ._utils.function_utils import _parse_retries
+from ._utils.function_utils import _parse_retries, validate_scheduler_placements
 from ._utils.mount_utils import validate_volumes, validate_volumes_by_object_id
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .retries import Retries
@@ -92,6 +92,7 @@ class _FunctionOptions:
         scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
         if region:
             regions = [region] if isinstance(region, str) else list(region)
+            regions = validate_scheduler_placements(regions)
             scheduler_placement = api_pb2.SchedulerPlacement(regions=regions)
 
         # Use batched and concurrent decorators to apply consistent validation logic

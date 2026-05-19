@@ -138,6 +138,54 @@ def _parse_retries(
         raise InvalidError(msg)
 
 
+_singular_region_options = {"us", "eu", "ap", "jp", "au", "uk", "ca", "me", "sa", "af", "mx"}
+_compound_region_options = {
+    "us": [
+        "us-east",
+        "us-central",
+        "us-south",
+        "us-west",
+    ],
+    "eu": [
+        "eu-west",
+        "eu-north",
+        "eu-south",
+    ],
+    "ap": [
+        "ap-northeast",
+        "ap-southeast",
+        "ap-south",
+        "ap-melbourne",
+    ],
+}
+
+
+# from https://modal.com/docs/guide/region-selection#region-options
+def validate_scheduler_placements(regions: list[str]) -> list[str]:
+    res: list[str] = []
+
+    for r in regions:
+        if r in _singular_region_options:
+            res.append(r)
+            continue
+
+        root, _ = r.split("-", maxsplit=1)
+
+        if root not in _compound_region_options:
+            raise InvalidError(f"narrow region `{r}` is either not valid or not currently supported")
+
+        opts = _compound_region_options[root]
+        if r not in opts:
+            raise InvalidError(
+                f"narrow region `{r}` is either not valid or not currently supported "
+                f"- valid options for `{root}` are {', '.join(opts)}"
+            )
+
+        res.append(r)
+
+    return res
+
+
 class FunctionInfo:
     """Utility that determines serialization/deserialization mechanisms for functions
 

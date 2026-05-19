@@ -2492,3 +2492,14 @@ def test_function_duplicate_volume_mounts(client, servicer):
     with pytest.raises(InvalidError, match="same.*[Vv]olume.*multiple"):
         with test_app.run(client=client):
             pass  # Error should occur during function load
+
+
+def noop():
+    return "hello world"
+
+
+def test_function_invalid_scheduler_placement(client, servicer):
+    test_app = modal.App()
+
+    with pytest.raises(InvalidError):
+        f = test_app.function(noop).with_options(region="moon")
