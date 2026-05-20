@@ -14,7 +14,7 @@ import modal
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.exception import DeprecationError, Error, InvalidError, TimeoutError
-from modal.sandbox import SandboxContainer
+from modal.sandbox import SandboxContainer, SandboxVersion, _get_sandbox_version
 from modal.stream_type import StreamType
 from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
 
@@ -165,6 +165,71 @@ def test_sandbox_from_id(app, client, servicer, sandbox_subprocess):
     sb2 = Sandbox.from_id(sb.object_id, client=client)
     assert sb2.stdout.read() == "foo\n"
     assert sb2.returncode == 42
+
+
+@pytest.mark.parametrize(
+    ("sandbox_id", "expected_version"),
+    [
+        ("sb-nGEijt9WbBMlGrsPH9FOaC", SandboxVersion.V1),
+        ("sb-01ARZ3NDEKTSV4RRFFQ69G5FAV", SandboxVersion.V2),
+    ],
+)
+def test_get_sandbox_version(sandbox_id, expected_version):
+    assert _get_sandbox_version(sandbox_id) == expected_version
+
+
+@pytest.mark.parametrize(
+    "sandbox_id",
+    [
+        "sb-123",
+        "sb-nGEijt9WbBMlGrsPH9FOa_",
+        "sb-81ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "sb-01arz3ndektsv4rrffq69g5fav",
+        "fu-01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    ],
+)
+def test_get_sandbox_version_rejects_invalid_id(sandbox_id):
+    with pytest.raises(InvalidError, match="Invalid Sandbox ID"):
+        _get_sandbox_version(sandbox_id)
+
+
+def test_sandbox_from_id_routes_v1(client, servicer):
+    sandbox_id = "sb-nGEijt9WbBMlGrsPH9FOaC"
+
+    with servicer.intercept() as ctx:
+        sb = Sandbox.from_id(sandbox_id, client=client)
+
+    assert sb.returncode == 0
+    (wait_req,) = ctx.get_requests("SandboxWait")
+    assert wait_req.sandbox_id == sandbox_id
+    assert ctx.get_requests("SandboxWaitV2") == []
+
+
+def test_sandbox_from_id_routes_v2(client, servicer):
+    sandbox_id = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+
+    with servicer.intercept() as ctx:
+        sb = Sandbox.from_id(sandbox_id, client=client)
+        exit_code = sb.terminate(wait=True)
+
+    assert exit_code == 137
+    assert ctx.get_requests("SandboxWait") == []
+
+    wait_reqs = ctx.get_requests("SandboxWaitV2")
+    assert [req.sandbox_id for req in wait_reqs] == [sandbox_id, sandbox_id]
+    assert wait_reqs[0].timeout == 0
+
+    (terminate_req,) = ctx.get_requests("SandboxTerminateV2")
+    assert terminate_req.sandbox_id == sandbox_id
+
+
+def test_sandbox_from_id_rejects_invalid_id(client, servicer):
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="Invalid Sandbox ID"):
+            Sandbox.from_id("sb-123", client=client)
+
+    assert ctx.get_requests("SandboxWait") == []
+    assert ctx.get_requests("SandboxWaitV2") == []
 
 
 def test_sandbox_terminate(app, servicer):

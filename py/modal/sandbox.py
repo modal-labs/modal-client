@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import builtins
+import enum
 import json
 import os
 import time
@@ -75,9 +76,45 @@ _default_image: _Image = _Image.debian_slim()
 # e.g. 'runsc exec ...'. So we use 2**16 as the limit.
 ARG_MAX_BYTES = 2**16
 TTL_NO_EXPIRY_SENTINEL = -1
+_V1_SANDBOX_ID_ALPHABET = frozenset("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+_ULID_ALPHABET = frozenset("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
 
 if TYPE_CHECKING:
     import modal.app
+
+
+class SandboxVersion(enum.Enum):
+    V1 = 1
+    V2 = 2
+
+
+def _is_v1_sandbox_id(sandbox_id: str) -> bool:
+    prefix, separator, suffix = sandbox_id.partition("-")
+    return (
+        prefix == "sb"
+        and separator == "-"
+        and len(suffix) == 22
+        and all(ch in _V1_SANDBOX_ID_ALPHABET for ch in suffix)
+    )
+
+
+def _is_v2_sandbox_id(sandbox_id: str) -> bool:
+    prefix, separator, suffix = sandbox_id.partition("-")
+    return (
+        prefix == "sb"
+        and separator == "-"
+        and len(suffix) == 26
+        and suffix[0] in "01234567"
+        and all(ch in _ULID_ALPHABET for ch in suffix)
+    )
+
+
+def _get_sandbox_version(sandbox_id: str) -> SandboxVersion:
+    if _is_v2_sandbox_id(sandbox_id):
+        return SandboxVersion.V2
+    if _is_v1_sandbox_id(sandbox_id):
+        return SandboxVersion.V1
+    raise InvalidError(f"Invalid Sandbox ID: {sandbox_id!r}")
 
 
 def _result_returncode(result: Optional[api_pb2.GenericResult]) -> Optional[int]:
@@ -675,6 +712,11 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         Features like tags, memory snapshots, volumes, network file systems, GPUs,
         custom domains, OIDC identity tokens, and proxies are not supported.
+
+        V2 sandboxes created with this method are not currently returned by
+        `Sandbox.list()` and cannot be looked up with `Sandbox.from_name()`.
+        Store `sandbox.object_id` if you need to retrieve the sandbox later, and
+        use `Sandbox.from_id(sandbox.object_id)` to reattach.
         """
         from .app import _App
 
@@ -908,10 +950,18 @@ class _Sandbox(_Object, type_prefix="sb"):
         if client is None:
             client = await _Client.from_env()
 
+        sandbox_version = _get_sandbox_version(sandbox_id)
+        is_v2 = sandbox_version == SandboxVersion.V2
         req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox_id, timeout=0)
-        resp = await client.stub.SandboxWait(req)
+        if is_v2:
+            assert client._auth_token_manager
+            auth_token = await client._auth_token_manager.get_token()
+            resp = await client.stub.SandboxWaitV2(req, metadata=[("x-modal-auth-token", auth_token)])
+        else:
+            resp = await client.stub.SandboxWait(req)
 
         obj = _Sandbox._new_hydrated(sandbox_id, client, None)
+        obj._is_v2 = is_v2
 
         if resp.result.status:
             obj._result = resp.result

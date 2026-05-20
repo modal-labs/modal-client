@@ -365,7 +365,8 @@ def sandbox_subprocess_intercept(servicer):
 
     async def _SandboxCreate(servicer_self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
-        servicer_self.sandbox_tags["sb-123"] = {tag.tag_name: tag.tag_value for tag in request.tags}
+        sandbox_id = "sb-nGEijt9WbBMlGrsPH9FOaC"
+        servicer_self.sandbox_tags[sandbox_id] = {tag.tag_name: tag.tag_value for tag in request.tags}
         proc = await asyncio.subprocess.create_subprocess_exec(
             *(request.definition.entrypoint_args or ["sleep", f"{48 * 3600}"]),
             stdout=asyncio.subprocess.PIPE,
@@ -376,7 +377,7 @@ def sandbox_subprocess_intercept(servicer):
         servicer_self._sandbox_terminated = False
         servicer_self.sandbox_app_id = request.app_id
         servicer_self.sandbox_defs.append(request.definition)
-        await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
+        await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id=sandbox_id))
 
     async def _SandboxGetLogs(servicer_self, stream):
         request: api_pb2.SandboxGetLogsRequest = await stream.recv_message()
@@ -2340,6 +2341,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_result = result
         await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
 
+    async def SandboxWaitV2(self, stream):
+        _request: api_pb2.SandboxWaitRequest = await stream.recv_message()
+        if self._sandbox_terminated:
+            result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED, exitcode=-1)
+        else:
+            result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+        self.sandbox_result = result
+        await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
+
     async def SandboxList(self, stream):
         request: api_pb2.SandboxListRequest = await stream.recv_message()
         if self._sandbox_terminated or request.before_timestamp == 1:
@@ -2400,7 +2410,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxRestore(self, stream):
         _request: api_pb2.SandboxRestoreRequest = await stream.recv_message()
-        await stream.send_message(api_pb2.SandboxRestoreResponse(sandbox_id="sb-123"))
+        await stream.send_message(api_pb2.SandboxRestoreResponse(sandbox_id="sb-nGEijt9WbBMlGrsPH9FOaC"))
 
     async def TaskGetCommandRouterAccess(self, stream):
         _request: api_pb2.TaskGetCommandRouterAccessRequest = await stream.recv_message()
@@ -2434,6 +2444,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SandboxGetTaskId(self, stream):
         # only used for `modal shell` / `modal container exec`
+        _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="modal_container_exec"))
+
+    async def SandboxGetTaskIdV2(self, stream):
         _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
         await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id="modal_container_exec"))
 
