@@ -2458,7 +2458,8 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
     End-to-end server lifecycle using deployed metadata and a subprocess container.
 
     Deploy happens in an isolated process; container entrypoint runs in a separate
-    subprocess using the deployed function definition and app layout.
+    subprocess using the deployed function definition and app layout. Server tasks
+    leave Flash registration and deregistration to the worker-side HTTP relay.
     """
     servicer.flash_rpc_calls = []
     deployed_server_support_definitions = isolated_deploy("test.supports.functions", "server_app")
@@ -2478,30 +2479,7 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
     expected_events = "enter,enter_post_snapshot"
     assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
 
-    assert "register" in servicer.flash_rpc_calls, (
-        f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
-    )
-    assert "deregister" in servicer.flash_rpc_calls, (
-        f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
-    )
-
-    # Verify order: register should come before deregister
-    register_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "register"]
-    deregister_indices = [i for i, x in enumerate(servicer.flash_rpc_calls) if x == "deregister"]
-    assert register_indices, f"FlashContainerRegister was not called. RPC calls: {servicer.flash_rpc_calls}"
-    assert deregister_indices, f"FlashContainerDeregister was not called. RPC calls: {servicer.flash_rpc_calls}"
-
-    # Verify the *first* register is before the *first* deregister (for compatibility)
-    assert register_indices[0] < deregister_indices[0], (
-        f"Flash RPCs called in wrong order. Expected register before deregister. RPC calls: {servicer.flash_rpc_calls}"
-    )
-    # Ensure that *all* deregisters happen after the *last* register
-    last_register_idx = max(register_indices)
-    for d_idx in deregister_indices:
-        assert d_idx > last_register_idx, (
-            f"Found deregister at position {d_idx} before last register at position {last_register_idx}. "
-            f"Flash RPCs: {servicer.flash_rpc_calls}"
-        )
+    assert servicer.flash_rpc_calls == []
 
 
 @skip_github_non_linux

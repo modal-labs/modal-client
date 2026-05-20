@@ -51,6 +51,7 @@ class _FlashManager:
         self.stopped = False
         self.num_heartbeat_failures = 0
         self.task_id = os.environ["MODAL_TASK_ID"]
+        self.heartbeat_task = None
 
     async def is_port_connection_healthy(
         self, process: Optional[subprocess.Popen], timeout: float = 0.5
@@ -86,13 +87,22 @@ class _FlashManager:
         host = parsed_url.hostname
         port = parsed_url.port or 443
 
+        if self.is_server:
+            await self._start_server_tunnel()
+            return
+        await self._start_flash_registration(host, port)
+
+    async def _start_server_tunnel(self) -> None:
+        # Worker-side HTTP relay owns Flash registration and drain for server tasks.
+        logger.warning(f"[Modal Flash] Server tunnel opened at {self.tunnel.url}.")
+
+    async def _start_flash_registration(self, host: str, port: int) -> None:
         try:
             await self._wait_for_port_success(host, port)
         except (Exception, KeyboardInterrupt, asyncio.CancelledError):
             await self._deregister()
             await self.tunnel_manager.__aexit__(*sys.exc_info())
             raise
-
         self.heartbeat_task = asyncio.create_task(self._run_heartbeat(host, port))
         self.drain_task = asyncio.create_task(self._drain_container())
 
@@ -209,16 +219,15 @@ class _FlashManager:
             if self.heartbeat_task:
                 self.heartbeat_task.cancel()
                 try:
+                    # NOTE(gongy): We skip calling TunnelStop to avoid interrupting in-flight requests.
+                    # It is up to the user to wait after calling .stop() to drain in-flight requests.
                     await asyncio.wait_for(self.heartbeat_task, timeout=5)
+                    logger.warning(f"[Modal Flash] Stopping heartbeat task on {self.tunnel.url}.")
                 except (asyncio.TimeoutError, asyncio.CancelledError):
                     logger.warning("[Modal Flash] Heartbeat task did not stop within 5s.")
         except Exception as e:
             logger.error(f"[Modal Flash] Error stopping: {e}")
         self.stopped = True
-        logger.warning(f"[Modal Flash] No longer accepting new requests on {self.tunnel.url}.")
-
-        # NOTE(gongy): We skip calling TunnelStop to avoid interrupting in-flight requests.
-        # It is up to the user to wait after calling .stop() to drain in-flight requests.
 
     async def close(self):
         if not self.stopped:
