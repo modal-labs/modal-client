@@ -1000,7 +1000,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         # You can later mount this snapshot to another Sandbox:
         sandbox_session_2 = modal.Sandbox.create(...)
         sandbox_session_2.mount_image("/user_project", user_project_snapshot)
-        sandbox_session_2.ls("/user_project")
+        sandbox_session_2.filesystem.list_files("/user_project")
         ```
         """
         self._ensure_v1("mount_image")
@@ -1071,7 +1071,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         # You can later mount this snapshot to another Sandbox:
         sandbox_session_2 = modal.Sandbox.create(...)
         sandbox_session_2.mount_image("/user_project", user_project_snapshot)
-        sandbox_session_2.ls("/user_project")
+        sandbox_session_2.filesystem.list_files("/user_project")
         ```
         """
         self._ensure_v1("snapshot_directory")
