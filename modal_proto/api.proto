@@ -1427,6 +1427,30 @@ message EndpointHuggingFaceModelSource {
   string huggingface_token = 3;
 }
 
+message EndpointListItem {
+  string endpoint_id = 1;
+  string name = 2;
+  string description = 3;
+  string active_deployment_id = 4;
+  double updated_at = 5;
+  EndpointMetadata metadata = 6;
+}
+
+message EndpointListRequest {
+  string environment_name = 1;
+  ListPagination pagination = 2;
+}
+
+message EndpointListResponse {
+  repeated EndpointListItem items = 1;
+  string environment_name = 2;
+}
+
+message EndpointMetadata {
+  string name = 1;
+  CreationInfo creation_info = 2;
+}
+
 message EndpointModalVolumeModelSource {
   string volume_id = 1;
   string model_path = 2;
@@ -4150,6 +4174,7 @@ service ModalClient {
 
   // Endpoints
   rpc EndpointCreate(EndpointCreateRequest) returns (EndpointCreateResponse);
+  rpc EndpointList(EndpointListRequest) returns (EndpointListResponse);
 
   // Environments
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
