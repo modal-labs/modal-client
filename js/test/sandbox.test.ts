@@ -4,6 +4,8 @@ import {
   buildSandboxCreateRequestProto,
   buildSandboxCreateV2RequestProto,
   buildTaskExecStartRequestProto,
+  getSandboxVersion,
+  SandboxVersion,
   validateExecArgs,
   Probe,
   Sandbox,
@@ -20,6 +22,9 @@ import {
   SandboxCreateV2Response,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
+
+const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
+const V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
 
 test("CreateOneSandbox", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
@@ -1017,10 +1022,10 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
   });
   mock.handleUnary("/SandboxCreateV2", (req: any): SandboxCreateV2Response => {
     expect(req.appId).toBe("ap-1234");
-    return { sandboxId: "sb-v2-123", taskId: "ta-v2-123", tunnels: [] };
+    return { sandboxId: V2_SANDBOX_ID, taskId: "ta-v2-123", tunnels: [] };
   });
   mock.handleUnary("/SandboxWaitV2", (req: any) => {
-    expect(req.sandboxId).toBe("sb-v2-123");
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
     return {
       result: {
         status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
@@ -1029,16 +1034,16 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
     };
   });
   mock.handleUnary("/SandboxWaitV2", (req: any) => {
-    expect(req.sandboxId).toBe("sb-v2-123");
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
     expect(req.timeout).toBe(0);
     return {};
   });
   mock.handleUnary("/SandboxGetTunnelsV2", (req: any) => {
-    expect(req.sandboxId).toBe("sb-v2-123");
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
     return { tunnels: [] };
   });
   mock.handleUnary("/SandboxTerminateV2", (req: any) => {
-    expect(req.sandboxId).toBe("sb-v2-123");
+    expect(req.sandboxId).toBe(V2_SANDBOX_ID);
     return {};
   });
 
@@ -1048,7 +1053,7 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
   const image = mc.images.fromRegistry("alpine:3.21");
 
   const sb = await mc.sandboxes.experimentalCreate(app, image);
-  expect(sb.sandboxId).toBe("sb-v2-123");
+  expect(sb.sandboxId).toBe(V2_SANDBOX_ID);
   expect(await sb.wait()).toBe(0);
   expect(await sb.poll()).toBeNull();
   expect(await sb.tunnels()).toEqual({});
@@ -1059,7 +1064,7 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
 
 test("V2 Sandbox rejects V1-only runtime methods", async () => {
   const { mockClient: mc } = createMockModalClients();
-  const sb = new Sandbox(mc, "sb-v2-123", {
+  const sb = new Sandbox(mc, V2_SANDBOX_ID, {
     isV2: true,
     taskId: "ta-v2-123",
   });
@@ -1079,6 +1084,90 @@ test("V2 Sandbox rejects V1-only runtime methods", async () => {
   await expect(sb.snapshotDirectory("/mnt")).rejects.toThrow(expectedError);
 });
 
+test.each([
+  [V1_SANDBOX_ID, SandboxVersion.V1],
+  [V2_SANDBOX_ID, SandboxVersion.V2],
+])("getSandboxVersion classifies %s", (sandboxId, expectedVersion) => {
+  expect(getSandboxVersion(sandboxId)).toBe(expectedVersion);
+});
+
+test.each([
+  "sb-123",
+  "sb-nGEijt9WbBMlGrsPH9FOa_",
+  "sb-81ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "sb-01arz3ndektsv4rrffq69g5fav",
+  "fu-01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "sb-foo-bar",
+  "not-a-sandbox-id",
+])("getSandboxVersion rejects invalid ID %s", (sandboxId) => {
+  expect(() => getSandboxVersion(sandboxId)).toThrow("Invalid Sandbox ID");
+});
+
+test("Sandbox.fromId routes V1 IDs to SandboxWait", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sandboxId = V1_SANDBOX_ID;
+
+  mock.handleUnary("/SandboxWait", (req: any) => {
+    expect(req.sandboxId).toBe(sandboxId);
+    expect(req.timeout).toBe(0);
+    return {};
+  });
+  mock.handleUnary("/SandboxWait", (req: any) => {
+    expect(req.sandboxId).toBe(sandboxId);
+    expect(req.timeout).toBe(0);
+    return {
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
+        exitcode: 0,
+      },
+    };
+  });
+
+  const sb = await mc.sandboxes.fromId(sandboxId);
+  expect(await sb.poll()).toBe(0);
+
+  mock.assertExhausted();
+});
+
+test("Sandbox.fromId routes V2 IDs to SandboxWaitV2", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const sandboxId = V2_SANDBOX_ID;
+
+  mock.handleUnary("/SandboxWaitV2", (req: any) => {
+    expect(req.sandboxId).toBe(sandboxId);
+    expect(req.timeout).toBe(0);
+    return {};
+  });
+  mock.handleUnary("/SandboxTerminateV2", (req: any) => {
+    expect(req.sandboxId).toBe(sandboxId);
+    return {};
+  });
+  mock.handleUnary("/SandboxWaitV2", (req: any) => {
+    expect(req.sandboxId).toBe(sandboxId);
+    expect(req.timeout).toBe(10);
+    return {
+      result: {
+        status: GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED,
+      },
+    };
+  });
+
+  const sb = await mc.sandboxes.fromId(sandboxId);
+  expect(await sb.terminate({ wait: true })).toBe(137);
+
+  mock.assertExhausted();
+});
+
+test("Sandbox.fromId rejects invalid IDs before RPC", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  await expect(mc.sandboxes.fromId("sb-123")).rejects.toThrow(
+    "Invalid Sandbox ID",
+  );
+
+  mock.assertExhausted();
+});
+
 test("SandboxGetTaskIdPolling", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
@@ -1086,7 +1175,7 @@ test("SandboxGetTaskIdPolling", async () => {
   mock.handleUnary("/SandboxGetTaskId", () => ({}));
   mock.handleUnary("/SandboxGetTaskId", () => ({ taskId: "ta-123" }));
 
-  const sb = await mc.sandboxes.fromId("sb-123");
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
   await expect(sb.open("/test", "r")).rejects.toThrow();
 
   mock.assertExhausted();
@@ -1100,7 +1189,7 @@ test("SandboxGetTaskIdTerminated", async () => {
     taskResult: { status: 3 },
   }));
 
-  const sb = await mc.sandboxes.fromId("sb-123");
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
   await expect(sb.exec(["echo", "hello"])).rejects.toThrow(/already completed/);
 
   mock.assertExhausted();
@@ -1116,10 +1205,10 @@ test("SandboxWaitUntilReady", async () => {
     return { readyAt: 123.456 };
   });
 
-  const sb = await mc.sandboxes.fromId("sb-123");
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
   await sb.waitUntilReady(5000);
 
-  expect(seenReq.sandboxId).toBe("sb-123");
+  expect(seenReq.sandboxId).toBe(V1_SANDBOX_ID);
   expect(seenReq.timeout).toBeGreaterThan(0);
   expect(seenReq.timeout).toBeLessThanOrEqual(5);
   mock.assertExhausted();
@@ -1132,7 +1221,7 @@ test("SandboxWaitUntilReady retries empty readyAt", async () => {
   mock.handleUnary("/SandboxWaitUntilReady", () => ({ readyAt: 0 }));
   mock.handleUnary("/SandboxWaitUntilReady", () => ({ readyAt: 123.456 }));
 
-  const sb = await mc.sandboxes.fromId("sb-123");
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
   await sb.waitUntilReady(5000);
   mock.assertExhausted();
 });

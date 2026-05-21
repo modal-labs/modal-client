@@ -73,6 +73,51 @@ const SB_LOGS_MAX_RETRIES = 10;
 
 const TTL_NO_EXPIRY_SENTINEL = -1;
 
+const V1_SANDBOX_ID_ALPHABET = new Set(
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+);
+const ULID_ALPHABET = new Set("0123456789ABCDEFGHJKMNPQRSTVWXYZ");
+
+/** @ignore */
+export enum SandboxVersion {
+  V1 = "V1",
+  V2 = "V2",
+}
+
+function isV1SandboxId(sandboxId: string): boolean {
+  const [prefix, suffix, ...extra] = sandboxId.split("-");
+  return (
+    prefix === "sb" &&
+    extra.length === 0 &&
+    suffix !== undefined &&
+    suffix.length === 22 &&
+    Array.from(suffix).every((ch) => V1_SANDBOX_ID_ALPHABET.has(ch))
+  );
+}
+
+function isV2SandboxId(sandboxId: string): boolean {
+  const [prefix, suffix, ...extra] = sandboxId.split("-");
+  return (
+    prefix === "sb" &&
+    extra.length === 0 &&
+    suffix !== undefined &&
+    suffix.length === 26 &&
+    "01234567".includes(suffix[0]) &&
+    Array.from(suffix).every((ch) => ULID_ALPHABET.has(ch))
+  );
+}
+
+/** @ignore */
+export function getSandboxVersion(sandboxId: string): SandboxVersion {
+  if (isV2SandboxId(sandboxId)) {
+    return SandboxVersion.V2;
+  }
+  if (isV1SandboxId(sandboxId)) {
+    return SandboxVersion.V1;
+  }
+  throw new InvalidError(`Invalid Sandbox ID: ${sandboxId}`);
+}
+
 /**
  * Stdin is always present, but this option allow you to drop stdout or stderr
  * if you don't need them. The default is "pipe", matching Node.js behavior.
@@ -640,6 +685,20 @@ export class SandboxService {
 
   /**
    * Create a new {@link Sandbox} using the experimental V2 backend.
+   *
+   * Supported features include exec, encrypted tunnels, wait/poll/terminate,
+   * CPU and memory configuration, and region placement.
+   *
+   * Features like tags, filesystem snapshots, memory snapshots, volumes, cloud
+   * bucket mounts, GPUs, custom domains, OIDC identity tokens, proxies, and
+   * readiness probes are not supported.
+   *
+   * V2 sandboxes created with this method are not currently returned by
+   * {@link SandboxService#list client.sandboxes.list()} and cannot be looked up
+   * with {@link SandboxService#fromName client.sandboxes.fromName()}. Store
+   * {@link Sandbox#sandboxId sandbox.sandboxId} if you need to retrieve the
+   * sandbox later, and use {@link SandboxService#fromId client.sandboxes.fromId()}
+   * to reattach.
    */
   async experimentalCreate(
     app: App,
@@ -702,18 +761,22 @@ export class SandboxService {
    * @returns Sandbox with ID
    */
   async fromId(sandboxId: string): Promise<Sandbox> {
+    const sandboxVersion = getSandboxVersion(sandboxId);
+    const isV2 = sandboxVersion === SandboxVersion.V2;
+    const req = { sandboxId, timeout: 0 };
     try {
-      await this.#client.cpClient.sandboxWait({
-        sandboxId,
-        timeout: 0,
-      });
+      if (isV2) {
+        await this.#client.cpClient.sandboxWaitV2(req);
+      } else {
+        await this.#client.cpClient.sandboxWait(req);
+      }
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(`Sandbox with id: '${sandboxId}' not found`);
       throw err;
     }
 
-    return new Sandbox(this.#client, sandboxId);
+    return new Sandbox(this.#client, sandboxId, { isV2 });
   }
 
   /** Get a running {@link Sandbox} by name from a deployed {@link App}.
