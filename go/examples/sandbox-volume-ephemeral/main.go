@@ -55,10 +55,11 @@ func main() {
 	}
 	fmt.Printf("Writer finished with exit code: %d\n", exitCode)
 
+	readOnly := true
 	readerSandbox, err := mc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command: []string{"cat", "/mnt/volume/message.txt"},
 		Volumes: map[string]*modal.Volume{
-			"/mnt/volume": volume.ReadOnly(),
+			"/mnt/volume": volume.WithMountOptions(&modal.VolumeMountOptions{ReadOnly: &readOnly}),
 		},
 	})
 	if err != nil {

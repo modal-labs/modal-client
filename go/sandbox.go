@@ -231,12 +231,7 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 	if params.Volumes != nil {
 		volumeMounts = make([]*pb.VolumeMount, 0, len(params.Volumes))
 		for mountPath, volume := range params.Volumes {
-			volumeMounts = append(volumeMounts, pb.VolumeMount_builder{
-				VolumeId:               volume.VolumeID,
-				MountPath:              mountPath,
-				AllowBackgroundCommits: true,
-				ReadOnly:               volume.IsReadOnly(),
-			}.Build())
+			volumeMounts = append(volumeMounts, volumeToMountProto(mountPath, volume))
 		}
 	}
 

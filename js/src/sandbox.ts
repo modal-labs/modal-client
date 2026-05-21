@@ -59,7 +59,7 @@ import {
   ClientClosedError,
 } from "./errors";
 import { Image } from "./image";
-import type { Volume } from "./volume";
+import { volumeToMountProto, type Volume } from "./volume";
 import type { Proxy } from "./proxy";
 import type { CloudBucketMount } from "./cloud_bucket_mount";
 import type { App } from "./app";
@@ -370,12 +370,9 @@ export async function buildSandboxCreateRequestProto(
   }
 
   const volumeMounts: VolumeMount[] = params.volumes
-    ? Object.entries(params.volumes).map(([mountPath, volume]) => ({
-        volumeId: volume.volumeId,
-        mountPath,
-        allowBackgroundCommits: true,
-        readOnly: volume.isReadOnly,
-      }))
+    ? Object.entries(params.volumes).map(([mountPath, volume]) =>
+        volumeToMountProto(mountPath, volume),
+      )
     : [];
 
   const cloudBucketMounts: CloudBucketMountProto[] = params.cloudBucketMounts

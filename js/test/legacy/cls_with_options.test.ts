@@ -37,6 +37,7 @@ test("Cls.withOptions stacking", async () => {
         volumeId: "vol-1",
         allowBackgroundCommits: true,
         readOnly: false,
+        subPath: undefined,
       },
     ]);
     return { boundFunctionId: "fid-1", handleMetadata: {} };

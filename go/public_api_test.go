@@ -37,12 +37,13 @@ var skipMethods = map[string]string{
 	"SandboxFile.Flush": "file flush signal, no config needed",
 	"SandboxFile.Close": "implements io.Closer",
 
-	// Simple boolean predicates and value accessors.
-	"Volume.IsReadOnly":  "boolean predicate accessor",
+	// Simple value accessors.
 	"Function.GetWebURL": "returns cached URL string",
+	"Volume.IsReadOnly":  "mount option accessor",
 
-	// Returns a modified copy with a single semantically obvious change.
-	"Volume.ReadOnly": "creates a read-only copy, no config options needed",
+	// Returns a copy with straightforward mount options.
+	"Volume.ReadOnly":         "creates a read-only copy, no config options needed",
+	"Volume.WithMountOptions": "creates a copy with mount options, no config options needed",
 
 	// Lifecycle / cleanup signals; configuration-free by design.
 	"Volume.CloseEphemeral": "lifecycle signal, no config needed",
@@ -161,6 +162,7 @@ var excludedTypes = map[string]string{
 	"StdioBehavior":                   "string enum type",
 	"TokenAndExpiry":                  "internal data type",
 	"InternalFailure":                 "error type (name does not end in Error)",
+	"VolumeMountOptions":              "configuration value type",
 }
 
 // isParamsType reports whether t is a pointer to a struct whose name ends with "Params".

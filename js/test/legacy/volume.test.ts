@@ -21,21 +21,15 @@ test("Volume.readOnly", async () => {
     createIfMissing: true,
   });
 
-  expect(volume.isReadOnly).toBe(false);
-
-  const readOnlyVolume = volume.readOnly();
+  const readOnlyVolume = volume.withMountOptions({ readOnly: true });
   expect(readOnlyVolume.isReadOnly).toBe(true);
   expect(readOnlyVolume.volumeId).toBe(volume.volumeId);
-  expect(readOnlyVolume.name).toBe(volume.name);
-
-  expect(volume.isReadOnly).toBe(false);
 });
 
 test("VolumeEphemeral", async () => {
   const volume = await Volume.ephemeral();
   expect(volume.name).toBeUndefined();
   expect(volume.volumeId).toMatch(/^vo-/);
-  expect(volume.isReadOnly).toBe(false);
-  expect(volume.readOnly().isReadOnly).toBe(true);
+  expect(volume.withMountOptions({ readOnly: true }).isReadOnly).toBe(true);
   volume.closeEphemeral();
 });

@@ -2,6 +2,12 @@
 
 This file provides guidance to LLMs when working with code in this repository.
 
+The rules below cover the Python client (`client/py/`). For the Go and JS
+client SDKs see:
+
+- [`client/go/AGENTS.md`](go/AGENTS.md) — `golangci-lint`, `gofmt`, deprecation handling.
+- [`client/js/AGENTS.md`](js/AGENTS.md) — `prettier`, `eslint`, TypeDoc, deprecation handling.
+
 ## Common Development Commands
 
 All `inv` commands below should be run from the `client/py/` directory.

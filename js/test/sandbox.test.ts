@@ -210,7 +210,8 @@ test("SandboxWithReadOnlyVolume", async () => {
     createIfMissing: true,
   });
 
-  const readOnlyVolume = volume.readOnly();
+  const readOnlyVolume = volume.withMountOptions({ readOnly: true });
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- inspect configured mount state
   expect(readOnlyVolume.isReadOnly).toBe(true);
 
   const sb = await tc.sandboxes.create(app, image, {
@@ -221,6 +222,36 @@ test("SandboxWithReadOnlyVolume", async () => {
 
   expect(await sb.wait()).toBe(1);
   expect(await sb.stderr.readText()).toContain("Read-only file system");
+});
+
+test("SandboxWithSubPathVolume", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = tc.images.fromRegistry("alpine:3.21");
+
+  const volume = await tc.volumes.ephemeral();
+  onTestFinished(() => volume.closeEphemeral());
+
+  const subPath = "/scoped";
+  const subPathVolume = volume.withMountOptions({ subPath });
+
+  // Write a marker file into the sub-path-mounted volume.
+  const writer = await tc.sandboxes.create(app, image, {
+    command: ["sh", "-c", "echo subpath-works > /mnt/sub/marker.txt"],
+    volumes: { "/mnt/sub": subPathVolume },
+  });
+  onTestFinished(async () => await writer.terminate());
+  expect(await writer.wait()).toBe(0);
+
+  // Mount the same volume at the root and verify the file landed under the sub-path.
+  const reader = await tc.sandboxes.create(app, image, {
+    command: ["cat", "/mnt/full/scoped/marker.txt"],
+    volumes: { "/mnt/full": volume },
+  });
+  onTestFinished(async () => await reader.terminate());
+  expect(await reader.wait()).toBe(0);
+  expect((await reader.stdout.readText()).trim()).toBe("subpath-works");
 });
 
 test("SandboxWithTunnels", async () => {

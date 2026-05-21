@@ -554,12 +554,7 @@ func buildFunctionOptionsProto(options *serviceOptions) (*pb.FunctionOptions, er
 		volumeMounts := []*pb.VolumeMount{}
 		for mountPath, volume := range *options.volumes {
 			if volume != nil {
-				volumeMounts = append(volumeMounts, pb.VolumeMount_builder{
-					VolumeId:               volume.VolumeID,
-					MountPath:              mountPath,
-					AllowBackgroundCommits: true,
-					ReadOnly:               volume.IsReadOnly(),
-				}.Build())
+				volumeMounts = append(volumeMounts, volumeToMountProto(mountPath, volume))
 			}
 		}
 		builder.VolumeMounts = volumeMounts

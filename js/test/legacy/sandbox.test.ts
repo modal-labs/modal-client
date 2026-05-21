@@ -180,7 +180,7 @@ test("SandboxWithReadOnlyVolume", async () => {
     createIfMissing: true,
   });
 
-  const readOnlyVolume = volume.readOnly();
+  const readOnlyVolume = volume.withMountOptions({ readOnly: true });
   expect(readOnlyVolume.isReadOnly).toBe(true);
 
   const sb = await app.createSandbox(image, {

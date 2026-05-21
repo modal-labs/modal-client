@@ -1,4 +1,4 @@
-import { ObjectCreationType } from "../proto/modal_proto/api";
+import { ObjectCreationType, type VolumeMount } from "../proto/modal_proto/api";
 import { getDefaultClient, type ModalClient } from "./client";
 import { ClientError, Status } from "nice-grpc";
 import { NotFoundError, InvalidError } from "./errors";
@@ -83,7 +83,7 @@ export class VolumeService {
       this.#client.cpClient.volumeHeartbeat({ volumeId: resp.volumeId }),
     );
 
-    return new Volume(resp.volumeId, undefined, false, ephemeralHbManager);
+    return new Volume(resp.volumeId, undefined, undefined, ephemeralHbManager);
   }
 
   /**
@@ -119,23 +119,43 @@ export class VolumeService {
   }
 }
 
+/**
+ * Resolved mount configuration stored on a Volume. `subPath: undefined` means "mount the
+ * whole volume" (no sub-path set on the resulting VolumeMount proto).
+ */
+type ResolvedMountOptions = {
+  readOnly: boolean;
+  subPath: string | undefined;
+};
+
+const DEFAULT_MOUNT_OPTIONS: ResolvedMountOptions = {
+  readOnly: false,
+  subPath: undefined,
+};
+
 /** Volumes provide persistent storage that can be mounted in Modal {@link Function_ Function}s. */
 export class Volume {
   readonly volumeId: string;
   readonly name?: string;
-  private _readOnly: boolean = false;
+  /**
+   * @hidden
+   * @internal
+   */
+  readonly _mountOptions: ResolvedMountOptions = DEFAULT_MOUNT_OPTIONS;
   readonly #ephemeralHbManager?: EphemeralHeartbeatManager;
 
   /** @ignore */
   constructor(
     volumeId: string,
     name?: string,
-    readOnly: boolean = false,
+    mountOptions?: ResolvedMountOptions,
     ephemeralHbManager?: EphemeralHeartbeatManager,
   ) {
     this.volumeId = volumeId;
     this.name = name;
-    this._readOnly = readOnly;
+    if (mountOptions) {
+      this._mountOptions = mountOptions;
+    }
     this.#ephemeralHbManager = ephemeralHbManager;
   }
 
@@ -149,13 +169,41 @@ export class Volume {
     return getDefaultClient().volumes.fromName(name, options);
   }
 
-  /** Configure Volume to mount as read-only. */
+  /**
+   * Configure Volume to mount as read-only.
+   *
+   * @deprecated Use {@link withMountOptions} with `{ readOnly: true }` instead.
+   */
   readOnly(): Volume {
-    return new Volume(this.volumeId, this.name, true, this.#ephemeralHbManager);
+    return this.withMountOptions({ readOnly: true });
   }
 
+  /**
+   * Configure options used when mounting this Volume. Fields left undefined preserve their value
+   * from any previous withMountOptions call on the same Volume (stacking).
+   */
+  withMountOptions(params: VolumeMountOptions = {}): Volume {
+    let subPath = this._mountOptions.subPath;
+    if (params.subPath !== undefined) {
+      subPath = params.subPath === "/" ? undefined : params.subPath;
+    }
+    return new Volume(
+      this.volumeId,
+      this.name,
+      {
+        readOnly: params.readOnly ?? this._mountOptions.readOnly,
+        subPath,
+      },
+      this.#ephemeralHbManager,
+    );
+  }
+
+  /**
+   * @deprecated Inspect mount configuration at the call site that configured it instead.
+   * Future versions of this SDK may remove direct mount-option accessors on Volume.
+   */
   get isReadOnly(): boolean {
-    return this._readOnly;
+    return this._mountOptions.readOnly;
   }
 
   /**
@@ -174,3 +222,29 @@ export class Volume {
     }
   }
 }
+
+/**
+ * Builds the VolumeMount proto from a Volume's mount configuration.
+ * @internal
+ */
+export function volumeToMountProto(
+  mountPath: string,
+  volume: Volume,
+): VolumeMount {
+  // Default to unconfigured options for callers that synthesize Volume-shaped
+  // mocks via `as Volume` without going through the constructor.
+  const opts = volume._mountOptions ?? DEFAULT_MOUNT_OPTIONS;
+  return {
+    volumeId: volume.volumeId,
+    mountPath,
+    allowBackgroundCommits: true,
+    readOnly: opts.readOnly,
+    subPath: opts.subPath,
+  };
+}
+
+/** Options for mounting a {@link Volume}. */
+export type VolumeMountOptions = {
+  readOnly?: boolean;
+  subPath?: string;
+};

@@ -4,7 +4,9 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
-No unreleased changes.
+- Added `Volume.WithMountOptions` (Go) and `volume.withMountOptions` (JS) to configure mount-time options (`ReadOnly` / `readOnly` and `SubPath` / `subPath`) when attaching a Volume to a Function or Sandbox. The `SubPath` / `subPath` option mounts a subdirectory of the Volume instead of its root. Calling `withMountOptions` multiple times on the same Volume stacks: fields left unset preserve their previous value.
+- Deprecated `Volume.ReadOnly` (Go) and `Volume.readOnly` (JS) in favor of `WithMountOptions({ReadOnly: &t})` / `withMountOptions({readOnly: true})`. The old methods still work but will be removed in a future release.
+- Deprecated `Volume.IsReadOnly` (Go) and `Volume.isReadOnly` (JS); track configured mount options at the call site that configured them instead.
 
 ## js/v0.7.5, go/v0.7.5
 

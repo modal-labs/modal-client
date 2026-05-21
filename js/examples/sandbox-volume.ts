@@ -15,7 +15,7 @@ const writerSandbox = await modal.sandboxes.create(app, image, {
   command: [
     "sh",
     "-c",
-    "echo 'Hello from writer Sandbox!' > /mnt/volume/message.txt",
+    "mkdir -p /mnt/volume/data && echo 'Hello from writer Sandbox!' > /mnt/volume/data/message.txt",
   ],
   volumes: { "/mnt/volume": volume },
 });
@@ -24,8 +24,15 @@ console.log("Writer Sandbox:", writerSandbox.sandboxId);
 await writerSandbox.wait();
 console.log("Writer finished");
 
+// Mount the Volume read-only and scoped to the /data sub-path, so the reader
+// sees the file directly at /mnt/volume/message.txt.
 const readerSandbox = await modal.sandboxes.create(app, image, {
-  volumes: { "/mnt/volume": volume.readOnly() },
+  volumes: {
+    "/mnt/volume": volume.withMountOptions({
+      readOnly: true,
+      subPath: "/data",
+    }),
+  },
 });
 console.log("Reader Sandbox:", readerSandbox.sandboxId);
 

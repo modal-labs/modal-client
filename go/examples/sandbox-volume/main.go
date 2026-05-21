@@ -34,7 +34,7 @@ func main() {
 		Command: []string{
 			"sh",
 			"-c",
-			"echo 'Hello from writer Sandbox!' > /mnt/volume/message.txt",
+			"mkdir -p /mnt/volume/data && echo 'Hello from writer Sandbox!' > /mnt/volume/data/message.txt",
 		},
 		Volumes: map[string]*modal.Volume{
 			"/mnt/volume": volume,
@@ -56,9 +56,16 @@ func main() {
 	}
 	fmt.Printf("Writer finished with exit code: %d\n", exitCode)
 
+	// Mount the Volume read-only and scoped to the /data subdirectory, so the
+	// reader sees the file directly at /mnt/volume/message.txt.
+	readOnly := true
+	subPath := "/data"
 	readerSandbox, err := mc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Volumes: map[string]*modal.Volume{
-			"/mnt/volume": volume.ReadOnly(),
+			"/mnt/volume": volume.WithMountOptions(&modal.VolumeMountOptions{
+				ReadOnly: &readOnly,
+				SubPath:  &subPath,
+			}),
 		},
 	})
 	if err != nil {

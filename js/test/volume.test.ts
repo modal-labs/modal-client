@@ -2,6 +2,7 @@ import { tc } from "../test-support/test-client";
 import { expect, onTestFinished, test } from "vitest";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { NotFoundError } from "../src/errors";
+import { volumeToMountProto } from "../src/volume";
 import { ClientError, Status } from "nice-grpc";
 
 test("Volume.fromName", async () => {
@@ -17,19 +18,56 @@ test("Volume.fromName", async () => {
   );
 });
 
-test("Volume.readOnly", async () => {
+test("Volume.withMountOptions", async () => {
   const volume = await tc.volumes.fromName("libmodal-test-volume", {
     createIfMissing: true,
   });
 
-  expect(volume.isReadOnly).toBe(false);
+  const mount = volume.withMountOptions({
+    readOnly: true,
+    subPath: "/items",
+  });
+  expect(mount.volumeId).toBe(volume.volumeId);
 
-  const readOnlyVolume = volume.readOnly();
-  expect(readOnlyVolume.isReadOnly).toBe(true);
-  expect(readOnlyVolume.volumeId).toBe(volume.volumeId);
-  expect(readOnlyVolume.name).toBe(volume.name);
+  const mountProto = volumeToMountProto("/mnt", mount);
+  expect(mountProto.readOnly).toBe(true);
+  expect(mountProto.subPath).toBe("/items");
 
-  expect(volume.isReadOnly).toBe(false);
+  const unconfiguredProto = volumeToMountProto("/mnt", volume);
+  expect(unconfiguredProto.readOnly).toBe(false);
+  expect(unconfiguredProto.subPath).toBeUndefined();
+});
+
+test("Volume.withMountOptions stacks", async () => {
+  const volume = await tc.volumes.fromName("libmodal-test-volume", {
+    createIfMissing: true,
+  });
+
+  const configured = volume.withMountOptions({
+    readOnly: true,
+    subPath: "/nested",
+  });
+
+  // Setting only subPath preserves readOnly from the previous call.
+  const withNewSubPath = configured.withMountOptions({ subPath: "/other" });
+  const newSubPathProto = volumeToMountProto("/mnt", withNewSubPath);
+  expect(newSubPathProto.readOnly).toBe(true);
+  expect(newSubPathProto.subPath).toBe("/other");
+
+  // Setting only readOnly preserves subPath from the previous call.
+  const withReadOnlyDisabled = configured.withMountOptions({ readOnly: false });
+  const readOnlyDisabledProto = volumeToMountProto(
+    "/mnt",
+    withReadOnlyDisabled,
+  );
+  expect(readOnlyDisabledProto.readOnly).toBe(false);
+  expect(readOnlyDisabledProto.subPath).toBe("/nested");
+
+  // subPath "/" is normalized to undefined (mount the whole volume).
+  const withClearedSubPath = configured.withMountOptions({ subPath: "/" });
+  const clearedSubPathProto = volumeToMountProto("/mnt", withClearedSubPath);
+  expect(clearedSubPathProto.readOnly).toBe(true);
+  expect(clearedSubPathProto.subPath).toBeUndefined();
 });
 
 test("VolumeEphemeral", async () => {
@@ -38,8 +76,8 @@ test("VolumeEphemeral", async () => {
 
   expect(volume.name).toBeUndefined();
   expect(volume.volumeId).toMatch(/^vo-/);
-  expect(volume.isReadOnly).toBe(false);
-  expect(volume.readOnly().isReadOnly).toBe(true);
+  const readOnlyVolume = volume.withMountOptions({ readOnly: true });
+  expect(volumeToMountProto("/mnt", readOnlyVolume).readOnly).toBe(true);
 });
 
 test("VolumeDelete success", async () => {

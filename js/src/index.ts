@@ -90,6 +90,7 @@ export {
   type VolumeFromNameParams,
   type VolumeEphemeralParams,
   type VolumeDeleteParams,
+  type VolumeMountOptions,
 } from "./volume";
 export { Proxy, ProxyService, type ProxyFromNameParams } from "./proxy";
 export {

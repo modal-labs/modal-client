@@ -261,8 +261,9 @@ func TestSandboxWithReadOnlyVolume(t *testing.T) {
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	readOnlyVolume := volume.ReadOnly()
-	g.Expect(readOnlyVolume.IsReadOnly()).To(gomega.BeTrue())
+	trueVal := true
+	readOnlyVolume := volume.WithMountOptions(&modal.VolumeMountOptions{ReadOnly: &trueVal})
+	g.Expect(readOnlyVolume.IsReadOnly()).To(gomega.BeTrue()) //nolint:staticcheck // IsReadOnly is the most direct way to inspect configured state
 
 	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command: []string{"sh", "-c", "echo 'test' > /mnt/test/test.txt"},
@@ -280,6 +281,59 @@ func TestSandboxWithReadOnlyVolume(t *testing.T) {
 	stderr, err := io.ReadAll(sb.Stderr)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(string(stderr)).Should(gomega.ContainSubstring("Read-only file system"))
+}
+
+func TestSandboxWithSubPathVolume(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{
+		CreateIfMissing: true,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	image := tc.Images.FromRegistry("alpine:3.21", nil)
+
+	volume, err := tc.Volumes.Ephemeral(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer volume.CloseEphemeral()
+
+	subPath := "/scoped"
+	subPathVolume := volume.WithMountOptions(&modal.VolumeMountOptions{SubPath: &subPath})
+
+	// Write a marker file into the sub-path-mounted volume.
+	writer, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Command: []string{"sh", "-c", "echo subpath-works > /mnt/sub/marker.txt"},
+		Volumes: map[string]*modal.Volume{
+			"/mnt/sub": subPathVolume,
+		},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, writer)
+
+	exitCode, err := writer.Wait(ctx)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(exitCode).Should(gomega.Equal(0))
+
+	// Mount the same volume at the root and verify the file landed under the sub-path.
+	reader, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Command: []string{"cat", "/mnt/full/scoped/marker.txt"},
+		Volumes: map[string]*modal.Volume{
+			"/mnt/full": volume,
+		},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, reader)
+
+	exitCode, err = reader.Wait(ctx)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(exitCode).Should(gomega.Equal(0))
+
+	stdout, err := io.ReadAll(reader.Stdout)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(strings.TrimSpace(string(stdout))).Should(gomega.Equal("subpath-works"))
 }
 
 func TestSandboxWithTunnels(t *testing.T) {
