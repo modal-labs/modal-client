@@ -135,6 +135,12 @@ enum EndpointInputModality {
   ENDPOINT_INPUT_MODALITY_AUDIO = 3;
 }
 
+enum EndpointStopSource {
+  ENDPOINT_STOP_SOURCE_UNSPECIFIED = 0;
+  ENDPOINT_STOP_SOURCE_CLI = 1;
+  ENDPOINT_STOP_SOURCE_WEB = 2;
+}
+
 enum EnvironmentRole {
   ENVIRONMENT_ROLE_UNSPECIFIED = 0;
   ENVIRONMENT_ROLE_VIEWER = 1;
@@ -1462,6 +1468,13 @@ message EndpointModelSource {
     EndpointCustomModelSource custom = 2;
   }
 }
+
+message EndpointStopRequest {
+  string endpoint_id = 1;
+  EndpointStopSource source = 2;
+}
+
+message EndpointStopResponse {}
 
 message EnvironmentCreateRequest {
   string name = 1;
@@ -4175,6 +4188,7 @@ service ModalClient {
   // Endpoints
   rpc EndpointCreate(EndpointCreateRequest) returns (EndpointCreateResponse);
   rpc EndpointList(EndpointListRequest) returns (EndpointListResponse);
+  rpc EndpointStop(EndpointStopRequest) returns (EndpointStopResponse);
 
   // Environments
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
