@@ -37,6 +37,54 @@ const (
 	ttlNoExpirySentinel          int64  = -1
 )
 
+const (
+	v1SandboxIDAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	ulidAlphabet        = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+)
+
+type sandboxVersion int
+
+const (
+	sandboxVersionV1 sandboxVersion = iota + 1
+	sandboxVersionV2
+)
+
+func isV1SandboxID(sandboxID string) bool {
+	prefix, suffix, ok := strings.Cut(sandboxID, "-")
+	if !ok || prefix != "sb" || len(suffix) != 22 {
+		return false
+	}
+	for _, ch := range suffix {
+		if !strings.ContainsRune(v1SandboxIDAlphabet, ch) {
+			return false
+		}
+	}
+	return true
+}
+
+func isV2SandboxID(sandboxID string) bool {
+	prefix, suffix, ok := strings.Cut(sandboxID, "-")
+	if !ok || prefix != "sb" || len(suffix) != 26 || suffix[0] < '0' || suffix[0] > '7' {
+		return false
+	}
+	for _, ch := range suffix {
+		if !strings.ContainsRune(ulidAlphabet, ch) {
+			return false
+		}
+	}
+	return true
+}
+
+func getSandboxVersion(sandboxID string) (sandboxVersion, error) {
+	if isV2SandboxID(sandboxID) {
+		return sandboxVersionV2, nil
+	}
+	if isV1SandboxID(sandboxID) {
+		return sandboxVersionV1, nil
+	}
+	return 0, InvalidError{Exception: fmt.Sprintf("Invalid Sandbox ID: %q", sandboxID)}
+}
+
 // Probe configures a sandbox readiness probe.
 type Probe struct {
 	tcpPort    *uint32
@@ -484,9 +532,16 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 
 // ExperimentalCreate creates a new Sandbox using the experimental V2 backend.
 //
-// V2 sandbox creation does not yet support every option accepted by
-// SandboxCreateParams. In particular, tags, snapshots, volumes, network file
-// systems, GPUs, custom domains, proxies, and readiness probes are not supported.
+// Supported features include exec, encrypted tunnels, wait/poll/terminate,
+// CPU and memory configuration, and region placement.
+//
+// Features like tags, filesystem snapshots, memory snapshots, volumes, cloud
+// bucket mounts, GPUs, custom domains, OIDC identity tokens, proxies, and
+// readiness probes are not supported.
+//
+// V2 sandboxes created with this method are not currently returned by List and
+// cannot be looked up with FromName. Store Sandbox.SandboxID if you need to
+// retrieve the sandbox later, and use FromID to reattach.
 func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error) {
 	if params == nil {
 		params = &SandboxCreateParams{}
@@ -705,15 +760,28 @@ func (sb *Sandbox) sandboxGetTunnels(ctx context.Context, timeout time.Duration)
 
 // FromID returns a running Sandbox object from an ID.
 func (s *sandboxServiceImpl) FromID(ctx context.Context, sandboxID string) (*Sandbox, error) {
-	_, err := s.client.cpClient.SandboxWait(ctx, pb.SandboxWaitRequest_builder{
+	version, err := getSandboxVersion(sandboxID)
+	if err != nil {
+		return nil, err
+	}
+	isV2 := version == sandboxVersionV2
+	req := pb.SandboxWaitRequest_builder{
 		SandboxId: sandboxID,
 		Timeout:   0,
-	}.Build())
+	}.Build()
+	if isV2 {
+		_, err = s.client.cpClient.SandboxWaitV2(ctx, req)
+	} else {
+		_, err = s.client.cpClient.SandboxWait(ctx, req)
+	}
 	if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
 		return nil, NotFoundError{fmt.Sprintf("Sandbox with id: '%s' not found", sandboxID)}
 	}
 	if err != nil {
 		return nil, err
+	}
+	if isV2 {
+		return newSandboxV2(s.client, sandboxID, ""), nil
 	}
 	return newSandbox(s.client, sandboxID), nil
 }

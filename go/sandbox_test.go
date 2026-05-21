@@ -10,6 +10,11 @@ import (
 	"github.com/onsi/gomega"
 )
 
+const (
+	testV1SandboxID = "sb-nGEijt9WbBMlGrsPH9FOaC"
+	testV2SandboxID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+)
+
 func TestSandboxCreateRequestProto_WithoutPTY(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
@@ -90,6 +95,55 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 			_, err := buildSandboxCreateV2RequestProto("app-123", "img-456", tt.params)
 			g.Expect(err).Should(gomega.HaveOccurred())
 			g.Expect(err.Error()).To(gomega.ContainSubstring(tt.wantErr))
+		})
+	}
+}
+
+func TestGetSandboxVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		sandboxID string
+		want      sandboxVersion
+	}{
+		{name: "v1", sandboxID: testV1SandboxID, want: sandboxVersionV1},
+		{name: "v2", sandboxID: testV2SandboxID, want: sandboxVersionV2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+
+			got, err := getSandboxVersion(tt.sandboxID)
+			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+			g.Expect(got).To(gomega.Equal(tt.want))
+		})
+	}
+}
+
+func TestGetSandboxVersionRejectsInvalidID(t *testing.T) {
+	t.Parallel()
+
+	tests := []string{
+		"sb-123",
+		"sb-nGEijt9WbBMlGrsPH9FOa_",
+		"sb-81ARZ3NDEKTSV4RRFFQ69G5FAV",
+		"sb-01arz3ndektsv4rrffq69g5fav",
+		"fu-01ARZ3NDEKTSV4RRFFQ69G5FAV",
+		"sb-foo-bar",
+		"not-a-sandbox-id",
+	}
+
+	for _, sandboxID := range tests {
+		t.Run(sandboxID, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+
+			_, err := getSandboxVersion(sandboxID)
+			g.Expect(err).Should(gomega.HaveOccurred())
+			g.Expect(err.Error()).To(gomega.ContainSubstring("Invalid Sandbox ID"))
 		})
 	}
 }

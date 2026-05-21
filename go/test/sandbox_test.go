@@ -17,6 +17,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	validV1SandboxID = "sb-nGEijt9WbBMlGrsPH9FOaC"
+	validV2SandboxID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV"
+)
+
 func TestCreateOneSandbox(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
@@ -897,7 +902,7 @@ func TestSandboxExperimentalDockerMock(t *testing.T) {
 		func(req *pb.SandboxCreateRequest) (*pb.SandboxCreateResponse, error) {
 			g.Expect(req.GetDefinition().GetExperimentalOptions()).Should(gomega.Equal(expectedOptoins))
 			return pb.SandboxCreateResponse_builder{
-				SandboxId: "sb-123",
+				SandboxId: validV1SandboxID,
 			}.Build(), nil
 		},
 	)
@@ -930,7 +935,7 @@ func TestSandboxExperimentalDockerMock(t *testing.T) {
 	sb, err := mock.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{ExperimentalOptions: options})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	g.Expect(sb.SandboxID).Should(gomega.Equal("sb-123"))
+	g.Expect(sb.SandboxID).Should(gomega.Equal(validV1SandboxID))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
@@ -957,7 +962,7 @@ func TestSandboxGetTaskIdPolling(t *testing.T) {
 			}.Build(), nil
 		})
 
-	sb, err := mock.Sandboxes.FromID(ctx, "sb-123")
+	sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	_, err = sb.Open(ctx, "/test", "r")
@@ -985,12 +990,100 @@ func TestSandboxGetTaskIdTerminated(t *testing.T) {
 			}.Build(), nil
 		})
 
-	sb, err := mock.Sandboxes.FromID(ctx, "sb-123")
+	sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	_, err = sb.Exec(ctx, []string{"echo", "hello"}, nil)
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("already completed"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestSandboxFromIDRoutesV1(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+	sandboxID := validV1SandboxID
+
+	grpcmock.HandleUnary(mock, "SandboxWait",
+		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
+			g.Expect(req.GetTimeout()).To(gomega.Equal(float32(0)))
+			return pb.SandboxWaitResponse_builder{}.Build(), nil
+		})
+	grpcmock.HandleUnary(mock, "SandboxWait",
+		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
+			g.Expect(req.GetTimeout()).To(gomega.Equal(float32(0)))
+			return pb.SandboxWaitResponse_builder{
+				Result: pb.GenericResult_builder{
+					Status:   pb.GenericResult_GENERIC_STATUS_SUCCESS,
+					Exitcode: 0,
+				}.Build(),
+			}.Build(), nil
+		})
+
+	sb, err := mock.Sandboxes.FromID(ctx, sandboxID)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	exitCode, err := sb.Poll(ctx)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(exitCode).ShouldNot(gomega.BeNil())
+	g.Expect(*exitCode).To(gomega.Equal(0))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestSandboxFromIDRoutesV2(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+	sandboxID := validV2SandboxID
+
+	grpcmock.HandleUnary(mock, "SandboxWaitV2",
+		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
+			g.Expect(req.GetTimeout()).To(gomega.Equal(float32(0)))
+			return pb.SandboxWaitResponse_builder{}.Build(), nil
+		})
+	grpcmock.HandleUnary(mock, "SandboxTerminateV2",
+		func(req *pb.SandboxTerminateRequest) (*pb.SandboxTerminateResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
+			return pb.SandboxTerminateResponse_builder{}.Build(), nil
+		})
+	grpcmock.HandleUnary(mock, "SandboxWaitV2",
+		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
+			g.Expect(req.GetTimeout()).To(gomega.Equal(float32(10)))
+			return pb.SandboxWaitResponse_builder{
+				Result: pb.GenericResult_builder{
+					Status: pb.GenericResult_GENERIC_STATUS_TERMINATED,
+				}.Build(),
+			}.Build(), nil
+		})
+
+	sb, err := mock.Sandboxes.FromID(ctx, sandboxID)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	exitCode, err := sb.Terminate(ctx, &modal.SandboxTerminateParams{Wait: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(exitCode).To(gomega.Equal(137))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestSandboxFromIDRejectsInvalidID(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	_, err := mock.Sandboxes.FromID(ctx, "sb-123")
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).To(gomega.ContainSubstring("Invalid Sandbox ID"))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
@@ -1016,13 +1109,13 @@ func TestSandboxWaitUntilReady(t *testing.T) {
 			}.Build(), nil
 		})
 
-	sb, err := mock.Sandboxes.FromID(ctx, "sb-123")
+	sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	err = sb.WaitUntilReady(ctx, 5*time.Second)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(seenReq).ShouldNot(gomega.BeNil())
-	g.Expect(seenReq.GetSandboxId()).To(gomega.Equal("sb-123"))
+	g.Expect(seenReq.GetSandboxId()).To(gomega.Equal(validV1SandboxID))
 	g.Expect(seenReq.GetTimeout()).To(gomega.BeNumerically(">", 0))
 	g.Expect(seenReq.GetTimeout()).To(gomega.BeNumerically("<=", 5))
 
@@ -1055,7 +1148,7 @@ func TestSandboxWaitUntilReadyRetriesDeadlineExceeded(t *testing.T) {
 			}.Build(), nil
 		})
 
-	sb, err := mock.Sandboxes.FromID(ctx, "sb-123")
+	sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	err = sb.WaitUntilReady(ctx, 5*time.Second)
