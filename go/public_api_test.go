@@ -50,6 +50,9 @@ var skipMethods = map[string]string{
 	"Queue.CloseEphemeral":  "lifecycle signal, no config needed",
 	"Sandbox.Detach":        "disconnects from sandbox, no config needed",
 
+	// Namespace accessor: returns a sub-object, no config options.
+	"Sandbox.Filesystem": "returns the SandboxFilesystem namespace, no config needed",
+
 	// Tunnel accessors: return structured data derived from the Tunnel's fields.
 	"Tunnel.URL":       "returns computed URL string",
 	"Tunnel.TLSSocket": "returns (host, port) pair",
@@ -139,6 +142,7 @@ var typeRegistry = []typeEntry{
 	{name: "SandboxFile", typ: reflect.TypeOf((*SandboxFile)(nil)), isInterface: false},
 	{name: "Volume", typ: reflect.TypeOf((*Volume)(nil)), isInterface: false},
 	{name: "Tunnel", typ: reflect.TypeOf((*Tunnel)(nil)), isInterface: false},
+	{name: "SandboxFilesystem", typ: reflect.TypeOf((*SandboxFilesystem)(nil)), isInterface: false},
 }
 
 // excludedTypes lists exported types that are intentionally absent from
@@ -162,6 +166,8 @@ var excludedTypes = map[string]string{
 	"StdioBehavior":                   "string enum type",
 	"TokenAndExpiry":                  "internal data type",
 	"InternalFailure":                 "error type (name does not end in Error)",
+	"FileType":                        "string enum, no public methods",
+	"FileInfo":                        "data type, no public methods",
 	"VolumeMountOptions":              "configuration value type",
 }
 

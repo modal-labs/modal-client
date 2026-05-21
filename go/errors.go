@@ -83,13 +83,62 @@ func (e QueueFullError) Error() string {
 	return "QueueFullError: " + e.Exception
 }
 
-// SandboxFilesystemError is returned when an operation is attempted on a full Queue.
+// SandboxFilesystemError is returned for unexpected or unclassified sandbox filesystem errors.
 type SandboxFilesystemError struct {
 	Exception string
 }
 
 func (e SandboxFilesystemError) Error() string {
 	return "SandboxFilesystemError: " + e.Exception
+}
+
+// SandboxFilesystemNotFoundError is returned when a path does not exist in the sandbox filesystem.
+type SandboxFilesystemNotFoundError struct{ Exception string }
+
+func (e SandboxFilesystemNotFoundError) Error() string {
+	return "SandboxFilesystemNotFoundError: " + e.Exception
+}
+
+// SandboxFilesystemNotADirectoryError is returned when a directory operation targets a non-directory path.
+type SandboxFilesystemNotADirectoryError struct{ Exception string }
+
+func (e SandboxFilesystemNotADirectoryError) Error() string {
+	return "SandboxFilesystemNotADirectoryError: " + e.Exception
+}
+
+// SandboxFilesystemIsADirectoryError is returned when a file operation targets a directory.
+type SandboxFilesystemIsADirectoryError struct{ Exception string }
+
+func (e SandboxFilesystemIsADirectoryError) Error() string {
+	return "SandboxFilesystemIsADirectoryError: " + e.Exception
+}
+
+// SandboxFilesystemPermissionError is returned when the sandbox filesystem denies access.
+type SandboxFilesystemPermissionError struct{ Exception string }
+
+func (e SandboxFilesystemPermissionError) Error() string {
+	return "SandboxFilesystemPermissionError: " + e.Exception
+}
+
+// SandboxFilesystemPathAlreadyExistsError is returned when a create operation targets an existing path.
+type SandboxFilesystemPathAlreadyExistsError struct{ Exception string }
+
+func (e SandboxFilesystemPathAlreadyExistsError) Error() string {
+	return "SandboxFilesystemPathAlreadyExistsError: " + e.Exception
+}
+
+// SandboxFilesystemDirectoryNotEmptyError is returned when a non-recursive remove operation targets a non-empty directory.
+type SandboxFilesystemDirectoryNotEmptyError struct{ Exception string }
+
+func (e SandboxFilesystemDirectoryNotEmptyError) Error() string {
+	return "SandboxFilesystemDirectoryNotEmptyError: " + e.Exception
+}
+
+// SandboxFilesystemFileTooLargeError is returned when a file exceeds the allowed read size.
+type SandboxFilesystemFileTooLargeError struct{ Exception string }
+
+func (e SandboxFilesystemFileTooLargeError) Error() string {
+	return "SandboxFilesystemFileTooLargeError: " + e.Exception
 }
 
 // SandboxTimeoutError is returned when Sandbox operations exceed the allowed time limit.

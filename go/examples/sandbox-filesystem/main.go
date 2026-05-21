@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 
 	modal "github.com/modal-labs/modal-client/go"
@@ -36,33 +35,14 @@ func main() {
 	}()
 
 	// Write a file
-	writeFile, err := sb.Open(ctx, "/tmp/example.txt", "w")
-	if err != nil {
-		log.Fatalf("Failed to open file for writing: %v", err)
-	}
-
-	_, err = writeFile.Write([]byte("Hello, Modal filesystem!\n"))
-	if err != nil {
-		log.Fatalf("Failed to write to file: %v", err)
-	}
-
-	if err := writeFile.Close(); err != nil {
-		log.Fatalf("Failed to close file: %v", err)
+	if err := sb.Filesystem().WriteText(ctx, "Hello, Modal filesystem!\n", "/tmp/example.txt", nil); err != nil {
+		log.Fatalf("Failed to write file: %v", err)
 	}
 
 	// Read the file
-	reader, err := sb.Open(ctx, "/tmp/example.txt", "r")
+	content, err := sb.Filesystem().ReadText(ctx, "/tmp/example.txt", nil)
 	if err != nil {
-		log.Fatalf("Failed to open file for reading: %v", err)
-	}
-
-	content, err := io.ReadAll(reader)
-	if err != nil && err != io.EOF {
 		log.Fatalf("Failed to read file: %v", err)
 	}
-
-	fmt.Printf("File content:\n%s\n", string(content))
-	if err := reader.Close(); err != nil {
-		log.Fatalf("Failed to close file: %v", err)
-	}
+	fmt.Printf("File content:\n%s\n", content)
 }

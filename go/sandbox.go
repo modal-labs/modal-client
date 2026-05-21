@@ -644,6 +644,9 @@ type Sandbox struct {
 	commandRouterClient   *taskCommandRouterClient
 	commandRouterClientMu sync.Mutex
 
+	filesystem     *SandboxFilesystem
+	filesystemOnce sync.Once
+
 	attached atomic.Bool
 }
 
@@ -1003,9 +1006,19 @@ func (sb *Sandbox) CreateConnectToken(ctx context.Context, params *SandboxCreate
 	return &SandboxCreateConnectCredentials{URL: resp.GetUrl(), Token: resp.GetToken()}, nil
 }
 
+// Filesystem returns the high-level filesystem namespace for this Sandbox.
+func (sb *Sandbox) Filesystem() *SandboxFilesystem {
+	sb.filesystemOnce.Do(func() {
+		sb.filesystem = &SandboxFilesystem{sandbox: sb, logger: sb.client.logger}
+	})
+	return sb.filesystem
+}
+
 // Open opens a file in the Sandbox filesystem.
 // The mode parameter follows the same conventions as os.OpenFile:
 // "r" for read-only, "w" for write-only (truncates), "a" for append, etc.
+//
+// Deprecated: Use [Sandbox.Filesystem] for whole-file operations instead.
 func (sb *Sandbox) Open(ctx context.Context, path, mode string) (*SandboxFile, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
