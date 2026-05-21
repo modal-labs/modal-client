@@ -6,7 +6,7 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ### 1.4.3 (2026-05-18)
 
-- This release introduces a new ["regional routing"](https://modal.com/docs/guide/region-selection#regional-routing-beta) concept for Function inputs, which is now in Public Beta. By setting `routing_region="..."` in the `@app.function()` or `@app.cls()` decorators, you can configure the Function to route its inputs through servers in `us-west`, `eu-west`, or `ap-south` instead of `us-east`. This can reduce network latency and help you meet data residency obligations. While in Beta, this feature has a few constraints:
+- This release introduces a new ["regional routing"](https://modal.com/docs/guide/region-selection#regional-routing) concept for Function inputs, which is now in Public Beta. By setting `routing_region="..."` in the `@app.function()` or `@app.cls()` decorators, you can configure the Function to route its inputs through servers in `us-west`, `eu-west`, or `ap-south` instead of `us-east`. This can reduce network latency and help you meet data residency obligations. While in Beta, this feature has a few constraints:
   - `routing_region=` can only be set during the initial deployment of a Function and cannot be changed in a subsequent redeployment.
   - Functions using regional routing outside of `us-east` can only be invoked with the `.remote()` and `.map()` methods.
 - We've added a new `modal.Environment` object for programmatically managing Environments, and we've expanded the `modal environment` CLI to support [RBAC](https://modal.com/docs/guide/rbac) configuration.
