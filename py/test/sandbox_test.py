@@ -12,13 +12,11 @@ from grpclib import GRPCError, Status
 
 import modal
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
-from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.exception import DeprecationError, Error, InvalidError, TimeoutError
 from modal.sandbox import SandboxContainer, SandboxVersion, _get_sandbox_version
 from modal.stream_type import StreamType
-from modal_proto import api_pb2, task_command_router_pb2 as tcr_pb2
+from modal_proto import api_pb2
 
-from .conftest import FakeTaskCommandRouterClient
 from .supports.skip import skip_windows
 
 skip_non_subprocess = skip_windows("Needs subprocess support")
@@ -749,57 +747,44 @@ def test_sandbox_snapshot(app, client, servicer):
     sb.terminate()
 
 
-def test_sandbox_snapshot_fs(app, servicer, monkeypatch):
-    captured_requests = []
-    original = FakeTaskCommandRouterClient.snapshot_filesystem
-
-    async def _snapshot_filesystem(self, request, *, timeout):
-        assert timeout == 55
-        captured_requests.append(request)
-        return await original(self, request)
-
-    monkeypatch.setattr(FakeTaskCommandRouterClient, "snapshot_filesystem", _snapshot_filesystem, raising=True)
-
+def test_sandbox_snapshot_fs(app, servicer):
     sb = Sandbox.create(app=app)
-    image = sb.snapshot_filesystem()
-    assert image.object_id == "im-snapshot-fs-123"
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        image = sb.snapshot_filesystem()
+        assert image.object_id == "im-snapshot-fs-123"
 
-    # The SDK sends ttl_seconds=-1 (no expiry) on the wire.
-    assert len(captured_requests) == 1
-    assert captured_requests[0].HasField("ttl_seconds")
-    assert captured_requests[0].ttl_seconds == -1
-    snapshot_id = captured_requests[0].snapshot_id
-    assert snapshot_id, "snapshot_id must be non-empty"
-    uuid.UUID(snapshot_id)  # Raises ValueError if not a valid UUID
+        # The SDK sends ttl_seconds=-1 (no expiry) on the wire.
+        captured_requests = tcr_ctx.get_requests("TaskSnapshotFilesystem")
+        assert len(captured_requests) == 1
+        assert captured_requests[0].HasField("ttl_seconds")
+        assert captured_requests[0].ttl_seconds == -1
+        snapshot_id = captured_requests[0].snapshot_id
+        assert snapshot_id, "snapshot_id must be non-empty"
+        uuid.UUID(snapshot_id)  # Raises ValueError if not a valid UUID
 
-    # Each call generates a unique snapshot_id.
-    sb.snapshot_filesystem()
-    assert captured_requests[-1].snapshot_id != snapshot_id
+        # Each call generates a unique snapshot_id.
+        sb.snapshot_filesystem()
+        captured_requests = tcr_ctx.get_requests("TaskSnapshotFilesystem")
+        assert captured_requests[-1].snapshot_id != snapshot_id
 
     sb.terminate()
 
 
 @pytest.mark.parametrize("legacy_env_var", [False, True])
-def test_sandbox_snapshot_fs_v2(app, monkeypatch, legacy_env_var):
-    router_client = FakeTaskCommandRouterClient(None)
-    captured_router_args = None
-
-    async def _mk_router_v2(cls, server_client, sandbox_id, task_id):
-        nonlocal captured_router_args
-        captured_router_args = (sandbox_id, task_id)
-        return router_client
-
+def test_sandbox_snapshot_fs_v2(app, servicer, monkeypatch, legacy_env_var):
     if legacy_env_var:
         monkeypatch.setenv("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT", "1")
-    monkeypatch.setattr(TaskCommandRouterClient, "init_v2", classmethod(_mk_router_v2))
 
     sb = Sandbox._experimental_create("sleep", "infinity", app=app)
-    image = sb.snapshot_filesystem()
+    with servicer.intercept() as ctx:
+        with servicer.task_command_router.intercept() as tcr_ctx:
+            image = sb.snapshot_filesystem()
 
     assert image.object_id == "im-snapshot-fs-123"
-    assert captured_router_args == ("sb-v2-123", "ta-v2-123")
+    (access_req,) = ctx.get_requests("SandboxGetCommandRouterAccess")
+    assert access_req.sandbox_id == "sb-v2-123"
 
-    req = router_client.last_snapshot_filesystem_request
+    (req,) = tcr_ctx.get_requests("TaskSnapshotFilesystem")
     assert req.task_id == "ta-v2-123"
     assert req.HasField("ttl_seconds")
     assert req.ttl_seconds == -1
@@ -810,21 +795,19 @@ def test_sandbox_snapshot_fs_v2(app, monkeypatch, legacy_env_var):
 
 
 def test_sandbox_snapshot_fs_legacy_env_var(app, servicer, monkeypatch):
-    async def _snapshot_filesystem(self, request, *, timeout):
-        raise AssertionError("legacy snapshot path should not use the command router")
-
     monkeypatch.setenv("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT", "1")
-    monkeypatch.setattr(FakeTaskCommandRouterClient, "snapshot_filesystem", _snapshot_filesystem, raising=True)
 
     sb = Sandbox.create(app=app)
 
-    with servicer.intercept() as ctx:
-        image = sb.snapshot_filesystem(timeout=17)
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        with servicer.intercept() as ctx:
+            image = sb.snapshot_filesystem(timeout=17)
 
     assert image.object_id == "im-123"
     (snapshot_req,) = ctx.get_requests("SandboxSnapshotFs")
     assert snapshot_req.sandbox_id == sb.object_id
     assert snapshot_req.timeout == 17
+    assert tcr_ctx.get_requests("TaskSnapshotFilesystem") == []
 
     sb.terminate()
 
@@ -948,21 +931,12 @@ def test_experimental_sandbox_create_memory_roundtrip(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_exec_pty(app, servicer, monkeypatch):
-    captured_request = None
-    original = FakeTaskCommandRouterClient.exec_start
-
-    async def _exec_start(self, request: tcr_pb2.TaskExecStartRequest) -> tcr_pb2.TaskExecStartResponse:
-        nonlocal captured_request
-        captured_request = request
-        return await original(self, request)
-
-    monkeypatch.setattr(FakeTaskCommandRouterClient, "exec_start", _exec_start, raising=True)
-
+def test_sandbox_exec_pty(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
-    cp = sb.exec("echo", "hello", pty=True)
-    cp.wait()
-    assert captured_request is not None
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        cp = sb.exec("echo", "hello", pty=True)
+        cp.wait()
+    (captured_request,) = tcr_ctx.get_requests("TaskExecStart")
     pty_info = captured_request.pty_info
 
     assert pty_info is not None
@@ -972,118 +946,100 @@ def test_sandbox_exec_pty(app, servicer, monkeypatch):
 
 
 @skip_non_subprocess
-def test_sandbox_exec_env_routing(app, servicer, monkeypatch):
-    router_client = FakeTaskCommandRouterClient(None)
-
-    async def _mk_router(cls, server_client, task_id):
-        return router_client
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
-
+def test_sandbox_exec_env_routing(app, servicer):
     secret = Secret.from_dict({"KEEP": "secret", "SECRET_ONLY": "present"})
     sb = Sandbox.create("sleep", "infinity", app=app)
-    cp = sb.exec(
-        "bash",
-        "-c",
-        'printf "%s|%s|%s" "${KEEP:-missing}" "${PLAIN:-missing}" "${DROP:-missing}"',
-        env={"KEEP": "value", "PLAIN": "plain", "DROP": None},
-        secrets=[secret],
-    )
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        cp = sb.exec(
+            "bash",
+            "-c",
+            'printf "%s|%s|%s" "${KEEP:-missing}" "${PLAIN:-missing}" "${DROP:-missing}"',
+            env={"KEEP": "value", "PLAIN": "plain", "DROP": None},
+            secrets=[secret],
+        )
 
-    assert cp.stdout.read() == "value|plain|missing"
-    assert router_client.last_exec_start_request is not None
-    assert dict(router_client.last_exec_start_request.env) == {"KEEP": "value", "PLAIN": "plain"}
-    assert list(router_client.last_exec_start_request.secret_ids) == [secret.object_id]
+        assert cp.stdout.read() == "value|plain|missing"
+    (exec_start_request,) = tcr_ctx.get_requests("TaskExecStart")
+    assert dict(exec_start_request.env) == {"KEEP": "value", "PLAIN": "plain"}
+    assert list(exec_start_request.secret_ids) == [secret.object_id]
 
 
-def test_mount_image(servicer, client, app, monkeypatch):
+def test_mount_image(servicer, client, app):
     """Test mounting an image at a path in the sandbox."""
-    captured_requests = []
-    original = FakeTaskCommandRouterClient.mount_image
-
-    async def _mount_image(self, request):
-        captured_requests.append(request)
-        return await original(self, request)
-
-    monkeypatch.setattr(FakeTaskCommandRouterClient, "mount_image", _mount_image, raising=True)
-
     sb = Sandbox.create(app=app)
 
-    # Test mounting a prebuilt image
-    prebuilt_image = Image.debian_slim().run_commands("echo prebuilt").build(app)
-    sb.mount_image("/prebuilt", prebuilt_image)
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        # Test mounting a prebuilt image
+        prebuilt_image = Image.debian_slim().run_commands("echo prebuilt").build(app)
+        sb.mount_image("/prebuilt", prebuilt_image)
 
-    assert len(captured_requests) == 1
-    assert captured_requests[0].path == b"/prebuilt"
-    assert captured_requests[0].image_id == prebuilt_image.object_id
+        captured_requests = tcr_ctx.get_requests("TaskMountDirectory")
+        assert len(captured_requests) == 1
+        assert captured_requests[0].path == b"/prebuilt"
+        assert captured_requests[0].image_id == prebuilt_image.object_id
 
-    # Test mounting an image referenced by id
-    image_from_id = Image.from_id(prebuilt_image.object_id, client=client)
-    sb.mount_image("/from-id", image_from_id)
+        # Test mounting an image referenced by id
+        image_from_id = Image.from_id(prebuilt_image.object_id, client=client)
+        sb.mount_image("/from-id", image_from_id)
 
-    assert len(captured_requests) == 2
-    assert captured_requests[1].path == b"/from-id"
-    assert captured_requests[1].image_id == prebuilt_image.object_id
+        captured_requests = tcr_ctx.get_requests("TaskMountDirectory")
+        assert len(captured_requests) == 2
+        assert captured_requests[1].path == b"/from-id"
+        assert captured_requests[1].image_id == prebuilt_image.object_id
 
-    # Test mounting a snapshot image from the current session
-    snapshot_source = Sandbox.create(app=app)
-    snapshot_image = snapshot_source.snapshot_filesystem()
-    snapshot_source.terminate()
+        # Test mounting a snapshot image from the current session
+        snapshot_source = Sandbox.create(app=app)
+        snapshot_image = snapshot_source.snapshot_filesystem()
+        snapshot_source.terminate()
 
-    sb.mount_image("/snapshot", snapshot_image)
+        sb.mount_image("/snapshot", snapshot_image)
 
-    assert len(captured_requests) == 3
-    assert captured_requests[2].path == b"/snapshot"
-    assert captured_requests[2].image_id == snapshot_image.object_id
+        captured_requests = tcr_ctx.get_requests("TaskMountDirectory")
+        assert len(captured_requests) == 3
+        assert captured_requests[2].path == b"/snapshot"
+        assert captured_requests[2].image_id == snapshot_image.object_id
 
-    # Test validation: image created with non-copy add_local_file should raise
-    image_with_mount_layer = prebuilt_image.add_local_file(Path(__file__), "/tmp/sandbox_test.py")
-    sb_with_mount_layer = Sandbox.create(image=image_with_mount_layer, app=app)
-    sb_with_mount_layer.terminate()
+        # Test validation: image created with non-copy add_local_file should raise
+        image_with_mount_layer = prebuilt_image.add_local_file(Path(__file__), "/tmp/sandbox_test.py")
+        sb_with_mount_layer = Sandbox.create(image=image_with_mount_layer, app=app)
+        sb_with_mount_layer.terminate()
 
-    with pytest.raises(InvalidError) as exc_info:
-        sb.mount_image("/mount-layer", image_with_mount_layer)
+        with pytest.raises(InvalidError) as exc_info:
+            sb.mount_image("/mount-layer", image_with_mount_layer)
 
-    assert "add_local*" in str(exc_info.value)
-    assert "copy=True" in str(exc_info.value)
-    assert ".build()" in str(exc_info.value)
-    assert len(captured_requests) == 3
+        assert "add_local*" in str(exc_info.value)
+        assert "copy=True" in str(exc_info.value)
+        assert ".build()" in str(exc_info.value)
+        assert len(tcr_ctx.get_requests("TaskMountDirectory")) == 3
 
-    # Test validation: unbuilt images should raise with guidance
-    unbuilt_image = Image.debian_slim()
-    with pytest.raises(InvalidError) as exc_info:
-        sb.mount_image("/unbuilt", unbuilt_image)
-    assert "currently only supports Images that are either" in str(exc_info.value)
-    assert len(captured_requests) == 3
+        # Test validation: unbuilt images should raise with guidance
+        unbuilt_image = Image.debian_slim()
+        with pytest.raises(InvalidError) as exc_info:
+            sb.mount_image("/unbuilt", unbuilt_image)
+        assert "currently only supports Images that are either" in str(exc_info.value)
+        assert len(tcr_ctx.get_requests("TaskMountDirectory")) == 3
 
-    # Test validation: argument must be an Image instance
-    with pytest.raises(TypeError, match="expects an Image"):
-        sb.mount_image("/none", None)
-    with pytest.raises(TypeError, match="expects an Image"):
-        sb.mount_image("/bad-type", "not-an-image")  # type: ignore[arg-type]
-    assert len(captured_requests) == 3
+        # Test validation: argument must be an Image instance
+        with pytest.raises(TypeError, match="expects an Image"):
+            sb.mount_image("/none", None)
+        with pytest.raises(TypeError, match="expects an Image"):
+            sb.mount_image("/bad-type", "not-an-image")  # type: ignore[arg-type]
+        assert len(tcr_ctx.get_requests("TaskMountDirectory")) == 3
 
-    # Test validation: non-absolute path should raise
-    with pytest.raises(InvalidError, match="must be absolute"):
-        sb.mount_image("relative/path", prebuilt_image)
+        # Test validation: non-absolute path should raise
+        with pytest.raises(InvalidError, match="must be absolute"):
+            sb.mount_image("relative/path", prebuilt_image)
 
     sb.terminate()
 
 
-def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, app, monkeypatch):
+def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, app):
     """Test mounting an explicit empty image via Image.from_scratch()."""
-    captured_requests = []
-    original = FakeTaskCommandRouterClient.mount_image
-
-    async def _mount_image(self, request):
-        captured_requests.append(request)
-        return await original(self, request)
-
-    monkeypatch.setattr(FakeTaskCommandRouterClient, "mount_image", _mount_image, raising=True)
-
     sb = Sandbox.create(app=app)
-    sb.mount_image("/empty", Image.from_scratch())
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb.mount_image("/empty", Image.from_scratch())
 
+    captured_requests = tcr_ctx.get_requests("TaskMountDirectory")
     assert len(captured_requests) == 1
     assert captured_requests[0].path == b"/empty"
     assert captured_requests[0].image_id == ""
@@ -1091,42 +1047,36 @@ def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, app, mon
     sb.terminate()
 
 
-def test_snapshot_directory(servicer, client, app, monkeypatch):
+def test_snapshot_directory(servicer, client, app):
     """Test snapshotting a directory to create a new image."""
-    captured_requests = []
-    original = FakeTaskCommandRouterClient.snapshot_directory
-
-    async def _snapshot_directory(self, request):
-        captured_requests.append(request)
-        return await original(self, request)
-
-    monkeypatch.setattr(FakeTaskCommandRouterClient, "snapshot_directory", _snapshot_directory, raising=True)
-
     sb = Sandbox.create(app=app)
 
-    # Create and snapshot a directory
-    image = sb.snapshot_directory("/tmp")
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        # Create and snapshot a directory
+        image = sb.snapshot_directory("/tmp")
 
-    assert image.object_id == "im-snapshot-123"  # From mock
+        assert image.object_id == "im-snapshot-123"  # From mock
 
-    # Verify snapshot_id is set
-    assert len(captured_requests) == 1
-    snapshot_id = captured_requests[0].snapshot_id
-    assert snapshot_id, "snapshot_id must be non-empty"
+        # Verify snapshot_id is set
+        captured_requests = tcr_ctx.get_requests("TaskSnapshotDirectory")
+        assert len(captured_requests) == 1
+        snapshot_id = captured_requests[0].snapshot_id
+        assert snapshot_id, "snapshot_id must be non-empty"
 
-    # Verify each call generates a unique snapshot_id
-    image2 = sb.snapshot_directory("/var")
-    assert len(captured_requests) == 2
-    snapshot_id2 = captured_requests[1].snapshot_id
-    assert snapshot_id2, "snapshot_id must be non-empty"
-    assert snapshot_id != snapshot_id2, "Each snapshot call should generate a unique snapshot_id"
+        # Verify each call generates a unique snapshot_id
+        sb.snapshot_directory("/var")
+        captured_requests = tcr_ctx.get_requests("TaskSnapshotDirectory")
+        assert len(captured_requests) == 2
+        snapshot_id2 = captured_requests[1].snapshot_id
+        assert snapshot_id2, "snapshot_id must be non-empty"
+        assert snapshot_id != snapshot_id2, "Each snapshot call should generate a unique snapshot_id"
 
-    # Test validation: non-absolute path should raise
-    with pytest.raises(InvalidError, match="must be absolute"):
-        sb.snapshot_directory("relative/path")
+        # Test validation: non-absolute path should raise
+        with pytest.raises(InvalidError, match="must be absolute"):
+            sb.snapshot_directory("relative/path")
 
-    # The SDK sends ttl_seconds=None for now, pretending to be old client
-    assert not captured_requests[0].HasField("ttl_seconds")
+        # The SDK sends ttl_seconds=None for now, pretending to be old client
+        assert not captured_requests[0].HasField("ttl_seconds")
 
     sb.terminate()
 
@@ -1145,26 +1095,19 @@ def test_sandbox_create_with_snapshot_directory_image(servicer, client, app):
     assert servicer.sandbox_defs[-1].image_id == "im-snapshot-123"
 
 
-def test_unmount_image(servicer, client, app, monkeypatch):
+def test_unmount_image(servicer, client, app):
     """Test unmounting an image from a path in the sandbox."""
-    captured_requests = []
-    original = FakeTaskCommandRouterClient.unmount_image
-
-    async def _unmount_image(self, request):
-        captured_requests.append(request)
-        return await original(self, request)
-
-    monkeypatch.setattr(FakeTaskCommandRouterClient, "unmount_image", _unmount_image, raising=True)
-
     sb = Sandbox.create(app=app)
 
-    sb.unmount_image("/mounted")
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb.unmount_image("/mounted")
 
-    assert len(captured_requests) == 1
-    assert captured_requests[0].path == b"/mounted"
+        captured_requests = tcr_ctx.get_requests("TaskUnmountDirectory")
+        assert len(captured_requests) == 1
+        assert captured_requests[0].path == b"/mounted"
 
-    with pytest.raises(InvalidError, match="must be absolute"):
-        sb.unmount_image("relative/path")
+        with pytest.raises(InvalidError, match="must be absolute"):
+            sb.unmount_image("relative/path")
 
     sb.terminate()
 
@@ -1263,12 +1206,7 @@ def test_sandbox_terminate_wait(app, servicer):
 
 
 @skip_non_subprocess
-def test_sandbox_container_terminate_wait(app, servicer, monkeypatch):
-    async def _mk_router(cls, server_client, task_id):
-        return FakeTaskCommandRouterClient(server_client)
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
-
+def test_sandbox_container_terminate_wait(app, servicer):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
@@ -1299,12 +1237,7 @@ def test_sandbox_container_terminate_wait(app, servicer, monkeypatch):
 
 
 @skip_non_subprocess
-def test_sandbox_container_wait_after_natural_exit(app, servicer, monkeypatch):
-    async def _mk_router(cls, server_client, task_id):
-        return FakeTaskCommandRouterClient(server_client)
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
-
+def test_sandbox_container_wait_after_natural_exit(app, servicer):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
@@ -1344,80 +1277,44 @@ def test_sandbox_container_wait_after_natural_exit(app, servicer, monkeypatch):
 
 
 @skip_non_subprocess
-def test_sandbox_container_get_and_list_forward_include_terminated(app, servicer, monkeypatch):
-    router_client = FakeTaskCommandRouterClient(None)
-    get_request: tcr_pb2.TaskContainerGetRequest | None = None
-    list_request: tcr_pb2.TaskContainerListRequest | None = None
-
-    async def _mk_router(cls, server_client, task_id):
-        return router_client
-
-    original_get = FakeTaskCommandRouterClient.container_get
-    original_list = FakeTaskCommandRouterClient.container_list
-
-    async def _container_get(self, request):
-        nonlocal get_request
-        get_request = request
-        return await original_get(self, request)
-
-    async def _container_list(self, request):
-        nonlocal list_request
-        list_request = request
-        return await original_list(self, request)
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
-    monkeypatch.setattr(FakeTaskCommandRouterClient, "container_get", _container_get, raising=True)
-    monkeypatch.setattr(FakeTaskCommandRouterClient, "container_list", _container_list, raising=True)
-
+def test_sandbox_container_get_and_list_forward_include_terminated(app, servicer):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
-    container = sb._experimental_containers.create("bash", "-c", "exit 0", name="oneshot", image=image)
-    container.wait()
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        container = sb._experimental_containers.create("bash", "-c", "exit 0", name="oneshot", image=image)
+        container.wait()
 
-    sb._experimental_containers.get(name="oneshot", include_terminated=True)
-    containers = sb._experimental_containers.list(include_terminated=True)
+        sb._experimental_containers.get(name="oneshot", include_terminated=True)
+        containers = sb._experimental_containers.list(include_terminated=True)
 
-    assert get_request is not None
+    (get_request,) = tcr_ctx.get_requests("TaskContainerGet")
     assert get_request.include_terminated is True
-    assert list_request is not None
+    (list_request,) = tcr_ctx.get_requests("TaskContainerList")
     assert list_request.include_terminated is True
     assert all(isinstance(container, SandboxContainer) for container in containers)
 
 
 @skip_non_subprocess
-def test_sandbox_container_create_accepts_prebuilt_image(app, servicer, monkeypatch):
-    router_client = FakeTaskCommandRouterClient(None)
-
-    async def _mk_router(cls, server_client, task_id):
-        return router_client
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
-
+def test_sandbox_container_create_accepts_prebuilt_image(app, servicer):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
 
-    assert router_client.last_container_create_request is not None
-    assert router_client.last_container_create_request.image_id == image.object_id
-    assert list(router_client.last_container_create_request.secret_ids) == []
+    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
+    assert container_create_request.image_id == image.object_id
+    assert list(container_create_request.secret_ids) == []
 
 
 @skip_non_subprocess
-def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer, monkeypatch):
-    router_client = FakeTaskCommandRouterClient(None)
-
-    async def _mk_router(cls, server_client, task_id):
-        return router_client
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
-
+def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
@@ -1425,20 +1322,21 @@ def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer, mon
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    sb._experimental_containers.create(
-        "bash",
-        "-c",
-        "sleep 100",
-        name="worker",
-        image=image,
-        env={"API_KEY": "override", "PLAIN_ENV": "plain"},
-        secrets=[secret],
-    )
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_containers.create(
+            "bash",
+            "-c",
+            "sleep 100",
+            name="worker",
+            image=image,
+            env={"API_KEY": "override", "PLAIN_ENV": "plain"},
+            secrets=[secret],
+        )
 
-    assert router_client.last_container_create_request is not None
-    assert router_client.last_container_create_request.image_id == image.object_id
-    assert dict(router_client.last_container_create_request.env) == {"API_KEY": "override", "PLAIN_ENV": "plain"}
-    assert list(router_client.last_container_create_request.secret_ids) == [secret.object_id]
+    (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
+    assert container_create_request.image_id == image.object_id
+    assert dict(container_create_request.env) == {"API_KEY": "override", "PLAIN_ENV": "plain"}
+    assert list(container_create_request.secret_ids) == [secret.object_id]
 
 
 def test_sandbox_container_create_rejects_image_with_mount_layers(app):

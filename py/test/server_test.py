@@ -10,10 +10,22 @@ from modal._server import _Server
 from modal.exception import InvalidError, NotFoundError
 from modal.server import Server
 from modal_proto import api_pb2
+from test import conftest as client_test_conftest
 
 # =============================================================================
 # Basic Server Registration
 # =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_servicer_factory_uses_kernel_selected_tcp_ports(blob_server, credentials, monkeypatch):
+    def fail_find_free_port() -> int:
+        raise AssertionError("servicer_factory should not preselect TCP server ports")
+
+    monkeypatch.setattr(client_test_conftest, "find_free_port", fail_find_free_port, raising=False)
+    async with client_test_conftest.servicer_factory(blob_server, credentials) as servicer:
+        assert not servicer.client_addr.endswith(":0")
+        assert not servicer.task_command_router_url.endswith(":0")
 
 
 server_app = modal.App("server-test-app", include_source=False)

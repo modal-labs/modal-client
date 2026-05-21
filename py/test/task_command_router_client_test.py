@@ -15,6 +15,7 @@ from grpclib.client import Channel
 from grpclib.exceptions import StreamTerminatedError
 
 from modal._utils.task_command_router_client import TaskCommandRouterClient
+from modal.client import _Client
 from modal.exception import AuthError, ExecTimeoutError, ServiceError, TimeoutError as ModalTimeoutError
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
@@ -87,6 +88,14 @@ async def make_router_client():
 
     for client in clients:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_connect_rejects_http_for_non_localhost_server_client():
+    server_client = _Client("https://api.modal.com", api_pb2.CLIENT_TYPE_CLIENT, credentials=None)
+
+    with pytest.raises(ValueError, match="Task router URL must be https"):
+        await TaskCommandRouterClient._connect(server_client, "ta-123", "http://router.example:4321", "jwt")
 
 
 @pytest.mark.asyncio

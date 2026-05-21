@@ -1332,47 +1332,29 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, toke
 
 
 @skip_windows("modal shell is not supported on Windows.")
-def test_container_exec(servicer, set_env_client, monkeypatch):
-    from modal._utils.task_command_router_client import TaskCommandRouterClient
-    from test.conftest import FakeTaskCommandRouterClient
-
-    mock_tcr = FakeTaskCommandRouterClient(None)
-
-    async def _mk_router(cls, server_client, task_id):
-        return mock_tcr
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
-
+def test_container_exec(servicer, set_env_client):
     # Test non-PTY path: runs the command and waits for exit
-    run_cli_command(["container", "exec", "--no-pty", "ta-123", "echo", "Hello World"])
-    assert len(mock_tcr._exec_start_requests) == 1
-    req = mock_tcr._exec_start_requests[0]
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        run_cli_command(["container", "exec", "--no-pty", "ta-123", "echo", "Hello World"])
+
+    (req,) = tcr_ctx.get_requests("TaskExecStart")
     assert list(req.command_args) == ["echo", "Hello World"]
     assert req.task_id == "ta-123"
     assert not req.HasField("pty_info")
 
 
 @skip_windows("modal shell is not supported on Windows.")
-def test_container_exec_with_pty(servicer, set_env_client, mock_shell_pty, monkeypatch):
+def test_container_exec_with_pty(servicer, set_env_client, mock_shell_pty):
     """Verify that --pty passes PTY info and attach works for a quick command."""
-    from modal._utils.task_command_router_client import TaskCommandRouterClient
-    from test.conftest import FakeTaskCommandRouterClient
-
-    mock_tcr = FakeTaskCommandRouterClient(None)
-
-    async def _mk_router(cls, server_client, task_id):
-        return mock_tcr
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
-
     fake_stdin, captured_out = mock_shell_pty
     fake_stdin.clear()
     fake_stdin.extend([b"exit\n"])
 
     # Use a command that produces output immediately so on_connect is set quickly
-    run_cli_command(["container", "exec", "--pty", "ta-123", "echo", "Hello World"])
-    assert len(mock_tcr._exec_start_requests) == 1
-    req = mock_tcr._exec_start_requests[0]
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        run_cli_command(["container", "exec", "--pty", "ta-123", "echo", "Hello World"])
+
+    (req,) = tcr_ctx.get_requests("TaskExecStart")
     assert list(req.command_args) == ["echo", "Hello World"]
     assert req.task_id == "ta-123"
     assert req.pty_info.enabled is True

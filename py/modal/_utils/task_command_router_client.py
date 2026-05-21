@@ -193,18 +193,25 @@ class TaskCommandRouterClient:
     ) -> "TaskCommandRouterClient":
         """Build a connected client from a jwt and url."""
         o = urllib.parse.urlparse(url)
-        if o.scheme != "https":
+        is_localhost_client = server_client._is_localhost
+        if o.scheme == "http":
+            # plain http serving should only be used for unit tests
+            if not is_localhost_client:
+                raise ValueError(f"Task router URL must be https, got: {url}")
+            ssl_context = None
+        elif o.scheme == "https":
+            ssl_context = ssl.create_default_context()
+            if is_localhost_client:
+                # Allow insecure TLS when the Modal server client points to localhost
+                # This is typically triggered from local e2e testing
+                logger.warning("Using insecure TLS for task command router because server client points to localhost")
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+        else:
             raise ValueError(f"Task router URL must be https, got: {url}")
 
         host, _, port_str = o.netloc.partition(":")
-        port = int(port_str) if port_str else 443
-        ssl_context = ssl.create_default_context()
-
-        # Allow insecure TLS when explicitly enabled via config.
-        if server_client._is_localhost:
-            logger.warning("Using insecure TLS for task command router because server client points to localhost")
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
+        port = int(port_str) if port_str else (443 if o.scheme == "https" else 80)
 
         channel = PermanentCloseableChannel(
             host,

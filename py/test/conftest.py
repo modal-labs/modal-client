@@ -45,10 +45,9 @@ from modal._serialization import deserialize, deserialize_data_format, deseriali
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
-from modal._utils.grpc_utils import custom_detail_codec, find_free_port
+from modal._utils.grpc_utils import custom_detail_codec
 from modal._utils.http_utils import run_temporary_http_server
 from modal._utils.jwt_utils import DecodedJwt
-from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.cli.entry_point import entrypoint_cli
@@ -56,31 +55,53 @@ from modal.client import Client
 from modal.cls import _Cls
 from modal.image import ImageBuilderVersion
 from modal.mount import PYTHON_STANDALONE_VERSIONS, client_mount_name, python_standalone_mount_name
-from modal_proto import api_grpc, api_pb2, task_command_router_pb2 as sr_pb2
+from modal_proto import api_grpc, api_pb2, task_command_router_grpc, task_command_router_pb2 as sr_pb2
 
 VALID_GPU_TYPES = ["ANY", "T4", "L4", "A10G", "L40S", "A100", "A100-40GB", "A100-80GB", "H100"]
 VALID_CLOUD_PROVIDERS = ["AWS", "GCP", "OCI", "AUTO", "XYZ"]
 
 
-class FakeTaskCommandRouterClient:
-    """Test helper that mimics the task command router API using a local subprocess."""
+@dataclasses.dataclass
+class TaskCommandRouterTaskState:
+    procs: dict[str, asyncio.subprocess.Process] = dataclasses.field(default_factory=dict)
+    stdin_offsets: dict[str, int] = dataclasses.field(default_factory=dict)
+    container_procs: dict[str, asyncio.subprocess.Process] = dataclasses.field(default_factory=dict)
+    container_names: dict[str, str] = dataclasses.field(default_factory=dict)
+    container_name_to_id: dict[str, str] = dataclasses.field(default_factory=dict)
+    latest_container_name_to_id: dict[str, str] = dataclasses.field(default_factory=dict)
+    container_results: dict[str, api_pb2.GenericResult] = dataclasses.field(default_factory=dict)
+    container_termination_requested: set[str] = dataclasses.field(default_factory=set)
 
-    def __init__(self, server_client):
-        self._procs: dict[str, asyncio.subprocess.Process] = {}
-        self._stdin_offsets: dict[str, int] = {}
-        self._container_procs: dict[str, asyncio.subprocess.Process] = {}
-        self._container_names: dict[str, str] = {}
-        self._container_name_to_id: dict[str, str] = {}
-        self._latest_container_name_to_id: dict[str, str] = {}
-        self._container_results: dict[str, api_pb2.GenericResult] = {}
-        self._container_termination_requested: set[str] = set()
+
+@patch_mock_servicer
+class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBase):
+    """Test task command router service that runs commands as local subprocesses."""
+
+    def __init__(self):
+        self._task_states: defaultdict[str, TaskCommandRouterTaskState] = defaultdict(TaskCommandRouterTaskState)
         self._next_container_id = 0
         self._exec_start_requests: list[sr_pb2.TaskExecStartRequest] = []
         self.last_exec_start_request: sr_pb2.TaskExecStartRequest | None = None
         self.last_container_create_request: sr_pb2.TaskContainerCreateRequest | None = None
+        self.last_snapshot_filesystem_request: sr_pb2.TaskSnapshotFilesystemRequest | None = None
         self.shell_prompt: bytes | None = None
 
-    async def exec_start(self, request: sr_pb2.TaskExecStartRequest) -> sr_pb2.TaskExecStartResponse:
+    def _task_state(self, task_id: str) -> TaskCommandRouterTaskState:
+        return self._task_states[task_id]
+
+    async def recv_request(self, event: RecvRequest) -> None:
+        pass
+
+    async def SandboxStdinWriteV2(self, stream) -> None:
+        await stream.recv_message()
+        raise GRPCError(Status.UNIMPLEMENTED, "SandboxStdinWriteV2 not implemented in mock task command router")
+
+    async def SandboxStdioReadV2(self, stream) -> None:
+        await stream.recv_message()
+        raise GRPCError(Status.UNIMPLEMENTED, "SandboxStdioReadV2 not implemented in mock task command router")
+
+    async def TaskExecStart(self, stream) -> None:
+        request: sr_pb2.TaskExecStartRequest = await stream.recv_message()
         # Mimic task_command_router behavior - we should remove this proto variant though.
         # TODO(saltzm): Remove the proto variant.
         assert request.stderr_config != sr_pb2.TaskExecStderrConfig.TASK_EXEC_STDERR_CONFIG_STDOUT
@@ -95,131 +116,142 @@ class FakeTaskCommandRouterClient:
             cwd=(request.workdir or None),
             env={**os.environ, **dict(request.env)},
         )
-        self._procs[request.exec_id] = proc
-        self._stdin_offsets[request.exec_id] = 0
-        return sr_pb2.TaskExecStartResponse()
+        task_state = self._task_state(request.task_id)
+        task_state.procs[request.exec_id] = proc
+        task_state.stdin_offsets[request.exec_id] = 0
+        await stream.send_message(sr_pb2.TaskExecStartResponse())
 
-    async def exec_stdio_read(
-        self,
-        task_id: str,
-        exec_id: str,
-        file_descriptor: "api_pb2.FileDescriptor.ValueType",
-        deadline: float | None = None,
-    ):
-        proc = self._procs[exec_id]
-        if file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+    async def TaskExecStdioRead(self, stream) -> None:
+        request: sr_pb2.TaskExecStdioReadRequest = await stream.recv_message()
+        proc = self._task_state(request.task_id).procs[request.exec_id]
+        if request.file_descriptor == sr_pb2.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT:
             # Inject shell prompt as the first output chunk, matching the behavior of
             # MockClientServicer.ContainerExecGetOutput for interactive shell tests.
-            if self.shell_prompt:
-                yield sr_pb2.TaskExecStdioReadResponse(data=self.shell_prompt)
-            stream = proc.stdout
-        elif file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
-            stream = proc.stderr
+            if self.shell_prompt and request.offset == 0:
+                await stream.send_message(sr_pb2.TaskExecStdioReadResponse(data=self.shell_prompt))
+            proc_stream = proc.stdout
+        elif request.file_descriptor == sr_pb2.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR:
+            proc_stream = proc.stderr
         else:
             raise ValueError("Unsupported file descriptor")
 
         while True:
-            try:
-                timeout = (deadline - time.monotonic()) if deadline is not None else None
-                chunk = await asyncio.wait_for(stream.read(4096), timeout=timeout)
-            except asyncio.TimeoutError:
-                from modal.exception import ExecTimeoutError
-
-                raise ExecTimeoutError("deadline exceeded")
-
+            chunk = await proc_stream.read(4096)
             if not chunk:
                 return
-            yield sr_pb2.TaskExecStdioReadResponse(data=chunk)
+            await stream.send_message(sr_pb2.TaskExecStdioReadResponse(data=chunk))
 
-    async def exec_stdin_write(self, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool):
-        proc = self._procs[exec_id]
+    async def TaskExecStdinWrite(self, stream) -> None:
+        request: sr_pb2.TaskExecStdinWriteRequest = await stream.recv_message()
+        task_state = self._task_state(request.task_id)
+        proc = task_state.procs[request.exec_id]
         # Simple offset handling: ignore if offset is behind current.
-        current = self._stdin_offsets[exec_id]
-        if offset != current:
+        current = task_state.stdin_offsets[request.exec_id]
+        if request.offset != current:
             # For tests, assume sequential writes; ignore mismatches.
             pass
-        if data:
+        if request.data:
             try:
-                proc.stdin.write(data)
+                proc.stdin.write(request.data)
                 await proc.stdin.drain()
             except ConnectionError:
                 # Ignore broken pipes/connection errors
                 pass
-            self._stdin_offsets[exec_id] = current + len(data)
-        if eof:
+            task_state.stdin_offsets[request.exec_id] = current + len(request.data)
+        if request.eof:
             try:
                 proc.stdin.close()
             except Exception:
                 pass
-        return sr_pb2.TaskExecStdinWriteResponse()
+        await stream.send_message(sr_pb2.TaskExecStdinWriteResponse())
 
-    async def exec_poll(self, task_id: str, exec_id: str, deadline: float | None = None) -> sr_pb2.TaskExecPollResponse:
-        proc = self._procs[exec_id]
-        if deadline is not None and time.monotonic() >= deadline:
-            from modal.exception import ExecTimeoutError
+    async def TaskExecStdinStatus(self, stream) -> None:
+        request: sr_pb2.TaskExecStdinStatusRequest = await stream.recv_message()
+        task_state = self._task_state(request.task_id)
+        await stream.send_message(
+            sr_pb2.TaskExecStdinStatusResponse(
+                num_bytes_written=task_state.stdin_offsets.get(request.exec_id, 0),
+                closed=False,
+            )
+        )
 
-            raise ExecTimeoutError("deadline exceeded")
+    async def TaskExecStdinWriteStream(self, stream) -> None:
+        request: sr_pb2.TaskExecStdinWriteStreamRequest = await stream.recv_message()
+        if request.WhichOneof("payload") != "start":
+            raise GRPCError(Status.INVALID_ARGUMENT, "first stdin write stream message must be start")
+        start = request.start
+        task_state = self._task_state(start.task_id)
+        proc = task_state.procs[start.exec_id]
+        current = task_state.stdin_offsets[start.exec_id]
+        if start.offset != current:
+            pass
+        while request := await stream.recv_message():
+            if request.WhichOneof("payload") != "data":
+                raise GRPCError(Status.INVALID_ARGUMENT, "stdin write stream message must contain data")
+            if request.data:
+                try:
+                    proc.stdin.write(request.data)
+                    await proc.stdin.drain()
+                except ConnectionError:
+                    pass
+                current += len(request.data)
+                task_state.stdin_offsets[start.exec_id] = current
+        await stream.send_message(sr_pb2.TaskExecStdinWriteStreamResponse())
 
+    async def TaskExecPoll(self, stream) -> None:
+        request: sr_pb2.TaskExecPollRequest = await stream.recv_message()
+        proc = self._task_state(request.task_id).procs[request.exec_id]
         if proc.returncode is None:
-            return sr_pb2.TaskExecPollResponse()
+            await stream.send_message(sr_pb2.TaskExecPollResponse())
         else:
-            return sr_pb2.TaskExecPollResponse(code=proc.returncode)
+            await stream.send_message(sr_pb2.TaskExecPollResponse(code=proc.returncode))
 
-    async def exec_wait(self, task_id: str, exec_id: str, deadline: float | None = None) -> sr_pb2.TaskExecWaitResponse:
-        proc = self._procs[exec_id]
-        try:
-            if deadline is None:
-                await proc.wait()
-            else:
-                timeout = max(0, deadline - time.monotonic())
-                await asyncio.wait_for(proc.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
-            from modal.exception import ExecTimeoutError
+    async def TaskExecWait(self, stream) -> None:
+        request: sr_pb2.TaskExecWaitRequest = await stream.recv_message()
+        proc = self._task_state(request.task_id).procs[request.exec_id]
+        await proc.wait()
+        await stream.send_message(sr_pb2.TaskExecWaitResponse(code=proc.returncode))
 
-            raise ExecTimeoutError("deadline exceeded")
-
-        return sr_pb2.TaskExecWaitResponse(code=proc.returncode)
-
-    async def mount_image(self, request: sr_pb2.TaskMountDirectoryRequest):
-        """Mock mount_image for testing - stores requests for verification."""
+    async def TaskMountDirectory(self, stream) -> None:
+        request: sr_pb2.TaskMountDirectoryRequest = await stream.recv_message()
         if not hasattr(self, "_mount_requests"):
             self._mount_requests = []
         self._mount_requests.append(request)
-        # Return empty response (no fields in the actual proto)
-        return None
+        await stream.send_message(Empty())
 
-    async def unmount_image(self, request: sr_pb2.TaskUnmountDirectoryRequest):
-        """Mock unmount_image for testing - stores requests for verification."""
+    async def TaskUnmountDirectory(self, stream) -> None:
+        request: sr_pb2.TaskUnmountDirectoryRequest = await stream.recv_message()
         if not hasattr(self, "_unmount_requests"):
             self._unmount_requests = []
         self._unmount_requests.append(request)
-        return None
+        await stream.send_message(Empty())
 
-    async def snapshot_directory(
-        self, request: sr_pb2.TaskSnapshotDirectoryRequest, timeout: Optional[float] = None
-    ) -> sr_pb2.TaskSnapshotDirectoryResponse:
-        """Mock snapshot_directory for testing - returns a fake image ID."""
+    async def TaskSnapshotDirectory(self, stream) -> None:
+        request: sr_pb2.TaskSnapshotDirectoryRequest = await stream.recv_message()
         if not hasattr(self, "_snapshot_requests"):
             self._snapshot_requests = []
         self._snapshot_requests.append(request)
-        return sr_pb2.TaskSnapshotDirectoryResponse(image_id="im-snapshot-123")
+        await stream.send_message(sr_pb2.TaskSnapshotDirectoryResponse(image_id="im-snapshot-123"))
 
-    async def snapshot_filesystem(
-        self, request: sr_pb2.TaskSnapshotFilesystemRequest, timeout: Optional[float] = None
-    ) -> sr_pb2.TaskSnapshotFilesystemResponse:
-        """Mock snapshot_filesystem for testing - returns a fake image ID."""
+    async def TaskSnapshotFilesystem(self, stream) -> None:
+        request: sr_pb2.TaskSnapshotFilesystemRequest = await stream.recv_message()
         self.last_snapshot_filesystem_request = request
-        return sr_pb2.TaskSnapshotFilesystemResponse(image_id="im-snapshot-fs-123")
+        if not hasattr(self, "_snapshot_filesystem_requests"):
+            self._snapshot_filesystem_requests = []
+        self._snapshot_filesystem_requests.append(request)
+        await stream.send_message(sr_pb2.TaskSnapshotFilesystemResponse(image_id="im-snapshot-fs-123"))
 
-    def _container_result(self, container_id: str) -> api_pb2.GenericResult | None:
-        if container_id in self._container_results:
-            return self._container_results[container_id]
+    def _container_result(
+        self, task_state: TaskCommandRouterTaskState, container_id: str
+    ) -> api_pb2.GenericResult | None:
+        if container_id in task_state.container_results:
+            return task_state.container_results[container_id]
 
-        proc = self._container_procs[container_id]
+        proc = task_state.container_procs[container_id]
         if proc.returncode is None:
             return None
 
-        if container_id in self._container_termination_requested:
+        if container_id in task_state.container_termination_requested:
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
         elif proc.returncode == 0:
             result = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
@@ -228,29 +260,31 @@ class FakeTaskCommandRouterClient:
                 status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                 exitcode=proc.returncode,
             )
-        self._container_results[container_id] = result
-        self._release_container_name_if_current(container_id)
+        task_state.container_results[container_id] = result
+        self._release_container_name_if_current(task_state, container_id)
         return result
 
-    def _release_container_name_if_current(self, container_id: str) -> None:
-        container_name = self._container_names[container_id]
-        if self._container_name_to_id.get(container_name) == container_id:
-            self._container_name_to_id.pop(container_name, None)
+    def _release_container_name_if_current(self, task_state: TaskCommandRouterTaskState, container_id: str) -> None:
+        container_name = task_state.container_names[container_id]
+        if task_state.container_name_to_id.get(container_name) == container_id:
+            task_state.container_name_to_id.pop(container_name, None)
 
-    def _container_status(self, container_id: str) -> str:
-        result = self._container_result(container_id)
+    def _container_status(self, task_state: TaskCommandRouterTaskState, container_id: str) -> str:
+        result = self._container_result(task_state, container_id)
         if result is not None:
             if result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
                 return "success"
             if result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
                 return "terminated"
             return "failure"
-        if container_id in self._container_termination_requested:
+        if container_id in task_state.container_termination_requested:
             return "stopping"
         return "running"
 
-    async def container_create(self, request: sr_pb2.TaskContainerCreateRequest) -> sr_pb2.TaskContainerCreateResponse:
-        if request.container_name in self._container_name_to_id:
+    async def TaskContainerCreate(self, stream) -> None:
+        request: sr_pb2.TaskContainerCreateRequest = await stream.recv_message()
+        task_state = self._task_state(request.task_id)
+        if request.container_name in task_state.container_name_to_id:
             raise GRPCError(Status.INVALID_ARGUMENT, "container name already in use")
         self.last_container_create_request = request
 
@@ -263,94 +297,106 @@ class FakeTaskCommandRouterClient:
             stdin=asyncio.subprocess.DEVNULL,
             cwd=(request.workdir or None),
         )
-        self._container_procs[container_id] = proc
-        self._container_names[container_id] = request.container_name
-        self._container_name_to_id[request.container_name] = container_id
-        self._latest_container_name_to_id[request.container_name] = container_id
-        return sr_pb2.TaskContainerCreateResponse(
-            container_id=container_id,
-            container_name=request.container_name,
+        task_state.container_procs[container_id] = proc
+        task_state.container_names[container_id] = request.container_name
+        task_state.container_name_to_id[request.container_name] = container_id
+        task_state.latest_container_name_to_id[request.container_name] = container_id
+        await stream.send_message(
+            sr_pb2.TaskContainerCreateResponse(
+                container_id=container_id,
+                container_name=request.container_name,
+            )
         )
 
-    async def container_get(self, request: sr_pb2.TaskContainerGetRequest) -> sr_pb2.TaskContainerGetResponse:
-        container_ids = self._latest_container_name_to_id if request.include_terminated else self._container_name_to_id
+    async def TaskContainerGet(self, stream) -> None:
+        request: sr_pb2.TaskContainerGetRequest = await stream.recv_message()
+        task_state = self._task_state(request.task_id)
+        if request.include_terminated:
+            container_ids = task_state.latest_container_name_to_id
+        else:
+            container_ids = task_state.container_name_to_id
         container_id = container_ids.get(request.container_name)
         if container_id is None:
             raise GRPCError(Status.NOT_FOUND, "container not found")
 
-        result = self._container_result(container_id)
+        result = self._container_result(task_state, container_id)
         container = sr_pb2.TaskContainerInfo(
             container_id=container_id,
             container_name=request.container_name,
-            status=self._container_status(container_id),
+            status=self._container_status(task_state, container_id),
         )
         if result is not None:
             container.result.CopyFrom(result)
-        return sr_pb2.TaskContainerGetResponse(container=container)
+        await stream.send_message(sr_pb2.TaskContainerGetResponse(container=container))
 
-    async def container_list(self, request: sr_pb2.TaskContainerListRequest) -> sr_pb2.TaskContainerListResponse:
+    async def TaskContainerList(self, stream) -> None:
+        request: sr_pb2.TaskContainerListRequest = await stream.recv_message()
+        task_state = self._task_state(request.task_id)
         containers = []
-        for container_id, container_name in self._container_names.items():
-            if not request.include_terminated and self._container_name_to_id.get(container_name) != container_id:
+        for container_id, container_name in task_state.container_names.items():
+            if not request.include_terminated and task_state.container_name_to_id.get(container_name) != container_id:
                 continue
-            result = self._container_result(container_id)
+            result = self._container_result(task_state, container_id)
             container = sr_pb2.TaskContainerInfo(
                 container_id=container_id,
                 container_name=container_name,
-                status=self._container_status(container_id),
+                status=self._container_status(task_state, container_id),
             )
             if result is not None:
                 container.result.CopyFrom(result)
             containers.append(container)
-        return sr_pb2.TaskContainerListResponse(containers=containers)
+        await stream.send_message(sr_pb2.TaskContainerListResponse(containers=containers))
 
-    async def container_terminate(
-        self,
-        request: sr_pb2.TaskContainerTerminateRequest,
-    ) -> sr_pb2.TaskContainerTerminateResponse:
+    async def TaskContainerTerminate(self, stream) -> None:
+        request: sr_pb2.TaskContainerTerminateRequest = await stream.recv_message()
+        task_state = self._task_state(request.task_id)
         container_id = request.container_id
-        if container_id not in self._container_procs:
+        if container_id not in task_state.container_procs:
             raise GRPCError(Status.NOT_FOUND, "container not found")
 
-        self._container_termination_requested.add(container_id)
-        proc = self._container_procs[container_id]
+        task_state.container_termination_requested.add(container_id)
+        proc = task_state.container_procs[container_id]
         if proc.returncode is None:
             proc.terminate()
         else:
-            self._release_container_name_if_current(container_id)
-        return sr_pb2.TaskContainerTerminateResponse()
+            self._release_container_name_if_current(task_state, container_id)
+        await stream.send_message(sr_pb2.TaskContainerTerminateResponse())
 
-    async def container_wait(self, request: sr_pb2.TaskContainerWaitRequest) -> sr_pb2.TaskContainerWaitResponse:
+    async def TaskContainerWait(self, stream) -> None:
+        request: sr_pb2.TaskContainerWaitRequest = await stream.recv_message()
+        task_state = self._task_state(request.task_id)
         container_id = request.container_id
-        if container_id not in self._container_procs:
+        if container_id not in task_state.container_procs:
             raise GRPCError(Status.NOT_FOUND, "container not found")
 
         deadline = time.monotonic() + request.timeout
         while True:
-            result = self._container_result(container_id)
+            result = self._container_result(task_state, container_id)
             if result is not None:
-                return sr_pb2.TaskContainerWaitResponse(result=result)
+                await stream.send_message(sr_pb2.TaskContainerWaitResponse(result=result))
+                return
             if request.timeout == 0 or time.monotonic() >= deadline:
-                return sr_pb2.TaskContainerWaitResponse()
+                await stream.send_message(sr_pb2.TaskContainerWaitResponse())
+                return
             await asyncio.sleep(0.05)
 
-
-@pytest.fixture(autouse=True)
-def _setup_command_router(monkeypatch):
-    """Autouse fixture that patches ``TaskCommandRouterClient.init`` to use
-    ``FakeTaskCommandRouterClient``.
-
-    This ensures all tests that call sandbox.exec() get a working router by default.
-    """
-
-    async def _mk_router(cls, server_client, task_id):
-        return FakeTaskCommandRouterClient(server_client)
-
-    async def _mk_router_v2(cls, server_client, sandbox_id, task_id):
-        return FakeTaskCommandRouterClient(server_client)
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
-    monkeypatch.setattr(TaskCommandRouterClient, "init_v2", classmethod(_mk_router_v2))
+    async def cleanup(self) -> None:
+        procs: list[asyncio.subprocess.Process] = []
+        for task_state in self._task_states.values():
+            procs.extend(task_state.procs.values())
+            procs.extend(task_state.container_procs.values())
+        for proc in procs:
+            if proc.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    proc.terminate()
+        for proc in procs:
+            if proc.returncode is None:
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(proc.wait(), timeout=1)
+        for proc in procs:
+            if proc.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    proc.kill()
 
 
 @contextlib.contextmanager
@@ -562,8 +608,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     # Set when the server runs
     client_addr: str
     container_addr: str
+    task_command_router: MockTaskCommandRouterServicer
+    task_command_router_url: str
 
-    def __init__(self, blob_host, blobs, blocks, files_sha2data, credentials, port):
+    def __init__(self, blob_host, blobs, blocks, files_sha2data, credentials):
         self.default_published_client_mount = "mo-123"
         self.default_username = "test-user"
         self.use_blob_outputs = False
@@ -735,7 +783,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.function_get_server_warnings = None
         self.resp_jitter_secs: float = 0.0
-        self.port = port
         # Set a list of custom, fixed responses for the AttemptAwait RPC.
         # This mock server will return responses in order. The regular behavior will resume once this list is exhausted.
         self.attempt_await_responses: list[api_pb2.AttemptAwaitResponse] = []
@@ -774,6 +821,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # TODO: It'd be great to make this easy to apply to all gRPC method handlers.
         # Some way to decorate `stream.send_message`.
         self.resp_jitter_secs = secs
+
+    async def cleanup(self) -> None:
+        self.container_heartbeat_abort.set()
 
     async def recv_request(self, event: RecvRequest):
         # Make sure metadata is correct
@@ -889,7 +939,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 for method_name, method_definition in function_proto.method_definitions.items()
             },
             function_schema=function_proto.function_schema,
-            input_plane_url=f"http://127.0.0.1:{self.port}" if function_proto.routing_region else None,
+            input_plane_url=self.client_addr if function_proto.routing_region else None,
             input_plane_region=function_proto.routing_region,
             max_object_size_bytes=self.max_object_size_bytes,
             definition_id=definition_id,
@@ -2415,13 +2465,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def TaskGetCommandRouterAccess(self, stream):
         _request: api_pb2.TaskGetCommandRouterAccessRequest = await stream.recv_message()
         await stream.send_message(
-            api_pb2.TaskGetCommandRouterAccessResponse(url="http://localhost:50051", jwt="fake-jwt-token")
+            api_pb2.TaskGetCommandRouterAccessResponse(url=self.task_command_router_url, jwt="fake-jwt-token")
         )
 
     async def SandboxGetCommandRouterAccess(self, stream):
         _request: api_pb2.SandboxGetCommandRouterAccessRequest = await stream.recv_message()
         await stream.send_message(
-            api_pb2.SandboxGetCommandRouterAccessResponse(url="http://localhost:50051", jwt="fake-jwt-token")
+            api_pb2.SandboxGetCommandRouterAccessResponse(url=self.task_command_router_url, jwt="fake-jwt-token")
         )
 
     async def TaskGetInfo(self, stream):
@@ -3402,17 +3452,28 @@ def blob_server():
 
 
 @contextlib.asynccontextmanager
-async def run_server(servicer, host=None, port=None, path=None):
+async def run_server(servicer, host=None, port=None, path=None, ssl_context=None):
     server = None
 
     async def _start_servicer():
         nonlocal server
         server = grpclib.server.Server([servicer], status_details_codec=custom_detail_codec)
         listen(server, RecvRequest, servicer.recv_request)
-        await server.start(host=host, port=port, path=path)
+        # `path` starts a Unix socket server, in which case host/port must be unset.
+        # For TCP servers, port 0 asks the kernel to choose a free port atomically.
+        server_port = 0 if path is None and port is None else port
+        await server.start(host=host, port=server_port, path=path, ssl=ssl_context)
+        if path is not None:
+            return None
+        asyncio_server: Any = server._server
+        assert asyncio_server is not None
+        sockets = asyncio_server.sockets
+        assert sockets
+        return sockets[0].getsockname()[1]
 
     async def _stop_servicer():
-        servicer.container_heartbeat_abort.set()
+        await servicer.cleanup()
+        assert server is not None
         server.close()
         # This is the proper way to close down the asyncio server,
         # but it causes our tests to hang on 3.12+ because client connections
@@ -3424,9 +3485,9 @@ async def run_server(servicer, host=None, port=None, path=None):
     start_servicer = synchronize_api(_start_servicer)
     stop_servicer = synchronize_api(_stop_servicer)
 
-    await start_servicer.aio()
+    bound_port = await start_servicer.aio()
     try:
-        yield
+        yield bound_port
     finally:
         await stop_servicer.aio()
 
@@ -3444,27 +3505,35 @@ async def servicer_factory(blob_server, credentials):
     Utility function to create a servicer for testing.
     Returns an async context manager that yields a MockClientServicer.
     """
-    port = find_free_port()
-
     blob_host, blobs, blocks, files_sha2data = blob_server
-    servicer = MockClientServicer(blob_host, blobs, blocks, files_sha2data, credentials, port)  # type: ignore
+    servicer = MockClientServicer(blob_host, blobs, blocks, files_sha2data, credentials)  # type: ignore
+    task_command_router = MockTaskCommandRouterServicer()
+    servicer.task_command_router = task_command_router
 
     if platform.system() != "Windows":
         with tempfile.TemporaryDirectory() as tmpdirname:
             temporary_sock_path = os.path.join(tmpdirname, "servicer.sock")
-            async with run_server(servicer, host="0.0.0.0", port=port):
+            async with run_server(servicer, host="0.0.0.0") as client_port:
+                assert client_port is not None
                 async with run_server(servicer, path=temporary_sock_path):
-                    servicer.client_addr = f"http://127.0.0.1:{port}"
-                    servicer.container_addr = f"unix://{temporary_sock_path}"
-                    yield servicer
+                    async with run_server(task_command_router, host="0.0.0.0") as task_command_router_port:
+                        assert task_command_router_port is not None
+                        servicer.client_addr = f"http://127.0.0.1:{client_port}"
+                        servicer.container_addr = f"unix://{temporary_sock_path}"
+                        servicer.task_command_router_url = f"http://127.0.0.1:{task_command_router_port}"
+                        yield servicer
     else:
         # Use a regular TCP socket for the container connection
-        container_port = find_free_port()
-        async with run_server(servicer, host="0.0.0.0", port=port):
-            async with run_server(servicer, host="0.0.0.0", port=container_port):
-                servicer.client_addr = f"http://127.0.0.1:{port}"
-                servicer.container_addr = f"http://127.0.0.1:{container_port}"
-                yield servicer
+        async with run_server(servicer, host="0.0.0.0") as client_port:
+            assert client_port is not None
+            async with run_server(servicer, host="0.0.0.0") as container_port:
+                assert container_port is not None
+                async with run_server(task_command_router, host="0.0.0.0") as task_command_router_port:
+                    assert task_command_router_port is not None
+                    servicer.client_addr = f"http://127.0.0.1:{client_port}"
+                    servicer.container_addr = f"http://127.0.0.1:{container_port}"
+                    servicer.task_command_router_url = f"http://127.0.0.1:{task_command_router_port}"
+                    yield servicer
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -3748,16 +3817,7 @@ def run_cli_command(args: list[str], expected_exit_code: int = 0, expected_stder
 def mock_shell_pty(servicer, monkeypatch):
     shell_prompt = b"TEST_PROMPT# "
     servicer.shell_prompt = shell_prompt
-
-    # Override the autouse _setup_command_router patch so the fake router injects
-    # ``shell_prompt`` as the first stdout chunk (matching ContainerExecGetOutput
-    # behavior for interactive shell tests).
-    async def _mk_router(cls, server_client, task_id):
-        client = FakeTaskCommandRouterClient(server_client)
-        client.shell_prompt = shell_prompt
-        return client
-
-    monkeypatch.setattr(TaskCommandRouterClient, "init", classmethod(_mk_router))
+    servicer.task_command_router.shell_prompt = shell_prompt
 
     def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
