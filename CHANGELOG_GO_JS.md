@@ -4,6 +4,10 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
+No unreleased changes.
+
+## js/v0.7.6, go/v0.7.6
+
 - Added Sandbox Filesystem API in the Go SDK with `sandbox.Filesystem()` and in the JS SDK with `sandbox.filesystem`. The filesystem API contains methods:
   - `fs.WriteText` (Go) / `fs.writeText` (JS): Write UTF-8 to a file in the Sandbox.
   - `fs.WriteBytes` (Go) / `fs.writeBytes` (JS): Write binary content to a file in the Sandbox.
