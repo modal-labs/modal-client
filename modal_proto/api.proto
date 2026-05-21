@@ -3109,6 +3109,8 @@ message Sandbox {
   // If set, only connections from these CIDRs will be allowed to connect to the sandbox
   // (tunnels and auth proxy).
   repeated string inbound_cidr_allowlist = 39;
+
+  StringMap environment_variables = 40;
 }
 
 message SandboxCreateConnectTokenRequest {
@@ -3562,6 +3564,10 @@ message SharedVolumeRemoveFileRequest {
   string shared_volume_id = 1;
   string path = 2;
   bool recursive = 3;
+}
+
+message StringMap {
+  map<string, string> contents = 1;
 }
 
 message SystemErrorMessage {
