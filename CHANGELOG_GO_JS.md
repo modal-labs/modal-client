@@ -4,17 +4,17 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
-- Added Sandbox Filesystem API in the Go SDK with `sandbox.Filesystem()`. The file system API contains methods:
-  - `fs.WriteText` (Go): Write UTF-8 to a file in the Sandbox.
-  - `fs.WriteBytes` (Go): Write binary content to a file in the sandbox.
-  - `fs.ReadText` (Go): Read a file from the Sandbox and return its contents as a UTF-8 string.
-  - `fs.ReadBytes` (Go): Read a file from the Sandbox and returns its contents as bytes.
-  - `fs.MakeDirectory` (Go): Create a new directory in the Sandbox.
-  - `fs.ListFiles` (Go): List files and directories in a Sandbox directory.
-  - `fs.Stat` (Go): Return metadata for a single file, directory, or symlink in the Sandbox.
-  - `fs.CopyFromLocal` (Go): Copy a local file into the Sandbox.
-  - `fs.CopyToLocal` (Go): Copy a file from the Sandbox to a local path.
-  - `fs.Remove` (Go): Remove a file or directory in the Sandbox.
+- Added Sandbox Filesystem API in the Go SDK with `sandbox.Filesystem()` and in the JS SDK with `sandbox.filesystem`. The filesystem API contains methods:
+  - `fs.WriteText` (Go) / `fs.writeText` (JS): Write UTF-8 to a file in the Sandbox.
+  - `fs.WriteBytes` (Go) / `fs.writeBytes` (JS): Write binary content to a file in the Sandbox.
+  - `fs.ReadText` (Go) / `fs.readText` (JS): Read a file from the Sandbox and return its contents as a UTF-8 string.
+  - `fs.ReadBytes` (Go) / `fs.readBytes` (JS): Read a file from the Sandbox and return its contents as bytes.
+  - `fs.MakeDirectory` (Go) / `fs.makeDirectory` (JS): Create a new directory in the Sandbox.
+  - `fs.ListFiles` (Go) / `fs.listFiles` (JS): List files and directories in a Sandbox directory.
+  - `fs.Stat` (Go) / `fs.stat` (JS): Return metadata for a single file, directory, or symlink in the Sandbox.
+  - `fs.CopyFromLocal` (Go) / `fs.copyFromLocal` (JS): Copy a local file into the Sandbox.
+  - `fs.CopyToLocal` (Go) / `fs.copyToLocal` (JS): Copy a file from the Sandbox to a local path.
+  - `fs.Remove` (Go) / `fs.remove` (JS): Remove a file or directory in the Sandbox.
 - Added `Volume.WithMountOptions` (Go) and `volume.withMountOptions` (JS) to configure mount-time options (`ReadOnly` / `readOnly` and `SubPath` / `subPath`) when attaching a Volume to a Function or Sandbox. The `SubPath` / `subPath` option mounts a subdirectory of the Volume instead of its root. Calling `withMountOptions` multiple times on the same Volume stacks: fields left unset preserve their previous value.
 - Deprecated `Volume.ReadOnly` (Go) and `Volume.readOnly` (JS) in favor of `WithMountOptions({ReadOnly: &t})` / `withMountOptions({readOnly: true})`. The old methods still work but will be removed in a future release.
 - Deprecated `Volume.IsReadOnly` (Go) and `Volume.isReadOnly` (JS); track configured mount options at the call site that configured them instead.

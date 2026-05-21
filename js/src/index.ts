@@ -28,6 +28,14 @@ export {
   QueueFullError,
   SandboxTimeoutError,
   ClientClosedError,
+  SandboxFilesystemDirectoryNotEmptyError,
+  SandboxFilesystemError,
+  SandboxFilesystemFileTooLargeError,
+  SandboxFilesystemIsADirectoryError,
+  SandboxFilesystemNotADirectoryError,
+  SandboxFilesystemNotFoundError,
+  SandboxFilesystemPathAlreadyExistsError,
+  SandboxFilesystemPermissionError,
 } from "./errors";
 export {
   Function_,
@@ -84,6 +92,7 @@ export {
   type SecretDeleteParams,
 } from "./secret";
 export { SandboxFile, type SandboxFileMode } from "./sandbox_filesystem";
+export { SandboxFilesystem, type FileInfo, type FileType } from "./sandbox_fs";
 export {
   Volume,
   VolumeService,

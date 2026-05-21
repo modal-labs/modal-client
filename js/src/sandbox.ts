@@ -42,6 +42,7 @@ import {
   SandboxFile,
   SandboxFileMode,
 } from "./sandbox_filesystem";
+import { SandboxFilesystem } from "./sandbox_fs";
 import {
   type ModalReadStream,
   type ModalWriteStream,
@@ -1037,6 +1038,7 @@ export function buildTaskExecStartRequestProto(
 export class Sandbox {
   readonly #client: ModalClient;
   readonly sandboxId: string;
+
   #stdin?: ModalWriteStream<string>;
   #stdout?: ModalReadStream<string>;
   #stderr?: ModalReadStream<string>;
@@ -1049,6 +1051,7 @@ export class Sandbox {
   #commandRouterClient: TaskCommandRouterClientImpl | undefined;
   #commandRouterClientPromise: Promise<TaskCommandRouterClientImpl> | undefined;
   #attached: boolean = true;
+  #filesystem?: SandboxFilesystem;
 
   /** @ignore */
   constructor(
@@ -1115,6 +1118,14 @@ export class Sandbox {
       );
     }
     return this.#stderr;
+  }
+
+  get filesystem(): SandboxFilesystem {
+    this.#ensureAttached();
+    if (!this.#filesystem) {
+      this.#filesystem = new SandboxFilesystem(this);
+    }
+    return this.#filesystem;
   }
 
   /** Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in {@link SandboxService#list Sandbox.list}. */
@@ -1184,6 +1195,10 @@ export class Sandbox {
 
   /**
    * Open a file in the Sandbox filesystem.
+   *
+   * @deprecated Use {@link SandboxFilesystem} methods: `sandbox.filesystem.readBytes()`,
+   * `writeBytes()`, or `copyToLocal()` instead for improved reliability.
+   *
    * @param path - Path to the file to open
    * @param mode - File open mode (r, w, a, r+, w+, a+)
    * @returns Promise that resolves to a {@link SandboxFile}
@@ -1744,6 +1759,18 @@ export class ContainerProcess<R extends string | Uint8Array = any> {
       this.stdout = toModalReadStream(stdoutStream) as ModalReadStream<R>;
       this.stderr = toModalReadStream(stderrStream) as ModalReadStream<R>;
     }
+  }
+
+  /**
+   * @ignore
+   * Send stdin EOF directly, bypassing the WritableStream state machine.
+   *
+   * Useful for when an stdin write has failed.
+   */
+  async closeStdin(): Promise<void> {
+    await this.#commandRouterClient
+      .execStdinWrite(this.#taskId, this.#execId, 0, new Uint8Array(0), true)
+      .catch(() => {});
   }
 
   /** Wait for process completion and return the exit code. */

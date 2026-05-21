@@ -78,6 +78,62 @@ export class SandboxFilesystemError extends Error {
   }
 }
 
+/** A directory was expected to be empty but is not. */
+export class SandboxFilesystemDirectoryNotEmptyError extends SandboxFilesystemError {
+  constructor(message: string) {
+    super(message);
+    this.name = "SandboxFilesystemDirectoryNotEmptyError";
+  }
+}
+
+/** A file exceeds the maximum allowed size for a read operation. */
+export class SandboxFilesystemFileTooLargeError extends SandboxFilesystemError {
+  constructor(message: string) {
+    super(message);
+    this.name = "SandboxFilesystemFileTooLargeError";
+  }
+}
+
+/** A file operation was attempted on a path that resolves to a directory. */
+export class SandboxFilesystemIsADirectoryError extends SandboxFilesystemError {
+  constructor(message: string) {
+    super(message);
+    this.name = "SandboxFilesystemIsADirectoryError";
+  }
+}
+
+/** A directory operation encountered a path component that is not a directory. */
+export class SandboxFilesystemNotADirectoryError extends SandboxFilesystemError {
+  constructor(message: string) {
+    super(message);
+    this.name = "SandboxFilesystemNotADirectoryError";
+  }
+}
+
+/** A file or directory is not found. */
+export class SandboxFilesystemNotFoundError extends SandboxFilesystemError {
+  constructor(message: string) {
+    super(message);
+    this.name = "SandboxFilesystemNotFoundError";
+  }
+}
+
+/** A path already exists and the operation requires it to be absent. */
+export class SandboxFilesystemPathAlreadyExistsError extends SandboxFilesystemError {
+  constructor(message: string) {
+    super(message);
+    this.name = "SandboxFilesystemPathAlreadyExistsError";
+  }
+}
+
+/** Permission is denied for a file operation. */
+export class SandboxFilesystemPermissionError extends SandboxFilesystemError {
+  constructor(message: string) {
+    super(message);
+    this.name = "SandboxFilesystemPermissionError";
+  }
+}
+
 /** Sandbox operations that exceed the allowed time limit. */
 export class SandboxTimeoutError extends Error {
   constructor(message: string = "Sandbox operation timed out") {

@@ -1106,6 +1106,7 @@ test("V2 Sandbox rejects V1-only runtime methods", async () => {
   expect(() => sb.stderr).toThrow(expectedError);
   await expect(sb.setTags({})).rejects.toThrow(expectedError);
   await expect(sb.getTags()).rejects.toThrow(expectedError);
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
   await expect(sb.open("/tmp/file", "r")).rejects.toThrow(expectedError);
   await expect(sb.createConnectToken()).rejects.toThrow(expectedError);
   await expect(sb.waitUntilReady(5000)).rejects.toThrow(expectedError);
@@ -1207,7 +1208,7 @@ test("SandboxGetTaskIdPolling", async () => {
   mock.handleUnary("/SandboxGetTaskId", () => ({ taskId: "ta-123" }));
 
   const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
-  await expect(sb.open("/test", "r")).rejects.toThrow();
+  await expect(sb.filesystem.stat("/test")).rejects.toThrow();
 
   mock.assertExhausted();
 });
@@ -1547,6 +1548,7 @@ test("SandboxDetachForbidsAllOperations", async () => {
 
   await expect(sb.exec(["echo", "hello"])).rejects.toThrow(errorMsg);
   await expect(sb.createConnectToken()).rejects.toThrow(errorMsg);
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
   await expect(sb.open("/abc.txt", "r")).rejects.toThrow(errorMsg);
   await expect(sb.terminate()).rejects.toThrow(errorMsg);
   await expect(sb.tunnels()).rejects.toThrow(errorMsg);
