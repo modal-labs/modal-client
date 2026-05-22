@@ -458,12 +458,6 @@ func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreat
 	if len(params.Tags) > 0 {
 		return nil, fmt.Errorf("tags are not supported by ExperimentalCreate")
 	}
-	if len(params.Volumes) > 0 {
-		return nil, fmt.Errorf("volumes are not supported by ExperimentalCreate")
-	}
-	if len(params.CloudBucketMounts) > 0 {
-		return nil, fmt.Errorf("cloud bucket mounts are not supported by ExperimentalCreate")
-	}
 	if params.GPU != "" {
 		return nil, fmt.Errorf("GPUs are not supported by ExperimentalCreate")
 	}
@@ -475,6 +469,17 @@ func buildSandboxCreateV2RequestProto(appID, imageID string, params SandboxCreat
 	}
 	if params.ReadinessProbe != nil {
 		return nil, fmt.Errorf("readiness probes are not supported by ExperimentalCreate")
+	}
+	// The V2 backend does not propagate oidc_identity_token from server to worker
+	// (WorkerSandboxCreateRequest has no such field). Reject inputs that would silently
+	// break at sandbox startup so the caller gets a clear error here instead.
+	if params.IncludeOidcIdentityToken {
+		return nil, fmt.Errorf("IncludeOidcIdentityToken is not supported by ExperimentalCreate")
+	}
+	for mountPath, cbm := range params.CloudBucketMounts {
+		if cbm != nil && cbm.OidcAuthRoleArn != nil {
+			return nil, fmt.Errorf("CloudBucketMount with OidcAuthRoleArn is not supported by ExperimentalCreate (at mount path %q)", mountPath)
+		}
 	}
 
 	req, err := buildSandboxCreateRequestProto(appID, imageID, params)
@@ -528,11 +533,12 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 // ExperimentalCreate creates a new Sandbox using the experimental V2 backend.
 //
 // Supported features include exec, encrypted tunnels, wait/poll/terminate,
-// CPU and memory configuration, and region placement.
+// CPU and memory configuration, region placement, volumes, and cloud bucket
+// mounts (with static credentials via Secret).
 //
-// Features like tags, filesystem snapshots, memory snapshots, volumes, cloud
-// bucket mounts, GPUs, custom domains, OIDC identity tokens, proxies, and
-// readiness probes are not supported.
+// Features like tags, filesystem snapshots, memory snapshots, GPUs, custom
+// domains, OIDC identity tokens (including OidcAuthRoleArn on a
+// CloudBucketMount), proxies, and readiness probes are not supported.
 //
 // V2 sandboxes created with this method are not currently returned by List and
 // cannot be looked up with FromName. Store Sandbox.SandboxID if you need to

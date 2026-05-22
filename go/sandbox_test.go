@@ -56,16 +56,6 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 			wantErr: "tags are not supported",
 		},
 		{
-			name:    "volumes",
-			params:  SandboxCreateParams{Volumes: map[string]*Volume{"/vol": {VolumeID: "vo-123"}}},
-			wantErr: "volumes are not supported",
-		},
-		{
-			name:    "cloud bucket mounts",
-			params:  SandboxCreateParams{CloudBucketMounts: map[string]*CloudBucketMount{"/bucket": {BucketName: "bucket"}}},
-			wantErr: "cloud bucket mounts are not supported",
-		},
-		{
 			name:    "gpu",
 			params:  SandboxCreateParams{GPU: "A10G"},
 			wantErr: "GPUs are not supported",
@@ -85,6 +75,23 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 			params:  SandboxCreateParams{ReadinessProbe: &Probe{}},
 			wantErr: "readiness probes are not supported",
 		},
+		{
+			name:    "include oidc identity token",
+			params:  SandboxCreateParams{IncludeOidcIdentityToken: true},
+			wantErr: "IncludeOidcIdentityToken is not supported",
+		},
+		{
+			name: "cloud bucket mount with oidc auth role",
+			params: func() SandboxCreateParams {
+				role := "arn:aws:iam::123:role/r"
+				return SandboxCreateParams{
+					CloudBucketMounts: map[string]*CloudBucketMount{
+						"/bucket": {BucketName: "bucket", OidcAuthRoleArn: &role},
+					},
+				}
+			}(),
+			wantErr: "CloudBucketMount with OidcAuthRoleArn is not supported",
+		},
 	}
 
 	for _, tt := range tests {
@@ -97,6 +104,27 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 			g.Expect(err.Error()).To(gomega.ContainSubstring(tt.wantErr))
 		})
 	}
+}
+
+func TestSandboxCreateV2RequestProto_VolumesAndCloudBucketMounts(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	req, err := buildSandboxCreateV2RequestProto("app-123", "img-456", SandboxCreateParams{
+		Volumes:           map[string]*Volume{"/mnt/vol": {VolumeID: "vo-123"}},
+		CloudBucketMounts: map[string]*CloudBucketMount{"/mnt/s3": {BucketName: "my-bucket"}},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	volumeMounts := req.GetDefinition().GetVolumeMounts()
+	g.Expect(volumeMounts).To(gomega.HaveLen(1))
+	g.Expect(volumeMounts[0].GetMountPath()).To(gomega.Equal("/mnt/vol"))
+	g.Expect(volumeMounts[0].GetVolumeId()).To(gomega.Equal("vo-123"))
+
+	cloudBucketMounts := req.GetDefinition().GetCloudBucketMounts()
+	g.Expect(cloudBucketMounts).To(gomega.HaveLen(1))
+	g.Expect(cloudBucketMounts[0].GetMountPath()).To(gomega.Equal("/mnt/s3"))
+	g.Expect(cloudBucketMounts[0].GetBucketName()).To(gomega.Equal("my-bucket"))
 }
 
 func TestGetSandboxVersion(t *testing.T) {
