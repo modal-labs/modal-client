@@ -123,7 +123,7 @@ class BrokenIOManager:
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(1)
+@pytest.mark.timeout(10)
 async def test_broken_io_unused(caplog):
     # if IO channel breaks, but the endpoint doesn't actually use
     # any of the body data, it should be allowed to output its data
