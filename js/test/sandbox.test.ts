@@ -22,6 +22,7 @@ import {
   SandboxCreateV2Response,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
+import { CloudBucketMount } from "../src/cloud_bucket_mount";
 
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
 const V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
@@ -995,16 +996,6 @@ test("buildSandboxCreateV2RequestProto", async () => {
 
 test.each([
   ["tags", { tags: { key: "value" } }, "tags are not supported"],
-  [
-    "volumes",
-    { volumes: { "/vol": { volumeId: "vo-123" } as any } },
-    "volumes are not supported",
-  ],
-  [
-    "cloud bucket mounts",
-    { cloudBucketMounts: { "/bucket": { bucketName: "bucket" } as any } },
-    "cloud bucket mounts are not supported",
-  ],
   ["gpu", { gpu: "A10G" }, "GPUs are not supported"],
   [
     "custom domain",
@@ -1021,6 +1012,23 @@ test.each([
     { readinessProbe: Probe.withExec(["true"]) },
     "readiness probes are not supported",
   ],
+  [
+    "includeOidcIdentityToken",
+    { includeOidcIdentityToken: true },
+    "includeOidcIdentityToken is not supported",
+  ],
+  [
+    "cloud bucket mount with oidcAuthRoleArn",
+    {
+      cloudBucketMounts: {
+        "/bucket": {
+          bucketName: "bucket",
+          oidcAuthRoleArn: "arn:aws:iam::123:role/r",
+        } as any,
+      },
+    },
+    "CloudBucketMount with oidcAuthRoleArn is not supported",
+  ],
 ])(
   "buildSandboxCreateV2RequestProto rejects unsupported option %s",
   async (_name, params, expectedError) => {
@@ -1029,6 +1037,23 @@ test.each([
     ).rejects.toThrow(expectedError);
   },
 );
+
+test("buildSandboxCreateV2RequestProto supports volumes and cloud bucket mounts", async () => {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- minimal CBM ctor for proto-build test
+  const cbm = new CloudBucketMount("my-bucket");
+  const req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
+    volumes: { "/mnt/vol": { volumeId: "vo-123" } as any },
+    cloudBucketMounts: { "/mnt/s3": cbm },
+  });
+
+  expect(req.definition?.volumeMounts).toHaveLength(1);
+  expect(req.definition?.volumeMounts?.[0].mountPath).toBe("/mnt/vol");
+  expect(req.definition?.volumeMounts?.[0].volumeId).toBe("vo-123");
+
+  expect(req.definition?.cloudBucketMounts).toHaveLength(1);
+  expect(req.definition?.cloudBucketMounts?.[0].mountPath).toBe("/mnt/s3");
+  expect(req.definition?.cloudBucketMounts?.[0].bucketName).toBe("my-bucket");
+});
 
 test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();

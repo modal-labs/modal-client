@@ -591,17 +591,6 @@ export async function buildSandboxCreateV2RequestProto(
   if (params.tags && Object.keys(params.tags).length > 0) {
     throw new Error("tags are not supported by experimentalCreate");
   }
-  if (params.volumes && Object.keys(params.volumes).length > 0) {
-    throw new Error("volumes are not supported by experimentalCreate");
-  }
-  if (
-    params.cloudBucketMounts &&
-    Object.keys(params.cloudBucketMounts).length > 0
-  ) {
-    throw new Error(
-      "cloud bucket mounts are not supported by experimentalCreate",
-    );
-  }
   if (params.gpu) {
     throw new Error("GPUs are not supported by experimentalCreate");
   }
@@ -613,6 +602,23 @@ export async function buildSandboxCreateV2RequestProto(
   }
   if (params.readinessProbe) {
     throw new Error("readiness probes are not supported by experimentalCreate");
+  }
+  // The V2 backend does not propagate oidc_identity_token from server to worker
+  // (WorkerSandboxCreateRequest has no such field). Reject inputs that would
+  // silently break at sandbox startup so the caller gets a clear error here.
+  if (params.includeOidcIdentityToken) {
+    throw new Error(
+      "includeOidcIdentityToken is not supported by experimentalCreate",
+    );
+  }
+  if (params.cloudBucketMounts) {
+    for (const [mountPath, cbm] of Object.entries(params.cloudBucketMounts)) {
+      if (cbm.oidcAuthRoleArn) {
+        throw new Error(
+          `CloudBucketMount with oidcAuthRoleArn is not supported by experimentalCreate (at mount path "${mountPath}")`,
+        );
+      }
+    }
   }
 
   const req = await buildSandboxCreateRequestProto(appId, imageId, params);
@@ -685,11 +691,12 @@ export class SandboxService {
    * Create a new {@link Sandbox} using the experimental V2 backend.
    *
    * Supported features include exec, encrypted tunnels, wait/poll/terminate,
-   * CPU and memory configuration, and region placement.
+   * CPU and memory configuration, region placement, volumes, and cloud bucket
+   * mounts (with static credentials via {@link Secret}).
    *
-   * Features like tags, filesystem snapshots, memory snapshots, volumes, cloud
-   * bucket mounts, GPUs, custom domains, OIDC identity tokens, proxies, and
-   * readiness probes are not supported.
+   * Features like tags, filesystem snapshots, memory snapshots, GPUs, custom
+   * domains, OIDC identity tokens (including `oidcAuthRoleArn` on a
+   * {@link CloudBucketMount}), proxies, and readiness probes are not supported.
    *
    * V2 sandboxes created with this method are not currently returned by
    * {@link SandboxService#list client.sandboxes.list()} and cannot be looked up
