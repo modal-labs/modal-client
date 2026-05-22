@@ -883,6 +883,7 @@ message ClassGetRequest {
   reserved 8; // lookup_published
   reserved 9; // workspace_name
   bool only_class_function = 10; // True starting with 0.67.x clients, which don't create method placeholder functions
+  int32 app_version = 11;
 }
 
 message ClassGetResponse {
@@ -2106,6 +2107,7 @@ message FunctionGetRequest {
   string object_tag = 2;
   reserved 3; // removed namespace
   string environment_name = 4;
+  int32 app_version = 5;
 }
 
 message FunctionGetResponse {
@@ -2200,6 +2202,7 @@ message FunctionOptions {
   optional string cloud_provider_str = 18;
   bool replace_cloud_bucket_mounts = 19;
   repeated CloudBucketMount cloud_bucket_mounts = 20;
+  optional int32 pinned_app_version = 21;
 }
 
 message FunctionPrecreateRequest {
