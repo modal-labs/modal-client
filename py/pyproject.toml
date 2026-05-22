@@ -80,6 +80,19 @@ dev = [
 
     "mypy-protobuf",
     "grpcio-tools",
+    # Additional test-only dependencies (used by the Bazel client test
+    # matrix and previously sourced from the workspace dev group).
+    # ``nbformat`` and ``psutil`` are imported directly by ``notebook_test``
+    # and ``blob_test``; ``ipykernel`` is required by ``nbclient`` for
+    # notebook execution; ``pytest-benchmark`` and ``nest-asyncio`` are
+    # auto-loaded by pytest entry points.  ``pytest-freezegun`` is
+    # intentionally omitted — it imports ``distutils.version.LooseVersion``
+    # which was removed in Python 3.12.
+    "ipykernel~=6.30",
+    "nbformat~=5.10",
+    "nest-asyncio~=1.5",
+    "psutil~=6.0",
+    "pytest-benchmark~=5.1",
 ]
 
 [tool.uv.extra-build-dependencies]

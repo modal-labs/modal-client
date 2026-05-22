@@ -399,6 +399,29 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
                     proc.kill()
 
 
+@pytest.fixture(autouse=True)
+def _clear_environment_cache():
+    """Clear the module-level environment cache around every test.
+
+    ``modal._environments.ENVIRONMENT_CACHE`` is keyed by environment name
+    (default ``""``) and stores the hydrated metadata, including
+    ``image_builder_version``.  ``image_test.py`` patches the mock servicer
+    to return specific builder versions (``2023.12``, ``2024.04``, …) for
+    parametrized tests; the cache entry survives across files unless
+    explicitly cleared, so subsequent unrelated tests would build images
+    with whatever builder the last image test selected.  That stale value
+    becomes a hard failure on Python 3.13/3.14 when the leaked builder is
+    ``2024.04`` (which only supports 3.10–3.12).  Yielding around the test
+    keeps the cache empty in both directions so test order cannot affect
+    image builder resolution.
+    """
+    from modal._environments import ENVIRONMENT_CACHE
+
+    ENVIRONMENT_CACHE.clear()
+    yield
+    ENVIRONMENT_CACHE.clear()
+
+
 @contextlib.contextmanager
 def sandbox_subprocess_intercept(servicer):
     """Context manager that replaces sandbox mock RPCs with subprocess-backed implementations.

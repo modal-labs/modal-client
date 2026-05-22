@@ -122,15 +122,6 @@ def builder_version(request, server_url_env, modal_config):
             yield builder_version
 
 
-@pytest.fixture(autouse=True)
-def clear_environment_cache():
-    # Clear the environment cache so we can mock the server returning different image builder versions
-    # Alternatively could rewrite some of those tests to use different environments?
-    from modal._environments import ENVIRONMENT_CACHE
-
-    ENVIRONMENT_CACHE.clear()
-
-
 def test_python_version_validation(builder_version):
     assert _validate_python_version(None, builder_version) == "{}.{}".format(*sys.version_info)
     assert _validate_python_version("3.12", builder_version) == "3.12"
