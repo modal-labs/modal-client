@@ -471,8 +471,8 @@ class _Volume(_Object, type_prefix="vo"):
         Note that these options are not properties stored with the Volume itself - they can be individually configured
         for each Volume - container association.
 
-        read_only: bool (optional) - set this to True to make the Volume read only from within containers
-        sub_path: str | PurePosixPath (optional) - only mount this sub_path directory from the Volume.
+        `read_only`: bool (optional) - set this to True to make the Volume read only from within containers
+        `sub_path`: str | PurePosixPath (optional) - only mount this sub_path directory from the Volume.
             If the directory doesn't exist in the Volume, it will be created when the container starts up
 
 
