@@ -930,6 +930,32 @@ def test_experimental_sandbox_create_memory_roundtrip(app, servicer):
         assert req.definition.resources.milli_cpu == 2000
 
 
+@pytest.mark.parametrize("read_only", [True, False])
+def test_experimental_sandbox_create_volume(app, servicer, read_only):
+    volume = Volume.from_name("my-volume", create_if_missing=True)
+
+    if read_only:
+        volume = volume.with_mount_options(read_only=True)
+
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": volume})
+        req = ctx.pop_request("SandboxCreateV2")
+        assert len(req.definition.volume_mounts) == 1
+        assert req.definition.volume_mounts[0].mount_path == "/mnt"
+        assert req.definition.volume_mounts[0].read_only == read_only
+
+
+def test_experimental_sandbox_create_cloud_bucket_mount(app, servicer):
+    cbm = modal.CloudBucketMount(bucket_name="my-bucket")
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": cbm})
+        req = ctx.pop_request("SandboxCreateV2")
+        assert len(req.definition.cloud_bucket_mounts) == 1
+        assert req.definition.cloud_bucket_mounts[0].bucket_name == "my-bucket"
+        assert req.definition.cloud_bucket_mounts[0].mount_path == "/mnt"
+        assert req.definition.cloud_bucket_mounts[0].bucket_type == api_pb2.CloudBucketMount.BucketType.S3
+
+
 @skip_non_subprocess
 def test_sandbox_exec_pty(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)

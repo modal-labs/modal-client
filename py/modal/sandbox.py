@@ -696,6 +696,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         block_network: bool = False,
         cidr_allowlist: Optional[Sequence[str]] = None,
         inbound_cidr_allowlist: Optional[Sequence[str]] = None,
+        volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty: bool = False,
         encrypted_ports: Sequence[int] = [],
         h2_ports: Sequence[int] = [],
@@ -707,11 +708,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Create a sandbox using the V2 backend.
 
         Supported features include exec, encrypted tunnels, wait/poll/terminate,
-        CPU and memory configuration, region placement,
-        and filesystem snapshots.
+        CPU and memory configuration, region placement, volumes, cloud bucket mounts
+        (with static credentials via `secret=...`), and filesystem snapshots.
 
-        Features like tags, memory snapshots, volumes, network file systems, GPUs,
-        custom domains, OIDC identity tokens, and proxies are not supported.
+        Features like tags, memory snapshots, network file systems, GPUs, custom
+        domains, OIDC identity tokens (including `oidc_auth_role_arn` on a
+        CloudBucketMount), and proxies are not supported.
 
         V2 sandboxes created with this method are not currently returned by
         `Sandbox.list()` and cannot be looked up with `Sandbox.from_name()`.
@@ -729,6 +731,24 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
             raise InvalidError("Cannot specify open ports when `block_network` is enabled")
+
+        validated_volumes = validate_volumes(volumes)
+        cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
+        validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
+
+        # The V2 backend does not yet propagate `oidc_identity_token` from server to worker - it is silently dropped
+        # TODO(akshay) add support for OIDC tokens
+        if include_oidc_identity_token:
+            raise InvalidError(
+                "Sandbox._experimental_create does not support include_oidc_identity_token=True. "
+                "Use Sandbox.create instead."
+            )
+        for path, cbm in cloud_bucket_mounts:
+            if cbm.oidc_auth_role_arn:
+                raise InvalidError(
+                    "Sandbox._experimental_create does not support CloudBucketMount with oidc_auth_role_arn "
+                    f"(at mount path {path!r}). Use static credentials via `secret=...`, or use Sandbox.create."
+                )
 
         secrets = secrets or []
         if env:
@@ -777,8 +797,17 @@ class _Sandbox(_Object, type_prefix="sb"):
                 dep_tasks.append(resolver.load(image, load_context))
             for secret in secrets:
                 dep_tasks.append(resolver.load(secret, load_context))
+            for _, vol in validated_volumes:
+                dep_tasks.append(resolver.load(vol, load_context))
+            for _, cloud_bucket_mount in cloud_bucket_mounts:
+                if cloud_bucket_mount.secret:
+                    dep_tasks.append(resolver.load(cloud_bucket_mount.secret, load_context))
             if dep_tasks:
                 await asyncio.gather(*dep_tasks)
+
+            validate_volumes_by_object_id(validated_volumes)
+
+            volume_mounts = [_volume_to_mount_proto(path, volume) for path, volume in validated_volumes]
 
             definition = api_pb2.Sandbox(
                 entrypoint_args=args,
@@ -801,6 +830,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 name=name,
                 include_oidc_identity_token=include_oidc_identity_token,
                 inbound_cidr_allowlist=list(inbound_cidr_allowlist) if inbound_cidr_allowlist is not None else [],
+                volume_mounts=volume_mounts,
+                cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
             )
 
             create_req = api_pb2.SandboxCreateV2Request(app_id=load_context.app_id, definition=definition)
