@@ -1418,6 +1418,7 @@ message EndpointCreateRequest {
 
 message EndpointCreateResponse {
   string endpoint_id = 1;
+  string endpoint_page_url = 2;
 }
 
 message EndpointCustomModelSource {
