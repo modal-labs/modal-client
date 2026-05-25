@@ -5,6 +5,7 @@ import enum
 import json
 import os
 import time
+import typing
 import uuid
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
@@ -1857,6 +1858,7 @@ class _SandboxContainer:
     """Handle to an additional container running in a Sandbox."""
 
     _result: Optional[api_pb2.GenericResult]
+    _filesystem: Optional[_SandboxFilesystem]
 
     def __init__(
         self,
@@ -1869,6 +1871,7 @@ class _SandboxContainer:
         self._container_id = container_id
         self._container_name = container_name
         self._result = result
+        self._filesystem = None
 
     @property
     def object_id(self) -> str:
@@ -1888,6 +1891,40 @@ class _SandboxContainer:
         task_id = await self._sandbox._get_task_id()
         command_router_client = await self._sandbox._get_command_router_client(task_id)
         return task_id, command_router_client
+
+    @typing.overload
+    async def exec(
+        self,
+        *args: str,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
+        text: Literal[True] = True,
+        bufsize: Literal[-1, 1] = -1,
+        # Enable a PTY for the command. When enabled, all output (stdout and stderr from the
+        # process) is multiplexed into stdout, and the stderr stream is effectively empty.
+        pty: bool = False,
+    ) -> _ContainerProcess[str]: ...
+
+    @typing.overload
+    async def exec(
+        self,
+        *args: str,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        env: Optional[dict[str, Optional[str]]] = None,
+        secrets: Optional[Collection[_Secret]] = None,
+        text: Literal[False],
+        bufsize: Literal[-1, 1] = -1,
+        # Enable a PTY for the command. When enabled, all output (stdout and stderr from the
+        # process) is multiplexed into stdout, and the stderr stream is effectively empty.
+        pty: bool = False,
+    ) -> _ContainerProcess[bytes]: ...
 
     async def exec(
         self,
@@ -1918,6 +1955,13 @@ class _SandboxContainer:
             bufsize=bufsize,
             container_id=self._container_id,
         )
+
+    @property
+    def filesystem(self) -> _SandboxFilesystem:
+        """Namespace for filesystem APIs."""
+        if self._filesystem is None:
+            self._filesystem = _SandboxFilesystem(self)
+        return self._filesystem
 
     async def wait(self, raise_on_termination: bool = True) -> None:
         if self._result is not None and self._result.status != api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:

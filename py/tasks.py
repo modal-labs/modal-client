@@ -299,6 +299,7 @@ def type_check(ctx):
         "modal/object.py",
         "modal/_type_manager.py",
         "modal/container_process.py",
+        "modal/sandbox_fs.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 

@@ -2,6 +2,7 @@
 import pathlib
 import pytest
 import random
+from unittest import mock
 
 from modal import App, Sandbox
 from modal.exception import (
@@ -1208,3 +1209,98 @@ def test_sandbox_fs_stat_errors_when_ancestor_is_a_file(servicer, client, sandbo
 
     with pytest.raises(SandboxFilesystemNotADirectoryError):
         sandbox.filesystem.stat(str(blocker / "child"))
+
+
+# ---------------------------------------------------------------------------
+# Sidecar container filesystem tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sidecar(sandbox):
+    """Sidecar container for filesystem operation tests."""
+    image = mock.Mock()
+    image.object_id = "im-test-1"
+    image._mount_layers = []
+    container = sandbox._experimental_containers.create("sleep", "600", name="fs-test-sidecar", image=image)
+    yield container
+    container.terminate(wait=False)
+
+
+@skip_non_subprocess
+def test_sidecar_read_write_text(sidecar, sandbox_fs_tools, tmp_path):
+    path = str(tmp_path / "sidecar-text.txt")
+    sidecar.filesystem.write_text("hello sidecar\n", path)
+    assert sidecar.filesystem.read_text(path) == "hello sidecar\n"
+
+
+@skip_non_subprocess
+def test_sidecar_read_write_bytes(sidecar, sandbox_fs_tools, tmp_path):
+    path = str(tmp_path / "sidecar-blob.bin")
+    sidecar.filesystem.write_bytes(b"\x00\x01\x02", path)
+    assert sidecar.filesystem.read_bytes(path) == b"\x00\x01\x02"
+
+
+@skip_non_subprocess
+def test_sidecar_copy_from_local(sidecar, sandbox_fs_tools, tmp_path):
+    src = tmp_path / "src.txt"
+    src.write_text("local content")
+    dest = str(tmp_path / "from-local.txt")
+    sidecar.filesystem.copy_from_local(src, dest)
+    assert sidecar.filesystem.read_text(dest) == "local content"
+
+
+@skip_non_subprocess
+def test_sidecar_copy_to_local(sidecar, sandbox_fs_tools, tmp_path):
+    remote_path = str(tmp_path / "remote.txt")
+    sidecar.filesystem.write_text("remote content", remote_path)
+    dest = tmp_path / "dest.txt"
+    sidecar.filesystem.copy_to_local(remote_path, dest)
+    assert dest.read_text() == "remote content"
+
+
+@skip_non_subprocess
+def test_sidecar_make_directory_and_list_files(sidecar, sandbox_fs_tools, tmp_path):
+    parent = str(tmp_path / "mydir")
+    sub = str(tmp_path / "mydir" / "sub")
+    sidecar.filesystem.make_directory(sub)
+    entries = sidecar.filesystem.list_files(parent)
+    assert any(e.name == "sub" and e.is_dir() for e in entries)
+
+
+@skip_non_subprocess
+def test_sidecar_remove(sidecar, sandbox_fs_tools, tmp_path):
+    path = str(tmp_path / "bye.txt")
+    sidecar.filesystem.write_text("bye", path)
+    sidecar.filesystem.remove(path)
+    with pytest.raises(SandboxFilesystemNotFoundError):
+        sidecar.filesystem.read_text(path)
+
+
+@skip_non_subprocess
+def test_sidecar_stat(sidecar, sandbox_fs_tools, tmp_path):
+    path = str(tmp_path / "stat.txt")
+    sidecar.filesystem.write_text("stat me", path)
+    info = sidecar.filesystem.stat(path)
+    assert info.is_file()
+    assert info.size == len("stat me")
+
+
+@skip_non_subprocess
+def test_sidecar_read_text_not_found(sidecar, sandbox_fs_tools, tmp_path):
+    with pytest.raises(SandboxFilesystemNotFoundError):
+        sidecar.filesystem.read_text(str(tmp_path / "does-not-exist.txt"))
+
+
+@skip_non_subprocess
+def test_sidecar_write_to_directory_raises(sidecar, sandbox_fs_tools, tmp_path):
+    adir = str(tmp_path / "adir")
+    sidecar.filesystem.make_directory(adir)
+    with pytest.raises(SandboxFilesystemIsADirectoryError):
+        sidecar.filesystem.write_text("data", adir)
+
+
+@skip_non_subprocess
+def test_sidecar_relative_path_rejected(sidecar):
+    with pytest.raises(InvalidError):
+        sidecar.filesystem.read_text("relative/path.txt")

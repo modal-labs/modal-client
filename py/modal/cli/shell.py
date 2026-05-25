@@ -2,7 +2,7 @@
 import platform
 import shlex
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional, Union
 
 import click
 from click import ClickException
@@ -10,6 +10,7 @@ from click import ClickException
 from .._environments import ensure_env
 from .._functions import _FunctionSpec
 from ..app import App
+from ..container_process import ContainerProcess
 from ..exception import InvalidError, NotFoundError
 from ..functions import Function
 from ..image import Image
@@ -116,17 +117,18 @@ def _start_shell_in_sandbox_container(sandbox_id: str, container_name: str, cmd:
 
     try:
         sandbox_container = sandbox._experimental_containers.get(name=container_name)
+        process: Union[ContainerProcess[bytes], ContainerProcess[str]]
         if pty:
             # PTY output is raw terminal bytes, not text; strict UTF-8 decode
             # crashes on the first non-UTF-8 byte (e.g. vim drawing a Latin-1
             # file under LC_CTYPE=C). See the matching call in `_exec_impl`.
-            process = sandbox_container.exec(*shlex.split(cmd), pty=pty, text=False)
+            process = sandbox_container.exec(*shlex.split(cmd), pty=True, text=False)
             process.attach()
         else:
             process = sandbox_container.exec(
-                *shlex.split(cmd), pty=pty, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT
+                *shlex.split(cmd), pty=False, text=False, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT
             )
-            process.wait()
+            _ = process.wait()
     except NotFoundError:
         raise ClickException(f"Container '{container_name}' not found in Sandbox '{sandbox_id}'.")
     except Exception as e:

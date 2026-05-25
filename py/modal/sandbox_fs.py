@@ -9,7 +9,10 @@ import time
 import weakref
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union, cast
+from typing import TYPE_CHECKING, Union, cast
+
+if TYPE_CHECKING:
+    import modal.sandbox
 
 from ._utils.async_utils import synchronize_api
 from ._utils.logger import logger
@@ -84,14 +87,14 @@ class _SandboxFilesystem:
     """mdmd:namespace
     Namespace for Sandbox filesystem APIs."""
 
-    def __init__(self, sandbox):
-        """mdmd:hidden"""
-        from modal.sandbox import _Sandbox
+    _container: Union["modal.sandbox._Sandbox", "modal.sandbox._SandboxContainer"]
 
-        # inv type-stubs does not work with importing _Sandbox with TYPE_CHECKING,
-        # so we'll use `cast` as a workaround.
-        # Use a weakref proxy to avoid circular references between Sandbox and SandboxFilesystem.
-        self._sandbox = cast(_Sandbox, weakref.proxy(sandbox))
+    def __init__(self, container: Union["modal.sandbox._Sandbox", "modal.sandbox._SandboxContainer"]) -> None:
+        """mdmd:hidden"""
+        from modal.sandbox import _Sandbox, _SandboxContainer
+
+        # Use a weakref proxy to avoid circular references between Sandbox/SandboxContainer and SandboxFilesystem.
+        self._container = cast(Union[_Sandbox, _SandboxContainer], weakref.proxy(container))
 
     async def copy_from_local(self, local_path: Union[str, os.PathLike], remote_path: str) -> None:
         """Copy a local file into the Sandbox.
@@ -127,7 +130,7 @@ class _SandboxFilesystem:
         total_bytes = 0
         with open(local_path, "rb") as file_obj:
             with translate_exec_errors("copy_from_local", remote_path):
-                process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
+                process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
                 try:
                     while True:
                         # TODO(saltzm): If this fails, the ContainerProcess will remain alive indefinitely since
@@ -190,7 +193,7 @@ class _SandboxFilesystem:
         t0 = time.monotonic()
         try:
             with translate_exec_errors("copy_to_local", remote_path):
-                process = await self._sandbox.exec(
+                process = await self._container.exec(
                     _SANDBOX_FS_TOOLS_PATH, make_read_file_command(remote_path), text=False
                 )
 
@@ -243,7 +246,7 @@ class _SandboxFilesystem:
 
         t0 = time.monotonic()
         with translate_exec_errors("list_files", remote_path):
-            process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_list_files_command(remote_path))
+            process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_list_files_command(remote_path))
             stdout, stderr, returncode = await asyncio.gather(
                 process.stdout.read(), process.stderr.read(), process.wait()
             )
@@ -299,7 +302,7 @@ class _SandboxFilesystem:
         validate_absolute_remote_path(remote_path, "make_directory")
 
         with translate_exec_errors("make_directory", remote_path):
-            process = await self._sandbox.exec(
+            process = await self._container.exec(
                 _SANDBOX_FS_TOOLS_PATH, make_make_directory_command(remote_path, create_parents)
             )
             stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
@@ -331,7 +334,9 @@ class _SandboxFilesystem:
 
         t0 = time.monotonic()
         with translate_exec_errors("read_bytes", remote_path):
-            process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_read_file_command(remote_path), text=False)
+            process = await self._container.exec(
+                _SANDBOX_FS_TOOLS_PATH, make_read_file_command(remote_path), text=False
+            )
             stdout, stderr, returncode = await asyncio.gather(
                 process.stdout.read(), process.stderr.read(), process.wait()
             )
@@ -367,7 +372,7 @@ class _SandboxFilesystem:
 
         t0 = time.monotonic()
         with translate_exec_errors("read_text", remote_path):
-            process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_read_file_command(remote_path))
+            process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_read_file_command(remote_path))
             stdout, stderr, returncode = await asyncio.gather(
                 process.stdout.read(), process.stderr.read(), process.wait()
             )
@@ -421,7 +426,7 @@ class _SandboxFilesystem:
         validate_absolute_remote_path(remote_path, "remove")
 
         with translate_exec_errors("remove", remote_path):
-            process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_remove_command(remote_path, recursive))
+            process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_remove_command(remote_path, recursive))
             stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
 
         if returncode != 0:
@@ -452,7 +457,7 @@ class _SandboxFilesystem:
 
         t0 = time.monotonic()
         with translate_exec_errors("stat", remote_path):
-            process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_stat_command(remote_path))
+            process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_stat_command(remote_path))
             stdout, stderr, returncode = await asyncio.gather(
                 process.stdout.read(), process.stderr.read(), process.wait()
             )
@@ -504,7 +509,7 @@ class _SandboxFilesystem:
 
         t0 = time.monotonic()
         with translate_exec_errors("write_bytes", remote_path):
-            process = await self._sandbox.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
+            process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
             try:
                 for offset in range(0, max(len(data), 1), TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE):
                     process.stdin.write(data[offset : offset + TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE])

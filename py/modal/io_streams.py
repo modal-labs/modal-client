@@ -501,7 +501,7 @@ class _StreamReader(Generic[T]):
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
 # Larger buffer limit for the exec path via the task command router.
 # This applies only to task_exec_stdin_write; sandbox stdin via the server keeps MAX_BUFFER_SIZE.
-TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE = 16 * 1024 * 1024
+TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE: int = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True)
