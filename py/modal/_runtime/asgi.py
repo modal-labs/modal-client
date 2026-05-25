@@ -285,7 +285,7 @@ def wait_for_web_server(host: str, port: int, *, timeout: float) -> None:
     start_time = time.monotonic()
     while True:
         try:
-            with socket.create_connection((host, port), timeout=timeout):
+            with socket.create_connection((host, port), timeout=min(timeout, 1.0)):
                 break
         except OSError as ex:
             time.sleep(0.01)
