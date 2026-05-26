@@ -87,14 +87,14 @@ class _SandboxFilesystem:
     """mdmd:namespace
     Namespace for Sandbox filesystem APIs."""
 
-    _container: Union["modal.sandbox._Sandbox", "modal.sandbox._SandboxContainer"]
+    _container: Union["modal.sandbox._Sandbox", "modal.sandbox._SidecarContainer"]
 
-    def __init__(self, container: Union["modal.sandbox._Sandbox", "modal.sandbox._SandboxContainer"]) -> None:
+    def __init__(self, container: Union["modal.sandbox._Sandbox", "modal.sandbox._SidecarContainer"]) -> None:
         """mdmd:hidden"""
-        from modal.sandbox import _Sandbox, _SandboxContainer
+        from modal.sandbox import _Sandbox, _SidecarContainer
 
-        # Use a weakref proxy to avoid circular references between Sandbox/SandboxContainer and SandboxFilesystem.
-        self._container = cast(Union[_Sandbox, _SandboxContainer], weakref.proxy(container))
+        # Use a weakref proxy to avoid circular references between Sandbox/SidecarContainer and SandboxFilesystem.
+        self._container = cast(Union[_Sandbox, _SidecarContainer], weakref.proxy(container))
 
     async def copy_from_local(self, local_path: Union[str, os.PathLike], remote_path: str) -> None:
         """Copy a local file into the Sandbox.

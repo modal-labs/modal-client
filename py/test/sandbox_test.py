@@ -13,7 +13,7 @@ from grpclib import GRPCError, Status
 import modal
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal.exception import DeprecationError, Error, InvalidError, TimeoutError
-from modal.sandbox import SandboxContainer, SandboxVersion, _get_sandbox_version
+from modal.sandbox import SandboxVersion, SidecarContainer, _get_sandbox_version
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
@@ -1178,7 +1178,7 @@ detach_error_funcs = {
     "mkdir": None,
     "rm": None,
     "watch": None,
-    "_experimental_containers": lambda sb: sb._experimental_containers,
+    "_experimental_sidecars": lambda sb: sb._experimental_sidecars,
     "stdout": lambda sb: sb.stdout,
     "stderr": lambda sb: sb.stderr,
     "stdin": lambda sb: sb.stdin,
@@ -1239,7 +1239,7 @@ def test_sandbox_container_terminate_wait(app, servicer):
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    container = sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
+    container = sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
 
     assert container.poll() is None
 
@@ -1252,8 +1252,8 @@ def test_sandbox_container_terminate_wait(app, servicer):
 
     container.wait(raise_on_termination=False)
     assert container.poll() == 137
-    terminated = sb._experimental_containers.list(include_terminated=True)
-    assert all(isinstance(listed_container, SandboxContainer) for listed_container in terminated)
+    terminated = sb._experimental_sidecars.list(include_terminated=True)
+    assert all(isinstance(listed_container, SidecarContainer) for listed_container in terminated)
     assert any(
         listed_container.name == "worker"
         and listed_container.object_id == container.object_id
@@ -1270,19 +1270,19 @@ def test_sandbox_container_wait_after_natural_exit(app, servicer):
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
-    container = sb._experimental_containers.create("bash", "-c", "exit 42", name="oneshot", image=image)
+    container = sb._experimental_sidecars.create("bash", "-c", "exit 42", name="oneshot", image=image)
     container.wait()
     container.wait()
     assert container.poll() == 42
 
     with pytest.raises((modal.exception.NotFoundError, GRPCError)):
-        sb._experimental_containers.get(name="oneshot")
-    assert sb._experimental_containers.get(name="oneshot", include_terminated=True).object_id == container.object_id
+        sb._experimental_sidecars.get(name="oneshot")
+    assert sb._experimental_sidecars.get(name="oneshot", include_terminated=True).object_id == container.object_id
 
-    replacement = sb._experimental_containers.create("bash", "-c", "sleep 100", name="oneshot", image=image)
+    replacement = sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="oneshot", image=image)
     assert replacement.object_id != container.object_id
-    terminated = sb._experimental_containers.list(include_terminated=True)
-    assert all(isinstance(listed_container, SandboxContainer) for listed_container in terminated)
+    terminated = sb._experimental_sidecars.list(include_terminated=True)
+    assert all(isinstance(listed_container, SidecarContainer) for listed_container in terminated)
     assert any(
         listed_container.name == "oneshot"
         and listed_container.object_id == container.object_id
@@ -1298,8 +1298,8 @@ def test_sandbox_container_wait_after_natural_exit(app, servicer):
 
     container.terminate(wait=True)
     assert container.poll() == 42
-    assert sb._experimental_containers.get(name="oneshot").object_id == replacement.object_id
-    assert sb._experimental_containers.get(name="oneshot", include_terminated=True).object_id == replacement.object_id
+    assert sb._experimental_sidecars.get(name="oneshot").object_id == replacement.object_id
+    assert sb._experimental_sidecars.get(name="oneshot", include_terminated=True).object_id == replacement.object_id
 
 
 @skip_non_subprocess
@@ -1310,17 +1310,17 @@ def test_sandbox_container_get_and_list_forward_include_terminated(app, servicer
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
     with servicer.task_command_router.intercept() as tcr_ctx:
-        container = sb._experimental_containers.create("bash", "-c", "exit 0", name="oneshot", image=image)
+        container = sb._experimental_sidecars.create("bash", "-c", "exit 0", name="oneshot", image=image)
         container.wait()
 
-        sb._experimental_containers.get(name="oneshot", include_terminated=True)
-        containers = sb._experimental_containers.list(include_terminated=True)
+        sb._experimental_sidecars.get(name="oneshot", include_terminated=True)
+        containers = sb._experimental_sidecars.list(include_terminated=True)
 
     (get_request,) = tcr_ctx.get_requests("TaskContainerGet")
     assert get_request.include_terminated is True
     (list_request,) = tcr_ctx.get_requests("TaskContainerList")
     assert list_request.include_terminated is True
-    assert all(isinstance(container, SandboxContainer) for container in containers)
+    assert all(isinstance(container, SidecarContainer) for container in containers)
 
 
 @skip_non_subprocess
@@ -1332,7 +1332,7 @@ def test_sandbox_container_create_accepts_prebuilt_image(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
     with servicer.task_command_router.intercept() as tcr_ctx:
-        sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
+        sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
 
     (container_create_request,) = tcr_ctx.get_requests("TaskContainerCreate")
     assert container_create_request.image_id == image.object_id
@@ -1349,7 +1349,7 @@ def test_sandbox_container_create_forwards_secret_ids_and_env(app, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
     with servicer.task_command_router.intercept() as tcr_ctx:
-        sb._experimental_containers.create(
+        sb._experimental_sidecars.create(
             "bash",
             "-c",
             "sleep 100",
@@ -1372,7 +1372,7 @@ def test_sandbox_container_create_rejects_image_with_mount_layers(app):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
     with pytest.raises(InvalidError, match=r"only supports pre-built images"):
-        sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
+        sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
 
 
 def test_sandbox_container_create_rejects_unhydrated_image(app):
@@ -1380,7 +1380,7 @@ def test_sandbox_container_create_rejects_unhydrated_image(app):
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
 
     with pytest.raises(InvalidError, match=r"currently only supports Images that are either"):
-        sb._experimental_containers.create("bash", "-c", "sleep 100", name="worker", image=image)
+        sb._experimental_sidecars.create("bash", "-c", "sleep 100", name="worker", image=image)
 
 
 def test_sandbox_container_create_rejects_mounts_kwarg(app):
@@ -1389,7 +1389,7 @@ def test_sandbox_container_create_rejects_mounts_kwarg(app):
     image._mount_layers = []
 
     sb = Sandbox.create("bash", "-c", "sleep 100", app=app)
-    create = typing.cast(typing.Any, sb._experimental_containers.create)
+    create = typing.cast(typing.Any, sb._experimental_sidecars.create)
 
     with pytest.raises(TypeError):
         create(name="worker", image=image, mounts=())

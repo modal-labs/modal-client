@@ -1386,10 +1386,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._command_router_client
 
     @property
-    def _experimental_containers(self) -> "_SandboxContainerManager":
-        """Manage additional containers running in this Sandbox."""
+    def _experimental_sidecars(self) -> "_SidecarManager":
+        """Manage sidecar containers running in this Sandbox."""
         self._ensure_attached()
-        return _SandboxContainerManager(self)
+        return _SidecarManager(self)
 
     @overload
     async def exec(
@@ -1854,7 +1854,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             before_timestamp = resp.sandboxes[-1].created_at
 
 
-class _SandboxContainer:
+class _SidecarContainer:
     """Handle to an additional container running in a Sandbox."""
 
     _result: Optional[api_pb2.GenericResult]
@@ -1882,9 +1882,9 @@ class _SandboxContainer:
         return self._container_name
 
     @staticmethod
-    def _from_container_info(sandbox: "_Sandbox", container_info: sr_pb2.TaskContainerInfo) -> "_SandboxContainer":
+    def _from_container_info(sandbox: "_Sandbox", container_info: sr_pb2.TaskContainerInfo) -> "_SidecarContainer":
         result = container_info.result if container_info.HasField("result") else None
-        return _SandboxContainer(sandbox, container_info.container_id, container_info.container_name, result)
+        return _SidecarContainer(sandbox, container_info.container_id, container_info.container_name, result)
 
     async def _get_command_router(self) -> tuple[str, "TaskCommandRouterClient"]:
         """Get task ID and command router client."""
@@ -2031,8 +2031,11 @@ class _SandboxContainer:
             return _result_returncode(self._result)
 
 
-class _SandboxContainerManager:
-    """Creates and manages additional containers in a Sandbox."""
+_MAIN_CONTAINER_NAME: str = "main"
+
+
+class _SidecarManager:
+    """Creates and manages sidecar containers in a Sandbox."""
 
     def __init__(self, sandbox: _Sandbox) -> None:
         self._sandbox = sandbox
@@ -2051,22 +2054,24 @@ class _SandboxContainerManager:
         env: Optional[dict[str, str]] = None,
         secrets: Optional[Collection[_Secret]] = None,
         workdir: Optional[str] = None,
-    ) -> _SandboxContainer:
+    ) -> _SidecarContainer:
+        if name == _MAIN_CONTAINER_NAME:
+            raise InvalidError(f"The name {_MAIN_CONTAINER_NAME!r} is reserved for the sandbox's main container.")
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
         _validate_exec_args(args)
 
         if image._mount_layers:
             raise InvalidError(
-                "Sandbox._experimental_containers.create(image=...) only supports pre-built images. "
+                "Sandbox._experimental_sidecars.create(image=...) only supports pre-built images. "
                 "When using `add_local*` methods, specify `copy=True` and call `.build()` before passing "
-                "the image to `._experimental_containers.create()`:\n\nE.g.\n"
+                "the image to `._experimental_sidecars.create()`:\n\nE.g.\n"
                 'img = modal.Image.debian_slim().add_local_file("foo", "/foo", copy=True).build(app)\n'
-                'sandbox._experimental_containers.create(name="worker", image=img)'
+                'sandbox._experimental_sidecars.create(name="worker", image=img)'
             )
         if not image._object_id:
             raise InvalidError(
-                "Sandbox._experimental_containers.create(image=...) currently only supports Images that are "
+                "Sandbox._experimental_sidecars.create(image=...) currently only supports Images that are "
                 "either:\n"
                 "- prebuilt using `image.build()`\n"
                 "- referenced by id, e.g. `Image.from_id()`\n"
@@ -2092,9 +2097,14 @@ class _SandboxContainerManager:
         create_resp = await command_router_client.container_create(create_req)
         container_id = create_resp.container_id
         container_name = create_resp.container_name or name
-        return _SandboxContainer(self._sandbox, container_id, container_name)
+        return _SidecarContainer(self._sandbox, container_id, container_name)
 
-    async def get(self, *, name: str, include_terminated: bool = False) -> "_SandboxContainer":
+    async def get(self, *, name: str, include_terminated: bool = False) -> "_SidecarContainer":
+        if name == _MAIN_CONTAINER_NAME:
+            raise InvalidError(
+                "Cannot get the main sandbox container through the sidecars API. "
+                "Use Sandbox methods directly to interact with the main container."
+            )
         task_id, command_router_client = await self._get_command_router()
         resp = await command_router_client.container_get(
             sr_pb2.TaskContainerGetRequest(
@@ -2103,16 +2113,20 @@ class _SandboxContainerManager:
                 include_terminated=include_terminated,
             )
         )
-        return _SandboxContainer._from_container_info(self._sandbox, resp.container)
+        return _SidecarContainer._from_container_info(self._sandbox, resp.container)
 
-    async def list(self, include_terminated: bool = False) -> builtins.list[_SandboxContainer]:
+    async def list(self, include_terminated: bool = False) -> builtins.list[_SidecarContainer]:
         task_id, command_router_client = await self._get_command_router()
         resp = await command_router_client.container_list(
             sr_pb2.TaskContainerListRequest(task_id=task_id, include_terminated=include_terminated)
         )
-        return [_SandboxContainer._from_container_info(self._sandbox, container) for container in resp.containers]
+        return [
+            _SidecarContainer._from_container_info(self._sandbox, container)
+            for container in resp.containers
+            if container.container_name != _MAIN_CONTAINER_NAME
+        ]
 
 
-SandboxContainer = synchronize_api(_SandboxContainer)
-SandboxContainerManager = synchronize_api(_SandboxContainerManager)
+SidecarContainer = synchronize_api(_SidecarContainer)
+SidecarManager = synchronize_api(_SidecarManager)
 Sandbox = synchronize_api(_Sandbox)

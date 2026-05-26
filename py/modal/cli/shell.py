@@ -16,7 +16,7 @@ from ..functions import Function
 from ..image import Image
 from ..mount import _Mount
 from ..runner import interactive_shell
-from ..sandbox import Sandbox
+from ..sandbox import _MAIN_CONTAINER_NAME, Sandbox
 from ..secret import Secret
 from ..stream_type import StreamType
 from ..volume import Volume
@@ -106,8 +106,8 @@ def _is_running_container_ref(ref: Optional[str]) -> bool:
     return _is_valid_modal_id(sandbox_id, "sb-") or _is_valid_modal_id(ref, "ta-")
 
 
-def _start_shell_in_sandbox_container(sandbox_id: str, container_name: str, cmd: str, pty: bool) -> None:
-    """Shell into a named container within a sandbox."""
+def _start_shell_in_sidecar_container(sandbox_id: str, container_name: str, cmd: str, pty: bool) -> None:
+    """Shell into a sidecar container within a sandbox."""
     try:
         sandbox = Sandbox.from_id(sandbox_id)
     except NotFoundError:
@@ -116,7 +116,7 @@ def _start_shell_in_sandbox_container(sandbox_id: str, container_name: str, cmd:
         raise ClickException(f"Error connecting to Sandbox '{sandbox_id}': {str(e)}")
 
     try:
-        sandbox_container = sandbox._experimental_containers.get(name=container_name)
+        sandbox_container = sandbox._experimental_sidecars.get(name=container_name)
         process: Union[ContainerProcess[bytes], ContainerProcess[str]]
         if pty:
             # PTY output is raw terminal bytes, not text; strict UTF-8 decode
@@ -138,8 +138,8 @@ def _start_shell_in_sandbox_container(sandbox_id: str, container_name: str, cmd:
 def _start_shell_in_running_container(ref: str, cmd: str, pty: bool) -> None:
     sandbox_id, container_name = _parse_sandbox_container_ref(ref)
 
-    if container_name is not None:
-        return _start_shell_in_sandbox_container(sandbox_id, container_name, cmd, pty)
+    if container_name is not None and container_name != _MAIN_CONTAINER_NAME:
+        return _start_shell_in_sidecar_container(sandbox_id, container_name, cmd, pty)
 
     if _is_valid_modal_id(sandbox_id, "sb-"):
         try:

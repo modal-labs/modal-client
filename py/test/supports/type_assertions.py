@@ -8,7 +8,7 @@ import modal
 from modal.dict import Dict, DictManager
 from modal.partial_function import method
 from modal.queue import Queue, QueueManager
-from modal.sandbox import SandboxContainer
+from modal.sandbox import SidecarContainer
 from modal.secret import Secret, SecretManager
 from modal.volume import AbstractVolumeUploadContextManager, Volume, VolumeManager
 
@@ -94,16 +94,16 @@ assert_type(cmd2.stdout.read(), bytes)
 for line_bytes in cmd2.stdout:
     assert_type(line_bytes, bytes)
 
-containers = sandbox._experimental_containers.list()
-assert_type(containers, list[SandboxContainer])
+containers = sandbox._experimental_sidecars.list()
+assert_type(containers, list[SidecarContainer])
 
 for container in containers:
-    assert_type(container, SandboxContainer)
+    assert_type(container, SidecarContainer)
 
 
 async def async_sandbox_block() -> None:
-    async_containers = await sandbox._experimental_containers.list.aio()
-    assert_type(async_containers, list[SandboxContainer])
+    async_containers = await sandbox._experimental_sidecars.list.aio()
+    assert_type(async_containers, list[SidecarContainer])
 
 
 # check file_io

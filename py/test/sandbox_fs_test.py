@@ -1222,7 +1222,7 @@ def sidecar(sandbox):
     image = mock.Mock()
     image.object_id = "im-test-1"
     image._mount_layers = []
-    container = sandbox._experimental_containers.create("sleep", "600", name="fs-test-sidecar", image=image)
+    container = sandbox._experimental_sidecars.create("sleep", "600", name="fs-test-sidecar", image=image)
     yield container
     container.terminate(wait=False)
 
