@@ -5,13 +5,8 @@ package modal
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"log/slog"
-	"net/http"
 	"strings"
 	"time"
 
@@ -379,51 +374,4 @@ func (f *Function) UpdateAutoscaler(ctx context.Context, params *FunctionUpdateA
 // Returns empty string if this Function is not a Web Function.
 func (f *Function) GetWebURL() string {
 	return f.getWebURL()
-}
-
-// blobUpload uploads a blob to storage and returns its ID.
-func blobUpload(ctx context.Context, client pb.ModalClientClient, logger *slog.Logger, data []byte) (string, error) {
-	md5sum := md5.Sum(data)
-	sha256sum := sha256.Sum256(data)
-	contentMd5 := base64.StdEncoding.EncodeToString(md5sum[:])
-	contentSha256 := base64.StdEncoding.EncodeToString(sha256sum[:])
-
-	resp, err := client.BlobCreate(ctx, pb.BlobCreateRequest_builder{
-		ContentMd5:          contentMd5,
-		ContentSha256Base64: contentSha256,
-		ContentLength:       int64(len(data)),
-	}.Build())
-	if err != nil {
-		return "", fmt.Errorf("failed to create blob: %w", err)
-	}
-
-	switch resp.WhichUploadTypeOneof() {
-	case pb.BlobCreateResponse_Multipart_case:
-		return "", fmt.Errorf("Function input size exceeds multipart upload threshold, unsupported by this SDK version")
-
-	case pb.BlobCreateResponse_UploadUrl_case:
-		req, err := http.NewRequestWithContext(ctx, "PUT", resp.GetUploadUrl(), bytes.NewReader(data))
-		if err != nil {
-			return "", fmt.Errorf("failed to create upload request: %w", err)
-		}
-		req.Header.Set("Content-Type", "application/octet-stream")
-		req.Header.Set("Content-MD5", contentMd5)
-		uploadResp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return "", fmt.Errorf("failed to upload blob: %w", err)
-		}
-		defer func() {
-			if err := uploadResp.Body.Close(); err != nil {
-				logger.DebugContext(ctx, "failed to close upload response body", "error", err.Error())
-			}
-		}()
-		if uploadResp.StatusCode < 200 || uploadResp.StatusCode >= 300 {
-			return "", fmt.Errorf("failed blob upload: %s", uploadResp.Status)
-		}
-		// Skip client-side ETag header validation for now (MD5 checksum).
-		return resp.GetBlobId(), nil
-
-	default:
-		return "", fmt.Errorf("missing upload URL in BlobCreate response")
-	}
 }

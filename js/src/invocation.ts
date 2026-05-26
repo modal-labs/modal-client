@@ -13,6 +13,7 @@ import {
 import { ModalGrpcClient, type ModalClient } from "./client";
 import { FunctionTimeoutError, InternalFailure, RemoteError } from "./errors";
 import { cborDecode } from "./serialization";
+import { blobDownload } from "./blob";
 
 // From: modal-client/modal/_utils/function_utils.py
 const outputsTimeoutMs = 55 * 1000;
@@ -278,19 +279,6 @@ async function processResult(
   }
 
   return deserializeDataFormat(data, dataFormat);
-}
-
-async function blobDownload(
-  cpClient: ModalGrpcClient,
-  blobId: string,
-): Promise<Uint8Array> {
-  const resp = await cpClient.blobGet({ blobId });
-  const s3resp = await fetch(resp.downloadUrl);
-  if (!s3resp.ok) {
-    throw new Error(`Failed to download blob: ${s3resp.statusText}`);
-  }
-  const buf = await s3resp.arrayBuffer();
-  return new Uint8Array(buf);
 }
 
 function deserializeDataFormat(

@@ -1,14 +1,12 @@
 // Function calls and invocations, to be used with Modal Functions.
 
-import { createHash } from "node:crypto";
-
 import {
   DataFormat,
   FunctionCallInvocationType,
   FunctionHandleMetadata,
   FunctionInput,
 } from "../proto/modal_proto/api";
-import { getDefaultClient, ModalGrpcClient, type ModalClient } from "./client";
+import { getDefaultClient, type ModalClient } from "./client";
 import { FunctionCall } from "./function_call";
 import { InternalFailure, InvalidError, NotFoundError } from "./errors";
 import { cborEncode } from "./serialization";
@@ -19,6 +17,7 @@ import {
   Invocation,
 } from "./invocation";
 import { checkForRenamedParams } from "./validation";
+import { blobUpload } from "./blob";
 
 // From: modal/_utils/blob_utils.py
 const maxObjectSizeBytes = 2 * 1024 * 1024; // 2 MiB
@@ -303,39 +302,5 @@ export class Function_ {
       methodName: this.methodName,
       finalInput: false, // This field isn't specified in the Python client, so it defaults to false.
     };
-  }
-}
-
-async function blobUpload(
-  cpClient: ModalGrpcClient,
-  data: Uint8Array,
-): Promise<string> {
-  const contentMd5 = createHash("md5").update(data).digest("base64");
-  const contentSha256 = createHash("sha256").update(data).digest("base64");
-  const resp = await cpClient.blobCreate({
-    contentMd5,
-    contentSha256Base64: contentSha256,
-    contentLength: data.length,
-  });
-  if (resp.multipart) {
-    throw new Error(
-      "Function input size exceeds multipart upload threshold, unsupported by this SDK version",
-    );
-  } else if (resp.uploadUrl) {
-    const uploadResp = await fetch(resp.uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-MD5": contentMd5,
-      },
-      body: data,
-    });
-    if (uploadResp.status < 200 || uploadResp.status >= 300) {
-      throw new Error(`Failed blob upload: ${uploadResp.statusText}`);
-    }
-    // Skip client-side ETag header validation for now (MD5 checksum).
-    return resp.blobId;
-  } else {
-    throw new Error("Missing upload URL in BlobCreate response");
   }
 }

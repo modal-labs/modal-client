@@ -3,9 +3,7 @@ package modal
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"time"
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
@@ -245,34 +243,6 @@ func processResult(ctx context.Context, client pb.ModalClientClient, logger *slo
 	}
 
 	return deserializeDataFormat(data, dataFormat)
-}
-
-// blobDownload downloads a blob by its ID.
-func blobDownload(ctx context.Context, client pb.ModalClientClient, logger *slog.Logger, blobID string) ([]byte, error) {
-	resp, err := client.BlobGet(ctx, pb.BlobGetRequest_builder{
-		BlobId: blobID,
-	}.Build())
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, "GET", resp.GetDownloadUrl(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create download request: %w", err)
-	}
-	s3resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to download blob: %w", err)
-	}
-	defer func() {
-		if err := s3resp.Body.Close(); err != nil {
-			logger.DebugContext(ctx, "failed to close download response body", "error", err.Error())
-		}
-	}()
-	buf, err := io.ReadAll(s3resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read blob data: %w", err)
-	}
-	return buf, nil
 }
 
 func deserializeDataFormat(data []byte, dataFormat pb.DataFormat) (any, error) {

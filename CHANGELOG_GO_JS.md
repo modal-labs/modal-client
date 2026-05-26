@@ -4,7 +4,8 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
-No unreleased changes.
+- Added retry logic with exponential backoff for blob uploads and downloads in both Go and JS SDKs, improving resilience to transient HTTP errors (e.g., 502 Bad Gateway).
+- Fixed a bug in Go where `blobDownload` would silently treat HTTP error response bodies as valid blob data instead of failing.
 
 ## js/v0.7.6, go/v0.7.6
 
