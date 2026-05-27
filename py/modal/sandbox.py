@@ -695,7 +695,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,
         block_network: bool = False,
-        cidr_allowlist: Optional[Sequence[str]] = None,
+        outbound_cidr_allowlist: Optional[Sequence[str]] = None,
         inbound_cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty: bool = False,
@@ -773,21 +773,21 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
 
         if block_network:
-            if cidr_allowlist is not None:
-                raise InvalidError("`cidr_allowlist` cannot be used when `block_network` is enabled")
+            if outbound_cidr_allowlist is not None:
+                raise InvalidError("`outbound_cidr_allowlist` cannot be used when `block_network` is enabled")
             if inbound_cidr_allowlist is not None:
                 raise InvalidError("`inbound_cidr_allowlist` cannot be used when `block_network` is enabled")
             network_access = api_pb2.NetworkAccess(
                 network_access_type=api_pb2.NetworkAccess.NetworkAccessType.BLOCKED,
             )
-        elif cidr_allowlist is None:
+        elif outbound_cidr_allowlist is None:
             network_access = api_pb2.NetworkAccess(
                 network_access_type=api_pb2.NetworkAccess.NetworkAccessType.OPEN,
             )
         else:
             network_access = api_pb2.NetworkAccess(
                 network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
-                allowed_cidrs=cidr_allowlist,
+                allowed_cidrs=outbound_cidr_allowlist,
             )
 
         async def _load(
