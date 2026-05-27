@@ -50,7 +50,9 @@ def test_queue_ephemeral(servicer, client):
         assert q.get() == "hello"
         time.sleep(1.5)  # enough to trigger two heartbeats
 
-    assert servicer.n_queue_heartbeats == 2
+    # Windows timer granularity (~15.6ms) can cause an extra heartbeat to
+    # slip in before the context manager tears down.
+    assert servicer.n_queue_heartbeats in (2, 3)
 
 
 def test_queue_from_id(servicer, client):
