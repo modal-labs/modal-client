@@ -2182,6 +2182,7 @@ message FunctionMapResponse {
   uint32 max_inputs_outstanding = 6;
 }
 
+// todo(ayush): update this to also use `autoscaler_settings`
 message FunctionOptions {
   repeated string secret_ids = 1;
   repeated string mount_ids = 2; // Currently not supported
