@@ -1661,6 +1661,10 @@ class _Sandbox(_Object, type_prefix="sb"):
                 sandbox_name_override=name,
                 sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING,
             )
+        # Pin the restored Sandbox to a specific worker when MODAL_WORKER_ID is
+        # set.
+        if worker_id := config.get("worker_id"):
+            restore_req.worker_id = worker_id
         restore_resp: api_pb2.SandboxRestoreResponse = await client.stub.SandboxRestore(restore_req)
 
         sandbox = await _Sandbox.from_id(restore_resp.sandbox_id, client)

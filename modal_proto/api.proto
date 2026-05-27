@@ -3258,6 +3258,7 @@ message SandboxRestoreRequest {
   string snapshot_id = 1;
   string sandbox_name_override = 2;
   SandboxNameOverrideType sandbox_name_override_type = 3;
+  string worker_id = 4; // For internal debugging use only.
 }
 
 message SandboxRestoreResponse {
