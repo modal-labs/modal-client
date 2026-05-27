@@ -53,6 +53,7 @@ message SandboxStdioReadV2Request {
 
 message SandboxStdioReadV2Response {
   bytes data = 1;
+  uint64 starting_offset = 2;
 }
 
 message TaskContainerCreateRequest {
