@@ -4,7 +4,7 @@ import codecs
 import contextlib
 import io
 import sys
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -231,9 +231,9 @@ class _StreamReaderThroughServerParams:
 
 
 @dataclass(frozen=True)
-class _StreamReaderThroughCommandRouterParams:
-    """Parameters for a ``_StreamReader`` that reads container-process stdio
-    directly from the worker via the task command router."""
+class _StreamReaderThroughSandboxExecCommandRouterParams:
+    """Parameters for a ``_StreamReader`` that reads sandbox-exec stdio
+    directly from the worker via the task command router (``exec_stdio_read``)."""
 
     file_descriptor: "api_pb2.FileDescriptor.ValueType"
     task_id: str
@@ -242,10 +242,50 @@ class _StreamReaderThroughCommandRouterParams:
     deadline: Optional[float]
 
 
-async def _stdio_stream_from_command_router(
-    params: _StreamReaderThroughCommandRouterParams,
+@dataclass(frozen=True)
+class _StreamReaderThroughSandboxCommandRouterParams:
+    """Parameters for a ``_StreamReader`` that reads a V2 sandbox's
+    stdio directly from the worker via the task command router
+    (``sandbox_stdio_read``)."""
+
+    file_descriptor: "api_pb2.FileDescriptor.ValueType"
+    sandbox_id: str
+    # Lazily fetches ``(task_id, command_router_client)`` the first time the
+    # stream is iterated. Captures the sandbox handle so we only mint a JWT
+    # and open a connection to the worker when stdio is actually read.
+    resolve_router: Callable[[], Awaitable[tuple[str, TaskCommandRouterClient]]]
+
+
+_StreamReaderThroughCommandRouterParams = (
+    _StreamReaderThroughSandboxExecCommandRouterParams | _StreamReaderThroughSandboxCommandRouterParams
+)
+
+
+async def _stdio_stream_from_sandbox_command_router(
+    params: _StreamReaderThroughSandboxCommandRouterParams,
 ) -> AsyncGenerator[bytes, None]:
-    """Stream raw bytes from the router client."""
+    """Stream raw bytes from a V2 sandbox's primary stdio via ``sandbox_stdio_read``."""
+    task_id, command_router_client = await params.resolve_router()
+    first_chunk = True
+    async with aclosing(command_router_client.sandbox_stdio_read(task_id, params.file_descriptor)) as stream:
+        async for item in stream:
+            if len(item.data) == 0:
+                raise ValueError("Received empty message streaming stdio from sandbox.")
+            if first_chunk:
+                first_chunk = False
+                if item.starting_offset > 0:
+                    logger.warning(
+                        f"V2 sandbox {params.sandbox_id} stdio: dropped first "
+                        f"{item.starting_offset} bytes; only the most recent portion "
+                        f"of output is retained."
+                    )
+            yield item.data
+
+
+async def _stdio_stream_from_sandbox_exec_command_router(
+    params: _StreamReaderThroughSandboxExecCommandRouterParams,
+) -> AsyncGenerator[bytes, None]:
+    """Stream raw bytes from a V2 sandbox-exec'd process via ``exec_stdio_read``."""
     async with aclosing(
         params.command_router_client.exec_stdio_read(
             params.task_id, params.object_id, params.file_descriptor, params.deadline
@@ -254,9 +294,7 @@ async def _stdio_stream_from_command_router(
         try:
             async for item in stream:
                 if len(item.data) == 0:
-                    # This is an error.
                     raise ValueError("Received empty message streaming stdio from sandbox.")
-
                 yield item.data
         except ExecTimeoutError:
             logger.debug(f"Deadline exceeded while streaming stdio for exec {params.object_id}")
@@ -265,20 +303,22 @@ async def _stdio_stream_from_command_router(
             return
 
 
+def _stdio_stream_from_command_router(
+    params: _StreamReaderThroughCommandRouterParams,
+) -> AsyncGenerator[bytes, None]:
+    """Dispatch between the V2-sandbox primary stdio and the V2-sandbox-exec
+    stdio streams, both of which yield raw bytes."""
+    if isinstance(params, _StreamReaderThroughSandboxCommandRouterParams):
+        return _stdio_stream_from_sandbox_command_router(params)
+    return _stdio_stream_from_sandbox_exec_command_router(params)
+
+
 class _BytesStreamReaderThroughCommandRouter:
-    """
-    StreamReader implementation that will read directly from the worker that
-    hosts the sandbox.
+    """StreamReader that yields raw bytes from the router-backed stdio source
+    (either V2 sandbox top-level stdio or V2 sandbox-exec stdio)."""
 
-    This implementation is used for non-text streams.
-    """
-
-    def __init__(
-        self,
-        params: _StreamReaderThroughCommandRouterParams,
-    ) -> None:
+    def __init__(self, params: _StreamReaderThroughCommandRouterParams) -> None:
         self._params = params
-        self._stream = None
 
     @property
     def file_descriptor(self) -> int:
@@ -300,18 +340,10 @@ class _BytesStreamReaderThroughCommandRouter:
 
 
 class _TextStreamReaderThroughCommandRouter:
-    """
-    StreamReader implementation that will read directly from the worker
-    that hosts the sandbox.
+    """StreamReader that yields UTF-8-decoded text from the router-backed
+    stdio source."""
 
-    This implementation is used for text streams.
-    """
-
-    def __init__(
-        self,
-        params: _StreamReaderThroughCommandRouterParams,
-        by_line: bool,
-    ) -> None:
+    def __init__(self, params: _StreamReaderThroughCommandRouterParams, by_line: bool) -> None:
         self._params = params
         self._by_line = by_line
 

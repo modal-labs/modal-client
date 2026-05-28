@@ -6,11 +6,13 @@ from typing import AsyncGenerator, Optional
 
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter, synchronizer
+from modal._utils.task_command_router_client import TaskCommandRouterClient
 from modal.io_streams import (
     StreamReader,
     _decode_bytes_stream_to_str,
     _stream_by_line,
-    _StreamReaderThroughCommandRouterParams,
+    _StreamReaderThroughSandboxCommandRouterParams,
+    _StreamReaderThroughSandboxExecCommandRouterParams,
     _StreamReaderThroughServerParams,
     _StreamWriter,
     _StreamWriterThroughCommandRouterParams,
@@ -29,7 +31,7 @@ def _build_stream_reader_params(
 ):
     """Helper: build the right params dataclass for a stream reader test."""
     if command_router_client is not None:
-        return _StreamReaderThroughCommandRouterParams(
+        return _StreamReaderThroughSandboxExecCommandRouterParams(
             file_descriptor=file_descriptor,
             task_id=task_id,
             object_id=object_id,
@@ -437,6 +439,180 @@ async def test_decode_bytes_stream_to_str_handles_multibyte_split_across_chunks(
     stream = _decode_bytes_stream_to_str(_bytes_stream([b"caf\xc3", b"\xa9"]))
     result = [chunk async for chunk in stream]
     assert result == ["caf", "é"]
+
+
+class _TestV2SandboxRouter:
+    """Test fixture for ``TaskCommandRouterClient`` for V2 sandbox stdio."""
+
+    def __init__(self, frames: list[sr_pb2.SandboxStdioReadV2Response]):
+        self._frames = frames
+        self.calls: list[dict[str, object]] = []
+
+    async def sandbox_stdio_read(
+        self,
+        task_id: str,
+        file_descriptor: "api_pb2.FileDescriptor.ValueType",
+    ) -> AsyncGenerator[sr_pb2.SandboxStdioReadV2Response, None]:
+        self.calls.append({"task_id": task_id, "file_descriptor": file_descriptor})
+        for frame in self._frames:
+            yield frame
+
+
+@synchronizer.wrap
+async def _make_v2_stream_reader(
+    router,
+    *,
+    sandbox_id: str = "sb-test",
+    task_id: str = "ta-test",
+    file_descriptor: "api_pb2.FileDescriptor.ValueType" = api_pb2.FILE_DESCRIPTOR_STDOUT,
+    text: bool = False,
+    by_line: bool = False,
+) -> StreamReader:
+    async def resolve_router() -> tuple[str, TaskCommandRouterClient]:
+        return task_id, typing.cast(TaskCommandRouterClient, router)
+
+    return StreamReader(
+        _StreamReaderThroughSandboxCommandRouterParams(
+            file_descriptor=file_descriptor,
+            sandbox_id=sandbox_id,
+            resolve_router=resolve_router,
+        ),
+        text=text,
+        by_line=by_line,
+    )
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_yields_all_chunks_in_order():
+    router = _TestV2SandboxRouter(
+        [
+            sr_pb2.SandboxStdioReadV2Response(data=b"foo", starting_offset=0),
+            sr_pb2.SandboxStdioReadV2Response(data=b"bar", starting_offset=3),
+            sr_pb2.SandboxStdioReadV2Response(data=b"baz", starting_offset=6),
+        ]
+    )
+    reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, text=False)
+    assert await reader.read.aio() == b"foobarbaz"
+    assert router.calls == [{"task_id": "ta-test", "file_descriptor": api_pb2.FILE_DESCRIPTOR_STDOUT}]
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_decodes_text_across_chunks():
+    # 'é' = b"\xc3\xa9", split across frames to test incremental UTF-8 decode.
+    router = _TestV2SandboxRouter(
+        [
+            sr_pb2.SandboxStdioReadV2Response(data=b"caf\xc3", starting_offset=0),
+            sr_pb2.SandboxStdioReadV2Response(data=b"\xa9!", starting_offset=4),
+        ]
+    )
+    reader: StreamReader[str] = await _make_v2_stream_reader.aio(router, text=True)
+    assert await reader.read.aio() == "café!"
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_yields_lines_when_by_line():
+    router = _TestV2SandboxRouter(
+        [
+            sr_pb2.SandboxStdioReadV2Response(data=b"foo\nba", starting_offset=0),
+            sr_pb2.SandboxStdioReadV2Response(data=b"r\nbaz", starting_offset=6),
+        ]
+    )
+    reader: StreamReader[str] = await _make_v2_stream_reader.aio(router, text=True, by_line=True)
+    out = []
+    async for line in reader:
+        out.append(line)
+    assert out == ["foo\n", "bar\n", "baz"]
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_routes_stderr_file_descriptor():
+    router = _TestV2SandboxRouter([sr_pb2.SandboxStdioReadV2Response(data=b"err", starting_offset=0)])
+    reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(
+        router, file_descriptor=api_pb2.FILE_DESCRIPTOR_STDERR, text=False
+    )
+    assert await reader.read.aio() == b"err"
+    assert router.calls == [{"task_id": "ta-test", "file_descriptor": api_pb2.FILE_DESCRIPTOR_STDERR}]
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_warns_on_silent_advance_first_chunk(caplog):
+    router = _TestV2SandboxRouter(
+        [
+            sr_pb2.SandboxStdioReadV2Response(data=b"tail", starting_offset=1024),
+        ]
+    )
+    reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, sandbox_id="sb-evicted", text=False)
+    with caplog.at_level("WARNING", logger="modal-client"):
+        assert await reader.read.aio() == b"tail"
+    assert any("sb-evicted" in rec.message and "dropped first 1024 bytes" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_no_warning_when_starting_offset_zero(caplog):
+    router = _TestV2SandboxRouter(
+        [
+            sr_pb2.SandboxStdioReadV2Response(data=b"ok", starting_offset=0),
+        ]
+    )
+    reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, text=False)
+    with caplog.at_level("WARNING", logger="modal-client"):
+        assert await reader.read.aio() == b"ok"
+    assert not any("dropped first" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_warns_only_on_first_chunk(caplog):
+    # Subsequent chunks with non-zero starting_offset are normal continuation,
+    # not silent advances; the warning must fire at most once.
+    router = _TestV2SandboxRouter(
+        [
+            sr_pb2.SandboxStdioReadV2Response(data=b"a", starting_offset=128),
+            sr_pb2.SandboxStdioReadV2Response(data=b"b", starting_offset=129),
+            sr_pb2.SandboxStdioReadV2Response(data=b"c", starting_offset=130),
+        ]
+    )
+    reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, text=False)
+    with caplog.at_level("WARNING", logger="modal-client"):
+        assert await reader.read.aio() == b"abc"
+    drop_warnings = [rec for rec in caplog.records if "dropped first" in rec.message]
+    assert len(drop_warnings) == 1
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_raises_on_empty_data_frame():
+    router = _TestV2SandboxRouter(
+        [sr_pb2.SandboxStdioReadV2Response(data=b"", starting_offset=0)],
+    )
+    reader: StreamReader[bytes] = await _make_v2_stream_reader.aio(router, text=False)
+    with pytest.raises(ValueError, match="Received empty message"):
+        await reader.read.aio()
+
+
+@pytest.mark.asyncio
+async def test_v2_stream_reader_does_not_resolve_router_until_iterated():
+    resolve_calls = 0
+
+    async def resolve_router() -> tuple[str, TaskCommandRouterClient]:
+        nonlocal resolve_calls
+        resolve_calls += 1
+        router = _TestV2SandboxRouter([sr_pb2.SandboxStdioReadV2Response(data=b"x", starting_offset=0)])
+        return "ta-test", typing.cast(TaskCommandRouterClient, router)
+
+    @synchronizer.wrap
+    async def _build() -> StreamReader:
+        return StreamReader(
+            _StreamReaderThroughSandboxCommandRouterParams(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                sandbox_id="sb-test",
+                resolve_router=resolve_router,
+            ),
+            text=False,
+        )
+
+    reader: StreamReader[bytes] = await _build.aio()  # type: ignore[attr-defined]
+    assert resolve_calls == 0
+    assert await reader.read.aio() == b"x"
+    assert resolve_calls == 1
 
 
 # ---------------------------------------

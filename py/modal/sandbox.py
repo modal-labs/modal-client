@@ -7,6 +7,7 @@ import os
 import time
 import typing
 import uuid
+import weakref
 from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -54,6 +55,7 @@ from .io_streams import (
     StreamReader,
     StreamWriter,
     _StreamReader,
+    _StreamReaderThroughSandboxCommandRouterParams,
     _StreamReaderThroughServerParams,
     _StreamWriter,
     _StreamWriterThroughServerParams,
@@ -856,6 +858,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             self._hydrate(sandbox_id, load_context.client, None)
             self._is_v2 = True
             self._task_id = create_resp.task_id
+            self._hydrate_metadata_v2()
             self._tunnels = {
                 t.container_port: Tunnel(t.host, t.port, t.unencrypted_host, t.unencrypted_port)
                 for t in create_resp.tunnels
@@ -922,6 +925,38 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._command_router_client = None
         self._filesystem = None
         self._is_v2 = False
+
+    def _hydrate_metadata_v2(self) -> None:
+        """Wire up V2 stdio readers that read directly from the worker. Cheap
+        to call eagerly: the router connection is opened lazily on first read.
+        """
+        # TODO: combine with `_hydrate_metadata`, so we can set `stdout` & `stderr` differently for V1 and V2 sandboxes.
+        weak_self = weakref.ref(self)
+
+        async def resolve_router() -> tuple[str, TaskCommandRouterClient]:
+            this = weak_self()
+            if this is None:
+                raise RuntimeError("Sandbox was garbage collected before its stdio reader connected")
+            task_id = await this._get_task_id()
+            router = await this._get_command_router_client(task_id)
+            return task_id, router
+
+        self._stdout = StreamReader(
+            _StreamReaderThroughSandboxCommandRouterParams(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                sandbox_id=self.object_id,
+                resolve_router=resolve_router,
+            ),
+            by_line=True,
+        )
+        self._stderr = StreamReader(
+            _StreamReaderThroughSandboxCommandRouterParams(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDERR,
+                sandbox_id=self.object_id,
+                resolve_router=resolve_router,
+            ),
+            by_line=True,
+        )
 
     def _initialize_from_other(self, other):
         super()._initialize_from_other(other)
@@ -1005,6 +1040,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         obj = _Sandbox._new_hydrated(sandbox_id, client, None)
         obj._is_v2 = is_v2
+        if is_v2:
+            obj._hydrate_metadata_v2()
 
         if resp.result.status:
             obj._result = resp.result

@@ -13,7 +13,7 @@ from .config import logger
 from .exception import ExecTimeoutError, InteractiveTimeoutError, InvalidError
 from .io_streams import (
     _StreamReader,
-    _StreamReaderThroughCommandRouterParams,
+    _StreamReaderThroughSandboxExecCommandRouterParams,
     _StreamWriter,
     _StreamWriterThroughCommandRouterParams,
 )
@@ -58,7 +58,7 @@ class _ContainerProcess(Generic[T]):
         self._by_line = by_line
         self._task_id = task_id
         self._stdout = _StreamReader[T](
-            _StreamReaderThroughCommandRouterParams(
+            _StreamReaderThroughSandboxExecCommandRouterParams(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 task_id=self._task_id,
                 object_id=process_id,
@@ -70,7 +70,7 @@ class _ContainerProcess(Generic[T]):
             by_line=by_line,
         )
         self._stderr = _StreamReader[T](
-            _StreamReaderThroughCommandRouterParams(
+            _StreamReaderThroughSandboxExecCommandRouterParams(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDERR,
                 task_id=self._task_id,
                 object_id=process_id,

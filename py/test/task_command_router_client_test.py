@@ -1025,6 +1025,67 @@ async def test_snapshot_filesystem_deadline_aborts_retries(make_router_client, m
     assert attempts == 1
 
 
+class _SandboxStdioReadV2Stub:
+    """Test stub exposing only ``SandboxStdioReadV2`` for the V2 sandbox stdio path."""
+
+    def __init__(self, open_fn):
+        self.SandboxStdioReadV2 = _UnaryStreamMethod(open_fn)
+
+
+@pytest.mark.asyncio
+async def test_sandbox_stdio_read_rebases_offset_on_transient_retry(make_router_client):
+    client = make_router_client()
+
+    num_attempts_made = 0
+    second_request_offset: Optional[int] = None
+
+    class _Stream:
+        def __init__(self, timeout: Optional[float]):
+            self._timeout = timeout
+            self._emitted = 0
+            self._last_req: Optional[sr_pb2.SandboxStdioReadV2Request] = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001 - test helper
+            return False
+
+        async def send_message(self, req: sr_pb2.SandboxStdioReadV2Request, end: bool = True):  # noqa: ARG002
+            nonlocal second_request_offset
+            self._last_req = req
+            if num_attempts_made == 2:
+                second_request_offset = int(req.offset)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if num_attempts_made == 1:
+                if self._emitted == 0:
+                    self._emitted += 1
+                    return sr_pb2.SandboxStdioReadV2Response(data=b"abc", starting_offset=1000)
+                raise StreamTerminatedError("stream closed")
+            if self._emitted == 0:
+                self._emitted += 1
+                return sr_pb2.SandboxStdioReadV2Response(data=b"def", starting_offset=1003)
+            raise StopAsyncIteration
+
+    def _open(timeout: Optional[float] = None):
+        nonlocal num_attempts_made
+        num_attempts_made += 1
+        return _Stream(timeout)
+
+    client._stub = _SandboxStdioReadV2Stub(_open)  # type: ignore[assignment]
+
+    out: List[bytes] = []
+    async for item in client.sandbox_stdio_read("task-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
+        out.append(item.data)
+
+    assert out == [b"abc", b"def"]
+    assert second_request_offset == 1003
+
+
 @pytest.mark.asyncio
 async def test_task_command_router_client_closes_and_finalizes(make_router_client, monkeypatch):
     channel = create_dummy_channel()
