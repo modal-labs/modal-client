@@ -753,11 +753,11 @@ def test_sandbox_snapshot_fs(app, servicer):
         image = sb.snapshot_filesystem()
         assert image.object_id == "im-snapshot-fs-123"
 
-        # The SDK sends ttl_seconds=-1 (no expiry) on the wire.
+        # Default ttl is 30 days, sent as a positive ttl_seconds.
         captured_requests = tcr_ctx.get_requests("TaskSnapshotFilesystem")
         assert len(captured_requests) == 1
         assert captured_requests[0].HasField("ttl_seconds")
-        assert captured_requests[0].ttl_seconds == -1
+        assert captured_requests[0].ttl_seconds == 30 * 24 * 3600
         snapshot_id = captured_requests[0].snapshot_id
         assert snapshot_id, "snapshot_id must be non-empty"
         uuid.UUID(snapshot_id)  # Raises ValueError if not a valid UUID
@@ -766,6 +766,22 @@ def test_sandbox_snapshot_fs(app, servicer):
         sb.snapshot_filesystem()
         captured_requests = tcr_ctx.get_requests("TaskSnapshotFilesystem")
         assert captured_requests[-1].snapshot_id != snapshot_id
+
+        # Explicit ttl is forwarded as-is.
+        sb.snapshot_filesystem(ttl=3600)
+        captured_requests = tcr_ctx.get_requests("TaskSnapshotFilesystem")
+        assert captured_requests[-1].ttl_seconds == 3600
+
+        # ttl=None opts out of expiry; the wire carries -1 as the sentinel.
+        sb.snapshot_filesystem(ttl=None)
+        captured_requests = tcr_ctx.get_requests("TaskSnapshotFilesystem")
+        assert captured_requests[-1].ttl_seconds == -1
+
+        # 0 / negative ttl is rejected client-side.
+        with pytest.raises(InvalidError, match="must be positive"):
+            sb.snapshot_filesystem(ttl=0)
+        with pytest.raises(InvalidError, match="must be positive"):
+            sb.snapshot_filesystem(ttl=-5)
 
     sb.terminate()
 
@@ -787,7 +803,7 @@ def test_sandbox_snapshot_fs_v2(app, servicer, monkeypatch, legacy_env_var):
     (req,) = tcr_ctx.get_requests("TaskSnapshotFilesystem")
     assert req.task_id == "ta-v2-123"
     assert req.HasField("ttl_seconds")
-    assert req.ttl_seconds == -1
+    assert req.ttl_seconds == 30 * 24 * 3600
     # Validate that the client generates a fresh UUID idempotency key.
     uuid.UUID(req.snapshot_id)
 
@@ -1101,8 +1117,27 @@ def test_snapshot_directory(servicer, client, app):
         with pytest.raises(InvalidError, match="must be absolute"):
             sb.snapshot_directory("relative/path")
 
-        # The SDK sends ttl_seconds=None for now, pretending to be old client
-        assert not captured_requests[0].HasField("ttl_seconds")
+        # Default ttl is 30 days, sent as a positive ttl_seconds.
+        assert captured_requests[0].HasField("ttl_seconds")
+        assert captured_requests[0].ttl_seconds == 30 * 24 * 3600
+
+        # Explicit ttl is forwarded as-is.
+        sb.snapshot_directory("/tmp", ttl=3600)
+        captured_requests = tcr_ctx.get_requests("TaskSnapshotDirectory")
+        assert captured_requests[-1].HasField("ttl_seconds")
+        assert captured_requests[-1].ttl_seconds == 3600
+
+        # ttl=None opts out of expiry; the wire carries -1 as the sentinel.
+        sb.snapshot_directory("/tmp", ttl=None)
+        captured_requests = tcr_ctx.get_requests("TaskSnapshotDirectory")
+        assert captured_requests[-1].HasField("ttl_seconds")
+        assert captured_requests[-1].ttl_seconds == -1
+
+        # 0 / negative ttl is rejected client-side.
+        with pytest.raises(InvalidError, match="must be positive"):
+            sb.snapshot_directory("/tmp", ttl=0)
+        with pytest.raises(InvalidError, match="must be positive"):
+            sb.snapshot_directory("/tmp", ttl=-5)
 
     sb.terminate()
 

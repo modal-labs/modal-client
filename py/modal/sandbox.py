@@ -77,6 +77,17 @@ _default_image: _Image = _Image.debian_slim()
 # e.g. 'runsc exec ...'. So we use 2**16 as the limit.
 ARG_MAX_BYTES = 2**16
 TTL_NO_EXPIRY_SENTINEL = -1
+
+
+def _ttl_to_wire_ttl(ttl: Optional[int]) -> int:
+    """Convert a TTL value to the wire format, validating the input."""
+    if ttl is None:
+        return TTL_NO_EXPIRY_SENTINEL
+    if ttl <= 0:
+        raise InvalidError("ttl must be positive, or None to disable expiry")
+    return ttl
+
+
 _V1_SANDBOX_ID_ALPHABET = frozenset("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 _ULID_ALPHABET = frozenset("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
 
@@ -1028,7 +1039,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         await self._client.stub.SandboxTagsSet(req)
 
-    async def snapshot_filesystem(self, timeout: int = 55) -> _Image:
+    async def snapshot_filesystem(
+        self,
+        timeout: int = 55,
+        *,
+        ttl: Optional[int] = 30 * 24 * 3600,
+    ) -> _Image:
         """Snapshot the filesystem of the Sandbox.
 
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
@@ -1036,9 +1052,16 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         `timeout` If the snapshot does not return within that window, the call is cancelled
         and `modal.exception.TimeoutError` is raised.
+
+        `ttl` The resulting Image is retained for `ttl` seconds (default: 30 days)
+        Pass `ttl=None` to retain the image indefinitely.
         """
         if os.environ.get("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT") == "1" and not self._is_v2:
+            if ttl != 30 * 24 * 3600:
+                raise InvalidError("ttl is not supported with MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT")
             return await self._legacy_snapshot_filesystem(timeout)
+
+        wire_ttl_seconds = _ttl_to_wire_ttl(ttl)
 
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
@@ -1046,7 +1069,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskSnapshotFilesystemRequest(
             task_id=task_id,
             snapshot_id=str(uuid.uuid4()),
-            ttl_seconds=TTL_NO_EXPIRY_SENTINEL,
+            ttl_seconds=wire_ttl_seconds,
         )
         res = await command_router_client.snapshot_filesystem(req, timeout=float(timeout))
         return _Image._new_hydrated(res.image_id, self._client, None)
@@ -1141,10 +1164,20 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskUnmountDirectoryRequest(task_id=task_id, path=path_bytes)
         await command_router_client.unmount_image(req)
 
-    async def snapshot_directory(self, path: Union[PurePosixPath, str]) -> _Image:
+    async def snapshot_directory(
+        self,
+        path: Union[PurePosixPath, str],
+        *,
+        timeout: int = 55,
+        ttl: Optional[int] = 30 * 24 * 3600,
+    ) -> _Image:
         """Snapshot a directory in a running Sandbox, creating a new Image with its content.
 
-        Directory snapshots are currently persisted for 30 days after they were created.
+        `timeout` If the snapshot does not return within that window, the call is cancelled
+        and `modal.exception.TimeoutError` is raised.
+
+        `ttl` The resulting Image is retained for `ttl` seconds (default: 30 days)
+        Pass `ttl=None` to retain the image indefinitely.
 
         Usage:
         ```py notest
@@ -1157,6 +1190,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         ```
         """
         self._ensure_v1("snapshot_directory")
+
+        wire_ttl_seconds = _ttl_to_wire_ttl(ttl)
 
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
@@ -1171,9 +1206,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             task_id=task_id,
             path=path_bytes,
             snapshot_id=snapshot_id,
-            ttl_seconds=None,  # pretending to be old client for now - set server decide on retention
+            ttl_seconds=wire_ttl_seconds,
         )
-        res = await command_router_client.snapshot_directory(req)
+        res = await command_router_client.snapshot_directory(req, timeout=float(timeout))
         return _Image._new_hydrated(res.image_id, self._client, None)
 
     # Live handle methods

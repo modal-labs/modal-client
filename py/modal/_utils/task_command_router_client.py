@@ -664,21 +664,10 @@ class TaskCommandRouterClient:
                 lambda: self._call_with_auth_retry(self._stub.TaskUnmountDirectory, request)
             )
 
-    async def snapshot_directory(
-        self, request: sr_pb2.TaskSnapshotDirectoryRequest, **kwargs
-    ) -> sr_pb2.TaskSnapshotDirectoryResponse:
-        with grpc_error_converter():
-            return await call_with_retries_on_transient_errors(
-                lambda: self._call_with_auth_retry(self._stub.TaskSnapshotDirectory, request, **kwargs)
-            )
-
-    async def snapshot_filesystem(
-        self, request: sr_pb2.TaskSnapshotFilesystemRequest, *, timeout: float, **kwargs
-    ) -> sr_pb2.TaskSnapshotFilesystemResponse:
-        # Compute the overall deadline once; each retry attempt passes the
-        # remaining budget as the per-call gRPC timeout so we honor the
-        # caller-specified `timeout` across retries instead of giving each
-        # attempt a fresh full window.
+    async def _snapshot_with_deadline(self, rpc, request, *, timeout: float, **kwargs):
+        # helper method for snapshot_directory and snapshot_filesystem to handle grpc
+        # deadlines in a consistent way, converting any error to TimeoutError after passing
+        # the total deadline budget
         timeout_deadline = time.monotonic() + timeout
 
         def call():
@@ -687,12 +676,8 @@ class TaskCommandRouterClient:
                 # doesn't matter which exception type this is
                 # as it will be caught by the catch all below
                 raise ModalTimeoutError("Timeout expired")
+            return self._call_with_auth_retry(rpc, request, timeout=call_timeout, **kwargs)
 
-            return self._call_with_auth_retry(
-                self._stub.TaskSnapshotFilesystem, request, timeout=call_timeout, **kwargs
-            )
-
-        # Any failure observed at or after the deadline is treated as a timeout
         try:
             with grpc_error_converter():
                 return await call_with_retries_on_transient_errors(
@@ -704,3 +689,13 @@ class TaskCommandRouterClient:
             if time.monotonic() >= timeout_deadline:
                 raise ModalTimeoutError("Timeout expired")
             raise
+
+    async def snapshot_directory(
+        self, request: sr_pb2.TaskSnapshotDirectoryRequest, *, timeout: float, **kwargs
+    ) -> sr_pb2.TaskSnapshotDirectoryResponse:
+        return await self._snapshot_with_deadline(self._stub.TaskSnapshotDirectory, request, timeout=timeout, **kwargs)
+
+    async def snapshot_filesystem(
+        self, request: sr_pb2.TaskSnapshotFilesystemRequest, *, timeout: float, **kwargs
+    ) -> sr_pb2.TaskSnapshotFilesystemResponse:
+        return await self._snapshot_with_deadline(self._stub.TaskSnapshotFilesystem, request, timeout=timeout, **kwargs)
