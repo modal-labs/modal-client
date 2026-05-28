@@ -3,6 +3,7 @@ import pytest
 import time
 import typing
 from typing import AsyncGenerator, Optional
+from unittest.mock import AsyncMock
 
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter, synchronizer
@@ -15,7 +16,8 @@ from modal.io_streams import (
     _StreamReaderThroughSandboxExecCommandRouterParams,
     _StreamReaderThroughServerParams,
     _StreamWriter,
-    _StreamWriterThroughCommandRouterParams,
+    _StreamWriterThroughCommandRouterSandboxExecParams,
+    _StreamWriterThroughCommandRouterSandboxParams,
 )
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
@@ -623,12 +625,23 @@ async def test_v2_stream_reader_does_not_resolve_router_until_iterated():
 class _FakeCommandRouterClient:
     def __init__(self):
         self.calls: list[dict[str, object]] = []
+        self.sandbox_calls: list[dict[str, object]] = []
 
     async def exec_stdin_write(self, *, task_id: str, exec_id: str, offset: int, data: bytes, eof: bool) -> None:
         self.calls.append(
             {
                 "task_id": task_id,
                 "exec_id": exec_id,
+                "offset": offset,
+                "data": data,
+                "eof": eof,
+            }
+        )
+
+    async def sandbox_stdin_write_v2(self, *, task_id: str, offset: int, data: bytes, eof: bool) -> None:
+        self.sandbox_calls.append(
+            {
+                "task_id": task_id,
                 "offset": offset,
                 "data": data,
                 "eof": eof,
@@ -651,7 +664,7 @@ class _FakeCommandRouterClient:
 async def test_stream_writer_drain_calls_exec_stdin_with_eof_when_closed_and_no_data():
     router = _FakeCommandRouterClient()
     writer = _StreamWriter(
-        _StreamWriterThroughCommandRouterParams(
+        _StreamWriterThroughCommandRouterSandboxExecParams(
             task_id="task-1",
             object_id="tp-123",
             command_router_client=router,  # type: ignore[arg-type]
@@ -674,7 +687,7 @@ async def test_stream_writer_drain_calls_exec_stdin_with_eof_when_closed_and_no_
 async def test_stream_writer_drain_writes_all_written_data_since_last_drain():
     router = _FakeCommandRouterClient()
     writer = _StreamWriter(
-        _StreamWriterThroughCommandRouterParams(
+        _StreamWriterThroughCommandRouterSandboxExecParams(
             task_id="task-1",
             object_id="tp-123",
             command_router_client=router,  # type: ignore[arg-type]
@@ -696,7 +709,7 @@ async def test_stream_writer_drain_writes_all_written_data_since_last_drain():
 async def test_stream_writer_drain_does_not_rewrite_data_written_prior_to_last_drain():
     router = _FakeCommandRouterClient()
     writer = _StreamWriter(
-        _StreamWriterThroughCommandRouterParams(
+        _StreamWriterThroughCommandRouterSandboxExecParams(
             task_id="task-1",
             object_id="tp-123",
             command_router_client=router,  # type: ignore[arg-type]
@@ -724,7 +737,7 @@ async def test_stream_writer_drain_does_not_rewrite_data_written_prior_to_last_d
 async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with_both():
     router = _FakeCommandRouterClient()
     writer = _StreamWriter(
-        _StreamWriterThroughCommandRouterParams(
+        _StreamWriterThroughCommandRouterSandboxExecParams(
             task_id="task-1",
             object_id="tp-123",
             command_router_client=router,  # type: ignore[arg-type]
@@ -740,6 +753,105 @@ async def test_stream_writer_drain_with_data_and_eof_calls_exec_stdin_write_with
     assert call["offset"] == 0
     assert call["data"] == b"xyz"
     assert call["eof"] is True
+
+
+def _sandbox_writer_params(router: "_FakeCommandRouterClient"):
+    async def _resolve_router():
+        return ("task-1", router)
+
+    return _StreamWriterThroughCommandRouterSandboxParams(
+        resolve_router=_resolve_router,  # type: ignore[arg-type]
+    )
+
+
+@pytest.mark.asyncio
+async def test_sandbox_stream_writer_drain_calls_sandbox_stdin_with_eof_when_closed_and_no_data():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(_sandbox_writer_params(router))
+
+    writer.write_eof()
+    await writer.drain()
+
+    assert len(router.sandbox_calls) == 1
+    call = router.sandbox_calls[0]
+    assert call["task_id"] == "task-1"
+    assert call["offset"] == 0
+    assert call["data"] == b""
+    assert call["eof"] is True
+
+
+@pytest.mark.asyncio
+async def test_sandbox_stream_writer_drain_writes_all_written_data_since_last_drain():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(_sandbox_writer_params(router))
+
+    writer.write(b"abc")
+    writer.write(b"def")
+    await writer.drain()
+
+    assert len(router.sandbox_calls) == 1
+    call = router.sandbox_calls[0]
+    assert call["offset"] == 0
+    assert call["data"] == b"abcdef"
+    assert call["eof"] is False
+
+
+@pytest.mark.asyncio
+async def test_sandbox_stream_writer_drain_does_not_rewrite_data_written_prior_to_last_drain():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(_sandbox_writer_params(router))
+
+    writer.write(b"ab")
+    await writer.drain()
+
+    writer.write(b"cd")
+    await writer.drain()
+
+    assert len(router.sandbox_calls) == 2
+    first, second = router.sandbox_calls
+    assert first["offset"] == 0
+    assert first["data"] == b"ab"
+    assert first["eof"] is False
+
+    assert second["offset"] == 2
+    assert second["data"] == b"cd"
+    assert second["eof"] is False
+
+
+@pytest.mark.asyncio
+async def test_sandbox_stream_writer_drain_with_data_and_eof_calls_sandbox_stdin_write_with_both():
+    router = _FakeCommandRouterClient()
+    writer = _StreamWriter(_sandbox_writer_params(router))
+
+    writer.write(b"xyz")
+    writer.write_eof()
+    await writer.drain()
+
+    assert len(router.sandbox_calls) == 1
+    call = router.sandbox_calls[0]
+    assert call["offset"] == 0
+    assert call["data"] == b"xyz"
+    assert call["eof"] is True
+
+
+@pytest.mark.asyncio
+async def test_sandbox_stream_writer_provider_only_called_on_drain():
+    """The router client provider must not be resolved until the first drain.
+    Constructing the writer or calling write/write_eof must not trigger it."""
+    router = _FakeCommandRouterClient()
+    mock_resolve = AsyncMock(return_value=("task-1", router))
+    params = _StreamWriterThroughCommandRouterSandboxParams(
+        resolve_router=mock_resolve,  # type: ignore[arg-type]
+    )
+    writer = _StreamWriter(params)
+
+    writer.write(b"hello")
+    writer.write_eof()
+    mock_resolve.assert_not_called()
+
+    await writer.drain()
+    mock_resolve.assert_called_once()
+    assert len(router.sandbox_calls) == 1
 
 
 @pytest.mark.parametrize("text, expected_out", [(False, b"abc"), (True, "abc")])

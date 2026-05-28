@@ -471,6 +471,25 @@ class TaskCommandRouterClient:
                 lambda: self._call_with_auth_retry(self._stub.TaskExecStdinWrite, request)
             )
 
+    async def sandbox_stdin_write_v2(
+        self, task_id: str, offset: int, data: bytes, eof: bool
+    ) -> sr_pb2.SandboxStdinWriteV2Response:
+        """Write to the stdin stream of a V2 sandbox's entrypoint process.
+
+        Args:
+            task_id: The task ID of the V2 sandbox.
+            offset: The offset to start writing to.
+            eof: Whether to close the stdin stream after writing the data.
+        Raises:
+            Other errors: If retries are exhausted on transient errors or if there's an error
+              from the RPC itself.
+        """
+        request = sr_pb2.SandboxStdinWriteV2Request(task_id=task_id, offset=offset, data=data, eof=eof)
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.SandboxStdinWriteV2, request)
+            )
+
     async def exec_poll(
         self, task_id: str, exec_id: str, deadline: Optional[float] = None
     ) -> sr_pb2.TaskExecPollResponse:

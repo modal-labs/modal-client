@@ -4,6 +4,7 @@ import codecs
 import contextlib
 import io
 import sys
+from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import (
@@ -545,13 +546,26 @@ class _StreamWriterThroughServerParams:
 
 
 @dataclass(frozen=True)
-class _StreamWriterThroughCommandRouterParams:
-    """Parameters for a ``_StreamWriter`` that writes container-process stdin
-    directly to the worker via the task command router."""
+class _StreamWriterThroughCommandRouterSandboxExecParams:
+    """Parameters for a ``_StreamWriter`` that writes the stdin of a process
+    spawned via ``sb.exec(...)`` directly to the worker via the task command
+    router."""
 
     task_id: str
     object_id: str
     command_router_client: TaskCommandRouterClient
+
+
+@dataclass(frozen=True)
+class _StreamWriterThroughCommandRouterSandboxParams:
+    """Parameters for a ``_StreamWriter`` that writes a V2 sandbox entrypoint's
+    stdin directly to the worker via the task command router.
+    """
+
+    # Lazily fetches ``(task_id, command_router_client)`` the first time the
+    # writer drains. Captures the sandbox handle so we only mint a JWT and
+    # open a connection to the worker when stdin is actually written.
+    resolve_router: Callable[[], Awaitable[tuple[str, TaskCommandRouterClient]]]
 
 
 class _StreamWriterThroughServer:
@@ -616,14 +630,18 @@ class _StreamWriterThroughServer:
             raise ValueError(str(exc))
 
 
-class _StreamWriterThroughCommandRouter:
-    def __init__(self, params: _StreamWriterThroughCommandRouterParams) -> None:
-        self._object_id = params.object_id
-        self._command_router_client = params.command_router_client
-        self._task_id = params.task_id
-        self._is_closed = False
-        self._buffer = bytearray()
-        self._offset = 0
+class _StreamWriterThroughCommandRouterBuffer(ABC):
+    """Buffering/draining logic for stream writers that flush data
+    to the task command router."""
+
+    def __init__(self) -> None:
+        self._buffer: bytearray = bytearray()
+        self._is_closed: bool = False
+        self._offset: int = 0
+
+    @abstractmethod
+    async def stdin_write(self, data: bytes, eof: bool) -> None:
+        """Write the given chunk (with optional EOF) to the command router."""
 
     def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
         if self._is_closed:
@@ -645,15 +663,39 @@ class _StreamWriterThroughCommandRouter:
         # NB: There's no need to prevent writing eof twice, because the command router will ignore the second EOF.
         if self._buffer or eof:
             data = bytes(self._buffer)
-            await self._command_router_client.exec_stdin_write(
-                task_id=self._task_id, exec_id=self._object_id, offset=self._offset, data=data, eof=eof
-            )
+            await self.stdin_write(data, eof)
             # Only clear the buffer after writing the data to the command router is successful.
             # This allows the client to retry drain() in the event of an exception (though
-            # exec_stdin_write already retries on transient errors, so most users will probably
-            # not do this).
+            # the underlying write call already retries on transient errors, so most users will
+            # probably not do this).
             self._buffer.clear()
             self._offset += len(data)
+
+
+class _StreamWriterThroughCommandRouterSandboxExec(_StreamWriterThroughCommandRouterBuffer):
+    def __init__(self, params: _StreamWriterThroughCommandRouterSandboxExecParams) -> None:
+        super().__init__()
+        self._object_id = params.object_id
+        self._command_router_client = params.command_router_client
+        self._task_id = params.task_id
+
+    async def stdin_write(self, data: bytes, eof: bool) -> None:
+        await self._command_router_client.exec_stdin_write(
+            task_id=self._task_id, exec_id=self._object_id, offset=self._offset, data=data, eof=eof
+        )
+
+
+class _StreamWriterThroughCommandRouterSandbox(_StreamWriterThroughCommandRouterBuffer):
+    """Write a V2 sandbox entrypoint's stdin directly to the worker
+    via the task command router."""
+
+    def __init__(self, params: _StreamWriterThroughCommandRouterSandboxParams) -> None:
+        super().__init__()
+        self._resolve_router = params.resolve_router
+
+    async def stdin_write(self, data: bytes, eof: bool) -> None:
+        task_id, client = await self._resolve_router()
+        await client.sandbox_stdin_write_v2(task_id=task_id, offset=self._offset, data=data, eof=eof)
 
 
 class _StreamWriter:
@@ -661,13 +703,18 @@ class _StreamWriter:
 
     def __init__(
         self,
-        params: Union[_StreamWriterThroughServerParams, _StreamWriterThroughCommandRouterParams],
+        params: Union[
+            _StreamWriterThroughServerParams,
+            _StreamWriterThroughCommandRouterSandboxExecParams,
+            _StreamWriterThroughCommandRouterSandboxParams,
+        ],
     ) -> None:
         """mdmd:hidden"""
-        if isinstance(params, _StreamWriterThroughCommandRouterParams):
-            self._impl = _StreamWriterThroughCommandRouter(params)
+        if isinstance(params, _StreamWriterThroughCommandRouterSandboxExecParams):
+            self._impl = _StreamWriterThroughCommandRouterSandboxExec(params)
+        elif isinstance(params, _StreamWriterThroughCommandRouterSandboxParams):
+            self._impl = _StreamWriterThroughCommandRouterSandbox(params)
         else:
-            # Sandbox stdin is written via the server.
             self._impl = _StreamWriterThroughServer(params)
 
     def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:

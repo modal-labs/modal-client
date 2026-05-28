@@ -58,6 +58,7 @@ from .io_streams import (
     _StreamReaderThroughSandboxCommandRouterParams,
     _StreamReaderThroughServerParams,
     _StreamWriter,
+    _StreamWriterThroughCommandRouterSandboxParams,
     _StreamWriterThroughServerParams,
 )
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
@@ -957,6 +958,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             ),
             by_line=True,
         )
+        self._stdin = StreamWriter(_StreamWriterThroughCommandRouterSandboxParams(resolve_router=resolve_router))
 
     def _initialize_from_other(self, other):
         super()._initialize_from_other(other)

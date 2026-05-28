@@ -15,7 +15,7 @@ from .io_streams import (
     _StreamReader,
     _StreamReaderThroughSandboxExecCommandRouterParams,
     _StreamWriter,
-    _StreamWriterThroughCommandRouterParams,
+    _StreamWriterThroughCommandRouterSandboxExecParams,
 )
 from .stream_type import StreamType
 
@@ -82,7 +82,7 @@ class _ContainerProcess(Generic[T]):
             by_line=by_line,
         )
         self._stdin = _StreamWriter(
-            _StreamWriterThroughCommandRouterParams(
+            _StreamWriterThroughCommandRouterSandboxExecParams(
                 task_id=self._task_id,
                 object_id=process_id,
                 command_router_client=self._command_router_client,
