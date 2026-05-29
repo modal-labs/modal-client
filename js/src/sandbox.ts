@@ -717,12 +717,13 @@ export class SandboxService {
    * Create a new {@link Sandbox} using the experimental V2 backend.
    *
    * Supported features include exec, encrypted tunnels, wait/poll/terminate,
-   * CPU and memory configuration, region placement, volumes, and cloud bucket
-   * mounts (with static credentials via {@link Secret}).
+   * CPU and memory configuration, region placement, volumes, cloud bucket
+   * mounts (with static credentials via {@link Secret}), and filesystem
+   * snapshots.
    *
-   * Features like tags, filesystem snapshots, memory snapshots, GPUs, custom
-   * domains, OIDC identity tokens (including `oidcAuthRoleArn` on a
-   * {@link CloudBucketMount}), proxies, and readiness probes are not supported.
+   * Features like tags, memory snapshots, GPUs, custom domains, OIDC identity
+   * tokens (including `oidcAuthRoleArn` on a {@link CloudBucketMount}),
+   * proxies, and readiness probes are not supported.
    *
    * V2 sandboxes created with this method are not currently returned by
    * {@link SandboxService#list client.sandboxes.list()} and cannot be looked up
@@ -1610,7 +1611,6 @@ export class Sandbox {
    */
   async snapshotFilesystem(params?: SnapshotFilesystemParams): Promise<Image> {
     this.#ensureAttached();
-    this.#ensureV1("snapshotFilesystem");
     const wireTtlSeconds = resolveTtlSeconds(params?.ttlMs);
     // Treat both undefined and 0 as "use default", matching the Go
     // `Timeout time.Duration` zero-value convention on SnapshotFilesystemParams.

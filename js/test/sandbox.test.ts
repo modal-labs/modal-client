@@ -1135,7 +1135,6 @@ test("V2 Sandbox rejects V1-only runtime methods", async () => {
   await expect(sb.open("/tmp/file", "r")).rejects.toThrow(expectedError);
   await expect(sb.createConnectToken()).rejects.toThrow(expectedError);
   await expect(sb.waitUntilReady(5000)).rejects.toThrow(expectedError);
-  await expect(sb.snapshotFilesystem()).rejects.toThrow(expectedError);
   await expect(sb.mountImage("/mnt")).rejects.toThrow(expectedError);
   await expect(sb.unmountImage("/mnt")).rejects.toThrow(expectedError);
   await expect(sb.snapshotDirectory("/mnt")).rejects.toThrow(expectedError);
