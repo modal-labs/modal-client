@@ -1442,6 +1442,7 @@ message EndpointListItem {
   string active_deployment_id = 4;
   double updated_at = 5;
   EndpointMetadata metadata = 6;
+  AppState app_state = 7;
 }
 
 message EndpointListRequest {
