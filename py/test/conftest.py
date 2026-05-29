@@ -715,6 +715,24 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.workspace_service_users: dict[str, str] = {"sv-1": "alice-bot", "sv-2": "ops-bot"}
         # env_id -> {principal_id: role_proto}
         self.environment_members: dict[str, dict[str, api_pb2.EnvironmentRole.ValueType]] = {}
+        self.workspace_members: list[api_pb2.WorkspaceMembersListItem] = [
+            api_pb2.WorkspaceMembersListItem(
+                user_id="us-1",
+                member_displayname="Alice",
+                email="alice@example.com",
+                member_role=api_pb2.MEMBER_ROLE_OWNER,
+                joined_at=1577836800.0,  # 2020-01-01 UTC
+                last_active_at=1609459200.0,  # 2021-01-01 UTC
+            ),
+            api_pb2.WorkspaceMembersListItem(
+                user_id="us-2",
+                member_displayname="Bob",
+                email="bob@example.com",
+                member_role=api_pb2.MEMBER_ROLE_USER,
+                joined_at=1577836800.0,  # 2020-01-01 UTC
+                # last_active_at left unset: Bob has never been active
+            ),
+        ]
         self.resource_creation_timestamps = {}
 
         self.task_result = None
@@ -2758,6 +2776,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def WorkspaceNameLookup(self, stream):
         await stream.send_message(api_pb2.WorkspaceNameLookupResponse(username="test-username"))
+
+    async def WorkspaceMembersList(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.WorkspaceMembersListResponse(members=self.workspace_members))
 
     ### Tunnel
 

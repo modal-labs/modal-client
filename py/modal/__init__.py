@@ -45,6 +45,7 @@ try:
     from .secret import Secret
     from .snapshot import SandboxSnapshot
     from .volume import Volume
+    from .workspace import Workspace
 except Exception:
     print()
     print("#" * 80)
@@ -81,6 +82,7 @@ __all__ = [
     "Secret",
     "Tunnel",
     "Volume",
+    "Workspace",
     "asgi_app",
     "batched",
     "billing",

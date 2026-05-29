@@ -116,9 +116,9 @@ def _role_to_proto(role: str) -> api_pb2.EnvironmentRole.ValueType:
 
 def _role_from_proto(proto_value: int) -> MemberRole:
     match proto_value:
-        case int(v) if v == api_pb2.ENVIRONMENT_ROLE_VIEWER:
+        case api_pb2.ENVIRONMENT_ROLE_VIEWER:
             return "viewer"
-        case int(v) if v == api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR:
+        case api_pb2.ENVIRONMENT_ROLE_CONTRIBUTOR:
             return "contributor"
         case _:
             raise ValueError(f"Unknown environment role: {proto_value}")
