@@ -76,6 +76,8 @@ export type {
   SandboxTerminateParams,
   SandboxCreateConnectCredentials,
   SandboxCreateConnectTokenParams,
+  SnapshotDirectoryParams,
+  SnapshotFilesystemParams,
   StdioBehavior,
   StreamMode,
   Tunnel,

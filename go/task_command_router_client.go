@@ -394,12 +394,30 @@ func (c *taskCommandRouterClient) UnmountDirectory(ctx context.Context, request 
 }
 
 // SnapshotDirectory snapshots a directory into a new image.
-func (c *taskCommandRouterClient) SnapshotDirectory(ctx context.Context, request *pb.TaskSnapshotDirectoryRequest) (*pb.TaskSnapshotDirectoryResponse, error) {
-	return callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskSnapshotDirectoryResponse, error) {
-		return callWithAuthRetry(ctx, c, func(authCtx context.Context) (*pb.TaskSnapshotDirectoryResponse, error) {
+//
+// Mirrors SnapshotFilesystem: `timeout` is the overall budget across all
+// retry attempts. Each attempt receives the *remaining* budget as its
+// per-call gRPC deadline; any error observed at or after the deadline
+// is translated into a TimeoutError. Errors observed *before* the
+// deadline (including a caller-driven ctx cancellation) are propagated
+// unchanged.
+func (c *taskCommandRouterClient) SnapshotDirectory(ctx context.Context, request *pb.TaskSnapshotDirectoryRequest, timeout time.Duration) (*pb.TaskSnapshotDirectoryResponse, error) {
+	overallDeadline := time.Now().Add(timeout)
+	opts := defaultRetryOptions()
+	opts.ExcludeCodes = []codes.Code{codes.DeadlineExceeded, codes.Canceled}
+	opts.Deadline = &overallDeadline
+	resp, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskSnapshotDirectoryResponse, error) {
+		remaining := time.Until(overallDeadline)
+		callCtx, cancel := context.WithTimeout(ctx, remaining)
+		defer cancel()
+		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.TaskSnapshotDirectoryResponse, error) {
 			return c.stub.TaskSnapshotDirectory(authCtx, request)
 		})
-	}, defaultRetryOptions(), &c.closed)
+	}, opts, &c.closed)
+	if err != nil && time.Now().After(overallDeadline) {
+		return nil, TimeoutError{Exception: "Timeout expired"}
+	}
+	return resp, err
 }
 
 // SnapshotFilesystem snapshots the full container filesystem into a new image.

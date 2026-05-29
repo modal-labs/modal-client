@@ -74,7 +74,11 @@ export function parseJwtExpiration(
   return null;
 }
 
-class RetryDeadlineExceededError extends Error {}
+class RetryDeadlineExceededError extends Error {
+  constructor() {
+    super("Deadline exceeded");
+  }
+}
 
 export async function callWithRetriesOnTransientErrors<T>(
   func: () => Promise<T>,
@@ -433,16 +437,41 @@ export class TaskCommandRouterClientImpl {
 
   async snapshotDirectory(
     request: TaskSnapshotDirectoryRequest,
+    options?: TimeoutOptions,
   ): Promise<TaskSnapshotDirectoryResponse> {
-    return await callWithRetriesOnTransientErrors(
-      () =>
-        this.callWithAuthRetry(() => this.stub.taskSnapshotDirectory(request)),
-      10,
-      2,
-      10,
-      null,
-      () => this.closed,
-    );
+    // Mirrors snapshotFilesystem's deadline handling. `timeoutMs` is the
+    // overall budget across all retry attempts; any error observed at or
+    // after the deadline is translated into a TimeoutError. Errors
+    // observed *before* the deadline (including caller-driven aborts)
+    // propagate unchanged.
+    const overallDeadlineMs =
+      options?.timeoutMs !== undefined ? Date.now() + options.timeoutMs : null;
+    try {
+      return await callWithRetriesOnTransientErrors(
+        () =>
+          this.callWithAuthRetry(() => {
+            const remainingMs =
+              overallDeadlineMs !== null
+                ? Math.max(1, overallDeadlineMs - Date.now())
+                : options?.timeoutMs;
+            return this.stub.taskSnapshotDirectory(request, {
+              ...options,
+              timeoutMs: remainingMs,
+            } as CallOptions & TimeoutOptions);
+          }),
+        10,
+        2,
+        10,
+        overallDeadlineMs,
+        () => this.closed,
+        [Status.DEADLINE_EXCEEDED, Status.CANCELLED],
+      );
+    } catch (err) {
+      if (overallDeadlineMs !== null && Date.now() >= overallDeadlineMs) {
+        throw new TimeoutError("Timeout expired");
+      }
+      throw err;
+    }
   }
 
   async snapshotFilesystem(

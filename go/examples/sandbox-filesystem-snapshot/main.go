@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"time"
 
 	modal "github.com/modal-labs/modal-client/go"
 )
@@ -51,7 +50,7 @@ func main() {
 	}
 	fmt.Println("Created file in first Sandbox")
 
-	snapshotImage, err := sb.SnapshotFilesystem(ctx, 55*time.Second)
+	snapshotImage, err := sb.SnapshotFilesystem(ctx, nil)
 	if err != nil {
 		log.Fatalf("Failed to snapshot filesystem: %v", err)
 	}

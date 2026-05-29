@@ -62,7 +62,7 @@ func TestSandboxMountDirectoryWithImage(t *testing.T) {
 	_, err = echoProc.Wait(ctx)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	mountImage, err := sb1.SnapshotFilesystem(ctx, 55*time.Second)
+	mountImage, err := sb1.SnapshotFilesystem(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(mountImage.ImageID).To(gomega.MatchRegexp(`^im-`))
 
@@ -164,7 +164,7 @@ func TestSandboxSnapshotDirectory(t *testing.T) {
 	_, err = echoProc.Wait(ctx)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	snapshotImage, err := sb1.SnapshotDirectory(ctx, "/mnt/data")
+	snapshotImage, err := sb1.SnapshotDirectory(ctx, "/mnt/data", nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(snapshotImage.ImageID).To(gomega.MatchRegexp(`^im-`))
 
@@ -188,6 +188,40 @@ func TestSandboxSnapshotDirectory(t *testing.T) {
 	output, err := io.ReadAll(catProc.Stdout)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(string(output)).To(gomega.Equal("snapshot test content"))
+}
+
+func TestSandboxSnapshotRejectsInvalidTtl(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	baseImage := tc.Images.FromRegistry("debian:12-slim", nil)
+
+	sb, err := tc.Sandboxes.Create(ctx, app, baseImage, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb)
+
+	// Sub-second and other invalid TTL values are rejected client-side.
+	// (NoExpiryTTL is the only valid non-positive value.)
+	_, err = sb.SnapshotDirectory(ctx, "/tmp", &modal.SnapshotDirectoryParams{TTL: 500 * time.Millisecond})
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("at least 1 second")))
+
+	_, err = sb.SnapshotDirectory(ctx, "/tmp", &modal.SnapshotDirectoryParams{TTL: -2 * time.Second})
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("at least 1 second")))
+
+	_, err = sb.SnapshotFilesystem(ctx, &modal.SnapshotFilesystemParams{TTL: 500 * time.Millisecond})
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("at least 1 second")))
+
+	// Non-whole-second TTLs are also rejected.
+	_, err = sb.SnapshotDirectory(ctx, "/tmp", &modal.SnapshotDirectoryParams{TTL: 1500 * time.Millisecond})
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("whole number of seconds")))
+
+	_, err = sb.SnapshotFilesystem(ctx, &modal.SnapshotFilesystemParams{TTL: 1500 * time.Millisecond})
+	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("whole number of seconds")))
 }
 
 func TestSandboxMountDirectoryWithUnbuiltImageThrows(t *testing.T) {

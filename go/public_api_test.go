@@ -87,17 +87,15 @@ var knownParamsViolations = map[string]string{
 	"ContainerProcess.Wait":    "context-only, should add *ContainerProcessWaitParams",
 
 	// Sandbox methods with plain positional args or durations instead of *Params.
-	"Sandbox.Open":               "takes path and mode strings",
-	"Sandbox.Wait":               "context-only, should add *SandboxWaitParams",
-	"Sandbox.WaitUntilReady":     "takes timeout duration directly",
-	"Sandbox.Tunnels":            "takes timeout duration directly",
-	"Sandbox.MountImage":         "takes path and image as positional args",
-	"Sandbox.UnmountImage":       "takes path string",
-	"Sandbox.SnapshotDirectory":  "takes path string",
-	"Sandbox.SnapshotFilesystem": "takes timeout duration directly",
-	"Sandbox.Poll":               "context-only, should add *SandboxPollParams",
-	"Sandbox.SetTags":            "takes tags map as primary input",
-	"Sandbox.GetTags":            "context-only, should add *SandboxGetTagsParams",
+	"Sandbox.Open":           "takes path and mode strings",
+	"Sandbox.Wait":           "context-only, should add *SandboxWaitParams",
+	"Sandbox.WaitUntilReady": "takes timeout duration directly",
+	"Sandbox.Tunnels":        "takes timeout duration directly",
+	"Sandbox.MountImage":     "takes path and image as positional args",
+	"Sandbox.UnmountImage":   "takes path string",
+	"Sandbox.Poll":           "context-only, should add *SandboxPollParams",
+	"Sandbox.SetTags":        "takes tags map as primary input",
+	"Sandbox.GetTags":        "context-only, should add *SandboxGetTagsParams",
 
 	// Image.Build takes an App as a required dependency, not an options struct.
 	"Image.Build": "app is a required dependency, not options",

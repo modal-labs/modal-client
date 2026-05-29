@@ -63,7 +63,7 @@ func main() {
 		log.Fatalf("Failed to wait for git clone: exit code: %d, err: %v", exitCode, err)
 	}
 
-	repoSnapshot, err := sb.SnapshotDirectory(ctx, "/repo")
+	repoSnapshot, err := sb.SnapshotDirectory(ctx, "/repo", nil)
 	if err != nil {
 		log.Fatalf("Failed to snapshot directory: %v", err)
 	}

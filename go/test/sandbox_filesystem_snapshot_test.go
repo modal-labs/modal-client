@@ -3,7 +3,6 @@ package test
 import (
 	"io"
 	"testing"
-	"time"
 
 	modal "github.com/modal-labs/modal-client/go"
 	"github.com/onsi/gomega"
@@ -36,7 +35,7 @@ func TestSnapshotFilesystem(t *testing.T) {
 	_, err = mkDir.Wait(ctx)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	snapshotImage, err := sb.SnapshotFilesystem(ctx, 55*time.Second)
+	snapshotImage, err := sb.SnapshotFilesystem(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(snapshotImage).ShouldNot(gomega.BeNil())
 	g.Expect(snapshotImage.ImageID).To(gomega.HavePrefix("im-"))

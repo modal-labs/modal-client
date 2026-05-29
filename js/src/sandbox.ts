@@ -74,6 +74,32 @@ const SB_LOGS_MAX_RETRIES = 10;
 
 const TTL_NO_EXPIRY_SENTINEL = -1;
 
+/**
+ * Resolve the caller-facing `ttlMs` field on snapshot params into the
+ * wire-format integer seconds expected by the snapshot RPCs.
+ *
+ * `undefined` (or omitted) → default 30 days.
+ * `null` → opt out of expiry (wire sentinel `-1`).
+ * Positive multiple of 1000ms → converted to whole seconds. Sub-second
+ * or non-whole-second values are rejected since the wire format would
+ * silently strip the sub-second precision.
+ */
+function resolveTtlSeconds(ttlMs: number | null | undefined): number {
+  if (ttlMs === undefined) {
+    return 30 * 24 * 3600;
+  }
+  if (ttlMs === null) {
+    return TTL_NO_EXPIRY_SENTINEL;
+  }
+  if (ttlMs < 1000) {
+    throw new InvalidError(`ttlMs must be at least 1000ms, got ${ttlMs}`);
+  }
+  if (ttlMs % 1000 !== 0) {
+    throw new InvalidError(`ttlMs must be a multiple of 1000ms, got ${ttlMs}`);
+  }
+  return ttlMs / 1000;
+}
+
 const V1_SANDBOX_ID_ALPHABET = new Set(
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
 );
@@ -902,6 +928,38 @@ export type SandboxTerminateParams = {
   wait?: boolean;
 };
 
+/** Optional parameters for {@link Sandbox#snapshotFilesystem Sandbox.snapshotFilesystem()}. */
+export type SnapshotFilesystemParams = {
+  /**
+   * Overall budget for the snapshot call, in milliseconds. Defaults to
+   * 55000. If it elapses before a snapshot completes, the call is cancelled
+   * and an error is thrown.
+   */
+  timeoutMs?: number;
+  /**
+   * Lifetime of the resulting image in milliseconds, as a hard cutoff
+   * measured from creation. Defaults to 30 days. Pass `null` to retain
+   * the image indefinitely.
+   */
+  ttlMs?: number | null;
+};
+
+/** Optional parameters for {@link Sandbox#snapshotDirectory Sandbox.snapshotDirectory()}. */
+export type SnapshotDirectoryParams = {
+  /**
+   * Overall budget for the snapshot call, in milliseconds. Defaults to
+   * 55000. If it elapses before a snapshot completes, the call is cancelled
+   * and an error is thrown.
+   */
+  timeoutMs?: number;
+  /**
+   * Lifetime of the resulting image in milliseconds, as a hard cutoff
+   * measured from creation. Defaults to 30 days. Pass `null` to retain
+   * the image indefinitely.
+   */
+  ttlMs?: number | null;
+};
+
 export type SandboxCreateConnectTokenParams = {
   /** Optional user-provided metadata string that will be added to the headers by the proxy when forwarding requests to the Sandbox. */
   userMetadata?: string;
@@ -1543,16 +1601,20 @@ export class Sandbox {
    *
    * Returns an {@link Image} object which can be used to spawn a new Sandbox with the same filesystem.
    *
-   * `timeoutMs` is propagated as the gRPC deadline. If the snapshot does
-   * not return within that window, the call is cancelled and an error is
-   * thrown.
+   * The call has an overall `timeoutMs` budget (default: 55000). If it
+   * elapses before a snapshot completes, the call is cancelled and an
+   * error is thrown.
    *
-   * @param timeoutMs - Timeout for the snapshot operation in milliseconds.
+   * @param params - Optional parameters; see {@link SnapshotFilesystemParams}.
    * @returns Promise that resolves to an {@link Image}
    */
-  async snapshotFilesystem(timeoutMs = 55000): Promise<Image> {
+  async snapshotFilesystem(params?: SnapshotFilesystemParams): Promise<Image> {
     this.#ensureAttached();
     this.#ensureV1("snapshotFilesystem");
+    const wireTtlSeconds = resolveTtlSeconds(params?.ttlMs);
+    // Treat both undefined and 0 as "use default", matching the Go
+    // `Timeout time.Duration` zero-value convention on SnapshotFilesystemParams.
+    const timeoutMs = params?.timeoutMs || 55000;
     const taskId = await this.#getTaskId();
     const commandRouterClient =
       await this.#getOrCreateCommandRouterClient(taskId);
@@ -1560,7 +1622,7 @@ export class Sandbox {
     const request = TaskSnapshotFilesystemRequest.create({
       taskId,
       snapshotId: uuidv4(),
-      ttlSeconds: TTL_NO_EXPIRY_SENTINEL,
+      ttlSeconds: wireTtlSeconds,
     });
 
     const response = await commandRouterClient.snapshotFilesystem(request, {
@@ -1626,28 +1688,43 @@ export class Sandbox {
   /**
    * Snapshots and creates a new {@link Image} from a directory in the running sandbox.
    *
-   * Directory snapshots are currently persisted for 30 days after they
-   * were created.
+   * The resulting Image is retained for `ttlMs` (default: 30 days),
+   * as a hard cutoff measured from creation — usage does not extend
+   * the lifetime. Pass `ttlMs: null` to retain indefinitely.
+   *
+   * The call has an overall `timeoutMs` budget (default: 55000). If it
+   * elapses before a snapshot completes, the call is cancelled and an
+   * error is thrown.
    *
    * @param path - The path of the directory to snapshot
+   * @param params - Optional parameters; see {@link SnapshotDirectoryParams}.
    * @returns Promise that resolves to an {@link Image}
    */
-  async snapshotDirectory(path: string): Promise<Image> {
+  async snapshotDirectory(
+    path: string,
+    params?: SnapshotDirectoryParams,
+  ): Promise<Image> {
     this.#ensureAttached();
     this.#ensureV1("snapshotDirectory");
+    const wireTtlSeconds = resolveTtlSeconds(params?.ttlMs);
+    // Treat both undefined and 0 as "use default", matching the Go
+    // `Timeout time.Duration` zero-value convention on SnapshotDirectoryParams.
+    const timeoutMs = params?.timeoutMs || 55000;
     const taskId = await this.#getTaskId();
     const commandRouterClient =
       await this.#getOrCreateCommandRouterClient(taskId);
 
     const pathBytes = new TextEncoder().encode(path);
-    // ttlSeconds is left unset; the server applies its default retention
-    // policy. snapshotId guarantees idempotency under retries.
+    // snapshotId guarantees idempotency under retries.
     const request = TaskSnapshotDirectoryRequest.create({
       taskId,
       path: pathBytes,
       snapshotId: uuidv4(),
+      ttlSeconds: wireTtlSeconds,
     });
-    const response = await commandRouterClient.snapshotDirectory(request);
+    const response = await commandRouterClient.snapshotDirectory(request, {
+      timeoutMs,
+    });
 
     if (!response.imageId) {
       throw new Error("Sandbox snapshot directory response missing `imageId`");

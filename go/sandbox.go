@@ -34,7 +34,6 @@ type sandboxServiceImpl struct{ client *Client }
 const (
 	defaultProbeInterval                = 100 * time.Millisecond
 	maxProbeIntervalMilliseconds uint64 = ^uint64(0) >> 32
-	ttlNoExpirySentinel          int64  = -1
 )
 
 const (
@@ -1283,17 +1282,86 @@ func (sb *Sandbox) Tunnels(ctx context.Context, timeout time.Duration) (map[int]
 	return sb.tunnels, nil
 }
 
+// NoExpiryTTL is the sentinel [time.Duration] value for
+// [SnapshotFilesystemParams.TTL] / [SnapshotDirectoryParams.TTL] that
+// disables expiry on the resulting Image, retaining it indefinitely.
+const NoExpiryTTL time.Duration = -1
+
+// SnapshotFilesystemParams configures a [Sandbox.SnapshotFilesystem] call.
+type SnapshotFilesystemParams struct {
+	// Timeout is the overall budget for the snapshot call. Zero means the
+	// default (55 seconds). If it elapses before a snapshot completes, a
+	// TimeoutError is returned.
+	Timeout time.Duration
+	// TTL is the lifetime of the resulting image.
+	//
+	// Zero (or omitted) means use the default of 30 days, as a hard
+	// cutoff measured from creation. A positive value sets a custom
+	// lifetime; sub-second values are rejected. Pass [NoExpiryTTL] to
+	// retain the image indefinitely.
+	//
+	// See [NoExpiryTTL].
+	TTL time.Duration
+}
+
+// SnapshotDirectoryParams configures a [Sandbox.SnapshotDirectory] call.
+type SnapshotDirectoryParams struct {
+	// Timeout is the overall budget for the snapshot call. Zero means the
+	// default (55 seconds). If it elapses before a snapshot completes, a
+	// TimeoutError is returned.
+	Timeout time.Duration
+	// TTL is the lifetime of the resulting image.
+	//
+	// Zero (or omitted) means use the default of 30 days, as a hard
+	// cutoff measured from creation. A positive value sets a custom
+	// lifetime; sub-second values are rejected. Pass [NoExpiryTTL] to
+	// retain the image indefinitely.
+	//
+	// See [NoExpiryTTL].
+	TTL time.Duration
+}
+
+// resolveTTL converts a user-facing [time.Duration] to the wire-format
+// seconds expected by the snapshot RPCs.
+func resolveTTL(ttl time.Duration) (int64, error) {
+	if ttl == 0 {
+		return 30 * 24 * 3600, nil
+	}
+	if ttl == NoExpiryTTL {
+		return -1, nil
+	}
+	if ttl < time.Second {
+		return 0, InvalidError{Exception: fmt.Sprintf("TTL must be at least 1 second, got %v", ttl)}
+	}
+	if ttl%time.Second != 0 {
+		return 0, InvalidError{Exception: fmt.Sprintf("TTL must be a whole number of seconds, got %v", ttl)}
+	}
+	return int64(ttl / time.Second), nil
+}
+
 // SnapshotFilesystem takes a snapshot of the Sandbox's filesystem.
 // Returns an Image object which can be used to spawn a new Sandbox with the same filesystem.
 //
-// `timeout` is the overall budget across all retry attempts. If it
-// elapses before a snapshot completes, a TimeoutError is returned. The
-// caller's own ctx cancellation is propagated as-is.
-func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, timeout time.Duration) (*Image, error) {
+// If params is nil, the resulting image is retained for 30 days as a hard
+// cutoff measured from creation, and the call has a 55-second timeout.
+// See [SnapshotFilesystemParams] for control over both.
+func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SnapshotFilesystemParams) (*Image, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
 	if err := sb.ensureV1("SnapshotFilesystem"); err != nil {
+		return nil, err
+	}
+	var ttl time.Duration
+	timeout := 55 * time.Second
+	if params != nil {
+		ttl = params.TTL
+		if params.Timeout != 0 {
+			timeout = params.Timeout
+		}
+	}
+	wireTTL, err := resolveTTL(ttl)
+	if err != nil {
 		return nil, err
 	}
 	if err := sb.ensureTaskID(ctx); err != nil {
@@ -1305,11 +1373,10 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, timeout time.Duration
 		return nil, err
 	}
 
-	ttl := ttlNoExpirySentinel
 	request := pb.TaskSnapshotFilesystemRequest_builder{
 		TaskId:     sb.taskID,
 		SnapshotId: uuid.NewString(),
-		TtlSeconds: &ttl,
+		TtlSeconds: &wireTTL,
 	}.Build()
 
 	response, err := crClient.SnapshotFilesystem(ctx, request, timeout)
@@ -1387,13 +1454,26 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string) error {
 
 // SnapshotDirectory snapshots and creates a new image from a directory in the running sandbox.
 //
-// Directory snapshots are currently persisted for 30 days after they
-// were created.
-func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string) (*Image, error) {
+// If params is nil, the resulting image is retained for 30 days as a hard
+// cutoff measured from creation, and the call has a 55-second timeout.
+// See [SnapshotDirectoryParams] for control over both.
+func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *SnapshotDirectoryParams) (*Image, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
 	if err := sb.ensureV1("SnapshotDirectory"); err != nil {
+		return nil, err
+	}
+	var ttl time.Duration
+	timeout := 55 * time.Second
+	if params != nil {
+		ttl = params.TTL
+		if params.Timeout != 0 {
+			timeout = params.Timeout
+		}
+	}
+	wireTTL, err := resolveTTL(ttl)
+	if err != nil {
 		return nil, err
 	}
 	if err := sb.ensureTaskID(ctx); err != nil {
@@ -1405,16 +1485,15 @@ func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string) (*Image, 
 		return nil, err
 	}
 
-	// TtlSeconds is left unset; the server applies its default retention
-	// policy. SnapshotId guarantees idempotency under retries.
-	snapshotID := uuid.NewString()
+	// SnapshotId guarantees idempotency under retries.
 	request := pb.TaskSnapshotDirectoryRequest_builder{
 		TaskId:     sb.taskID,
 		Path:       []byte(path),
-		SnapshotId: snapshotID,
+		SnapshotId: uuid.NewString(),
+		TtlSeconds: &wireTTL,
 	}.Build()
 
-	response, err := crClient.SnapshotDirectory(ctx, request)
+	response, err := crClient.SnapshotDirectory(ctx, request, timeout)
 	if err != nil {
 		return nil, err
 	}

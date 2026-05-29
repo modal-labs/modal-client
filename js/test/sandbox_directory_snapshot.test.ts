@@ -107,6 +107,60 @@ test("SandboxSnapshotDirectory", async () => {
   expect(output).toBe("snapshot test content");
 });
 
+test("SandboxSnapshotWithTtl", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const baseImage = tc.images.fromRegistry("debian:12-slim");
+
+  const sb = await tc.sandboxes.create(app, baseImage);
+  onTestFinished(async () => await sb.terminate());
+
+  // Default ttl, explicit ttl, and null all succeed.
+  expect((await sb.snapshotDirectory("/tmp")).imageId).toMatch(/^im-/);
+  expect(
+    (await sb.snapshotDirectory("/tmp", { ttlMs: 3_600_000 })).imageId,
+  ).toMatch(/^im-/);
+  expect((await sb.snapshotDirectory("/tmp", { ttlMs: null })).imageId).toMatch(
+    /^im-/,
+  );
+  expect((await sb.snapshotFilesystem()).imageId).toMatch(/^im-/);
+  expect((await sb.snapshotFilesystem({ ttlMs: 3_600_000 })).imageId).toMatch(
+    /^im-/,
+  );
+});
+
+test("SandboxSnapshotRejectsInvalidTtl", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const baseImage = tc.images.fromRegistry("debian:12-slim");
+
+  const sb = await tc.sandboxes.create(app, baseImage);
+  onTestFinished(async () => await sb.terminate());
+
+  // Sub-second and negative TTLs are rejected client-side.
+  // (null is the only valid way to opt out of expiry.)
+  await expect(sb.snapshotDirectory("/tmp", { ttlMs: 500 })).rejects.toThrow(
+    "ttlMs must be at least 1000ms",
+  );
+  await expect(sb.snapshotDirectory("/tmp", { ttlMs: -1 })).rejects.toThrow(
+    "ttlMs must be at least 1000ms",
+  );
+  await expect(sb.snapshotFilesystem({ ttlMs: 500 })).rejects.toThrow(
+    "ttlMs must be at least 1000ms",
+  );
+
+  // Non-whole-second TTLs are also rejected since the wire format would
+  // silently strip the sub-second precision.
+  await expect(sb.snapshotDirectory("/tmp", { ttlMs: 1500 })).rejects.toThrow(
+    "ttlMs must be a multiple of 1000ms",
+  );
+  await expect(sb.snapshotFilesystem({ ttlMs: 1500 })).rejects.toThrow(
+    "ttlMs must be a multiple of 1000ms",
+  );
+});
+
 test("SandboxMountDirectoryWithUnbuiltImageThrows", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,

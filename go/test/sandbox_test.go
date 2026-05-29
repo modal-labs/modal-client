@@ -1327,7 +1327,7 @@ func TestSandboxDetachForbidsAllOperations(t *testing.T) {
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(errorMsg))
 
-	_, err = sb.SnapshotFilesystem(ctx, 30*time.Second)
+	_, err = sb.SnapshotFilesystem(ctx, &modal.SnapshotFilesystemParams{Timeout: 30 * time.Second})
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(errorMsg))
 
@@ -1335,7 +1335,7 @@ func TestSandboxDetachForbidsAllOperations(t *testing.T) {
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(errorMsg))
 
-	_, err = sb.SnapshotDirectory(ctx, "/abc")
+	_, err = sb.SnapshotDirectory(ctx, "/abc", nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(errorMsg))
 

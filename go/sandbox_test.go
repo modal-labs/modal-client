@@ -195,7 +195,7 @@ func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
-	_, err = sb.SnapshotFilesystem(ctx, time.Second)
+	_, err = sb.SnapshotFilesystem(ctx, &SnapshotFilesystemParams{Timeout: time.Second})
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
@@ -207,7 +207,7 @@ func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
-	_, err = sb.SnapshotDirectory(ctx, "/mnt")
+	_, err = sb.SnapshotDirectory(ctx, "/mnt", nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
