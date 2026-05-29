@@ -40,8 +40,8 @@ from ._runtime import execution_context
 from ._runtime.container_io_manager import (
     ContainerIOManager,
     IOContext,
-    UserException,
 )
+from ._runtime.task_lifecycle_manager import UserException
 
 if TYPE_CHECKING:
     import modal._runtime.container_io_manager
@@ -310,7 +310,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         ser_usr_cls, ser_fun = get_serialized_user_class_and_function(function_def, _client)
 
         # Initialize the function, importing user code.
-        with container_io_manager.handle_user_exception():
+        with container_io_manager.get_task_lifecycle_manager().handle_task_lifecycle_exception():
             if container_args.serialized_params:
                 param_args, param_kwargs = deserialize_params(container_args.serialized_params, function_def, _client)
             else:
@@ -401,7 +401,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_def._experimental_group_size,
             )
 
-        with service.execution_context(event_loop, container_io_manager) as finalized_functions:
+        with service.execution_context(
+            event_loop=event_loop,
+            snapshot=container_io_manager.memory_snapshot,
+            container_io_manager=container_io_manager,
+        ) as finalized_functions:
+            # This context managers handles pre/post snapshot lifecycle of the user code,
+            # finalized functions, ASGI/WSGI lifespan, and volume commit.
             if function_def.is_server:
                 call_server(event_loop)
             else:
