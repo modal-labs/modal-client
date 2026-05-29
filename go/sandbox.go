@@ -532,12 +532,12 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 // ExperimentalCreate creates a new Sandbox using the experimental V2 backend.
 //
 // Supported features include exec, encrypted tunnels, wait/poll/terminate,
-// CPU and memory configuration, region placement, volumes, and cloud bucket
-// mounts (with static credentials via Secret).
+// CPU and memory configuration, region placement, volumes, cloud bucket
+// mounts (with static credentials via Secret), and filesystem snapshots.
 //
-// Features like tags, filesystem snapshots, memory snapshots, GPUs, custom
-// domains, OIDC identity tokens (including OidcAuthRoleArn on a
-// CloudBucketMount), proxies, and readiness probes are not supported.
+// Features like tags, memory snapshots, GPUs, custom domains, OIDC identity
+// tokens (including OidcAuthRoleArn on a CloudBucketMount), proxies, and
+// readiness probes are not supported.
 //
 // V2 sandboxes created with this method are not currently returned by List and
 // cannot be looked up with FromName. Store Sandbox.SandboxID if you need to
@@ -1347,9 +1347,6 @@ func resolveTTL(ttl time.Duration) (int64, error) {
 // See [SnapshotFilesystemParams] for control over both.
 func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SnapshotFilesystemParams) (*Image, error) {
 	if err := sb.ensureAttached(); err != nil {
-		return nil, err
-	}
-	if err := sb.ensureV1("SnapshotFilesystem"); err != nil {
 		return nil, err
 	}
 	var ttl time.Duration
