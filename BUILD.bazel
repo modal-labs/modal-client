@@ -4,5 +4,8 @@ py_library(
     name = "client",
     srcs = ["tasks.py"],
     visibility = ["//:__subpackages__"],
-    deps = ["@pip//invoke"],
+    deps = [
+        "@pip//invoke",
+        "@pip//rich",
+    ],
 )
