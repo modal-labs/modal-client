@@ -2,7 +2,7 @@
 import dataclasses
 from collections.abc import Collection, Sequence, Sized
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from modal_proto import api_pb2
 
@@ -39,40 +39,40 @@ class _FunctionOptions:
     secrets: Collection[_Secret] = ()
     validated_volumes: Sequence[tuple[str, _Volume]] = ()
     cloud_bucket_mounts: Sequence[tuple[str, _CloudBucketMount]] = ()
-    resources: Optional[api_pb2.Resources] = None
-    retry_policy: Optional[api_pb2.FunctionRetryPolicy] = None
-    max_containers: Optional[int] = None
-    buffer_containers: Optional[int] = None
-    scaledown_window: Optional[int] = None
-    timeout_secs: Optional[int] = None
-    scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
-    cloud: Optional[str] = None
-    max_concurrent_inputs: Optional[int] = None
-    target_concurrent_inputs: Optional[int] = None
-    batch_max_size: Optional[int] = None
-    batch_wait_ms: Optional[int] = None
+    resources: api_pb2.Resources | None = None
+    retry_policy: api_pb2.FunctionRetryPolicy | None = None
+    max_containers: int | None = None
+    buffer_containers: int | None = None
+    scaledown_window: int | None = None
+    timeout_secs: int | None = None
+    scheduler_placement: api_pb2.SchedulerPlacement | None = None
+    cloud: str | None = None
+    max_concurrent_inputs: int | None = None
+    target_concurrent_inputs: int | None = None
+    batch_max_size: int | None = None
+    batch_wait_ms: int | None = None
 
     @classmethod
     def new(
         cls,
         *,
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
-        memory: Optional[Union[int, tuple[int, int]]] = None,
-        gpu: Optional[str] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
-        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
-        retries: Optional[Union[int, Retries]] = None,
-        max_containers: Optional[int] = None,
-        buffer_containers: Optional[int] = None,
-        scaledown_window: Optional[int] = None,
-        timeout: Optional[int] = None,
-        region: Optional[Union[str, Sequence[str]]] = None,
-        cloud: Optional[str] = None,
-        max_concurrent_inputs: Optional[int] = None,
-        target_concurrent_inputs: Optional[int] = None,
-        batch_max_size: Optional[int] = None,
-        batch_wait_ms: Optional[int] = None,
+        cpu: float | tuple[float, float] | None = None,
+        memory: int | tuple[int, int] | None = None,
+        gpu: str | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
+        volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount] = {},
+        retries: int | Retries | None = None,
+        max_containers: int | None = None,
+        buffer_containers: int | None = None,
+        scaledown_window: int | None = None,
+        timeout: int | None = None,
+        region: str | Sequence[str] | None = None,
+        cloud: str | None = None,
+        max_concurrent_inputs: int | None = None,
+        target_concurrent_inputs: int | None = None,
+        batch_max_size: int | None = None,
+        batch_wait_ms: int | None = None,
     ) -> "_FunctionOptions":
         """Internal constructor that validates and normalizes public parameters."""
         retry_policy = _parse_retries(retries)
@@ -89,7 +89,7 @@ class _FunctionOptions:
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
-        scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+        scheduler_placement: api_pb2.SchedulerPlacement | None = None
         if region:
             regions = [region] if isinstance(region, str) else list(region)
             scheduler_placement = api_pb2.SchedulerPlacement(regions=regions)
@@ -187,8 +187,8 @@ class _FunctionOptions:
 
 def _make_function_variant(
     base_function: "_Function",
-    options: Optional[_FunctionOptions],
-    parameter_schema: Optional[Sequence[api_pb2.ClassParameterSpec]],
+    options: _FunctionOptions | None,
+    parameter_schema: Sequence[api_pb2.ClassParameterSpec] | None,
     args: Sized,
     kwargs: dict[str, Any],
 ) -> "_Function":
@@ -198,7 +198,7 @@ def _make_function_variant(
         function_variant: "_Function",
         resolver: "Resolver",
         load_context: "LoadContext",
-        existing_object_id: Optional[str],
+        existing_object_id: str | None,
     ):
         if not base_function.is_hydrated:
             await base_function.hydrate(load_context.client)

@@ -2,7 +2,6 @@
 import uuid
 import warnings
 from datetime import datetime, timezone
-from typing import Optional, Union
 
 import click
 from click import UsageError
@@ -46,7 +45,7 @@ container_cli = ModalGroup(name="container", help="Manage and connect to running
 @synchronizer.create_blocking
 async def list_(
     app_id: str = "",
-    env: Optional[str] = None,
+    env: str | None = None,
     json: bool = False,
 ):
     """List all containers that are currently running."""
@@ -57,13 +56,13 @@ async def list_(
         api_pb2.TaskListRequest(environment_name=environment_name, app_id=app_id)
     )
 
-    column_names: list[Union[Column, str]] = [
+    column_names: list[Column | str] = [
         Column("Container ID", min_width=29),
         Column("App ID", min_width=25),
         "App Name",
         "Start Time",
     ]
-    rows: list[list[Union[Text, str]]] = []
+    rows: list[list[Text | str]] = []
     res.tasks.sort(key=lambda task: task.started_at, reverse=True)
     for task_stats in res.tasks:
         rows.append(
@@ -97,11 +96,11 @@ async def logs(
     container_id: str,
     follow: bool = False,
     all_logs: bool = False,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
-    tail: Optional[int] = None,
-    search: Optional[str] = None,
-    source: Optional[str] = None,
+    since: str | None = None,
+    until: str | None = None,
+    tail: int | None = None,
+    search: str | None = None,
+    source: str | None = None,
     timestamps: bool = False,
 ):
     """Fetch or stream logs for a specific container.
@@ -267,7 +266,7 @@ async def logs(
 
 @synchronizer.create_blocking
 async def _exec_impl(
-    pty: Optional[bool] = None,
+    pty: bool | None = None,
     container_id: str = "",
     command: tuple[str, ...] = (),
 ):
@@ -323,7 +322,7 @@ async def _exec_impl(
 @click.argument("container_id")
 @click.argument("command", nargs=-1, required=True)
 def exec(
-    pty: Optional[bool] = None,
+    pty: bool | None = None,
     container_id: str = "",
     command: tuple[str, ...] = (),
 ):

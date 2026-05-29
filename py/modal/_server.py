@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2025
 import inspect
 import typing
-from typing import Optional
 
 from ._functions import _Function
 from ._load_context import LoadContext
@@ -23,7 +22,7 @@ def validate_http_server_config(
     port: int,
     proxy_regions: list[str],  # The regions to proxy the HTTP server to.
     startup_timeout: int,  # Maximum number of seconds to wait for the HTTP server to start.
-    exit_grace_period: Optional[int],  # The time to wait for the HTTP server to exit gracefully.
+    exit_grace_period: int | None,  # The time to wait for the HTTP server to exit gracefully.
     is_server: bool = False,  # Whether this validates a `_experimental_server` config.
 ):
     if not isinstance(port, int) or port < 1 or port > 65535:
@@ -58,9 +57,9 @@ class _Server:
     ```
     """
 
-    _user_cls: Optional[type] = None  # None if remote
+    _user_cls: type | None = None  # None if remote
     _service_function: _Function
-    _app: Optional["modal.app._App"] = None  # None if remote
+    _app: "modal.app._App | None" = None  # None if remote
 
     def _get_user_cls(self) -> type:
         assert self._user_cls is not None
@@ -84,7 +83,7 @@ class _Server:
     # ============ Live Methods ============
 
     @live_method
-    async def get_urls(self) -> Optional[dict[str, str]]:
+    async def get_urls(self) -> dict[str, str] | None:
         def _extract_region_from_url(url: str) -> str:
             return url.split(".")[-3].removeprefix("modal-")
 
@@ -97,10 +96,10 @@ class _Server:
     async def update_autoscaler(
         self,
         *,
-        min_containers: Optional[int] = None,
-        max_containers: Optional[int] = None,
-        buffer_containers: Optional[int] = None,
-        scaledown_window: Optional[int] = None,
+        min_containers: int | None = None,
+        max_containers: int | None = None,
+        buffer_containers: int | None = None,
+        scaledown_window: int | None = None,
     ) -> None:
         """Override the current autoscaler behavior for this Server.
 
@@ -126,7 +125,7 @@ class _Server:
         )
 
     # ============ Hydration ============
-    async def hydrate(self, client: Optional[_Client] = None) -> "_Server":
+    async def hydrate(self, client: _Client | None = None) -> "_Server":
         # This is required since we want to support @livemethod() decorated methods
         service_function = self._get_service_function()
         await service_function.hydrate(client)
@@ -157,8 +156,8 @@ class _Server:
         app_name: str,
         name: str,
         *,
-        environment_name: Optional[str] = None,
-        client: Optional[_Client] = None,
+        environment_name: str | None = None,
+        client: _Client | None = None,
     ) -> "_Server":
         """Reference a Server from a deployed App by its name.
 

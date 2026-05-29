@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2025
 import re
 from datetime import datetime, timedelta, timezone, tzinfo
-from typing import Optional, Union
 from zoneinfo import ZoneInfo
 
 
@@ -41,7 +40,7 @@ def resolve_timezone(s: str) -> tzinfo:
         )
 
 
-def parse_date(s: str, tz: Optional[tzinfo] = None) -> datetime:
+def parse_date(s: str, tz: tzinfo | None = None) -> datetime:
     """Parse a date string, supporting both ISO format and relative dates.
 
     Supported formats:
@@ -106,7 +105,7 @@ def parse_date(s: str, tz: Optional[tzinfo] = None) -> datetime:
     return dt.replace(tzinfo=timezone.utc)
 
 
-def parse_date_range(s: str, tz: Optional[tzinfo] = None) -> tuple[datetime, datetime]:
+def parse_date_range(s: str, tz: tzinfo | None = None) -> tuple[datetime, datetime]:
     """Parse a convenience range string into a (start, end) pair of UTC datetimes.
 
     Accepted values:
@@ -223,7 +222,7 @@ def locale_tz() -> tzinfo:
     return datetime.now().astimezone().tzinfo
 
 
-def as_timestamp(arg: Optional[Union[datetime, str]]) -> float:
+def as_timestamp(arg: datetime | str | None) -> float:
     """Coerce a user-provided argument to a timestamp.
 
     An argument provided without timezone information will be treated as local time.
@@ -248,7 +247,7 @@ def timestamp_to_localized_dt(ts: float) -> datetime:
     return datetime.fromtimestamp(ts, tz=locale_tz())
 
 
-def timestamp_to_localized_str(ts: float, isotz: bool = True) -> Optional[str]:
+def timestamp_to_localized_str(ts: float, isotz: bool = True) -> str | None:
     if ts > 0:
         dt = timestamp_to_localized_dt(ts)
         if isotz:

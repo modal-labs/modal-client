@@ -7,7 +7,7 @@ import inspect
 import os
 import shutil
 import sys
-from typing import Any, Optional
+from typing import Any
 
 import click
 from rich.console import Console, Group, RenderableType
@@ -49,7 +49,7 @@ def _build_usage(cmd: click.Command, ctx: click.Context) -> RenderableType:
     return usage
 
 
-def _build_help_text(cmd: click.Command) -> Optional[RenderableType]:
+def _build_help_text(cmd: click.Command) -> RenderableType | None:
     text = cmd.help or cmd.short_help or ""
     if not text:
         return None
@@ -74,7 +74,7 @@ def _option_label(param: click.Parameter, ctx: click.Context) -> Text:
     return text
 
 
-def _build_options(cmd: click.Command, ctx: click.Context) -> Optional[RenderableType]:
+def _build_options(cmd: click.Command, ctx: click.Context) -> RenderableType | None:
     rows: list[tuple[Text, str]] = []
     for param in cmd.get_params(ctx):
         rec = param.get_help_record(ctx)
@@ -92,7 +92,7 @@ def _build_options(cmd: click.Command, ctx: click.Context) -> Optional[Renderabl
     return Group(Text("Options", style=_HEADING_STYLE), table)
 
 
-def _build_epilog(cmd: click.Command) -> Optional[RenderableType]:
+def _build_epilog(cmd: click.Command) -> RenderableType | None:
     if not cmd.epilog:
         return None
     return Text(cmd.epilog)
@@ -108,7 +108,7 @@ def _group_commands_by_panel(group: click.Group) -> dict[str, list[tuple[str, cl
     return panels
 
 
-def _build_commands(group: click.Group, available_width: int) -> Optional[RenderableType]:
+def _build_commands(group: click.Group, available_width: int) -> RenderableType | None:
     panels = _group_commands_by_panel(group)
     if not panels:
         return None
@@ -125,7 +125,7 @@ def _build_commands(group: click.Group, available_width: int) -> Optional[Render
     return Group(*parts)
 
 
-def build_command_table(name_width: int, table_width: Optional[int] = None) -> Table:
+def build_command_table(name_width: int, table_width: int | None = None) -> Table:
     kwargs: dict[str, Any] = {"box": None, "show_header": False, "pad_edge": True, "padding": (0, 1)}
     if table_width is not None:
         kwargs["width"] = table_width
@@ -155,7 +155,7 @@ def _available_width(console: Console) -> int:
 
 def _emit(
     console: Console,
-    sections: list[Optional[RenderableType]],
+    sections: list[RenderableType | None],
     formatter: click.HelpFormatter,
 ) -> None:
     parts: list[RenderableType] = []
@@ -179,7 +179,7 @@ def _emit(
 class ModalCommand(click.Command):
     """click.Command that renders --help with custom rich output."""
 
-    def __init__(self, *args: Any, panel: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, panel: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.panel = panel
 
@@ -205,7 +205,7 @@ class ModalGroup(click.Group):
     command_class = ModalCommand
     group_class = type  # nested @group.group() reuses the enclosing class
 
-    def __init__(self, *args: Any, panel: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, panel: str | None = None, **kwargs: Any) -> None:
         # Default to showing help when a group is invoked with no subcommand.
         # Callers can opt out by passing no_args_is_help=False explicitly.
         kwargs.setdefault("no_args_is_help", True)
@@ -215,10 +215,10 @@ class ModalGroup(click.Group):
     def add_command(
         self,
         cmd: click.Command,
-        name: Optional[str] = None,
+        name: str | None = None,
         *,
-        panel: Optional[str] = None,
-        hidden: Optional[bool] = None,
+        panel: str | None = None,
+        hidden: bool | None = None,
     ) -> None:
         super().add_command(cmd, name)
         if panel is not None:

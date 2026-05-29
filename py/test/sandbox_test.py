@@ -1223,7 +1223,7 @@ ALLOW_AFTER_DETACH = {"detach", "returncode", "wait"}
 
 
 def test_func_map_covers_all_public_methods_and_properties():
-    attributes_to_raise_on_detached = set(
+    attributes_to_raise_on_detached = {
         attr.name
         for attr in inspect.classify_class_attrs(modal.sandbox._Sandbox)
         if attr.defining_class == modal.sandbox._Sandbox
@@ -1231,7 +1231,7 @@ def test_func_map_covers_all_public_methods_and_properties():
             not (attr.name.startswith("_") or attr.name in ALLOW_AFTER_DETACH) or attr.name.startswith("_experimental")
         )
         and attr.kind in ("method", "property")
-    )
+    }
     assert set(detach_error_funcs) == attributes_to_raise_on_detached
 
 

@@ -8,10 +8,10 @@ import time
 import typing
 import uuid
 import weakref
-from collections.abc import AsyncGenerator, Collection, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
+from typing import TYPE_CHECKING, Any, Literal, Union, overload
 
 from ._output.pty import get_pty_info
 from .config import config, logger
@@ -82,7 +82,7 @@ ARG_MAX_BYTES = 2**16
 TTL_NO_EXPIRY_SENTINEL = -1
 
 
-def _ttl_to_wire_ttl(ttl: Optional[int]) -> int:
+def _ttl_to_wire_ttl(ttl: int | None) -> int:
     """Convert a TTL value to the wire format, validating the input."""
     if ttl is None:
         return TTL_NO_EXPIRY_SENTINEL
@@ -132,7 +132,7 @@ def _get_sandbox_version(sandbox_id: str) -> SandboxVersion:
     raise InvalidError(f"Invalid Sandbox ID: {sandbox_id!r}")
 
 
-def _result_returncode(result: Optional[api_pb2.GenericResult]) -> Optional[int]:
+def _result_returncode(result: api_pb2.GenericResult | None) -> int | None:
     if result is None or result.status == api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:
         return None
     if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
@@ -201,8 +201,8 @@ class Probe:
     ```
     """
 
-    tcp_port: Optional[int] = None
-    exec_argv: Optional[tuple[str, ...]] = None
+    tcp_port: int | None = None
+    exec_argv: tuple[str, ...] | None = None
     interval_ms: int = 100
 
     def __post_init__(self):
@@ -251,16 +251,16 @@ class _Sandbox(_Object, type_prefix="sb"):
     Refer to the [guide](https://modal.com/docs/guide/sandbox) on how to spawn and use sandboxes.
     """
 
-    _result: Optional[api_pb2.GenericResult]
+    _result: api_pb2.GenericResult | None
     _stdout: _StreamReader[str]
     _stderr: _StreamReader[str]
     _stdin: _StreamWriter
-    _task_id: Optional[str]
-    _tunnels: Optional[dict[int, Tunnel]]
+    _task_id: str | None
+    _tunnels: dict[int, Tunnel] | None
     _enable_snapshot: bool
-    _command_router_client: Optional[TaskCommandRouterClient]
+    _command_router_client: TaskCommandRouterClient | None
     _attached: bool
-    _filesystem: Optional[_SandboxFilesystem]
+    _filesystem: _SandboxFilesystem | None
     _is_v2: bool = False
 
     @staticmethod
@@ -272,33 +272,33 @@ class _Sandbox(_Object, type_prefix="sb"):
         args: Sequence[str],
         image: _Image,
         secrets: Collection[_Secret],
-        name: Optional[str] = None,
+        name: str | None = None,
         timeout: int = 300,
-        idle_timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        gpu: Optional[str] = None,
-        cloud: Optional[str] = None,
-        region: Optional[Union[str, Sequence[str]]] = None,
-        cpu: Optional[float] = None,
-        memory: Optional[Union[int, tuple[int, int]]] = None,
+        idle_timeout: int | None = None,
+        workdir: str | None = None,
+        gpu: str | None = None,
+        cloud: str | None = None,
+        region: str | Sequence[str] | None = None,
+        cpu: float | None = None,
+        memory: int | tuple[int, int] | None = None,
         mounts: Sequence[_Mount] = (),
-        network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: dict[str | os.PathLike, _NetworkFileSystem] = {},
         block_network: bool = False,
-        outbound_cidr_allowlist: Optional[Sequence[str]] = None,
-        inbound_cidr_allowlist: Optional[Sequence[str]] = None,
-        volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
+        outbound_cidr_allowlist: Sequence[str] | None = None,
+        inbound_cidr_allowlist: Sequence[str] | None = None,
+        volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
-        pty_info: Optional[api_pb2.PTYInfo] = None,  # deprecated
+        pty_info: api_pb2.PTYInfo | None = None,  # deprecated
         encrypted_ports: Sequence[int] = [],
         h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
-        proxy: Optional[_Proxy] = None,
-        readiness_probe: Optional[Probe] = None,
-        experimental_options: Optional[dict[str, bool]] = None,
-        tags: Optional[dict[str, str]] = None,
+        proxy: _Proxy | None = None,
+        readiness_probe: Probe | None = None,
+        experimental_options: dict[str, bool] | None = None,
+        tags: dict[str, str] | None = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
-        custom_domain: Optional[str] = None,
+        custom_domain: str | None = None,
         include_oidc_identity_token: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
@@ -319,7 +319,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
-        scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+        scheduler_placement: api_pb2.SchedulerPlacement | None = None
         if region:
             regions = [region] if isinstance(region, str) else (list(region) if region else None)
             scheduler_placement = api_pb2.SchedulerPlacement(regions=regions)
@@ -327,9 +327,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         if pty:
             pty_info = _Sandbox._default_pty_info()
 
-        async def _load(
-            self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: str | None):
             # An already-hydrated image (e.g. one returned by
             # `Sandbox.snapshot_directory`) is skipped — there's nothing to load.
             dep_tasks: list = []
@@ -432,34 +430,34 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def create(
         *args: str,  # Set the CMD of the Sandbox, overriding any CMD of the container image.
         # Associate the sandbox with an app. Required unless creating from a container.
-        app: Optional["modal.app._App"] = None,
-        name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
-        tags: Optional[dict[str, str]] = None,  # Tags to attach to the Sandbox.
-        image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the Sandbox.
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the Sandbox as environment variables.
-        network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        app: "modal.app._App | None" = None,
+        name: str | None = None,  # Optionally give the sandbox a name. Unique within an app.
+        tags: dict[str, str] | None = None,  # Tags to attach to the Sandbox.
+        image: _Image | None = None,  # The image to run as the container for the sandbox.
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the Sandbox.
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the Sandbox as environment variables.
+        network_file_systems: dict[str | os.PathLike, _NetworkFileSystem] = {},
         timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
         # The amount of time in seconds that a sandbox can be idle before being terminated.
-        idle_timeout: Optional[int] = None,
-        workdir: Optional[str] = None,  # Working directory of the sandbox.
-        gpu: Optional[str] = None,
-        cloud: Optional[str] = None,
-        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
+        idle_timeout: int | None = None,
+        workdir: str | None = None,  # Working directory of the sandbox.
+        gpu: str | None = None,
+        cloud: str | None = None,
+        region: str | Sequence[str] | None = None,  # Region or regions to run the sandbox on.
         # Specify, in fractional CPU cores, how many CPU cores to request.
         # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
         # CPU throttling will prevent a container from exceeding its specified limit.
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
+        cpu: float | tuple[float, float] | None = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, tuple[int, int]]] = None,
+        memory: int | tuple[int, int] | None = None,
         block_network: bool = False,  # Whether to block network access
         # List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
-        outbound_cidr_allowlist: Optional[Sequence[str]] = None,
+        outbound_cidr_allowlist: Sequence[str] | None = None,
         # List of CIDRs allowed to connect inbound to the sandbox (tunnels and connection tokens).
-        inbound_cidr_allowlist: Optional[Sequence[str]] = None,
+        inbound_cidr_allowlist: Sequence[str] | None = None,
         volumes: dict[
-            Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
+            str | os.PathLike, _Volume | _CloudBucketMount
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         # Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr
         # from the process) is multiplexed into stdout, and the stderr stream is effectively empty.
@@ -471,22 +469,22 @@ class _Sandbox(_Object, type_prefix="sb"):
         # List of ports to tunnel into the sandbox without encryption.
         unencrypted_ports: Sequence[int] = [],
         # Allow connections to the Sandbox via a subdomain of this parent rather than a default Modal domain.
-        custom_domain: Optional[str] = None,
+        custom_domain: str | None = None,
         # Reference to a Modal Proxy to use in front of this Sandbox.
-        proxy: Optional[_Proxy] = None,
+        proxy: _Proxy | None = None,
         # If True, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth.
         include_oidc_identity_token: bool = False,
         # Probe used to determine when the sandbox has become ready.
-        readiness_probe: Optional[Probe] = None,
+        readiness_probe: Probe | None = None,
         # Enable verbose logging for sandbox operations.
         verbose: bool = False,
-        experimental_options: Optional[dict[str, bool]] = None,
+        experimental_options: dict[str, bool] | None = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
-        pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
-        cidr_allowlist: Optional[Sequence[str]] = None,  # *DEPRECATED* Use outbound_cidr_allowlist instead.
+        client: _Client | None = None,
+        environment_name: str | None = None,  # *DEPRECATED* Optionally override the default environment
+        pty_info: api_pb2.PTYInfo | None = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
+        cidr_allowlist: Sequence[str] | None = None,  # *DEPRECATED* Use outbound_cidr_allowlist instead.
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
@@ -568,39 +566,39 @@ class _Sandbox(_Object, type_prefix="sb"):
     @staticmethod
     async def _create(
         *args: str,
-        app: Optional["modal.app._App"] = None,
-        name: Optional[str] = None,
-        tags: Optional[dict[str, str]] = None,
-        image: Optional[_Image] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
+        app: "modal.app._App | None" = None,
+        name: str | None = None,
+        tags: dict[str, str] | None = None,
+        image: _Image | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
         mounts: Sequence[_Mount] = (),
-        network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: dict[str | os.PathLike, _NetworkFileSystem] = {},
         timeout: int = 300,
-        idle_timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        gpu: Optional[str] = None,
-        cloud: Optional[str] = None,
-        region: Optional[Union[str, Sequence[str]]] = None,
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
-        memory: Optional[Union[int, tuple[int, int]]] = None,
+        idle_timeout: int | None = None,
+        workdir: str | None = None,
+        gpu: str | None = None,
+        cloud: str | None = None,
+        region: str | Sequence[str] | None = None,
+        cpu: float | tuple[float, float] | None = None,
+        memory: int | tuple[int, int] | None = None,
         block_network: bool = False,
-        outbound_cidr_allowlist: Optional[Sequence[str]] = None,
-        inbound_cidr_allowlist: Optional[Sequence[str]] = None,
-        volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
+        outbound_cidr_allowlist: Sequence[str] | None = None,
+        inbound_cidr_allowlist: Sequence[str] | None = None,
+        volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
         encrypted_ports: Sequence[int] = [],
         h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
-        proxy: Optional[_Proxy] = None,
+        proxy: _Proxy | None = None,
         include_oidc_identity_token: bool = False,
-        readiness_probe: Optional[Probe] = None,
-        experimental_options: Optional[dict[str, bool]] = None,
+        readiness_probe: Probe | None = None,
+        experimental_options: dict[str, bool] | None = None,
         _experimental_enable_snapshot: bool = False,
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
         verbose: bool = False,
-        pty_info: Optional[api_pb2.PTYInfo] = None,
-        custom_domain: Optional[str] = None,
+        pty_info: api_pb2.PTYInfo | None = None,
+        custom_domain: str | None = None,
     ):
         """Private method used internally.
 
@@ -657,8 +655,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
-        app_id: Optional[str] = None
-        app_client: Optional[_Client] = None
+        app_id: str | None = None
+        app_client: _Client | None = None
 
         if app is not None:
             if app.app_id is None:
@@ -696,29 +694,29 @@ class _Sandbox(_Object, type_prefix="sb"):
     @staticmethod
     async def _experimental_create(
         *args: str,
-        app: Optional["modal.app._App"] = None,
-        name: Optional[str] = None,
-        image: Optional[_Image] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
+        app: "modal.app._App | None" = None,
+        name: str | None = None,
+        image: _Image | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
         timeout: int = 300,
-        idle_timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        cpu: Optional[float] = None,
-        memory: Optional[int] = None,
-        cloud: Optional[str] = None,
-        region: Optional[Union[str, Sequence[str]]] = None,
+        idle_timeout: int | None = None,
+        workdir: str | None = None,
+        cpu: float | None = None,
+        memory: int | None = None,
+        cloud: str | None = None,
+        region: str | Sequence[str] | None = None,
         block_network: bool = False,
-        outbound_cidr_allowlist: Optional[Sequence[str]] = None,
-        inbound_cidr_allowlist: Optional[Sequence[str]] = None,
-        volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
+        outbound_cidr_allowlist: Sequence[str] | None = None,
+        inbound_cidr_allowlist: Sequence[str] | None = None,
+        volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
         encrypted_ports: Sequence[int] = [],
         h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
         include_oidc_identity_token: bool = False,
         verbose: bool = False,
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
     ) -> "_Sandbox":
         """Create a sandbox using the V2 backend.
 
@@ -771,12 +769,12 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         image = image or _default_image
 
-        scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+        scheduler_placement: api_pb2.SchedulerPlacement | None = None
         if region:
             regions = [region] if isinstance(region, str) else list(region)
             scheduler_placement = api_pb2.SchedulerPlacement(regions=regions)
 
-        pty_info: Optional[api_pb2.PTYInfo] = None
+        pty_info: api_pb2.PTYInfo | None = None
         if pty:
             pty_info = _Sandbox._default_pty_info()
 
@@ -804,9 +802,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 allowed_cidrs=outbound_cidr_allowlist,
             )
 
-        async def _load(
-            self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: str | None):
             dep_tasks: list = []
             if not image._is_hydrated:
                 dep_tasks.append(resolver.load(image, load_context))
@@ -867,8 +863,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         obj = _Sandbox._from_loader(_load, "Sandbox()", load_context_overrides=LoadContext.empty())
 
-        app_id: Optional[str] = None
-        app_client: Optional[_Client] = None
+        app_id: str | None = None
+        app_client: _Client | None = None
 
         if app is not None:
             if app.app_id is None:
@@ -901,7 +897,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             await resolver.load(obj, load_context)
         return obj
 
-    def _hydrate_metadata(self, handle_metadata: Optional[Message]):
+    def _hydrate_metadata(self, handle_metadata: Message | None):
         self._stdout = StreamReader(
             _StreamReaderThroughServerParams(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
@@ -1005,8 +1001,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         app_name: str,
         name: str,
         *,
-        environment_name: Optional[str] = None,
-        client: Optional[_Client] = None,
+        environment_name: str | None = None,
+        client: _Client | None = None,
     ) -> "_Sandbox":
         """Get a running Sandbox by name from a deployed App.
 
@@ -1022,7 +1018,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return _Sandbox._new_hydrated(resp.sandbox_id, client, None)
 
     @staticmethod
-    async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
+    async def from_id(sandbox_id: str, client: _Client | None = None) -> "_Sandbox":
         """Construct a Sandbox from an id and look up the Sandbox result.
 
         The ID of a Sandbox object can be accessed using `.object_id`.
@@ -1058,7 +1054,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return {tag.tag_name: tag.tag_value for tag in resp.tags}
 
-    async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None) -> None:
+    async def set_tags(self, tags: dict[str, str], *, client: _Client | None = None) -> None:
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
         self._ensure_v1("set_tags")
         environment_name = _get_environment_name()
@@ -1082,7 +1078,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self,
         timeout: int = 55,
         *,
-        ttl: Optional[int] = 30 * 24 * 3600,
+        ttl: int | None = 30 * 24 * 3600,
     ) -> _Image:
         """Snapshot the filesystem of the Sandbox.
 
@@ -1124,7 +1120,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return _Image._new_hydrated(resp.image_id, self._client, resp.image_metadata)
 
-    async def mount_image(self, path: Union[PurePosixPath, str], image: _Image):
+    async def mount_image(self, path: PurePosixPath | str, image: _Image):
         """Mount an Image at a specified path in a running Sandbox.
 
         `path` should be a directory that is **not** the root path (`/`). If the path doesn't exist
@@ -1183,7 +1179,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         req = sr_pb2.TaskMountDirectoryRequest(task_id=task_id, path=path_bytes, image_id=image_id)
         await command_router_client.mount_image(req)
 
-    async def unmount_image(self, path: Union[PurePosixPath, str]):
+    async def unmount_image(self, path: PurePosixPath | str):
         """Unmount a previously mounted Image from a running Sandbox.
 
         `path` must be the exact mount point that was passed to `.mount_image()`.
@@ -1205,10 +1201,10 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def snapshot_directory(
         self,
-        path: Union[PurePosixPath, str],
+        path: PurePosixPath | str,
         *,
         timeout: int = 55,
-        ttl: Optional[int] = 30 * 24 * 3600,
+        ttl: int | None = 30 * 24 * 3600,
     ) -> _Image:
         """Snapshot a directory in a running Sandbox, creating a new Image with its content.
 
@@ -1343,7 +1339,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._tunnels
 
     async def create_connect_token(
-        self, user_metadata: Optional[Union[str, dict[str, Any]]] = None
+        self, user_metadata: str | dict[str, Any] | None = None
     ) -> SandboxConnectCredentials:
         """
         Create a token for making HTTP connections to the Sandbox.
@@ -1408,7 +1404,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             await self.wait(raise_on_termination=False)
             return self.returncode
 
-    async def poll(self) -> Optional[int]:
+    async def poll(self) -> int | None:
         """Check if the Sandbox has finished running.
 
         Returns `None` if the Sandbox is still running, else returns the exit code.
@@ -1471,15 +1467,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         *args: str,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
+        timeout: int | None = None,
+        workdir: str | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
         text: Literal[True] = True,
         bufsize: Literal[-1, 1] = -1,
         pty: bool = False,
-        pty_info: Optional[api_pb2.PTYInfo] = None,
-        _pty_info: Optional[api_pb2.PTYInfo] = None,
+        pty_info: api_pb2.PTYInfo | None = None,
+        _pty_info: api_pb2.PTYInfo | None = None,
     ) -> _ContainerProcess[str]: ...
 
     @overload
@@ -1488,15 +1484,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         *args: str,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
+        timeout: int | None = None,
+        workdir: str | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
         text: Literal[False] = False,
         bufsize: Literal[-1, 1] = -1,
         pty: bool = False,
-        pty_info: Optional[api_pb2.PTYInfo] = None,
-        _pty_info: Optional[api_pb2.PTYInfo] = None,
+        pty_info: api_pb2.PTYInfo | None = None,
+        _pty_info: api_pb2.PTYInfo | None = None,
     ) -> _ContainerProcess[bytes]: ...
 
     async def exec(
@@ -1504,12 +1500,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         *args: str,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set during command execution.
-        secrets: Optional[
-            Collection[_Secret]
-        ] = None,  # Secrets to inject as environment variables during command execution.
+        timeout: int | None = None,
+        workdir: str | None = None,
+        env: dict[str, str | None] | None = None,  # Environment variables to set during command execution.
+        secrets: None
+        | (Collection[_Secret]) = None,  # Secrets to inject as environment variables during command execution.
         # Encode output as text.
         text: bool = True,
         # Control line-buffered output.
@@ -1518,8 +1513,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Enable a PTY for the command. When enabled, all output (stdout and stderr from the
         # process) is multiplexed into stdout, and the stderr stream is effectively empty.
         pty: bool = False,
-        _pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
-        pty_info: Optional[api_pb2.PTYInfo] = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
+        _pty_info: api_pb2.PTYInfo | None = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
+        pty_info: api_pb2.PTYInfo | None = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
     ):
         """Execute a command in the Sandbox and return a ContainerProcess handle.
 
@@ -1560,17 +1555,17 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def _exec(
         self,
         *args: str,
-        pty_info: Optional[api_pb2.PTYInfo] = None,
+        pty_info: api_pb2.PTYInfo | None = None,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
+        timeout: int | None = None,
+        workdir: str | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
         text: bool = True,
         bufsize: Literal[-1, 1] = -1,
-        container_id: Optional[str] = None,
-    ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
+        container_id: str | None = None,
+    ) -> _ContainerProcess[bytes] | _ContainerProcess[str]:
         """Private method used internally.
 
         This method exposes some internal arguments (currently `pty_info`) which are not in the public API.
@@ -1614,18 +1609,18 @@ class _Sandbox(_Object, type_prefix="sb"):
         *args: str,
         task_id: str,
         command_router_client: TaskCommandRouterClient,
-        pty_info: Optional[api_pb2.PTYInfo] = None,
+        pty_info: api_pb2.PTYInfo | None = None,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        secret_ids: Optional[Collection[str]] = None,
-        env: Optional[dict[str, str]] = None,
+        timeout: int | None = None,
+        workdir: str | None = None,
+        secret_ids: Collection[str] | None = None,
+        env: dict[str, str] | None = None,
         text: bool = True,
         bufsize: Literal[-1, 1] = -1,
         runtime_debug: bool = False,
-        container_id: Optional[str] = None,
-    ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
+        container_id: str | None = None,
+    ) -> _ContainerProcess[bytes] | _ContainerProcess[str]:
         """Execute a command through a task command router running on the Modal worker."""
 
         # Generate a random process ID to use as a combination of idempotency key/process identifier.
@@ -1695,7 +1690,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise ExecutionError(wait_resp.result.exception)
 
         async def _load(
-            self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+            self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
             # we eagerly hydrate the sandbox snapshot below
             pass
@@ -1710,9 +1705,9 @@ class _Sandbox(_Object, type_prefix="sb"):
     @staticmethod
     async def _experimental_from_snapshot(
         snapshot: _SandboxSnapshot,
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
         *,
-        name: Optional[str] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
+        name: str | None = _DEFAULT_SANDBOX_NAME_OVERRIDE,
     ):
         client = client or await _Client.from_env()
 
@@ -1853,9 +1848,9 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def watch(
         self,
         path: str,
-        filter: Optional[builtins.list[FileWatchEventType]] = None,
-        recursive: Optional[bool] = None,
-        timeout: Optional[int] = None,
+        filter: builtins.list[FileWatchEventType] | None = None,
+        recursive: bool | None = None,
+        timeout: int | None = None,
     ) -> AsyncIterator[FileWatchEvent]:
         """[Alpha] Watch a file or directory in the Sandbox for changes."""
         self._ensure_v1("watch")
@@ -1890,13 +1885,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._stdin
 
     @property
-    def returncode(self) -> Optional[int]:
+    def returncode(self) -> int | None:
         """Return code of the Sandbox process if it has finished running, else `None`."""
         return _result_returncode(self._result)
 
     @staticmethod
     async def list(
-        *, app_id: Optional[str] = None, tags: Optional[dict[str, str]] = None, client: Optional[_Client] = None
+        *, app_id: str | None = None, tags: dict[str, str] | None = None, client: _Client | None = None
     ) -> AsyncGenerator["_Sandbox", None]:
         """List all Sandboxes for the current Environment or App ID (if specified). If tags are specified, only
         Sandboxes that have at least those tags are returned. Returns an iterator over `Sandbox` objects."""
@@ -1935,15 +1930,15 @@ class _Sandbox(_Object, type_prefix="sb"):
 class _SidecarContainer:
     """Handle to an additional container running in a Sandbox."""
 
-    _result: Optional[api_pb2.GenericResult]
-    _filesystem: Optional[_SandboxFilesystem]
+    _result: api_pb2.GenericResult | None
+    _filesystem: _SandboxFilesystem | None
 
     def __init__(
         self,
         sandbox: _Sandbox,
         container_id: str,
         container_name: str,
-        result: Optional[api_pb2.GenericResult] = None,
+        result: api_pb2.GenericResult | None = None,
     ) -> None:
         self._sandbox = sandbox
         self._container_id = container_id
@@ -1976,10 +1971,10 @@ class _SidecarContainer:
         *args: str,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
+        timeout: int | None = None,
+        workdir: str | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
         text: Literal[True] = True,
         bufsize: Literal[-1, 1] = -1,
         # Enable a PTY for the command. When enabled, all output (stdout and stderr from the
@@ -1993,10 +1988,10 @@ class _SidecarContainer:
         *args: str,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
+        timeout: int | None = None,
+        workdir: str | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
         text: Literal[False],
         bufsize: Literal[-1, 1] = -1,
         # Enable a PTY for the command. When enabled, all output (stdout and stderr from the
@@ -2009,16 +2004,16 @@ class _SidecarContainer:
         *args: str,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        timeout: Optional[int] = None,
-        workdir: Optional[str] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
+        timeout: int | None = None,
+        workdir: str | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
         text: bool = True,
         bufsize: Literal[-1, 1] = -1,
         # Enable a PTY for the command. When enabled, all output (stdout and stderr from the
         # process) is multiplexed into stdout, and the stderr stream is effectively empty.
         pty: bool = False,
-    ) -> Union[_ContainerProcess[bytes], _ContainerProcess[str]]:
+    ) -> _ContainerProcess[bytes] | _ContainerProcess[str]:
         pty_info = self._sandbox._default_pty_info() if pty else None
         return await self._sandbox._exec(
             *args,
@@ -2062,7 +2057,7 @@ class _SidecarContainer:
                     raise SandboxTerminatedError()
                 return
 
-    async def poll(self) -> Optional[int]:
+    async def poll(self) -> int | None:
         if self._result is not None and self._result.status != api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED:
             return _result_returncode(self._result)
 
@@ -2129,9 +2124,9 @@ class _SidecarManager:
         *args: str,
         name: str,
         image: _Image,
-        env: Optional[dict[str, str]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
-        workdir: Optional[str] = None,
+        env: dict[str, str] | None = None,
+        secrets: Collection[_Secret] | None = None,
+        workdir: str | None = None,
     ) -> _SidecarContainer:
         if name == _MAIN_CONTAINER_NAME:
             raise InvalidError(f"The name {_MAIN_CONTAINER_NAME!r} is reserved for the sandbox's main container.")

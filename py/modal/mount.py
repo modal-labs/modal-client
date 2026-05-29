@@ -8,9 +8,8 @@ import re
 import time
 import typing
 import warnings
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Callable, Generator, Sequence
 from pathlib import Path, PurePosixPath
-from typing import Callable, Optional, Sequence, Union
 
 from google.protobuf.message import Message
 
@@ -138,7 +137,7 @@ class _MountFile(_MountEntry):
 class _MountDir(_MountEntry):
     local_dir: Path
     remote_path: PurePosixPath
-    ignore: Union[Callable[[Path], bool], modal.file_pattern_matcher._AbstractPatternMatcher]
+    ignore: Callable[[Path], bool] | modal.file_pattern_matcher._AbstractPatternMatcher
     recursive: bool
 
     def description(self):
@@ -235,8 +234,8 @@ class _MountedPythonModule(_MountEntry):
     # the Module
 
     module_name: str
-    remote_dir: Union[PurePosixPath, str] = ROOT_DIR.as_posix()  # cast needed here for type stub generation...
-    ignore: Optional[Callable[[Path], bool]] = None
+    remote_dir: PurePosixPath | str = ROOT_DIR.as_posix()  # cast needed here for type stub generation...
+    ignore: Callable[[Path], bool] | None = None
 
     def description(self) -> str:
         return f"PythonPackage:{self.module_name}"
@@ -312,12 +311,12 @@ class _Mount(_Object, type_prefix="mo"):
     the file's contents to skip uploading files that have been uploaded before.
     """
 
-    _entries: Optional[list[_MountEntry]] = None
-    _deployment_name: Optional[str] = None
-    _namespace: Optional[int] = None
+    _entries: list[_MountEntry] | None = None
+    _deployment_name: str | None = None
+    _namespace: int | None = None
 
     _allow_overwrite: bool = False
-    _content_checksum_sha256_hex: Optional[str] = None
+    _content_checksum_sha256_hex: str | None = None
 
     @staticmethod
     def _new(entries: list[_MountEntry] = []) -> "_Mount":
@@ -350,7 +349,7 @@ class _Mount(_Object, type_prefix="mo"):
             raise NonLocalMountError()
         return self._entries
 
-    def _hydrate_metadata(self, handle_metadata: Optional[Message]):
+    def _hydrate_metadata(self, handle_metadata: Message | None):
         assert isinstance(handle_metadata, api_pb2.MountHandleMetadata)
         self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
 
@@ -385,13 +384,13 @@ class _Mount(_Object, type_prefix="mo"):
 
     def add_local_dir(
         self,
-        local_path: Union[str, Path],
+        local_path: str | Path,
         *,
         # Where the directory is placed within in the mount
-        remote_path: Union[str, PurePosixPath, None] = None,
+        remote_path: str | PurePosixPath | None = None,
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
-        condition: Optional[Callable[[str], bool]] = None,
+        condition: Callable[[str], bool] | None = None,
         # add files from subdirectories as well
         recursive: bool = True,
     ) -> "_Mount":
@@ -423,13 +422,13 @@ class _Mount(_Object, type_prefix="mo"):
 
     @staticmethod
     def _from_local_dir(
-        local_path: Union[str, Path],
+        local_path: str | Path,
         *,
         # Where the directory is placed within in the mount
-        remote_path: Union[str, PurePosixPath, None] = None,
+        remote_path: str | PurePosixPath | None = None,
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
-        condition: Optional[Callable[[str], bool]] = None,
+        condition: Callable[[str], bool] | None = None,
         # add files from subdirectories as well
         recursive: bool = True,
     ) -> "_Mount":
@@ -439,8 +438,8 @@ class _Mount(_Object, type_prefix="mo"):
 
     def add_local_file(
         self,
-        local_path: Union[str, Path],
-        remote_path: Union[str, PurePosixPath, None] = None,
+        local_path: str | Path,
+        remote_path: str | PurePosixPath | None = None,
     ) -> "_Mount":
         """
         Add a local file to the `Mount` object.
@@ -457,7 +456,7 @@ class _Mount(_Object, type_prefix="mo"):
         )
 
     @staticmethod
-    def _from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
+    def _from_local_file(local_path: str | Path, remote_path: str | PurePosixPath | None = None) -> "_Mount":
         return _Mount._new().add_local_file(local_path, remote_path=remote_path)
 
     @staticmethod
@@ -490,7 +489,7 @@ class _Mount(_Object, type_prefix="mo"):
         self: "_Mount",
         resolver: Resolver,
         load_context: LoadContext,
-        existing_object_id: Optional[str],
+        existing_object_id: str | None,
     ):
         t0 = time.monotonic()
 
@@ -620,11 +619,11 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     def _from_local_python_packages(
         *module_names: str,
-        remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
+        remote_dir: str | PurePosixPath = ROOT_DIR.as_posix(),
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
-        condition: Optional[Callable[[str], bool]] = None,
-        ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
+        condition: Callable[[str], bool] | None = None,
+        ignore: Sequence[str] | Callable[[Path], bool] | None = None,
     ) -> "_Mount":
         if condition is not None:
             if ignore is not None:
@@ -647,12 +646,12 @@ class _Mount(_Object, type_prefix="mo"):
         name: str,
         *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name: Optional[str] = None,
-        client: Optional[_Client] = None,
+        environment_name: str | None = None,
+        client: _Client | None = None,
     ) -> "_Mount":
         """mdmd:hidden"""
 
-        async def _load(provider: _Mount, resolver: Resolver, load_context, existing_object_id: Optional[str]):
+        async def _load(provider: _Mount, resolver: Resolver, load_context, existing_object_id: str | None):
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=name,
                 namespace=namespace,
@@ -671,12 +670,12 @@ class _Mount(_Object, type_prefix="mo"):
 
     async def _deploy(
         self: "_Mount",
-        deployment_name: Optional[str] = None,
+        deployment_name: str | None = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         *,
-        environment_name: Optional[str] = None,
+        environment_name: str | None = None,
         allow_overwrite: bool = False,
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
     ) -> None:
         check_object_name(deployment_name, "Mount")
         self._deployment_name = deployment_name
@@ -814,7 +813,7 @@ async def _create_single_client_dependency_mount(
         # Retry uv pip install on transient failures (e.g. network blips,
         # resource contention).  uv exits with non-zero on recoverable errors
         # like rate limits or connection resets.
-        last_error: Optional[bytes] = None
+        last_error: bytes | None = None
         for attempt in range(3):
             proc = await asyncio.create_subprocess_exec(
                 *cmd,

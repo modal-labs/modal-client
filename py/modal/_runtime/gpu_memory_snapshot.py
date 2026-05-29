@@ -12,7 +12,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
 
 from modal.config import config, logger
 
@@ -163,10 +162,10 @@ class CudaCheckpointSession:
         else:
             logger.debug("No CUDA sessions found.")
 
-    def _get_cuda_pids(self) -> List[CudaCheckpointProcess]:
+    def _get_cuda_pids(self) -> list[CudaCheckpointProcess]:
         """Iterates over all PIDs and identifies the ones that have running
         CUDA sessions."""
-        cuda_pids: List[CudaCheckpointProcess] = []
+        cuda_pids: list[CudaCheckpointProcess] = []
 
         # Get all active process IDs from /proc directory
         proc_dir = Path("/proc")
@@ -197,7 +196,7 @@ class CudaCheckpointSession:
         cuda_pids.sort(key=lambda x: x.pid)
         return cuda_pids
 
-    def _check_cuda_session(self, pid: int) -> Optional[CudaCheckpointProcess]:
+    def _check_cuda_session(self, pid: int) -> CudaCheckpointProcess | None:
         """Check if a specific PID has a CUDA session."""
         try:
             result = subprocess.run(
@@ -299,7 +298,7 @@ class CudaCheckpointSession:
         """Get the number of CUDA processes managed by this session."""
         return len(self.cuda_processes)
 
-    def get_process_states(self) -> List[tuple[int, CudaCheckpointState]]:
+    def get_process_states(self) -> list[tuple[int, CudaCheckpointState]]:
         """Get current states of all managed processes."""
         states = []
         for proc in self.cuda_processes:

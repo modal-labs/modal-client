@@ -3,7 +3,7 @@ import builtins
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any
 
 from google.protobuf.message import Message
 from synchronicity import classproperty
@@ -76,9 +76,9 @@ class DictInfo:
     # This dataclass should be limited to information that is unchanging over the lifetime of the Dict,
     # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
 
-    name: Optional[str]
+    name: str | None
     created_at: datetime
-    created_by: Optional[str]
+    created_by: str | None
 
 
 class _DictManager:
@@ -89,8 +89,8 @@ class _DictManager:
         name: str,  # Name to use for the new Dict
         *,
         allow_existing: bool = False,  # If True, no-op when the Dict already exists
-        environment_name: Optional[str] = None,  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        environment_name: str | None = None,  # Uses active environment if not specified
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> None:
         """Create a new Dict object.
 
@@ -140,10 +140,10 @@ class _DictManager:
     async def list(
         self,
         *,
-        max_objects: Optional[int] = None,  # Limit results to this size
-        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        max_objects: int | None = None,  # Limit results to this size
+        created_before: datetime | str | None = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> builtins.list["_Dict"]:
         """Return a list of hydrated Dict objects.
 
@@ -210,8 +210,8 @@ class _DictManager:
         name: str,  # Name of the Dict to delete
         *,
         allow_missing: bool = False,  # If True, don't raise an error if the Dict doesn't exist
-        environment_name: Optional[str] = None,  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        environment_name: str | None = None,  # Uses active environment if not specified
+        client: _Client | None = None,  # Optional client with Modal credentials
     ):
         """Delete a named Dict.
 
@@ -288,8 +288,8 @@ class _Dict(_Object, type_prefix="di"):
     For more examples, see the [guide](https://modal.com/docs/guide/dicts-and-queues#modal-dicts).
     """
 
-    _name: Optional[str] = None
-    _metadata: Optional[api_pb2.DictMetadata] = None
+    _name: str | None = None
+    _metadata: api_pb2.DictMetadata | None = None
 
     def __init__(self):
         """mdmd:hidden"""
@@ -303,10 +303,10 @@ class _Dict(_Object, type_prefix="di"):
         return _DictManager()
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         return self._name
 
-    def _hydrate_metadata(self, metadata: Optional[Message]):
+    def _hydrate_metadata(self, metadata: Message | None):
         if metadata:
             assert isinstance(metadata, api_pb2.DictMetadata)
             self._metadata = metadata
@@ -321,8 +321,8 @@ class _Dict(_Object, type_prefix="di"):
     async def ephemeral(
         cls: type["_Dict"],
         *,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
     ) -> AsyncIterator["_Dict"]:
         """Creates a new ephemeral Dict within a context manager:
@@ -362,9 +362,9 @@ class _Dict(_Object, type_prefix="di"):
     def from_name(
         name: str,
         *,
-        environment_name: Optional[str] = None,
+        environment_name: str | None = None,
         create_if_missing: bool = False,
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
     ) -> "_Dict":
         """Reference a named Dict, creating if necessary.
 
@@ -379,7 +379,7 @@ class _Dict(_Object, type_prefix="di"):
         """
         check_object_name(name, "Dict")
 
-        async def _load(self: _Dict, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+        async def _load(self: _Dict, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=load_context.environment_name,
@@ -402,7 +402,7 @@ class _Dict(_Object, type_prefix="di"):
     @staticmethod
     def from_id(
         dict_id: str,
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
     ) -> "_Dict":
         """Construct a Dict from an id and look up the Dict metadata.
 
@@ -427,7 +427,7 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
 
-        async def _load(self: _Dict, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+        async def _load(self: _Dict, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.DictGetByIdRequest(dict_id=dict_id)
             response = await load_context.client.stub.DictGetById(req)
             self._hydrate(response.dict_id, load_context.client, response.metadata)
@@ -445,8 +445,8 @@ class _Dict(_Object, type_prefix="di"):
     async def delete(
         name: str,
         *,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
     ):
         """mdmd:hidden
         Delete a named Dict object.
@@ -479,7 +479,7 @@ class _Dict(_Object, type_prefix="di"):
         await self._client.stub.DictClear(req)
 
     @live_method
-    async def get(self, key: Any, default: Optional[Any] = None) -> Any:
+    async def get(self, key: Any, default: Any | None = None) -> Any:
         """Get the value associated with a key.
 
         Returns `default` if key does not exist.
@@ -521,7 +521,7 @@ class _Dict(_Object, type_prefix="di"):
         return value
 
     @live_method
-    async def update(self, other: Optional[Mapping] = None, /, **kwargs) -> None:
+    async def update(self, other: Mapping | None = None, /, **kwargs) -> None:
         """Update the Dict with additional items."""
         # Support the Python dict.update API
         # https://docs.python.org/3/library/stdtypes.html#dict.update

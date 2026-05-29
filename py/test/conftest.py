@@ -22,10 +22,10 @@ import time
 import traceback
 import uuid
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator
 from pathlib import Path
 from types import ModuleType
-from typing import Any, AsyncGenerator, Callable, Optional, Union, get_args
+from typing import Any, get_args
 from unittest import mock
 
 import aiohttp.web
@@ -535,7 +535,7 @@ def sandbox_subprocess(servicer):
 
 @dataclasses.dataclass
 class Volume:
-    version: "api_pb2.VolumeFsVersion.ValueType"
+    version: api_pb2.VolumeFsVersion.ValueType
     files: dict[str, VolumeFile]
 
 
@@ -543,9 +543,9 @@ class Volume:
 class VolumeFile:
     data: bytes
     mode: int
-    data_blob_id: Optional[str] = None
-    data_sha256_hex: Optional[str] = None
-    block_hashes: Optional[list[bytes]] = None
+    data_blob_id: str | None = None
+    data_sha256_hex: str | None = None
+    block_hashes: list[bytes] | None = None
 
 
 @dataclasses.dataclass
@@ -714,7 +714,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.workspace_users: dict[str, str] = {"us-1": "alice", "us-2": "bob", "us-3": "carol"}
         self.workspace_service_users: dict[str, str] = {"sv-1": "alice-bot", "sv-2": "ops-bot"}
         # env_id -> {principal_id: role_proto}
-        self.environment_members: dict[str, dict[str, "api_pb2.EnvironmentRole.ValueType"]] = {}
+        self.environment_members: dict[str, dict[str, api_pb2.EnvironmentRole.ValueType]] = {}
         self.resource_creation_timestamps = {}
 
         self.task_result = None
@@ -925,7 +925,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_heartbeat_response = response
         self.container_heartbeat_abort.set()
 
-    def _get_experimental_flash_urls(self, definition: Union[api_pb2.Function, api_pb2.FunctionData]) -> list[str]:
+    def _get_experimental_flash_urls(self, definition: api_pb2.Function | api_pb2.FunctionData) -> list[str]:
         """Generate mock flash URLs for functions with http_config."""
         if not definition.HasField("http_config") or not definition.http_config.proxy_regions:
             return []
@@ -996,7 +996,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         res.object_id = object_id
         return res
 
-    def get_environment(self, environment_name: Optional[str] = None) -> str:
+    def get_environment(self, environment_name: str | None = None) -> str:
         if not environment_name:
             return next(iter(self.environments))  # Use first environment as default
         return environment_name
@@ -1849,7 +1849,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function.CopyFrom(request.function)
 
         assert (function is None) != (function_data is None)
-        function_defn: Union[api_pb2.Function, api_pb2.FunctionData] = function or function_data
+        function_defn: api_pb2.Function | api_pb2.FunctionData = function or function_data
         assert function_defn
         if function_defn.webhook_config.type:
             function_defn.web_url = "http://xyz.internal"
@@ -2954,7 +2954,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._volume_remove_file(req)
         await stream.send_message(Empty())
 
-    def _volume_remove_file(self, req: Union[api_pb2.VolumeRemoveFileRequest, api_pb2.VolumeRemoveFile2Request]):
+    def _volume_remove_file(self, req: api_pb2.VolumeRemoveFileRequest | api_pb2.VolumeRemoveFile2Request):
         if req.path not in self.volumes[req.volume_id].files:
             raise GRPCError(Status.NOT_FOUND, "File not found")
         del self.volumes[req.volume_id].files[req.path]
@@ -2978,9 +2978,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def _volume_list_files(
         self,
         stream,
-        req: Union[api_pb2.VolumeListFilesRequest, api_pb2.VolumeListFiles2Request],
+        req: api_pb2.VolumeListFilesRequest | api_pb2.VolumeListFiles2Request,
         make_resp: Callable[
-            [list[api_pb2.FileEntry]], Union[api_pb2.VolumeListFilesResponse, api_pb2.VolumeListFiles2Response]
+            [list[api_pb2.FileEntry]], api_pb2.VolumeListFilesResponse | api_pb2.VolumeListFiles2Response
         ],
     ):
         path = req.path if req.path else "/"

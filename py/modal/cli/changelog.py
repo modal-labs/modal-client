@@ -3,7 +3,6 @@ import json as json_mod
 import re
 import urllib.request
 from dataclasses import asdict, dataclass
-from typing import Optional
 
 import click
 
@@ -54,9 +53,9 @@ def _parse_entries(markdown: str) -> list[ChangelogEntry]:
 def _filter_entries(
     entries: list[ChangelogEntry],
     *,
-    last: Optional[int],
-    since: Optional[str],
-    for_version: Optional[str],
+    last: int | None,
+    since: str | None,
+    for_version: str | None,
     newer: bool,
     all: bool,
     current_version: Version,
@@ -103,9 +102,9 @@ def _format_entries(entries: list[ChangelogEntry], *, as_json: bool) -> str:
 @click.option("--all", "all", is_flag=True, default=False, help="Show all entries.")
 @click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
 def changelog(
-    last: Optional[int],
-    since: Optional[str],
-    for_version: Optional[str],
+    last: int | None,
+    since: str | None,
+    for_version: str | None,
     newer: bool,
     all: bool,
     json: bool,

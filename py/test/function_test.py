@@ -345,7 +345,7 @@ def test_remote_input_plane(
     monkeypatch: pytest.MonkeyPatch,
     func: Function,
     attempt_await_responses: list[api_pb2.AttemptAwaitResponse],
-    outputs_timeout_override: typing.Optional[int],
+    outputs_timeout_override: int | None,
     expectation: typing.Any,
     attempt_await_count: int,
     function_call_count: int,

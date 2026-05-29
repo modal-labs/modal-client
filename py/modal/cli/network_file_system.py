@@ -2,7 +2,6 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 from click import UsageError
@@ -30,7 +29,7 @@ nfs_cli = ModalGroup(name="nfs", help="Read and edit `modal.NetworkFileSystem` f
 @env_option
 @click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = None, json: Optional[bool] = False):
+async def list_(env: str | None = None, json: bool | None = False):
     env = ensure_env(env)
 
     client = await _Client.from_env()
@@ -62,7 +61,7 @@ def some_func():
 @env_option
 def create(
     name: str,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     ensure_env(env)
     modal.NetworkFileSystem.create_deployed(name, environment_name=env)
@@ -80,7 +79,7 @@ def create(
 async def ls(
     volume_name: str,
     path: str = "/",
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     ensure_env(env)
     volume = _NetworkFileSystem.from_name(volume_name)
@@ -113,7 +112,7 @@ async def put(
     volume_name: str,
     local_path: str,
     remote_path: str = "/",
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Upload a file or directory to a network file system.
 
@@ -160,7 +159,7 @@ async def get(
     remote_path: str,
     local_destination: str = ".",
     force: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Download a file from a network file system.
 
@@ -194,7 +193,7 @@ async def rm(
     volume_name: str,
     remote_path: str,
     recursive: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     ensure_env(env)
     volume = _NetworkFileSystem.from_name(volume_name)
@@ -210,7 +209,7 @@ async def rm(
 async def delete(
     nfs_name: str,
     yes: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     # Lookup first to validate the name, even though delete is a staticmethod
     await _NetworkFileSystem.from_name(nfs_name, environment_name=env).hydrate()

@@ -5,15 +5,12 @@ import math
 import sys
 import time
 import traceback
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator
 from contextlib import AsyncExitStack
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     ClassVar,
-    Generator,
-    Optional,
     cast,
 )
 
@@ -71,7 +68,7 @@ class IOContext:
     finalized_function: "modal._runtime.user_code_imports.FinalizedFunction"
 
     _cancel_issued: bool = False
-    _cancel_callback: Optional[Callable[[], None]] = None
+    _cancel_callback: Callable[[], None] | None = None
 
     def __init__(
         self,
@@ -126,7 +123,7 @@ class IOContext:
             cast(list[str], function_call_ids),
             cast(list[str], attempt_tokens),
             finalized_function,
-            cast(list[api_pb2.FunctionInput], function_inputs),
+            function_inputs,
             is_batched,
             client,
         )
@@ -256,8 +253,7 @@ class IOContext:
         if not inspect.isgenerator(expected_gen):
             raise InvalidError(f"Generator function returned value of type {type(expected_gen)}")
 
-        for result in expected_gen:
-            yield result
+        yield from expected_gen
         logger.debug(f"Finished generator input {self.input_ids}")
 
     async def call_generator_async(self) -> AsyncGenerator[Any, None]:
@@ -426,7 +422,7 @@ class InputSlots:
 
     active: int
     value: int
-    waiter: Optional[asyncio.Future]
+    waiter: asyncio.Future | None
     closed: bool
 
     def __init__(self, value: int) -> None:
@@ -476,29 +472,29 @@ class _ContainerIOManager:
 
     app_id: str
     _task_lifecycle_manager: _TaskLifecycleManager
-    input_plane_server_url: Optional[str]
+    input_plane_server_url: str | None
 
     calls_completed: int
     total_user_time: float
-    current_input_id: Optional[str]
+    current_input_id: str | None
     current_inputs: dict[str, IOContext]  # input_id -> IOContext
-    current_input_started_at: Optional[float]
+    current_input_started_at: float | None
 
     _input_concurrency_enabled: bool
     _target_concurrency: int
     _max_concurrency: int
-    _concurrency_loop: Optional[asyncio.Task]
+    _concurrency_loop: asyncio.Task | None
     _input_slots: InputSlots
 
     _environment_name: str
-    _heartbeat_loop: Optional[asyncio.Task]
-    _heartbeat_condition: Optional[asyncio.Condition]
+    _heartbeat_loop: asyncio.Task | None
+    _heartbeat_condition: asyncio.Condition | None
     _waiting_for_memory_snapshot: bool
 
     _is_interactivity_enabled: bool
     _fetching_inputs: bool
 
-    _singleton: ClassVar[Optional["_ContainerIOManager"]] = None
+    _singleton: ClassVar["_ContainerIOManager | None"] = None
 
     def _init(self, container_args: api_pb2.ContainerArguments, client: _Client):
         self.app_id = container_args.app_id
@@ -575,7 +571,7 @@ class _ContainerIOManager:
         return self._task_lifecycle_manager.function_def
 
     @property
-    def checkpoint_id(self) -> Optional[str]:
+    def checkpoint_id(self) -> str | None:
         return self._task_lifecycle_manager.checkpoint_id
 
     @property
@@ -699,7 +695,7 @@ class _ContainerIOManager:
 
             await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
-    async def get_data_in(self, function_call_id: str, attempt_token: Optional[str]) -> AsyncIterator[Any]:
+    async def get_data_in(self, function_call_id: str, attempt_token: str | None) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
         stub = self._client.stub
         if self.input_plane_server_url:

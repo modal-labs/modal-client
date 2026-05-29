@@ -3,21 +3,19 @@ import posixpath
 import typing
 from collections.abc import Mapping, Sequence
 from pathlib import PurePath, PurePosixPath
-from typing import Optional, Union
-
-from typing_extensions import TypeGuard
+from typing import TypeGuard
 
 from ..cloud_bucket_mount import _CloudBucketMount
 from ..exception import InvalidError
 from ..network_file_system import _NetworkFileSystem
 from ..volume import _Volume
 
-T = typing.TypeVar("T", bound=Union[_Volume, _NetworkFileSystem, _CloudBucketMount])
+T = typing.TypeVar("T", bound=_Volume | _NetworkFileSystem | _CloudBucketMount)
 
 
 def validate_mount_points(
     display_name: str,
-    volume_likes: Mapping[Union[str, PurePosixPath], T],
+    volume_likes: Mapping[str | PurePosixPath, T],
 ) -> list[tuple[str, T]]:
     """Mount point path validation for volumes and network file systems."""
 
@@ -44,7 +42,7 @@ def validate_mount_points(
 
 
 def validate_network_file_systems(
-    network_file_systems: Mapping[Union[str, PurePosixPath], _NetworkFileSystem],
+    network_file_systems: Mapping[str | PurePosixPath, _NetworkFileSystem],
 ):
     validated_network_file_systems = validate_mount_points("NetworkFileSystem", network_file_systems)
 
@@ -59,8 +57,8 @@ def validate_network_file_systems(
 
 
 def validate_volumes(
-    volumes: Mapping[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]],
-) -> Sequence[tuple[str, Union[_Volume, _CloudBucketMount]]]:
+    volumes: Mapping[str | PurePosixPath, _Volume | _CloudBucketMount],
+) -> Sequence[tuple[str, _Volume | _CloudBucketMount]]:
     validated_volumes = validate_mount_points("Volume", volumes)
     # We don't support mounting a modal.Volume in more than one location,
     # but the same CloudBucketMount object can be used in more than one location.
@@ -81,7 +79,7 @@ def validate_volumes(
 
 
 def validate_only_modal_volumes(
-    volumes: Optional[Optional[dict[Union[str, PurePosixPath], _Volume]]],
+    volumes: dict[str | PurePosixPath, _Volume] | None,
     caller_name: str,
 ) -> Sequence[tuple[str, _Volume]]:
     """Validate all volumes are `modal.Volume`."""
@@ -93,7 +91,7 @@ def validate_only_modal_volumes(
     # Although the typing forbids `_CloudBucketMount` for type checking, one can still pass a `_CloudBucketMount`
     # during runtime, so we'll check the type here.
     def all_modal_volumes(
-        vols: Sequence[tuple[str, Union[_Volume, _CloudBucketMount]]],
+        vols: Sequence[tuple[str, _Volume | _CloudBucketMount]],
     ) -> TypeGuard[Sequence[tuple[str, _Volume]]]:
         return all(isinstance(v, _Volume) for _, v in vols)
 

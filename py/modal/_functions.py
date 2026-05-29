@@ -5,10 +5,10 @@ import inspect
 import time
 import typing
 import warnings
-from collections.abc import AsyncGenerator, Collection, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -124,7 +124,7 @@ class _Invocation:
         stub: ModalClientModal,
         function_call_id: str,
         client: _Client,
-        retry_context: Optional[_RetryContext] = None,
+        retry_context: _RetryContext | None = None,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
@@ -217,9 +217,9 @@ class _Invocation:
     async def pop_function_call_outputs(
         self,
         index: int = 0,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         clear_on_success: bool = False,
-        input_jwts: Optional[list[str]] = None,
+        input_jwts: list[str] | None = None,
     ) -> api_pb2.FunctionGetOutputsResponse:
         t0 = time.time()
         if timeout is None:
@@ -264,7 +264,7 @@ class _Invocation:
         request = api_pb2.FunctionRetryInputsRequest(function_call_jwt=ctx.function_call_jwt, inputs=[item])
         await self.stub.FunctionRetryInputs(request)
 
-    async def _get_single_output(self, expected_jwt: Optional[str] = None) -> api_pb2.FunctionGetOutputsItem:
+    async def _get_single_output(self, expected_jwt: str | None = None) -> api_pb2.FunctionGetOutputsItem:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(
@@ -308,7 +308,7 @@ class _Invocation:
 
             await self._retry_input()
 
-    async def poll_function(self, timeout: Optional[float] = None, *, index: int = 0):
+    async def poll_function(self, timeout: float | None = None, *, index: int = 0):
         """Waits up to timeout for a result from a function.
 
         If timeout is `None`, waits indefinitely. This function is not
@@ -332,7 +332,7 @@ class _Invocation:
     async def run_generator(self):
         items_received = 0
         # populated when self.run_function() completes
-        items_total: Union[int, None] = None
+        items_total: int | None = None
         async with aclosing(
             async_merge(
                 _stream_function_call_data(self.client, None, self.function_call_id, variant="data_out"),
@@ -507,7 +507,7 @@ class _InputPlaneInvocation:
     async def run_generator(self):
         items_received = 0
         # populated when self.run_function() completes
-        items_total: Union[int, None] = None
+        items_total: int | None = None
         async with aclosing(
             async_merge(
                 _stream_function_call_data(
@@ -559,19 +559,19 @@ class _FunctionSpec:
     the same configuration as a user-defined Function.
     """
 
-    image: Optional[_Image]
+    image: _Image | None
     mounts: Sequence[_Mount]
     secrets: Collection[_Secret]
-    network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem]
-    volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
+    network_file_systems: dict[str | PurePosixPath, _NetworkFileSystem]
+    volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount]
     # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
-    gpus: Optional[str | list[str]]
-    cloud: Optional[str]
-    cpu: Optional[Union[float, tuple[float, float]]]
-    memory: Optional[Union[int, tuple[int, int]]]
-    ephemeral_disk: Optional[int]
-    scheduler_placement: Optional[api_pb2.SchedulerPlacement]
-    proxy: Optional[_Proxy]
+    gpus: str | list[str] | None
+    cloud: str | None
+    cpu: float | tuple[float, float] | None
+    memory: int | tuple[int, int] | None
+    ephemeral_disk: int | None
+    scheduler_placement: api_pb2.SchedulerPlacement | None
+    proxy: _Proxy | None
 
 
 def _get_supported_input_output_formats(is_web_endpoint: bool, is_generator: bool, restrict_output: bool):
@@ -605,69 +605,69 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     """
 
     # TODO: more type annotations
-    _info: Optional[FunctionInfo]
+    _info: FunctionInfo | None
     _serve_mounts: frozenset[_Mount]  # set at load time, only by loader
-    _app: Optional["modal.app._App"] = None
+    _app: "modal.app._App | None" = None
     # only set for InstanceServiceFunctions and bound instance methods
-    _obj: Optional["modal.cls._Obj"] = None
+    _obj: "modal.cls._Obj | None" = None
 
     # this is set in definition scope, only locally
-    _webhook_config: Optional[api_pb2.WebhookConfig] = None
-    _web_url: Optional[str]  # this is set on hydration
+    _webhook_config: api_pb2.WebhookConfig | None = None
+    _web_url: str | None  # this is set on hydration
 
-    _function_name: Optional[str]
+    _function_name: str | None
     _is_method: bool
-    _spec: Optional[_FunctionSpec] = None
+    _spec: _FunctionSpec | None = None
     _tag: str
     # this is set to None for a "class service [function]"
-    _raw_f: Optional[Callable[..., Any]]
+    _raw_f: Callable[..., Any] | None
     _build_args: dict
 
-    _is_generator: Optional[bool] = None
+    _is_generator: bool | None = None
 
     # when this is the method of a class/object function, invocation of this function
     # should supply the method name in the FunctionInput:
     _use_method_name: str = ""
 
-    _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
-    _method_handle_metadata: Optional[dict[str, "api_pb2.FunctionHandleMetadata"]] = (
+    _class_parameter_info: "api_pb2.ClassParameterInfo | None" = None
+    _method_handle_metadata: dict[str, "api_pb2.FunctionHandleMetadata"] | None = (
         None  # set for 0.67+ class service functions
     )
-    _metadata: Optional[api_pb2.FunctionHandleMetadata] = None
+    _metadata: api_pb2.FunctionHandleMetadata | None = None
     _options: _FunctionOptions
-    _base_function: Optional["_Function"] = None
+    _base_function: "_Function | None" = None
 
     @staticmethod
     def from_local(
         info: FunctionInfo,
-        app: Optional["modal.app._App"],  # App here should only be None in case of Image.run_function
+        app: "modal.app._App | None",  # App here should only be None in case of Image.run_function
         image: _Image,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
-        schedule: Optional[Schedule] = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
+        schedule: Schedule | None = None,
         is_generator: bool = False,
-        gpu: Optional[str | list[str]] = None,
+        gpu: str | list[str] | None = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
-        network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
-        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
-        webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
-        memory: Optional[Union[int, tuple[int, int]]] = None,
-        proxy: Optional[_Proxy] = None,
-        retries: Optional[Union[int, Retries]] = None,
+        network_file_systems: dict[str | PurePosixPath, _NetworkFileSystem] = {},
+        volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount] = {},
+        webhook_config: api_pb2.WebhookConfig | None = None,
+        cpu: float | tuple[float, float] | None = None,
+        memory: int | tuple[int, int] | None = None,
+        proxy: _Proxy | None = None,
+        retries: int | Retries | None = None,
         timeout: int = 300,
-        startup_timeout: Optional[int] = None,
-        min_containers: Optional[int] = None,
-        max_containers: Optional[int] = None,
-        buffer_containers: Optional[int] = None,
-        scaledown_window: Optional[int] = None,
-        max_concurrent_inputs: Optional[int] = None,
-        target_concurrent_inputs: Optional[int] = None,
-        batch_max_size: Optional[int] = None,
-        batch_wait_ms: Optional[int] = None,
-        cloud: Optional[str] = None,
-        region: Optional[Union[str, Sequence[str]]] = None,
-        routing_region: Optional[str] = None,
+        startup_timeout: int | None = None,
+        min_containers: int | None = None,
+        max_containers: int | None = None,
+        buffer_containers: int | None = None,
+        scaledown_window: int | None = None,
+        max_concurrent_inputs: int | None = None,
+        target_concurrent_inputs: int | None = None,
+        batch_max_size: int | None = None,
+        batch_wait_ms: int | None = None,
+        cloud: str | None = None,
+        region: str | Sequence[str] | None = None,
+        routing_region: str | None = None,
         nonpreemptible: bool = False,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
@@ -677,14 +677,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         restrict_modal_access: bool = False,
         i6pn_enabled: bool = False,
         # Experimental: Clustered functions
-        cluster_size: Optional[int] = None,
-        rdma: Optional[bool] = None,
+        cluster_size: int | None = None,
+        rdma: bool | None = None,
         single_use_containers: bool = False,
-        ephemeral_disk: Optional[int] = None,
+        ephemeral_disk: int | None = None,
         include_source: bool = True,
-        experimental_options: Optional[dict[str, str]] = None,
+        experimental_options: dict[str, str] | None = None,
         restrict_output: bool = False,
-        http_config: Optional[api_pb2.HTTPConfig] = None,
+        http_config: api_pb2.HTTPConfig | None = None,
     ) -> "_Function":
         """mdmd:hidden
 
@@ -731,7 +731,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
-        scheduler_placement: Optional[api_pb2.SchedulerPlacement] = None
+        scheduler_placement: api_pb2.SchedulerPlacement | None = None
         if region or nonpreemptible:
             regions = [region] if isinstance(region, str) else (list(region) if region else None)
             scheduler_placement = api_pb2.SchedulerPlacement(regions=regions, nonpreemptible=nonpreemptible)
@@ -810,7 +810,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if image is not None and not isinstance(image, _Image):  # type: ignore[unreachable]
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
-        method_definitions: Optional[dict[str, api_pb2.MethodDefinition]] = None
+        method_definitions: dict[str, api_pb2.MethodDefinition] | None = None
 
         if info.user_cls:
             method_definitions = {}
@@ -871,7 +871,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
 
         async def _preload(
-            self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+            self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
             assert load_context.app_id
             req = api_pb2.FunctionPrecreateRequest(
@@ -894,9 +894,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             response = await load_context.client.stub.FunctionPrecreate(req)
             self._hydrate(response.function_id, load_context.client, response.handle_metadata)
 
-        async def _load(
-            self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             with FunctionCreationStatus(tag) as function_creation_status:
                 timeout_secs = timeout
 
@@ -958,7 +956,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise Exception(f"Dependency {dep} isn't hydrated")
                     object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
-                function_data: Optional[api_pb2.FunctionData] = None
+                function_data: api_pb2.FunctionData | None = None
                 function_schema = (
                     get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config)) if info.raw_f else None
                 )
@@ -1154,10 +1152,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def update_autoscaler(
         self,
         *,
-        min_containers: Optional[int] = None,
-        max_containers: Optional[int] = None,
-        buffer_containers: Optional[int] = None,
-        scaledown_window: Optional[int] = None,
+        min_containers: int | None = None,
+        max_containers: int | None = None,
+        buffer_containers: int | None = None,
+        scaledown_window: int | None = None,
     ) -> None:
         """Override the current autoscaler behavior for this Function.
 
@@ -1210,7 +1208,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # internal function lookup implementation that allows lookup of class "service functions"
         # in addition to non-class functions
         async def _load_remote(
-            self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+            self: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
@@ -1248,8 +1246,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         app_name: str,
         name: str,
         *,
-        environment_name: Optional[str] = None,
-        client: Optional[_Client] = None,
+        environment_name: str | None = None,
+        client: _Client | None = None,
     ) -> "_Function":
         """Reference a Function from a deployed App by its name.
 
@@ -1329,7 +1327,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._options = _FunctionOptions()
         self._base_function = None
 
-    def _hydrate_metadata(self, metadata: Optional[Message]):
+    def _hydrate_metadata(self, metadata: Message | None):
         # Overridden concrete implementation of base class method
         assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata), (
             f"{type(metadata)} is not FunctionHandleMetadata"
@@ -1387,7 +1385,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
 
     @live_method
-    async def get_web_url(self) -> Optional[str]:
+    async def get_web_url(self) -> str | None:
         """URL for addressing a Web Function via HTTP.
 
         Returns None when this is not a Web Function.
@@ -1395,7 +1393,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._web_url
 
     @live_method
-    async def _experimental_get_flash_urls(self) -> Optional[list[str]]:
+    async def _experimental_get_flash_urls(self) -> list[str] | None:
         """URL of the flash service for the function."""
         return list(self._experimental_flash_urls) if self._experimental_flash_urls else None
 
@@ -1443,19 +1441,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def with_options(
         self,
         *,
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
-        memory: Optional[Union[int, tuple[int, int]]] = None,
-        gpu: Optional[str] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
-        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
-        retries: Optional[Union[int, Retries]] = None,
-        max_containers: Optional[int] = None,
-        buffer_containers: Optional[int] = None,
-        scaledown_window: Optional[int] = None,
-        timeout: Optional[int] = None,
-        region: Optional[Union[str, Sequence[str]]] = None,
-        cloud: Optional[str] = None,
+        cpu: float | tuple[float, float] | None = None,
+        memory: int | tuple[int, int] | None = None,
+        gpu: str | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
+        volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount] = {},
+        retries: int | Retries | None = None,
+        max_containers: int | None = None,
+        buffer_containers: int | None = None,
+        scaledown_window: int | None = None,
+        timeout: int | None = None,
+        region: str | Sequence[str] | None = None,
+        cloud: str | None = None,
     ) -> "_Function[P, ReturnType, OriginalReturnType]":
         """Dynamically override the static Function configuration with invocation-specific values.
 
@@ -1512,7 +1510,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self,
         *,
         max_inputs: int,
-        target_inputs: Optional[int] = None,
+        target_inputs: int | None = None,
     ) -> "_Function[P, ReturnType, OriginalReturnType]":
         """Override the static Function configuration with invocation-specific input concurrency.
 
@@ -1618,7 +1616,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return fc
 
     async def _call_function(self, args, kwargs) -> ReturnType:
-        invocation: Union[_Invocation, _InputPlaneInvocation]
+        invocation: _Invocation | _InputPlaneInvocation
         if self._input_plane_url:
             invocation = await _InputPlaneInvocation.create(
                 self,
@@ -1659,7 +1657,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
-        invocation: Union[_Invocation, _InputPlaneInvocation]
+        invocation: _Invocation | _InputPlaneInvocation
         if self._input_plane_url:
             invocation = await _InputPlaneInvocation.create(
                 self,
@@ -1719,7 +1717,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise ExecutionError("Can't get info for a function that isn't locally defined")
         return self._info
 
-    def _get_obj(self) -> Optional["modal.cls._Obj"]:
+    def _get_obj(self) -> "modal.cls._Obj | None":
         if not self._is_method:
             return None
         elif not self._obj:
@@ -1758,7 +1756,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 + "and will not have access to the mounted Volume or NetworkFileSystem data"
             )
 
-        obj: Optional["modal.cls._Obj"] = self._get_obj()
+        obj: "modal.cls._Obj | None" = self._get_obj()
 
         if not obj:
             fun = info.raw_f
@@ -1883,7 +1881,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     """
 
     _is_generator: bool = False
-    _num_inputs: Optional[int] = None
+    _num_inputs: int | None = None
 
     def _invocation(self):
         return _Invocation(self.client.stub, self.object_id, self.client)
@@ -1898,7 +1896,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return self._num_inputs
 
     @live_method
-    async def get(self, timeout: Optional[float] = None, *, index: int = 0) -> ReturnType:
+    async def get(self, timeout: float | None = None, *, index: int = 0) -> ReturnType:
         """Get the result of the index-th input of the function call.
         `.spawn()` calls have a single output, so only specifying `index=0` is valid.
         A non-zero index is useful when your function has multiple outputs, like via `.spawn_map()`.
@@ -1912,7 +1910,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return await self._invocation().poll_function(timeout=timeout, index=index)
 
     @live_method_gen
-    async def iter(self, *, start: int = 0, end: Optional[int] = None) -> AsyncIterator[ReturnType]:
+    async def iter(self, *, start: int = 0, end: int | None = None) -> AsyncIterator[ReturnType]:
         """Iterate in-order over the results of the function call.
 
         Optionally, specify a range [start, end) to iterate over.
@@ -1975,7 +1973,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     @deprecate_aio_usage((2025, 11, 14), "FunctionCall.from_id")
     @classmethod
     def from_id(
-        cls, function_call_id: str, client: Optional["modal.client.Client"] = None
+        cls, function_call_id: str, client: "modal.client.Client | None" = None
     ) -> "modal.functions.FunctionCall[Any]":
         """Instantiate a FunctionCall object from an existing ID.
 
@@ -1998,7 +1996,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         _client = typing.cast(_Client, synchronizer._translate_in(client))
 
         async def _load(
-            self: _FunctionCall, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+            self: _FunctionCall, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
             # this loader doesn't do anything in practice, but it will get the client from the load_context
             self._hydrate(function_call_id, load_context.client, None)

@@ -4,7 +4,7 @@ import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import NoReturn, Optional, Union
+from typing import NoReturn
 
 from ..config import logger
 from ..exception import (
@@ -33,12 +33,12 @@ class ErrorPayload:
     detail: str = ""
 
 
-def _stderr_to_text(stderr: Union[str, bytes]) -> str:
+def _stderr_to_text(stderr: str | bytes) -> str:
     stderr_bytes = stderr if isinstance(stderr, bytes) else stderr.encode("utf-8")
     return stderr_bytes.decode("utf-8", errors="replace").strip()
 
 
-def try_parse_error_payload(stderr: Union[str, bytes]) -> Optional[ErrorPayload]:
+def try_parse_error_payload(stderr: str | bytes) -> ErrorPayload | None:
     stderr_text = _stderr_to_text(stderr)
     if not stderr_text:
         return None
@@ -60,7 +60,7 @@ def try_parse_error_payload(stderr: Union[str, bytes]) -> Optional[ErrorPayload]
     return ErrorPayload(error_kind=error_kind, message=message, detail=detail)
 
 
-def _extract_support_error_code(exc: Exception) -> Optional[str]:
+def _extract_support_error_code(exc: Exception) -> str | None:
     if match := re.search(r"Error code:\s*([A-Z0-9]{8})", str(exc)):
         return match.group(1)
     return None
@@ -93,7 +93,7 @@ def translate_exec_unexpected_error(operation: str, path: str, exc: Exception) -
     return SandboxFilesystemError(f"An unexpected error occurred, {support_suffix}")
 
 
-def raise_write_file_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+def raise_write_file_error(returncode: int, stderr: str | bytes, remote_path: str) -> NoReturn:
     if payload := try_parse_error_payload(stderr):
         logger.debug(
             f"sandbox-fs-tools write error: path={remote_path}, "
@@ -123,7 +123,7 @@ def make_write_file_command(remote_path: str) -> str:
     return json.dumps({"WriteFile": {"path": remote_path}})
 
 
-def raise_list_files_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+def raise_list_files_error(returncode: int, stderr: str | bytes, remote_path: str) -> NoReturn:
     if payload := try_parse_error_payload(stderr):
         logger.debug(
             f"sandbox-fs-tools list_files error: path={remote_path}, "
@@ -153,7 +153,7 @@ def make_list_files_command(remote_path: str) -> str:
     return json.dumps({"ListFiles": {"path": remote_path}})
 
 
-def raise_read_file_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+def raise_read_file_error(returncode: int, stderr: str | bytes, remote_path: str) -> NoReturn:
     if payload := try_parse_error_payload(stderr):
         logger.debug(
             f"sandbox-fs-tools read error: path={remote_path}, "
@@ -185,7 +185,7 @@ def make_read_file_command(remote_path: str) -> str:
     return json.dumps({"ReadFile": {"path": remote_path}})
 
 
-def raise_remove_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+def raise_remove_error(returncode: int, stderr: str | bytes, remote_path: str) -> NoReturn:
     if payload := try_parse_error_payload(stderr):
         logger.debug(
             f"sandbox-fs-tools remove error: path={remote_path}, "
@@ -219,7 +219,7 @@ def make_remove_command(remote_path: str, recursive: bool) -> str:
     return json.dumps({"Remove": {"path": remote_path, "recursive": recursive}})
 
 
-def raise_make_directory_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+def raise_make_directory_error(returncode: int, stderr: str | bytes, remote_path: str) -> NoReturn:
     if payload := try_parse_error_payload(stderr):
         logger.debug(
             f"sandbox-fs-tools make_directory error: path={remote_path}, "
@@ -255,7 +255,7 @@ def make_make_directory_command(remote_path: str, create_parents: bool) -> str:
     return json.dumps({"MakeDirectory": {"path": remote_path, "parents": create_parents}})
 
 
-def raise_stat_error(returncode: int, stderr: Union[str, bytes], remote_path: str) -> NoReturn:
+def raise_stat_error(returncode: int, stderr: str | bytes, remote_path: str) -> NoReturn:
     if payload := try_parse_error_payload(stderr):
         logger.debug(
             f"sandbox-fs-tools stat error: path={remote_path}, "

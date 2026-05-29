@@ -4,7 +4,7 @@ import sys
 import time
 import warnings
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Union, get_args
+from typing import get_args
 
 import click
 import rich
@@ -51,7 +51,7 @@ APP_STATE_TO_MESSAGE = {
 
 
 async def resolve_app_identifier(
-    app_identifier: str, env: Optional[str], client: Optional[_Client] = None
+    app_identifier: str, env: str | None, client: _Client | None = None
 ) -> tuple[str, str, api_pb2.AppLifecycle]:  # Return app_id, environment_name, lifecycle
     """Handle an App ID or an App name and return context about the App it points at.
 
@@ -100,7 +100,7 @@ async def resolve_app_identifier(
 @env_option
 @click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = None, json: bool = False):
+async def list_(env: str | None = None, json: bool = False):
     """List Apps that are running, deployed or recently stopped."""
     env = ensure_env(env)
     client = await _Client.from_env()
@@ -109,7 +109,7 @@ async def list_(env: Optional[str] = None, json: bool = False):
         api_pb2.AppListRequest(environment_name=_get_environment_name(env))
     )
 
-    columns: list[Union[Column, str]] = [
+    columns: list[Column | str] = [
         Column("App ID", min_width=25),  # Ensure that App ID is not truncated in slim terminals
         "Description",
         "State",
@@ -117,7 +117,7 @@ async def list_(env: Optional[str] = None, json: bool = False):
         "Created at",
         "Stopped at",
     ]
-    rows: list[list[Union[Text, str]]] = []
+    rows: list[list[Text | str]] = []
     for app_stats in resp.apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
         rows.append(
@@ -138,7 +138,7 @@ async def list_(env: Optional[str] = None, json: bool = False):
 _RELATIVE_TIME_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
 
-def _parse_time_arg(value: Optional[str], default: datetime) -> datetime:
+def _parse_time_arg(value: str | None, default: datetime) -> datetime:
     """Parse a time argument that can be a relative duration (e.g. '2h', '30m') or ISO 8601 datetime.
 
     Naive datetime values are interpreted in the user's local timezone.
@@ -197,20 +197,20 @@ _SOURCE_OPTIONS = {
 async def logs(
     app_identifier: str,
     follow: bool = False,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
-    tail: Optional[int] = None,
-    search: Optional[str] = None,
+    since: str | None = None,
+    until: str | None = None,
+    tail: int | None = None,
+    search: str | None = None,
     function_id: str = "",
     function_call_id: str = "",
     container_id: str = "",
-    source: Optional[str] = None,
+    source: str | None = None,
     timestamps: bool = False,
     show_function_id: bool = False,
     show_function_call_id: bool = False,
     show_container_id: bool = False,
     *,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Fetch or stream App logs.
 
@@ -359,7 +359,7 @@ async def rollback(
     app_identifier: str,
     version: str = "",
     *,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Redeploy a previous version of an App.
 
@@ -421,7 +421,7 @@ async def rollover(
     app_identifier: str,
     strategy: str = "rolling",
     *,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Redeploy an App to get new containers without code changes.
 
@@ -483,7 +483,7 @@ async def stop(
     app_identifier: str,
     *,
     yes: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Permanently stop an App and terminate its running containers."""
     env = ensure_env(env)
@@ -528,7 +528,7 @@ async def stop(
 async def history(
     app_identifier: str,
     *,
-    env: Optional[str] = None,
+    env: str | None = None,
     json: bool = False,
 ):
     """Show an App's deployment history.
@@ -608,7 +608,7 @@ async def history(
 async def dashboard(
     app_identifier: str,
     *,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Open an App's dashboard page in your web browser.
 

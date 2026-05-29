@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import contextlib
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 # Note: importing aiohttp seems to take about 100ms, and it's not really necessarily,
 # unless we need to work with blobs. So that's why we import it lazily instead.
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from .async_utils import on_shutdown
 
 
-def _http_client_with_tls(timeout: Optional[float]) -> "ClientSession":
+def _http_client_with_tls(timeout: float | None) -> "ClientSession":
     """Create a new HTTP client session with standard, bundled TLS certificates.
 
     This is necessary to prevent client issues on some system where Python does

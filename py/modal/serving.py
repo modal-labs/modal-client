@@ -4,7 +4,7 @@ import platform
 from collections.abc import AsyncGenerator
 from multiprocessing.context import SpawnProcess
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -45,7 +45,7 @@ async def _restart_serve(
     return p
 
 
-async def _terminate(proc: Optional[SpawnProcess], timeout: float = 5.0):
+async def _terminate(proc: SpawnProcess | None, timeout: float = 5.0):
     if proc is None:
         return
     output_mgr = OutputManager.get()
@@ -93,9 +93,9 @@ async def _serve_app(
     app: "modal.app._App",
     import_ref: ImportRef,
     *,
-    name: Optional[str] = None,
-    _watcher: Optional[AsyncGenerator[set[str], None]] = None,  # for testing
-    environment_name: Optional[str] = None,
+    name: str | None = None,
+    _watcher: AsyncGenerator[set[str], None] | None = None,  # for testing
+    environment_name: str | None = None,
 ) -> AsyncGenerator["modal.app._App", None]:
     if environment_name is None:
         environment_name = config.get("environment")

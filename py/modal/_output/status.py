@@ -7,8 +7,6 @@ track and display function creation progress.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from modal_proto import api_pb2
 
 from .manager import OutputManager
@@ -28,7 +26,7 @@ class FunctionCreationStatus:
     """Context manager for tracking and displaying function creation progress."""
 
     tag: str
-    response: Optional[api_pb2.FunctionCreateResponse] = None
+    response: api_pb2.FunctionCreateResponse | None = None
 
     def __init__(self, tag: str):
         self.tag = tag

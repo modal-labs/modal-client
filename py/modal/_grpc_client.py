@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2025
-from typing import TYPE_CHECKING, Any, Collection, Generic, Literal, Mapping, Optional, TypeVar, Union, overload
+from collections.abc import Collection, Mapping
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, overload
 
 import grpclib.client
 from google.protobuf.message import Message
@@ -14,8 +15,8 @@ if TYPE_CHECKING:
     from .client import _Client
 
 
-_Value = Union[str, bytes]
-_MetadataLike = Union[Mapping[str, _Value], Collection[tuple[str, _Value]]]
+_Value = str | bytes
+_MetadataLike = Mapping[str, _Value] | Collection[tuple[str, _Value]]
 RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
 
@@ -94,7 +95,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         *,
         retry: Retry = _DEFAULT_RETRY,
         timeout: None = None,
-        metadata: Optional[list[tuple[str, str]]] = None,
+        metadata: list[tuple[str, str]] | None = None,
     ) -> ResponseType: ...
 
     @overload
@@ -103,17 +104,17 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         req: RequestType,
         *,
         retry: None,
-        timeout: Optional[float] = None,
-        metadata: Optional[list[tuple[str, str]]] = None,
+        timeout: float | None = None,
+        metadata: list[tuple[str, str]] | None = None,
     ) -> ResponseType: ...
 
     async def __call__(
         self,
         req: RequestType,
         *,
-        retry: Optional[Retry] = _DEFAULT_RETRY,
-        timeout: Optional[float] = None,
-        metadata: Optional[list[tuple[str, str]]] = None,
+        retry: Retry | None = _DEFAULT_RETRY,
+        timeout: float | None = None,
+        metadata: list[tuple[str, str]] | None = None,
     ) -> ResponseType:
         with suppress_tb_frame():
             if timeout is not None and retry is not None:
@@ -136,8 +137,8 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         self,
         req: RequestType,
         *,
-        timeout: Optional[float] = None,
-        metadata: Optional[_MetadataLike] = None,
+        timeout: float | None = None,
+        metadata: _MetadataLike | None = None,
     ) -> ResponseType:
         from .client import _Client
 
@@ -178,7 +179,7 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
     async def unary_stream(
         self,
         request,
-        metadata: Optional[Any] = None,
+        metadata: Any | None = None,
     ):
         from .client import _Client
 

@@ -3,10 +3,10 @@ import asyncio
 import inspect
 import os
 import typing
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Literal, Optional, Union
+from typing import Any, Literal
 
 from grpclib.exceptions import StreamTerminatedError
 
@@ -76,7 +76,7 @@ def is_global_object(object_qual_name: str):
     return "<locals>" not in object_qual_name.split(".")
 
 
-def is_flash_object(experimental_options: Optional[dict[str, Any]], http_config: Optional[api_pb2.HTTPConfig]) -> bool:
+def is_flash_object(experimental_options: dict[str, Any] | None, http_config: api_pb2.HTTPConfig | None) -> bool:
     return bool(experimental_options and experimental_options.get("flash", False)) or http_config is not None
 
 
@@ -114,14 +114,14 @@ def is_async(function):
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
 
-def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.FunctionType.ValueType":
+def get_function_type(is_generator: bool | None) -> "api_pb2.Function.FunctionType.ValueType":
     return api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
 
 def _parse_retries(
-    retries: Optional[Union[int, Retries]],
+    retries: int | Retries | None,
     source: str = "",
-) -> Optional[api_pb2.FunctionRetryPolicy]:
+) -> api_pb2.FunctionRetryPolicy | None:
     if isinstance(retries, int):
         return Retries(
             max_retries=retries,
@@ -148,16 +148,16 @@ class FunctionInfo:
     Used for populating the definition of a remote function
     """
 
-    raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
+    raw_f: Callable[..., Any] | None  # if None - this is a "class service function"
     function_name: str
     implementation_name: str
-    user_cls: Optional[type[Any]]
-    module_name: Optional[str]
+    user_cls: type[Any] | None
+    module_name: str | None
 
     _type: FunctionInfoType
-    _file: Optional[str]
+    _file: str | None
     _base_dir: str
-    _remote_dir: Optional[PurePosixPath] = None
+    _remote_dir: PurePosixPath | None = None
 
     def get_definition_type(self) -> "modal_proto.api_pb2.Function.DefinitionType.ValueType":
         if self.is_serialized():
@@ -174,10 +174,10 @@ class FunctionInfo:
     # TODO: we should have a bunch of unit tests for this
     def __init__(
         self,
-        f: Optional[Callable[..., Any]],
+        f: Callable[..., Any] | None,
         serialized: bool = False,
-        name_override: Optional[str] = None,
-        user_cls: Optional[type] = None,
+        name_override: str | None = None,
+        user_cls: type | None = None,
     ):
         self.raw_f = f
         self.user_cls = user_cls
@@ -413,9 +413,9 @@ def callable_has_non_self_non_default_params(f: Callable[..., Any]) -> bool:
 async def _stream_function_call_data(
     client,
     stub,
-    function_call_id: Optional[str],
+    function_call_id: str | None,
     variant: Literal["data_in", "data_out"],
-    attempt_token: Optional[str] = None,
+    attempt_token: str | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Read from the `data_in` or `data_out` stream of a function call."""
     if not function_call_id and not attempt_token:
@@ -562,7 +562,7 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
 def should_upload(
     num_bytes: int,
     max_object_size_bytes: int,
-    function_call_invocation_type: Optional["api_pb2.FunctionCallInvocationType.ValueType"],
+    function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType | None",
 ) -> bool:
     """
     Determine if the input should be uploaded to blob storage.
@@ -580,8 +580,8 @@ async def _create_input(
     stub: ModalClientModal,
     *,
     function: "modal._functions._Function",
-    idx: Optional[int] = None,
-    function_call_invocation_type: Optional["api_pb2.FunctionCallInvocationType.ValueType"] = None,
+    idx: int | None = None,
+    function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType | None" = None,
 ) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
@@ -625,7 +625,7 @@ async def _create_input(
         )
 
 
-def parse_gpu_config(value: Optional[str]) -> api_pb2.GPUConfig:
+def parse_gpu_config(value: str | None) -> api_pb2.GPUConfig:
     if value is None:
         return api_pb2.GPUConfig()
     elif isinstance(value, str):

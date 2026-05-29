@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2023
 import json as json_mod
-from typing import Optional, Union
 
 import click
 import rich
@@ -55,7 +54,7 @@ def list_(json: bool = False):
     table_data = []
     for item in envs:
         is_active = item.name == active_env
-        is_active_display: Union[Text, str] = str(is_active) if json else RenderableBool(is_active)
+        is_active_display: Text | str = str(is_active) if json else RenderableBool(is_active)
         row = [item.name, item.webhook_suffix, is_active_display]
         table_data.append(row)
     display_table(["name", "web suffix", "active"], table_data, json=json)
@@ -104,8 +103,8 @@ def delete(
 @click.option("--set-web-suffix", default=None, help="New web suffix of environment (empty string is no suffix)")
 def update(
     current_name: str,
-    set_name: Optional[str] = None,
-    set_web_suffix: Optional[str] = None,
+    set_name: str | None = None,
+    set_web_suffix: str | None = None,
 ):
     if set_name is None and set_web_suffix is None:
         raise UsageError("You need to at least one new property (using --set-name or --set-web-suffix)")

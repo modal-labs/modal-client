@@ -6,8 +6,7 @@ import errno
 import os
 import select
 import sys
-from collections.abc import Coroutine
-from typing import Callable, Optional
+from collections.abc import Callable, Coroutine
 
 from .async_utils import asyncify
 
@@ -16,7 +15,7 @@ from .async_utils import asyncify
 # =============================================================================
 
 
-def get_winsz(fd=None) -> tuple[Optional[int], Optional[int]]:
+def get_winsz(fd=None) -> tuple[int | None, int | None]:
     """Get the window size of a terminal."""
     try:
         if fd is None:
@@ -92,7 +91,7 @@ async def stream_from_stdin(handle_input: Callable[[bytes, int], Coroutine], use
     set_nonblocking(sys.stdin.fileno())
 
     @asyncify
-    def _read_stdin() -> Optional[bytes]:
+    def _read_stdin() -> bytes | None:
         nonlocal quit_pipe_read
         # TODO: Windows support.
         (readable, _, _) = select.select([sys.stdin.buffer, quit_pipe_read], [], [], 5)

@@ -21,7 +21,7 @@ import signal
 import threading
 import time
 import types
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from google.protobuf.message import Message
 
@@ -268,7 +268,7 @@ def call_function(
 
 def get_serialized_user_class_and_function(
     function_def: api_pb2.Function, client: _Client
-) -> tuple[Optional[type], Optional[types.FunctionType]]:
+) -> tuple[type | None, types.FunctionType | None]:
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert function_def.function_serialized or function_def.class_serialized
 
@@ -390,7 +390,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     "that evaluates differently in the local and remote environments."
                 )
             for object_id, obj in zip(dep_object_ids, service.service_deps):
-                metadata: Optional[Message] = container_app.object_handle_metadata[object_id]
+                metadata: Message | None = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
 
         # Initialize clustered functions.
@@ -418,7 +418,7 @@ if __name__ == "__main__":
     logger.debug("Container: starting")
 
     container_args = api_pb2.ContainerArguments()
-    container_arguments_path: Optional[str] = os.environ.get("MODAL_CONTAINER_ARGUMENTS_PATH")
+    container_arguments_path: str | None = os.environ.get("MODAL_CONTAINER_ARGUMENTS_PATH")
     if container_arguments_path is None:
         raise RuntimeError("No path to the container arguments file provided!")
     container_args.ParseFromString(open(container_arguments_path, "rb").read())

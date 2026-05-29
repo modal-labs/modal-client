@@ -94,9 +94,9 @@ class _SandboxFilesystem:
         from modal.sandbox import _Sandbox, _SidecarContainer
 
         # Use a weakref proxy to avoid circular references between Sandbox/SidecarContainer and SandboxFilesystem.
-        self._container = cast(Union[_Sandbox, _SidecarContainer], weakref.proxy(container))
+        self._container = cast(_Sandbox | _SidecarContainer, weakref.proxy(container))
 
-    async def copy_from_local(self, local_path: Union[str, os.PathLike], remote_path: str) -> None:
+    async def copy_from_local(self, local_path: str | os.PathLike, remote_path: str) -> None:
         """Copy a local file into the Sandbox.
 
         `remote_path` must be an absolute path to a file in the Sandbox.
@@ -157,7 +157,7 @@ class _SandboxFilesystem:
         dur_s = max(time.monotonic() - t0, 0.001)
         _log_throughput(f"copy_from_local {local_path} -> {remote_path}", total_bytes, dur_s)
 
-    async def copy_to_local(self, remote_path: str, local_path: Union[str, os.PathLike]) -> None:
+    async def copy_to_local(self, remote_path: str, local_path: str | os.PathLike) -> None:
         """Copy a file from the Sandbox to a local path.
 
         `remote_path` must be an absolute path to a file in the Sandbox.
@@ -483,7 +483,7 @@ class _SandboxFilesystem:
         logger.debug(f"sandbox stat {remote_path}: ({dur_s:.2f}s)")
         return result
 
-    async def write_bytes(self, data: Union[bytes, bytearray, memoryview], remote_path: str) -> None:
+    async def write_bytes(self, data: bytes | bytearray | memoryview, remote_path: str) -> None:
         """Write binary content to a file in the Sandbox.
 
         `remote_path` must be an absolute path to a file in the Sandbox.

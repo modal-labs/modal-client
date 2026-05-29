@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2024
 import re
 import shlex
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 from ..exception import InvalidError
 
@@ -74,7 +74,7 @@ def extract_copy_command_patterns(dockerfile_lines: Sequence[str]) -> list[str]:
     return list(copy_source_patterns)
 
 
-def find_dockerignore_file(context_directory: Path, dockerfile_path: Optional[Path] = None) -> Optional[Path]:
+def find_dockerignore_file(context_directory: Path, dockerfile_path: Path | None = None) -> Path | None:
     """
     Find dockerignore file relative to current context directory
     and if dockerfile path is provided, check if specific <dockerfile_name>.dockerignore

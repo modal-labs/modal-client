@@ -2,7 +2,6 @@
 from collections import defaultdict
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Optional
 
 from rich.tree import Tree
 from watchfiles import Change, DefaultFilter, awatch
@@ -22,7 +21,7 @@ class AppFilesFilter(DefaultFilter):
         # Watching specific files is discouraged on Linux, so to watch a file we watch its
         # containing directory and then filter that directory's changes for relevant files.
         # https://github.com/notify-rs/notify/issues/394
-        dir_filters: dict[Path, Optional[set[Path]]],
+        dir_filters: dict[Path, set[Path] | None],
     ) -> None:
         self.dir_filters = dir_filters
         super().__init__()
@@ -78,7 +77,7 @@ def _print_watched_paths(paths: set[Path]):
 
 def _watch_args_from_mounts(mounts: list[_Mount]) -> tuple[set[Path], AppFilesFilter]:
     paths = set()
-    dir_filters: dict[Path, Optional[set[Path]]] = defaultdict(set)
+    dir_filters: dict[Path, set[Path] | None] = defaultdict(set)
     for mount in mounts:
         # TODO(elias): Make this part of the mount class instead, since it uses so much internals
         for entry in mount._entries:

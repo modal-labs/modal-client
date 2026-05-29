@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Optional, Sequence
 from urllib.parse import urlparse
 
 from modal_proto import api_pb2
@@ -103,17 +103,17 @@ class _CloudBucketMount:
 
     bucket_name: str
     # Endpoint URL is used to support Cloudflare R2 and Google Cloud Platform GCS.
-    bucket_endpoint_url: Optional[str] = None
+    bucket_endpoint_url: str | None = None
 
-    key_prefix: Optional[str] = None
+    key_prefix: str | None = None
 
     # Credentials used to access a cloud bucket.
     # If the bucket is private, the secret **must** contain AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
     # If the bucket is publicly accessible, the secret is unnecessary and can be omitted.
-    secret: Optional[_Secret] = None
+    secret: _Secret | None = None
 
     # Role ARN used for using OIDC authentication to access a cloud bucket.
-    oidc_auth_role_arn: Optional[str] = None
+    oidc_auth_role_arn: str | None = None
 
     read_only: bool = False
     requester_pays: bool = False

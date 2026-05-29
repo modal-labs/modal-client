@@ -1,12 +1,11 @@
 # Copyright Modal Labs 2025
 import asyncio
-from typing import Optional
 
 from modal.config import logger
 from modal_proto import api_pb2
 
 
-async def run_command_fallible(args: list[str]) -> Optional[str]:
+async def run_command_fallible(args: list[str]) -> str | None:
     try:
         process = await asyncio.create_subprocess_exec(
             *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -43,7 +42,7 @@ def is_valid_commit_info(commit_info: api_pb2.CommitInfo) -> tuple[bool, str]:
     return True, ""
 
 
-async def get_git_commit_info() -> Optional[api_pb2.CommitInfo]:
+async def get_git_commit_info() -> api_pb2.CommitInfo | None:
     """Collect git information about the current repository asynchronously."""
     git_info: api_pb2.CommitInfo = api_pb2.CommitInfo(vcs="git")
 

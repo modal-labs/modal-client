@@ -10,10 +10,8 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Generic,
-    Optional,
     TextIO,
     TypeVar,
-    Union,
     cast,
 )
 
@@ -35,7 +33,7 @@ if TYPE_CHECKING:
 
 async def _sandbox_logs_iterator(
     sandbox_id: str, file_descriptor: "api_pb2.FileDescriptor.ValueType", last_entry_id: str, client: _Client
-) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
+) -> AsyncGenerator[tuple[bytes | None, str], None]:
     req = api_pb2.SandboxGetLogsRequest(
         sandbox_id=sandbox_id,
         file_descriptor=file_descriptor,
@@ -58,7 +56,7 @@ T = TypeVar("T", str, bytes)
 class _StreamReaderThroughServer(Generic[T]):
     """A StreamReader implementation that reads sandbox logs from the server."""
 
-    _stream: Optional[AsyncGenerator[T, None]]
+    _stream: AsyncGenerator[T, None] | None
 
     def __init__(
         self,
@@ -240,7 +238,7 @@ class _StreamReaderThroughSandboxExecCommandRouterParams:
     task_id: str
     object_id: str
     command_router_client: TaskCommandRouterClient
-    deadline: Optional[float]
+    deadline: float | None
 
 
 @dataclass(frozen=True)
@@ -383,14 +381,14 @@ class _StdoutPrintingStreamReaderThroughCommandRouter(Generic[T]):
     the local stdout immediately and is not readable via StreamReader methods.
     """
 
-    _reader: Union[_TextStreamReaderThroughCommandRouter, _BytesStreamReaderThroughCommandRouter]
+    _reader: _TextStreamReaderThroughCommandRouter | _BytesStreamReaderThroughCommandRouter
 
     def __init__(
         self,
-        reader: Union[_TextStreamReaderThroughCommandRouter, _BytesStreamReaderThroughCommandRouter],
+        reader: _TextStreamReaderThroughCommandRouter | _BytesStreamReaderThroughCommandRouter,
     ) -> None:
         self._reader = reader
-        self._task: Optional[asyncio.Task[None]] = None
+        self._task: asyncio.Task[None] | None = None
         # Kick off a background task that reads from the underlying text stream and prints to stdout.
         self._start_printing_task()
 
@@ -457,18 +455,18 @@ class _StreamReader(Generic[T]):
     statements. Just loop over the object to read in chunks.
     """
 
-    _impl: Union[
-        _StreamReaderThroughServer,
-        _DevnullStreamReader,
-        _TextStreamReaderThroughCommandRouter,
-        _BytesStreamReaderThroughCommandRouter,
-        _StdoutPrintingStreamReaderThroughCommandRouter,
-    ]
-    _read_gen: Optional[AsyncGenerator[T, None]] = None
+    _impl: (
+        _StreamReaderThroughServer
+        | _DevnullStreamReader
+        | _TextStreamReaderThroughCommandRouter
+        | _BytesStreamReaderThroughCommandRouter
+        | _StdoutPrintingStreamReaderThroughCommandRouter
+    )
+    _read_gen: AsyncGenerator[T, None] | None = None
 
     def __init__(
         self,
-        params: Union[_StreamReaderThroughServerParams, _StreamReaderThroughCommandRouterParams],
+        params: _StreamReaderThroughServerParams | _StreamReaderThroughCommandRouterParams,
         *,
         stream_type: StreamType = StreamType.PIPE,
         text: bool = True,
@@ -584,7 +582,7 @@ class _StreamWriterThroughServer:
         self._index += 1
         return index
 
-    def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
+    def write(self, data: bytes | bytearray | memoryview | str) -> None:
         """Write data to the stream but does not send it immediately.
 
         This is non-blocking and queues the data to an internal buffer. Must be
@@ -643,7 +641,7 @@ class _StreamWriterThroughCommandRouterBuffer(ABC):
     async def stdin_write(self, data: bytes, eof: bool) -> None:
         """Write the given chunk (with optional EOF) to the command router."""
 
-    def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
+    def write(self, data: bytes | bytearray | memoryview | str) -> None:
         if self._is_closed:
             raise ValueError("Stdin is closed. Cannot write to it.")
         if isinstance(data, (bytes, bytearray, memoryview, str)):
@@ -703,11 +701,9 @@ class _StreamWriter:
 
     def __init__(
         self,
-        params: Union[
-            _StreamWriterThroughServerParams,
-            _StreamWriterThroughCommandRouterSandboxExecParams,
-            _StreamWriterThroughCommandRouterSandboxParams,
-        ],
+        params: _StreamWriterThroughServerParams
+        | _StreamWriterThroughCommandRouterSandboxExecParams
+        | _StreamWriterThroughCommandRouterSandboxParams,
     ) -> None:
         """mdmd:hidden"""
         if isinstance(params, _StreamWriterThroughCommandRouterSandboxExecParams):
@@ -717,7 +713,7 @@ class _StreamWriter:
         else:
             self._impl = _StreamWriterThroughServer(params)
 
-    def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
+    def write(self, data: bytes | bytearray | memoryview | str) -> None:
         """Write data to the stream but does not send it immediately.
 
         This is non-blocking and queues the data to an internal buffer. Must be

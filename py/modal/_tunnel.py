@@ -3,7 +3,6 @@
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Optional
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -60,7 +59,7 @@ class Tunnel:
 
 @asynccontextmanager
 async def _forward(
-    port: int, *, unencrypted: bool = False, h2_enabled: bool = False, client: Optional[_Client] = None
+    port: int, *, unencrypted: bool = False, h2_enabled: bool = False, client: _Client | None = None
 ) -> AsyncIterator[Tunnel]:
     """Expose a port publicly from inside a running Modal container, with TLS.
 

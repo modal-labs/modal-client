@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2024
-from typing import Optional, Union
+
 
 from modal_proto import api_pb2
 
@@ -9,11 +9,11 @@ from .exception import InvalidError
 
 def convert_fn_config_to_resources_config(
     *,
-    cpu: Optional[Union[float, tuple[float, float]]],
-    memory: Optional[Union[int, tuple[int, int]]],
-    gpu: Optional[str],
-    ephemeral_disk: Optional[int] = None,
-    rdma: Optional[bool] = None,
+    cpu: float | tuple[float, float] | None,
+    memory: int | tuple[int, int] | None,
+    gpu: str | None,
+    ephemeral_disk: int | None = None,
+    rdma: bool | None = None,
 ) -> api_pb2.Resources:
     if cpu and isinstance(cpu, tuple):
         if not cpu[0]:

@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import platform
-from typing import Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from modal_proto import api_pb2
 
@@ -46,7 +46,7 @@ class _ContainerProcess(Generic[T]):
         command_router_client: TaskCommandRouterClient,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        exec_deadline: Optional[float] = None,
+        exec_deadline: float | None = None,
         text: bool = True,
         by_line: bool = False,
     ) -> None:
@@ -117,7 +117,7 @@ class _ContainerProcess(Generic[T]):
             )
         return self._returncode
 
-    async def poll(self) -> Optional[int]:
+    async def poll(self) -> int | None:
         """Check if the container process has finished running.
 
         Returns `None` if the process is still running, else returns the exit code.

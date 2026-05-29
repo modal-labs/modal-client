@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2025
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from .client import _Client
 from .config import config
@@ -15,18 +15,18 @@ class LoadContext:
     parent-child relationships (e.g., App -> Function, Cls -> Obj -> bound methods).
     """
 
-    _client: Optional[_Client] = None
-    _environment_name: Optional[str] = None
-    _app_id: Optional[str] = None
-    _task_context: Optional["TaskContext"] = None
+    _client: _Client | None = None
+    _environment_name: str | None = None
+    _app_id: str | None = None
+    _task_context: "TaskContext | None" = None
 
     def __init__(
         self,
         *,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-        app_id: Optional[str] = None,
-        task_context: Optional["TaskContext"] = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
+        app_id: str | None = None,
+        task_context: "TaskContext | None" = None,
     ):
         self._client = client
         self._environment_name = environment_name
@@ -44,7 +44,7 @@ class LoadContext:
         return self._environment_name
 
     @property
-    def app_id(self) -> Optional[str]:
+    def app_id(self) -> str | None:
         return self._app_id
 
     @property
@@ -100,10 +100,10 @@ class LoadContext:
 
     async def in_place_upgrade(
         self,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-        app_id: Optional[str] = None,
-        task_context: Optional["TaskContext"] = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
+        app_id: str | None = None,
+        task_context: "TaskContext | None" = None,
     ) -> "LoadContext":
         """In-place set values if they aren't already set, or set default values
 

@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import pytest
-from typing import Optional, cast
+from typing import cast
 
 import modal.client
 from modal._load_context import LoadContext
@@ -21,9 +21,7 @@ async def test_multi_resolve_sequential_loads_once(client):
     class _DumbObject(_Object, type_prefix="zz"):
         pass
 
-    async def _load(
-        self: _DumbObject, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
-    ):
+    async def _load(self: _DumbObject, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
         nonlocal load_count
         load_count += 1
         self._hydrate("zz-123", load_context.client, None)
@@ -49,9 +47,7 @@ async def test_multi_resolve_concurrent_loads_once(client):
     class _DumbObject(_Object, type_prefix="zz"):
         pass
 
-    async def _load(
-        self: _DumbObject, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
-    ):
+    async def _load(self: _DumbObject, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
         nonlocal load_count
         load_count += 1
         self._hydrate("zz-123", load_context.client, None)
@@ -89,7 +85,7 @@ async def test_resolver_shared_dependency_exception_priority(client):
         pass
 
     async def _load_volume(
-        self: _SharedVolume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        self: _SharedVolume, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
     ):
         await asyncio.sleep(0.5)  # Slow enough to still be loading when sibling fails
         self._hydrate("t1-shared123", load_context.client, None)
@@ -103,7 +99,7 @@ async def test_resolver_shared_dependency_exception_priority(client):
         pass
 
     async def _load_failing_secret(
-        self: _FailingSecret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        self: _FailingSecret, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
     ):
         raise NotFoundError("Secret 'missing-secret' not found")
 
@@ -116,7 +112,7 @@ async def test_resolver_shared_dependency_exception_priority(client):
         pass
 
     async def _load_func_a(
-        self: _FunctionA, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        self: _FunctionA, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
     ):
         # Load both dependencies - one will fail
         # Uses asyncio.gather (not TaskContext.gather) because the shared TaskContext
@@ -134,7 +130,7 @@ async def test_resolver_shared_dependency_exception_priority(client):
         pass
 
     async def _load_func_b(
-        self: _FunctionB, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+        self: _FunctionB, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
     ):
         await resolver.load(shared_volume, load_context)
         self._hydrate("t4-funcb123", load_context.client, None)

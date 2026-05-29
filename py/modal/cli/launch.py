@@ -4,7 +4,7 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import click
 import rich.panel
@@ -23,7 +23,7 @@ launch_cli = ModalGroup(
 
 
 def _launch_program(
-    name: str, filename: str, detach: bool, args: dict[str, Any], *, description: Optional[str] = None
+    name: str, filename: str, detach: bool, args: dict[str, Any], *, description: str | None = None
 ) -> None:
     OutputManager.get().print(
         rich.panel.Panel(
@@ -73,12 +73,12 @@ def _launch_program(
 def jupyter(
     cpu: int = 8,
     memory: int = 32768,
-    gpu: Optional[str] = None,
+    gpu: str | None = None,
     timeout: int = 3600,
     image: str = "ubuntu:22.04",
-    add_python: Optional[str] = "3.11",
-    mount: Optional[str] = None,
-    volume: Optional[str] = None,
+    add_python: str | None = "3.11",
+    mount: str | None = None,
+    volume: str | None = None,
     detach: bool = False,
 ):
     OutputManager.get().print(
@@ -122,11 +122,11 @@ def jupyter(
 def vscode(
     cpu: int = 8,
     memory: int = 32768,
-    gpu: Optional[str] = None,
+    gpu: str | None = None,
     image: str = "debian:12",
     timeout: int = 3600,
-    mount: Optional[str] = None,
-    volume: Optional[str] = None,
+    mount: str | None = None,
+    volume: str | None = None,
     detach: bool = False,
 ):
     args = {

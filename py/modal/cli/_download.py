@@ -5,9 +5,8 @@ import multiprocessing
 import os
 import shutil
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path, PurePosixPath
-from typing import Callable, Optional, Union
 
 from click import UsageError
 
@@ -20,12 +19,12 @@ PIPE_PATH = Path("-")
 
 
 async def _volume_download(
-    volume: Union[_NetworkFileSystem, _Volume],
+    volume: _NetworkFileSystem | _Volume,
     remote_path: str,
     local_destination: Path,
     overwrite: bool,
-    concurrency: Optional[int] = None,
-    progress_cb: Optional[Callable] = None,
+    concurrency: int | None = None,
+    progress_cb: Callable | None = None,
 ):
     if progress_cb is None:
 
@@ -37,7 +36,7 @@ async def _volume_download(
 
     is_pipe = local_destination == PIPE_PATH
 
-    q: asyncio.Queue[tuple[Optional[Path], Optional[FileEntry]]] = asyncio.Queue()
+    q: asyncio.Queue[tuple[Path | None, FileEntry | None]] = asyncio.Queue()
     num_consumers = 1 if is_pipe else concurrency  # concurrency limit for downloading files
     download_semaphore = asyncio.Semaphore(concurrency)
     rpc_semaphore = asyncio.Semaphore(64)  # Limit concurrent RPCs to avoid overwhelming server.

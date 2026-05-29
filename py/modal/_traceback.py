@@ -10,8 +10,9 @@ import sys
 import traceback
 import typing
 import warnings
+from collections.abc import Iterable
 from types import TracebackType
-from typing import Any, Iterable, Optional
+from typing import Any
 
 from modal.config import config
 from modal_proto import api_pb2
@@ -74,7 +75,7 @@ def append_modal_tb(exc: BaseException, tb_dict: TBDictType, line_cache: LineCac
     setattr(exc, "__line_cache__", line_cache)
 
 
-def reduce_traceback_to_user_code(tb: Optional[TracebackType], user_source: str) -> TracebackType:
+def reduce_traceback_to_user_code(tb: TracebackType | None, user_source: str) -> TracebackType:
     """Return a traceback that does not contain modal entrypoint or synchronicity frames."""
 
     # Step forward all the way through the traceback and drop any "Modal support" frames
@@ -105,7 +106,7 @@ def reduce_traceback_to_user_code(tb: Optional[TracebackType], user_source: str)
     return tb
 
 
-def traceback_contains_remote_call(tb: Optional[TracebackType]) -> bool:
+def traceback_contains_remote_call(tb: TracebackType | None) -> bool:
     """Inspect the traceback stack to determine whether an error was raised locally or remotely."""
     while tb is not None:
         if re.match(r"^<ta-[0-9A-Z]{26}>:", tb.tb_frame.f_code.co_filename):
@@ -114,7 +115,7 @@ def traceback_contains_remote_call(tb: Optional[TracebackType]) -> bool:
     return False
 
 
-def print_exception(exc: Optional[type[BaseException]], value: Optional[BaseException], tb: Optional[TracebackType]):
+def print_exception(exc: type[BaseException] | None, value: BaseException | None, tb: TracebackType | None):
     """Add backwards compatibility for printing exceptions with "notes" for Python<3.11."""
     traceback.print_exception(exc, value, tb)
     if sys.version_info < (3, 11) and value is not None:  # type: ignore
@@ -142,7 +143,7 @@ class suppress_tb_frame:
         pass
 
     def __exit__(
-        self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
     ) -> typing.Literal[False]:
         # *base* exceptions like CancelledError, SystemExit etc. can come from random places,
         # so we don't suppress tracebacks for those

@@ -3,7 +3,6 @@ import io
 import shutil
 import zipfile
 from pathlib import Path
-from typing import Optional
 
 import click
 
@@ -25,7 +24,7 @@ from .selector import Selector
 @click.option("--force", is_flag=True, default=False, help="Overwrite the output directory if it already exists.")
 @synchronizer.create_blocking
 async def bootstrap(
-    name: Optional[str] = None,
+    name: str | None = None,
     output: str = ".",
     force: bool = False,
 ) -> None:

@@ -2,8 +2,9 @@
 
 import asyncio
 import hashlib
+from collections.abc import Callable
 from contextlib import contextmanager
-from typing import BinaryIO, Callable, Optional
+from typing import BinaryIO
 
 # Note: this module needs to import aiohttp in global scope
 # This takes about 50ms and isn't needed in many cases for Modal execution
@@ -34,7 +35,7 @@ class BytesIOSegmentPayload(Payload):
         segment_start: int,
         segment_length: int,
         chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
-        progress_report_cb: Optional[Callable] = None,
+        progress_report_cb: Callable | None = None,
     ):
         # not thread safe constructor!
         super().__init__(bytes_io)
@@ -87,7 +88,7 @@ class BytesIOSegmentPayload(Payload):
         # but on aiohttp 3.12+ `write_with_length` is called directly.
         await self.write_with_length(writer, None)
 
-    async def write_with_length(self, writer: AbstractStreamWriter, content_length: Optional[int]):
+    async def write_with_length(self, writer: AbstractStreamWriter, content_length: int | None):
         loop = asyncio.get_event_loop()
 
         async def safe_read():

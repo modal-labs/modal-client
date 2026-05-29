@@ -7,9 +7,6 @@ import sys
 import traceback
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import (
-    Optional,
-)
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -38,7 +35,7 @@ class _TaskLifecycleManager:
     function_def: api_pb2.Function
     checkpoint_id: str | None
     _client: _Client
-    _cuda_checkpoint_session: Optional[gpu_memory_snapshot.CudaCheckpointSession]
+    _cuda_checkpoint_session: gpu_memory_snapshot.CudaCheckpointSession | None
 
     def __init__(
         self,

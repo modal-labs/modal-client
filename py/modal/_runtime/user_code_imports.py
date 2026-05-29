@@ -6,9 +6,10 @@ import signal
 import sys
 import typing
 from abc import ABCMeta, abstractmethod
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, Generator, Optional, Sequence
+from typing import Any
 
 import modal._object
 import modal.cls
@@ -48,7 +49,7 @@ class FinalizedFunction:
     is_async: bool
     is_generator: bool
     supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"]
-    lifespan_manager: Optional["LifespanManager"] = None
+    lifespan_manager: "LifespanManager | None" = None
 
 
 def call_lifecycle_functions(
@@ -126,7 +127,7 @@ class Service(metaclass=ABCMeta):
 
     user_cls_instance: Any
     app: "modal.app._App"
-    service_deps: Optional[Sequence["modal._object._Object"]]
+    service_deps: Sequence["modal._object._Object"] | None
     function_def: api_pb2.Function
 
     @abstractmethod
@@ -158,9 +159,9 @@ class Service(metaclass=ABCMeta):
     def lifecycle_context(
         self,
         event_loop: UserCodeEventLoop,
-        snapshot: Optional[Callable[[], None]],
+        snapshot: Callable[[], None] | None,
         task_lifecycle_manager: "modal._runtime.task_lifecycle_manager.TaskLifecycleManager",
-        after_snapshot: Optional[Callable[[], None]] = None,
+        after_snapshot: Callable[[], None] | None = None,
         disable_signals_on_exit: bool = True,
     ) -> Generator[None, None, None]:
         """
@@ -205,7 +206,7 @@ class Service(metaclass=ABCMeta):
     def execution_context(
         self,
         event_loop: UserCodeEventLoop,
-        snapshot: Optional[Callable[[], None]],
+        snapshot: Callable[[], None] | None,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
         """
@@ -279,7 +280,7 @@ def construct_webhook_callable(
 
 
 def maybe_snapshot(
-    snapshot: Optional[Callable[[], None]],
+    snapshot: Callable[[], None] | None,
     function_def: api_pb2.Function,
 ):
     if (
@@ -312,7 +313,7 @@ def create_breakpoint_wrapper(
 @dataclass
 class ImportedFunction(Service):
     app: modal.app._App
-    service_deps: Optional[Sequence["modal._object._Object"]]
+    service_deps: Sequence["modal._object._Object"] | None
     user_cls_instance = None
     function_def: api_pb2.Function
 
@@ -411,7 +412,7 @@ class _LifecycleManager:
 class ImportedClass(_LifecycleManager, Service):
     user_cls_instance: Any
     app: "modal.app._App"
-    service_deps: Optional[Sequence["modal._object._Object"]]
+    service_deps: Sequence["modal._object._Object"] | None
 
     _partial_functions: dict[str, "modal._partial_function._PartialFunction"]
     function_def: api_pb2.Function
@@ -465,7 +466,7 @@ class ImportedClass(_LifecycleManager, Service):
 class ImportedServer(_LifecycleManager, Service):
     user_cls_instance: Any
     app: "modal.app._App"
-    service_deps: Optional[Sequence["modal._object._Object"]]
+    service_deps: Sequence["modal._object._Object"] | None
     function_def: api_pb2.Function
 
     def get_finalized_functions(
@@ -495,7 +496,7 @@ def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs:
 
 def import_single_function_service(
     function_def: api_pb2.Function,
-    ser_fun: Optional[Callable[..., Any]],
+    ser_fun: Callable[..., Any] | None,
 ) -> Service:
     """Imports a function dynamically, and locates the app.
 
@@ -520,7 +521,7 @@ def import_single_function_service(
     the import) runs on the right thread.
     """
     user_defined_callable: Callable
-    service_deps: Optional[Sequence["modal._object._Object"]] = None
+    service_deps: Sequence["modal._object._Object"] | None = None
     active_app: modal.app._App
 
     if ser_fun is not None:
@@ -564,8 +565,8 @@ def import_single_function_service(
 
 def _get_cls_or_user_cls(
     function_def: api_pb2.Function,
-    ser_user_cls: Optional[type],
-) -> typing.Union[type, modal.cls.Cls, modal.server.Server]:
+    ser_user_cls: type | None,
+) -> type | modal.cls.Cls | modal.server.Server:
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert ser_user_cls is not None
         cls_or_user_cls = ser_user_cls
@@ -595,7 +596,7 @@ def import_class_service(
     service_function_hydration_data: api_pb2.Object,
     class_id: str,
     client: "modal.client.Client",
-    ser_user_cls: Optional[type],
+    ser_user_cls: type | None,
     cls_args,
     cls_kwargs,
 ) -> Service:
@@ -604,12 +605,12 @@ def import_class_service(
 
     See import_function.
     """
-    active_app: Optional["modal.app._App"]
-    service_deps: Optional[Sequence["modal._object._Object"]]
-    cls_or_user_cls: typing.Union[type, modal.cls.Cls]
+    active_app: "modal.app._App | None"
+    service_deps: Sequence["modal._object._Object"] | None
+    cls_or_user_cls: type | modal.cls.Cls
 
     cls_or_user_cls = typing.cast(
-        typing.Union[type, modal.cls.Cls],
+        type | modal.cls.Cls,
         _get_cls_or_user_cls(function_def, ser_user_cls),
     )
 
@@ -651,19 +652,19 @@ def import_server_service(
     function_def: api_pb2.Function,
     service_function_hydration_data: api_pb2.Object,
     client: "modal.client.Client",
-    ser_user_cls: Optional[type],
+    ser_user_cls: type | None,
 ) -> Service:
     """
     This imports a class as a server to server HTTP requests.
 
     See import_function.
     """
-    active_app: Optional["modal.app._App"]
-    service_deps: Optional[Sequence["modal._object._Object"]]
-    cls_or_user_cls: typing.Union[type, modal.server.Server]
+    active_app: "modal.app._App | None"
+    service_deps: Sequence["modal._object._Object"] | None
+    cls_or_user_cls: type | modal.server.Server
 
     cls_or_user_cls = typing.cast(
-        typing.Union[type, modal.server.Server],
+        type | modal.server.Server,
         _get_cls_or_user_cls(function_def, ser_user_cls),
     )
 
@@ -702,7 +703,7 @@ def get_active_app_fallback(function_def: api_pb2.Function) -> _App:
     # 1) not serialized, and
     # 2) isn't a FunctionHandle - i.e, not decorated at definition time
     # Look at all instantiated apps - if there is only one with the indicated name, use that one
-    app_name: Optional[str] = function_def.app_name or None  # coalesce protobuf field to None
+    app_name: str | None = function_def.app_name or None  # coalesce protobuf field to None
     matching_apps = _App._all_apps.get(app_name, [])
     if len(matching_apps) == 1:
         active_app: _App = matching_apps[0]

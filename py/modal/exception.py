@@ -37,7 +37,7 @@ UNAUTHENTICATED -> AuthError
 
 import random
 import signal
-from typing import Any, Optional
+from typing import Any
 
 import grpclib
 import synchronicity.exceptions
@@ -82,7 +82,7 @@ class _GRPCErrorWrapper(grpclib.GRPCError):
     _grpc_status: grpclib.Status
     _grpc_details: Any
 
-    def __init__(self, message: Optional[str] = None):
+    def __init__(self, message: str | None = None):
         # Override GRPCError's init and repr to behave more like a regular Exception
         # (We don't customize these anywhere in our custom error types currently).
         self._message = message or ""

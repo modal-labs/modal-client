@@ -16,7 +16,7 @@ import typing
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union, cast
+from typing import cast
 
 import click
 from rich.markdown import Markdown
@@ -126,7 +126,7 @@ class MethodReference:
     method_name: str
 
 
-Runnable = Union[Function, MethodReference, LocalEntrypoint]
+Runnable = Function | MethodReference | LocalEntrypoint
 
 
 @dataclass(frozen=True)
@@ -348,7 +348,7 @@ def import_and_filter(
     accept_local_entrypoint=True,
     accept_webhook=False,
     accept_service_functions=False,
-) -> tuple[Optional[Runnable], list[CLICommand]]:
+) -> tuple[Runnable | None, list[CLICommand]]:
     """Takes a function ref string and returns a single determined "runnable" to use, and a list of all available
     runnables.
 
@@ -384,7 +384,7 @@ def import_and_filter(
 
 def infer_runnable(
     cli_commands: list[CLICommand], object_path: str, accept_local_entrypoint: bool, accept_webhook: bool
-) -> Optional[Runnable]:
+) -> Runnable | None:
     filtered_commands = filter_cli_commands(cli_commands, object_path, accept_local_entrypoint, accept_webhook)
     if len(filtered_commands) == 0:
         return None

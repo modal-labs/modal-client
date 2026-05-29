@@ -3,7 +3,6 @@ import builtins
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Union
 
 from google.protobuf.message import Message
 from synchronicity import classproperty
@@ -31,9 +30,9 @@ class SecretInfo:
     # This dataclass should be limited to information that is unchanging over the lifetime of the Secret,
     # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
 
-    name: Optional[str]
+    name: str | None
     created_at: datetime
-    created_by: Optional[str]
+    created_by: str | None
 
 
 class _SecretManager:
@@ -45,8 +44,8 @@ class _SecretManager:
         env_dict: dict[str, str],  # Key-value pairs to set in the Secret
         *,
         allow_existing: bool = False,  # If True, no-op when the Secret already exists
-        environment_name: Optional[str] = None,  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        environment_name: str | None = None,  # Uses active environment if not specified
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> None:
         """Create a new Secret object.
 
@@ -99,10 +98,10 @@ class _SecretManager:
     async def list(
         self,
         *,
-        max_objects: Optional[int] = None,  # Limit requests to this size
-        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        max_objects: int | None = None,  # Limit requests to this size
+        created_before: datetime | str | None = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> builtins.list["_Secret"]:
         """Return a list of hydrated Secret objects.
 
@@ -169,8 +168,8 @@ class _SecretManager:
         name: str,  # Name of the Secret to delete
         *,
         allow_missing: bool = False,  # If True, don't raise an error if the Secret doesn't exist
-        environment_name: Optional[str] = None,  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        environment_name: str | None = None,  # Uses active environment if not specified
+        client: _Client | None = None,  # Optional client with Modal credentials
     ):
         """Delete a named Secret.
 
@@ -234,7 +233,7 @@ class _Secret(_Object, type_prefix="st"):
     See [the secrets guide page](https://modal.com/docs/guide/secrets) for more information.
     """
 
-    _metadata: Optional[api_pb2.SecretMetadata] = None
+    _metadata: api_pb2.SecretMetadata | None = None
 
     @classproperty
     @classmethod
@@ -242,10 +241,10 @@ class _Secret(_Object, type_prefix="st"):
         return _SecretManager()
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         return self._name
 
-    def _hydrate_metadata(self, metadata: Optional[Message]):
+    def _hydrate_metadata(self, metadata: Message | None):
         if metadata:
             assert isinstance(metadata, api_pb2.SecretMetadata)
             self._metadata = metadata
@@ -258,7 +257,7 @@ class _Secret(_Object, type_prefix="st"):
     @staticmethod
     def from_dict(
         env_dict: dict[
-            str, Optional[str]
+            str, str | None
         ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
     ) -> "_Secret":
         """Create a secret from a str-str dictionary. Values can also be `None`, which is ignored.
@@ -279,9 +278,7 @@ class _Secret(_Object, type_prefix="st"):
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        async def _load(
-            self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             await _load_from_env_dict(self, load_context, env_dict_filtered)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
@@ -306,7 +303,7 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret.from_dict({})
 
     @staticmethod
-    def from_dotenv(path=None, *, filename=".env", client: Optional[_Client] = None) -> "_Secret":
+    def from_dotenv(path=None, *, filename=".env", client: _Client | None = None) -> "_Secret":
         """Create secrets from a .env file automatically.
 
         If no argument is provided, it will use the current working directory as the starting
@@ -334,9 +331,7 @@ class _Secret(_Object, type_prefix="st"):
         ```
         """
 
-        async def _load(
-            self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             try:
                 from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
@@ -372,9 +367,9 @@ class _Secret(_Object, type_prefix="st"):
     def from_name(
         name: str,
         *,
-        environment_name: Optional[str] = None,
+        environment_name: str | None = None,
         required_keys: list[str] = [],  # Optional list of required environment variables (asserted server-side)
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
     ) -> "_Secret":
         """Reference a Secret by its name.
 
@@ -387,9 +382,7 @@ class _Secret(_Object, type_prefix="st"):
         ```
         """
 
-        async def _load(
-            self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=load_context.environment_name,
@@ -413,8 +406,8 @@ class _Secret(_Object, type_prefix="st"):
         deployment_name: str,
         env_dict: dict[str, str],
         namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
         overwrite: bool = False,
     ) -> str:
         """mdmd:hidden"""
@@ -429,8 +422,8 @@ class _Secret(_Object, type_prefix="st"):
     async def _create_deployed(
         deployment_name: str,
         env_dict: dict[str, str],
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
         overwrite: bool = False,
     ) -> str:
         """mdmd:hidden"""

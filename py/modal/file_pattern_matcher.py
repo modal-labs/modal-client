@@ -11,15 +11,15 @@ then asking it whether file paths match any of its patterns.
 
 import os
 from abc import abstractmethod
+from collections.abc import Callable, Sequence
 from functools import cached_property
 from pathlib import Path
-from typing import Callable, Optional, Sequence, Union
 
 from ._utils.pattern_utils import Pattern
 
 
 class _AbstractPatternMatcher:
-    _custom_repr: Optional[str] = None
+    _custom_repr: str | None = None
 
     def __invert__(self) -> "_AbstractPatternMatcher":
         """Invert the filter. Returns a function that returns True if the path does not match any of the patterns.
@@ -100,8 +100,8 @@ class FilePatternMatcher(_AbstractPatternMatcher):
     ```
     """
 
-    _file_path: Optional[Union[str, Path]]
-    _pattern_strings: Optional[Sequence[str]]
+    _file_path: str | Path | None
+    _pattern_strings: Sequence[str] | None
 
     def _parse_patterns(self, patterns: Sequence[str]) -> list[Pattern]:
         parsed_patterns = []
@@ -135,7 +135,7 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         self._file_path = None
 
     @classmethod
-    def from_file(cls, file_path: Union[str, Path]) -> "FilePatternMatcher":
+    def from_file(cls, file_path: str | Path) -> "FilePatternMatcher":
         """Initialize a new FilePatternMatcher instance from a file.
 
         The patterns in the file will be read lazily when the matcher is first used.
@@ -225,7 +225,7 @@ NON_PYTHON_FILES = (~FilePatternMatcher("**/*.py"))._with_repr(f"{__name__}.NON_
 _NOTHING = (~FilePatternMatcher())._with_repr(f"{__name__}._NOTHING")  # match everything = ignore nothing
 
 
-def _ignore_fn(ignore: Union[Sequence[str], Callable[[Path], bool]]) -> Callable[[Path], bool]:
+def _ignore_fn(ignore: Sequence[str] | Callable[[Path], bool]) -> Callable[[Path], bool]:
     # if a callable is passed, return it
     # otherwise, treat input as a sequence of patterns and return a callable pattern matcher for those
     if callable(ignore):

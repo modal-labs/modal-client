@@ -6,7 +6,6 @@ Unit tests for task command router client.
 import asyncio
 import pytest
 import time
-from typing import List, Optional
 from unittest.mock import AsyncMock
 
 import pytest_asyncio
@@ -20,7 +19,7 @@ from modal.exception import AuthError, ExecTimeoutError, ServiceError, TimeoutEr
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
 
-def _start_index_for_offset(pieces: List[bytes], offset: int) -> int:
+def _start_index_for_offset(pieces: list[bytes], offset: int) -> int:
     """Return the index of the piece that starts at the given byte offset."""
     total = 0
     for idx, p in enumerate(pieces):
@@ -37,7 +36,7 @@ class _UnaryStreamMethod:
         self._open_fn = open_fn
         self._metadata = None
 
-    def open(self, timeout: Optional[float] = None, metadata: Optional[dict] = None):  # match grpclib signature
+    def open(self, timeout: float | None = None, metadata: dict | None = None):  # match grpclib signature
         self._metadata = metadata
         return self._open_fn(timeout)
 
@@ -60,10 +59,10 @@ async def make_router_client():
         task_id: str = "sb-1",
         server_url: str = "https://router.test",
         jwt: str = "t",
-        channel: Optional[Channel] = None,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
-        jwt_refresh_lock: Optional[asyncio.Lock] = None,
-        sandbox_id: Optional[str] = None,
+        channel: Channel | None = None,
+        loop: asyncio.AbstractEventLoop | None = None,
+        jwt_refresh_lock: asyncio.Lock | None = None,
+        sandbox_id: str | None = None,
         stream_stdio_retry_delay_secs: float = 0.01,
         stream_stdio_retry_delay_factor: float = 2,
         stream_stdio_max_retries: int = 10,
@@ -105,7 +104,7 @@ async def test_exec_stdio_read_streams_stdout_batches(make_router_client):
     client = make_router_client()
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
             self._idx = 0
 
@@ -128,13 +127,13 @@ async def test_exec_stdio_read_streams_stdout_batches(make_router_client):
             self._idx += 1
             return sr_pb2.TaskExecStdioReadResponse(data=data)
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         return _Stream(timeout)
 
     fake_stub = _Stub(_open)
     client._stub = fake_stub  # type: ignore[assignment]
 
-    out: List[bytes] = []
+    out: list[bytes] = []
     async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
         out.append(item.data)
 
@@ -152,10 +151,10 @@ async def test_exec_stdio_read_auth_retry_resumes_from_correct_offset(make_route
     num_attempts_made = 0
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
             self._emitted = 0
-            self._last_req: Optional[sr_pb2.TaskExecStdioReadRequest] = None
+            self._last_req: sr_pb2.TaskExecStdioReadRequest | None = None
 
         async def __aenter__(self):
             return self
@@ -184,7 +183,7 @@ async def test_exec_stdio_read_auth_retry_resumes_from_correct_offset(make_route
             self._emitted += 1
             return sr_pb2.TaskExecStdioReadResponse(data=pieces[next_idx])
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         nonlocal num_attempts_made
         num_attempts_made += 1
         return _Stream(timeout)
@@ -201,7 +200,7 @@ async def test_exec_stdio_read_auth_retry_resumes_from_correct_offset(make_route
     client._refresh_jwt = _refresh_jwt  # type: ignore[assignment]
     client._stub = fake_stub  # type: ignore[assignment]
 
-    out: List[bytes] = []
+    out: list[bytes] = []
     async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
         out.append(item.data)
 
@@ -220,10 +219,10 @@ async def test_exec_stdio_read_auth_retry_on_receive(make_router_client):
     num_attempts_made = 0
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
             self._emitted = 0
-            self._last_req: Optional[sr_pb2.TaskExecStdioReadRequest] = None
+            self._last_req: sr_pb2.TaskExecStdioReadRequest | None = None
 
         async def __aenter__(self):
             return self
@@ -249,7 +248,7 @@ async def test_exec_stdio_read_auth_retry_on_receive(make_router_client):
             self._emitted += 1
             return sr_pb2.TaskExecStdioReadResponse(data=pieces[next_idx])
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         nonlocal num_attempts_made
         num_attempts_made += 1
         return _Stream(timeout)
@@ -264,7 +263,7 @@ async def test_exec_stdio_read_auth_retry_on_receive(make_router_client):
     client._refresh_jwt = _refresh_jwt  # type: ignore[assignment]
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
-    out: List[bytes] = []
+    out: list[bytes] = []
     async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
         out.append(item.data)
 
@@ -282,10 +281,10 @@ async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset
     num_attempts_made = 0
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
             self._emitted = 0
-            self._last_req: Optional[sr_pb2.TaskExecStdioReadRequest] = None
+            self._last_req: sr_pb2.TaskExecStdioReadRequest | None = None
 
         async def __aenter__(self):
             return self
@@ -310,14 +309,14 @@ async def test_exec_stdio_read_transient_error_retry_resumes_from_correct_offset
             self._emitted += 1
             return sr_pb2.TaskExecStdioReadResponse(data=pieces[next_idx])
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         nonlocal num_attempts_made
         num_attempts_made += 1
         return _Stream(timeout)
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
-    out: List[bytes] = []
+    out: list[bytes] = []
     async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
         out.append(item.data)
 
@@ -333,9 +332,9 @@ async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(make_router_cl
     num_attempts_made = 0
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
-            self._last_req: Optional[sr_pb2.TaskExecStdioReadRequest] = None
+            self._last_req: sr_pb2.TaskExecStdioReadRequest | None = None
 
         async def __aenter__(self):
             return self
@@ -354,7 +353,7 @@ async def test_exec_stdio_read_auth_fails_twice_raises_auth_error(make_router_cl
         async def __anext__(self):
             raise StopAsyncIteration
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         nonlocal num_attempts_made
         num_attempts_made += 1
         return _Stream(timeout)
@@ -386,7 +385,7 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(make_router_
     )
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
 
         async def __aenter__(self):
@@ -404,7 +403,7 @@ async def test_exec_stdio_read_unavailable_forever_raises_grpcerror(make_router_
         async def __anext__(self):
             raise GRPCError(Status.UNAVAILABLE, "unavailable")
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         return _Stream(timeout)
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
@@ -423,7 +422,7 @@ async def test_exec_stdio_read_open_raises_once_then_succeeds(make_router_client
     raised = False
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
             self._emitted = False
 
@@ -445,7 +444,7 @@ async def test_exec_stdio_read_open_raises_once_then_succeeds(make_router_client
             self._emitted = True
             return sr_pb2.TaskExecStdioReadResponse(data=pieces[0])
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         nonlocal raised
         if not raised:
             raised = True
@@ -454,7 +453,7 @@ async def test_exec_stdio_read_open_raises_once_then_succeeds(make_router_client
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
 
-    out: List[bytes] = []
+    out: list[bytes] = []
     async for item in client.exec_stdio_read("task-1", "exec-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
         out.append(item.data)
     assert out == pieces
@@ -465,7 +464,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_send_raises_exec_timeout_err
     client = make_router_client()
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
 
         async def __aenter__(self):
@@ -485,7 +484,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_send_raises_exec_timeout_err
         async def __anext__(self):
             raise StopAsyncIteration
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         return _Stream(timeout)
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
@@ -501,7 +500,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_first_item_raises_exec_timeo
     client = make_router_client()
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
             self._sent_first = False
 
@@ -525,7 +524,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_first_item_raises_exec_timeo
                 raise asyncio.TimeoutError()
             raise StopAsyncIteration
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         return _Stream(timeout)
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
@@ -564,7 +563,7 @@ async def test_exec_stdio_read_deadline_respected_on_attribute_error(make_router
         async def __anext__(self):
             raise AttributeError("_write_appdata")
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         return _Stream()
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
@@ -610,7 +609,7 @@ async def test_exec_stdio_read_deadline_respected_on_stream_terminated_error(mak
         async def __anext__(self):
             raise StreamTerminatedError("closed")
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         return _Stream()
 
     mock_sleep = AsyncMock()
@@ -655,7 +654,7 @@ async def test_exec_stdio_read_deadline_respected_on_oserror(make_router_client,
         async def __anext__(self):
             raise OSError("network down")
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         return _Stream()
 
     client._stub = _Stub(_open)  # type: ignore[assignment]
@@ -683,7 +682,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
     open_timeout = None
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
 
         async def __aenter__(self):
@@ -708,7 +707,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
         async def __anext__(self):
             raise StopAsyncIteration
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         nonlocal open_timeout
         open_timeout = timeout
         return _Stream(timeout)
@@ -730,7 +729,7 @@ async def test_exec_stdio_read_deadline_exceeded_on_open_raises_exec_timeout_err
 async def test_exec_wait_succeeds_after_auth_retry(make_router_client):
     client = make_router_client()
 
-    calls: List[tuple[sr_pb2.TaskExecWaitRequest, Optional[float], Optional[dict]]] = []
+    calls: list[tuple[sr_pb2.TaskExecWaitRequest, float | None, dict | None]] = []
 
     class _WaitMethod:
         def __init__(self):
@@ -740,8 +739,8 @@ async def test_exec_wait_succeeds_after_auth_retry(make_router_client):
             self,
             request: sr_pb2.TaskExecWaitRequest,
             *,
-            timeout: Optional[float] = None,
-            metadata: Optional[dict] = None,
+            timeout: float | None = None,
+            metadata: dict | None = None,
         ):
             calls.append((request, timeout, metadata))
             if self._first:
@@ -792,7 +791,7 @@ async def test_non_snapshot_cancelled_raises_service_error(make_router_client, m
             self,
             request: sr_pb2.TaskContainerGetRequest,
             *,
-            metadata: Optional[dict] = None,
+            metadata: dict | None = None,
         ):
             nonlocal attempts
             attempts += 1
@@ -821,8 +820,8 @@ async def test_snapshot_filesystem_grpclib_timeout_raises_timeout_error(make_rou
             self,
             request: sr_pb2.TaskSnapshotFilesystemRequest,
             *,
-            timeout: Optional[float] = None,
-            metadata: Optional[dict] = None,
+            timeout: float | None = None,
+            metadata: dict | None = None,
         ):
             nonlocal attempts
             attempts += 1
@@ -851,8 +850,8 @@ async def test_snapshot_filesystem_cancelled_after_deadline_raises_timeout_error
             self,
             request: sr_pb2.TaskSnapshotFilesystemRequest,
             *,
-            timeout: Optional[float] = None,
-            metadata: Optional[dict] = None,
+            timeout: float | None = None,
+            metadata: dict | None = None,
         ):
             nonlocal attempts
             attempts += 1
@@ -881,8 +880,8 @@ async def test_snapshot_filesystem_deadline_exceeded_after_deadline_raises_timeo
             self,
             request: sr_pb2.TaskSnapshotFilesystemRequest,
             *,
-            timeout: Optional[float] = None,
-            metadata: Optional[dict] = None,
+            timeout: float | None = None,
+            metadata: dict | None = None,
         ):
             nonlocal attempts
             attempts += 1
@@ -911,8 +910,8 @@ async def test_snapshot_filesystem_cancelled_before_deadline_propagates_original
             self,
             request: sr_pb2.TaskSnapshotFilesystemRequest,
             *,
-            timeout: Optional[float] = None,
-            metadata: Optional[dict] = None,
+            timeout: float | None = None,
+            metadata: dict | None = None,
         ):
             nonlocal attempts
             attempts += 1
@@ -938,8 +937,8 @@ async def test_snapshot_filesystem_internal_retries_and_succeeds(make_router_cli
             self,
             request: sr_pb2.TaskSnapshotFilesystemRequest,
             *,
-            timeout: Optional[float] = None,
-            metadata: Optional[dict] = None,
+            timeout: float | None = None,
+            metadata: dict | None = None,
         ):
             nonlocal attempts
             attempts += 1
@@ -970,8 +969,8 @@ async def test_snapshot_filesystem_retry_uses_remaining_deadline(make_router_cli
             self,
             request: sr_pb2.TaskSnapshotFilesystemRequest,
             *,
-            timeout: Optional[float] = None,
-            metadata: Optional[dict] = None,
+            timeout: float | None = None,
+            metadata: dict | None = None,
         ):
             assert timeout is not None
             per_call_timeouts.append(timeout)
@@ -1005,8 +1004,8 @@ async def test_snapshot_filesystem_deadline_aborts_retries(make_router_client, m
             self,
             request: sr_pb2.TaskSnapshotFilesystemRequest,
             *,
-            timeout: Optional[float] = None,
-            metadata: Optional[dict] = None,
+            timeout: float | None = None,
+            metadata: dict | None = None,
         ):
             nonlocal attempts
             attempts += 1
@@ -1037,13 +1036,13 @@ async def test_sandbox_stdio_read_rebases_offset_on_transient_retry(make_router_
     client = make_router_client()
 
     num_attempts_made = 0
-    second_request_offset: Optional[int] = None
+    second_request_offset: int | None = None
 
     class _Stream:
-        def __init__(self, timeout: Optional[float]):
+        def __init__(self, timeout: float | None):
             self._timeout = timeout
             self._emitted = 0
-            self._last_req: Optional[sr_pb2.SandboxStdioReadV2Request] = None
+            self._last_req: sr_pb2.SandboxStdioReadV2Request | None = None
 
         async def __aenter__(self):
             return self
@@ -1071,14 +1070,14 @@ async def test_sandbox_stdio_read_rebases_offset_on_transient_retry(make_router_
                 return sr_pb2.SandboxStdioReadV2Response(data=b"def", starting_offset=1003)
             raise StopAsyncIteration
 
-    def _open(timeout: Optional[float] = None):
+    def _open(timeout: float | None = None):
         nonlocal num_attempts_made
         num_attempts_made += 1
         return _Stream(timeout)
 
     client._stub = _SandboxStdioReadV2Stub(_open)  # type: ignore[assignment]
 
-    out: List[bytes] = []
+    out: list[bytes] = []
     async for item in client.sandbox_stdio_read("task-1", api_pb2.FILE_DESCRIPTOR_STDOUT):
         out.append(item.data)
 

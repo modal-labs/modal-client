@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2026
-from typing import Optional
 
 import click
 
@@ -16,7 +15,7 @@ from ._help import ModalCommand
 @click.argument("object_id", default=None, required=False)
 @synchronizer.create_blocking
 async def dashboard(
-    object_id: Optional[str] = None,
+    object_id: str | None = None,
 ):
     """Open the Modal Dashboard in a web browser."""
     if object_id:

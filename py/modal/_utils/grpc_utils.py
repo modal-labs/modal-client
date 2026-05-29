@@ -8,10 +8,10 @@ import time
 import typing
 import urllib.parse
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from functools import cache
-from typing import Any, Optional, Sequence, TypeVar
+from typing import Any, Optional, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -97,7 +97,7 @@ DEFAULT_MAX_RETRIES = 3
 class RetryWarningMessage:
     message: str
     warning_interval: int
-    errors_to_warn_for: typing.List[Status]
+    errors_to_warn_for: list[Status]
 
 
 class ConnectionManager:
@@ -146,8 +146,8 @@ class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
     def encode(
         self,
         status: Status,
-        message: Optional[str],
-        details: Optional[Sequence[Message]],
+        message: str | None,
+        details: Sequence[Message] | None,
     ) -> bytes:
         details_proto = api_pb2.RPCStatus(code=status.value, message=message or "")
         if details is not None:
@@ -159,7 +159,7 @@ class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
     def decode(
         self,
         status: Status,
-        message: Optional[str],
+        message: str | None,
         data: bytes,
     ) -> Any:
         sym_db = _sym_db()
@@ -241,7 +241,7 @@ if typing.TYPE_CHECKING:
 async def unary_stream(
     method: "modal._grpc_client.UnaryStreamWrapper[RequestType, ResponseType]",
     request: RequestType,
-    metadata: Optional[Any] = None,
+    metadata: Any | None = None,
 ) -> AsyncIterator[ResponseType]:
     # TODO: remove this, since we have a method now
     async for item in method.unary_stream(request, metadata):
@@ -253,18 +253,18 @@ class Retry:
     base_delay: float = 0.1
     max_delay: float = 1
     delay_factor: float = 2
-    max_retries: Optional[int] = DEFAULT_MAX_RETRIES
+    max_retries: int | None = DEFAULT_MAX_RETRIES
     additional_status_codes: list = field(default_factory=list)
-    attempt_timeout: Optional[float] = None  # timeout for each attempt
-    total_timeout: Optional[float] = None  # timeout for the entire function call
+    attempt_timeout: float | None = None  # timeout for each attempt
+    total_timeout: float | None = None  # timeout for the entire function call
     attempt_timeout_floor: float = 2.0  # always have at least this much timeout (only for total_timeout)
-    warning_message: Optional[RetryWarningMessage] = None
+    warning_message: RetryWarningMessage | None = None
 
 
 async def retry_transient_errors(
     fn: "grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]",
     req: RequestType,
-    max_retries: Optional[int] = DEFAULT_MAX_RETRIES,
+    max_retries: int | None = DEFAULT_MAX_RETRIES,
 ) -> ResponseType:
     """Minimum API version of _retry_transient_errors that works with grpclib.client.UnaryUnaryMethod.
 
@@ -273,7 +273,7 @@ async def retry_transient_errors(
     return await _retry_transient_errors(fn, req, retry=Retry(max_retries=max_retries))
 
 
-def get_server_retry_policy(exc: Exception) -> Optional[api_pb2.RPCRetryPolicy]:
+def get_server_retry_policy(exc: Exception) -> api_pb2.RPCRetryPolicy | None:
     """Get server retry policy."""
     if not isinstance(exc, GRPCError) or not exc.details:
         return None
@@ -329,7 +329,7 @@ async def _retry_transient_errors(
     ],
     req: RequestType,
     retry: Retry,
-    metadata: Optional[list[tuple[str, str]]] = None,
+    metadata: list[tuple[str, str]] | None = None,
 ) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
@@ -397,7 +397,7 @@ async def _retry_transient_errors(
             # in grpclib<=0.4.7. See above (search for `write_appdata`).
 
             # Server side instruction for retries
-            max_throttle_wait: Optional[int] = config.get("max_throttle_wait")
+            max_throttle_wait: int | None = config.get("max_throttle_wait")
             if (
                 max_throttle_wait != 0
                 and isinstance(exc, GRPCError)
@@ -495,7 +495,7 @@ def find_free_port() -> int:
         return s.getsockname()[1]
 
 
-def get_proto_oneof(message: Message, oneof_group: str) -> Optional[Message]:
+def get_proto_oneof(message: Message, oneof_group: str) -> Message | None:
     oneof_field = message.WhichOneof(oneof_group)
     if oneof_field is None:
         return None

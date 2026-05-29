@@ -6,7 +6,7 @@ import sys
 import urllib.parse
 import warnings
 from collections.abc import AsyncGenerator, Collection, Mapping
-from typing import Any, ClassVar, Optional, TypeVar, Union
+from typing import Any, ClassVar, TypeVar
 
 import grpclib.client
 from google.protobuf import empty_pb2
@@ -29,7 +29,7 @@ HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
 
 
-def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], version: str) -> dict[str, str]:
+def _get_metadata(client_type: int, credentials: tuple[str, str] | None, version: str) -> dict[str, str]:
     # This implements a simplified version of platform.platform() that's still machine-readable
     uname: platform.uname_result = platform.uname()
     if uname.system == "Darwin":
@@ -62,28 +62,28 @@ def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], vers
 
 
 ReturnType = TypeVar("ReturnType")
-_Value = Union[str, bytes]
-_MetadataLike = Union[Mapping[str, _Value], Collection[tuple[str, _Value]]]
+_Value = str | bytes
+_MetadataLike = Mapping[str, _Value] | Collection[tuple[str, _Value]]
 RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
 
 
 class _Client:
-    _client_from_env: ClassVar[Optional["_Client"]] = None
-    _client_from_env_lock: ClassVar[Optional[asyncio.Lock]] = None
+    _client_from_env: ClassVar["_Client | None"] = None
+    _client_from_env_lock: ClassVar[asyncio.Lock | None] = None
     _cancellation_context: TaskContext
-    _cancellation_context_event_loop: Optional[asyncio.AbstractEventLoop] = None
-    _stub: Optional[modal_api_grpc.ModalClientModal] = None
-    _auth_token_manager: Optional[_AuthTokenManager] = None
+    _cancellation_context_event_loop: asyncio.AbstractEventLoop | None = None
+    _stub: modal_api_grpc.ModalClientModal | None = None
+    _auth_token_manager: _AuthTokenManager | None = None
     _snapshotted: bool = False
-    _connection_manager: Optional[ConnectionManager] = None
+    _connection_manager: ConnectionManager | None = None
     client_type: "api_pb2.ClientType.ValueType"
 
     def __init__(
         self,
         server_url: str,
         client_type: "api_pb2.ClientType.ValueType",
-        credentials: Optional[tuple[str, str]],
+        credentials: tuple[str, str] | None,
         version: str = __version__,
     ):
         """mdmd:hidden
@@ -198,7 +198,7 @@ class _Client:
         else:
             c = config
 
-        credentials: Optional[tuple[str, str]]
+        credentials: tuple[str, str] | None
 
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
@@ -269,7 +269,7 @@ class _Client:
             await client.hello()  # Will call ClientHello RPC and possibly raise AuthError or ConnectionError
 
     @classmethod
-    def set_env_client(cls, client: Optional["_Client"]):
+    def set_env_client(cls, client: "_Client | None"):
         """mdmd:hidden"""
         # Just used from tests.
         cls._client_from_env = client
@@ -340,8 +340,8 @@ class _Client:
         grpclib_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
         request: Any,
         *,
-        timeout: Optional[float] = None,
-        metadata: Optional[_MetadataLike] = None,
+        timeout: float | None = None,
+        metadata: _MetadataLike | None = None,
     ) -> Any:
         coro = grpclib_method(request, timeout=timeout, metadata=metadata)
         return await self._call_safely(coro, grpclib_method.name)
@@ -352,7 +352,7 @@ class _Client:
         grpclib_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType],
         request: Any,
         *,
-        metadata: Optional[_MetadataLike],
+        metadata: _MetadataLike | None,
     ) -> AsyncGenerator[Any, None]:
         stream_context = grpclib_method.open(metadata=metadata)
         stream = await self._call_safely(stream_context.__aenter__(), f"{grpclib_method.name}.open")

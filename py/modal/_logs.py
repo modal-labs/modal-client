@@ -5,7 +5,7 @@ import asyncio
 import dataclasses
 from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -149,7 +149,7 @@ def _build_fetch_intervals(
     next range would push the interval over _FETCH_LIMIT.
     """
     intervals: list[tuple[float, float]] = []
-    current_start: Optional[float] = None
+    current_start: float | None = None
     current_end: float = 0.0
     current_count = 0
 
@@ -185,7 +185,7 @@ def _build_fetch_intervals(
     return intervals
 
 
-def _next_smaller_bucket_secs(current_bucket_secs: int) -> Optional[int]:
+def _next_smaller_bucket_secs(current_bucket_secs: int) -> int | None:
     """Return the next smaller bucket size, or None if already at the smallest."""
     for size in reversed(_BUCKET_SIZES_SECS):
         if size < current_bucket_secs:
@@ -314,9 +314,9 @@ async def tail_logs(
     app_id: str,
     n: int,
     *,
-    since: Optional[datetime] = None,
-    until: Optional[datetime] = None,
-    filters: Optional[LogsFilters] = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    filters: LogsFilters | None = None,
 ) -> AsyncGenerator[api_pb2.TaskLogsBatch]:
     """Fetch up to `n` of the most recent log entries for an app.
 
@@ -394,7 +394,7 @@ async def fetch_logs(
     since: datetime,
     until: datetime,
     *,
-    filters: Optional[LogsFilters] = None,
+    filters: LogsFilters | None = None,
 ) -> AsyncGenerator[api_pb2.TaskLogsBatch]:
     """Fetch logs for an app over a time range using count-then-fetch strategy.
 

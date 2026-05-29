@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2024
-from typing import Optional
 
 from modal_proto import api_pb2
 
@@ -21,8 +20,8 @@ class _Proxy(_Object, type_prefix="pr"):
     def from_name(
         name: str,
         *,
-        environment_name: Optional[str] = None,
-        client: Optional[_Client] = None,
+        environment_name: str | None = None,
+        client: _Client | None = None,
     ) -> "_Proxy":
         """Reference a Proxy by its name.
 
@@ -31,7 +30,7 @@ class _Proxy(_Object, type_prefix="pr"):
 
         """
 
-        async def _load(self: _Proxy, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+        async def _load(self: _Proxy, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.ProxyGetRequest(
                 name=name,
                 environment_name=load_context.environment_name,

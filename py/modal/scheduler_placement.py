@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2024
 from collections.abc import Sequence
-from typing import Optional, Union
 
 from modal_proto import api_pb2
 
@@ -12,13 +11,13 @@ class SchedulerPlacement:
 
     def __init__(
         self,
-        region: Optional[Union[str, Sequence[str]]] = None,
-        zone: Optional[str] = None,
-        spot: Optional[bool] = None,
-        instance_type: Optional[Union[str, Sequence[str]]] = None,
+        region: str | Sequence[str] | None = None,
+        zone: str | None = None,
+        spot: bool | None = None,
+        instance_type: str | Sequence[str] | None = None,
     ):
         """mdmd:hidden"""
-        _lifecycle: Optional[str] = None
+        _lifecycle: str | None = None
         if spot is not None:
             _lifecycle = "spot" if spot else "on-demand"
 

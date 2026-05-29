@@ -4,19 +4,18 @@ import pathlib
 import signal
 import subprocess
 import sys
-from typing import Optional
 
 
 def deploy_app_externally(
     servicer,
     credentials: tuple[str, str],
     file_or_module: str,
-    app_variable: Optional[str] = None,
+    app_variable: str | None = None,
     deployment_name="Deployment",
     cwd=None,
     env={},
     capture_output=True,
-) -> Optional[str]:
+) -> str | None:
     # deploys an app from another interpreter to prevent leaking state from client into a container process
     # (apart from what goes through the servicer) also has the advantage that no modules imported by the
     # test files themselves will be added to sys.modules and included in mounts etc.

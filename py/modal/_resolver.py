@@ -4,7 +4,6 @@ import os
 import tempfile
 from asyncio import Future
 from collections.abc import Hashable
-from typing import Optional
 
 import modal._object
 from modal._traceback import suppress_tb_frame
@@ -31,7 +30,7 @@ class Resolver:
         return self._build_start
 
     async def preload(
-        self, obj: "modal._object._Object", parent_load_context: "LoadContext", existing_object_id: Optional[str]
+        self, obj: "modal._object._Object", parent_load_context: "LoadContext", existing_object_id: str | None
     ):
         if obj._preload is not None:
             load_context = obj._load_context_overrides.merged_with(parent_load_context)
@@ -42,7 +41,7 @@ class Resolver:
         obj: "modal._object._Object",
         parent_load_context: "LoadContext",
         *,
-        existing_object_id: Optional[str] = None,
+        existing_object_id: str | None = None,
     ):
         if obj._is_hydrated and obj._skip_reload:
             if obj.local_uuid not in self._local_uuid_to_future:
@@ -53,7 +52,7 @@ class Resolver:
                 self._local_uuid_to_future[obj.local_uuid] = fut
             return obj
 
-        deduplication_key: Optional[Hashable] = None
+        deduplication_key: Hashable | None = None
         if obj._deduplication_key:
             deduplication_key = await obj._deduplication_key()
 

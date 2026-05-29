@@ -4,16 +4,16 @@
 import inspect
 import typing
 import warnings
+from collections.abc import Callable
 from enum import Enum, EnumMeta
 from types import ModuleType
-from typing import Callable, Optional
 
 import synchronicity.synchronizer
 
 from .signatures import get_signature
 
 
-def format_docstring(docstring: Optional[str]) -> str:
+def format_docstring(docstring: str | None) -> str:
     if docstring is None:
         docstring = ""
     else:
@@ -74,7 +74,7 @@ def _typeddict_str(name, obj) -> str:
     return "".join(parts)
 
 
-def class_str(name, obj, title_level="##", decl_override: Optional[str] = None, member_prefix: str = ""):
+def class_str(name, obj, title_level="##", decl_override: str | None = None, member_prefix: str = ""):
     def qual_name(cls):
         if cls.__module__ == "builtins":
             return cls.__name__

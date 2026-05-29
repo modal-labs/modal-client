@@ -50,7 +50,7 @@ class ALifecycle:
 
 
 @app.local_entrypoint()
-def optional_arg(i: Optional[int] = None):
+def optional_arg(i: int | None = None):
     print(repr(i), type(i))
 
 
@@ -65,12 +65,12 @@ def optional_arg_postponed(i: "Optional[int]" = None):
 
 
 @app.function()
-def optional_arg_fn(i: Optional[int] = None):
+def optional_arg_fn(i: int | None = None):
     print(repr(i), type(i))
 
 
 @app.local_entrypoint()
-def unparseable_annot(i: typing.Union[int, str]):
+def unparseable_annot(i: int | str):
     pass
 
 

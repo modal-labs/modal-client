@@ -3,14 +3,15 @@ import base64
 import dataclasses
 import hashlib
 import time
-from typing import BinaryIO, Callable, Optional, Sequence, Union
+from collections.abc import Callable, Sequence
+from typing import BinaryIO
 
 from modal.config import logger
 
 HASH_CHUNK_SIZE = 65536
 
 
-def _update(hashers: Sequence[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
+def _update(hashers: Sequence[Callable[[bytes], None]], data: bytes | BinaryIO) -> None:
     if isinstance(data, bytes):
         for hasher in hashers:
             hasher(data)
@@ -28,7 +29,7 @@ def _update(hashers: Sequence[Callable[[bytes], None]], data: Union[bytes, Binar
         data.seek(pos)
 
 
-def get_sha256_hex(data: Union[bytes, BinaryIO]) -> str:
+def get_sha256_hex(data: bytes | BinaryIO) -> str:
     t0 = time.monotonic()
     hasher = hashlib.sha256()
     _update([hasher.update], data)
@@ -36,7 +37,7 @@ def get_sha256_hex(data: Union[bytes, BinaryIO]) -> str:
     return hasher.hexdigest()
 
 
-def get_sha256_base64(data: Union[bytes, BinaryIO]) -> str:
+def get_sha256_base64(data: bytes | BinaryIO) -> str:
     t0 = time.monotonic()
     hasher = hashlib.sha256()
     _update([hasher.update], data)
@@ -44,7 +45,7 @@ def get_sha256_base64(data: Union[bytes, BinaryIO]) -> str:
     return base64.b64encode(hasher.digest()).decode("ascii")
 
 
-def get_md5_base64(data: Union[bytes, BinaryIO]) -> str:
+def get_md5_base64(data: bytes | BinaryIO) -> str:
     t0 = time.monotonic()
     hasher = hashlib.md5()
     _update([hasher.update], data)
@@ -65,7 +66,7 @@ class UploadHashes:
 
 
 def get_upload_hashes(
-    data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = None, md5_hex: Optional[str] = None
+    data: bytes | BinaryIO, sha256_hex: str | None = None, md5_hex: str | None = None
 ) -> UploadHashes:
     t0 = time.monotonic()
     hashers = {}

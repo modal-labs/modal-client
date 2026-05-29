@@ -7,16 +7,14 @@ import shlex
 import sys
 import typing
 import warnings
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import (
     Any,
-    Callable,
+    Concatenate,
     Literal,
-    Optional,
-    Union,
     cast,
     get_args,
 )
@@ -24,7 +22,7 @@ from typing import (
 import typing_extensions
 from google.protobuf.message import Message
 from grpclib.exceptions import StreamTerminatedError
-from typing_extensions import Concatenate, Self
+from typing_extensions import Self
 
 from modal._serialization import serialize_data_format
 from modal_proto import api_pb2
@@ -105,7 +103,7 @@ P = typing_extensions.ParamSpec("P")
 
 
 def _validate_python_version(
-    python_version: Optional[str],
+    python_version: str | None,
     builder_version: ImageBuilderVersion,
     allow_micro_granularity: bool = True,
     allow_free_threading: bool = False,
@@ -143,7 +141,7 @@ def _validate_python_version(
 
 def _dockerhub_python_version(
     builder_version: ImageBuilderVersion,
-    python_version: Optional[str] = None,
+    python_version: str | None = None,
     allow_free_threading: bool = False,
     caller_name: str = "",
 ) -> str:
@@ -172,7 +170,7 @@ def _base_image_config(group: str, builder_version: ImageBuilderVersion) -> Any:
     return data[group][builder_version]
 
 
-def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
+def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_version: str | None = None) -> str:
     # When we added Python 3.12 support, we needed to update a few dependencies but did not yet
     # support versioned builds, so we put them in a separate 3.12-specific requirements file.
     # When the python_version is not specified in the Image API, we fall back to the local version.
@@ -196,7 +194,7 @@ def _get_modal_requirements_command(version: ImageBuilderVersion) -> str:
     return f"{prefix} -r {CONTAINER_REQUIREMENTS_PATH}"
 
 
-def _flatten_str_args(function_name: str, arg_name: str, args: Sequence[Union[str, list[str]]]) -> list[str]:
+def _flatten_str_args(function_name: str, arg_name: str, args: Sequence[str | list[str]]) -> list[str]:
     """Takes a sequence of strings, or string lists, and flattens it.
 
     Raises an error if any of the elements are not strings or string lists.
@@ -222,9 +220,9 @@ def _validate_packages(packages: list[str]) -> bool:
 
 
 def _make_pip_install_args(
-    find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
-    index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
-    extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+    find_links: str | None = None,  # Passes -f (--find-links) pip install
+    index_url: str | None = None,  # Passes -i (--index-url) to pip install
+    extra_index_url: str | None = None,  # Passes --extra-index-url to pip install
     pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
     extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
 ) -> str:
@@ -281,7 +279,7 @@ def _create_context_mount(
     docker_commands: Sequence[str],
     ignore_fn: Callable[[Path], bool],
     context_dir: Path,
-) -> Optional[_Mount]:
+) -> _Mount | None:
     """
     Creates a context mount from a list of docker commands.
 
@@ -306,17 +304,17 @@ def _create_context_mount(
 
 
 def _create_context_mount_function(
-    ignore: Union[Sequence[str], Callable[[Path], bool], _AutoDockerIgnoreSentinel],
+    ignore: Sequence[str] | Callable[[Path], bool] | _AutoDockerIgnoreSentinel,
     dockerfile_cmds: list[str] = [],
-    dockerfile_path: Optional[Path] = None,
-    context_dir: Optional[Union[Path, str]] = None,
+    dockerfile_path: Path | None = None,
+    context_dir: Path | str | None = None,
 ):
     if dockerfile_path and dockerfile_cmds:
         raise InvalidError("Cannot provide both dockerfile and docker commands")
 
     if ignore is AUTO_DOCKERIGNORE:
 
-        def auto_created_context_mount_fn() -> Optional[_Mount]:
+        def auto_created_context_mount_fn() -> _Mount | None:
             nonlocal context_dir
             context_dir = Path.cwd() if context_dir is None else Path(context_dir).absolute()
             dockerignore_file = find_dockerignore_file(context_dir, dockerfile_path)
@@ -333,7 +331,7 @@ def _create_context_mount_function(
 
     else:
 
-        def auto_created_context_mount_fn() -> Optional[_Mount]:
+        def auto_created_context_mount_fn() -> _Mount | None:
             # use COPY commands and ignore patterns to construct implicit context mount
             nonlocal context_dir
             context_dir = Path.cwd() if context_dir is None else Path(context_dir).absolute()
@@ -350,7 +348,7 @@ class _ImageRegistryConfig:
         self,
         # TODO: change to _PUBLIC after worker starts handling it.
         registry_auth_type: "api_pb2.RegistryAuthType.ValueType" = api_pb2.REGISTRY_AUTH_TYPE_UNSPECIFIED,
-        secret: Optional[_Secret] = None,
+        secret: _Secret | None = None,
     ):
         self.registry_auth_type = registry_auth_type
         self.secret = secret
@@ -371,7 +369,7 @@ class DockerfileSpec:
 
 async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.ImageJoinStreamingResponse:
     last_entry_id: str = ""
-    result_response: Optional[api_pb2.ImageJoinStreamingResponse] = None
+    result_response: api_pb2.ImageJoinStreamingResponse | None = None
 
     async def join():
         nonlocal last_entry_id, result_response
@@ -418,7 +416,7 @@ class _Image(_Object, type_prefix="im"):
         _Mount
     ]  # added as mounts on any container referencing the Image, see `def _mount_layers`
     _added_python_source_set: frozenset[str]  # used to warn about missing mounts during auto-mount deprecation
-    _metadata: Optional[api_pb2.ImageMetadata] = None  # set on hydration, private for now
+    _metadata: api_pb2.ImageMetadata | None = None  # set on hydration, private for now
     _is_empty: bool
 
     def _initialize_from_empty(self):
@@ -437,10 +435,10 @@ class _Image(_Object, type_prefix="im"):
         self._added_python_source_set = other._added_python_source_set
         self._is_empty = False
 
-    def _get_metadata(self) -> Optional[Message]:
+    def _get_metadata(self) -> Message | None:
         return self._metadata
 
-    def _hydrate_metadata(self, metadata: Optional[Message]):
+    def _hydrate_metadata(self, metadata: Message | None):
         env_image_id = config.get("image_id")  # set as an env var in containers
         if env_image_id == self.object_id:
             for exc in self.inside_exceptions:
@@ -458,9 +456,7 @@ class _Image(_Object, type_prefix="im"):
 
         base_image = self
 
-        async def _load(
-            self2: "_Image", resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
-        ):
+        async def _load(self2: "_Image", resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             self2._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
             self2._deferred_mounts = tuple(base_image._deferred_mounts) + (mount,)
             self2._serve_mounts = base_image._serve_mounts | ({mount} if mount.is_local() else set())
@@ -506,17 +502,17 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def _from_args(
         *,
-        base_images: Optional[dict[str, "_Image"]] = None,
-        dockerfile_function: Optional[Callable[[ImageBuilderVersion], DockerfileSpec]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
-        gpu_config: Optional[api_pb2.GPUConfig] = None,
-        build_function: Optional["modal._functions._Function"] = None,
-        build_function_input: Optional[api_pb2.FunctionInput] = None,
-        image_registry_config: Optional[_ImageRegistryConfig] = None,
-        context_mount_function: Optional[Callable[[], Optional[_Mount]]] = None,
+        base_images: dict[str, "_Image"] | None = None,
+        dockerfile_function: Callable[[ImageBuilderVersion], DockerfileSpec] | None = None,
+        secrets: Collection[_Secret] | None = None,
+        gpu_config: api_pb2.GPUConfig | None = None,
+        build_function: "modal._functions._Function | None" = None,
+        build_function_input: api_pb2.FunctionInput | None = None,
+        image_registry_config: _ImageRegistryConfig | None = None,
+        context_mount_function: Callable[[], _Mount | None] | None = None,
         force_build: bool = False,
         build_args: dict[str, str] = {},
-        validated_volumes: Optional[Sequence[tuple[str, _Volume]]] = None,
+        validated_volumes: Sequence[tuple[str, _Volume]] | None = None,
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
@@ -551,7 +547,7 @@ class _Image(_Object, type_prefix="im"):
                 deps += (vol,)
             return deps
 
-        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             context_mount = context_mount_function() if context_mount_function else None
             if context_mount:
                 await resolver.load(context_mount, load_context)
@@ -664,7 +660,7 @@ class _Image(_Object, type_prefix="im"):
             resp = await load_context.client.stub.ImageGetOrCreate(req)
             image_id = resp.image_id
             result: api_pb2.GenericResult
-            metadata: Optional[api_pb2.ImageMetadata] = None
+            metadata: api_pb2.ImageMetadata | None = None
 
             if resp.result.status:
                 # image already built
@@ -720,7 +716,7 @@ class _Image(_Object, type_prefix="im"):
         )
         return obj
 
-    def _copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
+    def _copy_mount(self, mount: _Mount, remote_path: str | Path = ".") -> "_Image":
         """mdmd:hidden
         Internal
         """
@@ -737,7 +733,7 @@ class _Image(_Object, type_prefix="im"):
             context_mount_function=lambda: mount,
         )
 
-    def add_local_file(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
+    def add_local_file(self, local_path: str | Path, remote_path: str, *, copy: bool = False) -> "_Image":
         """Adds a local file to the image at `remote_path` within the container
 
         By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
@@ -767,14 +763,14 @@ class _Image(_Object, type_prefix="im"):
 
     def add_local_dir(
         self,
-        local_path: Union[str, Path],
+        local_path: str | Path,
         remote_path: str,
         *,
         copy: bool = False,
         # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
         # Defaults to excluding no files. If a Sequence is provided, it will be converted to a FilePatternMatcher.
         # Which follows dockerignore syntax.
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
+        ignore: Sequence[str] | Callable[[Path], bool] = [],
     ) -> "_Image":
         """Adds a local directory's content to the image at `remote_path` within the container
 
@@ -837,7 +833,7 @@ class _Image(_Object, type_prefix="im"):
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def add_local_python_source(
-        self, *modules: str, copy: bool = False, ignore: Union[Sequence[str], Callable[[Path], bool]] = NON_PYTHON_FILES
+        self, *modules: str, copy: bool = False, ignore: Sequence[str] | Callable[[Path], bool] = NON_PYTHON_FILES
     ) -> "_Image":
         """Adds locally available Python packages/modules to containers
 
@@ -882,14 +878,14 @@ class _Image(_Object, type_prefix="im"):
 
     @deprecate_aio_usage((2025, 11, 14), "Image.from_id")
     @classmethod
-    def from_id(cls, image_id: str, client: Optional["modal.client.Client"] = None) -> typing_extensions.Self:
+    def from_id(cls, image_id: str, client: "modal.client.Client | None" = None) -> typing_extensions.Self:
         """Construct an Image from an id and look up the Image result.
 
         The ID of an Image object can be accessed using `.object_id`.
         """
         _client = typing.cast(_Client, synchronizer._translate_in(client))
 
-        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             resp = await load_context.client.stub.ImageFromId(api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, load_context.client, resp.metadata)
 
@@ -963,16 +959,16 @@ class _Image(_Object, type_prefix="im"):
 
     def pip_install(
         self,
-        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
-        index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
-        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+        *packages: str | list[str],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        find_links: str | None = None,  # Passes -f (--find-links) pip install
+        index_url: str | None = None,  # Passes -i (--index-url) to pip install
+        extra_index_url: str | None = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | None = None,  # GPU type to attach to the builder container
     ) -> "_Image":
         """Install a list of Python packages using pip.
 
@@ -1035,14 +1031,14 @@ class _Image(_Object, type_prefix="im"):
         self,
         *repositories: str,
         git_user: str,
-        find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
-        index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
-        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+        find_links: str | None = None,  # Passes -f (--find-links) pip install
+        index_url: str | None = None,  # Passes -i (--index-url) to pip install
+        extra_index_url: str | None = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
+        gpu: str | None = None,  # GPU type to attach to the builder container
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
         """
@@ -1140,16 +1136,16 @@ class _Image(_Object, type_prefix="im"):
     def pip_install_from_requirements(
         self,
         requirements_txt: str,  # Path to a requirements.txt file.
-        find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
+        find_links: str | None = None,  # Passes -f (--find-links) pip install
         *,
-        index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
-        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+        index_url: str | None = None,  # Passes -i (--index-url) to pip install
+        extra_index_url: str | None = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
+        gpu: str | None = None,  # GPU type to attach to the builder container
     ) -> "_Image":
         """Install a list of Python packages from a local `requirements.txt` file."""
 
@@ -1187,15 +1183,15 @@ class _Image(_Object, type_prefix="im"):
         pyproject_toml: str,
         optional_dependencies: list[str] = [],
         *,
-        find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
-        index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
-        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+        find_links: str | None = None,  # Passes -f (--find-links) pip install
+        index_url: str | None = None,  # Passes -i (--index-url) to pip install
+        extra_index_url: str | None = None,  # Passes --extra-index-url to pip install
         pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
         extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | None = None,  # GPU type to attach to the builder container
     ) -> "_Image":
         """Install dependencies specified by a local `pyproject.toml` file.
 
@@ -1251,18 +1247,18 @@ class _Image(_Object, type_prefix="im"):
 
     def uv_pip_install(
         self,
-        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        requirements: Optional[list[str]] = None,  # Passes -r (--requirements) to uv pip install
-        find_links: Optional[str] = None,  # Passes -f (--find-links) to uv pip install
-        index_url: Optional[str] = None,  # Passes -i (--index-url) to uv pip install
-        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to uv pip install
+        *packages: str | list[str],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        requirements: list[str] | None = None,  # Passes -r (--requirements) to uv pip install
+        find_links: str | None = None,  # Passes -f (--find-links) to uv pip install
+        index_url: str | None = None,  # Passes -i (--index-url) to uv pip install
+        extra_index_url: str | None = None,  # Passes --extra-index-url to uv pip install
         pre: bool = False,  # Allow pre-releases using uv pip install --prerelease allow
         extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        uv_version: Optional[str] = None,  # uv version to use
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
+        uv_version: str | None = None,  # uv version to use
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | None = None,  # GPU type to attach to the builder container
     ) -> "_Image":
         """Install a list of Python packages using uv pip install.
 
@@ -1368,7 +1364,7 @@ class _Image(_Object, type_prefix="im"):
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
-        poetry_lockfile: Optional[str] = None,  # Path to lockfile. If not provided, uses poetry.lock in same directory.
+        poetry_lockfile: str | None = None,  # Path to lockfile. If not provided, uses poetry.lock in same directory.
         *,
         ignore_lockfile: bool = False,  # If set to True, do not use poetry.lock, even when present
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
@@ -1377,12 +1373,12 @@ class _Image(_Object, type_prefix="im"):
         # Selected optional dependency groups to exclude (See https://python-poetry.org/docs/cli/#install)
         without: list[str] = [],
         only: list[str] = [],  # Only install dependency groups specifed in this list.
-        poetry_version: Optional[str] = "latest",  # Version of poetry to install, or None to skip installation
+        poetry_version: str | None = "latest",  # Version of poetry to install, or None to skip installation
         # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
         old_installer: bool = False,
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | None = None,  # GPU type to attach to the builder container
     ) -> "_Image":
         """Install poetry *dependencies* specified by a local `pyproject.toml` file.
 
@@ -1465,14 +1461,14 @@ class _Image(_Object, type_prefix="im"):
         uv_project_dir: str = "./",  # Path to local uv managed project
         *,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        groups: Optional[list[str]] = None,  # Dependency group to install using `uv sync --group`
-        extras: Optional[list[str]] = None,  # Optional dependencies to install using `uv sync --extra`
+        groups: list[str] | None = None,  # Dependency group to install using `uv sync --group`
+        extras: list[str] | None = None,  # Optional dependencies to install using `uv sync --extra`
         frozen: bool = True,  # If True, then we run `uv sync --frozen` when a uv.lock file is present
         extra_options: str = "",  # Extra options to pass to `uv sync`
-        uv_version: Optional[str] = None,  # uv version to use
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
+        uv_version: str | None = None,  # uv version to use
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | None = None,  # GPU type to attach to the builder container
     ) -> "_Image":
         """Creates a virtual environment with the dependencies in a uv managed project with `uv sync`.
 
@@ -1630,14 +1626,14 @@ class _Image(_Object, type_prefix="im"):
 
     def dockerfile_commands(
         self,
-        *dockerfile_commands: Union[str, list[str]],
+        *dockerfile_commands: str | list[str],
         context_files: dict[str, str] = {},
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
-        context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | None = None,  # GPU type to attach to the builder container
+        context_dir: Path | str | None = None,  # Context for relative COPY commands
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
+        ignore: Sequence[str] | Callable[[Path], bool] = AUTO_DOCKERIGNORE,
         build_args: dict[str, str] = {},  # Dockerfile variables to set
     ) -> "_Image":
         """
@@ -1732,11 +1728,11 @@ class _Image(_Object, type_prefix="im"):
 
     def run_commands(
         self,
-        *commands: Union[str, list[str]],
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        volumes: Optional[dict[Union[str, PurePosixPath], _Volume]] = None,  # Volume mount paths
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
+        *commands: str | list[str],
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        volumes: dict[str | PurePosixPath, _Volume] | None = None,  # Volume mount paths
+        gpu: str | None = None,  # GPU type to attach to the builder container
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
         """Extend an image with a list of shell commands to run."""
@@ -1763,7 +1759,7 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def micromamba(
-        python_version: Optional[str] = None,
+        python_version: str | None = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
         """A Micromamba base image. Micromamba allows for fast building of small Conda-based containers."""
@@ -1797,15 +1793,15 @@ class _Image(_Object, type_prefix="im"):
     def micromamba_install(
         self,
         # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        *packages: Union[str, list[str]],
+        *packages: str | list[str],
         # A local path to a file containing package specifications
-        spec_file: Optional[str] = None,
+        spec_file: str | None = None,
         # A list of Conda channels, eg. ["conda-forge", "nvidia"].
         channels: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | None = None,  # GPU type to attach to the builder container
     ) -> "_Image":
         """Install a list of additional packages using micromamba."""
 
@@ -1847,7 +1843,7 @@ class _Image(_Object, type_prefix="im"):
         tag: str,
         builder_version: ImageBuilderVersion,
         setup_commands: list[str],
-        add_python: Optional[str] = None,
+        add_python: str | None = None,
     ) -> list[str]:
         add_python_commands: list[str] = []
         if add_python:
@@ -1893,11 +1889,11 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def from_registry(
         tag: str,
-        secret: Optional[_Secret] = None,
+        secret: _Secret | None = None,
         *,
         setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        add_python: Optional[str] = None,
+        add_python: str | None = None,
         **kwargs,
     ) -> "_Image":
         """Build a Modal Image from a public or private image registry, such as Docker Hub.
@@ -1928,7 +1924,7 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
 
-        def context_mount_function() -> Optional[_Mount]:
+        def context_mount_function() -> _Mount | None:
             return (
                 _Mount.from_name(
                     python_standalone_mount_name(add_python),
@@ -1958,11 +1954,11 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def from_gcp_artifact_registry(
         tag: str,
-        secret: Optional[_Secret] = None,
+        secret: _Secret | None = None,
         *,
         setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        add_python: Optional[str] = None,
+        add_python: str | None = None,
         **kwargs,
     ) -> "_Image":
         """Build a Modal image from a private image in Google Cloud Platform (GCP) Artifact Registry.
@@ -2009,11 +2005,11 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def from_aws_ecr(
         tag: str,
-        secret: Optional[_Secret] = None,
+        secret: _Secret | None = None,
         *,
         setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        add_python: Optional[str] = None,
+        add_python: str | None = None,
         **kwargs,
     ) -> "_Image":
         """Build a Modal image from a private image in AWS Elastic Container Registry (ECR).
@@ -2059,16 +2055,16 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def from_dockerfile(
-        path: Union[str, Path],  # Filepath to Dockerfile.
+        path: str | Path,  # Filepath to Dockerfile.
         *,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
-        add_python: Optional[str] = None,  # Version of Python to include when base Image does not have one
+        context_dir: Path | str | None = None,  # Context for relative COPY commands
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | None = None,  # GPU type to attach to the builder container
+        add_python: str | None = None,  # Version of Python to include when base Image does not have one
         build_args: dict[str, str] = {},  # Dockerfile variables to set
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
+        ignore: Sequence[str] | Callable[[Path], bool] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
@@ -2202,7 +2198,7 @@ class _Image(_Object, type_prefix="im"):
         return image
 
     @staticmethod
-    def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
+    def debian_slim(python_version: str | None = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python` Docker images."""
         if isinstance(python_version, float):
             raise TypeError("The `python_version` argument should be a string, not a float.")
@@ -2261,11 +2257,11 @@ class _Image(_Object, type_prefix="im"):
 
     def apt_install(
         self,
-        *packages: Union[str, list[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
+        *packages: str | list[str],  # A list of packages, e.g. ["ssh", "libpq-dev"]
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str] = None,  # GPU type to attach to the builder container
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | None = None,  # GPU type to attach to the builder container
     ) -> "_Image":
         """Install a list of Debian packages using `apt`.
 
@@ -2305,16 +2301,16 @@ class _Image(_Object, type_prefix="im"):
         self,
         raw_f: Callable[..., Any],
         *,
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
-        network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
-        gpu: Optional[str | list[str]] = None,  # GPU type (or list of types) to attach to the builder container
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
-        memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount] = {},  # Volume mount paths
+        network_file_systems: dict[str | PurePosixPath, _NetworkFileSystem] = {},  # NFS mount paths
+        gpu: str | list[str] | None = None,  # GPU type (or list of types) to attach to the builder container
+        cpu: float | None = None,  # How many CPU cores to request. This is a soft limit.
+        memory: int | None = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: int = 60 * 60,  # Maximum execution time of the function in seconds.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
+        cloud: str | None = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        region: str | Sequence[str] | None = None,  # Region or regions to run the function on.
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         args: Sequence[Any] = (),  # Positional arguments to the function.
         kwargs: dict[str, Any] = {},  # Keyword arguments to the function.
@@ -2427,7 +2423,7 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
         )
 
-    def workdir(self, path: Union[str, PurePosixPath]) -> "_Image":
+    def workdir(self, path: str | PurePosixPath) -> "_Image":
         """Set the working directory for subsequent image build steps and function execution.
 
         **Example**
@@ -2550,7 +2546,7 @@ class _Image(_Object, type_prefix="im"):
                 if task_log.data:
                     yield task_log.data
 
-    async def hydrate(self, client: Optional[_Client] = None) -> Self:
+    async def hydrate(self, client: _Client | None = None) -> Self:
         """mdmd:hidden"""
         # Image inherits hydrate() from Object but can't be hydrated on demand
         # Overriding the method lets us hide it from the docs and raise a better error message

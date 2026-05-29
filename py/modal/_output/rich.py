@@ -14,9 +14,10 @@ import io
 import platform
 import re
 import sys
+from collections.abc import Callable, Generator
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable, Generator, NamedTuple
+from typing import Any, NamedTuple
 
 from rich.console import Console, Group, RenderableType
 from rich.live import Live

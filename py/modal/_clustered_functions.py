@@ -2,7 +2,6 @@
 import os
 import socket
 from dataclasses import dataclass
-from typing import Optional
 
 from modal._utils.async_utils import synchronize_api
 from modal.client import _Client
@@ -18,7 +17,7 @@ class ClusterInfo:
     container_ipv4_ips: list[str]
 
 
-cluster_info: Optional[ClusterInfo] = None
+cluster_info: ClusterInfo | None = None
 
 
 def get_cluster_info() -> ClusterInfo:

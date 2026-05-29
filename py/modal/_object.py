@@ -2,9 +2,9 @@
 import contextlib
 import typing
 import uuid
-from collections.abc import Awaitable, Hashable, Sequence
+from collections.abc import Awaitable, Callable, Hashable, Sequence
 from functools import wraps
-from typing import Callable, ClassVar, Optional
+from typing import ClassVar
 
 from google.protobuf.message import Message
 from typing_extensions import Self
@@ -23,8 +23,8 @@ EPHEMERAL_OBJECT_HEARTBEAT_SLEEP: int = 300
 
 
 def _get_environment_name(
-    environment_name: Optional[str] = None,
-) -> Optional[str]:
+    environment_name: str | None = None,
+) -> str | None:
     """Get environment name from various sources.
 
     Args:
@@ -75,31 +75,31 @@ def live_method_contextmanager(method):
 
 
 class _Object:
-    _type_prefix: ClassVar[Optional[str]] = None
+    _type_prefix: ClassVar[str | None] = None
     _prefix_to_type: ClassVar[dict[str, type]] = {}
 
     # For constructors
-    _load: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None
-    _preload: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]]
+    _load: Callable[[Self, Resolver, LoadContext, str | None], Awaitable[None]] | None = None
+    _preload: Callable[[Self, Resolver, LoadContext, str | None], Awaitable[None]] | None
     _rep: str
     _skip_reload: bool
     _hydrate_lazily: bool
-    _deps: Optional[Callable[..., Sequence["_Object"]]]
-    _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
+    _deps: Callable[..., Sequence["_Object"]] | None
+    _deduplication_key: Callable[[], Awaitable[Hashable]] | None = None
     _load_context_overrides: LoadContext
 
     # For hydrated objects
-    _object_id: Optional[str]
-    _client: Optional[_Client]
+    _object_id: str | None
+    _client: _Client | None
     _is_hydrated: bool
     _is_rehydrated: bool
 
     # Not all object subclasses have a meaningful "name" concept
     # So whether they expose this is a matter of having a name property
-    _name: Optional[str]
+    _name: str | None
 
     @classmethod
-    def __init_subclass__(cls, type_prefix: Optional[str] = None):
+    def __init_subclass__(cls, type_prefix: str | None = None):
         super().__init_subclass__()
         if type_prefix is not None:
             cls._type_prefix = type_prefix
@@ -112,15 +112,15 @@ class _Object:
     def _init(
         self,
         rep: str,
-        load: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None,
-        preload: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None,
+        load: Callable[[Self, Resolver, LoadContext, str | None], Awaitable[None]] | None = None,
+        preload: Callable[[Self, Resolver, LoadContext, str | None], Awaitable[None]] | None = None,
         hydrate_lazily: bool = False,
         skip_reload: bool = False,
-        deps: Optional[Callable[..., Sequence["_Object"]]] = None,
-        deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
-        name: Optional[str] = None,
+        deps: Callable[..., Sequence["_Object"]] | None = None,
+        deduplication_key: Callable[[], Awaitable[Hashable]] | None = None,
+        name: str | None = None,
         *,
-        load_context_overrides: Optional[LoadContext] = None,
+        load_context_overrides: LoadContext | None = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._rep = rep
@@ -158,7 +158,7 @@ class _Object:
         self._is_hydrated = other._is_hydrated
         self._client = other._client
 
-    def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
+    def _hydrate(self, object_id: str, client: _Client, metadata: Message | None):
         assert isinstance(object_id, str) and self._type_prefix is not None
         if not object_id.startswith(self._type_prefix):
             raise ExecutionError(
@@ -173,11 +173,11 @@ class _Object:
         self._hydrate_metadata(metadata)
         self._is_hydrated = True
 
-    def _hydrate_metadata(self, metadata: Optional[Message]):
+    def _hydrate_metadata(self, metadata: Message | None):
         # override this if it's a subclass that needs additional data (other than an object_id) for a functioning Handle
         pass
 
-    def _get_metadata(self) -> Optional[Message]:
+    def _get_metadata(self) -> Message | None:
         # return the necessary metadata from this handle to be able to re-hydrate in another context if one is needed
         # used to provide a handle's handle_metadata for serializing/pickling a live handle
         # the object_id is already provided by other means
@@ -216,14 +216,14 @@ class _Object:
     @classmethod
     def _from_loader(
         cls,
-        load: Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]],
+        load: Callable[[Self, Resolver, LoadContext, str | None], Awaitable[None]],
         rep: str,
         skip_reload: bool = False,
-        preload: Optional[Callable[[Self, Resolver, LoadContext, Optional[str]], Awaitable[None]]] = None,
+        preload: Callable[[Self, Resolver, LoadContext, str | None], Awaitable[None]] | None = None,
         hydrate_lazily: bool = False,
-        deps: Optional[Callable[..., Sequence["_Object"]]] = None,
-        deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
-        name: Optional[str] = None,
+        deps: Callable[..., Sequence["_Object"]] | None = None,
+        deduplication_key: Callable[[], Awaitable[Hashable]] | None = None,
+        name: str | None = None,
         *,
         load_context_overrides: LoadContext,
     ):
@@ -257,7 +257,7 @@ class _Object:
         return cls._get_type_from_id(object_id) == cls
 
     @classmethod
-    def _repr(cls, name: str, environment_name: Optional[str] = None) -> str:
+    def _repr(cls, name: str, environment_name: str | None = None) -> str:
         public_cls = cls.__name__.strip("_")
         environment_repr = f", environment_name={environment_name!r}" if environment_name else ""
         return f"modal.{public_cls}.from_name({name!r}{environment_repr})"
@@ -267,9 +267,9 @@ class _Object:
         cls,
         object_id: str,
         client: _Client,
-        handle_metadata: Optional[Message],
+        handle_metadata: Message | None,
         skip_reload: bool = False,
-        rep: Optional[str] = None,
+        rep: str | None = None,
     ) -> Self:
         obj_cls: type[Self]
         if cls._type_prefix is not None:
@@ -336,7 +336,7 @@ class _Object:
 
         return self._deps if self._deps is not None else default_deps
 
-    async def hydrate(self, client: Optional[_Client] = None) -> Self:
+    async def hydrate(self, client: _Client | None = None) -> Self:
         """Synchronize the local object with its identity on the Modal server.
 
         It is rarely necessary to call this method explicitly, as most operations

@@ -2,7 +2,6 @@
 import getpass
 import os
 from datetime import datetime
-from typing import Optional
 
 import click
 
@@ -33,9 +32,9 @@ _VERIFY_HELP = "Make a test request to verify the new credentials."
 @click.option("--verify/--no-verify", default=True, help=_VERIFY_HELP)
 @synchronizer.create_blocking
 async def set(
-    token_id: Optional[str],
-    token_secret: Optional[str],
-    profile: Optional[str],
+    token_id: str | None,
+    token_secret: str | None,
+    profile: str | None,
     activate: bool,
     verify: bool,
 ):
@@ -56,7 +55,7 @@ async def set(
 @click.option("--verify/--no-verify", default=True, help=_VERIFY_HELP)
 @click.option("--source", default=None, hidden=True)
 @synchronizer.create_blocking
-async def new(profile: Optional[str], activate: bool, verify: bool, source: Optional[str]):
+async def new(profile: str | None, activate: bool, verify: bool, source: str | None):
     """Create a new token by using an authenticated web session."""
     await _new_token(profile=profile, activate=activate, verify=verify, source=source)
 

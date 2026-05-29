@@ -2,7 +2,7 @@
 import inspect
 import sys
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 from click import Command, Context, Group
 
@@ -92,7 +92,7 @@ def get_docs_for_click(
     return docs
 
 
-def run(output_dirname: Optional[str]) -> None:
+def run(output_dirname: str | None) -> None:
     entrypoint: Group = cast(Group, entrypoint_cli)
     ctx = Context(entrypoint)
     commands = entrypoint.list_commands(ctx)

@@ -12,7 +12,7 @@ then asking it whether file paths match any of its patterns.
 import enum
 import os
 import re
-from typing import Optional, TextIO
+from typing import TextIO
 
 escape_chars = frozenset(".+()|{}$")
 
@@ -33,7 +33,7 @@ class Pattern:
         self.match_type = MatchType.UNKNOWN
         self.cleaned_pattern = ""
         self.dirs: list[str] = []
-        self.regexp: Optional[re.Pattern] = None
+        self.regexp: re.Pattern | None = None
         self.exclusion = False
 
     def __str__(self) -> str:

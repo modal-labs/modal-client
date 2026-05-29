@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2022
 import platform
 import shlex
+from collections.abc import Callable, Iterable
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterable, Optional, Union
+from typing import Any
 
 import click
 from click import ClickException
@@ -81,7 +82,7 @@ def _is_valid_modal_id(ref: str, prefix: str) -> bool:
     return ref.startswith(prefix) and len(ref[len(prefix) :]) > 0 and ref[len(prefix) :].isalnum()
 
 
-def _parse_sandbox_container_ref(ref: str) -> tuple[str, Optional[str]]:
+def _parse_sandbox_container_ref(ref: str) -> tuple[str, str | None]:
     """Parse a sandbox:container reference into (sandbox_id, container_name).
 
     Supports the pattern `sb-xyz:container_name` for accessing sandbox containers.
@@ -99,7 +100,7 @@ def _parse_sandbox_container_ref(ref: str) -> tuple[str, Optional[str]]:
     return ref, None
 
 
-def _is_running_container_ref(ref: Optional[str]) -> bool:
+def _is_running_container_ref(ref: str | None) -> bool:
     if ref is None:
         return False
     sandbox_id, _ = _parse_sandbox_container_ref(ref)
@@ -117,7 +118,7 @@ def _start_shell_in_sidecar_container(sandbox_id: str, container_name: str, cmd:
 
     try:
         sandbox_container = sandbox._experimental_sidecars.get(name=container_name)
-        process: Union[ContainerProcess[bytes], ContainerProcess[str]]
+        process: ContainerProcess[bytes] | ContainerProcess[str]
         if pty:
             # PTY output is raw terminal bytes, not text; strict UTF-8 decode
             # crashes on the first non-UTF-8 byte (e.g. vim drawing a Latin-1
@@ -227,15 +228,15 @@ def _start_shell_from_image(
     cmds: list[str],
     env: str,
     timeout: int,
-    modal_image: Optional[Image],
+    modal_image: Image | None,
     volume: list[str],
     secret: list[str],
     add_local: list[str],
-    cpu: Optional[int],
-    memory: Optional[int],
-    gpu: Optional[str],
-    cloud: Optional[str],
-    region: Optional[str],
+    cpu: int | None,
+    memory: int | None,
+    gpu: str | None,
+    cloud: str | None,
+    region: str | None,
     pty: bool,
     experimental_options: dict[str, bool],
 ) -> None:
@@ -330,20 +331,20 @@ def _start_shell_from_image(
     metavar="KEY=VALUE",
 )
 def shell(
-    ref: Optional[str] = None,
+    ref: str | None = None,
     cmd: str = "/bin/bash",
-    env: Optional[str] = None,
-    image: Optional[str] = None,
-    add_python: Optional[str] = None,
+    env: str | None = None,
+    image: str | None = None,
+    add_python: str | None = None,
     volume: tuple[str, ...] = (),
     add_local: tuple[str, ...] = (),
     secret: tuple[str, ...] = (),
-    cpu: Optional[int] = None,
-    memory: Optional[int] = None,
-    gpu: Optional[str] = None,
-    cloud: Optional[str] = None,
-    region: Optional[str] = None,
-    pty: Optional[bool] = None,
+    cpu: int | None = None,
+    memory: int | None = None,
+    gpu: str | None = None,
+    cloud: str | None = None,
+    region: str | None = None,
+    pty: bool | None = None,
     use_module_mode: bool = False,
     experimental_options: tuple[str, ...] = (),
 ):

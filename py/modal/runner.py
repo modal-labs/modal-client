@@ -12,7 +12,7 @@ import warnings
 from collections.abc import AsyncGenerator
 from contextlib import nullcontext
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, Literal, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -273,9 +273,9 @@ async def _publish_app(
     app_local_state: "modal.app._LocalAppState",
     name: str = "",
     deployment_tag: str = "",  # Only relevant for deployments
-    commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
+    commit_info: api_pb2.CommitInfo | None = None,  # Git commit information
     deployment_strategy: str = "rolling",
-    environment_name: Optional[str] = None,
+    environment_name: str | None = None,
 ) -> tuple[str, list[api_pb2.Warning], float]:
     """Wrapper for AppPublish RPC."""
     deployment_strategy = _validate_deployment_strategy(deployment_strategy)
@@ -332,7 +332,7 @@ async def _disconnect(
     logger.debug("App disconnected")
 
 
-async def _status_based_disconnect(client: _Client, app_id: str, exc_info: Optional[BaseException] = None):
+async def _status_based_disconnect(client: _Client, app_id: str, exc_info: BaseException | None = None):
     """Disconnect local session of a running app, sending relevant metadata
 
     exc_info: Exception if an exception caused the disconnect
@@ -360,10 +360,10 @@ async def _status_based_disconnect(client: _Client, app_id: str, exc_info: Optio
 async def _run_app(
     app: "modal.app._App",
     *,
-    name: Optional[str] = None,
-    client: Optional[_Client] = None,
+    name: str | None = None,
+    client: _Client | None = None,
     detach: bool = False,
-    environment_name: Optional[str] = None,
+    environment_name: str | None = None,
     interactive: bool = False,
     deployment_strategy: str = "rolling",
 ) -> AsyncGenerator["modal.app._App", None]:
@@ -423,7 +423,7 @@ async def _run_app(
             return _heartbeat(load_context.client, running_app.app_id)
 
         heartbeat_loop = tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
-        logs_loop: Optional[asyncio.Task] = None
+        logs_loop: asyncio.Task | None = None
 
         if output_mgr.is_enabled:
             with output_mgr.make_live_spinner("Initializing..."):
@@ -580,12 +580,12 @@ class DeployResult:
 
 async def _deploy_app(
     app: "modal.app._App",
-    name: Optional[str] = None,
+    name: str | None = None,
     *,
-    environment_name: Optional[str] = None,
+    environment_name: str | None = None,
     tag: str = "",
     deployment_strategy: str = "rolling",
-    client: Optional[_Client] = None,
+    client: _Client | None = None,
 ) -> DeployResult:
     """Internal function for deploying an App.
 

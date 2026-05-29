@@ -2,7 +2,7 @@
 import pytest
 import time
 import typing
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 
 from modal import enable_output
@@ -430,7 +430,7 @@ async def test_decode_bytes_stream_to_str_decodes_multiple_chunks_in_order():
 
 @pytest.mark.asyncio
 async def test_decode_bytes_stream_to_str_decodes_utf8_multibyte_characters_in_single_chunk():
-    stream = _decode_bytes_stream_to_str(_bytes_stream(["café".encode("utf-8")]))
+    stream = _decode_bytes_stream_to_str(_bytes_stream(["café".encode()]))
     result = [chunk async for chunk in stream]
     assert result == ["café"]
 
@@ -653,7 +653,7 @@ class _FakeCommandRouterClient:
         task_id: str,
         exec_id: str,
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
-        deadline: Optional[float] = None,
+        deadline: float | None = None,
     ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
         yield sr_pb2.TaskExecStdioReadResponse(data=b"a")
         yield sr_pb2.TaskExecStdioReadResponse(data=b"b")
@@ -857,7 +857,7 @@ async def test_sandbox_stream_writer_provider_only_called_on_drain():
 @pytest.mark.parametrize("text, expected_out", [(False, b"abc"), (True, "abc")])
 def test_stream_reader_read_concatenates_chunks(text, expected_out):
     router = _FakeCommandRouterClient()
-    reader: typing.Union[StreamReader[str], StreamReader[bytes]] = make_stream_reader(
+    reader: StreamReader[str] | StreamReader[bytes] = make_stream_reader(
         file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
         object_id="tp-123",
         command_router_client=router,  # type: ignore[arg-type]

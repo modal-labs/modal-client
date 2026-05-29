@@ -5,7 +5,7 @@ import hashlib
 import os
 import platform
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractContextManager, asynccontextmanager, contextmanager
 from io import BytesIO, FileIO
 from pathlib import Path, PurePosixPath
@@ -13,10 +13,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     BinaryIO,
-    Callable,
     ContextManager,
-    Optional,
-    Union,
     cast,
 )
 from urllib.parse import urlparse
@@ -114,8 +111,8 @@ def _get_multipart_inflight_budget() -> int:
 async def _upload_to_s3_url(
     upload_url,
     payload: "BytesIOSegmentPayload",
-    content_md5_b64: Optional[str] = None,
-    content_type: Optional[str] = "application/octet-stream",  # set to None to force omission of ContentType header
+    content_md5_b64: str | None = None,
+    content_type: str | None = "application/octet-stream",  # set to None to force omission of ContentType header
 ) -> str:
     """Returns etag of s3 object which is a md5 hex checksum of the uploaded content"""
     with payload.reset_on_error():  # ensure retries read the same data
@@ -160,15 +157,15 @@ async def _upload_to_s3_url(
 
 
 async def perform_multipart_upload(
-    data_file: Union[BinaryIO, BytesIO, FileIO],
+    data_file: BinaryIO | BytesIO | FileIO,
     *,
     content_length: int,
     max_part_size: int,
     part_urls: list[str],
     completion_url: str,
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
-    progress_report_cb: Optional[Callable] = None,
-    byte_budget: Optional[_ByteBudget] = None,
+    progress_report_cb: Callable | None = None,
+    byte_budget: _ByteBudget | None = None,
 ) -> None:
     from .bytes_io_segment_payload import BytesIOSegmentPayload
 
@@ -273,10 +270,10 @@ async def _blob_upload_with_fallback(
 
 async def _blob_upload(
     upload_hashes: UploadHashes,
-    data: Union[bytes, BinaryIO],
+    data: bytes | BinaryIO,
     stub,
-    progress_report_cb: Optional[Callable] = None,
-    byte_budget: Optional[_ByteBudget] = None,
+    progress_report_cb: Callable | None = None,
+    byte_budget: _ByteBudget | None = None,
 ) -> tuple[str, bool, int]:
     if isinstance(data, bytes):
         data = BytesIO(data)
@@ -367,10 +364,10 @@ async def format_blob_data(data: bytes, api_stub: ModalClientModal) -> dict[str,
 async def blob_upload_file(
     file_obj: BinaryIO,
     stub: ModalClientModal,
-    progress_report_cb: Optional[Callable] = None,
-    sha256_hex: Optional[str] = None,
-    md5_hex: Optional[str] = None,
-    byte_budget: Optional[_ByteBudget] = None,
+    progress_report_cb: Callable | None = None,
+    sha256_hex: str | None = None,
+    md5_hex: str | None = None,
+    byte_budget: _ByteBudget | None = None,
 ) -> str:
     upload_hashes = get_upload_hashes(file_obj, sha256_hex=sha256_hex, md5_hex=md5_hex)
     blob_id, _, _ = await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb, byte_budget=byte_budget)
@@ -427,7 +424,7 @@ async def blob_iter(blob_id: str, stub: ModalClientModal) -> AsyncIterator[bytes
 
 @dataclasses.dataclass
 class FileUploadSpec:
-    source: Callable[[], Union[AbstractContextManager, BinaryIO]]
+    source: Callable[[], AbstractContextManager | BinaryIO]
     source_description: Any
     source_is_path: bool
     mount_filename: str
@@ -437,7 +434,7 @@ class FileUploadSpec:
     md5_hex: str
     mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
-    content: Optional[bytes] = None  # Set for very small files to avoid double-read
+    content: bytes | None = None  # Set for very small files to avoid double-read
 
     def read_content(self) -> bytes:
         """Read content from source."""
@@ -447,7 +444,7 @@ class FileUploadSpec:
 
 
 def _get_file_upload_spec(
-    source: Callable[[], Union[AbstractContextManager, BinaryIO]],
+    source: Callable[[], AbstractContextManager | BinaryIO],
     source_description: Any,
     mount_filename: PurePosixPath,
     mode: int,
@@ -491,7 +488,7 @@ def _get_file_upload_spec(
 
 
 def get_file_upload_spec_from_path(
-    filename: Path, mount_filename: PurePosixPath, mode: Optional[int] = None
+    filename: Path, mount_filename: PurePosixPath, mode: int | None = None
 ) -> FileUploadSpec:
     # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
     # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
@@ -535,7 +532,7 @@ class FileUploadBlock:
 @dataclasses.dataclass
 class FileUploadSpec2:
     source: _FileUploadSource2
-    source_description: Union[str, Path]
+    source_description: str | Path
 
     path: str
     # 8MiB file blocks
@@ -548,7 +545,7 @@ class FileUploadSpec2:
         filename: Path,
         mount_filename: PurePosixPath,
         hash_semaphore: asyncio.Semaphore,
-        mode: Optional[int] = None,
+        mode: int | None = None,
     ) -> "FileUploadSpec2":
         # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
         # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
@@ -567,7 +564,7 @@ class FileUploadSpec2:
 
     @staticmethod
     async def from_fileobj(
-        source_fp: Union[BinaryIO, BytesIO],
+        source_fp: BinaryIO | BytesIO,
         mount_filename: PurePosixPath,
         hash_semaphore: asyncio.Semaphore,
         mode: int,
@@ -600,7 +597,7 @@ class FileUploadSpec2:
     @staticmethod
     async def _create(
         source: _FileUploadSource2,
-        source_description: Union[str, Path],
+        source_description: str | Path,
         mount_filename: PurePosixPath,
         mode: int,
         hash_semaphore: asyncio.Semaphore,
@@ -667,7 +664,7 @@ def _hash_range_sha256(source: _FileUploadSource2, start, end):
     return sha256_hash.digest()
 
 
-def _find_end_of_block(source: _FileUploadSource2, start: int, end: int) -> Optional[int]:
+def _find_end_of_block(source: _FileUploadSource2, start: int, end: int) -> int | None:
     """Finds the appropriate end of a block, which is the index of the byte just past the last non-zero byte in the
     block.
 

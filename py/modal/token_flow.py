@@ -2,7 +2,6 @@
 import itertools
 import os
 from collections.abc import AsyncGenerator
-from typing import Optional
 
 import aiohttp.web
 from synchronicity.async_wrap import asynccontextmanager
@@ -24,7 +23,7 @@ class _TokenFlow:
 
     @asynccontextmanager
     async def start(
-        self, utm_source: Optional[str] = None, next_url: Optional[str] = None
+        self, utm_source: str | None = None, next_url: str | None = None
     ) -> AsyncGenerator[tuple[str, str, str], None]:
         """mdmd:hidden"""
         # Run a temporary http server returning the token id on /
@@ -50,7 +49,7 @@ class _TokenFlow:
 
     async def finish(
         self, timeout: float = 40.0, grpc_extra_timeout: float = 5.0
-    ) -> Optional[api_pb2.TokenFlowWaitResponse]:
+    ) -> api_pb2.TokenFlowWaitResponse | None:
         """mdmd:hidden"""
         # Wait for token flow to finish
         req = api_pb2.TokenFlowWaitRequest(
@@ -68,16 +67,16 @@ TokenFlow = synchronize_api(_TokenFlow)
 
 async def _new_token(
     *,
-    profile: Optional[str] = None,
+    profile: str | None = None,
     activate: bool = True,
     verify: bool = True,
-    source: Optional[str] = None,
-    next_url: Optional[str] = None,
+    source: str | None = None,
+    next_url: str | None = None,
 ):
     server_url = config.get("server_url", profile=profile)
 
     output = OutputManager.get()
-    result: Optional[api_pb2.TokenFlowWaitResponse] = None
+    result: api_pb2.TokenFlowWaitResponse | None = None
     async with _Client.anonymous(server_url) as client:
         token_flow = _TokenFlow(client)
 
@@ -125,10 +124,10 @@ async def _set_token(
     token_id: str,
     token_secret: str,
     *,
-    profile: Optional[str] = None,
+    profile: str | None = None,
     activate: bool = True,
     verify: bool = True,
-    server_url: Optional[str] = None,
+    server_url: str | None = None,
 ):
     # TODO add server_url as a parameter for verification?
     server_url = config.get("server_url", profile=profile)

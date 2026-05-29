@@ -12,7 +12,8 @@ import tempfile
 import threading
 import time
 import uuid
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any, Optional
 from unittest import mock
 
 from modal import Client
@@ -72,7 +73,7 @@ class ContainerResult:
 # Deploy App Externally: spawn python process to run `modal deploy` and return cli output
 
 
-def isolated_deploy(module_name: str, app_variable_name: Optional[str] = None):
+def isolated_deploy(module_name: str, app_variable_name: str | None = None):
     """Package-scoped fixture that deploys an app using an ephemeral servicer instance
 
     Returns:
@@ -132,25 +133,25 @@ def _run_container(
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     app_name: str = "",
     is_builder_function: bool = False,
-    max_concurrent_inputs: Optional[int] = None,
-    target_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: int | None = None,
+    target_concurrent_inputs: int | None = None,
     batch_max_size: int = 0,
     batch_wait_ms: int = 0,
-    serialized_params: Optional[bytes] = None,
+    serialized_params: bytes | None = None,
     is_checkpointing_function: bool = False,
     deps: list[str] = ["im-1"],
-    volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
+    volume_mounts: list[api_pb2.VolumeMount] | None = None,
     is_auto_snapshot: bool = False,
-    max_inputs: Optional[int] = None,
+    max_inputs: int | None = None,
     is_class: bool = False,
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
     app_layout=DEFAULT_APP_LAYOUT_SENTINEL,
-    web_server_port: Optional[int] = None,
-    web_server_startup_timeout: Optional[float] = None,
-    function_serialized: Optional[bytes] = None,
-    class_serialized: Optional[bytes] = None,
+    web_server_port: int | None = None,
+    web_server_startup_timeout: float | None = None,
+    function_serialized: bytes | None = None,
+    class_serialized: bytes | None = None,
     supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"] = [
         api_pb2.DATA_FORMAT_PICKLE,
         api_pb2.DATA_FORMAT_CBOR,
@@ -316,15 +317,15 @@ def _run_container_process(
     function_name,
     *,
     inputs: list[tuple[str, tuple, dict[str, Any]]],
-    max_concurrent_inputs: Optional[int] = None,
-    target_concurrent_inputs: Optional[int] = None,
+    max_concurrent_inputs: int | None = None,
+    target_concurrent_inputs: int | None = None,
     cls_params: tuple[tuple, dict[str, Any]] = ((), {}),
     _print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
     is_class=False,
     function_type: "api_pb2.Function.FunctionType.ValueType" = api_pb2.Function.FUNCTION_TYPE_FUNCTION,
-    volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
-    http_config: Optional[api_pb2.HTTPConfig] = None,
+    volume_mounts: list[api_pb2.VolumeMount] | None = None,
+    http_config: api_pb2.HTTPConfig | None = None,
     is_server: bool = False,
 ) -> subprocess.Popen:
     container_args = _container_args(
@@ -485,32 +486,32 @@ def _container_args(
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     app_name: str = "",
     is_builder_function: bool = False,
-    max_concurrent_inputs: Optional[int] = None,
-    target_concurrent_inputs: Optional[int] = None,
-    batch_max_size: Optional[int] = None,
-    batch_wait_ms: Optional[int] = None,
-    serialized_params: Optional[bytes] = None,
+    max_concurrent_inputs: int | None = None,
+    target_concurrent_inputs: int | None = None,
+    batch_max_size: int | None = None,
+    batch_wait_ms: int | None = None,
+    serialized_params: bytes | None = None,
     is_checkpointing_function: bool = False,
     deps: list[str] = ["im-1"],
-    volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
+    volume_mounts: list[api_pb2.VolumeMount] | None = None,
     is_auto_snapshot: bool = False,
-    max_inputs: Optional[int] = None,
+    max_inputs: int | None = None,
     is_class: bool = False,
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
     app_id: str = "ap-1",
     app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT_SENTINEL,
-    web_server_port: Optional[int] = None,
-    web_server_startup_timeout: Optional[float] = None,
-    function_serialized: Optional[bytes] = None,
-    class_serialized: Optional[bytes] = None,
+    web_server_port: int | None = None,
+    web_server_startup_timeout: float | None = None,
+    function_serialized: bytes | None = None,
+    class_serialized: bytes | None = None,
     supported_output_formats: Sequence["api_pb2.DataFormat.ValueType"] = [
         api_pb2.DATA_FORMAT_PICKLE,
         api_pb2.DATA_FORMAT_CBOR,
     ],
     method_definitions: dict[str, api_pb2.MethodDefinition] = {},
-    http_config: Optional[api_pb2.HTTPConfig] = None,
+    http_config: api_pb2.HTTPConfig | None = None,
     is_server: bool = False,
 ):
     if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
@@ -590,9 +591,9 @@ def _get_inputs(
     args: tuple[tuple, dict] = ((42,), {}),
     n: int = 1,
     kill_switch=True,
-    method_name: Optional[str] = None,
+    method_name: str | None = None,
     upload_to_blob: bool = False,
-    client: Optional[Client] = None,
+    client: Client | None = None,
     data_format: "api_pb2.DataFormat.ValueType" = api_pb2.DATA_FORMAT_PICKLE,
 ) -> list[api_pb2.FunctionGetInputsResponse]:
     if upload_to_blob:
@@ -675,7 +676,7 @@ def _unwrap_batch_exception(ret: ContainerResult, batch_size):
 
 def _unwrap_generator(
     ret: ContainerResult, assert_data_format: Optional["api_pb2.DataFormat.ValueType"] = None
-) -> tuple[list[Any], Optional[Exception]]:
+) -> tuple[list[Any], Exception | None]:
     assert len(ret.items) == 1
     item = ret.items[0]
 
@@ -724,7 +725,7 @@ def _get_inputs_batched_with_formats(
     data_formats: list["api_pb2.DataFormat.ValueType"],
     batch_max_size: int,
     kill_switch=True,
-    method_name: Optional[str] = None,
+    method_name: str | None = None,
 ):
     """Create batched inputs with different data formats per item."""
     assert len(args_list) == len(data_formats), "args_list and data_formats must have same length"
@@ -765,7 +766,7 @@ def _get_inputs_batched(
     args_list: list[tuple[tuple, dict]],
     batch_max_size: int,
     kill_switch=True,
-    method_name: Optional[str] = None,
+    method_name: str | None = None,
 ):
     """Helper function to create batched inputs with PICKLE format for all items."""
     data_formats = [api_pb2.DATA_FORMAT_PICKLE] * len(args_list)

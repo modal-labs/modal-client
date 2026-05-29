@@ -2,7 +2,6 @@
 import pytest
 import sys
 import types
-import typing
 from pathlib import Path
 from traceback import extract_tb
 
@@ -168,7 +167,7 @@ def test_traceback_contains_remote_call():
     assert traceback_contains_remote_call(tb)
 
 
-ModuleOrFilename = typing.Union[types.ModuleType, str]
+ModuleOrFilename = types.ModuleType | str
 
 
 def to_path(mof: ModuleOrFilename) -> Path:

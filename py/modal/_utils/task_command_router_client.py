@@ -8,8 +8,9 @@ import time
 import typing
 import urllib.parse
 import weakref
+from collections.abc import AsyncGenerator, Callable
 from contextlib import suppress
-from typing import AsyncGenerator, Callable, Optional, TypeVar
+from typing import TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -46,7 +47,7 @@ def _b64url_decode(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + padding)
 
 
-def _parse_jwt_expiration(jwt_token: str) -> Optional[float]:
+def _parse_jwt_expiration(jwt_token: str) -> float | None:
     """Parse exp from a JWT without verification. Returns UNIX time seconds or None.
 
     This is best-effort; if parsing fails or claim missing, returns None.
@@ -72,9 +73,9 @@ async def call_with_retries_on_transient_errors(
     *,
     base_delay_secs: float = 0.01,
     delay_factor: float = 2,
-    max_retries: Optional[int] = 10,
-    exclude_status_codes: Optional[list[Status]] = None,
-    timeout_deadline: Optional[float] = None,
+    max_retries: int | None = 10,
+    exclude_status_codes: list[Status] | None = None,
+    timeout_deadline: float | None = None,
 ):
     """Call func() with transient error retries and exponential backoff.
 
@@ -193,7 +194,7 @@ class TaskCommandRouterClient:
         url: str,
         jwt: str,
         *,
-        sandbox_id: Optional[str] = None,
+        sandbox_id: str | None = None,
     ) -> "TaskCommandRouterClient":
         """Build a connected client from a jwt and url."""
         o = urllib.parse.urlparse(url)
@@ -229,7 +230,7 @@ class TaskCommandRouterClient:
         )
 
         async def send_request(event: grpclib.events.SendRequest) -> None:
-            idempotency_key = typing.cast(Optional[str], event.metadata.get("x-idempotency-key"))
+            idempotency_key = typing.cast(str | None, event.metadata.get("x-idempotency-key"))
             if idempotency_key is None:
                 logger.debug(f"Sending request to {event.method_name}")
             else:
@@ -278,7 +279,7 @@ class TaskCommandRouterClient:
         loop: asyncio.AbstractEventLoop,
         jwt_refresh_lock: asyncio.Lock,
         *,
-        sandbox_id: Optional[str] = None,
+        sandbox_id: str | None = None,
         stream_stdio_retry_delay_secs: float = 0.01,
         stream_stdio_retry_delay_factor: float = 2,
         stream_stdio_max_retries: int = 10,
@@ -301,7 +302,7 @@ class TaskCommandRouterClient:
         self.stream_stdio_max_retries = stream_stdio_max_retries
 
         # JWT refresh coordination
-        self._jwt_exp: Optional[float] = _parse_jwt_expiration(jwt)
+        self._jwt_exp: float | None = _parse_jwt_expiration(jwt)
         # This is passed in as an argument to ensure it's created from within the correct event loop.
         self._jwt_refresh_lock = jwt_refresh_lock
 
@@ -385,7 +386,7 @@ class TaskCommandRouterClient:
         exec_id: str,
         # Quotes around the type required for protobuf 3.19.
         file_descriptor: "api_pb2.FileDescriptor.ValueType",
-        deadline: Optional[float] = None,
+        deadline: float | None = None,
     ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
         """Stream stdout/stderr batches from an exec'd command, retrying on transient errors.
 
@@ -490,9 +491,7 @@ class TaskCommandRouterClient:
                 lambda: self._call_with_auth_retry(self._stub.SandboxStdinWriteV2, request)
             )
 
-    async def exec_poll(
-        self, task_id: str, exec_id: str, deadline: Optional[float] = None
-    ) -> sr_pb2.TaskExecPollResponse:
+    async def exec_poll(self, task_id: str, exec_id: str, deadline: float | None = None) -> sr_pb2.TaskExecPollResponse:
         """Poll for the exit status of an exec'd command, properly retrying on transient errors.
 
         Args:
@@ -528,7 +527,7 @@ class TaskCommandRouterClient:
         self,
         task_id: str,
         exec_id: str,
-        deadline: Optional[float] = None,
+        deadline: float | None = None,
     ) -> sr_pb2.TaskExecWaitResponse:
         """Wait for an exec'd command to exit and return the exit code, properly retrying on transient errors.
 
@@ -620,7 +619,7 @@ class TaskCommandRouterClient:
         stub_method: "grpclib.client.UnaryStreamMethod[_StdioReq, _StdioResp]",
         request_factory: Callable[[int], _StdioReq],
         deadline_label: str,
-        deadline: Optional[float] = None,
+        deadline: float | None = None,
     ) -> AsyncGenerator[_StdioResp, None]:
         """Drive a streaming-stdio RPC with offset bookkeeping, transient-error
         retries, and JWT-refresh auth retries.
@@ -722,7 +721,7 @@ class TaskCommandRouterClient:
         exec_id: str,
         # Quotes around the type required for protobuf 3.19.
         file_descriptor: "sr_pb2.TaskExecStdioFileDescriptor.ValueType",
-        deadline: Optional[float] = None,
+        deadline: float | None = None,
     ) -> AsyncGenerator[sr_pb2.TaskExecStdioReadResponse, None]:
         """Stream exec stdio from the task, retrying on transient errors.
         Raises ExecTimeoutError if the deadline is exceeded.

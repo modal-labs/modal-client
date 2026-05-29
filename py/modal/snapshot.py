@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2024
-from typing import Optional, cast
+from typing import cast
 
 import typing_extensions
 
@@ -24,16 +24,14 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
 
     @deprecate_aio_usage((2025, 12, 5), "SandboxSnapshot.from_id")
     @classmethod
-    def from_id(
-        cls, sandbox_snapshot_id: str, client: Optional["modal.client.Client"] = None
-    ) -> typing_extensions.Self:
+    def from_id(cls, sandbox_snapshot_id: str, client: "modal.client.Client | None" = None) -> typing_extensions.Self:
         """
         Construct a `SandboxSnapshot` object from a sandbox snapshot ID.
         """
         _client = cast(_Client, synchronizer._translate_in(client))
 
         async def _load(
-            self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+            self: _SandboxSnapshot, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
             # hydration doesn't actually do much apart from validating the existance of the id
             # which is implicitly done by trying to start a sandbox from the snapshot as well

@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import subprocess
-from typing import Optional
 
 import click
 from rich.rule import Rule
@@ -86,7 +85,7 @@ def check_path():
 @click.command("setup", cls=ModalCommand, help="Bootstrap Modal's configuration.")
 @click.option("--profile", default=None)
 @synchronizer.create_blocking
-async def setup(profile: Optional[str] = None):
+async def setup(profile: str | None = None):
     check_path()
     print_logo()
 

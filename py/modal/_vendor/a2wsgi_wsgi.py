@@ -35,7 +35,6 @@ from concurrent.futures import ThreadPoolExecutor
 from types import TracebackType
 from typing import (
     Any,
-    Callable,
     Dict,
     List,
     Literal,
@@ -46,6 +45,7 @@ from typing import (
     TypedDict,
     Union,
 )
+from collections.abc import Callable
 from collections.abc import Awaitable, Iterable
 
 
@@ -74,7 +74,7 @@ class HTTPScope(TypedDict):
     root_path: str
     headers: Iterable[tuple[bytes, bytes]]
     client: NotRequired[tuple[str, int]]
-    server: NotRequired[tuple[str, Optional[int]]]
+    server: NotRequired[tuple[str, int | None]]
     state: NotRequired[dict[str, Any]]
     extensions: NotRequired[dict[str, dict[object, object]]]
 
@@ -90,7 +90,7 @@ class WebSocketScope(TypedDict):
     root_path: str
     headers: Iterable[tuple[bytes, bytes]]
     client: NotRequired[tuple[str, int]]
-    server: NotRequired[tuple[str, Optional[int]]]
+    server: NotRequired[tuple[str, int | None]]
     subprotocols: Iterable[str]
     state: NotRequired[dict[str, Any]]
     extensions: NotRequired[dict[str, dict[object, object]]]
@@ -382,7 +382,7 @@ class StartResponse(Protocol):
         self,
         status: str,
         response_headers: list[tuple[str, str]],
-        exc_info: Optional[ExceptionInfo] = None,
+        exc_info: ExceptionInfo | None = None,
         /,
     ) -> WriteCallable:
         raise NotImplementedError
@@ -598,7 +598,7 @@ class WSGIResponder:
             if sender and not sender.done():
                 sender.cancel()  # pragma: no cover
 
-    def send(self, message: typing.Optional[SendEvent]) -> None:
+    def send(self, message: SendEvent | None) -> None:
         future = asyncio.run_coroutine_threadsafe(
             self.send_queue.put(message),
             loop=self.loop,
@@ -617,7 +617,7 @@ class WSGIResponder:
         self,
         status: str,
         response_headers: list[tuple[str, str]],
-        exc_info: typing.Optional[ExceptionInfo] = None,
+        exc_info: ExceptionInfo | None = None,
     ) -> WriteCallable:
         self.exc_info = exc_info
         if not self.response_started:

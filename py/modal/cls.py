@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2022
 import inspect
 import typing
-from collections.abc import Collection
+from collections.abc import Callable, Collection, Sequence
 from pathlib import PurePosixPath
-from typing import Any, Callable, Optional, Sequence, TypeVar, Union
+from typing import Any, TypeVar
 
 from google.protobuf.message import Message
 
@@ -89,7 +89,7 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
         method_metadata = cls._method_metadata[method_name]
         new_function._hydrate(service_function.object_id, service_function.client, method_metadata)
 
-    async def _load(fun: "_Function", resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+    async def _load(fun: "_Function", resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
         # there is currently no actual loading logic executed to create each method on
         # the *parametrized* instance of a class - it uses the parameter-bound service-function
         # for the instance. This load method just makes sure to set all attributes after the
@@ -147,18 +147,18 @@ class _Obj:
     _cls: "_Cls"  # parent
     _functions: dict[str, _Function]
     _has_entered: bool
-    _user_cls_instance: Optional[Any] = None
+    _user_cls_instance: Any | None = None
     _args: tuple[Any, ...]
     _kwargs: dict[str, Any]
 
-    _instance_service_function: Optional[_Function] = None  # this gets set lazily
-    _options: Optional[_FunctionOptions]
+    _instance_service_function: _Function | None = None  # this gets set lazily
+    _options: _FunctionOptions | None
 
     def __init__(
         self,
         cls: "_Cls",
-        user_cls: Optional[type],  # this would be None in case of lookups
-        options: Optional[_FunctionOptions],
+        user_cls: type | None,  # this would be None in case of lookups
+        options: _FunctionOptions | None,
         args,
         kwargs,
     ):
@@ -227,7 +227,7 @@ class _Obj:
                     function: _Function,
                     resolver: Resolver,
                     load_context: LoadContext,
-                    existing_object_id: Optional[str],
+                    existing_object_id: str | None,
                 ):
                     if not parent.is_hydrated:
                         await parent.hydrate(load_context.client)
@@ -284,10 +284,10 @@ class _Obj:
     async def update_autoscaler(
         self,
         *,
-        min_containers: Optional[int] = None,
-        max_containers: Optional[int] = None,
-        scaledown_window: Optional[int] = None,
-        buffer_containers: Optional[int] = None,
+        min_containers: int | None = None,
+        max_containers: int | None = None,
+        scaledown_window: int | None = None,
+        buffer_containers: int | None = None,
     ) -> None:
         """Override the current autoscaler behavior for this Cls instance.
 
@@ -377,7 +377,7 @@ class _Obj:
         # since we can't assume the class is already loaded when this gets called, e.g.
         # CLs.from_name(...)().my_func.remote().
 
-        def _get_maybe_method() -> Optional["_Function"]:
+        def _get_maybe_method() -> "_Function | None":
             """Gets _Function object for method - either for a local or a hydrated remote class
 
             * If class is neither local or hydrated - raise exception (should never happen)
@@ -447,18 +447,18 @@ class _Cls(_Object, type_prefix="cs"):
     Instead, use the [`@app.cls()`](https://modal.com/docs/reference/modal.App#cls) decorator on the App object.
     """
 
-    _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
+    _class_service_function: _Function | None  # The _Function (read "service") serving *all* methods of the class
     _options: _FunctionOptions
 
-    _app: Optional["modal.app._App"] = None  # not set for lookups
-    _name: Optional[str]
+    _app: "modal.app._App | None" = None  # not set for lookups
+    _name: str | None
     # Only set for hydrated classes:
-    _method_metadata: Optional[dict[str, api_pb2.FunctionHandleMetadata]] = None
+    _method_metadata: dict[str, api_pb2.FunctionHandleMetadata] | None = None
 
     # These are only set where source is locally available:
     # TODO: wrap these in a single optional/property for consistency
-    _user_cls: Optional[type] = None
-    _method_partials: Optional[dict[str, _PartialFunction]] = None
+    _user_cls: type | None = None
+    _method_partials: dict[str, _PartialFunction] | None = None
     _callables: dict[str, Callable[..., Any]]
 
     def _initialize_from_empty(self):
@@ -529,7 +529,7 @@ class _Cls(_Object, type_prefix="cs"):
         return new_cls
 
     @live_method
-    async def _experimental_get_flash_urls(self) -> Optional[list[str]]:
+    async def _experimental_get_flash_urls(self) -> list[str] | None:
         """URL of the flash service for the class."""
         return await self._get_class_service_function()._experimental_get_flash_urls()
 
@@ -610,7 +610,7 @@ More information on class parameterization can be found here: https://modal.com/
         def _deps() -> list[_Function]:
             return [class_service_function]
 
-        async def _load(self: "_Cls", resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+        async def _load(self: "_Cls", resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.ClassCreateRequest(
                 app_id=load_context.app_id, existing_class_id=existing_object_id, only_class_function=True
             )
@@ -636,8 +636,8 @@ More information on class parameterization can be found here: https://modal.com/
         app_name: str,
         name: str,
         *,
-        environment_name: Optional[str] = None,
-        client: Optional["_Client"] = None,
+        environment_name: str | None = None,
+        client: "_Client | None" = None,
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
 
@@ -651,7 +651,7 @@ More information on class parameterization can be found here: https://modal.com/
         """
 
         async def _load_remote(
-            self: _Cls, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+            self: _Cls, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
@@ -698,19 +698,19 @@ More information on class parameterization can be found here: https://modal.com/
     def with_options(
         self: "_Cls",
         *,
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
-        memory: Optional[Union[int, tuple[int, int]]] = None,
-        gpu: Optional[str] = None,
-        env: Optional[dict[str, Optional[str]]] = None,
-        secrets: Optional[Collection[_Secret]] = None,
-        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
-        retries: Optional[Union[int, Retries]] = None,
-        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
-        buffer_containers: Optional[int] = None,  # Additional containers to scale up while Function is active.
-        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
-        timeout: Optional[int] = None,
-        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        cpu: float | tuple[float, float] | None = None,
+        memory: int | tuple[int, int] | None = None,
+        gpu: str | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
+        volumes: dict[str | PurePosixPath, _Volume | _CloudBucketMount] = {},
+        retries: int | Retries | None = None,
+        max_containers: int | None = None,  # Limit on the number of containers that can be concurrently running.
+        buffer_containers: int | None = None,  # Additional containers to scale up while Function is active.
+        scaledown_window: int | None = None,  # Max amount of time a container can remain idle before scaling down.
+        timeout: int | None = None,
+        region: str | Sequence[str] | None = None,  # Region or regions to run the function on.
+        cloud: str | None = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
     ) -> "_Cls":
         """Override the static Cls configuration with invocation-specific values.
 
@@ -758,7 +758,7 @@ More information on class parameterization can be found here: https://modal.com/
 
         return self._apply_dynamic_config(options, "with_options")
 
-    def with_concurrency(self: "_Cls", *, max_inputs: int, target_inputs: Optional[int] = None) -> "_Cls":
+    def with_concurrency(self: "_Cls", *, max_inputs: int, target_inputs: int | None = None) -> "_Cls":
         """Override the static Cls configuration with invocation-specific input concurrency settings.
 
         **Usage:**
@@ -809,7 +809,7 @@ More information on class parameterization can be found here: https://modal.com/
         # a user tries to use any of its "live methods" - this lets us raise exceptions for users
         # only if they try to access methods on a Cls as if they were methods on the instance.
         async def error_loader(
-            fun: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+            fun: _Function, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
             raise AttributeError(
                 "You can't access methods on a Cls directly - Did you forget to instantiate the class first?\n"

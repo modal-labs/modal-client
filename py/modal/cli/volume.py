@@ -2,7 +2,6 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 from click import UsageError
@@ -53,8 +52,8 @@ def humanize_filesize(value: int) -> str:
 @click.option("--version", default=None, type=int, help="VolumeFS version. (Experimental)")
 def create(
     name: str,
-    env: Optional[str] = None,
-    version: Optional[int] = None,
+    env: str | None = None,
+    version: int | None = None,
 ):
     env_name = ensure_env(env)
     modal.Volume.objects.create(name, environment_name=env, version=version)
@@ -82,7 +81,7 @@ async def get(
     remote_path: str,
     local_destination: str = ".",
     force: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Download files from a modal.Volume object.
 
@@ -117,7 +116,7 @@ async def get(
 @env_option
 @click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = None, json: bool = False):
+async def list_(env: str | None = None, json: bool = False):
     env = ensure_env(env)
     volumes = await _Volume.objects.list(environment_name=env)
     rows = []
@@ -138,7 +137,7 @@ async def ls(
     volume_name: str,
     path: str = "/",
     json: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     ensure_env(env)
     vol = _Volume.from_name(volume_name, environment_name=env)
@@ -186,7 +185,7 @@ async def put(
     local_path: str,
     remote_path: str = "/",
     force: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Upload a file or directory to a modal.Volume.
 
@@ -245,7 +244,7 @@ async def rm(
     volume_name: str,
     remote_path: str,
     recursive: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     ensure_env(env)
     volume = _Volume.from_name(volume_name, environment_name=env)
@@ -263,7 +262,7 @@ async def cp(
     volume_name: str,
     paths: tuple[str, ...],  # accepts multiple paths, last path is treated as destination path
     recursive: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Copy within a modal.Volume.
 
@@ -286,7 +285,7 @@ async def delete(
     *,
     allow_missing: bool = False,
     yes: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     env = ensure_env(env)
     if not yes:
@@ -309,7 +308,7 @@ async def rename(
     old_name: str,
     new_name: str,
     yes: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     if not yes:
         click.confirm(
@@ -327,7 +326,7 @@ async def rename(
 @synchronizer.create_blocking
 async def dashboard(
     volume_name: str,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Open a Volume's dashboard page in your web browser.
 

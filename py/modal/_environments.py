@@ -3,7 +3,7 @@ import asyncio
 import builtins
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -35,7 +35,7 @@ class _EnvironmentManager:
         name: str,  # Name to use for the new Environment
         *,
         restricted: bool = False,  # If True, enable RBAC restrictions on the Environment
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> None:
         """Create a new Environment.
 
@@ -52,7 +52,7 @@ class _EnvironmentManager:
     async def list(
         self,
         *,
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> builtins.list["_Environment"]:
         """Return a list of hydrated Environment objects.
 
@@ -85,7 +85,7 @@ class _EnvironmentManager:
         self,
         name: str,  # Name of the Environment to delete
         *,
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> None:
         """Delete a named Environment.
 
@@ -167,8 +167,8 @@ class _EnvironmentMembersManager:
     async def update(
         self,
         *,
-        users: Optional[Mapping[str, MemberRole]] = None,
-        service_users: Optional[Mapping[str, MemberRole]] = None,
+        users: Mapping[str, MemberRole] | None = None,
+        service_users: Mapping[str, MemberRole] | None = None,
     ) -> None:
         """Add or modify roles for members of a restricted Environment.
 
@@ -224,8 +224,8 @@ class _EnvironmentMembersManager:
     async def remove(
         self,
         *,
-        users: Optional[Iterable[str]] = None,
-        service_users: Optional[Iterable[str]] = None,
+        users: Iterable[str] | None = None,
+        service_users: Iterable[str] | None = None,
     ) -> None:
         """Remove members from a restricted Environment.
 
@@ -289,7 +289,7 @@ class _EnvironmentMembersManager:
 
 
 class _Environment(_Object, type_prefix="en"):
-    _name: Optional[str] = None
+    _name: str | None = None
     _settings: EnvironmentSettings
 
     def __init__(self):
@@ -300,7 +300,7 @@ class _Environment(_Object, type_prefix="en"):
         )
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         return self._name
 
     @classproperty
@@ -331,10 +331,10 @@ class _Environment(_Object, type_prefix="en"):
 
     @staticmethod
     def _get_or_create(
-        name: str, repr: str, create_if_missing: bool = False, client: Optional[_Client] = None
+        name: str, repr: str, create_if_missing: bool = False, client: _Client | None = None
     ) -> "_Environment":
         async def _load(
-            self: _Environment, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+            self: _Environment, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
             request = api_pb2.EnvironmentGetOrCreateRequest(
                 deployment_name=name,
@@ -358,7 +358,7 @@ class _Environment(_Object, type_prefix="en"):
         )
 
     @staticmethod
-    def from_context(*, client: Optional[_Client] = None) -> "_Environment":
+    def from_context(*, client: _Client | None = None) -> "_Environment":
         """Look up an Environment object using the current context.
 
         This method returns the Environment that is defined by the local configuration
@@ -381,7 +381,7 @@ class _Environment(_Object, type_prefix="en"):
         name: str,
         *,
         create_if_missing: bool = False,
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
     ) -> "_Environment":
         """Look up an Environment object using its name."""
         check_environment_name(name)
@@ -412,7 +412,7 @@ async def _get_environment_cached(name: str, client: _Client) -> _Environment:
 # and migrate users to the new object-oriented API, but that should happen gracefully.
 
 
-async def _delete_environment(name: str, client: Optional[_Client] = None):
+async def _delete_environment(name: str, client: _Client | None = None):
     if client is None:
         client = await _Client.from_env()
     await client.stub.EnvironmentDelete(api_pb2.EnvironmentDeleteRequest(name=name))
@@ -421,9 +421,9 @@ async def _delete_environment(name: str, client: Optional[_Client] = None):
 async def _update_environment(
     current_name: str,
     *,
-    new_name: Optional[str] = None,
-    new_web_suffix: Optional[str] = None,
-    client: Optional[_Client] = None,
+    new_name: str | None = None,
+    new_web_suffix: str | None = None,
+    client: _Client | None = None,
 ):
     new_name_pb2 = None
     new_web_suffix_pb2 = None
@@ -444,20 +444,20 @@ async def _update_environment(
     await client.stub.EnvironmentUpdate(update_payload)
 
 
-async def _create_environment(name: str, client: Optional[_Client] = None):
+async def _create_environment(name: str, client: _Client | None = None):
     if client is None:
         client = await _Client.from_env()
     await client.stub.EnvironmentCreate(api_pb2.EnvironmentCreateRequest(name=name))
 
 
-async def _list_environments(client: Optional[_Client] = None) -> list[api_pb2.EnvironmentListItem]:
+async def _list_environments(client: _Client | None = None) -> list[api_pb2.EnvironmentListItem]:
     if client is None:
         client = await _Client.from_env()
     resp = await client.stub.EnvironmentList(Empty())
     return list(resp.items)
 
 
-def ensure_env(environment_name: Optional[str] = None) -> str:
+def ensure_env(environment_name: str | None = None) -> str:
     """Override config environment with environment from environment_name
 
     This is necessary since a cli command that runs Modal code, without explicit

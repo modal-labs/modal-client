@@ -6,7 +6,6 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Optional
 
 import click
 from rich.syntax import Syntax
@@ -29,7 +28,7 @@ secret_cli = ModalGroup(name="secret", help="Manage secrets.")
 @env_option
 @click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = None, json: bool = False):
+async def list_(env: str | None = None, json: bool = False):
     env = ensure_env(env)
     client = await _Client.from_env()
 
@@ -95,9 +94,9 @@ async def list_(env: Optional[str] = None, json: bool = False):
 async def create(
     secret_name: str,
     keyvalues: tuple[str, ...] = (),
-    env: Optional[str] = None,
-    from_dotenv: Optional[Path] = None,
-    from_json: Optional[Path] = None,
+    env: str | None = None,
+    from_dotenv: Path | None = None,
+    from_json: Path | None = None,
     force: bool = False,
 ):
     env = ensure_env(env)
@@ -191,7 +190,7 @@ async def delete(
     *,
     allow_missing: bool = False,
     yes: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     env = ensure_env(env)
     if not yes:

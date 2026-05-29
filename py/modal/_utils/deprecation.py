@@ -2,8 +2,9 @@
 import functools
 import sys
 import warnings
+from collections.abc import Callable
 from datetime import date
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 from typing_extensions import ParamSpec  # Needed for Python 3.9
 

@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-from typing import Optional
 
 import click
 from rich.json import JSON
@@ -33,7 +32,7 @@ def current():
 @profile_cli.command("list", help="Show all Modal profiles and highlight the active one.")
 @click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(json: Optional[bool] = False):
+async def list_(json: bool | None = False):
     config = Config()
     profiles = config_profiles()
     lookup_coros = [
@@ -62,7 +61,7 @@ async def list_(json: Optional[bool] = False):
         content = ["•" if active else "", profile, workspace]
         rows.append((active, content))
 
-    env_based_workspace: Optional[str] = None
+    env_based_workspace: str | None = None
     if "MODAL_TOKEN_ID" in os.environ:
         try:
             env_based_resp = await _lookup_workspace(

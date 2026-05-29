@@ -329,7 +329,7 @@ def test_run_write_result(servicer, set_env_client, test_dir):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         run_cli_command(["run", "--write-result", result_file := f"{tmpdir}/result.txt", f"{app_file}::returns_str"])
-        with open(result_file, "rt") as f:
+        with open(result_file) as f:
             assert f.read() == "Hello!"
 
         run_cli_command(["run", "-w", result_file := f"{tmpdir}/result.bin", f"{app_file}::returns_bytes"])
@@ -452,20 +452,19 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         (["run", f"{app_file.as_posix()}::optional_arg"], "None <class 'NoneType'>"),
         (["run", f"{app_file.as_posix()}::optional_arg_postponed"], "None <class 'NoneType'>"),
     ]
-    if sys.version_info >= (3, 10):
-        valid_call_args.extend(
-            [
-                (["run", f"{app_file.as_posix()}::optional_arg_pep604", "--i=20"], "20 <class 'int'>"),
-                (["run", f"{app_file.as_posix()}::optional_arg_pep604"], "None <class 'NoneType'>"),
-            ]
-        )
+    valid_call_args.extend(
+        [
+            (["run", f"{app_file.as_posix()}::optional_arg_pep604", "--i=20"], "20 <class 'int'>"),
+            (["run", f"{app_file.as_posix()}::optional_arg_pep604"], "None <class 'NoneType'>"),
+        ]
+    )
     for args, expected in valid_call_args:
         res = run_cli_command(args)
         assert expected in res.stdout
         assert len(servicer.function_call_inputs) == 0
 
     res = run_cli_command(["run", f"{app_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
-    assert "Parameter `i` has unparseable annotation: typing.Union[int, str]" in str(res.exception)
+    assert "Parameter `i` has unparseable annotation: int | str" in str(res.exception)
 
     res = run_cli_command(["run", f"{app_file.as_posix()}::unevaluatable_annot", "--i=20"], expected_exit_code=1)
     assert "Unable to generate command line interface" in str(res.exception)
@@ -1666,7 +1665,7 @@ def test_rollover_recreate(servicer, mock_dir, set_env_client, monkeypatch):
         assert task_list_calls == 4
 
     task_ids = set(servicer.container_stop_ids)
-    assert task_ids == set(["ta-123", "ta-321"])
+    assert task_ids == {"ta-123", "ta-321"}
 
 
 def test_rollover_rolling(servicer, mock_dir, set_env_client):

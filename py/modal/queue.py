@@ -6,7 +6,7 @@ import warnings
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any
 
 from google.protobuf.message import Message
 from grpclib import Status
@@ -41,9 +41,9 @@ class QueueInfo:
     # This dataclass should be limited to information that is unchanging over the lifetime of the Queue,
     # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
 
-    name: Optional[str]
+    name: str | None
     created_at: datetime
-    created_by: Optional[str]
+    created_by: str | None
 
 
 class _QueueManager:
@@ -54,8 +54,8 @@ class _QueueManager:
         name: str,  # Name to use for the new Queue
         *,
         allow_existing: bool = False,  # If True, no-op when the Queue already exists
-        environment_name: Optional[str] = None,  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        environment_name: str | None = None,  # Uses active environment if not specified
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> None:
         """Create a new Queue object.
 
@@ -105,10 +105,10 @@ class _QueueManager:
     async def list(
         self,
         *,
-        max_objects: Optional[int] = None,  # Limit results to this size
-        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        max_objects: int | None = None,  # Limit results to this size
+        created_before: datetime | str | None = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> builtins.list["_Queue"]:
         """Return a list of hydrated Queue objects.
 
@@ -175,8 +175,8 @@ class _QueueManager:
         name: str,  # Name of the Queue to delete
         *,
         allow_missing: bool = False,  # If True, don't raise an error if the Queue doesn't exist
-        environment_name: Optional[str] = None,  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        environment_name: str | None = None,  # Uses active environment if not specified
+        client: _Client | None = None,  # Optional client with Modal credentials
     ):
         """Delete a named Queue.
 
@@ -284,7 +284,7 @@ class _Queue(_Object, type_prefix="qu"):
     Partition keys must be non-empty and must not exceed 64 bytes.
     """
 
-    _metadata: Optional[api_pb2.QueueMetadata] = None
+    _metadata: api_pb2.QueueMetadata | None = None
 
     def __init__(self):
         """mdmd:hidden"""
@@ -296,10 +296,10 @@ class _Queue(_Object, type_prefix="qu"):
         return _QueueManager()
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         return self._name
 
-    def _hydrate_metadata(self, metadata: Optional[Message]):
+    def _hydrate_metadata(self, metadata: Message | None):
         if metadata:
             assert isinstance(metadata, api_pb2.QueueMetadata)
             self._metadata = metadata
@@ -310,7 +310,7 @@ class _Queue(_Object, type_prefix="qu"):
         return self._metadata
 
     @staticmethod
-    def validate_partition_key(partition: Optional[str]) -> bytes:
+    def validate_partition_key(partition: str | None) -> bytes:
         if partition is not None:
             partition_key = partition.encode("utf-8")
             if len(partition_key) == 0 or len(partition_key) > 64:
@@ -324,8 +324,8 @@ class _Queue(_Object, type_prefix="qu"):
     @asynccontextmanager
     async def ephemeral(
         cls: type["_Queue"],
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
     ) -> AsyncIterator["_Queue"]:
         """Creates a new ephemeral queue within a context manager:
@@ -359,9 +359,9 @@ class _Queue(_Object, type_prefix="qu"):
     def from_name(
         name: str,
         *,
-        environment_name: Optional[str] = None,
+        environment_name: str | None = None,
         create_if_missing: bool = False,
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
     ) -> "_Queue":
         """Reference a named Queue, creating if necessary.
 
@@ -376,7 +376,7 @@ class _Queue(_Object, type_prefix="qu"):
         """
         check_object_name(name, "Queue")
 
-        async def _load(self: _Queue, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+        async def _load(self: _Queue, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.QueueGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=load_context.environment_name,
@@ -398,7 +398,7 @@ class _Queue(_Object, type_prefix="qu"):
     @staticmethod
     def from_id(
         queue_id: str,
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
     ) -> "_Queue":
         """Construct a Queue from an id and look up the Queue metadata.
 
@@ -423,7 +423,7 @@ class _Queue(_Object, type_prefix="qu"):
         ```
         """
 
-        async def _load(self: _Queue, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]):
+        async def _load(self: _Queue, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.QueueGetByIdRequest(queue_id=queue_id)
             response = await load_context.client.stub.QueueGetById(req)
             self._hydrate(response.queue_id, load_context.client, response.metadata)
@@ -438,7 +438,7 @@ class _Queue(_Object, type_prefix="qu"):
         )
 
     @staticmethod
-    async def delete(name: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+    async def delete(name: str, *, client: _Client | None = None, environment_name: str | None = None):
         """mdmd:hidden
         Delete a named Queue.
 
@@ -465,7 +465,7 @@ class _Queue(_Object, type_prefix="qu"):
             created_by=creation_info.created_by or None,
         )
 
-    async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> list[Any]:
+    async def _get_nonblocking(self, partition: str | None, n_values: int) -> list[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
@@ -479,7 +479,7 @@ class _Queue(_Object, type_prefix="qu"):
         else:
             return []
 
-    async def _get_blocking(self, partition: Optional[str], timeout: Optional[float], n_values: int) -> list[Any]:
+    async def _get_blocking(self, partition: str | None, timeout: float | None, n_values: int) -> list[Any]:
         if timeout is not None:
             deadline = time.time() + timeout
         else:
@@ -509,7 +509,7 @@ class _Queue(_Object, type_prefix="qu"):
         raise queue.Empty()
 
     @live_method
-    async def clear(self, *, partition: Optional[str] = None, all: bool = False) -> None:
+    async def clear(self, *, partition: str | None = None, all: bool = False) -> None:
         """Clear the contents of a single partition or all partitions.
 
         Warning: this is a destructive operation and will irrevocably delete data.
@@ -532,8 +532,8 @@ class _Queue(_Object, type_prefix="qu"):
 
     @live_method
     async def get(
-        self, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
-    ) -> Optional[Any]:
+        self, block: bool = True, timeout: float | None = None, *, partition: str | None = None
+    ) -> Any | None:
         """Remove and return the next object in the queue.
 
         If `block` is `True` (the default) and the queue is empty, `get` will wait indefinitely for
@@ -558,7 +558,7 @@ class _Queue(_Object, type_prefix="qu"):
 
     @live_method
     async def get_many(
-        self, n_values: int, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
+        self, n_values: int, block: bool = True, timeout: float | None = None, *, partition: str | None = None
     ) -> list[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
@@ -584,9 +584,9 @@ class _Queue(_Object, type_prefix="qu"):
         self,
         v: Any,
         block: bool = True,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         *,
-        partition: Optional[str] = None,
+        partition: str | None = None,
         partition_ttl: int = 24 * 3600,  # After 24 hours of no activity, this partition will be deletd.
     ) -> None:
         """Add an object to the end of the queue.
@@ -604,9 +604,9 @@ class _Queue(_Object, type_prefix="qu"):
         self,
         vs: list[Any],
         block: bool = True,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         *,
-        partition: Optional[str] = None,
+        partition: str | None = None,
         partition_ttl: int = 24 * 3600,  # After 24 hours of no activity, this partition will be deletd.
     ) -> None:
         """Add several objects to the end of the queue.
@@ -626,7 +626,7 @@ class _Queue(_Object, type_prefix="qu"):
             await self._put_many_nonblocking(partition, partition_ttl, vs)
 
     async def _put_many_blocking(
-        self, partition: Optional[str], partition_ttl: int, vs: list[Any], timeout: Optional[float] = None
+        self, partition: str | None, partition_ttl: int, vs: list[Any], timeout: float | None = None
     ):
         vs_encoded = [serialize(v) for v in vs]
 
@@ -656,7 +656,7 @@ class _Queue(_Object, type_prefix="qu"):
             else:
                 raise exc
 
-    async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: list[Any]):
+    async def _put_many_nonblocking(self, partition: str | None, partition_ttl: int, vs: list[Any]):
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,
@@ -676,7 +676,7 @@ class _Queue(_Object, type_prefix="qu"):
                 raise exc
 
     @live_method
-    async def len(self, *, partition: Optional[str] = None, total: bool = False) -> int:
+    async def len(self, *, partition: str | None = None, total: bool = False) -> int:
         """Return the number of objects in the queue partition."""
         if partition and total:
             raise InvalidError("Partition must be null when requesting total length.")
@@ -691,13 +691,13 @@ class _Queue(_Object, type_prefix="qu"):
     @warn_if_generator_is_not_consumed()
     @live_method_gen
     async def iterate(
-        self, *, partition: Optional[str] = None, item_poll_timeout: float = 0.0
+        self, *, partition: str | None = None, item_poll_timeout: float = 0.0
     ) -> AsyncGenerator[Any, None]:
         """Iterate through items in the queue without mutation.
 
         Specify `item_poll_timeout` to control how long the iterator should wait for the next time before giving up.
         """
-        last_entry_id: Optional[str] = None
+        last_entry_id: str | None = None
         validated_partition_key = self.validate_partition_key(partition)
         fetch_deadline = time.time() + item_poll_timeout
 

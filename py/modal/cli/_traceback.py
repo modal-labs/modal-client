@@ -3,7 +3,6 @@
 
 import functools
 import warnings
-from typing import Optional
 
 from rich.console import RenderResult, group
 from rich.syntax import Syntax
@@ -32,7 +31,7 @@ def _render_stack(self, stack: Stack) -> RenderResult:
             code_cache[filename] = code
         return code
 
-    exclude_frames: Optional[range] = None
+    exclude_frames: range | None = None
     if self.max_frames != 0:
         exclude_frames = range(
             self.max_frames // 2,

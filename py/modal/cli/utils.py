@@ -7,7 +7,6 @@ from contextlib import nullcontext
 from csv import writer as csv_writer
 from datetime import datetime
 from json import dumps
-from typing import Optional, Union
 
 import click
 from rich.table import Column, Table
@@ -23,14 +22,14 @@ from ..output import OutputManager
 
 @synchronizer.create_blocking
 async def stream_app_logs(
-    app_id: Optional[str] = None,
-    task_id: Optional[str] = None,
-    sandbox_id: Optional[str] = None,
-    app_logs_url: Optional[str] = None,
+    app_id: str | None = None,
+    task_id: str | None = None,
+    sandbox_id: str | None = None,
+    app_logs_url: str | None = None,
     show_timestamps: bool = False,
     follow: bool = False,
-    prefix_fields: Optional[list[str]] = None,
-    filters: Optional[LogsFilters] = None,
+    prefix_fields: list[str] | None = None,
+    filters: LogsFilters | None = None,
 ):
     if filters is None:
         filters = LogsFilters()
@@ -89,10 +88,10 @@ async def tail_app_logs(
     app_id: str,
     n: int,
     show_timestamps: bool = False,
-    since: Optional[datetime] = None,
-    until: Optional[datetime] = None,
-    prefix_fields: Optional[list[str]] = None,
-    filters: Optional[LogsFilters] = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    prefix_fields: list[str] | None = None,
+    filters: LogsFilters | None = None,
 ):
     """Fetch up to the last n log entries for an app."""
     if filters is None:
@@ -110,8 +109,8 @@ async def fetch_app_logs(
     since: datetime,
     until: datetime,
     show_timestamps: bool = False,
-    prefix_fields: Optional[list[str]] = None,
-    filters: Optional[LogsFilters] = None,
+    prefix_fields: list[str] | None = None,
+    filters: LogsFilters | None = None,
 ):
     """Fetch historical logs for an app over a time range."""
     if filters is None:
@@ -123,7 +122,7 @@ async def fetch_app_logs(
     await _drain_batches(output_mgr, batches, prefix_fields or [], filters.search_text)
 
 
-def _plain(text: Union[Text, str]) -> str:
+def _plain(text: Text | str) -> str:
     return text.plain if isinstance(text, Text) else text
 
 
@@ -132,13 +131,13 @@ def is_tty() -> bool:
 
 
 def display_table(
-    columns: Sequence[Union[Column, str]],
-    rows: Sequence[Sequence[Union[Text, str]]],
+    columns: Sequence[Column | str],
+    rows: Sequence[Sequence[Text | str]],
     json: bool = False,
     csv: bool = False,
     title: str = "",
 ):
-    def col_to_str(col: Union[Column, str]) -> str:
+    def col_to_str(col: Column | str) -> str:
         return str(col.header) if isinstance(col, Column) else col
 
     if csv and json:

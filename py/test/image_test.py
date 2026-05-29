@@ -7,10 +7,11 @@ import re
 import shutil
 import sys
 import threading
+from collections.abc import Callable, Sequence
 from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import Callable, Literal, Sequence, Union, get_args
+from typing import Literal, get_args
 from unittest import mock
 
 import modal
@@ -1067,7 +1068,7 @@ def test_image_dockerfile_copy_auto_dockerignore(builder_version, servicer, clie
     layers = get_image_layers(image.object_id, servicer)
     assert f"COPY {rel_top_dir} /dummy" in layers[layer].dockerfile_commands
     mount_id = layers[layer].context_mount_id
-    files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+    files = {Path(fn) for fn in servicer.mount_contents[mount_id].keys()}
     assert files == {Path("/") / rel_top_dir / "Dockerfile", Path("/") / rel_top_dir / "file.py"}
 
 
@@ -1098,7 +1099,7 @@ def test_image_dockerfile_copy_ignore_from_file(builder_version, servicer, clien
     layers = get_image_layers(image.object_id, servicer)
     assert f"COPY {rel_top_dir} /dummy" in layers[layer].dockerfile_commands
     mount_id = layers[layer].context_mount_id
-    files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+    files = {Path(fn) for fn in servicer.mount_contents[mount_id].keys()}
     assert files == {
         Path("/") / rel_top_dir / "Dockerfile",
         Path("/") / rel_top_dir / "data.txt",
@@ -1136,7 +1137,7 @@ def test_image_dockerfile_ignore_context_dir(builder_version, servicer, client, 
     layers = get_image_layers(image.object_id, servicer)
     assert docker_cmd in layers[layer].dockerfile_commands
     mount_id = layers[layer].context_mount_id
-    files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+    files = {Path(fn) for fn in servicer.mount_contents[mount_id].keys()}
     assert files == {
         Path("/") / "Dockerfile",
         Path("/") / ".dockerignore",
@@ -1153,7 +1154,7 @@ def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_cal
     def cb(x: Path):
         return x.suffix == ".txt"
 
-    ignore: Union[Sequence[str], Callable[[Path], bool]] = cb if use_callable else ["**/*.txt"]
+    ignore: Sequence[str] | Callable[[Path], bool] = cb if use_callable else ["**/*.txt"]
 
     rel_top_dir = Path("top")
     rel_top_dir.mkdir()
@@ -1173,7 +1174,7 @@ def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_cal
     layers = get_image_layers(image.object_id, servicer)
     assert f"COPY {rel_top_dir} /dummy" in layers[layer].dockerfile_commands
     mount_id = layers[layer].context_mount_id
-    files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+    files = {Path(fn) for fn in servicer.mount_contents[mount_id].keys()}
     assert files == {Path("/") / rel_top_dir / "Dockerfile", Path("/") / rel_top_dir / "file.py"}
 
 
@@ -1188,7 +1189,7 @@ def test_dockerfile_context_dir(builder_version, servicer, client):
         build_image(image, client)
         layers = get_image_layers(image.object_id, servicer)
         mount_id = layers[0].context_mount_id
-        files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+        files = {Path(fn) for fn in servicer.mount_contents[mount_id].keys()}
         assert files == {Path("/data.txt"), Path("/file.py")}
 
 

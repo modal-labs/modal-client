@@ -2,13 +2,13 @@
 import base64
 import json
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 
 @dataclass
 class DecodedJwt:
-    header: Dict[str, Any]
-    payload: Dict[str, Any]
+    header: dict[str, Any]
+    payload: dict[str, Any]
 
     @staticmethod
     def decode_without_verification(token: str) -> "DecodedJwt":
@@ -31,7 +31,7 @@ class DecodedJwt:
         return base64.urlsafe_b64encode(data.encode()).rstrip(b"=").decode()
 
     @staticmethod
-    def encode_without_signature(fields: Dict[str, Any]) -> str:
+    def encode_without_signature(fields: dict[str, Any]) -> str:
         """Encodes an Unsecured JWT (without a signature)."""
         header_b64 = DecodedJwt._base64url_encode(json.dumps({"alg": "none", "typ": "JWT"}))
         payload_b64 = DecodedJwt._base64url_encode(json.dumps(fields))

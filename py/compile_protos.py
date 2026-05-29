@@ -7,10 +7,10 @@ import argparse
 import os
 import subprocess
 import sys
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Generator
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--skip-mypy", action="store_true")

@@ -128,7 +128,7 @@ async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, 
     monkeypatch.setattr("modal.runner.Resolver", PatchedResolver)
 
     (large_dir := tmp_path / "large_files").mkdir()
-    (large_dir / "1.txt").write_bytes("large 1".encode())
+    (large_dir / "1.txt").write_bytes(b"large 1")
 
     image = modal.Image.debian_slim().add_local_dir(large_dir, "/root/large_files")
 
@@ -202,7 +202,7 @@ def test_run_app_recreate_deployment(servicer, client, monkeypatch, mode):
     assert task_list_calls == 4
 
     task_ids = set(servicer.container_stop_ids)
-    assert task_ids == set(["ta-123", "ta-321"])
+    assert task_ids == {"ta-123", "ta-321"}
 
 
 def test_run_app_recreate_deployment_no_op_deployment(servicer, client, monkeypatch):
@@ -238,7 +238,7 @@ def test_run_app_recreate_deployment_timeout(servicer, client, monkeypatch):
             dummy_app.deploy(client=client, strategy="recreate")
 
     task_ids = set(servicer.container_stop_ids)
-    assert task_ids == set(["ta-123", "ta-321"])
+    assert task_ids == {"ta-123", "ta-321"}
 
 
 def test_run_app_recreate_deployment_stop_fails(servicer, client, monkeypatch):

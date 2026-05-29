@@ -3,7 +3,6 @@
 # This file contains helpers for map_item_context_test.py and map_item_manager_test.py
 
 from dataclasses import dataclass
-from typing import Union
 
 from modal._utils.jwt_utils import DecodedJwt
 from modal.parallel_map import _MapItemContext, _MapItemState
@@ -40,8 +39,8 @@ def assert_context_is(
     ctx: _MapItemContext,
     state: _MapItemState,
     retry_count: int,
-    input_id: Union[str, None],
-    input_jwt: Union[InputJwtData, None],
+    input_id: str | None,
+    input_jwt: InputJwtData | None,
     input_args: bytes,
 ):
     assert ctx

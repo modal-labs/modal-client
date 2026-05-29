@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2024
 
-from typing import Optional
 
 import click
 
@@ -26,7 +25,7 @@ dict_cli = ModalGroup(
 @click.argument("name")
 @env_option
 @synchronizer.create_blocking
-async def create(name: str, *, env: Optional[str] = None):
+async def create(name: str, *, env: str | None = None):
     """Create a named Dict object.
 
     Note: This is a no-op when the Dict already exists.
@@ -44,7 +43,7 @@ async def create(name: str, *, env: Optional[str] = None):
 @click.option("--json", is_flag=True, default=False)
 @env_option
 @synchronizer.create_blocking
-async def list_(*, json: bool = False, env: Optional[str] = None):
+async def list_(*, json: bool = False, env: str | None = None):
     """List all named Dicts."""
     env = ensure_env(env)
     dicts = await _Dict.objects.list(environment_name=env)
@@ -61,7 +60,7 @@ async def list_(*, json: bool = False, env: Optional[str] = None):
 @yes_option
 @env_option
 @synchronizer.create_blocking
-async def clear(name: str, *, yes: bool = False, env: Optional[str] = None):
+async def clear(name: str, *, yes: bool = False, env: str | None = None):
     """Clear the contents of a named Dict by deleting all of its data."""
     d = _Dict.from_name(name, environment_name=env)
     if not yes:
@@ -84,7 +83,7 @@ async def delete(
     *,
     allow_missing: bool = False,
     yes: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Delete a named Dict and all of its data."""
     if not yes:
@@ -101,7 +100,7 @@ async def delete(
 @click.argument("key")
 @env_option
 @synchronizer.create_blocking
-async def get(name: str, key: str, *, env: Optional[str] = None):
+async def get(name: str, key: str, *, env: str | None = None):
     """Print the value for a specific key.
 
     Note: When using the CLI, keys are always interpreted as having a string type.
@@ -145,7 +144,7 @@ async def items(
     all: bool = False,
     use_repr: bool = False,
     json: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Print the contents of a Dict.
 

@@ -4,8 +4,8 @@
 # This is because aiohttp is a pretty big dependency that adds significant latency when imported
 
 import asyncio
-from collections.abc import AsyncGenerator
-from typing import Any, Callable, NoReturn, Optional, cast
+from collections.abc import AsyncGenerator, Callable
+from typing import Any, NoReturn, cast
 
 import aiohttp
 
@@ -461,7 +461,7 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
 
 
 async def _proxy_lifespan_request(base_url, scope, receive, send) -> None:
-    session: Optional[aiohttp.ClientSession] = None
+    session: aiohttp.ClientSession | None = None
     while True:
         message = await receive()
         if message["type"] == "lifespan.startup":

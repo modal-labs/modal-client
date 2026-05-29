@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import uuid
-from typing import Optional, Union
 
 import click
 from rich.table import Column
@@ -29,7 +28,7 @@ cluster_cli = ModalGroup(name="cluster", help="Manage and connect to running mul
 @env_option
 @click.option("--json", is_flag=True, default=False)
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = None, json: bool = False):
+async def list_(env: str | None = None, json: bool = False):
     """List all clusters that are currently running."""
     env = ensure_env(env)
     client = await _Client.from_env()
@@ -38,13 +37,13 @@ async def list_(env: Optional[str] = None, json: bool = False):
         api_pb2.ClusterListRequest(environment_name=environment_name)
     )
 
-    column_names: list[Union[Column, str]] = [
+    column_names: list[Column | str] = [
         Column("Cluster ID", min_width=25),
         Column("App ID", min_width=25),
         "Start Time",
         "Nodes",
     ]
-    rows: list[list[Union[Text, str]]] = []
+    rows: list[list[Text | str]] = []
     res.clusters.sort(key=lambda c: c.started_at, reverse=True)
 
     for c in res.clusters:

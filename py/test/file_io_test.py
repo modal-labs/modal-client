@@ -545,7 +545,7 @@ def test_file_io_create(client, servicer):
     async def container_filesystem_exec_get_output(servicer, stream):
         req = await stream.recv_message()
         if req.exec_id == READ_EXEC_ID:
-            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=["hello".encode()]))
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=[b"hello"]))
         await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
 
     with servicer.intercept() as ctx:

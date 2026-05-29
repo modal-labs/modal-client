@@ -4,8 +4,9 @@ import enum
 import time
 import typing
 from asyncio import FIRST_COMPLETED
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 from grpclib import Status
 
@@ -159,7 +160,7 @@ class InputPumper:
         function: "modal.functions._Function",
         function_call_id: str,
         max_batch_size: int,
-        map_items_manager: Optional["_MapItemsManager"] = None,
+        map_items_manager: "_MapItemsManager | None" = None,
     ):
         self.client = client
         self.function = function
@@ -363,7 +364,7 @@ async def _map_invocation(
     client: "modal.client._Client",
     order_outputs: bool,
     return_exceptions: bool,
-    count_update_callback: Optional[Callable[[int, int], None]],
+    count_update_callback: Callable[[int, int], None] | None,
     function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
 ):
     assert client.stub
@@ -622,7 +623,7 @@ async def _map_invocation_inputplane(
     client: "modal.client._Client",
     order_outputs: bool,
     return_exceptions: bool,
-    count_update_callback: Optional[Callable[[int, int], None]],
+    count_update_callback: Callable[[int, int], None] | None,
 ) -> typing.AsyncGenerator[Any, None]:
     """Input-plane implementation of a function map invocation.
 
@@ -687,9 +688,7 @@ async def _map_invocation_inputplane(
         is_input_plane_instance=True,
     )
 
-    def update_counters(
-        created_delta: int = 0, completed_delta: int = 0, set_have_all_inputs: Union[bool, None] = None
-    ):
+    def update_counters(created_delta: int = 0, completed_delta: int = 0, set_have_all_inputs: bool | None = None):
         nonlocal inputs_created, outputs_completed, have_all_inputs
 
         if created_delta:
@@ -1011,7 +1010,7 @@ async def _map_helper(
             yield output
 
 
-def _maybe_warn_about_wrap_exceptions(func_name: str, wrap_returned_exceptions: Optional[bool]):
+def _maybe_warn_about_wrap_exceptions(func_name: str, wrap_returned_exceptions: bool | None):
     if wrap_returned_exceptions is not None:
         deprecation_warning(
             (2026, 3, 24),
@@ -1026,13 +1025,13 @@ def _maybe_warn_about_wrap_exceptions(func_name: str, wrap_returned_exceptions: 
 @warn_if_generator_is_not_consumed(function_name="Function.map.aio")
 async def _map_async(
     self: "modal.functions.Function",
-    *input_iterators: typing.Union[
-        typing.Iterable[Any], typing.AsyncIterable[Any]
-    ],  # one input iterator per argument in the mapped-over function/generator
+    *input_iterators: (
+        typing.Iterable[Any] | typing.AsyncIterable[Any]
+    ),  # one input iterator per argument in the mapped-over function/generator
     kwargs={},  # any extra keyword arguments for the function
     order_outputs: bool = True,  # return outputs in order
     return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
-    wrap_returned_exceptions: Optional[bool] = None,
+    wrap_returned_exceptions: bool | None = None,
 ) -> typing.AsyncGenerator[Any, None]:
     _maybe_warn_about_wrap_exceptions("map.aio", wrap_returned_exceptions)
     async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
@@ -1049,12 +1048,12 @@ async def _map_async(
 @warn_if_generator_is_not_consumed(function_name="Function.starmap.aio")
 async def _starmap_async(
     self,
-    input_iterator: typing.Union[typing.Iterable[typing.Sequence[Any]], typing.AsyncIterable[typing.Sequence[Any]]],
+    input_iterator: typing.Iterable[typing.Sequence[Any]] | typing.AsyncIterable[typing.Sequence[Any]],
     *,
     kwargs={},
     order_outputs: bool = True,
     return_exceptions: bool = False,
-    wrap_returned_exceptions: Optional[bool] = None,
+    wrap_returned_exceptions: bool | None = None,
 ) -> typing.AsyncIterable[Any]:
     _maybe_warn_about_wrap_exceptions("starmap.aio", wrap_returned_exceptions)
     async for output in _map_helper(
@@ -1088,7 +1087,7 @@ def _map_sync(
     kwargs={},  # any extra keyword arguments for the function
     order_outputs: bool = True,  # return outputs in order
     return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
-    wrap_returned_exceptions: Optional[bool] = None,
+    wrap_returned_exceptions: bool | None = None,
 ) -> AsyncOrSyncIterable:
     """Parallel map over a set of inputs.
 
@@ -1264,7 +1263,7 @@ def _starmap_sync(
     kwargs={},
     order_outputs: bool = True,
     return_exceptions: bool = False,
-    wrap_returned_exceptions: Optional[bool] = None,
+    wrap_returned_exceptions: bool | None = None,
 ) -> AsyncOrSyncIterable:
     """Like `map`, but spreads arguments over multiple function arguments.
 
@@ -1330,7 +1329,7 @@ class _MapItemContext:
     # Unused. But important, input_id is not set for inputplane invocations.
     input_id: asyncio.Future
     input_jwt: asyncio.Future
-    previous_input_jwt: Optional[str]
+    previous_input_jwt: str | None
     _event_loop: asyncio.AbstractEventLoop
 
     def __init__(

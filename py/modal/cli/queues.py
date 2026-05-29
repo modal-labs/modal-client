@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2024
 from datetime import datetime
-from typing import Optional
 
 import click
 
@@ -37,7 +36,7 @@ def partition_option(func):
 @click.argument("name")
 @env_option
 @synchronizer.create_blocking
-async def create(name: str, *, env: Optional[str] = None):
+async def create(name: str, *, env: str | None = None):
     """Create a named Queue.
 
     Note: This is a no-op when the Queue already exists.
@@ -61,7 +60,7 @@ async def delete(
     *,
     allow_missing: bool = False,
     yes: bool = False,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Delete a named Queue and all of its data."""
     env = ensure_env(env)
@@ -78,7 +77,7 @@ async def delete(
 @click.option("--json", is_flag=True, default=False)
 @env_option
 @synchronizer.create_blocking
-async def list_(*, json: bool = False, env: Optional[str] = None):
+async def list_(*, json: bool = False, env: str | None = None):
     """List all named Queues."""
     env = ensure_env(env)
     client = await _Client.from_env()
@@ -132,11 +131,11 @@ async def list_(*, json: bool = False, env: Optional[str] = None):
 @synchronizer.create_blocking
 async def clear(
     name: str,
-    partition: Optional[str] = None,
+    partition: str | None = None,
     all: bool = False,
     yes: bool = False,
     *,
-    env: Optional[str] = None,
+    env: str | None = None,
 ):
     """Clear the contents of a queue by removing all of its data."""
     q = _Queue.from_name(name, environment_name=env)
@@ -155,7 +154,7 @@ async def clear(
 @partition_option
 @env_option
 @synchronizer.create_blocking
-async def peek(name: str, n: int = 1, partition: Optional[str] = None, *, env: Optional[str] = None):
+async def peek(name: str, n: int = 1, partition: str | None = None, *, env: str | None = None):
     """Print the next N items without removing them."""
     q = _Queue.from_name(name, environment_name=env)
     output = OutputManager.get()
@@ -179,7 +178,7 @@ async def peek(name: str, n: int = 1, partition: Optional[str] = None, *, env: O
 )
 @env_option
 @synchronizer.create_blocking
-async def len_(name: str, partition: Optional[str] = None, total: bool = False, *, env: Optional[str] = None):
+async def len_(name: str, partition: str | None = None, total: bool = False, *, env: str | None = None):
     """Print the length of the queue or one of its partitions."""
     q = _Queue.from_name(name, environment_name=env)
     OutputManager.get().print(await q.len(partition=partition, total=total))

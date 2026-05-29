@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Optional
 
 from modal_proto import api_pb2
 
@@ -47,7 +46,7 @@ def _reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> 
     input_info_by_id: dict[str, InputInfo] = {}
     result = []
 
-    def _reconstruct(input_id: str) -> Optional[InputInfo]:
+    def _reconstruct(input_id: str) -> InputInfo | None:
         if input_id in input_info_by_id:
             return input_info_by_id[input_id]
 

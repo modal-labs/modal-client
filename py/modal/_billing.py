@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2025
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 from modal_proto import api_pb2
 
@@ -21,10 +21,10 @@ class WorkspaceBillingReportItem(TypedDict):
 async def _workspace_billing_report(
     *,
     start: datetime,  # Start of the report, inclusive
-    end: Optional[datetime] = None,  # End of the report, exclusive
+    end: datetime | None = None,  # End of the report, exclusive
     resolution: str = "d",  # Resolution, e.g. "d" for daily or "h" for hourly
-    tag_names: Optional[list[str]] = None,  # Optional additional metadata to include
-    client: Optional[_Client] = None,
+    tag_names: list[str] | None = None,  # Optional additional metadata to include
+    client: _Client | None = None,
 ) -> list[WorkspaceBillingReportItem]:
     """Generate a tabular report of workspace usage by object and time.
 

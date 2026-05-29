@@ -10,9 +10,9 @@ import asyncio
 import contextlib
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 from modal._utils.shell_utils import write_to_fd
 
@@ -84,11 +84,11 @@ class TransferProgressContext(ABC):
     def progress(
         self,
         task_id: Any = None,
-        advance: Optional[float] = None,
-        name: Optional[str] = None,
-        size: Optional[float] = None,
-        reset: Optional[bool] = False,
-        complete: Optional[bool] = False,
+        advance: float | None = None,
+        name: str | None = None,
+        size: float | None = None,
+        reset: bool | None = False,
+        complete: bool | None = False,
     ) -> Any:
         """Update progress. Returns task_id when creating a new task."""
         ...
@@ -100,11 +100,11 @@ class _DisabledTransferProgress(TransferProgressContext):
     def progress(
         self,
         task_id: Any = None,
-        advance: Optional[float] = None,
-        name: Optional[str] = None,
-        size: Optional[float] = None,
-        reset: Optional[bool] = False,
-        complete: Optional[bool] = False,
+        advance: float | None = None,
+        name: str | None = None,
+        size: float | None = None,
+        reset: bool | None = False,
+        complete: bool | None = False,
     ) -> None:
         return None
 
@@ -182,7 +182,7 @@ class OutputManager(ABC):
         *,
         stderr: bool = False,
         highlight: bool = True,
-        style: Optional[str] = None,
+        style: str | None = None,
         sep: str = " ",
         end: str = "\n",
     ) -> None:
@@ -276,7 +276,7 @@ class OutputManager(ABC):
         ...
 
     @abstractmethod
-    def function_progress_callback(self, tag: str, total: Optional[int]) -> Callable[[int, int], None]:
+    def function_progress_callback(self, tag: str, total: int | None) -> Callable[[int, int], None]:
         """Get a callback for updating function progress."""
         ...
 
@@ -292,7 +292,7 @@ class OutputManager(ABC):
 
     @abstractmethod
     def update_queueing_progress(
-        self, *, function_id: str, completed: int, total: Optional[int], description: Optional[str]
+        self, *, function_id: str, completed: int, total: int | None, description: str | None
     ) -> None:
         """Update function queueing progress."""
         ...
@@ -476,7 +476,7 @@ class DisabledOutputManager(OutputManager):
         *,
         stderr: bool = False,
         highlight: bool = True,
-        style: Optional[str] = None,
+        style: str | None = None,
         sep: str = " ",
         end: str = "\n",
     ) -> None:
@@ -517,7 +517,7 @@ class DisabledOutputManager(OutputManager):
     def update_app_page_url(self, app_page_url: str) -> None:
         pass
 
-    def function_progress_callback(self, tag: str, total: Optional[int]) -> Callable[[int, int], None]:
+    def function_progress_callback(self, tag: str, total: int | None) -> Callable[[int, int], None]:
         def noop(completed: int, total: int) -> None:
             pass
 
@@ -530,7 +530,7 @@ class DisabledOutputManager(OutputManager):
         pass
 
     def update_queueing_progress(
-        self, *, function_id: str, completed: int, total: Optional[int], description: Optional[str]
+        self, *, function_id: str, completed: int, total: int | None, description: str | None
     ) -> None:
         pass
 

@@ -6,8 +6,9 @@ import re
 import sys
 import time
 import typing
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, get_args
+from typing import Any, get_args
 
 import click
 from click import ClickException
@@ -89,7 +90,7 @@ class CliRunnableSignature:
     has_variadic_args: bool
 
 
-def safe_get_type_hints(func_or_cls: typing.Union[Callable[..., Any], type]) -> dict[str, type]:
+def safe_get_type_hints(func_or_cls: Callable[..., Any] | type) -> dict[str, type]:
     try:
         return typing.get_type_hints(func_or_cls)
     except Exception as exc:
@@ -119,7 +120,7 @@ def _get_cli_runnable_signature(sig: inspect.Signature, type_hints: dict[str, ty
     return CliRunnableSignature(signature, has_variadic_args)
 
 
-def _get_literal_values(type_hint: Any) -> Optional[tuple[Any, ...]]:
+def _get_literal_values(type_hint: Any) -> tuple[Any, ...] | None:
     """Extract values from a Literal type annotation.
 
     Returns None if not a Literal type, otherwise returns tuple of literal values.
@@ -461,12 +462,12 @@ class RunGroup(ModalGroup):
 @click.pass_context
 def run(
     ctx: click.Context,
-    name: Optional[str],
-    write_result: Optional[str],
+    name: str | None,
+    write_result: str | None,
     detach: bool,
     quiet: bool,
     interactive: bool,
-    env: Optional[str],
+    env: str | None,
     m: bool,
     timestamps: bool,
 ):
@@ -533,7 +534,7 @@ def run(
 def deploy(
     app_ref: str,
     name: str = "",
-    env: Optional[str] = None,
+    env: str | None = None,
     stream_logs: bool = False,
     tag: str = "",
     use_module_mode: bool = False,
@@ -591,9 +592,9 @@ def deploy(
 @click.option("--timestamps", is_flag=True, default=False, help="Show timestamps for each log line.")
 def serve(
     app_ref: str,
-    name: Optional[str] = None,
-    timeout: Optional[float] = None,
-    env: Optional[str] = None,
+    name: str | None = None,
+    timeout: float | None = None,
+    env: str | None = None,
     use_module_mode: bool = False,
     timestamps: bool = False,
 ):

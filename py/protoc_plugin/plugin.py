@@ -8,7 +8,7 @@ from collections import deque
 from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Deque, NamedTuple, Optional
+from typing import Any, Deque, NamedTuple
 
 from google.protobuf.compiler.plugin_pb2 import CodeGeneratorRequest, CodeGeneratorResponse
 from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorProto
@@ -152,7 +152,7 @@ def _proto2grpc_module_name(proto_file_path: str) -> str:
 def _type_names(
     proto_file: FileDescriptorProto,
     message_type: DescriptorProto,
-    parents: Optional[Deque[str]] = None,
+    parents: Deque[str] | None = None,
 ) -> Iterator[tuple[str, str]]:
     if parents is None:
         parents = deque()

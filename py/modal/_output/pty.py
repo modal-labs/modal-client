@@ -8,7 +8,7 @@ that handle interactive terminal sessions and application log output.
 import asyncio
 import os
 import socket
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from grpclib.exceptions import StreamTerminatedError
 
@@ -91,12 +91,12 @@ def _build_log_prefix(batch: api_pb2.TaskLogsBatch, log: api_pb2.TaskLogs, prefi
 async def get_app_logs_loop(
     client: "_Client",
     output_mgr: "OutputManager",
-    app_id: Optional[str] = None,
-    task_id: Optional[str] = None,
-    sandbox_id: Optional[str] = None,
+    app_id: str | None = None,
+    task_id: str | None = None,
+    sandbox_id: str | None = None,
     follow: bool = True,
     last_entry_id: str = "",
-    prefix_fields: Optional[list[str]] = None,
+    prefix_fields: list[str] | None = None,
     file_descriptor: "api_pb2.FileDescriptor.ValueType" = api_pb2.FILE_DESCRIPTOR_UNSPECIFIED,
     function_id: str = "",
     function_call_id: str = "",
@@ -105,9 +105,9 @@ async def get_app_logs_loop(
     last_log_batch_entry_id = last_entry_id
     _prefixes = prefix_fields or []
 
-    pty_shell_finish_event: Optional[asyncio.Event] = None
-    pty_shell_task_id: Optional[str] = None
-    pty_shell_input_task: Optional[asyncio.Task] = None
+    pty_shell_finish_event: asyncio.Event | None = None
+    pty_shell_task_id: str | None = None
+    pty_shell_input_task: asyncio.Task | None = None
 
     async def stop_pty_shell():
         nonlocal pty_shell_finish_event, pty_shell_input_task

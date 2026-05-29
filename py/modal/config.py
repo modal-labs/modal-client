@@ -96,7 +96,8 @@ import os
 import re
 import typing
 import warnings
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from google.protobuf.empty_pb2 import Empty
 
@@ -121,7 +122,7 @@ def _is_remote() -> bool:
     return os.environ.get("MODAL_IS_REMOTE") == "1"
 
 
-def _agent_environment() -> Optional[str]:
+def _agent_environment() -> str | None:
     """Detect if the current process is running inside an AI agent harness.
 
     Returns the agent name if detected, or None otherwise.
@@ -362,8 +363,8 @@ configure_logger(logger, config["loglevel"], config["log_format"])
 
 def _store_user_config(
     new_settings: dict[str, Any],
-    profile: Optional[str] = None,
-    active_profile: Optional[str] = None,
+    profile: str | None = None,
+    active_profile: str | None = None,
 ):
     """Internal method, used by the CLI to set tokens."""
     if profile is None:

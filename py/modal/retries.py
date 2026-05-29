@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 from datetime import timedelta
-from typing import Union
 
 from modal_proto import api_pb2
 
@@ -115,7 +114,7 @@ class RetryManager:
         self.retry_policy = retry_policy
         self.retry_count = 0
 
-    def get_delay_ms(self) -> Union[float, None]:
+    def get_delay_ms(self) -> float | None:
         """
         Returns the delay in milliseconds before the next retry, or None
         if the maximum number of retries has been reached.

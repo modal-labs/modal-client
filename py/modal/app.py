@@ -1,16 +1,13 @@
 # Copyright Modal Labs 2022
 import inspect
 import typing
-from collections.abc import AsyncGenerator, Collection, Coroutine, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Collection, Coroutine, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
     Any,
-    Callable,
     ClassVar,
-    Optional,
-    Union,
     overload,
 )
 
@@ -126,14 +123,14 @@ class _LocalAppState:
 
     functions: dict[str, _Function]
     classes: dict[str, _Cls]
-    image_default: Optional[_Image]
+    image_default: _Image | None
     web_endpoints: list[str]  # Used by the CLI
     local_entrypoints: dict[str, _LocalEntrypoint]
     tags: dict[str, str]
 
     include_source_default: bool
     secrets_default: Sequence[_Secret]
-    volumes_default: dict[Union[str, PurePosixPath], _Volume]
+    volumes_default: dict[str | PurePosixPath, _Volume]
 
 
 class _App:
@@ -168,18 +165,18 @@ class _App:
     In this example, the secret and schedule are registered with the app.
     """
 
-    _all_apps: ClassVar[dict[Optional[str], list["_App"]]] = {}
-    _container_app: ClassVar[Optional["_App"]] = None
+    _all_apps: ClassVar[dict[str | None, list["_App"]]] = {}
+    _container_app: ClassVar["_App | None"] = None
 
-    _name: Optional[str]
-    _description: Optional[str]
+    _name: str | None
+    _description: str | None
 
-    _local_state_attr: Optional[_LocalAppState] = None
+    _local_state_attr: _LocalAppState | None = None
 
     # Running apps only (container apps or running local)
-    _app_id: Optional[str]  # Kept after app finishes
-    _running_app: Optional[RunningApp]  # Various app info
-    _client: Optional[_Client]
+    _app_id: str | None  # Kept after app finishes
+    _running_app: RunningApp | None  # Various app info
+    _client: _Client | None
 
     # Metadata for loading objects within this app
     # passed by reference to functions and classes so it can be updated by run()/deploy()
@@ -195,12 +192,12 @@ class _App:
 
     def __init__(
         self,
-        name: Optional[str] = None,
+        name: str | None = None,
         *,
-        tags: Optional[dict[str, str]] = None,  # Additional metadata to set on the App
-        image: Optional[_Image] = None,  # Default Image for the App (otherwise default to `modal.Image.debian_slim()`)
+        tags: dict[str, str] | None = None,  # Additional metadata to set on the App
+        image: _Image | None = None,  # Default Image for the App (otherwise default to `modal.Image.debian_slim()`)
         secrets: Sequence[_Secret] = [],  # Secrets to add for all Functions in the App
-        volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # Volume mounts to use for all Functions
+        volumes: dict[str | PurePosixPath, _Volume] = {},  # Volume mounts to use for all Functions
         include_source: bool = True,  # Default configuration for adding Function source file(s) to the Modal container
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
@@ -252,7 +249,7 @@ class _App:
         _App._all_apps.setdefault(self._name, []).append(self)
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         """The user-provided name of the App."""
         return self._name
 
@@ -271,12 +268,12 @@ class _App:
             return False
 
     @property
-    def app_id(self) -> Optional[str]:
+    def app_id(self) -> str | None:
         """Return the app_id of a running or stopped app."""
         return self._app_id
 
     @property
-    def description(self) -> Optional[str]:
+    def description(self) -> str | None:
         """The App's `name`, if available, or a fallback descriptive identifier."""
         return self._description
 
@@ -284,8 +281,8 @@ class _App:
     async def lookup(
         name: str,
         *,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
         create_if_missing: bool = False,
     ) -> "_App":
         """Look up an App with a given name, creating a new App if necessary.
@@ -379,11 +376,11 @@ class _App:
     async def run(
         self,
         *,
-        name: Optional[str] = None,
-        client: Optional[_Client] = None,
+        name: str | None = None,
+        client: _Client | None = None,
         detach: bool = False,
         interactive: bool = False,
-        environment_name: Optional[str] = None,
+        environment_name: str | None = None,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an ephemeral app on Modal.
 
@@ -434,10 +431,10 @@ class _App:
     async def deploy(
         self,
         *,
-        name: Optional[str] = None,  # Name for the deployment, overriding any set on the App
-        environment_name: Optional[str] = None,  # Environment to deploy the App in
+        name: str | None = None,  # Name for the deployment, overriding any set on the App
+        environment_name: str | None = None,  # Environment to deploy the App in
         tag: str = "",  # Optional metadata that is specific to this deployment
-        client: Optional[_Client] = None,  # Alternate client to use for communication with the server
+        client: _Client | None = None,  # Alternate client to use for communication with the server
         # Deployment strategy:
         # - 'rolling' (default): Traffic shifts to the new deployment by starting
         #   new containers gradually. Old containers will continue to process inputs while new
@@ -637,7 +634,7 @@ class _App:
         return self._local_state.web_endpoints
 
     def local_entrypoint(
-        self, _warn_parentheses_missing: Any = None, *, name: Optional[str] = None
+        self, _warn_parentheses_missing: Any = None, *, name: str | None = None
     ) -> Callable[[Callable[..., Any]], _LocalEntrypoint]:
         """Decorate a function to be used as a CLI entrypoint for a Modal App.
 
@@ -709,55 +706,54 @@ class _App:
         self,
         _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
-        image: Optional[_Image] = None,  # The image to run as the container for the function
-        schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str | list[str]] = None,  # GPU request; either a single GPU type or a list of types
+        image: _Image | None = None,  # The image to run as the container for the function
+        schedule: Schedule | None = None,  # An optional Modal Schedule for the function
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | list[str] | None = None,  # GPU request; either a single GPU type or a list of types
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         network_file_systems: dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
+            str | PurePosixPath, _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
         volumes: dict[
-            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
+            str | PurePosixPath, _Volume | _CloudBucketMount
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         # Specify, in fractional CPU cores, how many CPU cores to request.
         # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
         # CPU throttling will prevent a container from exceeding its specified limit.
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
+        cpu: float | tuple[float, float] | None = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, tuple[int, int]]] = None,
-        ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
-        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
-        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
-        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
-        scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
-        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
+        memory: int | tuple[int, int] | None = None,
+        ephemeral_disk: int | None = None,  # Specify, in MiB, the ephemeral disk size for the Function.
+        min_containers: int | None = None,  # Minimum number of containers to keep warm, even when Function is idle.
+        max_containers: int | None = None,  # Limit on the number of containers that can be concurrently running.
+        buffer_containers: int | None = None,  # Number of additional idle containers to maintain under active load.
+        scaledown_window: int | None = None,  # Max time (in seconds) a container can remain idle while scaling down.
+        proxy: _Proxy | None = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: int | Retries | None = None,  # Number of times to retry each input in case of failure.
         timeout: int = 300,  # Maximum execution time for inputs and startup time in seconds.
-        startup_timeout: Optional[int] = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
-        name: Optional[str] = None,  # Sets the Modal name of the function within the app
-        is_generator: Optional[
-            bool
-        ] = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
-        routing_region: Optional[str] = None,  # Region to route inputs to the function through.
+        startup_timeout: int | None = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
+        name: str | None = None,  # Sets the Modal name of the function within the app
+        is_generator: None
+        | (bool) = None,  # Set this to True if it's a non-generator function returning a [sync/async] generator object
+        cloud: str | None = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        region: str | Sequence[str] | None = None,  # Region or regions to run the function on.
+        routing_region: str | None = None,  # Region to route inputs to the function through.
         nonpreemptible: bool = False,  # Whether to run the function on a nonpreemptible instance.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this function access to other Modal resources
         single_use_containers: bool = False,  # When True, containers will shut down after handling a single input
-        i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
+        i6pn: bool | None = None,  # Whether to enable IPv6 container networking within the region.
         # Whether the file or directory containing the Function's source should automatically be included
         # in the container. When unset, falls back to the App-level configuration, or is otherwise True by default.
-        include_source: Optional[bool] = None,
-        experimental_options: Optional[dict[str, Any]] = None,
+        include_source: bool | None = None,
+        experimental_options: dict[str, Any] | None = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_restrict_output: bool = False,  # Don't use pickle for return values
         # Parameters below here are deprecated. Please update your code as suggested
-        max_inputs: Optional[int] = None,  # Replaced with `single_use_containers`
+        max_inputs: int | None = None,  # Replaced with `single_use_containers`
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal Function with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -789,7 +785,7 @@ class _App:
         secrets = [*local_state.secrets_default, *secrets]
 
         def wrapped(
-            f: Union[_PartialFunction, Callable[..., Any], None],
+            f: _PartialFunction | Callable[..., Any] | None,
         ) -> _Function:
             nonlocal is_generator, cloud, serialized, region, nonpreemptible
 
@@ -930,49 +926,49 @@ class _App:
         self,
         _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
-        image: Optional[_Image] = None,  # The image to run as the container for the function
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str | list[str]] = None,  # GPU request; either a single GPU type or a list of types
+        image: _Image | None = None,  # The image to run as the container for the function
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | list[str] | None = None,  # GPU request; either a single GPU type or a list of types
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         network_file_systems: dict[
-            Union[str, PurePosixPath], _NetworkFileSystem
+            str | PurePosixPath, _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
         volumes: dict[
-            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
+            str | PurePosixPath, _Volume | _CloudBucketMount
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         # Specify, in fractional CPU cores, how many CPU cores to request.
         # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
         # CPU throttling will prevent a container from exceeding its specified limit.
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
+        cpu: float | tuple[float, float] | None = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, tuple[int, int]]] = None,
-        ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
-        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
-        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
-        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
-        scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
-        proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
-        retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
+        memory: int | tuple[int, int] | None = None,
+        ephemeral_disk: int | None = None,  # Specify, in MiB, the ephemeral disk size for the Function.
+        min_containers: int | None = None,  # Minimum number of containers to keep warm, even when Function is idle.
+        max_containers: int | None = None,  # Limit on the number of containers that can be concurrently running.
+        buffer_containers: int | None = None,  # Number of additional idle containers to maintain under active load.
+        scaledown_window: int | None = None,  # Max time (in seconds) a container can remain idle while scaling down.
+        proxy: _Proxy | None = None,  # Reference to a Modal Proxy to use in front of this function.
+        retries: int | Retries | None = None,  # Number of times to retry each input in case of failure.
         timeout: int = 300,  # Maximum execution time for inputs and startup time in seconds.
-        startup_timeout: Optional[int] = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
-        cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
-        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
-        routing_region: Optional[str] = None,  # Region to route inputs to the function through.
+        startup_timeout: int | None = None,  # Maximum startup time in seconds with higher precedence than `timeout`.
+        cloud: str | None = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
+        region: str | Sequence[str] | None = None,  # Region or regions to run the function on.
+        routing_region: str | None = None,  # Region to route inputs to the function through.
         nonpreemptible: bool = False,  # Whether to run the function on a non-preemptible instance.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this class access to other Modal resources
         single_use_containers: bool = False,  # When True, containers will shut down after handling a single input
-        i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
-        include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
-        experimental_options: Optional[dict[str, Any]] = None,
+        i6pn: bool | None = None,  # Whether to enable IPv6 container networking within the region.
+        include_source: bool | None = None,  # When `False`, don't automatically add the App source to the container.
+        experimental_options: dict[str, Any] | None = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_restrict_output: bool = False,  # Don't use pickle for return values
         # Parameters below here are deprecated. Please update your code as suggested
-        max_inputs: Optional[int] = None,  # Replaced with `single_use_containers`
-    ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
+        max_inputs: int | None = None,  # Replaced with `single_use_containers`
+    ) -> Callable[[CLS_T | _PartialFunction], CLS_T]:
         """
         Decorator to register a new Modal [Cls](https://modal.com/docs/reference/modal.Cls) with this App.
         """
@@ -996,7 +992,7 @@ class _App:
         if env:
             secrets = [*secrets, _Secret.from_dict(env)]
 
-        def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
+        def wrapper(wrapped_cls: CLS_T | _PartialFunction) -> CLS_T:
             local_state = self._local_state
             # Check if the decorated object is a class
             http_config = None
@@ -1137,37 +1133,37 @@ class _App:
         self,
         _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
-        image: Optional[_Image] = None,  # The image to run as the container for the server
-        env: Optional[dict[str, Optional[str]]] = None,  # Environment variables to set in the container
-        secrets: Optional[Collection[_Secret]] = None,  # Secrets to inject into the container as environment variables
-        gpu: Optional[str | list[str]] = None,  # GPU request; either a single GPU type or a list of types
+        image: _Image | None = None,  # The image to run as the container for the server
+        env: dict[str, str | None] | None = None,  # Environment variables to set in the container
+        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the container as environment variables
+        gpu: str | list[str] | None = None,  # GPU request; either a single GPU type or a list of types
         serialized: bool = False,  # Whether to send the server class over using cloudpickle.
         volumes: dict[
-            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
+            str | PurePosixPath, _Volume | _CloudBucketMount
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
-        cpu: Optional[Union[float, tuple[float, float]]] = None,  # CPU cores to request
-        memory: Optional[Union[int, tuple[int, int]]] = None,  # Memory in MiB to request
-        ephemeral_disk: Optional[int] = None,  # Ephemeral disk size in MiB
-        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm
-        max_containers: Optional[int] = None,  # Maximum number of containers
-        buffer_containers: Optional[int] = None,  # Additional idle containers under active load
-        scaledown_window: Optional[int] = None,  # Max idle time before scaling down (seconds)
-        proxy: Optional[_Proxy] = None,  # Modal Proxy to use in front of this server
+        cpu: float | tuple[float, float] | None = None,  # CPU cores to request
+        memory: int | tuple[int, int] | None = None,  # Memory in MiB to request
+        ephemeral_disk: int | None = None,  # Ephemeral disk size in MiB
+        min_containers: int | None = None,  # Minimum number of containers to keep warm
+        max_containers: int | None = None,  # Maximum number of containers
+        buffer_containers: int | None = None,  # Additional idle containers under active load
+        scaledown_window: int | None = None,  # Max idle time before scaling down (seconds)
+        proxy: _Proxy | None = None,  # Modal Proxy to use in front of this server
         port: int = 8000,  # Port the HTTP server listens on
         startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: int = 0,  # Grace period for in-flight requests on shutdown
         routing_regions: list[str] = ["us-east"],  # Required: Regions to deploy proxy endpoints
         h2_enabled: bool = False,  # Enable HTTP/2
-        target_concurrency: Optional[int] = None,  # Target concurrency for the server
-        cloud: Optional[str] = None,  # Cloud provider (aws, gcp, oci, auto)
-        region: Optional[Union[str, Sequence[str]]] = None,  # Region(s) to run on
+        target_concurrency: int | None = None,  # Target concurrency for the server
+        cloud: str | None = None,  # Cloud provider (aws, gcp, oci, auto)
+        region: str | Sequence[str] | None = None,  # Region(s) to run on
         nonpreemptible: bool = False,  # Whether to use non-preemptible instances
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing
-        i6pn: Optional[bool] = None,  # Enable IPv6 container networking
-        include_source: Optional[bool] = None,  # Whether to add source to container
+        i6pn: bool | None = None,  # Enable IPv6 container networking
+        include_source: bool | None = None,  # Whether to add source to container
         # Experimental options
-        experimental_options: Optional[dict[str, Any]] = None,
-    ) -> Callable[[Union[CLS_T, _PartialFunction]], _Server]:
+        experimental_options: dict[str, Any] | None = None,
+    ) -> Callable[[CLS_T | _PartialFunction], _Server]:
         """
         Decorator to register a new Modal Server with this App.
 
@@ -1218,7 +1214,7 @@ class _App:
         if env:
             secrets_list.append(_Secret.from_dict(env))
 
-        def wrapper(wrapped_user_cls: Union[CLS_T, _PartialFunction, Callable]) -> _Server:
+        def wrapper(wrapped_user_cls: CLS_T | _PartialFunction | Callable) -> _Server:
             _Server._validate_wrapped_user_cls_decorators(wrapped_user_cls, enable_memory_snapshot)
 
             # Validate the server class
@@ -1332,7 +1328,7 @@ class _App:
 
         return self
 
-    async def set_tags(self, tags: Mapping[str, str], *, client: Optional[_Client] = None) -> None:
+    async def set_tags(self, tags: Mapping[str, str], *, client: _Client | None = None) -> None:
         """Attach key-value metadata to the App.
 
         Tag metadata can be used to add organization-specific context to the App and can be
@@ -1358,7 +1354,7 @@ class _App:
         client = client or self._client or await _Client.from_env()
         await client.stub.AppSetTags(req)
 
-    async def get_tags(self, *, client: Optional[_Client] = None) -> dict[str, str]:
+    async def get_tags(self, *, client: _Client | None = None) -> dict[str, str]:
         """Get the tags that are currently attached to the App."""
         if self._app_id is None:
             raise InvalidError("`App.get_tags` cannot be called before the App is running.")
@@ -1367,7 +1363,7 @@ class _App:
         resp = await client.stub.AppGetTags(req)
         return dict(resp.tags)
 
-    async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
+    async def _logs(self, client: _Client | None = None) -> AsyncGenerator[str, None]:
         """Stream logs from the app.
 
         This method is considered private and its interface may change - use at your own risk!
@@ -1377,7 +1373,7 @@ class _App:
 
         client = client or self._client or await _Client.from_env()
 
-        last_log_batch_entry_id: Optional[str] = None
+        last_log_batch_entry_id: str | None = None
         while True:
             request = api_pb2.AppGetLogsRequest(
                 app_id=self._app_id,
@@ -1395,7 +1391,7 @@ class _App:
                         yield log.data
 
     @classmethod
-    def _get_container_app(cls) -> Optional["_App"]:
+    def _get_container_app(cls) -> "_App | None":
         """Returns the `App` running inside a container.
 
         This will return `None` outside of a Modal container."""

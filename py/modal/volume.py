@@ -11,18 +11,14 @@ import re
 import sys
 import time
 import typing
-from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Generator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import (
     Any,
-    Awaitable,
     BinaryIO,
-    Callable,
-    Optional,
-    Union,
 )
 
 from google.protobuf.message import Message
@@ -162,9 +158,9 @@ class VolumeInfo:
     # This dataclass should be limited to information that is unchanging over the lifetime of the Volume,
     # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
 
-    name: Optional[str]
+    name: str | None
     created_at: datetime
-    created_by: Optional[str]
+    created_by: str | None
 
 
 class _VolumeManager:
@@ -174,10 +170,10 @@ class _VolumeManager:
         self,
         name: str,  # Name to use for the new Volume
         *,
-        version: Optional[int] = None,  # Experimental: Configure the backend VolumeFS version
+        version: int | None = None,  # Experimental: Configure the backend VolumeFS version
         allow_existing: bool = False,  # If True, no-op when the Volume already exists
-        environment_name: Optional[str] = None,  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        environment_name: str | None = None,  # Uses active environment if not specified
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> None:
         """Create a new Volume object.
 
@@ -234,10 +230,10 @@ class _VolumeManager:
     async def list(
         self,
         *,
-        max_objects: Optional[int] = None,  # Limit requests to this size
-        created_before: Optional[Union[datetime, str]] = None,  # Limit based on creation date
+        max_objects: int | None = None,  # Limit requests to this size
+        created_before: datetime | str | None = None,  # Limit based on creation date
         environment_name: str = "",  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        client: _Client | None = None,  # Optional client with Modal credentials
     ) -> builtins.list["_Volume"]:
         """Return a list of hydrated Volume objects.
 
@@ -304,8 +300,8 @@ class _VolumeManager:
         name: str,  # Name of the Volume to delete
         *,
         allow_missing: bool = False,  # If True, don't raise an error if the Volume doesn't exist
-        environment_name: Optional[str] = None,  # Uses active environment if not specified
-        client: Optional[_Client] = None,  # Optional client with Modal credentials
+        environment_name: str | None = None,  # Uses active environment if not specified
+        client: _Client | None = None,  # Optional client with Modal credentials
     ):
         """Delete a named Volume.
 
@@ -343,7 +339,7 @@ VolumeManager = synchronize_api(_VolumeManager)
 @dataclass(frozen=True)
 class _VolumeMountOptions:
     read_only: bool = False
-    sub_path: Optional[str] = None
+    sub_path: str | None = None
 
 
 def _volume_to_mount_proto(path: str, volume: "_Volume") -> api_pb2.VolumeMount:
@@ -400,9 +396,9 @@ class _Volume(_Object, type_prefix="vo"):
     ```
     """
 
-    _lock: Optional[asyncio.Lock] = None
-    _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
-    _mount_options: Optional[_VolumeMountOptions] = None
+    _lock: asyncio.Lock | None = None
+    _metadata: "api_pb2.VolumeMetadata | None"
+    _mount_options: "_VolumeMountOptions | None" = None
     # Client-side read-only flag from the deprecated .read_only() method. Unlike
     # _mount_options.read_only (which only configures the server-side mount), this
     # flag triggers client-side InvalidError on mutating calls like batch_upload().
@@ -426,7 +422,7 @@ class _Volume(_Object, type_prefix="vo"):
         return _VolumeManager()
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         return self._name
 
     def read_only(self) -> "_Volume":
@@ -442,7 +438,7 @@ class _Volume(_Object, type_prefix="vo"):
         mount_options = _VolumeMountOptions(read_only=True)
 
         async def _load(
-            new_volume: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+            new_volume: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
             new_volume._initialize_from_other(self)
             new_volume._mount_options = mount_options
@@ -463,8 +459,8 @@ class _Volume(_Object, type_prefix="vo"):
     def with_mount_options(
         self,
         *,
-        read_only: Optional[bool] = None,
-        sub_path: Optional[Union[str, PurePosixPath]] = None,
+        read_only: bool | None = None,
+        sub_path: str | PurePosixPath | None = None,
     ) -> "_Volume":
         """Configure options used when mounting this Volume.
 
@@ -514,7 +510,7 @@ class _Volume(_Object, type_prefix="vo"):
         mount_options = _VolumeMountOptions(read_only=read_only, sub_path=normalized_sub_path)
 
         async def _load(
-            new_volume: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
+            new_volume: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None
         ):
             new_volume._initialize_from_other(self)
             new_volume._mount_options = mount_options
@@ -530,13 +526,13 @@ class _Volume(_Object, type_prefix="vo"):
         new_volume._mount_options = mount_options
         return new_volume
 
-    def _hydrate_metadata(self, metadata: Optional[Message]):
+    def _hydrate_metadata(self, metadata: Message | None):
         if metadata:
             assert isinstance(metadata, api_pb2.VolumeMetadata)
             self._metadata = metadata
             self._name = metadata.name
 
-    def _get_metadata(self) -> Optional[Message]:
+    def _get_metadata(self) -> Message | None:
         return self._metadata
 
     async def _get_lock(self):
@@ -565,10 +561,10 @@ class _Volume(_Object, type_prefix="vo"):
     def from_name(
         name: str,
         *,
-        environment_name: Optional[str] = None,
+        environment_name: str | None = None,
         create_if_missing: bool = False,
-        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
-        client: Optional[_Client] = None,
+        version: "modal_proto.api_pb2.VolumeFsVersion.ValueType | None" = None,
+        client: _Client | None = None,
     ) -> "_Volume":
         """Reference a Volume by name, creating if necessary.
 
@@ -589,9 +585,7 @@ class _Volume(_Object, type_prefix="vo"):
         """
         check_object_name(name, "Volume")
 
-        async def _load(
-            self: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.VolumeGetOrCreateRequest(
                 deployment_name=name,
                 environment_name=load_context.environment_name,
@@ -616,7 +610,7 @@ class _Volume(_Object, type_prefix="vo"):
     @staticmethod
     def from_id(
         volume_id: str,
-        client: Optional[_Client] = None,
+        client: _Client | None = None,
     ) -> "_Volume":
         """Construct a Volume from an id and look up the Volume metadata.
 
@@ -641,9 +635,7 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
 
-        async def _load(
-            self: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: Optional[str]
-        ):
+        async def _load(self: _Volume, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
             req = api_pb2.VolumeGetByIdRequest(volume_id=volume_id)
             response = await load_context.client.stub.VolumeGetById(req)
             self._hydrate(response.volume_id, load_context.client, response.metadata)
@@ -661,9 +653,9 @@ class _Volume(_Object, type_prefix="vo"):
     @asynccontextmanager
     async def ephemeral(
         cls: type["_Volume"],
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
+        version: "modal_proto.api_pb2.VolumeFsVersion.ValueType | None" = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,  # mdmd:line-hidden
     ) -> AsyncGenerator["_Volume", None]:
         """Creates a new ephemeral volume within a context manager:
@@ -703,9 +695,9 @@ class _Volume(_Object, type_prefix="vo"):
     async def create_deployed(
         deployment_name: str,
         namespace=None,  # mdmd:line-hidden
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
+        version: "modal_proto.api_pb2.VolumeFsVersion.ValueType | None" = None,
     ) -> str:
         """mdmd:hidden"""
         deprecation_warning(
@@ -718,9 +710,9 @@ class _Volume(_Object, type_prefix="vo"):
     @staticmethod
     async def _create_deployed(
         deployment_name: str,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
-        version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
+        version: "modal_proto.api_pb2.VolumeFsVersion.ValueType | None" = None,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "Volume")
@@ -887,7 +879,7 @@ class _Volume(_Object, type_prefix="vo"):
         self,
         path: str,
         fileobj: typing.IO[bytes],
-        progress_cb: Optional[Callable[..., Any]] = None,
+        progress_cb: Callable[..., Any] | None = None,
     ) -> int:
         """mdmd:hidden
         Read volume file into file-like IO object.
@@ -899,10 +891,10 @@ class _Volume(_Object, type_prefix="vo"):
         self,
         path: str,
         fileobj: typing.IO[bytes],
-        concurrency: Optional[int] = None,
-        download_semaphore: Optional[asyncio.Semaphore] = None,
-        rpc_semaphore: Optional[asyncio.Semaphore] = None,
-        progress_cb: Optional[Callable[..., Any]] = None,
+        concurrency: int | None = None,
+        download_semaphore: asyncio.Semaphore | None = None,
+        rpc_semaphore: asyncio.Semaphore | None = None,
+        progress_cb: Callable[..., Any] | None = None,
     ) -> int:
         if progress_cb is None:
 
@@ -1058,7 +1050,7 @@ class _Volume(_Object, type_prefix="vo"):
         await self._client.stub.VolumeDelete(api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
 
     @staticmethod
-    async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+    async def delete(name: str, client: _Client | None = None, environment_name: str | None = None):
         """mdmd:hidden
         Delete a named Volume.
 
@@ -1079,8 +1071,8 @@ class _Volume(_Object, type_prefix="vo"):
         old_name: str,
         new_name: str,
         *,
-        client: Optional[_Client] = None,
-        environment_name: Optional[str] = None,
+        client: _Client | None = None,
+        environment_name: str | None = None,
     ):
         obj = await _Volume.from_name(old_name, environment_name=environment_name).hydrate(client)
         req = api_pb2.VolumeRenameRequest(volume_id=obj.object_id, name=new_name)
@@ -1098,15 +1090,15 @@ class _AbstractVolumeUploadContextManager:
 
     def put_file(
         self,
-        local_file: Union[Path, str, BinaryIO, BytesIO],
-        remote_path: Union[PurePosixPath, str],
-        mode: Optional[int] = None,
+        local_file: Path | str | BinaryIO | BytesIO,
+        remote_path: PurePosixPath | str,
+        mode: int | None = None,
     ): ...
 
     def put_directory(
         self,
-        local_path: Union[Path, str],
-        remote_path: Union[PurePosixPath, str],
+        local_path: Path | str,
+        remote_path: PurePosixPath | str,
         recursive: bool = True,
     ): ...
 
@@ -1115,7 +1107,7 @@ class _AbstractVolumeUploadContextManager:
         version: "modal_proto.api_pb2.VolumeFsVersion.ValueType",
         object_id: str,
         client,
-        progress_cb: Optional[Callable[..., Any]] = None,
+        progress_cb: Callable[..., Any] | None = None,
         force: bool = False,
     ) -> "_AbstractVolumeUploadContextManager":
         if version in [
@@ -1143,7 +1135,7 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
     _upload_generators: list[Generator[Callable[[], FileUploadSpec], None, None]]
 
     def __init__(
-        self, volume_id: str, client: _Client, progress_cb: Optional[Callable[..., Any]] = None, force: bool = False
+        self, volume_id: str, client: _Client, progress_cb: Callable[..., Any] | None = None, force: bool = False
     ):
         """mdmd:hidden"""
         self._volume_id = volume_id
@@ -1192,9 +1184,9 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
 
     def put_file(
         self,
-        local_file: Union[Path, str, BinaryIO, BytesIO],
-        remote_path: Union[PurePosixPath, str],
-        mode: Optional[int] = None,
+        local_file: Path | str | BinaryIO | BytesIO,
+        remote_path: PurePosixPath | str,
+        mode: int | None = None,
     ):
         """Upload a file from a local file or file-like object.
 
@@ -1216,8 +1208,8 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
 
     def put_directory(
         self,
-        local_path: Union[Path, str],
-        remote_path: Union[PurePosixPath, str],
+        local_path: Path | str,
+        remote_path: PurePosixPath | str,
         recursive: bool = True,
     ):
         """
@@ -1310,7 +1302,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
         self,
         volume_id: str,
         client: _Client,
-        progress_cb: Optional[Callable[..., Any]] = None,
+        progress_cb: Callable[..., Any] | None = None,
         force: bool = False,
         hash_concurrency: int = multiprocessing.cpu_count(),
         put_concurrency: int = 128,
@@ -1350,9 +1342,9 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
 
     def put_file(
         self,
-        local_file: Union[Path, str, BinaryIO, BytesIO],
-        remote_path: Union[PurePosixPath, str],
-        mode: Optional[int] = None,
+        local_file: Path | str | BinaryIO | BytesIO,
+        remote_path: PurePosixPath | str,
+        mode: int | None = None,
     ):
         """Upload a file from a local file or file-like object.
 
@@ -1378,8 +1370,8 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
 
     def put_directory(
         self,
-        local_path: Union[Path, str],
-        remote_path: Union[PurePosixPath, str],
+        local_path: Path | str,
+        remote_path: PurePosixPath | str,
         recursive: bool = True,
     ):
         """
@@ -1531,13 +1523,13 @@ async def _put_missing_blocks(
         put_responses[digest] = resp
 
 
-def _open_files_error_annotation(mount_path: str) -> Optional[str]:
+def _open_files_error_annotation(mount_path: str) -> str | None:
     if platform.system() != "Linux":
         return None
 
     self_pid = os.readlink("/proc/self")
 
-    def find_open_file_for_pid(pid: str) -> Optional[str]:
+    def find_open_file_for_pid(pid: str) -> str | None:
         # /proc/{pid}/cmdline is null separated
         with open(f"/proc/{pid}/cmdline", "rb") as f:
             raw = f.read()

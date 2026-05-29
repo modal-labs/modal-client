@@ -275,7 +275,7 @@ def _should_pickle_by_reference(obj, name=None):
         return obj.__name__ in sys.modules
     else:
         raise TypeError(
-            "cannot check importability of {} instances".format(type(obj).__name__)
+            f"cannot check importability of {type(obj).__name__} instances"
         )
 
 

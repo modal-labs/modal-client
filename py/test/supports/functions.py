@@ -5,7 +5,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Sequence
+from collections.abc import Sequence
 
 import modal
 from modal import (
