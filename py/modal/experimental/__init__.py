@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2025
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional, Union
 
 from modal_proto import api_pb2
@@ -90,6 +91,46 @@ async def list_deployed_apps(environment_name: str = "", client: Optional[_Clien
                 )
             )
     return app_infos
+
+
+@dataclass
+class AppLifecycle:
+    """Lifecycle information about an App."""
+
+    created_at: datetime  # Time the App was initially created
+    created_by: str  # User or service user name
+    deployed_at: Optional[datetime]  # Time of the most recent deployment event, if ever deployed
+    deployed_by: Optional[str]  # User or service user name, if ever deployed
+    stopped_at: Optional[datetime]  # None when the App is still running
+    stopped_by: Optional[str]  # User or service user name; None if still running or finished normally
+
+
+def _timestamp_to_datetime(ts: float) -> Optional[datetime]:
+    # Unset timestamps come back from the server as 0.
+    return datetime.fromtimestamp(ts, timezone.utc) if ts else None
+
+
+@synchronizer.create_blocking
+async def get_app_lifecycle(app_id: str, *, client: Optional[_Client] = None) -> AppLifecycle:
+    """Get lifecycle information about an App.
+
+    This interface is experimental. This information will continue to be available in the future,
+    but it may be accessed via a different interface, and the return value may have a different shape.
+    """
+    client = client or await _Client.from_env()
+
+    resp: api_pb2.AppGetLifecycleResponse = await client.stub.AppGetLifecycle(
+        api_pb2.AppGetLifecycleRequest(app_id=app_id)
+    )
+    lifecycle = resp.lifecycle
+    return AppLifecycle(
+        created_at=datetime.fromtimestamp(lifecycle.created_at, timezone.utc),
+        created_by=lifecycle.created_by,
+        deployed_at=_timestamp_to_datetime(lifecycle.deployed_at),
+        deployed_by=lifecycle.deployed_by or None,
+        stopped_at=_timestamp_to_datetime(lifecycle.stopped_at),
+        stopped_by=lifecycle.stopped_by or None,
+    )
 
 
 @synchronizer.create_blocking

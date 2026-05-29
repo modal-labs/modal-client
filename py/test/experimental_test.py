@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2025
 import pytest
+from datetime import datetime, timezone
 
 import modal
 import modal.experimental
 from modal.exception import NotFoundError
+from modal_proto import api_pb2
 
 app = modal.App(include_source=False)
 
@@ -55,3 +57,47 @@ def test_stop_app(client, servicer):
     modal.experimental.stop_app(app_name, environment_name=environment_name, client=client)
     with pytest.raises(NotFoundError):
         modal.App.lookup(app_name, environment_name=environment_name, client=client)
+
+
+def test_get_app_lifecycle(client, servicer):
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "AppGetLifecycle",
+            api_pb2.AppGetLifecycleResponse(
+                lifecycle=api_pb2.AppLifecycle(
+                    created_at=1000.0,
+                    created_by="alice",
+                    deployed_at=2000.0,
+                    deployed_by="bob",
+                    version=3,
+                    stopped_at=3000.0,
+                    stopped_by="carol",
+                )
+            ),
+        )
+        lifecycle = modal.experimental.get_app_lifecycle("ap-123", client=client)
+
+    assert ctx.pop_request("AppGetLifecycle").app_id == "ap-123"
+    assert lifecycle.created_at == datetime.fromtimestamp(1000.0, timezone.utc)
+    assert lifecycle.created_by == "alice"
+    assert lifecycle.deployed_at == datetime.fromtimestamp(2000.0, timezone.utc)
+    assert lifecycle.deployed_by == "bob"
+    assert lifecycle.stopped_at == datetime.fromtimestamp(3000.0, timezone.utc)
+    assert lifecycle.stopped_by == "carol"
+
+
+def test_get_app_lifecycle_running(client, servicer):
+    # A running App has no stop event, and an ephemeral App was never deployed; the server
+    # returns 0 timestamps and empty strings, which should surface as None.
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "AppGetLifecycle",
+            api_pb2.AppGetLifecycleResponse(lifecycle=api_pb2.AppLifecycle(created_at=1000.0, created_by="alice")),
+        )
+        lifecycle = modal.experimental.get_app_lifecycle("ap-123", client=client)
+
+    assert lifecycle.created_at == datetime.fromtimestamp(1000.0, timezone.utc)
+    assert lifecycle.deployed_at is None
+    assert lifecycle.deployed_by is None
+    assert lifecycle.stopped_at is None
+    assert lifecycle.stopped_by is None
