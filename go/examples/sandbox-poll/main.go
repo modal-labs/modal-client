@@ -36,7 +36,7 @@ func main() {
 		}
 	}()
 
-	initialPoll, err := sb.Poll(ctx)
+	initialPoll, err := sb.Poll(ctx, nil)
 	if err != nil {
 		log.Fatalf("Failed to poll Sandbox: %v", err)
 	}
@@ -52,13 +52,13 @@ func main() {
 		log.Fatalf("Failed to close stdin: %v", err)
 	}
 
-	exitCode, err := sb.Wait(ctx)
+	exitCode, err := sb.Wait(ctx, nil)
 	if err != nil {
 		log.Fatalf("Failed to wait for Sandbox: %v", err)
 	}
 	fmt.Printf("\nSandbox completed with exit code: %d\n", exitCode)
 
-	finalPoll, err := sb.Poll(ctx)
+	finalPoll, err := sb.Poll(ctx, nil)
 	if err != nil {
 		log.Fatalf("Failed to poll Sandbox after completion: %v", err)
 	}

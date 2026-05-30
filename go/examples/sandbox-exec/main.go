@@ -63,7 +63,7 @@ for i in range(50000):
 	}
 
 	fmt.Printf("Got %d bytes stdout and %d bytes stderr\n", len(contentStdout), len(contentStderr))
-	returnCode, err := p.Wait(ctx)
+	returnCode, err := p.Wait(ctx, nil)
 	if err != nil {
 		log.Fatalf("Failed to wait for process completion: %v", err)
 	}

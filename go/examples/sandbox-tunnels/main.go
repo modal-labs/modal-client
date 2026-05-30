@@ -47,7 +47,7 @@ func main() {
 	time.Sleep(3 * time.Second)
 
 	fmt.Println("Getting tunnel information...")
-	tunnels, err := sb.Tunnels(ctx, 30*time.Second)
+	tunnels, err := sb.Tunnels(ctx, 30*time.Second, nil)
 	if err != nil {
 		log.Fatalf("Failed to get tunnels: %v", err)
 	}

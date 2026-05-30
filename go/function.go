@@ -256,6 +256,9 @@ func (f *Function) checkNoWebURL(fnName string) error {
 	return nil
 }
 
+// FunctionGetCurrentStatsParams are options for Function.GetCurrentStats.
+type FunctionGetCurrentStatsParams struct{}
+
 // Remote executes a single input on a remote Function.
 func (f *Function) Remote(ctx context.Context, args []any, kwargs map[string]any) (any, error) {
 	f.client.logger.DebugContext(ctx, "Executing function call", "function_id", f.FunctionID)
@@ -334,7 +337,7 @@ func (f *Function) Spawn(ctx context.Context, args []any, kwargs map[string]any)
 }
 
 // GetCurrentStats returns a FunctionStats object with statistics about the Function.
-func (f *Function) GetCurrentStats(ctx context.Context) (*FunctionStats, error) {
+func (f *Function) GetCurrentStats(ctx context.Context, params *FunctionGetCurrentStatsParams) (*FunctionStats, error) {
 	resp, err := f.client.cpClient.FunctionGetCurrentStats(ctx, pb.FunctionGetCurrentStatsRequest_builder{
 		FunctionId: f.FunctionID,
 	}.Build())

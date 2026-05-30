@@ -168,7 +168,7 @@ func (fsys *SandboxFilesystem) CopyFromLocal(ctx context.Context, localPath, rem
 			fsys.logger.DebugContext(ctx, "CopyFromLocal: close stdout", "error", err)
 		}
 	}()
-	returnCode, err := cp.Wait(execCtx)
+	returnCode, err := cp.Wait(execCtx, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, "CopyFromLocal", remotePath, err)
 	}
@@ -222,7 +222,7 @@ func (fsys *SandboxFilesystem) CopyToLocal(ctx context.Context, remotePath, loca
 		}
 	}()
 
-	returnCode, err := cp.Wait(ctx)
+	returnCode, err := cp.Wait(ctx, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, "CopyToLocal", remotePath, err)
 	}
@@ -263,7 +263,7 @@ func (fsys *SandboxFilesystem) ListFiles(ctx context.Context, remotePath string,
 		return nil, translateExecError(ctx, fsys.logger, "ListFiles", remotePath, err)
 	}
 
-	returnCode, err := cp.Wait(ctx)
+	returnCode, err := cp.Wait(ctx, nil)
 	if err != nil {
 		return nil, translateExecError(ctx, fsys.logger, "ListFiles", remotePath, err)
 	}
@@ -315,7 +315,7 @@ func (fsys *SandboxFilesystem) MakeDirectory(ctx context.Context, remotePath str
 			fsys.logger.DebugContext(ctx, "MakeDirectory: close stdout", "error", err)
 		}
 	}()
-	returnCode, err := cp.Wait(ctx)
+	returnCode, err := cp.Wait(ctx, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, "MakeDirectory", remotePath, err)
 	}
@@ -335,7 +335,7 @@ func (fsys *SandboxFilesystem) readFile(ctx context.Context, operation, remotePa
 		return nil, translateExecError(ctx, fsys.logger, operation, remotePath, err)
 	}
 
-	returnCode, err := cp.Wait(ctx)
+	returnCode, err := cp.Wait(ctx, nil)
 	if err != nil {
 		return nil, translateExecError(ctx, fsys.logger, operation, remotePath, err)
 	}
@@ -412,7 +412,7 @@ func (fsys *SandboxFilesystem) Remove(ctx context.Context, remotePath string, pa
 			fsys.logger.DebugContext(ctx, "Remove: close stdout", "error", err)
 		}
 	}()
-	returnCode, err := cp.Wait(ctx)
+	returnCode, err := cp.Wait(ctx, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, "Remove", remotePath, err)
 	}
@@ -445,7 +445,7 @@ func (fsys *SandboxFilesystem) Stat(ctx context.Context, remotePath string, para
 		return nil, translateExecError(ctx, fsys.logger, "Stat", remotePath, err)
 	}
 
-	returnCode, err := cp.Wait(ctx)
+	returnCode, err := cp.Wait(ctx, nil)
 	if err != nil {
 		return nil, translateExecError(ctx, fsys.logger, "Stat", remotePath, err)
 	}
@@ -499,7 +499,7 @@ func (fsys *SandboxFilesystem) writeFile(ctx context.Context, operation string, 
 			fsys.logger.DebugContext(ctx, operation+": close stdout", "error", err)
 		}
 	}()
-	returnCode, err := cp.Wait(ctx)
+	returnCode, err := cp.Wait(ctx, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, operation, remotePath, err)
 	}

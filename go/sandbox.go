@@ -24,7 +24,7 @@ import (
 type SandboxService interface {
 	Create(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error)
 	ExperimentalCreate(ctx context.Context, app *App, image *Image, params *SandboxCreateParams) (*Sandbox, error)
-	FromID(ctx context.Context, sandboxID string) (*Sandbox, error)
+	FromID(ctx context.Context, sandboxID string, params *SandboxFromIDParams) (*Sandbox, error)
 	FromName(ctx context.Context, appName, name string, params *SandboxFromNameParams) (*Sandbox, error)
 	List(ctx context.Context, params *SandboxListParams) (iter.Seq2[*Sandbox, error], error)
 }
@@ -498,7 +498,7 @@ func (s *sandboxServiceImpl) Create(ctx context.Context, app *App, image *Image,
 		params = &SandboxCreateParams{}
 	}
 
-	image, err := image.Build(ctx, app)
+	image, err := image.Build(ctx, app, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -547,7 +547,7 @@ func (s *sandboxServiceImpl) ExperimentalCreate(ctx context.Context, app *App, i
 		params = &SandboxCreateParams{}
 	}
 
-	image, err := image.Build(ctx, app)
+	image, err := image.Build(ctx, app, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -762,7 +762,7 @@ func (sb *Sandbox) sandboxGetTunnels(ctx context.Context, timeout time.Duration)
 }
 
 // FromID returns a running Sandbox object from an ID.
-func (s *sandboxServiceImpl) FromID(ctx context.Context, sandboxID string) (*Sandbox, error) {
+func (s *sandboxServiceImpl) FromID(ctx context.Context, sandboxID string, params *SandboxFromIDParams) (*Sandbox, error) {
 	version, err := getSandboxVersion(sandboxID)
 	if err != nil {
 		return nil, err
@@ -789,10 +789,40 @@ func (s *sandboxServiceImpl) FromID(ctx context.Context, sandboxID string) (*San
 	return newSandbox(s.client, sandboxID), nil
 }
 
+// SandboxFromIDParams are options for SandboxService.FromID.
+type SandboxFromIDParams struct{}
+
 // SandboxFromNameParams are options for finding deployed Sandbox objects by name.
 type SandboxFromNameParams struct {
 	Environment string
 }
+
+// SandboxWaitParams are options for Sandbox.Wait.
+type SandboxWaitParams struct{}
+
+// SandboxWaitUntilReadyParams are options for Sandbox.WaitUntilReady.
+type SandboxWaitUntilReadyParams struct{}
+
+// SandboxTunnelsParams are options for Sandbox.Tunnels.
+type SandboxTunnelsParams struct{}
+
+// SandboxMountImageParams are options for Sandbox.MountImage.
+type SandboxMountImageParams struct{}
+
+// SandboxUnmountImageParams are options for Sandbox.UnmountImage.
+type SandboxUnmountImageParams struct{}
+
+// SandboxPollParams are options for Sandbox.Poll.
+type SandboxPollParams struct{}
+
+// SandboxSetTagsParams are options for Sandbox.SetTags.
+type SandboxSetTagsParams struct{}
+
+// SandboxGetTagsParams are options for Sandbox.GetTags.
+type SandboxGetTagsParams struct{}
+
+// ContainerProcessWaitParams are options for ContainerProcess.Wait.
+type ContainerProcessWaitParams struct{}
 
 // FromName gets a running Sandbox by name from a deployed App.
 //
@@ -1165,7 +1195,7 @@ func (sb *Sandbox) Terminate(ctx context.Context, params *SandboxTerminateParams
 	returnCode := 0
 
 	if params.Wait {
-		returnCode, err = sb.Wait(ctx)
+		returnCode, err = sb.Wait(ctx, nil)
 		// If Wait fails, we do not detach yet
 		if err != nil {
 			return returnCode, err
@@ -1181,7 +1211,7 @@ func (sb *Sandbox) Terminate(ctx context.Context, params *SandboxTerminateParams
 }
 
 // Wait blocks until the Sandbox exits.
-func (sb *Sandbox) Wait(ctx context.Context) (int, error) {
+func (sb *Sandbox) Wait(ctx context.Context, params *SandboxWaitParams) (int, error) {
 	for {
 		if err := ctx.Err(); err != nil {
 			return 0, err
@@ -1206,7 +1236,7 @@ func (sb *Sandbox) Wait(ctx context.Context) (int, error) {
 }
 
 // WaitUntilReady blocks until the Sandbox readiness probe reports ready.
-func (sb *Sandbox) WaitUntilReady(ctx context.Context, timeout time.Duration) error {
+func (sb *Sandbox) WaitUntilReady(ctx context.Context, timeout time.Duration, params *SandboxWaitUntilReadyParams) error {
 	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
@@ -1252,7 +1282,7 @@ func (sb *Sandbox) WaitUntilReady(ctx context.Context, timeout time.Duration) er
 // Tunnels gets Tunnel metadata for the Sandbox.
 // Returns SandboxTimeoutError if the tunnels are not available after the timeout.
 // Returns a map of Tunnel objects keyed by the container port.
-func (sb *Sandbox) Tunnels(ctx context.Context, timeout time.Duration) (map[int]*Tunnel, error) {
+func (sb *Sandbox) Tunnels(ctx context.Context, timeout time.Duration, params *SandboxTunnelsParams) (map[int]*Tunnel, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
@@ -1283,12 +1313,12 @@ func (sb *Sandbox) Tunnels(ctx context.Context, timeout time.Duration) (map[int]
 }
 
 // NoExpiryTTL is the sentinel [time.Duration] value for
-// [SnapshotFilesystemParams.TTL] / [SnapshotDirectoryParams.TTL] that
+// [SandboxSnapshotFilesystemParams.TTL] / [SandboxSnapshotDirectoryParams.TTL] that
 // disables expiry on the resulting Image, retaining it indefinitely.
 const NoExpiryTTL time.Duration = -1
 
-// SnapshotFilesystemParams configures a [Sandbox.SnapshotFilesystem] call.
-type SnapshotFilesystemParams struct {
+// SandboxSnapshotFilesystemParams configures a [Sandbox.SnapshotFilesystem] call.
+type SandboxSnapshotFilesystemParams struct {
 	// Timeout is the overall budget for the snapshot call. Zero means the
 	// default (55 seconds). If it elapses before a snapshot completes, a
 	// TimeoutError is returned.
@@ -1304,8 +1334,8 @@ type SnapshotFilesystemParams struct {
 	TTL time.Duration
 }
 
-// SnapshotDirectoryParams configures a [Sandbox.SnapshotDirectory] call.
-type SnapshotDirectoryParams struct {
+// SandboxSnapshotDirectoryParams configures a [Sandbox.SnapshotDirectory] call.
+type SandboxSnapshotDirectoryParams struct {
 	// Timeout is the overall budget for the snapshot call. Zero means the
 	// default (55 seconds). If it elapses before a snapshot completes, a
 	// TimeoutError is returned.
@@ -1344,8 +1374,8 @@ func resolveTTL(ttl time.Duration) (int64, error) {
 //
 // If params is nil, the resulting image is retained for 30 days as a hard
 // cutoff measured from creation, and the call has a 55-second timeout.
-// See [SnapshotFilesystemParams] for control over both.
-func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SnapshotFilesystemParams) (*Image, error) {
+// See [SandboxSnapshotFilesystemParams] for control over both.
+func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapshotFilesystemParams) (*Image, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
@@ -1391,7 +1421,7 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SnapshotFiles
 // MountImage mounts an Image at a path in the Sandbox filesystem.
 //
 // If image is nil, mounts an empty directory.
-func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image) error {
+func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image, params *SandboxMountImageParams) error {
 	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
@@ -1425,7 +1455,7 @@ func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image) er
 }
 
 // UnmountImage removes an image mount from a path in the Sandbox filesystem.
-func (sb *Sandbox) UnmountImage(ctx context.Context, path string) error {
+func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *SandboxUnmountImageParams) error {
 	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
@@ -1453,8 +1483,8 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string) error {
 //
 // If params is nil, the resulting image is retained for 30 days as a hard
 // cutoff measured from creation, and the call has a 55-second timeout.
-// See [SnapshotDirectoryParams] for control over both.
-func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *SnapshotDirectoryParams) (*Image, error) {
+// See [SandboxSnapshotDirectoryParams] for control over both.
+func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *SandboxSnapshotDirectoryParams) (*Image, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
@@ -1504,7 +1534,7 @@ func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *S
 
 // Poll checks if the Sandbox has finished running.
 // Returns nil if the Sandbox is still running, else returns the exit code.
-func (sb *Sandbox) Poll(ctx context.Context) (*int, error) {
+func (sb *Sandbox) Poll(ctx context.Context, params *SandboxPollParams) (*int, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
@@ -1517,7 +1547,7 @@ func (sb *Sandbox) Poll(ctx context.Context) (*int, error) {
 }
 
 // SetTags sets key-value tags on the Sandbox. Tags can be used to filter results in SandboxList.
-func (sb *Sandbox) SetTags(ctx context.Context, tags map[string]string) error {
+func (sb *Sandbox) SetTags(ctx context.Context, tags map[string]string, params *SandboxSetTagsParams) error {
 	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
@@ -1537,7 +1567,7 @@ func (sb *Sandbox) SetTags(ctx context.Context, tags map[string]string) error {
 }
 
 // GetTags fetches any tags (key-value pairs) currently attached to this Sandbox from the server.
-func (sb *Sandbox) GetTags(ctx context.Context) (map[string]string, error) {
+func (sb *Sandbox) GetTags(ctx context.Context, params *SandboxGetTagsParams) (map[string]string, error) {
 	if err := sb.ensureAttached(); err != nil {
 		return nil, err
 	}
@@ -1687,7 +1717,7 @@ func newContainerProcess(commandRouterClient *taskCommandRouterClient, logger *s
 }
 
 // Wait blocks until the container process exits and returns its exit code.
-func (cp *ContainerProcess) Wait(ctx context.Context) (int, error) {
+func (cp *ContainerProcess) Wait(ctx context.Context, params *ContainerProcessWaitParams) (int, error) {
 	resp, err := cp.commandRouterClient.ExecWait(ctx, cp.taskID, cp.execID, cp.deadline)
 	if err != nil {
 		return 0, err

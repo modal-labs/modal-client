@@ -49,7 +49,7 @@ func main() {
 		}
 	}()
 
-	exitCode, err := writerSandbox.Wait(ctx)
+	exitCode, err := writerSandbox.Wait(ctx, nil)
 	if err != nil {
 		log.Fatalf("Failed to wait for writer Sandbox: %v", err)
 	}

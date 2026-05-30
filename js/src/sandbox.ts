@@ -930,7 +930,7 @@ export type SandboxTerminateParams = {
 };
 
 /** Optional parameters for {@link Sandbox#snapshotFilesystem Sandbox.snapshotFilesystem()}. */
-export type SnapshotFilesystemParams = {
+export type SandboxSnapshotFilesystemParams = {
   /**
    * Overall budget for the snapshot call, in milliseconds. Defaults to
    * 55000. If it elapses before a snapshot completes, the call is cancelled
@@ -946,7 +946,7 @@ export type SnapshotFilesystemParams = {
 };
 
 /** Optional parameters for {@link Sandbox#snapshotDirectory Sandbox.snapshotDirectory()}. */
-export type SnapshotDirectoryParams = {
+export type SandboxSnapshotDirectoryParams = {
   /**
    * Overall budget for the snapshot call, in milliseconds. Defaults to
    * 55000. If it elapses before a snapshot completes, the call is cancelled
@@ -1606,14 +1606,16 @@ export class Sandbox {
    * elapses before a snapshot completes, the call is cancelled and an
    * error is thrown.
    *
-   * @param params - Optional parameters; see {@link SnapshotFilesystemParams}.
+   * @param params - Optional parameters; see {@link SandboxSnapshotFilesystemParams}.
    * @returns Promise that resolves to an {@link Image}
    */
-  async snapshotFilesystem(params?: SnapshotFilesystemParams): Promise<Image> {
+  async snapshotFilesystem(
+    params?: SandboxSnapshotFilesystemParams,
+  ): Promise<Image> {
     this.#ensureAttached();
     const wireTtlSeconds = resolveTtlSeconds(params?.ttlMs);
     // Treat both undefined and 0 as "use default", matching the Go
-    // `Timeout time.Duration` zero-value convention on SnapshotFilesystemParams.
+    // `Timeout time.Duration` zero-value convention on SandboxSnapshotFilesystemParams.
     const timeoutMs = params?.timeoutMs || 55000;
     const taskId = await this.#getTaskId();
     const commandRouterClient =
@@ -1697,18 +1699,18 @@ export class Sandbox {
    * error is thrown.
    *
    * @param path - The path of the directory to snapshot
-   * @param params - Optional parameters; see {@link SnapshotDirectoryParams}.
+   * @param params - Optional parameters; see {@link SandboxSnapshotDirectoryParams}.
    * @returns Promise that resolves to an {@link Image}
    */
   async snapshotDirectory(
     path: string,
-    params?: SnapshotDirectoryParams,
+    params?: SandboxSnapshotDirectoryParams,
   ): Promise<Image> {
     this.#ensureAttached();
     this.#ensureV1("snapshotDirectory");
     const wireTtlSeconds = resolveTtlSeconds(params?.ttlMs);
     // Treat both undefined and 0 as "use default", matching the Go
-    // `Timeout time.Duration` zero-value convention on SnapshotDirectoryParams.
+    // `Timeout time.Duration` zero-value convention on SandboxSnapshotDirectoryParams.
     const timeoutMs = params?.timeoutMs || 55000;
     const taskId = await this.#getTaskId();
     const commandRouterClient =

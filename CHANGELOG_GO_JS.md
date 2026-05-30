@@ -6,9 +6,34 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 - Added retry logic with exponential backoff for blob uploads and downloads in both Go and JS SDKs, improving resilience to transient HTTP errors (e.g., 502 Bad Gateway).
 - Fixed a bug in Go where `blobDownload` would silently treat HTTP error response bodies as valid blob data instead of failing.
-- **Breaking:** `Sandbox.SnapshotFilesystem` (Go) / `Sandbox.snapshotFilesystem` (JS) no longer takes a positional `timeout` / `timeoutMs` argument. The timeout now lives on the params struct as `Timeout time.Duration` (Go) / `timeoutMs?: number` (JS), bringing the method to parity with `Sandbox.SnapshotDirectory`. Migrate `sb.SnapshotFilesystem(ctx, 30*time.Second, params)` to `sb.SnapshotFilesystem(ctx, &SnapshotFilesystemParams{Timeout: 30*time.Second, ...})`, and `sb.snapshotFilesystem(30000, params)` to `sb.snapshotFilesystem({ timeoutMs: 30000, ...params })`.
+- **Breaking:** `Sandbox.SnapshotFilesystem` (Go) / `Sandbox.snapshotFilesystem` (JS) no longer takes a positional `timeout` / `timeoutMs` argument. The timeout now lives on the params struct as `Timeout time.Duration` (Go) / `timeoutMs?: number` (JS), bringing the method to parity with `Sandbox.SnapshotDirectory`. Migrate `sb.SnapshotFilesystem(ctx, 30*time.Second, params)` to `sb.SnapshotFilesystem(ctx, &SandboxSnapshotFilesystemParams{Timeout: 30*time.Second, ...})`, and `sb.snapshotFilesystem(30000, params)` to `sb.snapshotFilesystem({ timeoutMs: 30000, ...params })`.
 - `Sandbox.SnapshotFilesystem` (Go) / `Sandbox.snapshotFilesystem` (JS) and `Sandbox.SnapshotDirectory` (Go) / `Sandbox.snapshotDirectory` (JS) now accept an explicit `TTL` (Go, a `time.Duration`) / `ttlMs` (JS, in milliseconds) field on their params struct, controlling how long the resulting Image is retained. Both methods default to 30 days. This is a change of default for `snapshotFilesystem` which previously kept Images indefinitely. Pass `TTL: modal.NoExpiryTTL` (Go) or `ttlMs: null` (JS) to opt out of expiry.
 - `Sandbox.SnapshotDirectory` (Go) / `Sandbox.snapshotDirectory` (JS) now also accepts a `Timeout` (Go) / `timeoutMs` (JS) field on its params struct (default 55 s), bringing it to parity with `snapshotFilesystem`. If the snapshot does not return within that window, a `TimeoutError` is raised. The timeout can be set arbitrarily high to preserve the old behavior of not timing out.
+
+- (Go) All public methods now end with a `*XxxParams` pointer argument, enabling
+  forward-compatible options without future signature churn. Pass `nil` to accept
+  defaults. Affected methods:
+  - `FunctionCall.FromID` → `FromID(ctx, id, *FunctionCallFromIDParams)`
+  - `Image.FromID` → `FromID(ctx, id, *ImageFromIDParams)`
+  - `Image.FromRegistry` → `FromRegistry(tag, *ImageFromRegistryParams)`, the `*Secret` field remains inside `ImageFromRegistryParams` (signature unchanged)
+  - `Image.FromAwsEcr` → `FromAwsEcr(tag, secret, *ImageFromAwsEcrParams)` — the
+    `*Secret` argument is now a positional parameter preceding the params struct
+  - `Image.FromGcpArtifactRegistry` → `FromGcpArtifactRegistry(tag, secret, *ImageFromGcpArtifactRegistryParams)` —
+    the `*Secret` argument is now a positional parameter preceding the params struct
+  - `Image.Build` → `Build(ctx, app, *ImageBuildParams)`
+  - `Function.GetCurrentStats` → `GetCurrentStats(ctx, *FunctionGetCurrentStatsParams)`
+  - `ContainerProcess.Wait` → `Wait(ctx, *ContainerProcessWaitParams)`
+  - `Sandbox.FromID` → `FromID(ctx, id, *SandboxFromIDParams)`
+  - `Sandbox.Wait` → `Wait(ctx, *SandboxWaitParams)`
+  - `Sandbox.WaitUntilReady` → `WaitUntilReady(ctx, timeout, *SandboxWaitUntilReadyParams)`
+  - `Sandbox.Tunnels` → `Tunnels(ctx, timeout, *SandboxTunnelsParams)`
+  - `Sandbox.MountImage` → `MountImage(ctx, path, image, *SandboxMountImageParams)`
+  - `Sandbox.UnmountImage` → `UnmountImage(ctx, path, *SandboxUnmountImageParams)`
+  - `Sandbox.SnapshotDirectory` → `SnapshotDirectory(ctx, path, *SandboxSnapshotDirectoryParams)`
+  - `Sandbox.SnapshotFilesystem` → `SnapshotFilesystem(ctx, *SandboxSnapshotFilesystemParams)`
+  - `Sandbox.Poll` → `Poll(ctx, *SandboxPollParams)`
+  - `Sandbox.SetTags` → `SetTags(ctx, tags, *SandboxSetTagsParams)`
+  - `Sandbox.GetTags` → `GetTags(ctx, *SandboxGetTagsParams)`
 
 ## js/v0.7.6, go/v0.7.6
 

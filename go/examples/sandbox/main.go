@@ -36,7 +36,7 @@ func main() {
 		}
 	}()
 
-	sbFromID, err := mc.Sandboxes.FromID(ctx, sb.SandboxID)
+	sbFromID, err := mc.Sandboxes.FromID(ctx, sb.SandboxID, nil)
 	if err != nil {
 		log.Fatalf("Failed to get Sandbox with ID: %v", err)
 	}

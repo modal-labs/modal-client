@@ -43,7 +43,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to execute git clone: %v", err)
 	}
-	_, err = git.Wait(ctx)
+	_, err = git.Wait(ctx, nil)
 	if err != nil {
 		log.Fatalf("Git clone failed: %v", err)
 	}
@@ -71,7 +71,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to execute claude command: %v", err)
 	}
-	_, err = claude.Wait(ctx)
+	_, err = claude.Wait(ctx, nil)
 	if err != nil {
 		log.Fatalf("Claude command failed: %v", err)
 	}

@@ -25,7 +25,7 @@ func main() {
 
 	// With `.Build(app)`, we create an Image object on Modal that eagerly pulls
 	// from the registry.
-	image, err := mc.Images.FromRegistry("alpine:3.21", nil).Build(ctx, app)
+	image, err := mc.Images.FromRegistry("alpine:3.21", nil).Build(ctx, app, nil)
 	if err != nil {
 		log.Fatalf("Unable to build Image: %v", err)
 	}
@@ -33,7 +33,7 @@ func main() {
 
 	// You can save the ImageId and create a new Image object that referes to it.
 	imageID := image.ImageID
-	image2, err := mc.Images.FromID(ctx, imageID)
+	image2, err := mc.Images.FromID(ctx, imageID, nil)
 	if err != nil {
 		log.Fatalf("Unable to look up Image from ID: %v", err)
 	}

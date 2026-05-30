@@ -195,11 +195,11 @@ func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
-	err = sb.MountImage(ctx, "/mnt", nil)
+	err = sb.MountImage(ctx, "/mnt", nil, nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
-	err = sb.UnmountImage(ctx, "/mnt")
+	err = sb.UnmountImage(ctx, "/mnt", nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
@@ -207,15 +207,15 @@ func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
-	err = sb.SetTags(ctx, map[string]string{})
+	err = sb.SetTags(ctx, map[string]string{}, nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
-	_, err = sb.GetTags(ctx)
+	_, err = sb.GetTags(ctx, nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
-	err = sb.WaitUntilReady(ctx, time.Second)
+	err = sb.WaitUntilReady(ctx, time.Second, nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 }

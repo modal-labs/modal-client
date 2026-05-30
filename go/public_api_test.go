@@ -2,14 +2,12 @@ package modal
 
 // Tests that public API methods follow the *XxxParams options convention.
 // Every public method must end with a *XxxParams pointer as its last argument,
-// unless it appears in skipMethods (intentionally exempt) or knownParamsViolations
-// (pre-existing non-compliance that should be fixed over time).
+// unless it appears in skipMethods (intentionally exempt).
 //
 // When adding a new public method:
 //   a) End it with a *XxxParams argument — preferred, or
 //   b) Add it to skipMethods with a reason if it is intentionally exempt
-//      (e.g. it implements a standard interface), or
-//   c) Do NOT add to knownParamsViolations — that set must never grow.
+//      (e.g. it implements a standard interface).
 //
 // When adding a new exported type:
 //   a) Add it to typeRegistry to have its methods checked, or
@@ -49,6 +47,7 @@ var skipMethods = map[string]string{
 	"Volume.CloseEphemeral": "lifecycle signal, no config needed",
 	"Queue.CloseEphemeral":  "lifecycle signal, no config needed",
 	"Sandbox.Detach":        "disconnects from sandbox, no config needed",
+	"Sandbox.Open":          "implements os.OpenFile-like interface, no SDK options needed",
 
 	// Namespace accessor: returns a sub-object, no config options.
 	"Sandbox.Filesystem": "returns the SandboxFilesystem namespace, no config needed",
@@ -63,42 +62,10 @@ var skipMethods = map[string]string{
 
 	// Cls.Instance takes user-provided constructor parameters, not SDK options.
 	"Cls.Instance": "parameters map is user data, not SDK options",
-}
 
-// knownParamsViolations lists public methods that do not yet follow the
-// *XxxParams convention. Do NOT add new entries — fix violations by adding a
-// *XxxParams argument instead.
-var knownParamsViolations = map[string]string{
-	// FromID methods only take an ID string.
-	"FunctionCallService.FromID": "only takes an ID string",
-	"ImageService.FromID":        "only takes an ID string",
-	"SandboxService.FromID":      "only takes an ID string",
-
-	// Image registry constructors use a *Secret directly instead of *Params.
-	"ImageService.FromAwsEcr":              "takes *Secret directly instead of *Params",
-	"ImageService.FromGcpArtifactRegistry": "takes *Secret directly instead of *Params",
-
-	// Function invocation methods take serialized user data, not SDK options.
-	"Function.Remote": "args/kwargs are function inputs, not SDK options",
-	"Function.Spawn":  "args/kwargs are function inputs, not SDK options",
-
-	// Context-only methods that should gain a *Params argument.
-	"Function.GetCurrentStats": "context-only, should add *FunctionGetCurrentStatsParams",
-	"ContainerProcess.Wait":    "context-only, should add *ContainerProcessWaitParams",
-
-	// Sandbox methods with plain positional args or durations instead of *Params.
-	"Sandbox.Open":           "takes path and mode strings",
-	"Sandbox.Wait":           "context-only, should add *SandboxWaitParams",
-	"Sandbox.WaitUntilReady": "takes timeout duration directly",
-	"Sandbox.Tunnels":        "takes timeout duration directly",
-	"Sandbox.MountImage":     "takes path and image as positional args",
-	"Sandbox.UnmountImage":   "takes path string",
-	"Sandbox.Poll":           "context-only, should add *SandboxPollParams",
-	"Sandbox.SetTags":        "takes tags map as primary input",
-	"Sandbox.GetTags":        "context-only, should add *SandboxGetTagsParams",
-
-	// Image.Build takes an App as a required dependency, not an options struct.
-	"Image.Build": "app is a required dependency, not options",
+	// args/kwargs are user payload, not SDK options; a params struct would add noise.
+	"Function.Remote": "user payload args/kwargs, no SDK options needed",
+	"Function.Spawn":  "user payload args/kwargs, no SDK options needed",
 }
 
 // typeEntry pairs an exported type name with its reflect.Type and whether it is
@@ -177,9 +144,8 @@ func isParamsType(t reflect.Type) bool {
 }
 
 // checkMethodsHaveParams verifies that every public method on typ ends with a
-// *XxxParams argument. Methods in skipMethods are permanently exempt. Methods
-// in knownParamsViolations are pre-existing issues. Any other non-compliant
-// method fails the test.
+// *XxxParams argument. Methods in skipMethods are permanently exempt. Any other
+// non-compliant method fails the test.
 //
 // isInterface must be true for interface types (no receiver in the method signature)
 // and false for concrete pointer types (receiver is In(0)).
@@ -202,13 +168,6 @@ func checkMethodsHaveParams(t *testing.T, typeName string, typ reflect.Type, isI
 
 		compliant := numParams >= 1 && isParamsType(mt.In(mt.NumIn()-1))
 
-		if _, ok := knownParamsViolations[key]; ok {
-			if compliant {
-				t.Errorf("knownParamsViolations entry %q is stale: method is now compliant. Remove it.", key)
-			}
-			continue
-		}
-
 		if compliant {
 			continue
 		}
@@ -219,8 +178,7 @@ func checkMethodsHaveParams(t *testing.T, typeName string, typ reflect.Type, isI
 		}
 		t.Errorf(
 			"public method %s does not end with *XxxParams (params: %d, last: %s).\n"+
-				"Add a *XxxParams argument, add to skipMethods if intentionally exempt,\n"+
-				"or to knownParamsViolations if it cannot be changed right now.",
+				"Add a *XxxParams argument, or add to skipMethods if intentionally exempt.",
 			key, numParams, lastParamStr,
 		)
 	}
@@ -292,11 +250,10 @@ func parseExportedTypeNames(t *testing.T) map[string]bool {
 	return names
 }
 
-// TestSkipAndViolationKeysAreValid ensures every key in skipMethods and
-// knownParamsViolations refers to a type present in typeRegistry and a method
-// that actually exists on that type. This catches stale entries left behind
-// after a type or method is renamed or removed.
-func TestSkipAndViolationKeysAreValid(t *testing.T) {
+// TestSkipMethodKeysAreValid ensures every key in skipMethods refers to a type
+// present in typeRegistry and a method that actually exists on that type. This
+// catches stale entries left behind after a type or method is renamed or removed.
+func TestSkipMethodKeysAreValid(t *testing.T) {
 	byName := map[string]typeEntry{}
 	for _, e := range typeRegistry {
 		byName[e.name] = e
@@ -324,9 +281,6 @@ func TestSkipAndViolationKeysAreValid(t *testing.T) {
 
 	for key := range skipMethods {
 		checkKey(key, "skipMethods")
-	}
-	for key := range knownParamsViolations {
-		checkKey(key, "knownParamsViolations")
 	}
 }
 

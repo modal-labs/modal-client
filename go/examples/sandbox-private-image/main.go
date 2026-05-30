@@ -28,7 +28,7 @@ func main() {
 		log.Fatalf("Failed to get Secret: %v", err)
 	}
 
-	image := mc.Images.FromAwsEcr("459781239556.dkr.ecr.us-east-1.amazonaws.com/ecr-private-registry-test-7522615:python", secret)
+	image := mc.Images.FromAwsEcr("459781239556.dkr.ecr.us-east-1.amazonaws.com/ecr-private-registry-test-7522615:python", secret, nil)
 
 	sb, err := mc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command: []string{"python", "-c", `import sys; sys.stdout.write(sys.stdin.read())`},

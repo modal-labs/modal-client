@@ -19,14 +19,14 @@ func TestImageFromId(t *testing.T) {
 	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	image, err := tc.Images.FromRegistry("alpine:3.21", nil).Build(ctx, app)
+	image, err := tc.Images.FromRegistry("alpine:3.21", nil).Build(ctx, app, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	imageFromID, err := tc.Images.FromID(ctx, image.ImageID)
+	imageFromID, err := tc.Images.FromID(ctx, image.ImageID, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(imageFromID.ImageID).Should(gomega.Equal(image.ImageID))
 
-	_, err = tc.Images.FromID(ctx, "im-nonexistent")
+	_, err = tc.Images.FromID(ctx, "im-nonexistent", nil)
 	g.Expect(err).Should(gomega.HaveOccurred())
 }
 
@@ -39,7 +39,7 @@ func TestImageFromRegistry(t *testing.T) {
 	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	image, err := tc.Images.FromRegistry("alpine:3.21", nil).Build(ctx, app)
+	image, err := tc.Images.FromRegistry("alpine:3.21", nil).Build(ctx, app, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(image.ImageID).Should(gomega.HavePrefix("im-"))
 }
@@ -63,9 +63,7 @@ func TestImageFromRegistryWithSecret(t *testing.T) {
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	image, err := tc.Images.FromRegistry("us-east1-docker.pkg.dev/modal-prod-367916/private-repo-test/my-image", &modal.ImageFromRegistryParams{
-		Secret: secret,
-	}).Build(ctx, app)
+	image, err := tc.Images.FromRegistry("us-east1-docker.pkg.dev/modal-prod-367916/private-repo-test/my-image", &modal.ImageFromRegistryParams{Secret: secret}).Build(ctx, app, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(image.ImageID).Should(gomega.HavePrefix("im-"))
 }
@@ -84,7 +82,7 @@ func TestImageFromAwsEcr(t *testing.T) {
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	image, err := tc.Images.FromAwsEcr("459781239556.dkr.ecr.us-east-1.amazonaws.com/ecr-private-registry-test-7522615:python", secret).Build(ctx, app)
+	image, err := tc.Images.FromAwsEcr("459781239556.dkr.ecr.us-east-1.amazonaws.com/ecr-private-registry-test-7522615:python", secret, nil).Build(ctx, app, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(image.ImageID).Should(gomega.HavePrefix("im-"))
 }
@@ -103,7 +101,7 @@ func TestImageFromGcpArtifactRegistry(t *testing.T) {
 	})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	image, err := tc.Images.FromGcpArtifactRegistry("us-east1-docker.pkg.dev/modal-prod-367916/private-repo-test/my-image", secret).Build(ctx, app)
+	image, err := tc.Images.FromGcpArtifactRegistry("us-east1-docker.pkg.dev/modal-prod-367916/private-repo-test/my-image", secret, nil).Build(ctx, app, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(image.ImageID).Should(gomega.HavePrefix("im-"))
 }
@@ -136,25 +134,25 @@ func TestImageDelete(t *testing.T) {
 	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	image, err := tc.Images.FromRegistry("alpine:3.13", nil).Build(ctx, app)
+	image, err := tc.Images.FromRegistry("alpine:3.13", nil).Build(ctx, app, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(image.ImageID).Should(gomega.HavePrefix("im-"))
 
-	imageFromID, err := tc.Images.FromID(ctx, image.ImageID)
+	imageFromID, err := tc.Images.FromID(ctx, image.ImageID, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(imageFromID.ImageID).Should(gomega.Equal(image.ImageID))
 
 	err = tc.Images.Delete(ctx, image.ImageID, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	_, err = tc.Images.FromID(ctx, image.ImageID)
+	_, err = tc.Images.FromID(ctx, image.ImageID, nil)
 	g.Expect(err).Should(gomega.MatchError(gomega.MatchRegexp("Image .+ not found")))
 
-	newImage, err := tc.Images.FromRegistry("alpine:3.13", nil).Build(ctx, app)
+	newImage, err := tc.Images.FromRegistry("alpine:3.13", nil).Build(ctx, app, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(newImage.ImageID).ShouldNot(gomega.Equal(image.ImageID))
 
-	_, err = tc.Images.FromID(ctx, "im-nonexistent")
+	_, err = tc.Images.FromID(ctx, "im-nonexistent", nil)
 	g.Expect(err).Should(gomega.MatchError(gomega.MatchRegexp("Image .+ not found")))
 }
 
@@ -247,14 +245,14 @@ func TestDockerfileCommandsCopyCommandValidation(t *testing.T) {
 		[]string{"COPY --from=alpine:latest /etc/os-release /tmp/os-release"},
 		nil,
 	)
-	_, err = validImage.Build(ctx, app)
+	_, err = validImage.Build(ctx, app, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	invalidImage := image.DockerfileCommands(
 		[]string{"COPY ./file.txt /root/"},
 		nil,
 	)
-	_, err = invalidImage.Build(ctx, app)
+	_, err = invalidImage.Build(ctx, app, nil)
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("COPY commands that copy from local context are not yet supported"))
 
@@ -262,7 +260,7 @@ func TestDockerfileCommandsCopyCommandValidation(t *testing.T) {
 		[]string{"RUN echo 'COPY ./file.txt /root/'"},
 		nil,
 	)
-	_, err = runImage.Build(ctx, app)
+	_, err = runImage.Build(ctx, app, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	multiInvalidImage := image.DockerfileCommands(
@@ -273,7 +271,7 @@ func TestDockerfileCommandsCopyCommandValidation(t *testing.T) {
 		},
 		nil,
 	)
-	_, err = multiInvalidImage.Build(ctx, app)
+	_, err = multiInvalidImage.Build(ctx, app, nil)
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("COPY commands that copy from local context are not yet supported"))
 }
@@ -375,7 +373,7 @@ func TestDockerfileCommandsWithOptions(t *testing.T) {
 		DockerfileCommands([]string{"RUN echo layer3"}, &modal.ImageDockerfileCommandsParams{
 			ForceBuild: true,
 		}).
-		Build(ctx, app)
+		Build(ctx, app, nil)
 
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(builtImage.ImageID).To(gomega.Equal("im-layer3"))

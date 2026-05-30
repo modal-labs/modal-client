@@ -10,8 +10,11 @@ import (
 
 // FunctionCallService provides FunctionCall related operations.
 type FunctionCallService interface {
-	FromID(ctx context.Context, functionCallID string) (*FunctionCall, error)
+	FromID(ctx context.Context, functionCallID string, params *FunctionCallFromIDParams) (*FunctionCall, error)
 }
+
+// FunctionCallFromIDParams are options for FunctionCallService.FromID.
+type FunctionCallFromIDParams struct{}
 
 type functionCallServiceImpl struct{ client *Client }
 
@@ -25,7 +28,7 @@ type FunctionCall struct {
 }
 
 // FromID looks up a FunctionCall by ID.
-func (s *functionCallServiceImpl) FromID(ctx context.Context, functionCallID string) (*FunctionCall, error) {
+func (s *functionCallServiceImpl) FromID(ctx context.Context, functionCallID string, params *FunctionCallFromIDParams) (*FunctionCall, error) {
 	functionCall := FunctionCall{
 		FunctionCallID: functionCallID,
 		client:         s.client,

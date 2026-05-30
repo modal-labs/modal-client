@@ -26,15 +26,15 @@ func TestSandboxMountDirectoryEmpty(t *testing.T) {
 
 	mkdirProc, err := sb.Exec(ctx, []string{"mkdir", "-p", "/mnt/empty"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = mkdirProc.Wait(ctx)
+	_, err = mkdirProc.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	err = sb.MountImage(ctx, "/mnt/empty", nil)
+	err = sb.MountImage(ctx, "/mnt/empty", nil, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	dirCheck, err := sb.Exec(ctx, []string{"test", "-d", "/mnt/empty"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	exitCode, err := dirCheck.Wait(ctx)
+	exitCode, err := dirCheck.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(exitCode).To(gomega.Equal(0))
 }
@@ -59,7 +59,7 @@ func TestSandboxMountDirectoryWithImage(t *testing.T) {
 		"echo -n 'mounted content' > /tmp/test.txt",
 	}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = echoProc.Wait(ctx)
+	_, err = echoProc.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	mountImage, err := sb1.SnapshotFilesystem(ctx, nil)
@@ -75,10 +75,10 @@ func TestSandboxMountDirectoryWithImage(t *testing.T) {
 
 	mkdirProc, err := sb2.Exec(ctx, []string{"mkdir", "-p", "/mnt/data"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = mkdirProc.Wait(ctx)
+	_, err = mkdirProc.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	err = sb2.MountImage(ctx, "/mnt/data", mountImage)
+	err = sb2.MountImage(ctx, "/mnt/data", mountImage, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	catProc, err := sb2.Exec(ctx, []string{"cat", "/mnt/data/tmp/test.txt"}, nil)
@@ -105,10 +105,10 @@ func TestSandboxUnmountDirectory(t *testing.T) {
 
 	mkdirProc, err := sb.Exec(ctx, []string{"mkdir", "-p", "/mnt/data"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = mkdirProc.Wait(ctx)
+	_, err = mkdirProc.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	err = sb.MountImage(ctx, "/mnt/data", nil)
+	err = sb.MountImage(ctx, "/mnt/data", nil, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	writeProc, err := sb.Exec(ctx, []string{
@@ -117,15 +117,15 @@ func TestSandboxUnmountDirectory(t *testing.T) {
 		"echo -n 'sandbox data' > /mnt/data/present.txt",
 	}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = writeProc.Wait(ctx)
+	_, err = writeProc.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	err = sb.UnmountImage(ctx, "/mnt/data")
+	err = sb.UnmountImage(ctx, "/mnt/data", nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	checkProc, err := sb.Exec(ctx, []string{"test", "!", "-e", "/mnt/data/present.txt"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	exitCode, err := checkProc.Wait(ctx)
+	exitCode, err := checkProc.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(exitCode).To(gomega.Equal(0))
 }
@@ -143,16 +143,16 @@ func TestSandboxSnapshotDirectory(t *testing.T) {
 
 	sb1, err := tc.Sandboxes.Create(ctx, app, baseImage, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	sb1FromID, err := tc.Sandboxes.FromID(ctx, sb1.SandboxID)
+	sb1FromID, err := tc.Sandboxes.FromID(ctx, sb1.SandboxID, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sb1FromID)
 
 	mkdirProc, err := sb1.Exec(ctx, []string{"mkdir", "-p", "/mnt/data"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = mkdirProc.Wait(ctx)
+	_, err = mkdirProc.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	err = sb1.MountImage(ctx, "/mnt/data", nil)
+	err = sb1.MountImage(ctx, "/mnt/data", nil, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	echoProc, err := sb1.Exec(ctx, []string{
@@ -161,7 +161,7 @@ func TestSandboxSnapshotDirectory(t *testing.T) {
 		"echo -n 'snapshot test content' > /mnt/data/snapshot.txt",
 	}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = echoProc.Wait(ctx)
+	_, err = echoProc.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	snapshotImage, err := sb1.SnapshotDirectory(ctx, "/mnt/data", nil)
@@ -177,10 +177,10 @@ func TestSandboxSnapshotDirectory(t *testing.T) {
 
 	mkdirProc2, err := sb2.Exec(ctx, []string{"mkdir", "-p", "/mnt/data"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = mkdirProc2.Wait(ctx)
+	_, err = mkdirProc2.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	err = sb2.MountImage(ctx, "/mnt/data", snapshotImage)
+	err = sb2.MountImage(ctx, "/mnt/data", snapshotImage, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	catProc, err := sb2.Exec(ctx, []string{"cat", "/mnt/data/snapshot.txt"}, nil)
@@ -207,20 +207,20 @@ func TestSandboxSnapshotRejectsInvalidTtl(t *testing.T) {
 
 	// Sub-second and other invalid TTL values are rejected client-side.
 	// (NoExpiryTTL is the only valid non-positive value.)
-	_, err = sb.SnapshotDirectory(ctx, "/tmp", &modal.SnapshotDirectoryParams{TTL: 500 * time.Millisecond})
+	_, err = sb.SnapshotDirectory(ctx, "/tmp", &modal.SandboxSnapshotDirectoryParams{TTL: 500 * time.Millisecond})
 	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("at least 1 second")))
 
-	_, err = sb.SnapshotDirectory(ctx, "/tmp", &modal.SnapshotDirectoryParams{TTL: -2 * time.Second})
+	_, err = sb.SnapshotDirectory(ctx, "/tmp", &modal.SandboxSnapshotDirectoryParams{TTL: -2 * time.Second})
 	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("at least 1 second")))
 
-	_, err = sb.SnapshotFilesystem(ctx, &modal.SnapshotFilesystemParams{TTL: 500 * time.Millisecond})
+	_, err = sb.SnapshotFilesystem(ctx, &modal.SandboxSnapshotFilesystemParams{TTL: 500 * time.Millisecond})
 	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("at least 1 second")))
 
 	// Non-whole-second TTLs are also rejected.
-	_, err = sb.SnapshotDirectory(ctx, "/tmp", &modal.SnapshotDirectoryParams{TTL: 1500 * time.Millisecond})
+	_, err = sb.SnapshotDirectory(ctx, "/tmp", &modal.SandboxSnapshotDirectoryParams{TTL: 1500 * time.Millisecond})
 	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("whole number of seconds")))
 
-	_, err = sb.SnapshotFilesystem(ctx, &modal.SnapshotFilesystemParams{TTL: 1500 * time.Millisecond})
+	_, err = sb.SnapshotFilesystem(ctx, &modal.SandboxSnapshotFilesystemParams{TTL: 1500 * time.Millisecond})
 	g.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("whole number of seconds")))
 }
 
@@ -241,13 +241,13 @@ func TestSandboxMountDirectoryWithUnbuiltImageThrows(t *testing.T) {
 
 	mkdirProc, err := sb.Exec(ctx, []string{"mkdir", "-p", "/mnt/data"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = mkdirProc.Wait(ctx)
+	_, err = mkdirProc.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	unbuiltImage := tc.Images.FromRegistry("alpine:3.21", nil)
 	g.Expect(unbuiltImage.ImageID).To(gomega.Equal(""))
 
-	err = sb.MountImage(ctx, "/mnt/data", unbuiltImage)
+	err = sb.MountImage(ctx, "/mnt/data", unbuiltImage, nil)
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("Image must be built before mounting"))
 }

@@ -21,18 +21,18 @@ func TestSnapshotFilesystem(t *testing.T) {
 
 	sb, err := tc.Sandboxes.Create(ctx, app, image, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	sbFromID, err := tc.Sandboxes.FromID(ctx, sb.SandboxID)
+	sbFromID, err := tc.Sandboxes.FromID(ctx, sb.SandboxID, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	defer terminateSandbox(g, sbFromID)
 
 	writeFile, err := sb.Exec(ctx, []string{"sh", "-c", "echo -n 'test content' > /tmp/test.txt"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = writeFile.Wait(ctx)
+	_, err = writeFile.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	mkDir, err := sb.Exec(ctx, []string{"mkdir", "-p", "/tmp/testdir"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	_, err = mkDir.Wait(ctx)
+	_, err = mkDir.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	snapshotImage, err := sb.SnapshotFilesystem(ctx, nil)
@@ -57,7 +57,7 @@ func TestSnapshotFilesystem(t *testing.T) {
 	dirCheck, err := sb2.Exec(ctx, []string{"test", "-d", "/tmp/testdir"}, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	exitCode, err := dirCheck.Wait(ctx)
+	exitCode, err := dirCheck.Wait(ctx, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(exitCode).To(gomega.Equal(0))
 }

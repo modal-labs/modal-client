@@ -14,9 +14,9 @@ import (
 // ImageService provides Image related operations.
 type ImageService interface {
 	FromRegistry(tag string, params *ImageFromRegistryParams) *Image
-	FromAwsEcr(tag string, secret *Secret) *Image
-	FromGcpArtifactRegistry(tag string, secret *Secret) *Image
-	FromID(ctx context.Context, imageID string) (*Image, error)
+	FromAwsEcr(tag string, secret *Secret, params *ImageFromAwsEcrParams) *Image
+	FromGcpArtifactRegistry(tag string, secret *Secret, params *ImageFromGcpArtifactRegistryParams) *Image
+	FromID(ctx context.Context, imageID string, params *ImageFromIDParams) (*Image, error)
 	Delete(ctx context.Context, imageID string, params *ImageDeleteParams) error
 }
 
@@ -59,16 +59,25 @@ type Image struct {
 
 // ImageFromRegistryParams are options for creating an Image from a registry.
 type ImageFromRegistryParams struct {
-	Secret *Secret // Secret for private registry authentication.
+	Secret *Secret
 }
+
+// ImageFromAwsEcrParams are options for ImageService.FromAwsEcr.
+type ImageFromAwsEcrParams struct{}
+
+// ImageFromGcpArtifactRegistryParams are options for ImageService.FromGcpArtifactRegistry.
+type ImageFromGcpArtifactRegistryParams struct{}
+
+// ImageFromIDParams are options for ImageService.FromID.
+type ImageFromIDParams struct{}
+
+// ImageBuildParams are options for Image.Build.
+type ImageBuildParams struct{}
 
 // FromRegistry builds a Modal Image from a public or private image registry without any changes.
 func (s *imageServiceImpl) FromRegistry(tag string, params *ImageFromRegistryParams) *Image {
-	if params == nil {
-		params = &ImageFromRegistryParams{}
-	}
 	var imageRegistryConfig *pb.ImageRegistryConfig
-	if params.Secret != nil {
+	if params != nil && params.Secret != nil {
 		imageRegistryConfig = pb.ImageRegistryConfig_builder{
 			RegistryAuthType: pb.RegistryAuthType_REGISTRY_AUTH_TYPE_STATIC_CREDS,
 			SecretId:         params.Secret.SecretID,
@@ -85,7 +94,7 @@ func (s *imageServiceImpl) FromRegistry(tag string, params *ImageFromRegistryPar
 }
 
 // FromAwsEcr creates an Image from an AWS ECR tag
-func (s *imageServiceImpl) FromAwsEcr(tag string, secret *Secret) *Image {
+func (s *imageServiceImpl) FromAwsEcr(tag string, secret *Secret, params *ImageFromAwsEcrParams) *Image {
 	imageRegistryConfig := pb.ImageRegistryConfig_builder{
 		RegistryAuthType: pb.RegistryAuthType_REGISTRY_AUTH_TYPE_AWS,
 		SecretId:         secret.SecretID,
@@ -101,7 +110,7 @@ func (s *imageServiceImpl) FromAwsEcr(tag string, secret *Secret) *Image {
 }
 
 // FromGcpArtifactRegistry creates an Image from a GCP Artifact Registry tag.
-func (s *imageServiceImpl) FromGcpArtifactRegistry(tag string, secret *Secret) *Image {
+func (s *imageServiceImpl) FromGcpArtifactRegistry(tag string, secret *Secret, params *ImageFromGcpArtifactRegistryParams) *Image {
 	imageRegistryConfig := pb.ImageRegistryConfig_builder{
 		RegistryAuthType: pb.RegistryAuthType_REGISTRY_AUTH_TYPE_GCP,
 		SecretId:         secret.SecretID,
@@ -116,7 +125,7 @@ func (s *imageServiceImpl) FromGcpArtifactRegistry(tag string, secret *Secret) *
 }
 
 // FromID looks up an Image from an ID
-func (s *imageServiceImpl) FromID(ctx context.Context, imageID string) (*Image, error) {
+func (s *imageServiceImpl) FromID(ctx context.Context, imageID string, params *ImageFromIDParams) (*Image, error) {
 	resp, err := s.client.cpClient.ImageFromId(
 		ctx,
 		pb.ImageFromIdRequest_builder{
@@ -219,7 +228,7 @@ func (image *Image) waitForBuildIteration(ctx context.Context, imageID string, l
 }
 
 // Build eagerly builds an Image on Modal.
-func (image *Image) Build(ctx context.Context, app *App) (*Image, error) {
+func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParams) (*Image, error) {
 	// Image is already hyrdated
 	if image.ImageID != "" {
 		return image, nil

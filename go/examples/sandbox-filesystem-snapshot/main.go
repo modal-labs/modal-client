@@ -29,7 +29,7 @@ func main() {
 	}
 	fmt.Printf("Started Sandbox: %s\n", sb.SandboxID)
 
-	sbFromID, err := mc.Sandboxes.FromID(ctx, sb.SandboxID)
+	sbFromID, err := mc.Sandboxes.FromID(ctx, sb.SandboxID, nil)
 	if err != nil {
 		log.Fatalf("Failed to get Sandbox: %v", err)
 	}

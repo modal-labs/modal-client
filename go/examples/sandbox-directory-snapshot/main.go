@@ -39,7 +39,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create Sandbox: %v", err)
 	}
-	sbFromID, err := mc.Sandboxes.FromID(ctx, sb.SandboxID)
+	sbFromID, err := mc.Sandboxes.FromID(ctx, sb.SandboxID, nil)
 	if err != nil {
 		log.Fatalf("Failed to get Sandbox: %v", err)
 	}
@@ -59,7 +59,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to exec git clone: %v", err)
 	}
-	if exitCode, err := gitClone.Wait(ctx); err != nil || exitCode != 0 {
+	if exitCode, err := gitClone.Wait(ctx, nil); err != nil || exitCode != 0 {
 		log.Fatalf("Failed to wait for git clone: exit code: %d, err: %v", exitCode, err)
 	}
 
@@ -78,7 +78,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create second Sandbox: %v", err)
 	}
-	sb2FromID, err := mc.Sandboxes.FromID(ctx, sb2.SandboxID)
+	sb2FromID, err := mc.Sandboxes.FromID(ctx, sb2.SandboxID, nil)
 	if err != nil {
 		log.Fatalf("Failed to create Sandbox: %v", err)
 	}
@@ -93,10 +93,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to exec mkdir in sb2: %v", err)
 	}
-	if exitCode, err := mkdirProc2.Wait(ctx); err != nil || exitCode != 0 {
+	if exitCode, err := mkdirProc2.Wait(ctx, nil); err != nil || exitCode != 0 {
 		log.Fatalf("Failed to wait for mkdir in sb2: exit code: %d, err: %v", exitCode, err)
 	}
-	if err := sb2.MountImage(ctx, "/repo", repoSnapshot); err != nil {
+	if err := sb2.MountImage(ctx, "/repo", repoSnapshot, nil); err != nil {
 		log.Fatalf("Failed to mount snapshot in sb2: %v", err)
 	}
 
@@ -104,7 +104,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to exec ls: %v", err)
 	}
-	if exitCode, err := repoLs.Wait(ctx); err != nil || exitCode != 0 {
+	if exitCode, err := repoLs.Wait(ctx, nil); err != nil || exitCode != 0 {
 		log.Fatalf("Failed to wait for ls: exit code: %d, err: %v", exitCode, err)
 	}
 	output, err := io.ReadAll(repoLs.Stdout)
@@ -114,7 +114,7 @@ func main() {
 	fmt.Printf("Contents of /repo directory in new Sandbox sb2:\n%s", output)
 
 	// You can also optionally unmount the Image
-	if err := sb2.UnmountImage(ctx, "/repo"); err != nil {
+	if err := sb2.UnmountImage(ctx, "/repo", nil); err != nil {
 		log.Fatalf("Failed to unmount snapshot in sb2: %v", err)
 	}
 	fmt.Println("Unmounted the snapshot from /repo")

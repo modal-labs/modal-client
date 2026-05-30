@@ -50,7 +50,7 @@ func main() {
 		}
 	}()
 
-	exitCode, err := writerSandbox.Wait(ctx)
+	exitCode, err := writerSandbox.Wait(ctx, nil)
 	if err != nil {
 		log.Fatalf("Failed to wait for writer Sandbox: %v", err)
 	}
@@ -93,7 +93,7 @@ func main() {
 		log.Fatalf("Failed to exec write command: %v", err)
 	}
 
-	writeExitCode, err := wp.Wait(ctx)
+	writeExitCode, err := wp.Wait(ctx, nil)
 	if err != nil {
 		log.Fatalf("Failed to wait for write process: %v", err)
 	}

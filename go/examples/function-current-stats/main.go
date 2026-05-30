@@ -22,7 +22,7 @@ func main() {
 		log.Fatalf("Failed to get Function: %v", err)
 	}
 
-	stats, err := function.GetCurrentStats(ctx)
+	stats, err := function.GetCurrentStats(ctx, nil)
 	if err != nil {
 		log.Fatalf("Failed to get Function stats: %v", err)
 	}
