@@ -265,6 +265,9 @@ message TaskMountDirectoryRequest {
   string task_id = 1;
   bytes path = 2;
   string image_id = 3;
+  // Customer-supplied encryption key used to decrypt CSEK-encrypted image metadata keys.
+  // This key is not persisted by Modal.
+  optional bytes customer_supplied_encryption_key = 4;
 }
 
 message TaskSnapshotDirectoryRequest {
@@ -284,6 +287,9 @@ message TaskSnapshotDirectoryRequest {
   // 0 and other negative values are invalid and rejected by the
   // server.
   optional int64 ttl_seconds = 4;
+  // Customer-supplied encryption key used to encrypt the resulting image's data and tree
+  // metadata keys. This key is not persisted by Modal.
+  optional bytes customer_supplied_encryption_key = 5;
 }
 
 message TaskSnapshotDirectoryResponse {
