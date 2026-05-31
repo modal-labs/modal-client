@@ -19,7 +19,11 @@ def format_docstring(docstring: str | None) -> str:
     else:
         docstring = inspect.cleandoc(docstring)
 
-    docstring = "\n".join(l for l in docstring.split("\n") if "mdmd:line-hidden" not in l and "mdmd:namespace" not in l)
+    docstring = "\n".join(
+        l
+        for l in docstring.split("\n")
+        if "mdmd:line-hidden" not in l and "mdmd:namespace" not in l and "mdmd:exported" not in l
+    )
 
     if docstring and not docstring.endswith("\n"):
         docstring += "\n"
@@ -238,6 +242,12 @@ def object_is_private(name, obj):
     return False
 
 
+def module_reexports_all(module: ModuleType) -> bool:
+    """Use `mdmd:exported` for modules that re-export objects defined elsewhere via __all__."""
+    docstring = module.__doc__ or ""
+    return any("mdmd:exported" in line for line in docstring.split("\n"))
+
+
 def default_filter(module, item_name):
     """Include non-private objects defined in the module itself or its private counterpart."""
     item = getattr(module, item_name)
@@ -245,6 +255,8 @@ def default_filter(module, item_name):
         return False
     member_module = getattr(item, "__module__", type(item).__module__)
     if member_module == module.__name__:
+        return True
+    if module_reexports_all(module) and item_name in getattr(module, "__all__", ()):
         return True
     # Also allow items from the corresponding private module (e.g., modal._foo for modal.foo)
     parts = module.__name__.rsplit(".", 1)

@@ -44,15 +44,12 @@ def validate_doc_item(docitem: DocItem) -> DocItem:
     return docitem
 
 
-def run(output_dir: str = None):
+def run(output_dir: str | None = None):
     """Generate Modal docs."""
     import modal
 
     ordered_doc_items: list[DocItem] = []
     documented_items = set()
-
-    def filter_non_aio(module, name):
-        return not name.lower().startswith("aio")
 
     def filter_already_documented(module, name):
         item = getattr(module, name)
@@ -65,31 +62,34 @@ def run(output_dir: str = None):
         documented_items.add(item)
         return True
 
-    def modal_default_filter(module, name):
-        return default_filter(module, name) and filter_non_aio(module, name) and filter_already_documented(module, name)
+    def module_doc_filter(module, name):
+        return default_filter(module, name)
 
     def top_level_filter(module, name):
         item = getattr(module, name)
         if object_is_private(name, item) or inspect.ismodule(item):
             return False
-        return package_filter("modal") and filter_already_documented(module, name) and filter_non_aio(module, name)
+        return package_filter("modal") and filter_already_documented(module, name)
 
     base_title_level = "#"
-    forced_module_docs = [
+    # Standalone module reference pages, sorted into the sidebar with top-level `modal.X` entries.
+    module_docs = [
         ("modal.billing", "modal.billing"),
         ("modal.call_graph", "modal.call_graph"),
+        ("modal.config", "modal.config"),
         ("modal.container_process", "modal.container_process"),
-        ("modal.io_streams", "modal.io_streams"),
+        ("modal.exception", "modal.exception"),
         ("modal.file_io", "modal.file_io"),
+        ("modal.io_streams", "modal.io_streams"),
     ]
     # These aren't defined in `modal`, but should still be documented as top-level entries.
     forced_members: set[str] = set()
     # These are excluded from the sidebar, typically to 'soft release' some documentation.
     sidebar_excluded: set[str] = {"modal.NetworkFileSystem"}
 
-    for title, modulepath in forced_module_docs:
+    for title, modulepath in module_docs:
         module = importlib.import_module(modulepath)
-        document = module_str(modulepath, module, title_level=base_title_level, filter_items=modal_default_filter)
+        document = module_str(modulepath, module, title_level=base_title_level, filter_items=module_doc_filter)
         if document:
             ordered_doc_items.append(
                 validate_doc_item(
@@ -133,17 +133,6 @@ def run(output_dir: str = None):
             )
         )
     ordered_doc_items.sort()
-
-    for modulepath in ["modal.exception", "modal.config"]:
-        module = importlib.import_module(modulepath)
-        document = module_str(modulepath, module, title_level=base_title_level, filter_items=modal_default_filter)
-        ordered_doc_items.append(
-            DocItem(
-                label=modulepath,
-                category=Category.MODULE,
-                document=document,
-            )
-        )
 
     # TODO: add some way of documenting our .aio sub-methods
 

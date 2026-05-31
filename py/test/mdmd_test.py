@@ -2,6 +2,7 @@
 import importlib
 import os
 from enum import IntEnum
+from types import ModuleType
 
 from modal_docs.mdmd import mdmd
 
@@ -226,6 +227,25 @@ foo
 ```
 """
     )
+
+
+def test_exported_module_filter_includes_all_reexports():
+    module = ModuleType("example_module", "Module docs\nmdmd:exported")
+
+    class Reexported:
+        pass
+
+    Reexported.__module__ = "elsewhere"
+    setattr(module, "Reexported", Reexported)
+    setattr(module, "Hidden", Reexported)
+    setattr(module, "__all__", ["Reexported"])
+
+    assert mdmd.default_filter(module, "Reexported")
+    assert not mdmd.default_filter(module, "Hidden")
+
+
+def test_docstring_format_hides_exported_directive():
+    assert mdmd.format_docstring("Visible\nmdmd:exported\nStill visible") == "Visible\nStill visible\n"
 
 
 def test_synchronicity_async_and_blocking_interfaces():
