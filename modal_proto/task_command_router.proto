@@ -308,6 +308,9 @@ message TaskSnapshotFilesystemRequest {
   // 0 and other negative values are invalid and rejected by the
   // server.
   optional int64 ttl_seconds = 3;
+  // Customer-supplied encryption key used to encrypt the resulting image's data and tree
+  // metadata keys. This key is not persisted by Modal.
+  optional bytes customer_supplied_encryption_key = 4;
 }
 
 message TaskSnapshotFilesystemResponse {
