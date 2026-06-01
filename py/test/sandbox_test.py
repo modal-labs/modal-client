@@ -11,7 +11,16 @@ from unittest import mock
 from grpclib import GRPCError, Status
 
 import modal
-from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
+from modal import (
+    App,
+    Image,
+    NetworkFileSystem,
+    Proxy,
+    Sandbox,
+    SandboxSnapshot,
+    Secret,
+    Volume,
+)
 from modal.exception import DeprecationError, Error, InvalidError, TimeoutError
 from modal.sandbox import SandboxVersion, SidecarContainer, _get_sandbox_version
 from modal.stream_type import StreamType
@@ -1089,6 +1098,32 @@ def test_mount_image_from_scratch_uses_empty_image_id(servicer, client, app):
     sb.terminate()
 
 
+def test_mount_image_customer_supplied_encryption_key(servicer, client, app):
+    sb = Sandbox.create(app=app)
+    csek = b"customer-supplied encryption key"
+    image = Image.from_id("im-csek123", client=client)
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb.mount_image("/csek", image, _experimental_encryption_key=csek)
+        captured_requests = tcr_ctx.get_requests("TaskMountDirectory")
+        assert len(captured_requests) == 1
+        assert captured_requests[0].customer_supplied_encryption_key == csek
+
+        with pytest.raises(TypeError, match="positional"):
+            sb.mount_image("/bad-csek", image, csek)  # type: ignore[misc]
+        with pytest.raises(TypeError, match="_experimental_encryption_key must be bytes"):
+            sb.mount_image("/bad-csek", image, _experimental_encryption_key="not-bytes")  # type: ignore[arg-type]
+        with pytest.raises(InvalidError, match="_experimental_encryption_key must not be empty"):
+            sb.mount_image("/bad-csek", image, _experimental_encryption_key=b"")
+        with pytest.raises(InvalidError, match="_experimental_encryption_key must be at least 16 bytes"):
+            sb.mount_image("/bad-csek", image, _experimental_encryption_key=b"1" * 15)
+        with pytest.raises(InvalidError, match="_experimental_encryption_key must be at most 512 bytes"):
+            sb.mount_image("/bad-csek", image, _experimental_encryption_key=b"1" * 513)
+        assert len(tcr_ctx.get_requests("TaskMountDirectory")) == 1
+
+    sb.terminate()
+
+
 def test_snapshot_directory(servicer, client, app):
     """Test snapshotting a directory to create a new image."""
     sb = Sandbox.create(app=app)
@@ -1138,6 +1173,43 @@ def test_snapshot_directory(servicer, client, app):
             sb.snapshot_directory("/tmp", ttl=0)
         with pytest.raises(InvalidError, match="must be positive"):
             sb.snapshot_directory("/tmp", ttl=-5)
+
+    sb.terminate()
+
+
+def test_snapshot_directory_customer_supplied_encryption_key(servicer, client, app):
+    sb = Sandbox.create(app=app)
+    csek = b"customer-supplied encryption key"
+
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        image = sb.snapshot_directory("/tmp", _experimental_encryption_key=csek)
+        captured_requests = tcr_ctx.get_requests("TaskSnapshotDirectory")
+        assert len(captured_requests) == 1
+        assert captured_requests[0].customer_supplied_encryption_key == csek
+
+        with pytest.raises(TypeError, match="positional"):
+            getattr(sb, "snapshot_directory")("/tmp", csek)
+        assert len(tcr_ctx.get_requests("TaskSnapshotDirectory")) == 1
+
+        sb.mount_image("/csek-snapshot", image, _experimental_encryption_key=csek)
+        mount_requests = tcr_ctx.get_requests("TaskMountDirectory")
+        assert len(mount_requests) == 1
+        assert mount_requests[0].customer_supplied_encryption_key == csek
+
+        sb.mount_image("/csek-snapshot-without-key", image)
+        mount_requests = tcr_ctx.get_requests("TaskMountDirectory")
+        assert len(mount_requests) == 2
+        assert not mount_requests[1].HasField("customer_supplied_encryption_key")
+
+        with pytest.raises(TypeError, match="_experimental_encryption_key must be bytes"):
+            sb.snapshot_directory("/tmp", _experimental_encryption_key="not-bytes")  # type: ignore[arg-type]
+        with pytest.raises(InvalidError, match="_experimental_encryption_key must not be empty"):
+            sb.snapshot_directory("/tmp", _experimental_encryption_key=b"")
+        with pytest.raises(InvalidError, match="_experimental_encryption_key must be at least 16 bytes"):
+            sb.snapshot_directory("/tmp", _experimental_encryption_key=b"1" * 15)
+        with pytest.raises(InvalidError, match="_experimental_encryption_key must be at most 512 bytes"):
+            sb.snapshot_directory("/tmp", _experimental_encryption_key=b"1" * 513)
+        assert len(tcr_ctx.get_requests("TaskSnapshotDirectory")) == 1
 
     sb.terminate()
 

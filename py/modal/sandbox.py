@@ -93,6 +93,27 @@ def _ttl_to_wire_ttl(ttl: int | None) -> int:
 
 _V1_SANDBOX_ID_ALPHABET = frozenset("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 _ULID_ALPHABET = frozenset("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
+_CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH = 16
+_CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MAX_LENGTH = 512
+
+
+def _validate_experimental_encryption_key(key: bytes | None) -> bytes | None:
+    if key is None:
+        return None
+    if not isinstance(key, bytes):
+        raise TypeError("_experimental_encryption_key must be bytes")
+    if len(key) == 0:
+        raise InvalidError("_experimental_encryption_key must not be empty")
+    if len(key) < _CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH:
+        raise InvalidError(
+            f"_experimental_encryption_key must be at least {_CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH} bytes"
+        )
+    if len(key) > _CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MAX_LENGTH:
+        raise InvalidError(
+            f"_experimental_encryption_key must be at most {_CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MAX_LENGTH} bytes"
+        )
+    return key
+
 
 if TYPE_CHECKING:
     import modal.app
@@ -1182,7 +1203,13 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return _Image._new_hydrated(resp.image_id, self._client, resp.image_metadata)
 
-    async def mount_image(self, path: PurePosixPath | str, image: _Image):
+    async def mount_image(
+        self,
+        path: PurePosixPath | str,
+        image: _Image,
+        *,
+        _experimental_encryption_key: bytes | None = None,
+    ):
         """Mount an Image at a specified path in a running Sandbox.
 
         `path` should be a directory that is **not** the root path (`/`). If the path doesn't exist
@@ -1243,7 +1270,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError(f"Mount path must be absolute; got: {posix_path}")
         path_bytes = posix_path.as_posix().encode("utf8")
 
-        req = sr_pb2.TaskMountDirectoryRequest(task_id=task_id, path=path_bytes, image_id=image_id)
+        req = sr_pb2.TaskMountDirectoryRequest(
+            task_id=task_id,
+            path=path_bytes,
+            image_id=image_id,
+            customer_supplied_encryption_key=_validate_experimental_encryption_key(_experimental_encryption_key),
+        )
         await command_router_client.mount_image(req)
 
     async def unmount_image(self, path: PurePosixPath | str):
@@ -1276,6 +1308,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         *,
         timeout: int = 55,
         ttl: int | None = 30 * 24 * 3600,
+        _experimental_encryption_key: bytes | None = None,
     ) -> _Image:
         """Snapshot a directory in a running Sandbox, creating a new Image with its content.
 
@@ -1319,6 +1352,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             path=path_bytes,
             snapshot_id=snapshot_id,
             ttl_seconds=wire_ttl_seconds,
+            customer_supplied_encryption_key=_validate_experimental_encryption_key(_experimental_encryption_key),
         )
         res = await command_router_client.snapshot_directory(req, timeout=float(timeout))
         return _Image._new_hydrated(res.image_id, self._client, None)
