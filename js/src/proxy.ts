@@ -1,4 +1,4 @@
-import { getDefaultClient, type ModalClient } from "./client";
+import { type ModalClient } from "./client";
 import { ClientError, Status } from "nice-grpc";
 import { NotFoundError } from "./errors";
 
@@ -50,15 +50,5 @@ export class Proxy {
   /** @ignore */
   constructor(proxyId: string) {
     this.proxyId = proxyId;
-  }
-
-  /**
-   * @deprecated Use {@link ProxyService#fromName client.proxies.fromName()} instead.
-   */
-  static async fromName(
-    name: string,
-    params?: ProxyFromNameParams,
-  ): Promise<Proxy> {
-    return getDefaultClient().proxies.fromName(name, params);
   }
 }

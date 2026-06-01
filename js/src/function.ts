@@ -6,7 +6,7 @@ import {
   FunctionHandleMetadata,
   FunctionInput,
 } from "../proto/modal_proto/api";
-import { getDefaultClient, type ModalClient } from "./client";
+import { type ModalClient } from "./client";
 import { FunctionCall } from "./function_call";
 import { InternalFailure, InvalidError, NotFoundError } from "./errors";
 import { cborEncode } from "./serialization";
@@ -122,17 +122,6 @@ export class Function_ {
 
     this.#client = client;
     this.#handleMetadata = functionHandleMetadata;
-  }
-
-  /**
-   * @deprecated Use `client.functions.fromName()` instead.
-   */
-  static async lookup(
-    appName: string,
-    name: string,
-    params: FunctionFromNameParams = {},
-  ): Promise<Function_> {
-    return await getDefaultClient().functions.fromName(appName, name, params);
   }
 
   #checkNoWebUrl(fnName: string): void {

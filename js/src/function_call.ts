@@ -1,6 +1,6 @@
 // Manage existing Function Calls (look-ups, polling for output, cancellation).
 
-import { getDefaultClient, type ModalClient } from "./client";
+import { type ModalClient } from "./client";
 import { ControlPlaneInvocation } from "./invocation";
 import { checkForRenamedParams } from "./validation";
 
@@ -45,19 +45,12 @@ export type FunctionCallCancelParams = {
  */
 export class FunctionCall {
   readonly functionCallId: string;
-  #client?: ModalClient;
+  #client: ModalClient;
 
   /** @ignore */
-  constructor(client: ModalClient | undefined, functionCallId: string) {
+  constructor(client: ModalClient, functionCallId: string) {
     this.#client = client;
     this.functionCallId = functionCallId;
-  }
-
-  /**
-   * @deprecated Use {@link FunctionCallService#fromId client.functionCalls.fromId()} instead.
-   */
-  static fromId(functionCallId: string): FunctionCall {
-    return new FunctionCall(undefined, functionCallId);
   }
 
   /** Get the result of a FunctionCall, optionally waiting with a timeout. */
@@ -65,7 +58,7 @@ export class FunctionCall {
     checkForRenamedParams(params, { timeout: "timeoutMs" });
 
     const invocation = ControlPlaneInvocation.fromFunctionCallId(
-      this.#client || getDefaultClient(),
+      this.#client,
       this.functionCallId,
     );
     return invocation.awaitOutput(params.timeoutMs);
@@ -73,7 +66,7 @@ export class FunctionCall {
 
   /** Cancel a running FunctionCall. */
   async cancel(params: FunctionCallCancelParams = {}) {
-    const cpClient = this.#client?.cpClient || getDefaultClient().cpClient;
+    const cpClient = this.#client.cpClient;
 
     await cpClient.functionCallCancel({
       functionCallId: this.functionCallId,

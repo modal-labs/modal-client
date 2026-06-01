@@ -31,12 +31,7 @@ import {
 } from "../proto/modal_proto/task_command_router";
 import { TaskCommandRouterClientImpl } from "./task_command_router_client";
 import { v4 as uuidv4 } from "uuid";
-import {
-  getDefaultClient,
-  type ModalClient,
-  isRetryableGrpc,
-  ModalGrpcClient,
-} from "./client";
+import { type ModalClient, isRetryableGrpc, ModalGrpcClient } from "./client";
 import {
   runFilesystemExec,
   SandboxFile,
@@ -343,7 +338,7 @@ export type SandboxCreateParams = {
   /** Optional name for the Sandbox. Unique within an App. */
   name?: string;
 
-  /** Tags to attach to the Sandbox. Filterable via {@link SandboxService#list Sandbox.list}. */
+  /** Tags to attach to the Sandbox. Filterable via {@link SandboxService#list client.sandboxes.list}. */
   tags?: Record<string, string>;
 
   /** Optional experimental options. */
@@ -1194,7 +1189,7 @@ export class Sandbox {
     return this.#filesystem;
   }
 
-  /** Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in {@link SandboxService#list Sandbox.list}. */
+  /** Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in {@link SandboxService#list client.sandboxes.list}. */
   async setTags(tags: Record<string, string>): Promise<void> {
     this.#ensureAttached();
     this.#ensureV1("setTags");
@@ -1237,26 +1232,6 @@ export class Sandbox {
       tags[tag.tagName] = tag.tagValue;
     }
     return tags;
-  }
-
-  /**
-   * @deprecated Use {@link SandboxService#fromId client.sandboxes.fromId()} instead.
-   */
-  static async fromId(sandboxId: string): Promise<Sandbox> {
-    return getDefaultClient().sandboxes.fromId(sandboxId);
-  }
-
-  /**
-   * @deprecated Use {@link SandboxService#fromName client.sandboxes.fromName()} instead.
-   */
-  static async fromName(
-    appName: string,
-    name: string,
-    environment?: string,
-  ): Promise<Sandbox> {
-    return getDefaultClient().sandboxes.fromName(appName, name, {
-      environment,
-    });
   }
 
   /**
@@ -1745,15 +1720,6 @@ export class Sandbox {
     const resp = await this.#sandboxWait(0);
 
     return Sandbox.#getReturnCode(resp.result);
-  }
-
-  /**
-   * @deprecated Use {@link SandboxService#list client.sandboxes.list()} instead.
-   */
-  static async *list(
-    params: SandboxListParams = {},
-  ): AsyncGenerator<Sandbox, void, unknown> {
-    yield* getDefaultClient().sandboxes.list(params);
   }
 
   static #getReturnCode(result: GenericResult | undefined): number | null {

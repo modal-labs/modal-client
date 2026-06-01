@@ -5,7 +5,7 @@ import { NotFoundError } from "../src/errors";
 import { volumeToMountProto } from "../src/volume";
 import { ClientError, Status } from "nice-grpc";
 
-test("Volume.fromName", async () => {
+test("client.volumes.fromName", async () => {
   const volume = await tc.volumes.fromName("libmodal-test-volume", {
     createIfMissing: true,
   });

@@ -1,5 +1,5 @@
 import { ObjectCreationType, type VolumeMount } from "../proto/modal_proto/api";
-import { getDefaultClient, type ModalClient } from "./client";
+import { type ModalClient } from "./client";
 import { ClientError, Status } from "nice-grpc";
 import { NotFoundError, InvalidError } from "./errors";
 import { EphemeralHeartbeatManager } from "./ephemeral";
@@ -160,16 +160,6 @@ export class Volume {
   }
 
   /**
-   * @deprecated Use {@link VolumeService#fromName client.volumes.fromName()} instead.
-   */
-  static async fromName(
-    name: string,
-    options?: VolumeFromNameParams,
-  ): Promise<Volume> {
-    return getDefaultClient().volumes.fromName(name, options);
-  }
-
-  /**
    * Configure Volume to mount as read-only.
    *
    * @deprecated Use {@link withMountOptions} with `{ readOnly: true }` instead.
@@ -204,13 +194,6 @@ export class Volume {
    */
   get isReadOnly(): boolean {
     return this._mountOptions.readOnly;
-  }
-
-  /**
-   * @deprecated Use {@link VolumeService#ephemeral client.volumes.ephemeral()} instead.
-   */
-  static async ephemeral(options: VolumeEphemeralParams = {}): Promise<Volume> {
-    return getDefaultClient().volumes.ephemeral(options);
   }
 
   /** Delete the ephemeral Volume. Only usable with emphemeral Volumes. */

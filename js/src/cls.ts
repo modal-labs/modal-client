@@ -11,7 +11,7 @@ import {
   VolumeMount,
 } from "../proto/modal_proto/api";
 import { NotFoundError } from "./errors";
-import { getDefaultClient, type ModalClient } from "./client";
+import { type ModalClient } from "./client";
 import { Function_ } from "./function";
 import { parseGpuConfig } from "./app";
 import type { Secret } from "./secret";
@@ -147,17 +147,6 @@ export class Cls {
 
   get #schema(): ClassParameterSpec[] {
     return this.#serviceFunctionMetadata.classParameterInfo?.schema ?? [];
-  }
-
-  /**
-   * @deprecated Use {@link ClsService#fromName client.cls.fromName()} instead.
-   */
-  static async lookup(
-    appName: string,
-    name: string,
-    params: ClsFromNameParams = {},
-  ): Promise<Cls> {
-    return getDefaultClient().cls.fromName(appName, name, params);
   }
 
   /** Create a new instance of the Cls with parameters and/or runtime options. */

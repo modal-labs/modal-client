@@ -4,7 +4,7 @@ import {
   ObjectCreationType,
   QueueNextItemsRequest,
 } from "../proto/modal_proto/api";
-import { getDefaultClient, type ModalClient } from "./client";
+import { type ModalClient } from "./client";
 import {
   InvalidError,
   NotFoundError,
@@ -224,13 +224,6 @@ export class Queue {
     return new Uint8Array();
   }
 
-  /**
-   * @deprecated Use {@link QueueService#ephemeral client.queues.ephemeral()} instead.
-   */
-  static async ephemeral(params: QueueEphemeralParams = {}): Promise<Queue> {
-    return getDefaultClient().queues.ephemeral(params);
-  }
-
   /** Delete the ephemeral Queue. Only usable with ephemeral Queues. */
   closeEphemeral(): void {
     if (this.#ephemeralHbManager) {
@@ -238,26 +231,6 @@ export class Queue {
     } else {
       throw new InvalidError("Queue is not ephemeral.");
     }
-  }
-
-  /**
-   * @deprecated Use {@link QueueService#fromName client.queues.fromName()} instead.
-   */
-  static async lookup(
-    name: string,
-    options: QueueFromNameParams = {},
-  ): Promise<Queue> {
-    return getDefaultClient().queues.fromName(name, options);
-  }
-
-  /**
-   * @deprecated Use {@link QueueService#delete client.queues.delete()} instead.
-   */
-  static async delete(
-    name: string,
-    options: QueueDeleteParams = {},
-  ): Promise<void> {
-    return getDefaultClient().queues.delete(name, options);
   }
 
   /**

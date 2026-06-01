@@ -55,10 +55,7 @@ export default defineConfig([
     },
   },
   {
-    files: [
-      "test/legacy/**/*.{ts,mts,cts}",
-      "examples/legacy/**/*.{ts,mts,cts}",
-    ],
+    files: ["examples/legacy/**/*.{ts,mts,cts}"],
     rules: {
       "@typescript-eslint/no-deprecated": "off",
     },

@@ -22,7 +22,6 @@ import {
   SandboxCreateV2Response,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
-import { CloudBucketMount } from "../src/cloud_bucket_mount";
 
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
 const V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
@@ -1039,8 +1038,7 @@ test.each([
 );
 
 test("buildSandboxCreateV2RequestProto supports volumes and cloud bucket mounts", async () => {
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- minimal CBM ctor for proto-build test
-  const cbm = new CloudBucketMount("my-bucket");
+  const cbm = tc.cloudBucketMounts.create("my-bucket");
   const req = await buildSandboxCreateV2RequestProto("app-123", "img-456", {
     volumes: { "/mnt/vol": { volumeId: "vo-123" } as any },
     cloudBucketMounts: { "/mnt/s3": cbm },
@@ -1159,7 +1157,7 @@ test.each([
   expect(() => getSandboxVersion(sandboxId)).toThrow("Invalid Sandbox ID");
 });
 
-test("Sandbox.fromId routes V1 IDs to SandboxWait", async () => {
+test("client.sandboxes.fromId routes V1 IDs to SandboxWait", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sandboxId = V1_SANDBOX_ID;
 
@@ -1185,7 +1183,7 @@ test("Sandbox.fromId routes V1 IDs to SandboxWait", async () => {
   mock.assertExhausted();
 });
 
-test("Sandbox.fromId routes V2 IDs to SandboxWaitV2", async () => {
+test("client.sandboxes.fromId routes V2 IDs to SandboxWaitV2", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sandboxId = V2_SANDBOX_ID;
 
@@ -1214,7 +1212,7 @@ test("Sandbox.fromId routes V2 IDs to SandboxWaitV2", async () => {
   mock.assertExhausted();
 });
 
-test("Sandbox.fromId rejects invalid IDs before RPC", async () => {
+test("client.sandboxes.fromId rejects invalid IDs before RPC", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   await expect(mc.sandboxes.fromId("sb-123")).rejects.toThrow(

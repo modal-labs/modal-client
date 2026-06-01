@@ -1,12 +1,4 @@
-export {
-  App,
-  AppService,
-  type AppFromNameParams,
-  type DeleteOptions,
-  type EphemeralOptions,
-  type LookupOptions,
-} from "./app";
-export { type ClientOptions, initializeClient, close } from "./client";
+export { App, AppService, type AppFromNameParams } from "./app";
 export {
   Cls,
   ClsInstance,

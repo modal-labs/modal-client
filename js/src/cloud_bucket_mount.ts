@@ -2,7 +2,7 @@ import {
   CloudBucketMount_BucketType,
   CloudBucketMount as CloudBucketMountProto,
 } from "../proto/modal_proto/api";
-import { getDefaultClient, ModalClient } from "./client";
+import { ModalClient } from "./client";
 import { Secret } from "./secret";
 
 export class CloudBucketMountService {
@@ -75,20 +75,6 @@ export class CloudBucketMount {
   readonly oidcAuthRoleArn?: string;
   readonly #bucketType!: CloudBucketMount_BucketType;
 
-  /**
-   * @deprecated Use {@link CloudBucketMountService#create client.cloudBucketMounts.create()} instead.
-   */
-  constructor(
-    bucketName: string,
-    params?: {
-      secret?: Secret;
-      readOnly?: boolean;
-      requesterPays?: boolean;
-      bucketEndpointUrl?: string;
-      keyPrefix?: string;
-      oidcAuthRoleArn?: string;
-    },
-  );
   /** @ignore */
   constructor(
     bucketName: string,
@@ -99,49 +85,15 @@ export class CloudBucketMount {
     keyPrefix: string | undefined,
     oidcAuthRoleArn: string | undefined,
     bucketType: CloudBucketMount_BucketType,
-  );
-  constructor(
-    bucketName: string,
-    secretOrParams?:
-      | Secret
-      | {
-          secret?: Secret;
-          readOnly?: boolean;
-          requesterPays?: boolean;
-          bucketEndpointUrl?: string;
-          keyPrefix?: string;
-          oidcAuthRoleArn?: string;
-        },
-    readOnly?: boolean,
-    requesterPays?: boolean,
-    bucketEndpointUrl?: string,
-    keyPrefix?: string,
-    oidcAuthRoleArn?: string,
-    bucketType?: CloudBucketMount_BucketType,
   ) {
-    if (bucketType !== undefined) {
-      this.bucketName = bucketName;
-      this.secret = secretOrParams as Secret | undefined;
-      this.readOnly = readOnly!;
-      this.requesterPays = requesterPays!;
-      this.bucketEndpointUrl = bucketEndpointUrl;
-      this.keyPrefix = keyPrefix;
-      this.oidcAuthRoleArn = oidcAuthRoleArn;
-      this.#bucketType = bucketType;
-    } else {
-      const params =
-        secretOrParams === undefined
-          ? {}
-          : (secretOrParams as {
-              secret?: Secret;
-              readOnly?: boolean;
-              requesterPays?: boolean;
-              bucketEndpointUrl?: string;
-              keyPrefix?: string;
-              oidcAuthRoleArn?: string;
-            });
-      return getDefaultClient().cloudBucketMounts.create(bucketName, params);
-    }
+    this.bucketName = bucketName;
+    this.secret = secret;
+    this.readOnly = readOnly;
+    this.requesterPays = requesterPays;
+    this.bucketEndpointUrl = bucketEndpointUrl;
+    this.keyPrefix = keyPrefix;
+    this.oidcAuthRoleArn = oidcAuthRoleArn;
+    this.#bucketType = bucketType;
   }
 
   /** @ignore */

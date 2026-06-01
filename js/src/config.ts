@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { parse as parseToml } from "smol-toml";
-import { getDefaultClient } from "./client";
 
 /** Raw representation of the .modal.toml file. */
 interface Config {
@@ -114,18 +113,4 @@ export function getProfile(profileName?: string): Profile {
     })(),
   };
   return profile as Profile; // safe to null-cast because of check above
-}
-
-/**
- * @deprecated Use `client.environmentName()` instead.
- */
-export function environmentName(environment?: string): string {
-  return environment || getDefaultClient().profile.environment || "";
-}
-
-/**
- * @deprecated Use `client.imageBuilderVersion()` instead.
- */
-export function imageBuilderVersion(version?: string): string {
-  return version || getDefaultClient().profile.imageBuilderVersion || "2024.10";
 }

@@ -1,4 +1,4 @@
-import { getDefaultClient, type ModalClient } from "./client";
+import { type ModalClient } from "./client";
 import { ClientError, Status } from "nice-grpc";
 import { InvalidError, NotFoundError } from "./errors";
 import { ObjectCreationType } from "../proto/modal_proto/api";
@@ -142,26 +142,6 @@ export class Secret {
   constructor(secretId: string, name?: string) {
     this.secretId = secretId;
     this.name = name;
-  }
-
-  /**
-   * @deprecated Use {@link SecretService#fromName client.secrets.fromName()} instead.
-   */
-  static async fromName(
-    name: string,
-    params?: SecretFromNameParams,
-  ): Promise<Secret> {
-    return getDefaultClient().secrets.fromName(name, params);
-  }
-
-  /**
-   * @deprecated Use {@link SecretService#fromObject client.secrets.fromObject()} instead.
-   */
-  static async fromObject(
-    entries: Record<string, string>,
-    params?: SecretFromObjectParams,
-  ): Promise<Secret> {
-    return getDefaultClient().secrets.fromObject(entries, params);
   }
 }
 

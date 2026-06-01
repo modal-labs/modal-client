@@ -1,10 +1,7 @@
 import { ClientError, Status } from "nice-grpc";
 import { ObjectCreationType } from "../proto/modal_proto/api";
-import { getDefaultClient, type ModalClient } from "./client";
-import { Image } from "./image";
-import { Sandbox, SandboxCreateParams } from "./sandbox";
+import { type ModalClient } from "./client";
 import { NotFoundError } from "./errors";
-import { Secret } from "./secret";
 import { GPUConfig } from "../proto/modal_proto/api";
 
 /**
@@ -56,22 +53,6 @@ export type AppFromNameParams = {
   createIfMissing?: boolean;
 };
 
-/** @deprecated Use specific Params types instead. */
-export type LookupOptions = {
-  environment?: string;
-  createIfMissing?: boolean;
-};
-
-/** @deprecated Use specific Params types instead. */
-export type DeleteOptions = {
-  environment?: string;
-};
-
-/** @deprecated Use specific Params types instead. */
-export type EphemeralOptions = {
-  environment?: string;
-};
-
 /**
  * Parse a GPU configuration string into a GPUConfig object.
  * @param gpu - GPU string in format "type" or "type:count" (e.g. "T4", "A100:2")
@@ -111,49 +92,5 @@ export class App {
   constructor(appId: string, name?: string) {
     this.appId = appId;
     this.name = name;
-  }
-
-  /**
-   * @deprecated Use {@link AppService#fromName client.apps.fromName()} instead.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-deprecated
-  static async lookup(name: string, options: LookupOptions = {}): Promise<App> {
-    return getDefaultClient().apps.fromName(name, options);
-  }
-
-  /**
-   * @deprecated Use {@link SandboxService#create client.sandboxes.create()} instead.
-   */
-  async createSandbox(
-    image: Image,
-    options: SandboxCreateParams = {},
-  ): Promise<Sandbox> {
-    return getDefaultClient().sandboxes.create(this, image, options);
-  }
-
-  /**
-   * @deprecated Use {@link ImageService#fromRegistry client.images.fromRegistry()} instead.
-   */
-  async imageFromRegistry(tag: string, secret?: Secret): Promise<Image> {
-    return getDefaultClient().images.fromRegistry(tag, secret).build(this);
-  }
-
-  /**
-   * @deprecated Use {@link ImageService#fromAwsEcr client.images.fromAwsEcr()} instead.
-   */
-  async imageFromAwsEcr(tag: string, secret: Secret): Promise<Image> {
-    return getDefaultClient().images.fromAwsEcr(tag, secret).build(this);
-  }
-
-  /**
-   * @deprecated Use {@link ImageService#fromGcpArtifactRegistry client.images.fromGcpArtifactRegistry()} instead.
-   */
-  async imageFromGcpArtifactRegistry(
-    tag: string,
-    secret: Secret,
-  ): Promise<Image> {
-    return getDefaultClient()
-      .images.fromGcpArtifactRegistry(tag, secret)
-      .build(this);
   }
 }
