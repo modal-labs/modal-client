@@ -2082,7 +2082,14 @@ def test_set_local_input_concurrency(servicer, deployed_support_function_definit
     )
 
     outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
-    assert outputs == pytest.approx([0.2] * 3 + [0.4] * 3, abs=0.1)
+    # With local concurrency set to 3 and a 0.2s sleep per input, the 6 inputs run in
+    # two batches of 3: the second batch finishes ~0.2s after the first. Normalize
+    # against the earliest finish so the assertion checks this relative spacing rather
+    # than absolute latency, which includes variable container startup and input
+    # dispatch overhead and is the source of flakiness.
+    baseline = min(outputs)
+    normalized = sorted(o - baseline for o in outputs)
+    assert normalized == pytest.approx([0.0] * 3 + [0.2] * 3, abs=0.1)
 
 
 @skip_github_non_linux
