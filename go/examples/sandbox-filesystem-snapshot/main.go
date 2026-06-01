@@ -39,14 +39,20 @@ func main() {
 		}
 	}()
 
-	_, err = sb.Exec(ctx, []string{"mkdir", "-p", "/app/data"}, nil)
+	mkdirProc, err := sb.Exec(ctx, []string{"mkdir", "-p", "/app/data"}, nil)
 	if err != nil {
 		log.Fatalf("Failed to create directory: %v", err)
 	}
+	if _, err = mkdirProc.Wait(ctx, nil); err != nil {
+		log.Fatalf("Failed to wait for mkdir: %v", err)
+	}
 
-	_, err = sb.Exec(ctx, []string{"sh", "-c", "echo 'This file was created in the first Sandbox' > /app/data/info.txt"}, nil)
+	echoProc, err := sb.Exec(ctx, []string{"sh", "-c", "echo 'This file was created in the first Sandbox' > /app/data/info.txt"}, nil)
 	if err != nil {
 		log.Fatalf("Failed to create file: %v", err)
+	}
+	if _, err = echoProc.Wait(ctx, nil); err != nil {
+		log.Fatalf("Failed to wait for echo: %v", err)
 	}
 	fmt.Println("Created file in first Sandbox")
 

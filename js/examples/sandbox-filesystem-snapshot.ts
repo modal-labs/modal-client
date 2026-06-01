@@ -10,12 +10,14 @@ const baseImage = modal.images.fromRegistry("alpine:3.21");
 const sb = await modal.sandboxes.create(app, baseImage);
 console.log("Started Sandbox:", sb.sandboxId);
 
-await sb.exec(["mkdir", "-p", "/app/data"]);
-await sb.exec([
-  "sh",
-  "-c",
-  "echo 'This file was created in the first Sandbox' > /app/data/info.txt",
-]);
+await (await sb.exec(["mkdir", "-p", "/app/data"])).wait();
+await (
+  await sb.exec([
+    "sh",
+    "-c",
+    "echo 'This file was created in the first Sandbox' > /app/data/info.txt",
+  ])
+).wait();
 console.log("Created file in first Sandbox");
 
 const snapshotImage = await sb.snapshotFilesystem();
