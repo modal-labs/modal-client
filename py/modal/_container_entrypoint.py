@@ -401,9 +401,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 function_def._experimental_group_size,
             )
 
-        with service.execution_context(
+        with service.function_execution_context(
             event_loop=event_loop,
-            snapshot=container_io_manager.memory_snapshot,
             container_io_manager=container_io_manager,
         ) as finalized_functions:
             # This context managers handles pre/post snapshot lifecycle of the user code,

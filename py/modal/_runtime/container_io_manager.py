@@ -956,37 +956,16 @@ class _ContainerIOManager:
         outputs = await io_context.output_items(started_at, output_data)
         await self._send_outputs(started_at, outputs)
 
-    async def memory_snapshot(self) -> None:
-        """Message server indicating that function is ready to be checkpointed."""
-        if self.checkpoint_id:
-            logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
-        else:
-            raise ValueError("No checkpoint ID provided for memory snapshot")
+    @asynccontextmanager
+    async def snapshot_context_manager(self) -> AsyncGenerator[None, None]:
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self.heartbeat_condition:
             # Notify the heartbeat loop that the snapshot phase has begun in order to
             # prevent it from sending heartbeat RPCs
             self._waiting_for_memory_snapshot = True
             self.heartbeat_condition.notify_all()
-
             try:
-                # Snapshot GPU memory.
-                if (
-                    self.function_def._experimental_enable_gpu_snapshot
-                    and self.function_def.resources.gpu_config.gpu_type
-                ):
-                    logger.debug("GPU memory snapshot enabled. Attempting to snapshot GPU memory.")
-
-                    self._task_lifecycle_manager.create_cuda_checkpoint()
-
-                await self._client.stub.ContainerCheckpoint(
-                    api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
-                )
-
-                await self._client._close(prep_for_restore=True)
-
-                logger.debug("Memory snapshot request sent. Connection closed.")
-                await self._task_lifecycle_manager.memory_restore()
+                yield
             finally:
                 # Turn heartbeats back on. This is safe since the snapshot RPC
                 # and the restore phase has finished.
@@ -1012,6 +991,25 @@ class _ContainerIOManager:
         except Exception as e:
             logger.error("Failed to start PTY shell.")
             raise e
+
+    def _install_breakpoint_hook(self) -> None:
+        # sys.breakpointhook is synchronous, so call the blocking wrapper for async interact().
+        container_io_manager: Any = synchronizer._translate_out(self)
+
+        # Install hooks for interactive functions.
+        def breakpoint_wrapper(*args: Any, **kwargs: Any) -> None:
+            # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
+            container_io_manager.interact(from_breakpoint=True)
+            import pdb  # noqa: T100
+
+            current_frame = inspect.currentframe()
+            if current_frame is not None:
+                frame = current_frame.f_back
+                pdb.Pdb().set_trace(frame)
+            else:
+                raise RuntimeError("No current frame found")
+
+        sys.breakpointhook = breakpoint_wrapper
 
     @property
     def target_concurrency(self) -> int:

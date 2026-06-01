@@ -3,13 +3,11 @@ import importlib
 import inspect
 import os
 import signal
-import sys
 import typing
 from abc import ABCMeta, abstractmethod
-from collections.abc import Callable, Generator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable, ContextManager, Generator, Sequence
 
 import modal._object
 import modal.cls
@@ -159,15 +157,15 @@ class Service(metaclass=ABCMeta):
     def lifecycle_context(
         self,
         event_loop: UserCodeEventLoop,
-        snapshot: Callable[[], None] | None,
         task_lifecycle_manager: "modal._runtime.task_lifecycle_manager.TaskLifecycleManager",
+        snapshot_context_manager: ContextManager[None] = nullcontext(),
         after_snapshot: Callable[[], None] | None = None,
         disable_signals_on_exit: bool = True,
     ) -> Generator[None, None, None]:
         """
         Manages the lifecycle of the user code:
         1. Runs pre-snapshot 'enter' methods
-        2. Calls maybe_snapshot(container_io_manager, function_def)
+        2. Calls maybe_snapshot(function_def, snapshot_context_manager, task_lifecycle_manager)
         3. Creates breakpoint wrapper
         4. Runs post-snapshot 'enter' methods
         5. Yield finalized_functions for execution
@@ -181,9 +179,9 @@ class Service(metaclass=ABCMeta):
             with self.lifecycle_presnapshot(event_loop, task_lifecycle_manager):
                 # 2. Snapshot -- If this container is being used to create a checkpoint, checkpoint the container after
                 # global imports and initialization. Checkpointed containers run from this point onwards.
-                maybe_snapshot(snapshot, self.function_def)
+                maybe_snapshot(self.function_def, snapshot_context_manager, task_lifecycle_manager)
                 # 3. After snapshot functionality like create_breakpoint_wrapper(container_io_manager)
-                if after_snapshot is not None:
+                if after_snapshot:
                     after_snapshot()
                 # 4. Post-snapshot Enter
                 with self.lifecycle_postsnapshot(event_loop, task_lifecycle_manager):
@@ -203,10 +201,9 @@ class Service(metaclass=ABCMeta):
                 try_enable_signals(int_handler, usr1_handler)
 
     @contextmanager
-    def execution_context(
+    def function_execution_context(
         self,
         event_loop: UserCodeEventLoop,
-        snapshot: Callable[[], None] | None,
         container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     ) -> Generator[dict[str, "FinalizedFunction"], None, None]:
         """
@@ -220,9 +217,9 @@ class Service(metaclass=ABCMeta):
         try:
             with self.lifecycle_context(
                 event_loop=event_loop,
-                snapshot=snapshot,
                 task_lifecycle_manager=task_lifecycle_manager,
-                after_snapshot=lambda: create_breakpoint_wrapper(container_io_manager),
+                snapshot_context_manager=container_io_manager.snapshot_context_manager(),
+                after_snapshot=container_io_manager._install_breakpoint_hook,
                 disable_signals_on_exit=False,
             ):
                 # Get Functions
@@ -280,34 +277,13 @@ def construct_webhook_callable(
 
 
 def maybe_snapshot(
-    snapshot: Callable[[], None] | None,
     function_def: api_pb2.Function,
+    snapshot_context_manager: ContextManager[None],
+    task_lifecycle_manager: "modal._runtime.task_lifecycle_manager.TaskLifecycleManager",
 ):
-    if (
-        function_def.is_checkpointing_function
-        and os.environ.get("MODAL_ENABLE_SNAP_RESTORE") == "1"
-        and snapshot is not None
-    ):
-        snapshot()
-
-
-def create_breakpoint_wrapper(
-    container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-):
-    # Install hooks for interactive functions.
-    def breakpoint_wrapper():
-        # note: it would be nice to not have breakpoint_wrapper() included in the backtrace
-        container_io_manager.interact(from_breakpoint=True)
-        import pdb  # noqa: T100
-
-        current_frame = inspect.currentframe()
-        if current_frame is not None:
-            frame = current_frame.f_back
-            pdb.Pdb().set_trace(frame)
-        else:
-            raise RuntimeError("No current frame found")
-
-    sys.breakpointhook = breakpoint_wrapper
+    if function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE") == "1":
+        with snapshot_context_manager:
+            task_lifecycle_manager.memory_snapshot()
 
 
 @dataclass

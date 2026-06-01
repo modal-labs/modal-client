@@ -60,7 +60,7 @@ async def test_container_function_lazily_imported(container_client):
     function_ids: dict[str, str] = {
         "my_f_1": "fu-123",
     }
-    object_handle_metadata: dict[str, Message] = {
+    object_handle_metadata: dict[str, Message | None] = {
         "fu-123": api_pb2.FunctionHandleMetadata(),
     }
     container_app = RunningApp("ap-123", function_ids=function_ids, object_handle_metadata=object_handle_metadata)
@@ -113,7 +113,7 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
     with set_env_vars(restore_path, servicer.container_addr):
-        await io_manager.memory_snapshot.aio()
+        await io_manager.get_task_lifecycle_manager().memory_snapshot.aio()
 
     # Stop the App, invalidating the fu- ID stored in `f`.
     await stop_app.aio(client, app_id)
@@ -142,9 +142,59 @@ def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_clien
                 assert not list(
                     filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
                 )
-                io_manager.memory_snapshot()
+                with io_manager.snapshot_context_manager():
+                    io_manager.get_task_lifecycle_manager().memory_snapshot()
                 time.sleep(heartbeat_interval_secs * 2)
                 assert list(filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests))
+
+
+@pytest.mark.asyncio
+async def test_container_snapshot_restore_pauses_heartbeats_during_memory_snapshot(
+    tmpdir, servicer, container_client, monkeypatch
+):
+    io_manager = _ContainerIOManager(
+        api_pb2.ContainerArguments(checkpoint_id="ch-123"),
+        synchronizer._translate_in(container_client),
+    )
+    heartbeat_interval_secs = 0.01
+    checkpoint_started = asyncio.Event()
+    finish_checkpoint = asyncio.Event()
+    restore_path = temp_restore_path(tmpdir)
+
+    async def container_checkpoint(request):
+        checkpoint_started.set()
+        await finish_checkpoint.wait()
+        return Empty()
+
+    monkeypatch.setattr(io_manager._client.stub, "ContainerCheckpoint", container_checkpoint)
+    monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", heartbeat_interval_secs)
+    servicer.container_heartbeat_abort.set()
+
+    async def run_memory_snapshot():
+        with set_env_vars(restore_path, servicer.container_addr):
+            async with io_manager.snapshot_context_manager():
+                await io_manager._task_lifecycle_manager.memory_snapshot()
+
+    async with io_manager.heartbeats(True):
+        await asyncio.sleep(heartbeat_interval_secs * 2)
+        assert not _container_heartbeat_requests(servicer)
+
+        snapshot_task = asyncio.create_task(run_memory_snapshot())
+        try:
+            await asyncio.wait_for(checkpoint_started.wait(), timeout=1.0)
+            heartbeat_count = len(_container_heartbeat_requests(servicer))
+
+            await asyncio.sleep(heartbeat_interval_secs * 3)
+            assert len(_container_heartbeat_requests(servicer)) == heartbeat_count
+
+            finish_checkpoint.set()
+            await asyncio.wait_for(snapshot_task, timeout=1.0)
+            await _wait_for_container_heartbeat(servicer, min_count=heartbeat_count + 1)
+        finally:
+            finish_checkpoint.set()
+            if not snapshot_task.done():
+                snapshot_task.cancel()
+                await asyncio.gather(snapshot_task, return_exceptions=True)
 
 
 @pytest.mark.asyncio
@@ -172,7 +222,8 @@ async def test_container_gpu_snapshot_failure_unpauses_heartbeats(servicer, cont
         assert not _container_heartbeat_requests(servicer)
 
         with pytest.raises(RuntimeError, match="gpu checkpoint failed"):
-            await io_manager.memory_snapshot()
+            async with io_manager.snapshot_context_manager():
+                await io_manager.get_task_lifecycle_manager().memory_snapshot.aio()
 
         assert not io_manager._waiting_for_memory_snapshot
         assert not _container_checkpoint_requests(servicer)
@@ -199,7 +250,8 @@ async def test_container_checkpoint_failure_unpauses_heartbeats(servicer, contai
         assert not _container_heartbeat_requests(servicer)
 
         with pytest.raises(RuntimeError, match="container checkpoint failed"):
-            await io_manager.memory_snapshot()
+            async with io_manager.snapshot_context_manager():
+                await io_manager.get_task_lifecycle_manager().memory_snapshot.aio()
 
         assert not io_manager._waiting_for_memory_snapshot
         await _wait_for_container_heartbeat(servicer)
@@ -220,7 +272,7 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     test_breakpoint = mock.Mock()
     with mock.patch("sys.breakpointhook", test_breakpoint):
         with set_env_vars(restore_path, servicer.container_addr):
-            await io_manager.memory_snapshot.aio()
+            await io_manager.get_task_lifecycle_manager().memory_snapshot.aio()
             test_breakpoint.assert_called_once()
 
 
@@ -236,7 +288,7 @@ async def test_rpc_wrapping_restores(container_client, servicer, tmpdir, client)
     await d.put.aio("abc", 123)
 
     with set_env_vars(restore_path, servicer.container_addr):
-        await io_manager.memory_snapshot.aio()
+        await io_manager.get_task_lifecycle_manager().memory_snapshot.aio()
 
     # TODO(Jonathon): These RPC wrappers are tested directly because I could not
     # find a way to construct in this test a UnaryStreamWrapper with a stale snapshotted client.

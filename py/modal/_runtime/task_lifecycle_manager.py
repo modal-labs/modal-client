@@ -52,10 +52,6 @@ class _TaskLifecycleManager:
         self._client = client
         self._cuda_checkpoint_session = None
 
-    def create_cuda_checkpoint(self) -> None:
-        self._cuda_checkpoint_session = gpu_memory_snapshot.CudaCheckpointSession()
-        self._cuda_checkpoint_session.checkpoint()
-
     @asynccontextmanager
     async def handle_task_lifecycle_exception(
         self,
@@ -167,6 +163,28 @@ class _TaskLifecycleManager:
             self._cuda_checkpoint_session.restore()
 
         self._client = await _Client.from_env()
+
+    async def memory_snapshot(self) -> None:
+        """Message server indicating that function is ready to be checkpointed."""
+        if self.checkpoint_id:
+            logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
+        else:
+            raise ValueError("No checkpoint ID provided for memory snapshot")
+
+        if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
+            logger.debug("GPU memory snapshot enabled. Attempting to snapshot GPU memory.")
+
+            self._cuda_checkpoint_session = gpu_memory_snapshot.CudaCheckpointSession()
+            self._cuda_checkpoint_session.checkpoint()
+
+        await self._client.stub.ContainerCheckpoint(
+            api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+        )
+
+        await self._client._close(prep_for_restore=True)
+
+        logger.debug("Memory snapshot request sent. Connection closed.")
+        await self.memory_restore()
 
 
 TaskLifecycleManager = synchronize_api(_TaskLifecycleManager)
