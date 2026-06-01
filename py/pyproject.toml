@@ -93,6 +93,10 @@ dev = [
     "nest-asyncio~=1.5",
     "psutil~=6.0",
     "pytest-benchmark~=5.1",
+    # Windows doesn't ship the IANA tz database; stdlib ``zoneinfo`` requires
+    # this pip package to load zone keys like ``America/New_York``. Tiny and
+    # harmless on other platforms.
+    "tzdata",
 ]
 
 [tool.uv.extra-build-dependencies]

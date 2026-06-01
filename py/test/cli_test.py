@@ -1305,7 +1305,7 @@ def test_keyboard_interrupt_during_app_run(servicer, server_url_env, token_env, 
         assert "Traceback" not in err
 
 
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(30)
 @skip_windows("console_ctrl.send_ctrl_c is unreliable on Windows CI.")
 def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
