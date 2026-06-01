@@ -962,36 +962,40 @@ class _ContainerIOManager:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
         else:
             raise ValueError("No checkpoint ID provided for memory snapshot")
-
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self.heartbeat_condition:
-            # Snapshot GPU memory.
-            if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
-                logger.debug("GPU memory snapshot enabled. Attempting to snapshot GPU memory.")
-
-                self._task_lifecycle_manager.create_cuda_checkpoint()
-
             # Notify the heartbeat loop that the snapshot phase has begun in order to
             # prevent it from sending heartbeat RPCs
             self._waiting_for_memory_snapshot = True
             self.heartbeat_condition.notify_all()
 
-            await self._client.stub.ContainerCheckpoint(
-                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
-            )
+            try:
+                # Snapshot GPU memory.
+                if (
+                    self.function_def._experimental_enable_gpu_snapshot
+                    and self.function_def.resources.gpu_config.gpu_type
+                ):
+                    logger.debug("GPU memory snapshot enabled. Attempting to snapshot GPU memory.")
 
-            await self._client._close(prep_for_restore=True)
+                    self._task_lifecycle_manager.create_cuda_checkpoint()
 
-            logger.debug("Memory snapshot request sent. Connection closed.")
-            await self._task_lifecycle_manager.memory_restore()
+                await self._client.stub.ContainerCheckpoint(
+                    api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+                )
+
+                await self._client._close(prep_for_restore=True)
+
+                logger.debug("Memory snapshot request sent. Connection closed.")
+                await self._task_lifecycle_manager.memory_restore()
+            finally:
+                # Turn heartbeats back on. This is safe since the snapshot RPC
+                # and the restore phase has finished.
+                self._waiting_for_memory_snapshot = False
+                self.heartbeat_condition.notify_all()
             # Reset current input state
             self.current_input_id = None
             self.current_inputs = {}
             self.current_input_started_at = None
-            # Turn heartbeats back on. This is safe since the snapshot RPC
-            # and the restore phase has finished.
-            self._waiting_for_memory_snapshot = False
-            self.heartbeat_condition.notify_all()
 
     async def interact(self, from_breakpoint: bool = False):
         if self._is_interactivity_enabled:

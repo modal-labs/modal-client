@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import asyncio
 import json
 import os
 import pytest
@@ -10,8 +11,8 @@ from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 
 from modal import App, interact
-from modal._runtime.container_io_manager import ContainerIOManager
-from modal._utils.async_utils import synchronize_api
+from modal._runtime.container_io_manager import ContainerIOManager, _ContainerIOManager
+from modal._utils.async_utils import synchronize_api, synchronizer
 from modal.exception import InvalidError
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
@@ -35,6 +36,23 @@ def temp_restore_path(tmpdir):
         encoding="utf-8",
     )
     return restore_path
+
+
+def _container_heartbeat_requests(servicer):
+    return [req for req in servicer.requests if isinstance(req, api_pb2.ContainerHeartbeatRequest)]
+
+
+def _container_checkpoint_requests(servicer):
+    return [req for req in servicer.requests if isinstance(req, api_pb2.ContainerCheckpointRequest)]
+
+
+async def _wait_for_container_heartbeat(servicer, min_count: int = 1, timeout: float = 0.5):
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        if len(_container_heartbeat_requests(servicer)) >= min_count:
+            return
+        await asyncio.sleep(0.01)
+    assert len(_container_heartbeat_requests(servicer)) >= min_count
 
 
 @pytest.mark.asyncio
@@ -127,6 +145,64 @@ def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_clien
                 io_manager.memory_snapshot()
                 time.sleep(heartbeat_interval_secs * 2)
                 assert list(filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests))
+
+
+@pytest.mark.asyncio
+async def test_container_gpu_snapshot_failure_unpauses_heartbeats(servicer, container_client, monkeypatch):
+    function_def = api_pb2.Function(
+        _experimental_enable_gpu_snapshot=True,
+        resources=api_pb2.Resources(gpu_config=api_pb2.GPUConfig(gpu_type="A100", count=1)),
+    )
+    io_manager = _ContainerIOManager(
+        api_pb2.ContainerArguments(checkpoint_id="ch-123", function_def=function_def),
+        synchronizer._translate_in(container_client),
+    )
+    heartbeat_interval_secs = 0.01
+    checkpoint_session = mock.Mock()
+    checkpoint_session.checkpoint.side_effect = RuntimeError("gpu checkpoint failed")
+    monkeypatch.setattr(
+        "modal._runtime.task_lifecycle_manager.gpu_memory_snapshot.CudaCheckpointSession",
+        mock.Mock(return_value=checkpoint_session),
+    )
+    monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", heartbeat_interval_secs)
+    servicer.container_heartbeat_abort.set()
+
+    async with io_manager.heartbeats(True):
+        await asyncio.sleep(heartbeat_interval_secs * 2)
+        assert not _container_heartbeat_requests(servicer)
+
+        with pytest.raises(RuntimeError, match="gpu checkpoint failed"):
+            await io_manager.memory_snapshot()
+
+        assert not io_manager._waiting_for_memory_snapshot
+        assert not _container_checkpoint_requests(servicer)
+        await _wait_for_container_heartbeat(servicer)
+
+
+@pytest.mark.asyncio
+async def test_container_checkpoint_failure_unpauses_heartbeats(servicer, container_client, monkeypatch):
+    io_manager = _ContainerIOManager(
+        api_pb2.ContainerArguments(checkpoint_id="ch-123"),
+        synchronizer._translate_in(container_client),
+    )
+    heartbeat_interval_secs = 0.01
+
+    async def raise_checkpoint_error(request):
+        raise RuntimeError("container checkpoint failed")
+
+    monkeypatch.setattr(io_manager._client.stub, "ContainerCheckpoint", raise_checkpoint_error)
+    monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", heartbeat_interval_secs)
+    servicer.container_heartbeat_abort.set()
+
+    async with io_manager.heartbeats(True):
+        await asyncio.sleep(heartbeat_interval_secs * 2)
+        assert not _container_heartbeat_requests(servicer)
+
+        with pytest.raises(RuntimeError, match="container checkpoint failed"):
+            await io_manager.memory_snapshot()
+
+        assert not io_manager._waiting_for_memory_snapshot
+        await _wait_for_container_heartbeat(servicer)
 
 
 @pytest.mark.asyncio
