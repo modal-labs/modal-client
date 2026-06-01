@@ -106,15 +106,15 @@ class _Server:
         Unspecified parameters will retain their current value.
 
         Examples:
-        ```python notest
-        server = modal.Server.from_name("my-app", "Server")
+            ```python notest
+            server = modal.Server.from_name("my-app", "Server")
 
-        # Always have at least 2 containers running, with an extra buffer of 2 containers
-        server.update_autoscaler(min_containers=2, buffer_containers=1)
+            # Always have at least 2 containers running, with an extra buffer of 2 containers
+            server.update_autoscaler(min_containers=2, buffer_containers=1)
 
-        # Limit this Server to avoid spinning up more than 5 containers
-        server.update_autoscaler(max_containers=5)
-        ```
+            # Limit this Server to avoid spinning up more than 5 containers
+            server.update_autoscaler(max_containers=5)
+            ```
 
         """
         return await self._get_service_function().update_autoscaler(

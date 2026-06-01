@@ -1025,12 +1025,10 @@ def _maybe_warn_about_wrap_exceptions(func_name: str, wrap_returned_exceptions: 
 @warn_if_generator_is_not_consumed(function_name="Function.map.aio")
 async def _map_async(
     self: "modal.functions.Function",
-    *input_iterators: (
-        typing.Iterable[Any] | typing.AsyncIterable[Any]
-    ),  # one input iterator per argument in the mapped-over function/generator
-    kwargs={},  # any extra keyword arguments for the function
-    order_outputs: bool = True,  # return outputs in order
-    return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
+    *input_iterators: (typing.Iterable[Any] | typing.AsyncIterable[Any]),
+    kwargs={},
+    order_outputs: bool = True,
+    return_exceptions: bool = False,
     wrap_returned_exceptions: bool | None = None,
 ) -> typing.AsyncGenerator[Any, None]:
     _maybe_warn_about_wrap_exceptions("map.aio", wrap_returned_exceptions)
@@ -1083,47 +1081,53 @@ async def _for_each_async(self, *input_iterators, kwargs={}, ignore_exceptions: 
 @warn_if_generator_is_not_consumed(function_name="Function.map")
 def _map_sync(
     self,
-    *input_iterators: typing.Iterable[Any],  # one input iterator per argument in the mapped-over function/generator
-    kwargs={},  # any extra keyword arguments for the function
-    order_outputs: bool = True,  # return outputs in order
-    return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
+    *input_iterators: typing.Iterable[Any],
+    kwargs={},
+    order_outputs: bool = True,
+    return_exceptions: bool = False,
     wrap_returned_exceptions: bool | None = None,
 ) -> AsyncOrSyncIterable:
     """Parallel map over a set of inputs.
 
-    Takes one iterator argument per argument in the function being mapped over.
+    Pass one iterable per positional argument of the underlying function. Results are yielded as an
+    iterable (sync) or async iterator (``map.aio``).
 
-    Example:
-    ```python
-    @app.function()
-    def my_func(a):
-        return a ** 2
+    If applied to an ``@app.function``, ``map()`` returns one result per input and output order matches
+    input order by default. Set ``order_outputs=False`` to emit results in completion order.
 
+    ``return_exceptions`` can aggregate failures into the result stream instead of raising.
 
-    @app.local_entrypoint()
-    def main():
-        assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
-    ```
+    Args:
+        *input_iterators: One iterator per mapped positional parameter on the function.
+        kwargs: Extra keyword arguments forwarded to every invocation.
+        order_outputs: If True, preserve input order in outputs; if False, use completion order.
+        return_exceptions: If True, failed inputs appear as exceptions in the result stream instead of raising.
+        wrap_returned_exceptions: Deprecated; no longer has any effect.
 
-    If applied to a `app.function`, `map()` returns one result per input and the output order
-    is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
-    in the order that they are completed instead.
-
-    `return_exceptions` can be used to treat exceptions as successful results:
-
-    ```python
-    @app.function()
-    def my_func(a):
-        if a == 2:
-            raise Exception("ohno")
-        return a ** 2
+    Examples:
+        ```python
+        @app.function()
+        def my_func(a):
+            return a ** 2
 
 
-    @app.local_entrypoint()
-    def main():
-        # [0, 1, Exception('ohno')]
-        print(list(my_func.map(range(3), return_exceptions=True)))
-    ```
+        @app.local_entrypoint()
+        def main():
+            assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
+        ```
+
+        ```python
+        @app.function()
+        def my_func(a):
+            if a == 2:
+                raise Exception("ohno")
+            return a ** 2
+
+
+        @app.local_entrypoint()
+        def main():
+            print(list(my_func.map(range(3), return_exceptions=True)))
+        ```
     """
     _maybe_warn_about_wrap_exceptions("map", wrap_returned_exceptions)
 
@@ -1171,17 +1175,17 @@ def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal.fu
 
     Takes one iterator argument per argument in the function being mapped over.
 
-    Example:
-    ```python
-    @app.function()
-    def my_func(a, b):
-        return a ** b
+    Examples:
+        ```python
+        @app.function()
+        def my_func(a, b):
+            return a ** b
 
 
-    @app.local_entrypoint()
-    def main():
-        fc = my_func.spawn_map([1, 2], [3, 4])
-    ```
+        @app.local_entrypoint()
+        def main():
+            fc = my_func.spawn_map([1, 2], [3, 4])
+        ```
 
     """
 
@@ -1219,19 +1223,23 @@ def _spawn_map_sync(self, *input_iterators, kwargs={}) -> None:
 
     Takes one iterator argument per argument in the function being mapped over.
 
-    Example:
-    ```python
-    @app.function()
-    def my_func(a):
-        return a ** 2
-
-
-    @app.local_entrypoint()
-    def main():
-        my_func.spawn_map([1, 2, 3, 4])
-    ```
-
     Programmatic retrieval of results will be supported in a future update.
+
+    Args:
+        *input_iterators: One iterator per mapped positional parameter on the function.
+        kwargs: Extra keyword arguments forwarded to every invocation.
+
+    Examples:
+        ```python
+        @app.function()
+        def my_func(a):
+            return a ** 2
+
+
+        @app.local_entrypoint()
+        def main():
+            my_func.spawn_map([1, 2, 3, 4])
+        ```
     """
 
     return run_coroutine_in_temporary_event_loop(
@@ -1241,10 +1249,14 @@ def _spawn_map_sync(self, *input_iterators, kwargs={}) -> None:
 
 
 def _for_each_sync(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
-    """Execute function for all inputs, ignoring outputs. Waits for completion of the inputs.
+    """Execute the function for all inputs and wait for completion, discarding return values.
 
-    Convenient alias for `.map()` in cases where the function just needs to be called.
-    as the caller doesn't have to consume the generator to process the inputs.
+    Like ``.map()`` but you do not need to iterate the result to drive work—Modal processes every input.
+
+    Args:
+        *input_iterators: One iterator per mapped positional parameter on the function.
+        kwargs: Extra keyword arguments forwarded to every invocation.
+        ignore_exceptions: If True, failures are swallowed instead of propagating.
     """
 
     return run_coroutine_in_temporary_event_loop(
@@ -1265,21 +1277,29 @@ def _starmap_sync(
     return_exceptions: bool = False,
     wrap_returned_exceptions: bool | None = None,
 ) -> AsyncOrSyncIterable:
-    """Like `map`, but spreads arguments over multiple function arguments.
+    """Like ``map``, but each input item is unpacked into multiple positional arguments.
 
-    Assumes every input is a sequence (e.g. a tuple).
+    Every element of ``input_iterator`` should be a sequence (for example a tuple) with length equal to the
+    arity of the function.
 
-    Example:
-    ```python
-    @app.function()
-    def my_func(a, b):
-        return a + b
+    Args:
+        input_iterator: Iterable of argument tuples to unpack into each call.
+        kwargs: Extra keyword arguments forwarded to every invocation.
+        order_outputs: If True, preserve input order in outputs; if False, use completion order.
+        return_exceptions: If True, failed inputs appear as exceptions in the result stream instead of raising.
+        wrap_returned_exceptions: Deprecated; no longer has any effect.
+
+    Examples:
+        ```python
+        @app.function()
+        def my_func(a, b):
+            return a + b
 
 
-    @app.local_entrypoint()
-    def main():
-        assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
-    ```
+        @app.local_entrypoint()
+        def main():
+            assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
+        ```
     """
     _maybe_warn_about_wrap_exceptions("starmap", wrap_returned_exceptions)
     return AsyncOrSyncIterable(

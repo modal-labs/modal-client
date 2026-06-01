@@ -103,26 +103,28 @@ class _SandboxFilesystem:
         Parent directories for `remote_path` are created if needed.
         The remote file is overwritten if it already exists.
 
-        **Raises**
+        Args:
+            local_path: Path to the file on the local machine.
+            remote_path: Absolute path to the file in the Sandbox.
 
-        - `SandboxFilesystemNotADirectoryError`: a parent path component of `remote_path` is not a directory.
-        - `SandboxFilesystemIsADirectoryError`: `remote_path` points to a directory.
-        - `SandboxFilesystemPermissionError`: write permission is denied in the Sandbox.
-        - `SandboxFilesystemError`: the command fails for any other reason.
-        - `FileNotFoundError`: `local_path` does not exist.
-        - `IsADirectoryError`: `local_path` is a directory.
-        - `PermissionError`: reading `local_path` is not permitted.
+        Raises:
+            SandboxFilesystemNotADirectoryError: A parent path component of ``remote_path`` is not a directory.
+            SandboxFilesystemIsADirectoryError: ``remote_path`` points to a directory.
+            SandboxFilesystemPermissionError: Write permission is denied in the Sandbox.
+            SandboxFilesystemError: The command fails for any other reason.
+            FileNotFoundError: ``local_path`` does not exist.
+            IsADirectoryError: ``local_path`` is a directory.
+            PermissionError: Reading ``local_path`` is not permitted.
 
-        **Usage**
+        Examples:
+            ```python fixture:sandbox fixture:tmpdir
+            import tempfile
+            from pathlib import Path
 
-        ```python fixture:sandbox fixture:tmpdir
-        import tempfile
-        from pathlib import Path
-
-        local_path = Path(tempfile.mktemp())
-        local_path.write_text("Hello, world!\\n")
-        sandbox.filesystem.copy_from_local(local_path, "/tmp/hello.txt")
-        ```
+            local_path = Path(tempfile.mktemp())
+            local_path.write_text("Hello, world!\\n")
+            sandbox.filesystem.copy_from_local(local_path, "/tmp/hello.txt")
+            ```
         """
         validate_absolute_remote_path(remote_path, "copy_from_local")
 
@@ -224,23 +226,24 @@ class _SandboxFilesystem:
     async def list_files(self, remote_path: str) -> list[FileInfo]:
         """List files and directories in a Sandbox directory.
 
-        `remote_path` must be an absolute path to a directory in the Sandbox.
-        Returns a list of `FileInfo` objects describing each entry.
+        Args:
+            remote_path: Absolute path to the directory in the Sandbox.
 
-        **Raises**
+        Returns:
+            A list of `FileInfo` objects describing each entry.
 
-        - `SandboxFilesystemNotFoundError`: the path does not exist.
-        - `SandboxFilesystemNotADirectoryError`: the path is not a directory.
-        - `SandboxFilesystemPermissionError`: read permission is denied.
-        - `SandboxFilesystemError`: the command fails for any other reason.
+        Raises:
+            SandboxFilesystemNotFoundError: The path does not exist.
+            SandboxFilesystemNotADirectoryError: The path is not a directory.
+            SandboxFilesystemPermissionError: Read permission is denied.
+            SandboxFilesystemError: The command fails for any other reason.
 
-        **Usage**
-
-        ```python fixture:sandbox
-        entries = sandbox.filesystem.list_files("/tmp")
-        for entry in entries:
-            print(entry.name, entry.type, entry.size)
-        ```
+        Examples:
+            ```python fixture:sandbox
+            entries = sandbox.filesystem.list_files("/tmp")
+            for entry in entries:
+                print(entry.name, entry.type, entry.size)
+            ```
         """
         validate_absolute_remote_path(remote_path, "list_files")
 
@@ -284,20 +287,22 @@ class _SandboxFilesystem:
         idempotent (succeeds silently if the directory already exists). When `create_parents` is `False`, the
         immediate parent directory must already exist and the path must not already exist.
 
-        **Raises**
+        Args:
+            remote_path: Absolute path of the directory to create in the Sandbox.
+            create_parents: When ``True``, create missing parents and succeed if the directory already exists.
 
-        - `SandboxFilesystemNotFoundError`: the parent directory does not exist and `create_parents` is `False`.
-        - `SandboxFilesystemPathAlreadyExistsError`: the path already exists.
-        - `SandboxFilesystemNotADirectoryError`: a path component is not a directory.
-        - `SandboxFilesystemPermissionError`: creation is not permitted.
-        - `InvalidError`: the operation is not supported by the mount.
-        - `SandboxFilesystemError`: the command fails for any other reason.
+        Raises:
+            SandboxFilesystemNotFoundError: The parent directory does not exist and ``create_parents`` is false.
+            SandboxFilesystemPathAlreadyExistsError: The path already exists.
+            SandboxFilesystemNotADirectoryError: A path component is not a directory.
+            SandboxFilesystemPermissionError: Creation is not permitted.
+            InvalidError: The operation is not supported by the mount.
+            SandboxFilesystemError: The command fails for any other reason.
 
-        **Usage**
-
-        ```python fixture:sandbox
-        sandbox.filesystem.make_directory("/tmp/a/b/c")
-        ```
+        Examples:
+            ```python fixture:sandbox
+            sandbox.filesystem.make_directory("/tmp/a/b/c")
+            ```
         """
         validate_absolute_remote_path(remote_path, "make_directory")
 
@@ -315,20 +320,24 @@ class _SandboxFilesystem:
 
         `remote_path` must be an absolute path to a file in the Sandbox.
 
-        **Raises**
+        Args:
+            remote_path: Absolute path to the file in the Sandbox.
 
-        - `SandboxFilesystemNotFoundError`: the path does not exist.
-        - `SandboxFilesystemIsADirectoryError`: the path points to a directory.
-        - `SandboxFilesystemPermissionError`: read permission is denied.
-        - `SandboxFilesystemError`: the command fails for any other reason.
+        Returns:
+            Raw bytes read from the file.
 
-        **Usage**
+        Raises:
+            SandboxFilesystemNotFoundError: The path does not exist.
+            SandboxFilesystemIsADirectoryError: The path points to a directory.
+            SandboxFilesystemPermissionError: Read permission is denied.
+            SandboxFilesystemError: The command fails for any other reason.
 
-        ```python fixture:sandbox
-        sandbox.filesystem.write_bytes(b"Hello, world!\\n", "/tmp/hello.bin")
-        contents = sandbox.filesystem.read_bytes("/tmp/hello.bin")
-        print(contents.decode("utf-8"))
-        ```
+        Examples:
+            ```python fixture:sandbox
+            sandbox.filesystem.write_bytes(b"Hello, world!\\n", "/tmp/hello.bin")
+            contents = sandbox.filesystem.read_bytes("/tmp/hello.bin")
+            print(contents.decode("utf-8"))
+            ```
         """
         validate_absolute_remote_path(remote_path, "read_bytes")
 
@@ -353,20 +362,24 @@ class _SandboxFilesystem:
 
         `remote_path` must be an absolute path to a file in the Sandbox.
 
-        **Raises**
+        Args:
+            remote_path: Absolute path to the file in the Sandbox.
 
-        - `SandboxFilesystemNotFoundError`: the path does not exist.
-        - `SandboxFilesystemIsADirectoryError`: the path points to a directory.
-        - `SandboxFilesystemPermissionError`: read permission is denied.
-        - `SandboxFilesystemError`: the command fails for any other reason.
+        Returns:
+            File contents decoded as UTF-8.
 
-        **Usage**
+        Raises:
+            SandboxFilesystemNotFoundError: The path does not exist.
+            SandboxFilesystemIsADirectoryError: The path points to a directory.
+            SandboxFilesystemPermissionError: Read permission is denied.
+            SandboxFilesystemError: The command fails for any other reason.
 
-        ```python fixture:sandbox
-        sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
-        contents = sandbox.filesystem.read_text("/tmp/hello.txt")
-        print(contents)
-        ```
+        Examples:
+            ```python fixture:sandbox
+            sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
+            contents = sandbox.filesystem.read_text("/tmp/hello.txt")
+            print(contents)
+            ```
         """
         validate_absolute_remote_path(remote_path, "read_text")
 
@@ -389,8 +402,6 @@ class _SandboxFilesystem:
     async def remove(self, remote_path: str, *, recursive: bool = False) -> None:
         """Remove a file or directory in the Sandbox.
 
-        `remote_path` must be an absolute path in the Sandbox.
-
         When `remote_path` is a directory and `recursive` is `False` (the
         default), removes it only if it is empty. When `recursive` is `True`,
         removes the directory and all its contents.
@@ -399,29 +410,31 @@ class _SandboxFilesystem:
         In particular, `CloudBucketMount` does not support it. An
         `InvalidError` is raised in that case.
 
-        **Raises**
+        Args:
+            remote_path: Absolute path to the file in the Sandbox.
+            recursive: When ``True``, remove the directory and all its contents.
 
-        - `SandboxFilesystemNotFoundError`: the path does not exist.
-        - `SandboxFilesystemDirectoryNotEmptyError`: `recursive` is `False` and the directory is not empty.
-        - `SandboxFilesystemPermissionError`: removal is not permitted.
-        - `InvalidError`: the operation is not supported by the mount.
-        - `SandboxFilesystemError`: the command fails for any other reason.
+        Raises:
+            SandboxFilesystemNotFoundError: The remote path does not exist.
+            SandboxFilesystemDirectoryNotEmptyError: `recursive` is `False` and the directory is not empty.
+            SandboxFilesystemPermissionError: Read permission is denied in the Sandbox.
+            InvalidError: The operation is not supported by the mount.
+            SandboxFilesystemError: The command fails for any other reason.
 
-        **Usage**
+        Examples:
+            To remove a file:
 
-        To remove a file:
+            ```python fixture:sandbox
+            sandbox.filesystem.write_bytes(b"Hello, world!\\n", "/tmp/hello.bin")
+            sandbox.filesystem.remove("/tmp/hello.bin")
+            ```
 
-        ```python fixture:sandbox
-        sandbox.filesystem.write_bytes(b"Hello, world!\\n", "/tmp/hello.bin")
-        sandbox.filesystem.remove("/tmp/hello.bin")
-        ```
+            To remove a directory and all its contents:
 
-        To remove a directory and all its contents:
-
-        ```python fixture:sandbox
-        sandbox.filesystem.make_directory("/tmp/mydir/subdir")
-        sandbox.filesystem.remove("/tmp/mydir", recursive=True)
-        ```
+            ```python fixture:sandbox
+            sandbox.filesystem.make_directory("/tmp/mydir/subdir")
+            sandbox.filesystem.remove("/tmp/mydir", recursive=True)
+            ```
         """
         validate_absolute_remote_path(remote_path, "remove")
 
@@ -490,18 +503,21 @@ class _SandboxFilesystem:
         Parent directories for `remote_path` are created if needed.
         The remote file is overwritten if it already exists.
 
-        **Raises**
+        Args:
+            data: Bytes to write.
+            remote_path: Absolute path to the file in the Sandbox.
 
-        - `SandboxFilesystemNotADirectoryError`: a parent path component is not a directory.
-        - `SandboxFilesystemIsADirectoryError`: `remote_path` points to a directory.
-        - `SandboxFilesystemPermissionError`: write permission is denied.
-        - `SandboxFilesystemError`: the command fails for any other reason.
+        Raises:
+            TypeError: ``data`` is not bytes-like.
+            SandboxFilesystemNotADirectoryError: A parent path component is not a directory.
+            SandboxFilesystemIsADirectoryError: ``remote_path`` points to a directory.
+            SandboxFilesystemPermissionError: Write permission is denied.
+            SandboxFilesystemError: The command fails for any other reason.
 
-        **Usage**
-
-        ```python fixture:sandbox
-        sandbox.filesystem.write_bytes(b"Hello, world!\\n", "/tmp/hello.bin")
-        ```
+        Examples:
+            ```python fixture:sandbox
+            sandbox.filesystem.write_bytes(b"Hello, world!\\n", "/tmp/hello.bin")
+            ```
         """
         validate_absolute_remote_path(remote_path, "write_bytes")
         if not isinstance(data, (bytes, bytearray, memoryview)):
@@ -535,18 +551,21 @@ class _SandboxFilesystem:
         Parent directories for `remote_path` are created if needed.
         The remote file is overwritten if it already exists.
 
-        **Raises**
+        Args:
+            data: Text to write (encoded as UTF-8).
+            remote_path: Absolute path to the file in the Sandbox.
 
-        - `SandboxFilesystemNotADirectoryError`: a parent path component is not a directory.
-        - `SandboxFilesystemIsADirectoryError`: `remote_path` points to a directory.
-        - `SandboxFilesystemPermissionError`: write permission is denied.
-        - `SandboxFilesystemError`: the command fails for any other reason.
+        Raises:
+            TypeError: ``data`` is not a string.
+            SandboxFilesystemNotADirectoryError: A parent path component is not a directory.
+            SandboxFilesystemIsADirectoryError: ``remote_path`` points to a directory.
+            SandboxFilesystemPermissionError: Write permission is denied.
+            SandboxFilesystemError: The command fails for any other reason.
 
-        **Usage**
-
-        ```python fixture:sandbox
-        sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
-        ```
+        Examples:
+            ```python fixture:sandbox
+            sandbox.filesystem.write_text("Hello, world!\\n", "/tmp/hello.txt")
+            ```
         """
         validate_absolute_remote_path(remote_path, "write_text")
         if not isinstance(data, str):

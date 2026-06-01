@@ -294,21 +294,20 @@ class _Mount(_Object, type_prefix="mo"):
     Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
-    **Usage**
+    Examples:
+        ```python notest
+        import modal
+        import os
+        app = modal.App()
 
-    ```python notest
-    import modal
-    import os
-    app = modal.App()
+        @app.function(mounts=[modal.Mount.from_local_dir("~/foo", remote_path="/root/foo")])
+        def f():
+            # `/root/foo` has the contents of `~/foo`.
+            print(os.listdir("/root/foo/"))
+        ```
 
-    @app.function(mounts=[modal.Mount.from_local_dir("~/foo", remote_path="/root/foo")])
-    def f():
-        # `/root/foo` has the contents of `~/foo`.
-        print(os.listdir("/root/foo/"))
-    ```
-
-    Modal syncs the contents of the local directory every time the app runs, but uses the hash of
-    the file's contents to skip uploading files that have been uploaded before.
+        Modal syncs the contents of the local directory every time the app runs, but uses the hash of
+        the file's contents to skip uploading files that have been uploaded before.
     """
 
     _entries: list[_MountEntry] | None = None

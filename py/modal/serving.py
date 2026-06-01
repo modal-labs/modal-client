@@ -97,6 +97,18 @@ async def _serve_app(
     _watcher: AsyncGenerator[set[str], None] | None = None,  # for testing
     environment_name: str | None = None,
 ) -> AsyncGenerator["modal.app._App", None]:
+    """Deploy an App in serve mode with file watching and live reload.
+
+    Yields the same ``App`` instance after deployment. While the context is active, changes under
+    watched mounts trigger a reload (see ``modal serve``).
+
+    Args:
+        app: The App to deploy.
+        import_ref: Import path used to reload the module when files change.
+        environment_name: Workspace environment; defaults to ``config[\"environment\"]``.
+        _watcher: For tests only. Supplies a custom async generator of changed file paths instead of
+            the default filesystem watcher.
+    """
     if environment_name is None:
         environment_name = config.get("environment")
 

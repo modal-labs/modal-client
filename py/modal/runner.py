@@ -694,21 +694,20 @@ async def _interactive_shell(
     contents of this image. If `cmd` is optionally provided, it will be run
     instead of the default shell inside this image.
 
-    **Example**
+    Examples:
+        ```python
+        import modal
 
-    ```python
-    import modal
+        app = modal.App(image=modal.Image.debian_slim().apt_install("vim"))
+        ```
 
-    app = modal.App(image=modal.Image.debian_slim().apt_install("vim"))
-    ```
+        You can now run this using
 
-    You can now run this using
+        ```
+        modal shell script.py --cmd /bin/bash
+        ```
 
-    ```
-    modal shell script.py --cmd /bin/bash
-    ```
-
-    When calling programmatically, `kwargs` are passed to `Sandbox.create()`.
+        When calling programmatically, `kwargs` are passed to `Sandbox.create()`.
     """
 
     client = await _Client.from_env()

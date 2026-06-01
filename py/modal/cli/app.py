@@ -217,7 +217,7 @@ async def logs(
     By default, this command fetches the last 100 log entries and exits. Use ``-f`` to
     live-stream logs from a running App instead. Fetch and follow are mutually exclusive.
 
-    **Examples:**
+    Examples:
 
     Get recent logs based on an app ID:
 
@@ -367,7 +367,7 @@ async def rollback(
     Rollbacks will appear as a new deployment in the App history, although
     the App state will be reset to the state at the time of the previous deployment.
 
-    **Examples:**
+    Examples:
 
     Rollback an App to its previous version:
 
@@ -429,7 +429,7 @@ async def rollover(
     App version — useful for refreshing containers without changing your code.
     The rollover appears as a new entry in the App's deployment history.
 
-    **Examples:**
+    Examples:
 
     Rollover an App using a rolling deployment. Running containers are now considered
     outdated and will be gracefully replaced by new ones.
@@ -533,7 +533,7 @@ async def history(
 ):
     """Show an App's deployment history.
 
-    **Examples:**
+    Examples:
 
     Get the history based on an app ID:
 
@@ -612,7 +612,7 @@ async def dashboard(
 ):
     """Open an App's dashboard page in your web browser.
 
-    **Examples:**
+    Examples:
 
     Open dashboard for an app by name:
 

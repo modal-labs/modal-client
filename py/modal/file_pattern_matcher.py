@@ -84,20 +84,20 @@ class FilePatternMatcher(_AbstractPatternMatcher):
     """
     Allows matching file Path objects against a list of patterns.
 
-    **Usage:**
-    ```python
-    from pathlib import Path
-    from modal import FilePatternMatcher
+    Examples:
+        ```python
+        from pathlib import Path
+        from modal import FilePatternMatcher
 
-    matcher = FilePatternMatcher("*.py")
+        matcher = FilePatternMatcher("*.py")
 
-    assert matcher(Path("foo.py"))
+        assert matcher(Path("foo.py"))
 
-    # You can also negate the matcher.
-    negated_matcher = ~matcher
+        # You can also negate the matcher.
+        negated_matcher = ~matcher
 
-    assert not negated_matcher(Path("foo.py"))
-    ```
+        assert not negated_matcher(Path("foo.py"))
+        ```
     """
 
     _file_path: str | Path | None
@@ -126,7 +126,7 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         """Initialize a new FilePatternMatcher instance.
 
         Args:
-            pattern (str): One or more pattern strings.
+            *pattern (str): One or more pattern strings.
 
         Raises:
             ValueError: If an illegal exclusion pattern is provided.
@@ -143,12 +143,12 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         Args:
             file_path (Path): The path to the file containing patterns.
 
-        **Usage:**
-        ```python
-        from modal import FilePatternMatcher
+        Examples:
+            ```python
+            from modal import FilePatternMatcher
 
-        matcher = FilePatternMatcher.from_file("/path/to/ignorefile")
-        ```
+            matcher = FilePatternMatcher.from_file("/path/to/ignorefile")
+            ```
 
         """
         instance = cls.__new__(cls)

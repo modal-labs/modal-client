@@ -24,13 +24,13 @@ def enable_output() -> Generator[None, None, None]:
     2. Status of creating objects
     3. Map progress
 
-    Example:
-    ```python
-    app = modal.App()
-    with modal.enable_output():
-        with app.run():
-            ...
-    ```
+    Examples:
+        ```python
+        app = modal.App()
+        with modal.enable_output():
+            with app.run():
+                ...
+        ```
     """
     previous_output_manager = OutputManager.get()
 

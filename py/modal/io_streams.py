@@ -719,19 +719,18 @@ class _StreamWriter:
         This is non-blocking and queues the data to an internal buffer. Must be
         used along with the `drain()` method, which flushes the buffer.
 
-        **Usage**
-
-        ```python fixture:sandbox
-        proc = sandbox.exec(
-            "bash",
-            "-c",
-            "while read line; do echo $line; done",
-        )
-        proc.stdin.write(b"foo\\n")
-        proc.stdin.write(b"bar\\n")
-        proc.stdin.write_eof()
-        proc.stdin.drain()
-        ```
+        Examples:
+            ```python fixture:sandbox
+            proc = sandbox.exec(
+                "bash",
+                "-c",
+                "while read line; do echo $line; done",
+            )
+            proc.stdin.write(b"foo\\n")
+            proc.stdin.write(b"bar\\n")
+            proc.stdin.write_eof()
+            proc.stdin.drain()
+            ```
         """
         self._impl.write(data)
 
@@ -750,18 +749,18 @@ class _StreamWriter:
         This is a flow control method that blocks until data is sent. It returns
         when it is appropriate to continue writing data to the stream.
 
-        **Usage**
+        Examples:
+            ```python notest
+            writer.write(data)
+            writer.drain()
+            ```
 
-        ```python notest
-        writer.write(data)
-        writer.drain()
-        ```
+            Async usage:
 
-        Async usage:
-        ```python notest
-        writer.write(data)  # not a blocking operation
-        await writer.drain.aio()
-        ```
+            ```python notest
+            writer.write(data)  # not a blocking operation
+            await writer.drain.aio()
+            ```
         """
         await self._impl.drain()
 

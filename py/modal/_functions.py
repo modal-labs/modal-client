@@ -1165,21 +1165,26 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Subsequent deployments of the App containing this Function will reset the autoscaler back to
         its static configuration.
 
+        Args:
+            min_containers: Minimum number of containers to keep running, or `None` to leave unchanged.
+            max_containers: Maximum concurrent containers, or `None` to leave unchanged.
+            buffer_containers: Extra containers to keep warm beyond demand, or `None` to leave unchanged.
+            scaledown_window: Seconds idle containers wait before scaling down, or `None` to leave unchanged.
+
         Examples:
+            ```python notest
+            f = modal.Function.from_name("my-app", "function")
 
-        ```python notest
-        f = modal.Function.from_name("my-app", "function")
+            # Always have at least 2 containers running, with an extra buffer when the Function is active
+            f.update_autoscaler(min_containers=2, buffer_containers=1)
 
-        # Always have at least 2 containers running, with an extra buffer when the Function is active
-        f.update_autoscaler(min_containers=2, buffer_containers=1)
+            # Limit this Function to avoid spinning up more than 5 containers
+            f.update_autoscaler(max_containers=5)
 
-        # Limit this Function to avoid spinning up more than 5 containers
-        f.update_autoscaler(max_containers=5)
+            # Extend the scaledown window to increase the amount of time that idle containers stay alive
+            f.update_autoscaler(scaledown_window=300)
 
-        # Extend the scaledown window to increase the amount of time that idle containers stay alive
-        f.update_autoscaler(scaledown_window=300)
-
-        ```
+            ```
 
         """
         if self._is_method:
@@ -1255,9 +1260,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         object with metadata from Modal servers until the first
         time it is actually used.
 
-        ```python
-        f = modal.Function.from_name("other-app", "function")
-        ```
+        Args:
+            app_name: Name of the deployed App.
+            name: Name of the Function within that App. For class methods, use `Cls.from_name` instead.
+            environment_name: Environment to look up the App in; defaults to the active environment.
+            client: Modal client to use; defaults to `Client.from_env()` when omitted.
+
+        Returns:
+            A lazy `Function` handle.
+
+        Examples:
+            ```python
+            f = modal.Function.from_name("other-app", "function")
+            ```
         """
         if "." in name:
             raise InvalidError(
@@ -1388,13 +1403,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def get_web_url(self) -> str | None:
         """URL for addressing a Web Function via HTTP.
 
-        Returns None when this is not a Web Function.
+        Returns:
+            The HTTPS URL for the web endpoint, or `None` if this Function is not a web endpoint.
         """
         return self._web_url
 
     @live_method
     async def _experimental_get_flash_urls(self) -> list[str] | None:
-        """URL of the flash service for the function."""
+        """URL of the flash service for the function.
+
+        Returns:
+            Flash service URLs when configured, or `None`.
+        """
         return list(self._experimental_flash_urls) if self._experimental_flash_urls else None
 
     def _apply_dynamic_config(
@@ -1681,8 +1701,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @synchronizer.no_io_translation
     @live_method
     async def remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        """
-        Calls the function remotely, executing it with the given arguments and returning the execution's result.
+        """Calls the function remotely, executing it with the given arguments and returning the execution's result.
+
+        Args:
+            *args: Positional arguments forwarded to the deployed function.
+            **kwargs: Keyword arguments forwarded to the deployed function.
+
+        Returns:
+            The value returned by the remote function.
         """
         # TODO: Generics/TypeVars
         self._check_no_web_url("remote")
@@ -1696,8 +1722,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @synchronizer.no_io_translation
     @live_method_gen
     async def remote_gen(self, *args, **kwargs) -> AsyncGenerator[Any, None]:
-        """
-        Calls the generator remotely, executing it with the given arguments and returning the execution's result.
+        """Calls the generator remotely, executing it with the given arguments.
+
+        Args:
+            *args: Positional arguments forwarded to the deployed generator function.
+            **kwargs: Keyword arguments forwarded to the deployed generator function.
+
+        Yields:
+            Values produced by the remote generator.
         """
         # TODO: Generics/TypeVars
         self._check_no_web_url("remote_gen")
@@ -1727,12 +1759,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @synchronizer.nowrap
     def local(self, *args: P.args, **kwargs: P.kwargs) -> OriginalReturnType:
-        """
-        Calls the function locally, executing it with the given arguments and returning the execution's result.
+        """Calls the function locally, executing it with the given arguments and returning the execution's result.
 
         The function will execute in the same environment as the caller, just like calling the underlying function
         directly in Python. In particular, only secrets available in the caller environment will be available
         through environment variables.
+
+        Args:
+            *args: Positional arguments passed to the underlying Python callable.
+            **kwargs: Keyword arguments passed to the underlying Python callable.
+
+        Returns:
+            The return value of the local call (or a coroutine for async functions).
         """
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
@@ -1785,9 +1823,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         This experimental version of the spawn method allows up to 1 million inputs to be spawned.
 
-        Returns a `modal.FunctionCall` object, that can later be polled or
-        waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
+
+        Args:
+            *args: Positional arguments forwarded to the remote function.
+            **kwargs: Keyword arguments forwarded to the remote function.
+
+        Returns:
+            A `modal.FunctionCall` handle; poll or await results with `.get(timeout=...)`.
         """
         self._check_no_web_url("_experimental_spawn")
         if self._is_generator:
@@ -1817,10 +1860,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a [`modal.FunctionCall`](https://modal.com/docs/reference/modal.FunctionCall) object
-        that can later be polled or waited for using
-        [`.get(timeout=...)`](https://modal.com/docs/reference/modal.FunctionCall#get).
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
+
+        Args:
+            *args: Positional arguments forwarded to the remote function.
+            **kwargs: Keyword arguments forwarded to the remote function.
+
+        Returns:
+            A [`modal.FunctionCall`](https://modal.com/docs/reference/modal.FunctionCall) object
+            that can later be polled or waited for using
+            [`.get(timeout=...)`](https://modal.com/docs/reference/modal.FunctionCall#get).
         """
         self._check_no_web_url("spawn")
         if self._is_generator:
@@ -1834,13 +1883,21 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return fc
 
     def get_raw_f(self) -> Callable[..., Any]:
-        """Return the inner Python object wrapped by this Modal Function."""
+        """Return the inner Python object wrapped by this Modal Function.
+
+        Returns:
+            The original function object registered with Modal.
+        """
         assert self._raw_f is not None
         return self._raw_f
 
     @live_method
     async def get_current_stats(self) -> FunctionStats:
-        """Return a `FunctionStats` object describing the current function's queue and runner counts."""
+        """Return a `FunctionStats` object describing the current function's queue and runner counts.
+
+        Returns:
+            Snapshot counts for backlog, runners, and running inputs.
+        """
         resp = await self.client.stub.FunctionGetCurrentStats(
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
             retry=Retry(total_timeout=10.0),
@@ -1888,7 +1945,11 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
     @live_method
     async def num_inputs(self) -> int:
-        """Get the number of inputs in the function call."""
+        """Get the number of inputs in the function call.
+
+        Returns:
+            How many inputs this function call includes (e.g. `1` for `.spawn()`, more for `.spawn_map()`).
+        """
         if self._num_inputs is None:
             request = api_pb2.FunctionCallFromIdRequest(function_call_id=self.object_id)
             resp = await self.client.stub.FunctionCallFromId(request)
@@ -1898,6 +1959,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     @live_method
     async def get(self, timeout: float | None = None, *, index: int = 0) -> ReturnType:
         """Get the result of the index-th input of the function call.
+
         `.spawn()` calls have a single output, so only specifying `index=0` is valid.
         A non-zero index is useful when your function has multiple outputs, like via `.spawn_map()`.
 
@@ -1906,6 +1968,13 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         which can be set to `0` to poll for an output immediately.
 
         The returned coroutine is not cancellation-safe.
+
+        Args:
+            timeout: Maximum seconds to wait for a result, or `None` to wait indefinitely.
+            index: Which input's result to retrieve (typically `0` for `.spawn()`).
+
+        Returns:
+            The deserialized return value from that input.
         """
         return await self._invocation().poll_function(timeout=timeout, index=index)
 
@@ -1915,21 +1984,28 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         Optionally, specify a range [start, end) to iterate over.
 
-        Example:
-        ```python
-        @app.function()
-        def my_func(a):
-            return a ** 2
-
-
-        @app.local_entrypoint()
-        def main():
-            fc = my_func.spawn_map([1, 2, 3, 4])
-            assert list(fc.iter()) == [1, 4, 9, 16]
-            assert list(fc.iter(start=1, end=3)) == [4, 9]
-        ```
-
         If `end` is not provided, it will iterate over all results.
+
+        Args:
+            start: First input index to include (inclusive).
+            end: One past the last index to include, or `None` for all remaining inputs.
+
+        Yields:
+            Each result value in index order.
+
+        Examples:
+            ```python
+            @app.function()
+            def my_func(a):
+                return a ** 2
+
+
+            @app.local_entrypoint()
+            def main():
+                fc = my_func.spawn_map([1, 2, 3, 4])
+                assert list(fc.iter()) == [1, 4, 9, 16]
+                assert list(fc.iter(start=1, end=3)) == [4, 9]
+            ```
         """
         num_inputs = await self.num_inputs()
         if end is None:
@@ -1946,6 +2022,9 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         See [`modal.call_graph`](https://modal.com/docs/reference/modal.call_graph) reference page
         for documentation on the structure of the returned `InputInfo` items.
+
+        Returns:
+            A list of `InputInfo` nodes describing the call graph.
         """
         assert self._client and self._client.stub
         request = api_pb2.FunctionGetCallGraphRequest(function_call_id=self.object_id)
@@ -1963,6 +2042,9 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         If `terminate_containers=True` - the containers running the cancelled inputs are all terminated
         causing any non-cancelled inputs on those containers to be rescheduled in new containers.
+
+        Args:
+            terminate_containers: If True, forcibly terminate workers running cancelled inputs.
         """
         request = api_pb2.FunctionCallCancelRequest(
             function_call_id=self.object_id, terminate_containers=terminate_containers
@@ -1977,20 +2059,26 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     ) -> "modal.functions.FunctionCall[Any]":
         """Instantiate a FunctionCall object from an existing ID.
 
-        Examples:
-
-        ```python notest
-        # Spawn a FunctionCall and keep track of its object ID
-        fc = my_func.spawn()
-        fc_id = fc.object_id
-
-        # Later, use the ID to re-instantiate the FunctionCall object
-        fc = FunctionCall.from_id(fc_id)
-        result = fc.get()
-        ```
-
         Note that it's only necessary to re-instantiate the `FunctionCall` with this method
         if you no longer have access to the original object returned from `Function.spawn`.
+
+        Args:
+            function_call_id: Object ID of an existing function call (e.g. from `FunctionCall.object_id`).
+            client: Modal client to use; defaults to `Client.from_env()` when omitted.
+
+        Returns:
+            A `FunctionCall` handle for the given ID.
+
+        Examples:
+            ```python notest
+            # Spawn a FunctionCall and keep track of its object ID
+            fc = my_func.spawn()
+            fc_id = fc.object_id
+
+            # Later, use the ID to re-instantiate the FunctionCall object
+            fc = FunctionCall.from_id(fc_id)
+            result = fc.get()
+            ```
 
         """
         _client = typing.cast(_Client, synchronizer._translate_in(client))
@@ -2013,17 +2101,21 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         Accepts a variable number of `FunctionCall` objects, as returned by `Function.spawn()`.
 
-        Returns a list of results from each FunctionCall, or raises an exception
-        from the first failing function call.
+        Raises an exception from the first failing function call.
+
+        Args:
+            *function_calls: `FunctionCall` instances to wait on (same order as the returned sequence).
+
+        Returns:
+            Results in the same order as `function_calls` (like `asyncio.gather`).
 
         Examples:
+            ```python notest
+            fc1 = slow_func_1.spawn()
+            fc2 = slow_func_2.spawn()
 
-        ```python notest
-        fc1 = slow_func_1.spawn()
-        fc2 = slow_func_2.spawn()
-
-        result_1, result_2 = modal.FunctionCall.gather(fc1, fc2)
-        ```
+            result_1, result_2 = modal.FunctionCall.gather(fc1, fc2)
+            ```
 
         *Added in v0.73.69*: This method replaces the deprecated `modal.functions.gather` function.
         """

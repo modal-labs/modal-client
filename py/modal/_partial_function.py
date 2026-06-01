@@ -288,16 +288,15 @@ def _method(
 ) -> _MethodDecoratorType:
     """Decorator for methods that should be transformed into a Modal Function registered against this class's App.
 
-    **Usage:**
+    Examples:
+        ```python
+        @app.cls(cpu=8)
+        class MyCls:
 
-    ```python
-    @app.cls(cpu=8)
-    class MyCls:
-
-        @modal.method()
-        def f(self):
-            ...
-    ```
+            @modal.method()
+            def f(self):
+                ...
+        ```
     """
     if _warn_parentheses_missing is not None:
         raise InvalidError(
@@ -423,16 +422,15 @@ def _asgi_app(
     Asynchronous Server Gateway Interface (ASGI) is a standard for Python
     web apps, supported by all popular Python web libraries.
 
-    **Usage:**
+    Examples:
+        ```python
+        from typing import Callable
 
-    ```python
-    from typing import Callable
-
-    @app.function()
-    @modal.asgi_app()
-    def create_asgi() -> Callable:
-        ...
-    ```
+        @app.function()
+        @modal.asgi_app()
+        def create_asgi() -> Callable:
+            ...
+        ```
 
     To learn how to use Modal with popular web frameworks, see the
     [guide on Web Functions](https://modal.com/docs/guide/webhooks).
@@ -481,16 +479,15 @@ def _wsgi_app(
     which is compatible with ASGI and supports additional functionality such as web sockets.
     Modal supports ASGI via [`asgi_app`](https://modal.com/docs/reference/modal.asgi_app).
 
-    **Usage:**
+    Examples:
+        ```python
+        from typing import Callable
 
-    ```python
-    from typing import Callable
-
-    @app.function()
-    @modal.wsgi_app()
-    def create_wsgi() -> Callable:
-        ...
-    ```
+        @app.function()
+        @modal.wsgi_app()
+        def create_wsgi() -> Callable:
+            ...
+        ```
 
     To learn how to use this decorator with popular web frameworks, see the
     [guide on Web Functions](https://modal.com/docs/guide/webhooks).
@@ -539,16 +536,15 @@ def _web_server(
     HTTP server listening on a container port. This is useful for servers written in other languages
     like Rust, as well as integrating with non-ASGI frameworks like aiohttp and Tornado.
 
-    **Usage:**
+    Examples:
+        ```python
+        import subprocess
 
-    ```python
-    import subprocess
-
-    @app.function()
-    @modal.web_server(8000)
-    def my_file_server():
-        subprocess.Popen("python -m http.server -d / 8000", shell=True)
-    ```
+        @app.function()
+        @modal.web_server(8000)
+        def my_file_server():
+            subprocess.Popen("python -m http.server -d / 8000", shell=True)
+        ```
 
     The above example starts a simple file server, displaying the contents of the root directory.
     Here, requests to the URL will go to external port 8000 on the container. The
@@ -651,25 +647,24 @@ def _batched(
 ]:
     """Decorator for functions or class methods that should be batched.
 
-    **Usage**
-
-    ```python
-    # Stack the decorator under `@app.function()` to enable dynamic batching
-    @app.function()
-    @modal.batched(max_batch_size=4, wait_ms=1000)
-    async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
-        return [x * y for x, y in zip(xs, ys)]
-
-    # call batched_multiply with individual inputs
-    # batched_multiply.remote.aio(2, 100)
-
-    # With `@app.cls()`, apply the decorator to a method (this may change in the future)
-    @app.cls()
-    class BatchedClass:
+    Examples:
+        ```python
+        # Stack the decorator under `@app.function()` to enable dynamic batching
+        @app.function()
         @modal.batched(max_batch_size=4, wait_ms=1000)
-        def batched_multiply(self, xs: list[int], ys: list[int]) -> list[int]:
+        async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
             return [x * y for x, y in zip(xs, ys)]
-    ```
+
+        # call batched_multiply with individual inputs
+        # batched_multiply.remote.aio(2, 100)
+
+        # With `@app.cls()`, apply the decorator to a method (this may change in the future)
+        @app.cls()
+        class BatchedClass:
+            @modal.batched(max_batch_size=4, wait_ms=1000)
+            def batched_multiply(self, xs: list[int], ys: list[int]) -> list[int]:
+                return [x * y for x, y in zip(xs, ys)]
+        ```
 
     See the [dynamic batching guide](https://modal.com/docs/guide/dynamic-batching) for more information.
     """
@@ -728,25 +723,25 @@ def _concurrent(
     arrival rate of inputs increases. This can trade-off a small increase in average
     latency to avoid larger tail latencies from input queuing.
 
-    **Examples:**
-    ```python
-    # Stack the decorator under `@app.function()` to enable input concurrency
-    @app.function()
-    @modal.concurrent(max_inputs=100)
-    async def f(data):
-        # Async function; will be scheduled as asyncio task
-        ...
-
-    # With `@app.cls()`, apply the decorator at the class level, not on individual methods
-    @app.cls()
-    @modal.concurrent(max_inputs=100, target_inputs=80)
-    class C:
-        @modal.method()
-        def f(self, data):
-            # Sync function; must be thread-safe
+    Examples:
+        ```python
+        # Stack the decorator under `@app.function()` to enable input concurrency
+        @app.function()
+        @modal.concurrent(max_inputs=100)
+        async def f(data):
+            # Async function; will be scheduled as asyncio task
             ...
 
-    ```
+        # With `@app.cls()`, apply the decorator at the class level, not on individual methods
+        @app.cls()
+        @modal.concurrent(max_inputs=100, target_inputs=80)
+        class C:
+            @modal.method()
+            def f(self, data):
+                # Sync function; must be thread-safe
+                ...
+
+        ```
 
     *Added in v0.73.148:* This decorator replaces the `allow_concurrent_inputs` parameter
     in `@app.function()` and `@app.cls()`.

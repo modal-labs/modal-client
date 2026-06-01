@@ -88,12 +88,12 @@ async def get(
     If a folder is passed for REMOTE_PATH, the contents of the folder will be downloaded
     recursively, including all subdirectories.
 
-    **Example**
+    Examples:
 
-    ```
-    modal volume get <volume_name> logs/april-12-1.txt
-    modal volume get <volume_name> / volume_data_dump
-    ```
+        ```
+        modal volume get <volume_name> logs/april-12-1.txt
+        modal volume get <volume_name> / volume_data_dump
+        ```
 
     Use "-" as LOCAL_DESTINATION to write file contents to standard output.
     """
@@ -330,11 +330,11 @@ async def dashboard(
 ):
     """Open a Volume's dashboard page in your web browser.
 
-    **Example:**
+    Examples:
 
-    ```
-    modal volume dashboard my-volume
-    ```
+        ```
+        modal volume dashboard my-volume
+        ```
     """
     env = ensure_env(env)
     volume = await _Volume.from_name(volume_name, environment_name=env).hydrate()

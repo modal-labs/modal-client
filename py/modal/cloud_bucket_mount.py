@@ -19,86 +19,87 @@ class _CloudBucketMount:
     [the AWS S3 Mountpoint documentation](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md)
     for more information.
 
-    **AWS S3 Usage**
+    Examples:
+        S3:
 
-    ```python
-    import subprocess
+        ```python
+        import subprocess
 
-    app = modal.App()
-    secret = modal.Secret.from_name(
-        "aws-secret",
-        required_keys=["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
-        # Note: providing AWS_REGION can help when automatic detection of the bucket region fails.
-    )
+        app = modal.App()
+        secret = modal.Secret.from_name(
+            "aws-secret",
+            required_keys=["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
+            # Note: providing AWS_REGION can help when automatic detection of the bucket region fails.
+        )
 
-    @app.function(
-        volumes={
-            "/my-mount": modal.CloudBucketMount(
-                bucket_name="s3-bucket-name",
-                secret=secret,
-                read_only=True
-            )
-        }
-    )
-    def f():
-        subprocess.run(["ls", "/my-mount"], check=True)
-    ```
+        @app.function(
+            volumes={
+                "/my-mount": modal.CloudBucketMount(
+                    bucket_name="s3-bucket-name",
+                    secret=secret,
+                    read_only=True
+                )
+            }
+        )
+        def f():
+            subprocess.run(["ls", "/my-mount"], check=True)
+        ```
 
-    **Cloudflare R2 Usage**
+        R2:
 
-    Cloudflare R2 is [S3-compatible](https://developers.cloudflare.com/r2/api/s3/api/) so its setup looks
-    very similar to S3. But additionally the `bucket_endpoint_url` argument must be passed.
+        Cloudflare R2 is [S3-compatible](https://developers.cloudflare.com/r2/api/s3/api/) so its setup looks
+        very similar to S3. But additionally the `bucket_endpoint_url` argument must be passed.
 
-    ```python
-    import subprocess
+        ```python
+        import subprocess
 
-    app = modal.App()
-    secret = modal.Secret.from_name(
-        "r2-secret",
-        required_keys=["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
-    )
+        app = modal.App()
+        secret = modal.Secret.from_name(
+            "r2-secret",
+            required_keys=["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
+        )
 
-    @app.function(
-        volumes={
-            "/my-mount": modal.CloudBucketMount(
-                bucket_name="my-r2-bucket",
-                bucket_endpoint_url="https://<ACCOUNT ID>.r2.cloudflarestorage.com",
-                secret=secret,
-                read_only=True
-            )
-        }
-    )
-    def f():
-        subprocess.run(["ls", "/my-mount"], check=True)
-    ```
+        @app.function(
+            volumes={
+                "/my-mount": modal.CloudBucketMount(
+                    bucket_name="my-r2-bucket",
+                    bucket_endpoint_url="https://<ACCOUNT ID>.r2.cloudflarestorage.com",
+                    secret=secret,
+                    read_only=True
+                )
+            }
+        )
+        def f():
+            subprocess.run(["ls", "/my-mount"], check=True)
+        ```
 
-    **Google GCS Usage**
+        GCS:
 
-    Google Cloud Storage (GCS) is [S3-compatible](https://cloud.google.com/storage/docs/interoperability).
-    GCS Buckets also require a secret with Google-specific key names (see below) populated with
-    a [HMAC key](https://cloud.google.com/storage/docs/authentication/managing-hmackeys#create).
+        Google Cloud Storage (GCS) is [S3-compatible](https://cloud.google.com/storage/docs/interoperability).
+        GCS Buckets also require a secret with Google-specific key names (see below) populated with
+        a [HMAC key](https://cloud.google.com/storage/docs/authentication/managing-hmackeys#create).
 
-    ```python
-    import subprocess
+        ```python
+        import subprocess
 
-    app = modal.App()
-    gcp_hmac_secret = modal.Secret.from_name(
-        "gcp-secret",
-        required_keys=["GOOGLE_ACCESS_KEY_ID", "GOOGLE_ACCESS_KEY_SECRET"]
-    )
+        app = modal.App()
+        gcp_hmac_secret = modal.Secret.from_name(
+            "gcp-secret",
+            required_keys=["GOOGLE_ACCESS_KEY_ID", "GOOGLE_ACCESS_KEY_SECRET"]
+        )
 
-    @app.function(
-        volumes={
-            "/my-mount": modal.CloudBucketMount(
-                bucket_name="my-gcs-bucket",
-                bucket_endpoint_url="https://storage.googleapis.com",
-                secret=gcp_hmac_secret,
-            )
-        }
-    )
-    def f():
-        subprocess.run(["ls", "/my-mount"], check=True)
-    ```
+        @app.function(
+            volumes={
+                "/my-mount": modal.CloudBucketMount(
+                    bucket_name="my-gcs-bucket",
+                    bucket_endpoint_url="https://storage.googleapis.com",
+                    secret=gcp_hmac_secret,
+                )
+            }
+        )
+        def f():
+            subprocess.run(["ls", "/my-mount"], check=True)
+        ```
     """
 
     bucket_name: str

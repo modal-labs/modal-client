@@ -50,17 +50,16 @@ class Error(Exception):
     Base class for all Modal errors. See [`modal.exception`](https://modal.com/docs/reference/modal.exception)
     for the specialized error classes.
 
-    **Usage**
+    Examples:
+        ```python notest
+        import modal
 
-    ```python notest
-    import modal
-
-    try:
-        ...
-    except modal.Error:
-        # Catch any exception raised by Modal's systems.
-        print("Responding to error...")
-    ```
+        try:
+            ...
+        except modal.Error:
+            # Catch any exception raised by Modal's systems.
+            print("Responding to error...")
+        ```
     """
 
 
@@ -292,23 +291,22 @@ def simulate_preemption(wait_seconds: int, jitter_seconds: int = 0):
     This second interrupt simulates SIGKILL, and should not be caught.
     Optionally add between zero and `jitter_seconds` seconds of additional waiting before first interrupt.
 
-    **Usage:**
+    Examples:
+        ```python notest
+        import time
+        from modal.exception import simulate_preemption
 
-    ```python notest
-    import time
-    from modal.exception import simulate_preemption
+        simulate_preemption(3)
 
-    simulate_preemption(3)
+        try:
+            time.sleep(4)
+        except KeyboardInterrupt:
+            print("got preempted") # Handle interrupt
+            raise
+        ```
 
-    try:
-        time.sleep(4)
-    except KeyboardInterrupt:
-        print("got preempted") # Handle interrupt
-        raise
-    ```
-
-    See https://modal.com/docs/guide/preemption for more details on preemption
-    handling.
+        See https://modal.com/docs/guide/preemption for more details on preemption
+        handling.
     """
     if wait_seconds <= 0:
         raise ValueError("Time to wait must be greater than 0")

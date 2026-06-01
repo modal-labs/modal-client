@@ -100,6 +100,11 @@ class _Client:
         self._owner_pid = None
 
     def is_closed(self) -> bool:
+        """Check if the client is closed.
+
+        Returns:
+            True if the client is closed, False otherwise.
+        """
         return self._closed
 
     @property
@@ -159,7 +164,14 @@ class _Client:
         self.set_env_client(None)
 
     async def hello(self):
-        """Connect to server and retrieve version information; raise appropriate error for various failures."""
+        """Connect to server and retrieve version information; raise appropriate error for various failures.
+
+        Examples:
+            ```python
+            client = modal.Client.from_env()
+            client.hello()
+            ```
+        """
         logger.debug(f"Client ({id(self)}): Starting")
         resp = await self.stub.ClientHello(empty_pb2.Empty())
         print_server_warnings(resp.server_warnings)
@@ -243,13 +255,19 @@ class _Client:
         (e.g. when running Modal in a forked subprocess) — see
         [troubleshooting](/docs/guide/troubleshooting#connection-issues-in-forked-processes).
 
-        **Usage:**
+        Args:
+            token_id: API token ID.
+            token_secret: API token secret.
 
-        ```python notest
-        client = modal.Client.from_credentials("my_token_id", "my_token_secret")
+        Returns:
+            An authenticated `Client` with its connection opened.
 
-        modal.Sandbox.create("echo", "hi", client=client, app=app)
-        ```
+        Examples:
+            ```python notest
+            client = modal.Client.from_credentials("my_token_id", "my_token_secret")
+
+            modal.Sandbox.create("echo", "hi", client=client, app=app)
+            ```
         """
         _check_config()
         server_url = config["server_url"]
@@ -275,6 +293,14 @@ class _Client:
         cls._client_from_env = client
 
     async def get_input_plane_metadata(self, input_plane_region: str) -> list[tuple[str, str]]:
+        """Get the metadata for the input plane.
+
+        Args:
+            input_plane_region: The region of the input plane.
+
+        Returns:
+            The metadata for the input plane as a list of header/value tuples.
+        """
         assert self._auth_token_manager, "Client must have an instance of auth token manager."
         token = await self._auth_token_manager.get_token()
         return [

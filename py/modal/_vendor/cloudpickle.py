@@ -353,15 +353,15 @@ def _find_imported_submodules(code, top_level_dependencies):
     need a special introspection technique that does not rely on GLOBAL-related
     opcodes to find references of them in a code object.
 
-    Example:
-    ```
-    import concurrent.futures
-    import cloudpickle
-    def func():
-        x = concurrent.futures.ThreadPoolExecutor
-    if __name__ == '__main__':
-        cloudpickle.dumps(func)
-    ```
+    Examples:
+        ```
+        import concurrent.futures
+        import cloudpickle
+        def func():
+            x = concurrent.futures.ThreadPoolExecutor
+        if __name__ == '__main__':
+            cloudpickle.dumps(func)
+        ```
     The globals extracted by cloudpickle in the function's state include the
     concurrent package, but not its submodule (here, concurrent.futures), which
     is the module used by func. Find_imported_submodules will detect the usage

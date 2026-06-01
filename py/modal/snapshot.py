@@ -26,7 +26,14 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
     @classmethod
     def from_id(cls, sandbox_snapshot_id: str, client: "modal.client.Client | None" = None) -> typing_extensions.Self:
         """
-        Construct a `SandboxSnapshot` object from a sandbox snapshot ID.
+        Construct a `SandboxSnapshot` for an existing snapshot ID.
+
+        Args:
+            sandbox_snapshot_id: Snapshot ID returned when the snapshot was created.
+            client: Modal client to use; defaults to `Client.from_env()` when omitted.
+
+        Returns:
+            A `SandboxSnapshot` handle (hydration validates the ID when used).
         """
         _client = cast(_Client, synchronizer._translate_in(client))
 

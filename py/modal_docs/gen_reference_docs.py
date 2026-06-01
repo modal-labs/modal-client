@@ -91,6 +91,7 @@ def run(output_dir: str | None = None):
         module = importlib.import_module(modulepath)
         document = module_str(modulepath, module, title_level=base_title_level, filter_items=module_doc_filter)
         if document:
+            document = f"<script>\n    import Parameter from '$lib/ui/docs/Parameter.svelte';\n</script>\n\n{document}"
             ordered_doc_items.append(
                 validate_doc_item(
                     DocItem(
@@ -122,6 +123,7 @@ def run(output_dir: str | None = None):
         else:
             warnings.warn(f"Not sure how to document: {item_name} ({item})")
             continue
+        content = f"<script>\n    import Parameter from '$lib/ui/docs/Parameter.svelte';\n</script>\n\n{content}"
         ordered_doc_items.append(
             validate_doc_item(
                 DocItem(

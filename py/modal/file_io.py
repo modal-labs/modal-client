@@ -159,18 +159,17 @@ class _FileIO(Generic[T]):
     restricted in the current implementation. For our recommendations on large file transfers
     see the Sandbox [filesystem access guide](https://modal.com/docs/guide/sandbox-files).
 
-    **Usage**
+    Examples:
+        ```python notest
+        import modal
 
-    ```python notest
-    import modal
+        app = modal.App.lookup("my-app", create_if_missing=True)
 
-    app = modal.App.lookup("my-app", create_if_missing=True)
-
-    sb = modal.Sandbox.create(app=app)
-    f = sb.open("/tmp/foo.txt", "w")
-    f.write("hello")
-    f.close()
-    ```
+        sb = modal.Sandbox.create(app=app)
+        f = sb.open("/tmp/foo.txt", "w")
+        f.write("hello")
+        f.close()
+        ```
     """
 
     _binary = False

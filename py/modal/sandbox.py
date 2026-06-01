@@ -180,25 +180,24 @@ class SandboxConnectCredentials:
 class Probe:
     """Probe configuration for the Sandbox Readiness Probe.
 
-    **Usage**
+    Examples:
+        ```python notest
+        # Wait until a file exists.
+        readiness_probe = modal.Probe.with_exec(
+            "sh", "-c", "test -f /tmp/ready",
+        )
 
-    ```python notest
-    # Wait until a file exists.
-    readiness_probe = modal.Probe.with_exec(
-        "sh", "-c", "test -f /tmp/ready",
-    )
+        # Wait until a TCP port is accepting connections.
+        readiness_probe = modal.Probe.with_tcp(8080)
 
-    # Wait until a TCP port is accepting connections.
-    readiness_probe = modal.Probe.with_tcp(8080)
-
-    app = modal.App.lookup('sandbox-readiness-probe', create_if_missing=True)
-    sandbox = modal.Sandbox.create(
-        "python3", "-m", "http.server", "8080",
-        readiness_probe=readiness_probe,
-        app=app,
-    )
-    sandbox.wait_until_ready()
-    ```
+        app = modal.App.lookup('sandbox-readiness-probe', create_if_missing=True)
+        sandbox = modal.Sandbox.create(
+            "python3", "-m", "http.server", "8080",
+            readiness_probe=readiness_probe,
+            app=app,
+        )
+        sandbox.wait_until_ready()
+        ```
     """
 
     tcp_port: int | None = None
@@ -428,77 +427,108 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def create(
-        *args: str,  # Set the CMD of the Sandbox, overriding any CMD of the container image.
-        # Associate the sandbox with an app. Required unless creating from a container.
+        *args: str,
         app: "modal.app._App | None" = None,
-        name: str | None = None,  # Optionally give the sandbox a name. Unique within an app.
-        tags: dict[str, str] | None = None,  # Tags to attach to the Sandbox.
-        image: _Image | None = None,  # The image to run as the container for the sandbox.
-        env: dict[str, str | None] | None = None,  # Environment variables to set in the Sandbox.
-        secrets: Collection[_Secret] | None = None,  # Secrets to inject into the Sandbox as environment variables.
+        name: str | None = None,
+        tags: dict[str, str] | None = None,
+        image: _Image | None = None,
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
         network_file_systems: dict[str | os.PathLike, _NetworkFileSystem] = {},
-        timeout: int = 300,  # Maximum lifetime of the sandbox in seconds.
-        # The amount of time in seconds that a sandbox can be idle before being terminated.
+        timeout: int = 300,
         idle_timeout: int | None = None,
-        workdir: str | None = None,  # Working directory of the sandbox.
+        workdir: str | None = None,
         gpu: str | None = None,
         cloud: str | None = None,
-        region: str | Sequence[str] | None = None,  # Region or regions to run the sandbox on.
-        # Specify, in fractional CPU cores, how many CPU cores to request.
-        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
-        # CPU throttling will prevent a container from exceeding its specified limit.
+        region: str | Sequence[str] | None = None,
         cpu: float | tuple[float, float] | None = None,
-        # Specify, in MiB, a memory request which is the minimum memory required.
-        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: int | tuple[int, int] | None = None,
-        block_network: bool = False,  # Whether to block network access
-        # List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
+        block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
-        # List of CIDRs allowed to connect inbound to the sandbox (tunnels and connection tokens).
         inbound_cidr_allowlist: Sequence[str] | None = None,
-        volumes: dict[
-            str | os.PathLike, _Volume | _CloudBucketMount
-        ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
-        # Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr
-        # from the process) is multiplexed into stdout, and the stderr stream is effectively empty.
+        volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
-        # List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
         encrypted_ports: Sequence[int] = [],
-        # List of encrypted ports to tunnel into the sandbox, using HTTP/2.
         h2_ports: Sequence[int] = [],
-        # List of ports to tunnel into the sandbox without encryption.
         unencrypted_ports: Sequence[int] = [],
-        # Allow connections to the Sandbox via a subdomain of this parent rather than a default Modal domain.
         custom_domain: str | None = None,
-        # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: _Proxy | None = None,
-        # If True, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth.
         include_oidc_identity_token: bool = False,
-        # Probe used to determine when the sandbox has become ready.
         readiness_probe: Probe | None = None,
-        # Enable verbose logging for sandbox operations.
         verbose: bool = False,
         experimental_options: dict[str, bool] | None = None,
-        # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         client: _Client | None = None,
-        environment_name: str | None = None,  # *DEPRECATED* Optionally override the default environment
-        pty_info: api_pb2.PTYInfo | None = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
-        cidr_allowlist: Sequence[str] | None = None,  # *DEPRECATED* Use outbound_cidr_allowlist instead.
+        environment_name: str | None = None,  # *DEPRECATED*
+        pty_info: api_pb2.PTYInfo | None = None,  # *DEPRECATED*
+        cidr_allowlist: Sequence[str] | None = None,  # *DEPRECATED*
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code.
 
         The Sandbox's corresponding container will be created asynchronously.
 
-        **Usage**
+        Args:
+            *args: Set the CMD of the Sandbox, overriding any CMD of the container image.
+            app: Associate the sandbox with an app. Required unless creating from a container.
+            name: Optionally give the sandbox a name. Unique within an app.
+            tags: Tags to assign to the Sandbox.
+            image: The image to run as the container for the sandbox.
+            env: Environment variables to set in the Sandbox.
+            secrets: Secrets to inject into the Sandbox as environment variables.
+            network_file_systems: Network file systems to mount into the sandbox.
+            timeout: Maximum lifetime of the sandbox in seconds.
+            idle_timeout: The amount of time in seconds that a sandbox can be idle before being terminated.
+            workdir: Working directory of the sandbox.
+            gpu: GPU reservation for the sandbox.
+            cloud: Cloud provider for the sandbox.
+            region: Region or regions to run the sandbox on.
+            cpu:
+                Specify, in fractional CPU cores, how many CPU cores to request. Or, pass (request, limit) to
+                additionally specify a hard limit in fractional CPU cores. CPU throttling will prevent a container
+                from exceeding its specified limit.
+            memory:
+                Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to
+                additionally specify a hard limit in MiB.
+            block_network: Whether to block network access.
+            outbound_cidr_allowlist: List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
+            inbound_cidr_allowlist:
+                List of CIDRs allowed to connect inbound to the sandbox (tunnels and connection tokens). If None,
+                all CIDRs are allowed.
+            volumes: Mount points for Modal Volumes and CloudBucketMounts.
+            pty:
+                Enable a PTY for the Sandbox entrypoint command. When enabled, all output (stdout and stderr from the
+                process) is multiplexed into stdout, and the stderr stream is effectively empty.
+            encrypted_ports: List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
+            h2_ports: List of encrypted ports to tunnel into the sandbox, using HTTP/2.
+            unencrypted_ports: List of ports to tunnel into the sandbox without encryption.
+            custom_domain:
+                Allow connections to the Sandbox via a subdomain of this parent rather than a default Modal domain.
+            proxy: Reference to a Modal Proxy to use in front of this Sandbox.
+            include_oidc_identity_token:
+                If True, the sandbox will receive a MODAL_IDENTITY_TOKEN env var for OIDC-based auth.
+            readiness_probe: Probe used to determine when the sandbox has become ready.
+            verbose: Enable verbose logging for sandbox operations.
+            experimental_options: Experimental options to pass to the sandbox.
+            _experimental_enable_snapshot: Enable memory snapshots.
+            client: Modal Client to use for the sandbox.
+            environment_name: *DEPRECATED* Optionally override the default environment
+            pty_info: *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
+            cidr_allowlist: *DEPRECATED* Use outbound_cidr_allowlist instead.
 
-        ```python
-        app = modal.App.lookup('sandbox-hello-world', create_if_missing=True)
-        sandbox = modal.Sandbox.create("echo", "hello world", app=app)
-        print(sandbox.stdout.read())
-        sandbox.wait()
-        ```
+        Returns:
+            A `Sandbox` object representing the created sandbox which can be used to interact with the sandbox.
+
+        Raises:
+            AlreadyExistsError: If a sandbox with the same name already exists.
+
+        Examples:
+            ```python
+            app = modal.App.lookup('sandbox-hello-world', create_if_missing=True)
+            sandbox = modal.Sandbox.create("echo", "hello world", app=app)
+            print(sandbox.stdout.read())
+            sandbox.wait()
+            ```
         """
         if environment_name is not None:
             deprecation_warning(
@@ -972,6 +1002,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         Be sure to only call `detach` when you are done interacting with the sandbox. After calling `detach`,
         any operation using the Sandbox object is not guaranteed to work anymore. If you want to continue interacting
         with a running sandbox, use `Sandbox.from_id` to get a new Sandbox object.
+
         """
         if not self._attached:
             return
@@ -1006,8 +1037,19 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> "_Sandbox":
         """Get a running Sandbox by name from a deployed App.
 
-        Raises a modal.exception.NotFoundError if no running sandbox is found with the given name.
         A Sandbox's name is the `name` argument passed to `Sandbox.create`.
+
+        Args:
+            app_name: Name of the deployed app to look up the sandbox under.
+            name: Sandbox name to resolve.
+            environment_name: Optional environment name for the lookup; defaults to the configured environment.
+            client: Modal client to use for the RPC; defaults to `Client.from_env()` when omitted.
+
+        Returns:
+            A `Sandbox` handle for the running sandbox.
+
+        Raises:
+            NotFoundError: If no running sandbox exists with the given name.
         """
         if client is None:
             client = await _Client.from_env()
@@ -1022,6 +1064,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Construct a Sandbox from an id and look up the Sandbox result.
 
         The ID of a Sandbox object can be accessed using `.object_id`.
+
+        Args:
+            sandbox_id: Sandbox object ID to attach to.
+            client: Modal client to use for the lookup; defaults to the environment client when omitted.
+
+        Returns:
+            A `Sandbox` handle with any available result metadata populated from the server.
         """
         if client is None:
             client = await _Client.from_env()
@@ -1047,7 +1096,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     async def get_tags(self) -> dict[str, str]:
-        """Fetches any tags (key-value pairs) currently attached to this Sandbox from the server."""
+        """Fetches any tags (key-value pairs) currently attached to this Sandbox from the server.
+
+        Returns:
+            Tags as a map from tag name to tag value.
+        """
         self._ensure_v1("get_tags")
         req = api_pb2.SandboxTagsGetRequest(sandbox_id=self.object_id)
         resp = await self._client.stub.SandboxTagsGet(req)
@@ -1055,7 +1108,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         return {tag.tag_name: tag.tag_value for tag in resp.tags}
 
     async def set_tags(self, tags: dict[str, str], *, client: _Client | None = None) -> None:
-        """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
+        """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`.
+
+        Args:
+            tags: Tag names and values to set on this sandbox.
+            client: Deprecated. Prefer setting the client when creating or re-attaching to the sandbox.
+
+        """
         self._ensure_v1("set_tags")
         environment_name = _get_environment_name()
         if client is not None:
@@ -1082,14 +1141,17 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> _Image:
         """Snapshot the filesystem of the Sandbox.
 
-        Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
-        can be used to spawn a new Sandbox with the same filesystem.
+        Args:
+            timeout:
+                Maximum time in seconds to wait for the snapshot operation. If the snapshot does not return within
+                that window, the call is cancelled and `modal.exception.TimeoutError` is raised.
+            ttl:
+                The resulting Image is retained for `ttl` seconds (default: 30 days). Pass `ttl=None` to retain
+                the image indefinitely.
 
-        `timeout` If the snapshot does not return within that window, the call is cancelled
-        and `modal.exception.TimeoutError` is raised.
-
-        `ttl` The resulting Image is retained for `ttl` seconds (default: 30 days)
-        Pass `ttl=None` to retain the image indefinitely.
+        Returns:
+            An [`Image`](https://modal.com/docs/reference/modal.Image) object which can be used to spawn a new
+            Sandbox with the same filesystem.
         """
         if os.environ.get("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT") == "1" and not self._is_v2:
             if ttl != 30 * 24 * 3600:
@@ -1133,15 +1195,20 @@ class _Sandbox(_Object, type_prefix="sb"):
         - Filesystem/directory snapshots, e.g. created by `.snapshot_directory()` or `.snapshot_filesystem()`
         - Empty images created with `Image.from_scratch()`
 
-        Usage:
-        ```py notest
-        user_project_snapshot: Image = sandbox_session_1.snapshot_directory("/user_project")
+        Args:
+            path: Absolute mount point directory inside the sandbox (not `/`).
+            image: Image to mount at `path` (must be built, referenced by ID, or snapshot-based as described above).
 
-        # You can later mount this snapshot to another Sandbox:
-        sandbox_session_2 = modal.Sandbox.create(...)
-        sandbox_session_2.mount_image("/user_project", user_project_snapshot)
-        sandbox_session_2.filesystem.list_files("/user_project")
-        ```
+
+        Examples:
+            ```py notest
+            user_project_snapshot: Image = sandbox_session_1.snapshot_directory("/user_project")
+
+            # You can later mount this snapshot to another Sandbox:
+            sandbox_session_2 = modal.Sandbox.create(...)
+            sandbox_session_2.mount_image("/user_project", user_project_snapshot)
+            sandbox_session_2.filesystem.list_files("/user_project")
+            ```
         """
         self._ensure_v1("mount_image")
 
@@ -1185,6 +1252,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         `path` must be the exact mount point that was passed to `.mount_image()`.
         After unmounting, the underlying Sandbox filesystem at that path becomes
         visible again.
+
+        Args:
+            path: Absolute mount point directory to unmount.
+
         """
         self._ensure_v1("unmount_image")
 
@@ -1214,15 +1285,21 @@ class _Sandbox(_Object, type_prefix="sb"):
         `ttl` The resulting Image is retained for `ttl` seconds (default: 30 days)
         Pass `ttl=None` to retain the image indefinitely.
 
-        Usage:
-        ```py notest
-        user_project_snapshot: Image = sandbox_session_1.snapshot_directory("/user_project")
+        Args:
+            path: Absolute path of the directory inside the sandbox to snapshot.
 
-        # You can later mount this snapshot to another Sandbox:
-        sandbox_session_2 = modal.Sandbox.create(...)
-        sandbox_session_2.mount_image("/user_project", user_project_snapshot)
-        sandbox_session_2.filesystem.list_files("/user_project")
-        ```
+        Returns:
+            An `Image` containing the directory contents.
+
+        Examples:
+            ```py notest
+            user_project_snapshot: Image = sandbox_session_1.snapshot_directory("/user_project")
+
+            # You can later mount this snapshot to another Sandbox:
+            sandbox_session_2 = modal.Sandbox.create(...)
+            sandbox_session_2.mount_image("/user_project", user_project_snapshot)
+            sandbox_session_2.filesystem.list_files("/user_project")
+            ```
         """
         self._ensure_v1("snapshot_directory")
 
@@ -1249,7 +1326,12 @@ class _Sandbox(_Object, type_prefix="sb"):
     # Live handle methods
 
     async def wait(self, raise_on_termination: bool = True):
-        """Wait for the Sandbox to finish running."""
+        """Wait for the Sandbox to finish running.
+
+        Args:
+            raise_on_termination: If True, raise when the sandbox is terminated externally.
+
+        """
 
         while True:
             req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
@@ -1276,16 +1358,20 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         The Sandbox must be configured with a `readiness_probe` in order to use this method.
 
-        Usage:
-        ```py notest
-        app = modal.App.lookup('sandbox-wait-until-ready', create_if_missing=True)
-        sandbox = modal.Sandbox.create(
-            "python3", "-m", "http.server", "8080",
-            readiness_probe=modal.Probe.with_tcp(8080),
-            app=app,
-        )
-        sandbox.wait_until_ready()
-        ```
+        Args:
+            timeout: Maximum time in seconds to wait for readiness.
+
+
+        Examples:
+            ```py notest
+            app = modal.App.lookup('sandbox-wait-until-ready', create_if_missing=True)
+            sandbox = modal.Sandbox.create(
+                "python3", "-m", "http.server", "8080",
+                readiness_probe=modal.Probe.with_tcp(8080),
+                app=app,
+            )
+            sandbox.wait_until_ready()
+            ```
         """
         if timeout <= 0:
             raise InvalidError(f"`timeout` must be positive, got: {timeout}")
@@ -1307,12 +1393,17 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def tunnels(self, timeout: int = 50) -> dict[int, Tunnel]:
         """Get Tunnel metadata for the sandbox.
 
-        Raises `SandboxTimeoutError` if the tunnels are not available after the timeout.
-
-        Returns a dictionary of `Tunnel` objects which are keyed by the container port.
-
         NOTE: Previous to client [v0.64.153](https://modal.com/docs/reference/changelog#064153-2024-09-30), this
         returned a list of `TunnelData` objects.
+
+        Args:
+            timeout: Maximum time in seconds to wait for tunnel metadata when not already cached.
+
+        Returns:
+            A dictionary mapping container port to `Tunnel` metadata.
+
+        Raises:
+            SandboxTimeoutError: If the tunnels are not available after the timeout.
         """
 
         if self._tunnels:
@@ -1341,11 +1432,17 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def create_connect_token(
         self, user_metadata: str | dict[str, Any] | None = None
     ) -> SandboxConnectCredentials:
-        """
-        Create a token for making HTTP connections to the Sandbox.
+        """Create a token for making HTTP connections to the Sandbox.
 
         Also accepts an optional user_metadata string or dict to associate with the token. This metadata
-        will be added to the headers by the proxy when forwarding requests to the Sandbox."""
+        will be added to the headers by the proxy when forwarding requests to the Sandbox.
+
+        Args:
+            user_metadata: Optional JSON-serializable metadata or string stored with the connect token.
+
+        Returns:
+            URL and token credentials for connecting to the sandbox over HTTP.
+        """
         self._ensure_v1("create_connect_token")
         if user_metadata is not None and isinstance(user_metadata, dict):
             try:
@@ -1361,6 +1458,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Reload all Volumes mounted in the Sandbox.
 
         Added in v1.1.0.
+
         """
         self._ensure_v1("reload_volumes")
         task_id = await self._get_task_id()
@@ -1387,11 +1485,18 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def terminate(
         self,
         *,
-        wait: bool = False,  # wait for terminate to complete and return the exit code.
+        wait: bool = False,
     ) -> int | None:
         """Terminate Sandbox execution.
 
-        This is a no-op if the Sandbox has already finished running."""
+        This is a no-op if the Sandbox has already finished running.
+
+        Args:
+            wait: If True, block until termination completes and return the exit code.
+
+        Returns:
+            The sandbox exit code when `wait` is True; otherwise None.
+        """
         req = api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
         stub = self._client.stub
         if self._is_v2:
@@ -1407,7 +1512,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def poll(self) -> int | None:
         """Check if the Sandbox has finished running.
 
-        Returns `None` if the Sandbox is still running, else returns the exit code.
+        Returns:
+            `None` if the Sandbox is still running, otherwise the exit code.
         """
 
         req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=0)
@@ -1502,32 +1608,46 @@ class _Sandbox(_Object, type_prefix="sb"):
         stderr: StreamType = StreamType.PIPE,
         timeout: int | None = None,
         workdir: str | None = None,
-        env: dict[str, str | None] | None = None,  # Environment variables to set during command execution.
-        secrets: None
-        | (Collection[_Secret]) = None,  # Secrets to inject as environment variables during command execution.
-        # Encode output as text.
+        env: dict[str, str | None] | None = None,
+        secrets: Collection[_Secret] | None = None,
         text: bool = True,
-        # Control line-buffered output.
-        # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
         bufsize: Literal[-1, 1] = -1,
-        # Enable a PTY for the command. When enabled, all output (stdout and stderr from the
-        # process) is multiplexed into stdout, and the stderr stream is effectively empty.
         pty: bool = False,
-        _pty_info: api_pb2.PTYInfo | None = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
-        pty_info: api_pb2.PTYInfo | None = None,  # *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
+        _pty_info: api_pb2.PTYInfo | None = None,  # *DEPRECATED*
+        pty_info: api_pb2.PTYInfo | None = None,  # *DEPRECATED*
     ):
         """Execute a command in the Sandbox and return a ContainerProcess handle.
 
         See the [`ContainerProcess`](https://modal.com/docs/reference/modal.container_process#modalcontainer_processcontainerprocess)
         docs for more information.
 
-        **Usage**
+        Args:
+            *args: Command and arguments to run inside the sandbox.
+            stdout: Where to connect the process stdout stream.
+            stderr: Where to connect the process stderr stream.
+            timeout: Optional timeout in seconds for the exec session.
+            workdir: Working directory for the command; must be absolute if set.
+            env: Environment variables to set during command execution.
+            secrets: Secrets to inject as environment variables during command execution.
+            text: If True, decode streams as text; if False, yield bytes.
+            bufsize:
+                Control line-buffered output. ``-1`` means unbuffered; ``1`` means line-buffered (only when ``text`` is
+                True).
+            pty:
+                Enable a PTY for the command. When enabled, all output (stdout and stderr from the process) is
+                multiplexed into stdout, and the stderr stream is effectively empty.
+            _pty_info: *DEPRECATED* Use `pty` instead. `pty` will override `_pty_info`.
+            pty_info: *DEPRECATED* Use `pty` instead. `pty` will override `pty_info`.
 
-        ```python fixture:sandbox
-        process = sandbox.exec("bash", "-c", "for i in $(seq 1 3); do echo foo $i; sleep 0.1; done")
-        for line in process.stdout:
-            print(line)
-        ```
+        Returns:
+            A `ContainerProcess` handle for the running command (text or bytes depending on `text`).
+
+        Examples:
+            ```python fixture:sandbox
+            process = sandbox.exec("bash", "-c", "for i in $(seq 1 3); do echo foo $i; sleep 0.1; done")
+            for line in process.stdout:
+                print(line)
+            ```
         """
         if pty_info is not None or _pty_info is not None:
             deprecation_warning(
@@ -1751,7 +1871,11 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @property
     def filesystem(self) -> _SandboxFilesystem:
-        """Namespace for filesystem APIs."""
+        """Namespace for filesystem APIs.
+
+        Returns:
+            A `SandboxFilesystem` helper bound to this sandbox.
+        """
         self._ensure_v1("filesystem")
         self._ensure_attached()
         if self._filesystem is None:
@@ -1789,14 +1913,20 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         See the [`FileIO`](https://modal.com/docs/reference/modal.file_io#modalfile_iofileio) docs for more information.
 
-        **Usage**
+        Args:
+            path: Absolute path of the file inside the sandbox.
+            mode: File open mode (text or binary), following built-in ``open`` conventions.
 
-        ```python notest
-        sb = modal.Sandbox.create(app=sb_app)
-        f = sb.open("/test.txt", "w")
-        f.write("hello")
-        f.close()
-        ```
+        Returns:
+            A `FileIO` handle for reading or writing the remote file.
+
+        Examples:
+            ```python notest
+            sb = modal.Sandbox.create(app=sb_app)
+            f = sb.open("/test.txt", "w")
+            f.write("hello")
+            f.close()
+            ```
         """
         self._ensure_v1("open")
         deprecation_warning(
@@ -1810,6 +1940,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         """[Alpha] List the contents of a directory in the Sandbox.
 
         **Deprecated (2026-04-15):** Use `Sandbox.filesystem.list_files()` instead.
+
+        Args:
+            path: Absolute directory path inside the sandbox.
+
+        Returns:
+            Entry names in the directory as a list of strings.
         """
         self._ensure_v1("ls")
         deprecation_warning(
@@ -1852,7 +1988,17 @@ class _Sandbox(_Object, type_prefix="sb"):
         recursive: bool | None = None,
         timeout: int | None = None,
     ) -> AsyncIterator[FileWatchEvent]:
-        """[Alpha] Watch a file or directory in the Sandbox for changes."""
+        """[Alpha] Watch a file or directory in the Sandbox for changes.
+
+        Args:
+            path: Absolute path to watch.
+            filter: Optional list of event types to include.
+            recursive: Whether to watch subdirectories; None uses server defaults.
+            timeout: Optional timeout for the watch stream.
+
+        Returns:
+            An async iterator of `FileWatchEvent` values.
+        """
         self._ensure_v1("watch")
         task_id = await self._get_task_id()
         async for event in watch(path, self._client, task_id, filter, recursive, timeout):
@@ -1861,16 +2007,23 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdout(self) -> _StreamReader[str]:
         """
-        [`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
-        the sandbox's stdout stream.
+        [`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader)
+        for the sandbox's stdout stream.
+
+        Returns:
+            Stream reader for sandbox stdout.
         """
         self._ensure_attached()
         return self._stdout
 
     @property
     def stderr(self) -> _StreamReader[str]:
-        """[`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
-        the Sandbox's stderr stream.
+        """
+        [`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader)
+        for the Sandbox's stderr stream.
+
+        Returns:
+            Stream reader for sandbox stderr.
         """
         self._ensure_attached()
         return self._stderr
@@ -1878,15 +2031,22 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdin(self) -> _StreamWriter:
         """
-        [`StreamWriter`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamwriter) for
-        the Sandbox's stdin stream.
+        [`StreamWriter`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamwriter)
+        for the Sandbox's stdin stream.
+
+        Returns:
+            Stream writer for sandbox stdin.
         """
         self._ensure_attached()
         return self._stdin
 
     @property
     def returncode(self) -> int | None:
-        """Return code of the Sandbox process if it has finished running, else `None`."""
+        """Return code of the Sandbox process if it has finished running, else `None`.
+
+        Returns:
+            Exit code when the sandbox process has completed, otherwise None.
+        """
         return _result_returncode(self._result)
 
     @staticmethod
@@ -1894,7 +2054,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         *, app_id: str | None = None, tags: dict[str, str] | None = None, client: _Client | None = None
     ) -> AsyncGenerator["_Sandbox", None]:
         """List all Sandboxes for the current Environment or App ID (if specified). If tags are specified, only
-        Sandboxes that have at least those tags are returned. Returns an iterator over `Sandbox` objects."""
+        Sandboxes that have at least those tags are returned.
+
+        Args:
+            app_id: If set, restrict results to sandboxes under this app ID.
+            tags: If set, only sandboxes containing at least these tags are returned.
+            client: Modal client to use for listing; defaults to `Client.from_env()` when omitted.
+
+        Returns:
+            An async generator yielding `Sandbox` objects.
+        """
         before_timestamp = None
         environment_name = _get_environment_name()
         if client is None:

@@ -350,7 +350,7 @@ def shell(
 ):
     """Run a command or interactive shell inside a Modal container.
 
-    **Examples:**
+    Examples:
 
     Start an interactive shell inside the default Debian-based image:
 

@@ -108,7 +108,7 @@ async def logs(
     By default, this command fetches the last 100 log entries and exits. Use ``-f`` to
     live-stream logs from a running container instead. Fetch and follow are mutually exclusive.
 
-    **Examples:**
+    Examples:
 
     Get recent logs for a container:
 

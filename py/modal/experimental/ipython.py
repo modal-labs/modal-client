@@ -18,15 +18,15 @@ class ModalMagics(Magics):
     def modal(self, line):
         """Lookup a deployed Modal Function or Class.
 
-        **Example:**
+        Examples:
 
-        ```python notest
-        %modal from my-app import my_function, MyClass as Foo
+            ```python notest
+            %modal from my-app import my_function, MyClass as Foo
 
-        # Now you can call my_function() and Foo from your notebook.
-        my_function.remote()
-        Foo().my_method.remote()
-        ```
+            # Now you can call my_function() and Foo from your notebook.
+            my_function.remote()
+            Foo().my_method.remote()
+            ```
         """
         line = line.strip()
         if not line.startswith("from "):

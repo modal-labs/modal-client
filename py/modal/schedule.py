@@ -14,35 +14,6 @@ class Cron(Schedule):
     [Unix cron tab](https://crontab.guru/) syntax.
 
     The alternative schedule type is the [`modal.Period`](https://modal.com/docs/reference/modal.Period).
-
-    **Usage**
-
-    ```python
-    import modal
-    app = modal.App()
-
-
-    @app.function(schedule=modal.Cron("* * * * *"))
-    def f():
-        print("This function will run every minute")
-    ```
-
-    We can specify different schedules with cron strings, for example:
-
-    ```python
-    modal.Cron("5 4 * * *")  # run at 4:05am UTC every night
-    modal.Cron("0 9 * * 4")  # runs every Thursday at 9am UTC
-    ```
-
-    We can also optionally specify a timezone, for example:
-
-    ```python
-    # Run daily at 6am New York time, regardless of whether daylight saving
-    # is in effect (i.e. at 11am UTC in the winter, and 10am UTC in the summer):
-    modal.Cron("0 6 * * *", timezone="America/New_York")
-    ```
-
-    If no timezone is specified, the default is UTC.
     """
 
     def __init__(
@@ -50,7 +21,39 @@ class Cron(Schedule):
         cron_string: str,
         timezone: str = "UTC",
     ) -> None:
-        """Construct a schedule that runs according to a cron expression string."""
+        """Construct a schedule that runs according to a cron expression string.
+
+        Args:
+            cron_string: Cron expression (see crontab.guru).
+            timezone: IANA timezone name; defaults to UTC.
+
+        Examples:
+            ```python
+            import modal
+            app = modal.App()
+
+
+            @app.function(schedule=modal.Cron("* * * * *"))
+            def f():
+                print("This function will run every minute")
+            ```
+
+            We can specify different schedules with cron strings, for example:
+
+            ```python
+            modal.Cron("5 4 * * *")  # run at 4:05am UTC every night
+            modal.Cron("0 9 * * 4")  # runs every Thursday at 9am UTC
+            ```
+
+            We can also optionally specify a timezone, for example:
+
+            ```python
+            modal.Cron("0 6 * * *", timezone="America/New_York")
+            ```
+
+            If no timezone is specified, the default is UTC.
+
+        """
         cron = api_pb2.Schedule.Cron(cron_string=cron_string, timezone=timezone)
         super().__init__(api_pb2.Schedule(cron=cron))
 
@@ -58,20 +61,19 @@ class Cron(Schedule):
 class Period(Schedule):
     """Create a schedule that runs every given time interval.
 
-    **Usage**
+    Examples:
+        ```python
+        import modal
+        app = modal.App()
 
-    ```python
-    import modal
-    app = modal.App()
+        @app.function(schedule=modal.Period(days=1))
+        def f():
+            print("This function will run every day")
 
-    @app.function(schedule=modal.Period(days=1))
-    def f():
-        print("This function will run every day")
-
-    modal.Period(hours=4)          # runs every 4 hours
-    modal.Period(minutes=15)       # runs every 15 minutes
-    modal.Period(seconds=math.pi)  # runs every 3.141592653589793 seconds
-    ```
+        modal.Period(hours=4)          # runs every 4 hours
+        modal.Period(minutes=15)       # runs every 15 minutes
+        modal.Period(seconds=math.pi)  # runs every 3.141592653589793 seconds
+        ```
 
     Only `seconds` can be a float. All other arguments are integers.
 

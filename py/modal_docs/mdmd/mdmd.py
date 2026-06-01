@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2023
 """mdmd - MoDal MarkDown"""
 
+import html
 import inspect
+import re
 import typing
 import warnings
 from collections.abc import Callable
@@ -10,10 +12,22 @@ from types import ModuleType
 
 import synchronicity.synchronizer
 
-from .signatures import get_signature
+from .signatures import get_signature, parse_params_from_signature, strip_signature
+from .types import ParsedDoc, ParsedParam, ParsedRaise
 
 
-def format_docstring(docstring: str | None) -> str:
+def _escape_svelte_html_attr(value: str) -> str:
+    """Escape text for double-quoted HTML / Svelte component attributes.
+
+    Uses :func:`html.escape` for normal HTML attribute safety. Svelte additionally
+    treats ``{`` and ``}`` as template expression boundaries, so those are encoded
+    as numeric character references (not covered by HTML escapers).
+    """
+    s = html.escape(value, quote=True)
+    return s.replace("{", "&#123;").replace("}", "&#125;")
+
+
+def clean_docstring(docstring: str | None) -> str:
     if docstring is None:
         docstring = ""
     else:
@@ -31,14 +45,245 @@ def format_docstring(docstring: str | None) -> str:
     return docstring
 
 
+def parse_docstring(name: str, signature: str, docstring: str) -> ParsedDoc:
+    lines = inspect.cleandoc(docstring).splitlines()
+
+    def extract_section(headers: list[str]) -> tuple[str | None, tuple[int, int] | None]:
+        start_idx = None
+        for idx, line in enumerate(lines):
+            if any(line.startswith(header) for header in headers):
+                start_idx = idx
+                break
+        if start_idx is None:
+            return None, None
+
+        # A section runs until a sibling/outdent: a non-blank line indented no further right than the
+        # section header line (Google/NumPy style: ``Args:`` at column 0, body indented under it).
+        # Blank lines do not end a section (so Args can have blank lines between items, Examples
+        # between fences and prose). Fenced Markdown (`` ``` ``) is handled first so a flush-left
+        # fence opening still starts a block instead of being treated as outdented body text.
+        header_line = lines[start_idx]
+        header_indent = len(header_line) - len(header_line.lstrip())
+        end_idx = start_idx + 1
+        in_fence = False
+        while end_idx < len(lines):
+            line = lines[end_idx]
+            stripped = line.strip()
+            if in_fence:
+                end_idx += 1
+                if stripped.startswith("```"):
+                    in_fence = False
+                continue
+            if stripped.startswith("```"):
+                in_fence = True
+                end_idx += 1
+                continue
+            if not stripped:
+                end_idx += 1
+                continue
+            line_indent = len(line) - len(line.lstrip())
+            if line_indent <= header_indent:
+                break
+            end_idx += 1
+
+        return "\n".join(lines[start_idx:end_idx]).strip(), (start_idx, end_idx)
+
+    def section_body_without_header(section: str | None) -> str | None:
+        if section is None:
+            return None
+
+        body_lines = section.splitlines()[1:]
+        if not any(line.strip() for line in body_lines):
+            return None
+
+        indent = min(len(line) - len(line.lstrip()) for line in body_lines if line.strip())
+        normalized_lines = [line[indent:] if line.strip() else "" for line in body_lines]
+        return "\n".join(normalized_lines).strip()
+
+    args_section, args_range = extract_section(["Args:"])
+    returns_section, returns_range = extract_section(["Returns:", "Yields:"])
+    raises_section, raises_range = extract_section(["Raises:"])
+    examples_section, examples_range = extract_section(["Examples:", "Example:"])
+
+    section_ranges = [
+        section_range for section_range in [args_range, returns_range, raises_range, examples_range] if section_range
+    ]
+
+    description_lines = []
+    for idx, line in enumerate(lines):
+        if any(start <= idx < end for start, end in section_ranges):
+            continue
+        description_lines.append(line)
+    description = "\n".join(description_lines).strip()
+
+    def parse_args(section: str | None) -> dict[str, ParsedParam]:
+        if section is None:
+            return {}
+        body_lines = section.splitlines()[1:]
+        non_empty_body_lines = [line for line in body_lines if line.strip()]
+        if not non_empty_body_lines:
+            return {}
+
+        item_indent = min(len(line) - len(line.lstrip()) for line in non_empty_body_lines)
+        params: dict[str, ParsedParam] = {}
+        current_name: str | None = None
+        current_type = ""
+        current_description_lines: list[str] = []
+
+        def flush_current() -> None:
+            nonlocal current_name, current_type, current_description_lines
+            if current_name is None:
+                return
+            description = " ".join(current_description_lines).strip() or None
+            params[current_name] = ParsedParam(
+                name=current_name, type=current_type, default=None, description=description
+            )
+            current_name = None
+            current_type = ""
+            current_description_lines = []
+
+        for line in body_lines:
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip())
+            stripped = line.strip()
+
+            if indent == item_indent and ":" in stripped:
+                lhs, rhs = stripped.split(":", 1)
+                match = re.match(r"^([*]{0,2}[A-Za-z_]\w*)(?:\s*\(([^)]+)\))?$", lhs.strip())
+                if match:
+                    flush_current()
+                    current_name = match.group(1)
+                    current_type = match.group(2) or ""
+                    if rhs.strip():
+                        current_description_lines.append(rhs.strip())
+                    continue
+
+            if current_name is not None:
+                current_description_lines.append(stripped)
+
+        flush_current()
+        return params
+
+    def parse_raises(section: str | None) -> list[ParsedRaise]:
+        if section is None:
+            return []
+        body_lines = section.splitlines()[1:]
+        non_empty_body_lines = [line for line in body_lines if line.strip()]
+        if not non_empty_body_lines:
+            return []
+
+        item_indent = min(len(line) - len(line.lstrip()) for line in non_empty_body_lines)
+        parsed_raises: list[ParsedRaise] = []
+        current_type: str | None = None
+        current_description_lines: list[str] = []
+
+        def flush_current() -> None:
+            nonlocal current_type, current_description_lines
+            if current_type is None:
+                return
+            parsed_raises.append(
+                ParsedRaise(type=current_type, description=" ".join(current_description_lines).strip())
+            )
+            current_type = None
+            current_description_lines = []
+
+        for line in body_lines:
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip())
+            stripped = line.strip()
+
+            if indent == item_indent and ":" in stripped:
+                lhs, rhs = stripped.split(":", 1)
+                flush_current()
+                current_type = lhs.strip()
+                if rhs.strip():
+                    current_description_lines.append(rhs.strip())
+                continue
+
+            if current_type is not None:
+                current_description_lines.append(stripped)
+
+        flush_current()
+        return parsed_raises
+
+    docstring_params = parse_args(args_section)
+    signature_params: list[ParsedParam] = [] if not signature.strip() else parse_params_from_signature(signature)
+
+    params: list[ParsedParam] = []
+    for sig_param in signature_params:
+        param_name = sig_param.name
+        if param_name not in docstring_params:
+            # warnings.warn(f"Parameter {param_name} not found in docstring for {name}")
+            continue
+        param = docstring_params[param_name]
+        param.default = sig_param.default
+        if not param.type:
+            param.type = sig_param.type
+
+        params.append(param)
+
+    return ParsedDoc(
+        name=name,
+        description=description,
+        params=params,
+        returns=section_body_without_header(returns_section),
+        raises=parse_raises(raises_section),
+        examples=section_body_without_header(examples_section),
+    )
+
+
+def _markdown_body_from_parsed_doc(parsed: ParsedDoc) -> str:
+    """Render description, parameters, returns, raises, and usage (examples) for Markdown output."""
+    output: list[str] = []
+    output.append(parsed.description or "")
+    output.append("")
+    if parsed.params:
+        output.append("**Parameters**\n")
+        for param in parsed.params:
+            name_esc = _escape_svelte_html_attr(param.name)
+            type_esc = _escape_svelte_html_attr(param.type)
+            default_attr = (
+                f' defaultValue="{_escape_svelte_html_attr(param.default)}"' if param.default is not None else ""
+            )
+            desc_esc = _escape_svelte_html_attr(param.description or "")
+            output.append(f'<Parameter name="{name_esc}" type="{type_esc}"{default_attr} description="{desc_esc}" />')
+        output.append("")
+
+    if parsed.returns:
+        output.append("**Returns**\n")
+        output.append(parsed.returns)
+        output.append("")
+
+    if parsed.raises:
+        output.append("**Raises**\n")
+        for parsed_raise in parsed.raises:
+            output.append(f"- `{parsed_raise.type}`: {parsed_raise.description}")
+        output.append("")
+
+    if parsed.examples:
+        output.append("**Usage**\n")
+        output.append(parsed.examples)
+        output.append("")
+
+    return "\n".join(output)
+
+
 def function_str(name: str, func) -> str:
     signature = get_signature(name, func)
     signature = "\n".join(l for l in signature.split("\n") if "mdmd:line-hidden" not in l)
-    decl = f"""```python
-{signature}
-```\n\n"""
-    docstring = format_docstring(func.__doc__)
-    return decl + docstring
+    docstring = clean_docstring(func.__doc__)
+    parsed_docstring = parse_docstring(name, signature, docstring)
+
+    stripped_signature = strip_signature(signature)
+
+    return "\n".join(
+        [
+            f"```python\n{stripped_signature}\n```",
+            _markdown_body_from_parsed_doc(parsed_docstring),
+        ]
+    )
 
 
 def _is_typeddict(obj) -> bool:
@@ -71,7 +316,7 @@ def _typeddict_str(name, obj) -> str:
     decl = "```python\n" + "\n".join(lines) + "\n```\n\n"
 
     parts = [decl]
-    docstring = format_docstring(obj.__doc__)
+    docstring = clean_docstring(obj.__doc__)
     if docstring:
         parts.append(docstring + "\n")
 
@@ -95,15 +340,19 @@ def class_str(name, obj, title_level="##", decl_override: str | None = None, mem
         decl = f"""```python
 class {name}{bases_str}
 ```\n\n"""
-    parts = [decl]
-    docstring = format_docstring(obj.__doc__)
+    parts = ["\n", decl]
+    docstring = clean_docstring(obj.__doc__)
+    class_doc_markdown: str | None = None
+    if docstring:
+        parsed_class_doc = parse_docstring(name, "", docstring)
+        class_doc_markdown = _markdown_body_from_parsed_doc(parsed_class_doc)
 
     if isinstance(obj, EnumMeta) and not docstring:
         # Python 3.11 removed the docstring from enums
-        docstring = "An enumeration.\n"
+        class_doc_markdown = "An enumeration.\n"
 
-    if docstring:
-        parts.append(docstring + "\n")
+    if class_doc_markdown:
+        parts.append(class_doc_markdown + "\n")
 
     if isinstance(obj, EnumMeta):
         enum_vals = "\n".join(f"* `{k}`" for k in obj.__members__.keys())
@@ -132,7 +381,7 @@ class {name}{bases_str}
             member_obj = getattr(obj, member_name)
             member_cls = type(member_obj)
             decl = f"{member_name}: {member_cls.__name__}"
-            parts.append(f"{member_title_level} {member_name}\n\n")
+            parts.append(f"\n{member_title_level} {member_name}\n\n")
             parts.append(
                 class_str(
                     member_name,
@@ -160,7 +409,7 @@ class {name}{bases_str}
                 and (return_type.__doc__ or "").lstrip().startswith("mdmd:namespace")
             ):
                 decl = f"{member_name}: {return_type.__name__.lstrip('_')}"
-                parts.append(f"{member_title_level} {member_name}\n\n")
+                parts.append(f"\n{member_title_level} {member_name}\n\n")
                 parts.append(
                     class_str(
                         member_name,
@@ -179,7 +428,7 @@ class {name}{bases_str}
             continue
 
         if callable(member):
-            parts.append(f"{member_title_level} {member_prefix}{member_name}\n\n")
+            parts.append(f"\n{member_title_level} {member_prefix}{member_name}\n\n")
             parts.append(function_str(member_name, member))
 
     return "".join(parts)
@@ -187,7 +436,7 @@ class {name}{bases_str}
 
 def module_str(header, module, title_level="#", filter_items: Callable[[ModuleType, str], bool] = None):
     header = [f"{title_level} {header}\n\n"]
-    docstring = format_docstring(module.__doc__)
+    docstring = clean_docstring(module.__doc__)
     if docstring:
         header.append(docstring + "\n")
 

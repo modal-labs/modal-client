@@ -4,24 +4,25 @@ This module does cool stuff
 
 ## foo.Foo
 
+
 ```python
 class Foo(object)
 ```
 
 A class that foos
 
+
 ### bar
 
 ```python
-def bar(self):
+bar(self)
 ```
 
 ## foo.funky
 
 ```python
-def funky():
+funky()
 ```
-
 funks the baz
 
 **Usage**
