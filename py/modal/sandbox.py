@@ -27,6 +27,7 @@ from modal.mount import _Mount
 from modal.volume import _Volume, _volume_to_mount_proto
 from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 
+from ._image import _Image
 from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
@@ -50,7 +51,6 @@ from .exception import (
     TimeoutError,
 )
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO, ls, mkdir, rm, watch
-from .image import _Image
 from .io_streams import (
     StreamReader,
     StreamWriter,

@@ -16,12 +16,7 @@ from unittest import mock
 
 import modal
 from modal import App, Dict, Image, Secret
-from modal._serialization import serialize
-from modal._utils.async_utils import synchronizer
-from modal.client import Client
-from modal.exception import ExecutionError, InvalidError, ModuleNotMountable, NotFoundError, VersionError
-from modal.file_pattern_matcher import FilePatternMatcher
-from modal.image import (
+from modal._image import (
     SUPPORTED_PYTHON_SERIES,
     ImageBuilderVersion,
     _base_image_config,
@@ -29,6 +24,11 @@ from modal.image import (
     _get_modal_requirements_path,
     _validate_python_version,
 )
+from modal._serialization import serialize
+from modal._utils.async_utils import synchronizer
+from modal.client import Client
+from modal.exception import ExecutionError, InvalidError, ModuleNotMountable, NotFoundError, VersionError
+from modal.file_pattern_matcher import FilePatternMatcher
 from modal.mount import PYTHON_STANDALONE_VERSIONS
 from modal.runner import deploy_app
 from modal_proto import api_pb2
@@ -1420,11 +1420,11 @@ def test_image_builder_version(servicer, credentials, test_dir, modal_config):
 
     test_requirements = str(test_dir / "supports" / "test-requirements.txt")
     with (
-        mock.patch("modal.image._get_modal_requirements_path", lambda *_, **__: test_requirements),
-        mock.patch("modal.image._dockerhub_python_version", lambda *_, **__: "3.11.0"),
-        mock.patch("modal.image._base_image_config", mock_base_image_config),
+        mock.patch("modal._image._get_modal_requirements_path", lambda *_, **__: test_requirements),
+        mock.patch("modal._image._dockerhub_python_version", lambda *_, **__: "3.11.0"),
+        mock.patch("modal._image._base_image_config", mock_base_image_config),
         mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]),
-        mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]),
+        mock.patch("modal._image.ImageBuilderVersion", Literal["2000.01"]),
         Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client,
         modal_config(),
     ):
@@ -1439,7 +1439,7 @@ def test_image_builder_supported_versions(servicer, credentials):
 
     with (
         pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"),
-        mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]),
+        mock.patch("modal._image.ImageBuilderVersion", Literal["2000.01"]),
         mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]),
         Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client,
     ):

@@ -18,6 +18,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._functions import _Function
+from ._image import _Image
 from ._ipython import is_interactive_ipython
 from ._load_context import LoadContext
 from ._object import _get_environment_name, _Object
@@ -47,7 +48,6 @@ from .cls import _Cls, parameter
 from .config import logger
 from .exception import ExecutionError, InvalidError
 from .functions import Function
-from .image import _Image
 from .network_file_system import _NetworkFileSystem
 from .partial_function import PartialFunction
 from .proxy import _Proxy

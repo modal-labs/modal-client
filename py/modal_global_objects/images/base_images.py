@@ -8,7 +8,7 @@ import rich
 from rich.table import Table
 
 import modal
-from modal.image import SUPPORTED_PYTHON_SERIES, ImageBuilderVersion
+from modal._image import SUPPORTED_PYTHON_SERIES, ImageBuilderVersion
 
 
 async def build_images(app: modal.App, constructor: Any, python_versions: list[str]) -> dict[str, modal.Image]:

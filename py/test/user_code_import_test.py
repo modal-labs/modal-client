@@ -1,9 +1,9 @@
 # Copyright Modal Labs 2024
 from unittest.mock import MagicMock
 
+from modal._image import _Image
 from modal._runtime import user_code_imports
 from modal._utils.async_utils import synchronizer
-from modal.image import _Image
 from modal_proto import api_pb2
 
 

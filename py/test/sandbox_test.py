@@ -1277,7 +1277,7 @@ detach_error_funcs = {
     "wait_until_ready": lambda sb: sb.wait_until_ready(),
     "poll": lambda sb: sb.poll(),
     "exec": lambda sb: sb.exec("echo", "hello"),
-    "mount_image": lambda sb: sb.mount_image("/mnt", modal.image._Image.from_scratch()),
+    "mount_image": lambda sb: sb.mount_image("/mnt", modal._image._Image.from_scratch()),
     "unmount_image": lambda sb: sb.unmount_image("/mnt"),
     "_experimental_snapshot": lambda sb: sb._experimental_snapshot(),
     "open": None,

@@ -6,6 +6,12 @@ from modal_proto import api_pb2
 
 from .._clustered_functions import ClusterInfo, get_cluster_info as _get_cluster_info
 from .._functions import _Function
+from .._image import (
+    DockerfileSpec as DockerfileSpec,
+    ImageBuilderVersion as ImageBuilderVersion,
+    _Image as _Image,
+    _ImageRegistryConfig as _ImageRegistryConfig,
+)
 from .._object import _get_environment_name
 from .._partial_function import _clustered
 from .._runtime.container_io_manager import _ContainerIOManager
@@ -14,12 +20,6 @@ from ..app import _App
 from ..client import _Client
 from ..cls import _Cls
 from ..exception import InvalidError as InvalidError
-from ..image import (
-    DockerfileSpec as DockerfileSpec,
-    ImageBuilderVersion as ImageBuilderVersion,
-    _Image as _Image,
-    _ImageRegistryConfig as _ImageRegistryConfig,
-)
 from ..secret import _Secret as _Secret
 from .flash import (  # noqa: F401
     flash_forward,

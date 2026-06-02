@@ -10,11 +10,11 @@ from click import ClickException
 
 from .._environments import ensure_env
 from .._functions import _FunctionSpec
+from .._image import Image
 from ..app import App
 from ..container_process import ContainerProcess
 from ..exception import InvalidError, NotFoundError
 from ..functions import Function
-from ..image import Image
 from ..mount import _Mount
 from ..runner import interactive_shell
 from ..sandbox import _MAIN_CONTAINER_NAME, Sandbox

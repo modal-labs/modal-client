@@ -19,6 +19,7 @@ from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._function_variants import _FunctionOptions, _make_function_variant
+from ._image import _Image
 from ._load_context import LoadContext
 from ._object import _Object, live_method, live_method_gen
 from ._output.pty import get_pty_info
@@ -65,7 +66,6 @@ from .exception import (
     NotFoundError,
     OutputExpiredError,
 )
-from .image import _Image
 from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .output import OutputManager
