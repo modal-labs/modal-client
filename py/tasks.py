@@ -236,6 +236,7 @@ def type_check(ctx):
         "modal/_runtime/container_io_manager.py",
         "modal/io_streams.py",
         "modal/_image.py",
+        "modal/image.py",
         "modal/file_io.py",
         "modal/cli/import_refs.py",
         "modal/snapshot.py",

@@ -272,8 +272,8 @@ def mock_shell_routing(monkeypatch):
     monkeypatch.setattr("modal.cli.shell._start_shell_from_image", mocks["start_from_image"])
 
     monkeypatch.setattr("modal.cli.shell._function_spec_from_ref", Mock(return_value=Mock()))
-    monkeypatch.setattr("modal._image.Image.from_id", Mock(return_value=Mock()))
-    monkeypatch.setattr("modal._image.Image.from_registry", Mock(return_value=Mock()))
+    monkeypatch.setattr("modal.image.Image.from_id", Mock(return_value=Mock()))
+    monkeypatch.setattr("modal.image.Image.from_registry", Mock(return_value=Mock()))
 
     return mocks
 

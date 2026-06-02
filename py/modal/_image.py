@@ -8,7 +8,7 @@ import sys
 import typing
 import warnings
 from collections.abc import Callable, Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import (
@@ -32,7 +32,7 @@ from ._load_context import LoadContext
 from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import get_preferred_payload_format, serialize
-from ._utils.async_utils import TaskContext, deprecate_aio_usage, synchronize_api, synchronizer
+from ._utils.async_utils import TaskContext, deprecate_aio_usage, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
@@ -362,9 +362,8 @@ class _ImageRegistryConfig:
 
 @dataclass
 class DockerfileSpec:
-    # Ideally we would use field() with default_factory=, but doesn't work with synchronicity type-stub gen
-    commands: list[str]
-    context_files: dict[str, str]
+    commands: list[str] = field(default_factory=list)
+    context_files: dict[str, str] = field(default_factory=dict)
 
 
 async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.ImageJoinStreamingResponse:
@@ -538,7 +537,7 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError("Cannot run a build function with multiple base images!")
 
         def _deps() -> Sequence[_Object]:
-            deps = tuple(base_images.values()) + tuple(secrets)
+            deps: tuple[_Object, ...] = tuple(base_images.values()) + tuple(secrets)
             if build_function:
                 deps += (build_function,)
             if image_registry_config and image_registry_config.secret:
@@ -670,10 +669,10 @@ class _Image(_Object, type_prefix="im"):
             else:
                 # not built or in the process of building - wait for build
                 logger.debug("Waiting for image %s" % image_id)
-                resp = await _image_await_build_result(image_id, load_context.client)
-                result = resp.result
-                if resp.HasField("metadata"):
-                    metadata = resp.metadata
+                build_resp = await _image_await_build_result(image_id, load_context.client)
+                result = build_resp.result
+                if build_resp.HasField("metadata"):
+                    metadata = build_resp.metadata
 
             if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
                 if result.exception:
@@ -701,7 +700,7 @@ class _Image(_Object, type_prefix="im"):
                 raise RemoteError("Unknown status %s!" % result.status)
 
             self._hydrate(image_id, load_context.client, metadata)
-            local_mounts = set()
+            local_mounts: set[_Mount] = set()
             for base in base_images.values():
                 local_mounts |= base._serve_mounts
             if context_mount and context_mount.is_local():
@@ -1865,8 +1864,8 @@ class _Image(_Object, type_prefix="im"):
         """
         if not isinstance(entrypoint_commands, list) or not all(isinstance(x, str) for x in entrypoint_commands):
             raise InvalidError("entrypoint_commands must be a list of strings.")
-        args_str = _flatten_str_args("entrypoint", "entrypoint_commands", entrypoint_commands)
-        args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
+        args = _flatten_str_args("entrypoint", "entrypoint_commands", entrypoint_commands)
+        args_str = '"' + '", "'.join(args) + '"' if args else ""
         dockerfile_cmd = f"ENTRYPOINT [{args_str}]"
 
         return self.dockerfile_commands(dockerfile_cmd)
@@ -1885,8 +1884,8 @@ class _Image(_Object, type_prefix="im"):
         """
         if not isinstance(shell_commands, list) or not all(isinstance(x, str) for x in shell_commands):
             raise InvalidError("shell_commands must be a list of strings.")
-        args_str = _flatten_str_args("shell", "shell_commands", shell_commands)
-        args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
+        args = _flatten_str_args("shell", "shell_commands", shell_commands)
+        args_str = '"' + '", "'.join(args) + '"' if args else ""
         dockerfile_cmd = f"SHELL [{args_str}]"
 
         return self.dockerfile_commands(dockerfile_cmd)
@@ -2639,7 +2638,7 @@ class _Image(_Object, type_prefix="im"):
         function = _Function.from_local(
             info,
             app=None,
-            image=self,  # type: ignore[reportArgumentType]  # TODO: probably conflict with type stub?
+            image=self,
             secrets=secrets,
             gpu=gpu,
             volumes=volumes,
@@ -2756,8 +2755,8 @@ class _Image(_Object, type_prefix="im"):
         if not isinstance(cmd, list) or not all(isinstance(x, str) for x in cmd):
             raise InvalidError("Image CMD must be a list of strings.")
 
-        cmd_str = _flatten_str_args("cmd", "cmd", cmd)
-        cmd_str = '"' + '", "'.join(cmd_str) + '"' if cmd_str else ""
+        cmd_args = _flatten_str_args("cmd", "cmd", cmd)
+        cmd_str = '"' + '", "'.join(cmd_args) + '"' if cmd_args else ""
         dockerfile_cmd = f"CMD [{cmd_str}]"
 
         return self.dockerfile_commands(dockerfile_cmd)
@@ -2849,6 +2848,3 @@ class _Image(_Object, type_prefix="im"):
                 "Images cannot currently be hydrated on demand; you can build an Image by running an App that uses it."
             )
         return self
-
-
-Image = synchronize_api(_Image)

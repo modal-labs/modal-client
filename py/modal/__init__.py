@@ -10,7 +10,6 @@ from modal_version import __version__
 
 try:
     from . import billing
-    from ._image import Image
     from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from ._tunnel import Tunnel, forward
     from .app import App
@@ -22,6 +21,7 @@ try:
     from .exception import Error
     from .file_pattern_matcher import FilePatternMatcher
     from .functions import Function, FunctionCall
+    from .image import Image
     from .network_file_system import NetworkFileSystem
     from .output import enable_output
     from .partial_function import (
