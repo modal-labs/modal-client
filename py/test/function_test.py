@@ -895,25 +895,34 @@ async def test_generator_spawn(client, servicer):
             await later_modal.spawn.aio()
 
 
-async def slo1(sleep_seconds):
-    # need to use async function body in client test to run stuff in parallel
-    # but calling interface is still non-asyncio
-    await asyncio.sleep(sleep_seconds)
-    return sleep_seconds
+class _ParallelismGate:
+    in_flight = 0
+    both_in_flight: asyncio.Event
 
 
+_parallelism_gate = _ParallelismGate()
+
+
+async def gated_parallelism_body(x):
+    _parallelism_gate.in_flight += 1
+    if _parallelism_gate.in_flight >= 2:
+        _parallelism_gate.both_in_flight.set()
+    await _parallelism_gate.both_in_flight.wait()
+    return x
+
+
+@pytest.mark.timeout(10)  # a serialization regression deadlocks below → fails fast rather than flaking
 def test_sync_parallelism(client, servicer):
     app = App(include_source=False)
 
-    servicer.function_body(slo1)
-    slo1_modal = app.function()(slo1)
+    _parallelism_gate.in_flight = 0
+    _parallelism_gate.both_in_flight = asyncio.Event()
+
+    servicer.function_body(gated_parallelism_body)
+    gated_modal = app.function()(gated_parallelism_body)
     with app.run(client=client):
-        t0 = time.time()
-        # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
-        res = FunctionCall.gather(slo1_modal.spawn(0.31), slo1_modal.spawn(0.3))
-        t1 = time.time()
+        res = FunctionCall.gather(gated_modal.spawn(0.31), gated_modal.spawn(0.3))
         assert res == [0.31, 0.3]  # results should be ordered as inputs, not by completion time
-        assert t1 - t0 < 0.6  # less than the combined runtime, make sure they run in parallel
 
 
 def test_proxy(client, servicer):
