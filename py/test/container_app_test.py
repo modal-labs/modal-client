@@ -3,13 +3,14 @@ import asyncio
 import json
 import os
 import pytest
-import time
+import threading
 from contextlib import contextmanager
 from unittest import mock
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 
+import modal._runtime.container_io_manager as container_io_manager
 from modal import App, interact
 from modal._runtime.container_io_manager import ContainerIOManager, _ContainerIOManager
 from modal._utils.async_utils import synchronize_api, synchronizer
@@ -129,23 +130,42 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     assert f.object_id == "fu-2"
 
 
-def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_client):
+def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_client, monkeypatch):
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
-
-    # Ensure that heartbeats only run after the snapshot
     heartbeat_interval_secs = 0.01
-    with io_manager.heartbeats(True):
-        with set_env_vars(restore_path, servicer.container_addr):
-            with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
-                time.sleep(heartbeat_interval_secs * 2)
-                assert not list(
-                    filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
-                )
+    fake_time = 0.0
+    monotonic_calls = 0
+    heartbeat_loop_started = threading.Event()
+    heartbeat_sent = threading.Event()
+
+    def fake_monotonic():
+        nonlocal fake_time, monotonic_calls
+        monotonic_calls += 1
+        fake_time += heartbeat_interval_secs
+        if monotonic_calls >= 2:
+            heartbeat_loop_started.set()
+        return fake_time
+
+    async def container_heartbeat(_servicer, stream):
+        await stream.recv_message()
+        heartbeat_sent.set()
+        await stream.send_message(api_pb2.ContainerHeartbeatResponse())
+
+    monkeypatch.setattr(container_io_manager, "HEARTBEAT_INTERVAL", heartbeat_interval_secs)
+    monkeypatch.setattr(container_io_manager, "time", mock.Mock(monotonic=fake_monotonic))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerHeartbeat", container_heartbeat)
+        # Ensure that heartbeats only run after the snapshot.
+        with io_manager.heartbeats(True):
+            assert heartbeat_loop_started.wait(timeout=1.0)
+            assert not ctx.get_requests("ContainerHeartbeat")
+            with set_env_vars(restore_path, servicer.container_addr):
                 with io_manager.snapshot_context_manager():
                     io_manager.get_task_lifecycle_manager().memory_snapshot()
-                time.sleep(heartbeat_interval_secs * 2)
-                assert list(filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests))
+            assert heartbeat_sent.wait(timeout=1.0)
+            assert ctx.get_requests("ContainerHeartbeat")
 
 
 @pytest.mark.asyncio
