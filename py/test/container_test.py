@@ -2485,6 +2485,7 @@ def test_server_container_entry_lifecycle(servicer, tmp_path):
 
     expected_events = "enter,enter_post_snapshot"
     assert f"[server_lifecycle_events:{expected_events}]" in stdout.decode(), f"stdout: {stdout.decode()}"
+    assert "[server_is_local:False]" in stdout.decode(), f"stdout: {stdout.decode()}"
 
     assert servicer.flash_rpc_calls == []
 

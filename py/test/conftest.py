@@ -42,6 +42,7 @@ from modal import __version__, config
 from modal._functions import _Function
 from modal._image import ImageBuilderVersion
 from modal._runtime.container_io_manager import _ContainerIOManager
+from modal._runtime.task_lifecycle_manager import _TaskLifecycleManager
 from modal._serialization import deserialize, deserialize_data_format, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
@@ -3674,6 +3675,7 @@ def reset_container_app():
         yield
     finally:
         _ContainerIOManager._reset_singleton()
+        _TaskLifecycleManager._reset_singleton()
         _App._reset_container_app()
 
 

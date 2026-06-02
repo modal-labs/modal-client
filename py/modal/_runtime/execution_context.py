@@ -7,6 +7,7 @@ from modal._utils.async_utils import synchronize_api
 from modal.exception import InvalidError
 
 from .container_io_manager import _ContainerIOManager
+from .task_lifecycle_manager import _TaskLifecycleManager
 
 
 def is_local() -> bool:
@@ -18,7 +19,7 @@ def is_local() -> bool:
     even though those processes are running on Modal hardware.
 
     """
-    return not _ContainerIOManager._singleton
+    return _TaskLifecycleManager._singleton is None
 
 
 async def _interact() -> None:
@@ -29,7 +30,7 @@ async def _interact() -> None:
     """
     container_io_manager = _ContainerIOManager._singleton
     if not container_io_manager:
-        raise InvalidError("Interactivity only works inside a Modal container.")
+        raise InvalidError("Interactivity only works inside a Modal Function's container.")
     else:
         await container_io_manager.interact()
 

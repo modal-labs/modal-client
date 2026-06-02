@@ -7,6 +7,10 @@ import sys
 import traceback
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import (
+    ClassVar,
+    Optional,
+)
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -30,6 +34,8 @@ class UserException(Exception):
 
 
 class _TaskLifecycleManager:
+    _singleton: ClassVar[Optional["_TaskLifecycleManager"]] = None
+
     task_id: str
     function_id: str
     function_def: api_pb2.Function
@@ -37,7 +43,7 @@ class _TaskLifecycleManager:
     _client: _Client
     _cuda_checkpoint_session: gpu_memory_snapshot.CudaCheckpointSession | None
 
-    def __init__(
+    def _init(
         self,
         task_id: str,
         function_id: str,
@@ -51,6 +57,23 @@ class _TaskLifecycleManager:
         self.checkpoint_id = checkpoint_id
         self._client = client
         self._cuda_checkpoint_session = None
+
+    def __new__(
+        cls,
+        task_id: str,
+        function_id: str,
+        function_def: api_pb2.Function,
+        checkpoint_id: str | None,
+        client: _Client,
+    ) -> "_TaskLifecycleManager":
+        cls._singleton = super().__new__(cls)
+        cls._singleton._init(task_id, function_id, function_def, checkpoint_id, client)
+        return cls._singleton
+
+    @classmethod
+    def _reset_singleton(cls) -> None:
+        """Only used for tests."""
+        cls._singleton = None
 
     @asynccontextmanager
     async def handle_task_lifecycle_exception(

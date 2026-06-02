@@ -910,6 +910,7 @@ class BasicServer:
         server_lifecycle_events.append("enter")
         # Print lifecycle events after enter method runs
         print(f"[server_lifecycle_events:{','.join(server_lifecycle_events)}]")
+        print(f"[server_is_local:{modal.is_local()}]")
 
     @modal.enter(snap=False)
     def enter_post_snapshot(self):
