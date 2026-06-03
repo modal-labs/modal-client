@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2025
+import contextlib
 import pytest
 import re
 import subprocess
+from unittest import mock
 
 import modal
 import modal.experimental
@@ -138,6 +140,220 @@ def test_run_server(client, servicer):
     assert servicer.app_functions[server_function_id].startup_timeout_secs == 30
     assert servicer.app_functions[server_function_id].app_name == "flash-app-default"
     assert servicer.app_functions[server_function_id]._experimental_concurrent_cancellations
+
+
+def test_run_server_normalizes_empty_checkpoint_id(client):
+    import modal._container_entrypoint as container_entrypoint
+
+    container_args = api_pb2.ContainerArguments(
+        task_id="ta-123",
+        function_id="fu-123",
+        function_def=api_pb2.Function(),
+    )
+    task_lifecycle_manager = mock.Mock()
+    service = mock.MagicMock()
+    event_loop = object()
+
+    with (
+        mock.patch.object(
+            container_entrypoint,
+            "TaskLifecycleManager",
+            return_value=task_lifecycle_manager,
+        ) as task_lifecycle_manager_cls,
+        mock.patch.object(container_entrypoint, "hydrate_function", return_value=service),
+        mock.patch.object(container_entrypoint, "call_server"),
+        mock.patch.object(container_entrypoint, "UserCodeEventLoop") as user_code_event_loop_cls,
+    ):
+        user_code_event_loop_cls.return_value.__enter__.return_value = event_loop
+        container_entrypoint.run_server(container_args, client)
+
+    task_lifecycle_manager_cls.assert_called_once_with(
+        container_args.task_id,
+        container_args.function_id,
+        container_args.function_def,
+        None,
+        client,
+    )
+    service.lifecycle_context.assert_called_once_with(event_loop, task_lifecycle_manager=task_lifecycle_manager)
+
+
+def test_run_server_operation_order(client):
+    import modal._container_entrypoint as container_entrypoint
+
+    events = []
+    function_def = api_pb2.Function(is_server=True, function_name="OrderedServer")
+    container_args = api_pb2.ContainerArguments(
+        task_id="ta-123",
+        function_id="fu-123",
+        function_def=function_def,
+    )
+    task_lifecycle_manager = object()
+    event_loop = object()
+    service = mock.MagicMock()
+
+    def task_lifecycle_manager_factory(*args):
+        events.append("task_lifecycle_manager")
+        assert args == (
+            container_args.task_id,
+            container_args.function_id,
+            container_args.function_def,
+            None,
+            client,
+        )
+        return task_lifecycle_manager
+
+    def hydrate_function(*args):
+        events.append("hydrate_function")
+        assert args[0] is container_args
+        assert args[1] is task_lifecycle_manager
+        assert args[2] == container_args.function_def
+        assert args[4] is client
+        return service
+
+    def user_code_event_loop_factory():
+        events.append("user_code_event_loop")
+        event_loop_context = mock.MagicMock()
+
+        def enter_side_effect():
+            events.append("event_loop_enter")
+            return event_loop
+
+        def exit_side_effect(*args):
+            events.append("event_loop_exit")
+            # __exit__ must return None or a boolean (not a value from append)
+            return None
+
+        event_loop_context.__enter__.side_effect = enter_side_effect
+        event_loop_context.__exit__.side_effect = exit_side_effect
+        return event_loop_context
+
+    @contextlib.contextmanager
+    def lifecycle_context(*args, **kwargs):
+        events.append("lifecycle_context_enter")
+        assert args == (event_loop,)
+        assert kwargs == {"task_lifecycle_manager": task_lifecycle_manager}
+        try:
+            yield
+        finally:
+            events.append("lifecycle_context_exit")
+
+    def call_server(loop):
+        events.append("call_server")
+        assert loop is event_loop
+
+    service.lifecycle_context.side_effect = lifecycle_context
+
+    with (
+        mock.patch.object(
+            container_entrypoint,
+            "TaskLifecycleManager",
+            side_effect=task_lifecycle_manager_factory,
+        ),
+        mock.patch.object(container_entrypoint, "hydrate_function", side_effect=hydrate_function),
+        mock.patch.object(container_entrypoint, "UserCodeEventLoop", side_effect=user_code_event_loop_factory),
+        mock.patch.object(container_entrypoint, "call_server", side_effect=call_server),
+    ):
+        container_entrypoint.run_server(container_args, client)
+
+    assert events == [
+        "task_lifecycle_manager",
+        "hydrate_function",
+        "user_code_event_loop",
+        "event_loop_enter",
+        "lifecycle_context_enter",
+        "call_server",
+        "lifecycle_context_exit",
+        "event_loop_exit",
+    ]
+
+
+def test_server_lifecycle_context_operation_order(monkeypatch):
+    import modal._runtime.user_code_imports as user_code_imports
+
+    events = []
+    volume_commit_calls = []
+
+    class OrderedService(user_code_imports.Service):
+        app = mock.MagicMock()
+        function_def = api_pb2.Function(is_checkpointing_function=True)
+        service_deps = None
+        user_cls_instance = None
+
+        def get_finalized_functions(self, fun_def, container_io_manager):
+            raise AssertionError("server lifecycle test should not finalize functions")
+
+        @contextlib.contextmanager
+        def lifecycle_presnapshot(self, event_loop, task_lifecycle_manager):
+            events.append("presnapshot_enter")
+            try:
+                yield
+            finally:
+                events.append("presnapshot_exit")
+
+        @contextlib.contextmanager
+        def lifecycle_postsnapshot(self, event_loop, task_lifecycle_manager):
+            events.append("postsnapshot_enter")
+            try:
+                yield
+            finally:
+                events.append("postsnapshot_exit")
+
+    @contextlib.contextmanager
+    def snapshot_context_manager():
+        events.append("snapshot_enter")
+        try:
+            yield
+        finally:
+            events.append("snapshot_exit")
+
+    def after_snapshot():
+        events.append("after_snapshot")
+
+    def disable_signals():
+        events.append("disable_signals")
+        return "int_handler", "usr1_handler"
+
+    def try_enable_signals(int_handler, usr1_handler):
+        events.append("try_enable_signals")
+        assert int_handler == "int_handler"
+        assert usr1_handler == "usr1_handler"
+
+    monkeypatch.setenv("MODAL_ENABLE_SNAP_RESTORE", "1")
+    monkeypatch.setattr(user_code_imports, "disable_signals", disable_signals)
+    monkeypatch.setattr(user_code_imports, "try_enable_signals", try_enable_signals)
+
+    task_lifecycle_manager = mock.MagicMock()
+    task_lifecycle_manager.memory_snapshot.side_effect = lambda: events.append("memory_snapshot")
+
+    def volume_commit_side_effect(volume_ids):
+        events.append("volume_commit")
+        volume_commit_calls.append(volume_ids)
+
+    task_lifecycle_manager.volume_commit.side_effect = volume_commit_side_effect
+
+    with OrderedService().lifecycle_context(
+        event_loop=mock.MagicMock(),
+        task_lifecycle_manager=task_lifecycle_manager,
+        snapshot_context_manager=snapshot_context_manager(),
+        after_snapshot=after_snapshot,
+    ):
+        events.append("call_server")
+
+    assert events == [
+        "presnapshot_enter",
+        "snapshot_enter",
+        "memory_snapshot",
+        "snapshot_exit",
+        "after_snapshot",
+        "postsnapshot_enter",
+        "call_server",
+        "disable_signals",
+        "postsnapshot_exit",
+        "presnapshot_exit",
+        "volume_commit",
+        "try_enable_signals",
+    ]
+    assert volume_commit_calls == [[]]
 
 
 flash_params_override_app = modal.App("flash-params-override")

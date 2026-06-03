@@ -395,6 +395,34 @@ def hydrate_function(
     return service
 
 
+def run_server(container_args: api_pb2.ContainerArguments, client: Client):
+    function_def = container_args.function_def
+    _client: _Client = cast(_Client, synchronizer._translate_in(client))  # TODO(erikbern): ugly
+    task_lifecycle_manager = TaskLifecycleManager(
+        container_args.task_id,
+        container_args.function_id,
+        container_args.function_def,
+        container_args.checkpoint_id or None,
+        client,
+    )
+
+    service: Service = hydrate_function(container_args, task_lifecycle_manager, function_def, _client, client)
+    # Initialize clustered functions.
+    if function_def._experimental_group_size > 0:
+        initialize_clustered_function(
+            client,
+            container_args.task_id,
+            function_def._experimental_group_size,
+        )
+
+    with UserCodeEventLoop() as event_loop:
+        with service.lifecycle_context(
+            event_loop,
+            task_lifecycle_manager=task_lifecycle_manager,
+        ):
+            call_server(event_loop)
+
+
 def run_function(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
@@ -438,14 +466,14 @@ def run_function(container_args: api_pb2.ContainerArguments, client: Client):
         ) as finalized_functions:
             # This context managers handles pre/post snapshot lifecycle of the user code,
             # finalized functions, ASGI/WSGI lifespan, and volume commit.
-            if function_def.is_server:
-                call_server(event_loop)
-            else:
-                call_function(event_loop, container_io_manager, finalized_functions, batch_max_size, batch_wait_ms)
+            call_function(event_loop, container_io_manager, finalized_functions, batch_max_size, batch_wait_ms)
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):
-    run_function(container_args, client)
+    if container_args.function_def.is_server:
+        run_server(container_args, client)
+    else:
+        run_function(container_args, client)
 
 
 if __name__ == "__main__":
