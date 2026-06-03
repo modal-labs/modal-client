@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 from datetime import datetime, timezone
+from importlib import resources
 from pathlib import Path
 from pickle import dumps
 from unittest import mock
@@ -187,6 +188,315 @@ def test_token_identity_from_env(servicer, set_env_client, monkeypatch):
     assert "Using" in res.stdout
     assert "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET" in res.stdout
     assert "environment" in res.stdout
+
+
+def test_packaged_skill_has_well_formed_frontmatter():
+    content = resources.files("modal").joinpath("skills/modal/SKILL.md").read_text()
+    lines = content.splitlines()
+
+    assert lines and lines[0].strip() == "---", "Modal skill is missing frontmatter."
+    assert any(line.strip() == "---" for line in lines[1:]), "Modal skill has unterminated frontmatter."
+
+
+def test_skills_cli_skeleton():
+    from modal.cli.entry_point import entrypoint_cli
+
+    skills_command = entrypoint_cli.commands["skills"]
+
+    assert getattr(skills_command, "panel") == "Configuration"
+
+    res = run_cli_command(["skills", "install", "--help"])
+    assert "Install Modal skills." in res.stdout
+    assert "--claude" in res.stdout
+    assert "--global" in res.stdout
+    assert "--no-docs" in res.stdout
+
+    res = run_cli_command(["skills", "update", "--help"])
+    assert "Update installed Modal skills." in res.stdout
+    assert "--claude" in res.stdout
+    assert "--global" in res.stdout
+    assert "--no-docs" in res.stdout
+
+
+@pytest.mark.parametrize(
+    ("global_", "claude", "expected_root"),
+    [
+        (False, False, "project/.agents"),
+        (False, True, "project/.claude"),
+        (True, False, "home/.agents"),
+        (True, True, "home/.claude"),
+    ],
+)
+def test_skills_install_paths(tmp_path, monkeypatch, global_, claude, expected_root):
+    from modal_version import __version__
+
+    home_dir = tmp_path / "home"
+    project_dir = tmp_path / "project"
+    home_dir.mkdir()
+    project_dir.mkdir()
+    monkeypatch.chdir(project_dir)
+    monkeypatch.setattr("modal.cli.skills.Path.home", lambda: home_dir)
+
+    args = ["skills", "install", "--no-docs"]
+    if global_:
+        args.append("--global")
+    if claude:
+        args.append("--claude")
+    res = run_cli_command(args)
+
+    packaged_skill = resources.files("modal").joinpath("skills/modal/SKILL.md").read_text()
+    expected_base = tmp_path / expected_root
+    target = expected_base / "skills" / "modal" / "SKILL.md"
+    target_content = target.read_text()
+    # The SDK version is recorded under the frontmatter `metadata` map; the rest of
+    # the packaged skill is installed verbatim.
+    metadata_block = f'metadata:\n  version: "{__version__}"\n'
+    assert metadata_block in target_content
+    assert target_content.replace(metadata_block, "", 1) == packaged_skill
+    assert "Installed Modal skill to" in res.stdout
+
+    roots = [
+        project_dir / ".agents",
+        project_dir / ".claude",
+        home_dir / ".agents",
+        home_dir / ".claude",
+    ]
+    for root in roots:
+        if root != expected_base:
+            assert not root.exists()
+
+
+def test_skills_show():
+    from modal_version import __version__
+
+    res = run_cli_command(["skills", "show"])
+
+    # `show` prints what `install` would write, including the injected version metadata.
+    packaged_skill = resources.files("modal").joinpath("skills/modal/SKILL.md").read_text()
+    metadata_block = f'metadata:\n  version: "{__version__}"\n'
+    assert metadata_block in res.stdout
+    assert res.stdout.replace(metadata_block, "", 1) == packaged_skill
+
+
+def test_skills_install_downloads_docs(tmp_path, monkeypatch):
+    class MockResponse:
+        def __init__(self, text: str):
+            self.text_value = text
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        def raise_for_status(self):
+            pass
+
+        async def text(self):
+            return self.text_value
+
+    class MockSession:
+        def __init__(self):
+            self.responses = {
+                "https://modal.com/llms.txt": (
+                    "## Guide\n"
+                    "\n"
+                    "- [Introduction](https://modal.com/docs/guide)\n"
+                    "- Custom container images\n"
+                    "  - [Defining Images](https://modal.com/docs/guide/images.md)\n"
+                    "- Functions\n"
+                    "  - [Dynamic config](https://modal.com/docs/guide/functions/dynamic-config.md)\n"
+                    "- [Cron](https://modal.com/docs/guide/cron)\n"
+                    "\n"
+                    "## Examples\n"
+                    "\n"
+                    "- [Hello, world](https://modal.com/docs/examples/hello_world.md)\n"
+                    "\n"
+                    "## API Reference\n"
+                    "\n"
+                    "- [`App`](https://modal.com/docs/reference/modal.App.md): The main unit of deployment\n"
+                ),
+                "https://modal.com/docs/examples/hello_world.md": "# Hello world\n",
+                "https://modal.com/docs/guide/images.md": "# Images\n",
+                "https://modal.com/docs/guide/functions/dynamic-config.md": "# Dynamic config\n",
+            }
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        def get(self, url):
+            return MockResponse(self.responses[url])
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("modal.cli.skills._http_session", MockSession)
+
+    run_cli_command(["skills", "install"])
+
+    docs_dir = tmp_path / ".agents" / "skills" / "modal" / "references"
+    # Prose docs (guide/examples) are downloaded from llms.txt; non-`.md` links are not.
+    assert (docs_dir / "examples" / "hello_world.md").read_text() == "# Hello world\n"
+    assert (docs_dir / "guide" / "images.md").read_text() == "# Images\n"
+    assert not (docs_dir / "guide" / "cron.md").exists()
+    # Nested doc paths are preserved on disk rather than flattened.
+    assert (docs_dir / "guide" / "functions" / "dynamic-config.md").read_text() == "# Dynamic config\n"
+
+    # Each prose section gets an index.md mirroring llms.txt: category groupings and
+    # titles preserved, mirrored pages relinked locally. Links to pages we don't
+    # download (section roots, non-`.md` pages) are dropped.
+    guide_index = (docs_dir / "guide" / "index.md").read_text()
+    assert guide_index.startswith("# Guide\n")
+    assert "- Custom container images" in guide_index  # category grouping preserved
+    assert "[Defining Images](./images.md)" in guide_index  # mirrored page relinked locally
+    # Nested page links keep their subpath rather than flattening to the bare filename.
+    assert "[Dynamic config](./functions/dynamic-config.md)" in guide_index
+    assert "Introduction" not in guide_index  # section root not downloaded -> dropped
+    assert "Cron" not in guide_index  # non-`.md` page not downloaded -> dropped
+    assert "modal.com" not in guide_index  # no absolute links left behind
+    assert "[Hello, world](./hello_world.md)" in (docs_dir / "examples" / "index.md").read_text()
+
+    # The API reference is generated locally by introspecting the installed client; the
+    # API Reference section of llms.txt is not mirrored into an index.
+    app_doc = (docs_dir / "api" / "modal.App.md").read_text()
+    assert app_doc.startswith("# modal.App")
+    assert "<script>" not in app_doc  # mdsvex website boilerplate stripped
+    assert not (docs_dir / "api" / "sidebar.json").exists()
+    assert not (docs_dir / "api" / "index.md").exists()
+
+
+def test_skills_install_no_docs_skips_docs_download(tmp_path, monkeypatch):
+    async def fail_docs_download(target_dir):
+        raise AssertionError("docs download should not run")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("modal.cli.skills._download_docs", fail_docs_download)
+
+    run_cli_command(["skills", "install", "--no-docs"])
+
+    target_dir = tmp_path / ".agents" / "skills" / "modal"
+    assert (target_dir / "SKILL.md").exists()
+    assert not (target_dir / "references").exists()
+
+
+def test_skills_install_warns_if_docs_unavailable(tmp_path, monkeypatch):
+    class MockResponse:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        def raise_for_status(self):
+            raise RuntimeError("offline")
+
+        async def text(self):
+            return ""
+
+    class MockSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        def get(self, url):
+            return MockResponse()
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("modal.cli.skills._http_session", MockSession)
+    monkeypatch.setattr("modal.cli.skills._generate_api_reference_docs", lambda target_dir: None)
+
+    res = run_cli_command(["skills", "install"])
+
+    target_dir = tmp_path / ".agents" / "skills" / "modal"
+    assert (target_dir / "SKILL.md").exists()
+    assert not (target_dir / "references").exists()
+    assert "Warning: could not download Modal documentation: offline" in res.stderr
+
+
+def test_skills_install_requires_confirmation_before_overwrite(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target_dir = tmp_path / ".agents" / "skills" / "modal"
+    target_dir.mkdir(parents=True)
+    stale_file = target_dir / "old.txt"
+    stale_file.write_text("old")
+
+    res = run_cli_command(["skills", "install"], expected_exit_code=1)
+
+    assert "Rerun with --yes" in str(res.exception)
+    assert stale_file.exists()
+
+    run_cli_command(["skills", "install", "--yes", "--no-docs"])
+
+    assert not stale_file.exists()
+    assert (target_dir / "SKILL.md").exists()
+
+
+def test_skills_install_replaces_symlinked_skill_dir(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target_dir = tmp_path / ".agents" / "skills" / "modal"
+    symlink_dest = tmp_path / "existing-skill"
+    symlink_dest.mkdir()
+    (symlink_dest / "old.txt").write_text("old")
+    target_dir.parent.mkdir(parents=True)
+    target_dir.symlink_to(symlink_dest, target_is_directory=True)
+
+    run_cli_command(["skills", "install", "--yes", "--no-docs"])
+
+    assert not target_dir.is_symlink()
+    assert (target_dir / "SKILL.md").exists()
+    assert (symlink_dest / "old.txt").exists()
+
+
+def test_skills_install_replaces_broken_symlinked_skill_dir(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target_dir = tmp_path / ".agents" / "skills" / "modal"
+    missing_dest = tmp_path / "missing-skill"
+    target_dir.parent.mkdir(parents=True)
+    target_dir.symlink_to(missing_dest, target_is_directory=True)
+
+    run_cli_command(["skills", "install", "--yes", "--no-docs"])
+
+    assert not target_dir.is_symlink()
+    assert (target_dir / "SKILL.md").exists()
+
+
+def test_skills_update_replaces_existing_modal_skill_without_confirmation(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target_dir = tmp_path / ".agents" / "skills" / "modal"
+    target_dir.mkdir(parents=True)
+    (target_dir / "SKILL.md").write_text("---\nname: modal\n---\n\nOld skill\n")
+    stale_file = target_dir / "old.txt"
+    stale_file.write_text("old")
+
+    res = run_cli_command(["skills", "update", "--no-docs"])
+
+    assert "Updated Modal skill to" in res.stdout
+    assert not stale_file.exists()
+    assert "version:" in (target_dir / "SKILL.md").read_text()
+
+
+def test_skills_update_requires_confirmation_for_non_modal_skill(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target_dir = tmp_path / ".agents" / "skills" / "modal"
+    target_dir.mkdir(parents=True)
+    (target_dir / "SKILL.md").write_text("---\nname: other\n---\n\nNot Modal\n")
+
+    res = run_cli_command(["skills", "update", "--no-docs"], expected_exit_code=1)
+
+    assert "Rerun with --yes" in str(res.exception)
+    assert "name: other" in (target_dir / "SKILL.md").read_text()
+
+
+def test_skills_update_requires_confirmation_when_missing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    res = run_cli_command(["skills", "update", "--no-docs"], expected_exit_code=1)
+
+    assert "Rerun with --yes" in str(res.exception)
+    assert not (tmp_path / ".agents").exists()
 
 
 def test_app_setup(servicer, set_env_client, server_url_env, modal_config, mock_webbrowser):

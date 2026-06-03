@@ -25,6 +25,7 @@ from .network_file_system import nfs_cli
 from .profile import profile_cli
 from .queues import queue_cli
 from .secret import secret_cli
+from .skills import skills_cli
 from .token import _new_token, token_cli
 from .volume import volume_cli
 
@@ -117,6 +118,7 @@ entrypoint_cli.add_command(bootstrap, panel="Onboarding")
 entrypoint_cli.add_command(config_cli, panel="Configuration")
 entrypoint_cli.add_command(environment_cli, panel="Configuration")
 entrypoint_cli.add_command(profile_cli, panel="Configuration")
+entrypoint_cli.add_command(skills_cli, panel="Configuration")
 entrypoint_cli.add_command(token_cli, panel="Configuration")
 
 entrypoint_cli.add_command(billing_cli, panel="Observability")
