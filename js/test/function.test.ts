@@ -217,3 +217,95 @@ test("WebEndpointSpawnCallError", async () => {
     /A webhook Function cannot be invoked for remote execution with '\.spawn'/,
   );
 });
+
+test("DynamicConfigurationE2ETest", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("FunctionGet", (req) => {
+    expect(req).toMatchObject({
+      appName: "libmodal-test-support",
+      objectTag: "echo_string",
+    });
+
+    return {
+      functionId: "fid-unbound",
+      handleMetadata: {},
+    };
+  });
+
+  mock.handleUnary("FunctionBindParams", (req) => {
+    expect(req).toMatchObject({
+      functionId: "fid-unbound",
+      serializedParams: new Uint8Array(),
+      functionOptions: {
+        resources: {
+          milliCpu: 2000,
+          milliCpuMax: 2000,
+        },
+        maxConcurrentInputs: 10,
+        batchMaxSize: 10,
+        batchLingerMs: 100,
+      },
+    });
+
+    return {
+      boundFunctionId: "fid-bound",
+    };
+  });
+
+  const f = await mc.functions.fromName("libmodal-test-support", "echo_string");
+
+  const configured = f
+    .withOptions({ cpu: 2.0 })
+    .withOptions({ cpuLimit: 2.0 })
+    .withConcurrency({ maxInputs: 10 })
+    .withBatching({ maxBatchSize: 10, waitMs: 100 });
+
+  expect(configured).toMatchObject({
+    functionId: "fid-unbound",
+  });
+
+  // note(ayush): we check that the proto is created correctly in the mock rpc call
+  const boundF = await configured.instance();
+
+  expect(boundF.functionId).not.toBe(f.functionId);
+});
+
+test("TestOptionsMutations", async () => {
+  const { mockClient: mc } = createMockModalClients();
+
+  const opts = {};
+  const f1 = new Function_(mc, "fid", "", undefined, opts);
+  const f2 = f1.withOptions({ cpu: 2.0 });
+  const f3 = f1.withOptions({ cpu: 2.0 });
+
+  // assert that opts wasn't mutated, reverse ordering of `{}` and opts is intentional
+  expect({}).toMatchObject(opts);
+
+  expect(f1).not.toBe(f2);
+  expect(f1).not.toBe(f3);
+  expect(f2).not.toBe(f3);
+});
+
+test("TestEmptyInstance", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("FunctionGet", (req) => {
+    expect(req).toMatchObject({
+      appName: "libmodal-test-support",
+      objectTag: "echo_string",
+    });
+
+    return {
+      functionId: "fid-unbound",
+      handleMetadata: {},
+    };
+  });
+
+  const f = await mc.functions.fromName("libmodal-test-support", "echo_string");
+
+  // shouldn't fail because it won't call the RPC
+  const bound = await f.instance();
+
+  expect(f.functionId).toBe(bound.functionId);
+});

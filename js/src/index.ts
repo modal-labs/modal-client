@@ -35,6 +35,9 @@ export {
   type FunctionFromNameParams,
   type FunctionStats,
   type FunctionUpdateAutoscalerParams,
+  type FunctionWithOptionsParams,
+  type FunctionWithBatchingParams,
+  type FunctionWithConcurrencyParams,
 } from "./function";
 export {
   FunctionCall,

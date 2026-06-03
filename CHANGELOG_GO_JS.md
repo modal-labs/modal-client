@@ -36,6 +36,10 @@ Both client libraries are pre-1.0, and they have separate versioning.
   - `Sandbox.SetTags` → `SetTags(ctx, tags, *SandboxSetTagsParams)`
   - `Sandbox.GetTags` → `GetTags(ctx, *SandboxGetTagsParams)`
 
+- Added dynamic function configuration:
+  - (Go) `Function.WithOptions`, `Function.WithConcurrency`, `Function.WithBatching`, `Function.Instance`
+  - (JS) `Function_.withOptions`, `Function_.withConcurrency`, `Function_.withBatching`, `Function_.instance`
+
 ## js/v0.7.6, go/v0.7.6
 
 - Added Sandbox Filesystem API in the Go SDK with `sandbox.Filesystem()` and in the JS SDK with `sandbox.filesystem`. The filesystem API contains methods:

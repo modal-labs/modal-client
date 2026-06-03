@@ -19,7 +19,7 @@ func TestBuildFunctionOptionsProto_WithCPUAndCPULimit(t *testing.T) {
 
 	cpu := 2.0
 	cpuLimit := 4.5
-	options, err := buildFunctionOptionsProto(&serviceOptions{
+	options, err := buildFunctionOptionsProto(&functionOptions{
 		cpu:      &cpu,
 		cpuLimit: &cpuLimit,
 	})
@@ -36,7 +36,7 @@ func TestBuildFunctionOptionsProto_CPULimitLowerThanCPU(t *testing.T) {
 
 	cpu := 4.0
 	cpuLimit := 2.0
-	_, err := buildFunctionOptionsProto(&serviceOptions{
+	_, err := buildFunctionOptionsProto(&functionOptions{
 		cpu:      &cpu,
 		cpuLimit: &cpuLimit,
 	})
@@ -48,7 +48,7 @@ func TestBuildFunctionOptionsProto_CPULimitWithoutCPU(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	cpuLimit := 4.0
-	_, err := buildFunctionOptionsProto(&serviceOptions{
+	_, err := buildFunctionOptionsProto(&functionOptions{
 		cpuLimit: &cpuLimit,
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
@@ -60,7 +60,7 @@ func TestBuildFunctionOptionsProto_WithMemoryAndMemoryLimit(t *testing.T) {
 
 	memoryMiB := 1024
 	memoryLimitMiB := 2048
-	options, err := buildFunctionOptionsProto(&serviceOptions{
+	options, err := buildFunctionOptionsProto(&functionOptions{
 		memoryMiB:      &memoryMiB,
 		memoryLimitMiB: &memoryLimitMiB,
 	})
@@ -77,7 +77,7 @@ func TestBuildFunctionOptionsProto_MemoryLimitLowerThanMemory(t *testing.T) {
 
 	memoryMiB := 2048
 	memoryLimitMiB := 1024
-	_, err := buildFunctionOptionsProto(&serviceOptions{
+	_, err := buildFunctionOptionsProto(&functionOptions{
 		memoryMiB:      &memoryMiB,
 		memoryLimitMiB: &memoryLimitMiB,
 	})
@@ -89,7 +89,7 @@ func TestBuildFunctionOptionsProto_MemoryLimitWithoutMemory(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	memoryLimitMiB := 2048
-	_, err := buildFunctionOptionsProto(&serviceOptions{
+	_, err := buildFunctionOptionsProto(&functionOptions{
 		memoryLimitMiB: &memoryLimitMiB,
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
@@ -100,7 +100,7 @@ func TestBuildFunctionOptionsProto_NegativeCPU(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	cpu := -1.0
-	_, err := buildFunctionOptionsProto(&serviceOptions{
+	_, err := buildFunctionOptionsProto(&functionOptions{
 		cpu: &cpu,
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
@@ -111,7 +111,7 @@ func TestBuildFunctionOptionsProto_ZeroCPU(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	cpu := 0.0
-	_, err := buildFunctionOptionsProto(&serviceOptions{
+	_, err := buildFunctionOptionsProto(&functionOptions{
 		cpu: &cpu,
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
@@ -122,7 +122,7 @@ func TestBuildFunctionOptionsProto_NegativeMemory(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	memoryMiB := -100
-	_, err := buildFunctionOptionsProto(&serviceOptions{
+	_, err := buildFunctionOptionsProto(&functionOptions{
 		memoryMiB: &memoryMiB,
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
@@ -133,7 +133,7 @@ func TestBuildFunctionOptionsProto_ZeroMemory(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	memoryMiB := 0
-	_, err := buildFunctionOptionsProto(&serviceOptions{
+	_, err := buildFunctionOptionsProto(&functionOptions{
 		memoryMiB: &memoryMiB,
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())

@@ -63,6 +63,10 @@ var skipMethods = map[string]string{
 	// Cls.Instance takes user-provided constructor parameters, not SDK options.
 	"Cls.Instance": "parameters map is user data, not SDK options",
 
+	// Function.Instance does not take in any SDK options itself, rather it uses the existing
+	// configuration on the calling struct
+	"Function.Instance": "function instantiation does not take any options",
+
 	// args/kwargs are user payload, not SDK options; a params struct would add noise.
 	"Function.Remote": "user payload args/kwargs, no SDK options needed",
 	"Function.Spawn":  "user payload args/kwargs, no SDK options needed",

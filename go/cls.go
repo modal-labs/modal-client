@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"time"
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"google.golang.org/grpc/codes"
@@ -20,59 +19,19 @@ type ClsService interface {
 type clsServiceImpl struct{ client *Client }
 
 // ClsWithOptionsParams represents runtime options for a Modal Cls.
-type ClsWithOptionsParams struct {
-	CPU              *float64
-	CPULimit         *float64
-	MemoryMiB        *int
-	MemoryLimitMiB   *int
-	GPU              *string
-	Env              map[string]string
-	Secrets          []*Secret
-	Volumes          map[string]*Volume
-	Retries          *Retries
-	MaxContainers    *int
-	BufferContainers *int
-	ScaledownWindow  *time.Duration
-	Timeout          *time.Duration
-}
+type ClsWithOptionsParams = FunctionWithOptionsParams
 
 // ClsWithConcurrencyParams represents concurrency configuration for a Modal Cls.
-type ClsWithConcurrencyParams struct {
-	MaxInputs    int
-	TargetInputs *int
-}
+type ClsWithConcurrencyParams = FunctionWithConcurrencyParams
 
 // ClsWithBatchingParams represents batching configuration for a Modal Cls.
-type ClsWithBatchingParams struct {
-	MaxBatchSize int
-	Wait         time.Duration
-}
-
-type serviceOptions struct {
-	cpu                    *float64
-	cpuLimit               *float64
-	memoryMiB              *int
-	memoryLimitMiB         *int
-	gpu                    *string
-	env                    *map[string]string
-	secrets                *[]*Secret
-	volumes                *map[string]*Volume
-	retries                *Retries
-	maxContainers          *int
-	bufferContainers       *int
-	scaledownWindow        *time.Duration
-	timeout                *time.Duration
-	maxConcurrentInputs    *int
-	targetConcurrentInputs *int
-	batchMaxSize           *int
-	batchWait              *time.Duration
-}
+type ClsWithBatchingParams = FunctionWithBatchingParams
 
 // Cls represents a Modal class definition that can be instantiated with parameters.
 // It contains metadata about the class and its methods.
 type Cls struct {
 	serviceFunctionID       string
-	serviceOptions          *serviceOptions
+	serviceOptions          *functionOptions
 	serviceFunctionMetadata *pb.FunctionHandleMetadata
 
 	client *Client
@@ -152,7 +111,7 @@ func (c *Cls) Instance(ctx context.Context, parameters map[string]any) (*ClsInst
 	} else {
 		opts := c.serviceOptions
 		if opts == nil {
-			opts = &serviceOptions{}
+			opts = &functionOptions{}
 		}
 		boundFunctionID, err := c.bindParameters(ctx, parameters, opts)
 		if err != nil {
@@ -200,7 +159,7 @@ func (c *Cls) WithOptions(params *ClsWithOptionsParams) *Cls {
 		envPtr = &e
 	}
 
-	merged := mergeServiceOptions(c.serviceOptions, &serviceOptions{
+	merged := mergeFunctionOptions(c.serviceOptions, &functionOptions{
 		cpu:              params.CPU,
 		cpuLimit:         params.CPULimit,
 		memoryMiB:        params.MemoryMiB,
@@ -230,7 +189,7 @@ func (c *Cls) WithConcurrency(params *ClsWithConcurrencyParams) *Cls {
 		params = &ClsWithConcurrencyParams{}
 	}
 
-	merged := mergeServiceOptions(c.serviceOptions, &serviceOptions{
+	merged := mergeFunctionOptions(c.serviceOptions, &functionOptions{
 		maxConcurrentInputs:    &params.MaxInputs,
 		targetConcurrentInputs: params.TargetInputs,
 	})
@@ -249,7 +208,7 @@ func (c *Cls) WithBatching(params *ClsWithBatchingParams) *Cls {
 		params = &ClsWithBatchingParams{}
 	}
 
-	merged := mergeServiceOptions(c.serviceOptions, &serviceOptions{
+	merged := mergeFunctionOptions(c.serviceOptions, &functionOptions{
 		batchMaxSize: &params.MaxBatchSize,
 		batchWait:    &params.Wait,
 	})
@@ -263,40 +222,13 @@ func (c *Cls) WithBatching(params *ClsWithBatchingParams) *Cls {
 }
 
 // bindParameters processes the parameters and binds them to the class function.
-func (c *Cls) bindParameters(ctx context.Context, parameters map[string]any, opts *serviceOptions) (string, error) {
-	mergedSecrets, err := mergeEnvIntoSecrets(ctx, c.client, opts.env, opts.secrets)
-	if err != nil {
-		return "", err
-	}
-
-	mergedOptions := mergeServiceOptions(opts, &serviceOptions{
-		secrets: &mergedSecrets,
-		env:     nil, // nil'ing env just to clarify it's not needed anymore
-	})
-
+func (c *Cls) bindParameters(ctx context.Context, parameters map[string]any, opts *functionOptions) (string, error) {
 	schema, err := c.getSchema()
 	if err != nil {
 		return "", err
 	}
 
-	serializedParams, err := encodeParameterSet(schema, parameters)
-	if err != nil {
-		return "", fmt.Errorf("failed to serialize parameters: %w", err)
-	}
-	functionOptions, err := buildFunctionOptionsProto(mergedOptions)
-	if err != nil {
-		return "", fmt.Errorf("failed to build function options: %w", err)
-	}
-	bindResp, err := c.client.cpClient.FunctionBindParams(ctx, pb.FunctionBindParamsRequest_builder{
-		FunctionId:       c.serviceFunctionID,
-		SerializedParams: serializedParams,
-		FunctionOptions:  functionOptions,
-		EnvironmentName:  environmentName("", c.client.profile),
-	}.Build())
-	if err != nil {
-		return "", fmt.Errorf("failed to bind parameters: %w", err)
-	}
-	return bindResp.GetBoundFunctionId(), nil
+	return bindParameters(ctx, c.client, c.serviceFunctionID, opts, schema, parameters)
 }
 
 // encodeParameterSet encodes the parameter values into a binary format.
@@ -395,230 +327,4 @@ func (c *ClsInstance) Method(name string) (*Function, error) {
 		return nil, NotFoundError{fmt.Sprintf("method '%s' not found on class", name)}
 	}
 	return method, nil
-}
-
-func hasOptions(o *serviceOptions) bool {
-	return o != nil && *o != (serviceOptions{})
-}
-
-func mergeServiceOptions(base, new *serviceOptions) *serviceOptions {
-	if base == nil {
-		return new
-	}
-	if new == nil {
-		return base
-	}
-
-	merged := &serviceOptions{
-		cpu:                    base.cpu,
-		cpuLimit:               base.cpuLimit,
-		memoryMiB:              base.memoryMiB,
-		memoryLimitMiB:         base.memoryLimitMiB,
-		gpu:                    base.gpu,
-		env:                    base.env,
-		secrets:                base.secrets,
-		volumes:                base.volumes,
-		retries:                base.retries,
-		maxContainers:          base.maxContainers,
-		bufferContainers:       base.bufferContainers,
-		scaledownWindow:        base.scaledownWindow,
-		timeout:                base.timeout,
-		maxConcurrentInputs:    base.maxConcurrentInputs,
-		targetConcurrentInputs: base.targetConcurrentInputs,
-		batchMaxSize:           base.batchMaxSize,
-		batchWait:              base.batchWait,
-	}
-
-	if new.cpu != nil {
-		merged.cpu = new.cpu
-	}
-	if new.cpuLimit != nil {
-		merged.cpuLimit = new.cpuLimit
-	}
-	if new.memoryMiB != nil {
-		merged.memoryMiB = new.memoryMiB
-	}
-	if new.memoryLimitMiB != nil {
-		merged.memoryLimitMiB = new.memoryLimitMiB
-	}
-	if new.gpu != nil {
-		merged.gpu = new.gpu
-	}
-	if new.env != nil {
-		merged.env = new.env
-	}
-	if new.secrets != nil {
-		merged.secrets = new.secrets
-	}
-	if new.volumes != nil {
-		merged.volumes = new.volumes
-	}
-	if new.retries != nil {
-		merged.retries = new.retries
-	}
-	if new.maxContainers != nil {
-		merged.maxContainers = new.maxContainers
-	}
-	if new.bufferContainers != nil {
-		merged.bufferContainers = new.bufferContainers
-	}
-	if new.scaledownWindow != nil {
-		merged.scaledownWindow = new.scaledownWindow
-	}
-	if new.timeout != nil {
-		merged.timeout = new.timeout
-	}
-	if new.maxConcurrentInputs != nil {
-		merged.maxConcurrentInputs = new.maxConcurrentInputs
-	}
-	if new.targetConcurrentInputs != nil {
-		merged.targetConcurrentInputs = new.targetConcurrentInputs
-	}
-	if new.batchMaxSize != nil {
-		merged.batchMaxSize = new.batchMaxSize
-	}
-	if new.batchWait != nil {
-		merged.batchWait = new.batchWait
-	}
-
-	return merged
-}
-
-func buildFunctionOptionsProto(options *serviceOptions) (*pb.FunctionOptions, error) {
-	if !hasOptions(options) {
-		return nil, nil
-	}
-
-	builder := pb.FunctionOptions_builder{}
-
-	if options.cpu != nil || options.cpuLimit != nil || options.memoryMiB != nil || options.memoryLimitMiB != nil || options.gpu != nil {
-		resBuilder := pb.Resources_builder{}
-
-		if options.cpu == nil && options.cpuLimit != nil {
-			return nil, fmt.Errorf("must also specify non-zero CPU request when CPULimit is specified")
-		}
-		if options.cpu != nil {
-			if *options.cpu <= 0 {
-				return nil, fmt.Errorf("the CPU request (%f) must be a positive number", *options.cpu)
-			}
-			resBuilder.MilliCpu = uint32(*options.cpu * 1000)
-			if options.cpuLimit != nil {
-				if *options.cpuLimit < *options.cpu {
-					return nil, fmt.Errorf("the CPU request (%f) cannot be higher than CPULimit (%f)", *options.cpu, *options.cpuLimit)
-				}
-				resBuilder.MilliCpuMax = uint32(*options.cpuLimit * 1000)
-			}
-		}
-
-		if options.memoryMiB == nil && options.memoryLimitMiB != nil {
-			return nil, fmt.Errorf("must also specify non-zero MemoryMiB request when MemoryLimitMiB is specified")
-		}
-		if options.memoryMiB != nil {
-			if *options.memoryMiB <= 0 {
-				return nil, fmt.Errorf("the MemoryMiB request (%d) must be a positive number", *options.memoryMiB)
-			}
-			resBuilder.MemoryMb = uint32(*options.memoryMiB)
-			if options.memoryLimitMiB != nil {
-				if *options.memoryLimitMiB < *options.memoryMiB {
-					return nil, fmt.Errorf("the MemoryMiB request (%d) cannot be higher than MemoryLimitMiB (%d)", *options.memoryMiB, *options.memoryLimitMiB)
-				}
-				resBuilder.MemoryMbMax = uint32(*options.memoryLimitMiB)
-			}
-		}
-
-		if options.gpu != nil {
-			gpuConfig, err := parseGPUConfig(*options.gpu)
-			if err != nil {
-				return nil, err
-			}
-			resBuilder.GpuConfig = gpuConfig
-		}
-		builder.Resources = resBuilder.Build()
-	}
-
-	secretIds := []string{}
-	if options.secrets != nil {
-		for _, secret := range *options.secrets {
-			if secret != nil {
-				secretIds = append(secretIds, secret.SecretID)
-			}
-		}
-	}
-
-	builder.SecretIds = secretIds
-	if len(secretIds) > 0 {
-		builder.ReplaceSecretIds = true
-	}
-
-	if options.volumes != nil {
-		volumeMounts := []*pb.VolumeMount{}
-		for mountPath, volume := range *options.volumes {
-			if volume != nil {
-				volumeMounts = append(volumeMounts, volumeToMountProto(mountPath, volume))
-			}
-		}
-		builder.VolumeMounts = volumeMounts
-		if len(volumeMounts) > 0 {
-			builder.ReplaceVolumeMounts = true
-		}
-	}
-
-	if options.retries != nil {
-		builder.RetryPolicy = pb.FunctionRetryPolicy_builder{
-			Retries:            uint32(options.retries.MaxRetries),
-			BackoffCoefficient: options.retries.BackoffCoefficient,
-			InitialDelayMs:     uint32(options.retries.InitialDelay / time.Millisecond),
-			MaxDelayMs:         uint32(options.retries.MaxDelay / time.Millisecond),
-		}.Build()
-	}
-
-	if options.maxContainers != nil {
-		v := uint32(*options.maxContainers)
-		builder.ConcurrencyLimit = &v
-	}
-	if options.bufferContainers != nil {
-		v := uint32(*options.bufferContainers)
-		builder.BufferContainers = &v
-	}
-
-	if options.scaledownWindow != nil {
-		if *options.scaledownWindow < time.Second {
-			return nil, fmt.Errorf("scaledownWindow must be at least 1 second, got %v", *options.scaledownWindow)
-		}
-		if (*options.scaledownWindow)%time.Second != 0 {
-			return nil, fmt.Errorf("scaledownWindow must be a whole number of seconds, got %v", *options.scaledownWindow)
-		}
-		v := uint32((*options.scaledownWindow) / time.Second)
-		builder.TaskIdleTimeoutSecs = &v
-	}
-	if options.timeout != nil {
-		if *options.timeout < time.Second {
-			return nil, fmt.Errorf("timeout must be at least 1 second, got %v", *options.timeout)
-		}
-		if (*options.timeout)%time.Second != 0 {
-			return nil, fmt.Errorf("timeout must be a whole number of seconds, got %v", *options.timeout)
-		}
-		v := uint32((*options.timeout) / time.Second)
-		builder.TimeoutSecs = &v
-	}
-
-	if options.maxConcurrentInputs != nil {
-		v := uint32(*options.maxConcurrentInputs)
-		builder.MaxConcurrentInputs = &v
-	}
-	if options.targetConcurrentInputs != nil {
-		v := uint32(*options.targetConcurrentInputs)
-		builder.TargetConcurrentInputs = &v
-	}
-
-	if options.batchMaxSize != nil {
-		v := uint32(*options.batchMaxSize)
-		builder.BatchMaxSize = &v
-	}
-	if options.batchWait != nil {
-		v := uint64((*options.batchWait) / time.Millisecond)
-		builder.BatchLingerMs = &v
-	}
-
-	return builder.Build(), nil
 }

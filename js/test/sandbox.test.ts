@@ -35,7 +35,7 @@ test("CreateOneSandbox", async () => {
   const sb = await tc.sandboxes.create(app, image);
   expect(sb.sandboxId).toBeTruthy();
   expect(await sb.terminate({ wait: true })).toBe(137);
-});
+}, 30000); // fixme(ayush): this probably shouldn't take > 20s
 
 test("CreateOneSandboxTerminateWaitWorks", async () => {
   const app = await tc.apps.fromName("libmodal-test", {

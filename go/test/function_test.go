@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -387,4 +388,123 @@ func compareMaps(a, b interface{}) bool {
 	}
 
 	return true
+}
+
+func TestFunctionOptionsPb(t *testing.T) {
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock,
+		"FunctionGet",
+		func(req *pb.FunctionGetRequest) (*pb.FunctionGetResponse, error) {
+			return pb.FunctionGetResponse_builder{
+				FunctionId: "fid-test",
+			}.Build(), nil
+		},
+	)
+
+	grpcmock.HandleUnary(
+		mock,
+		"FunctionBindParams",
+		func(req *pb.FunctionBindParamsRequest) (*pb.FunctionBindParamsResponse, error) {
+			reqBuilder := pb.FunctionBindParamsRequest_builder{}
+			optBuilder := pb.FunctionOptions_builder{}
+
+			concurrencyLimit := uint32(1)
+			batchMaxSize := uint32(1)
+
+			optBuilder.ConcurrencyLimit = &concurrencyLimit
+			optBuilder.BatchMaxSize = &batchMaxSize
+			optBuilder.SecretIds = []string{}
+
+			reqBuilder.FunctionId = "fid-test"
+			reqBuilder.FunctionOptions = optBuilder.Build()
+			reqBuilder.SerializedParams = []byte{}
+			reqBuilder.EnvironmentName = "test"
+
+			expected := reqBuilder.Build()
+
+			g.Expect(req.GetFunctionId()).To(gomega.Equal(expected.GetFunctionId()))
+			g.Expect(req.GetSerializedParams()).To(gomega.Equal(expected.GetSerializedParams()))
+			g.Expect(req.GetSerializedParams()).To(gomega.Equal(expected.GetSerializedParams()))
+
+			opts := req.GetFunctionOptions()
+			expectedOpts := expected.GetFunctionOptions()
+
+			g.Expect(opts.GetSecretIds()).To(gomega.Equal(expectedOpts.GetSecretIds()))
+			g.Expect(opts.GetMountIds()).To(gomega.Equal(expectedOpts.GetMountIds()))
+			g.Expect(opts.GetResources()).To(gomega.Equal(expectedOpts.GetResources()))
+			g.Expect(opts.GetRetryPolicy()).To(gomega.Equal(expectedOpts.GetRetryPolicy()))
+			g.Expect(opts.GetConcurrencyLimit()).To(gomega.Equal(expectedOpts.GetConcurrencyLimit()))
+			g.Expect(opts.GetTimeoutSecs()).To(gomega.Equal(expectedOpts.GetTimeoutSecs()))
+			g.Expect(opts.GetTaskIdleTimeoutSecs()).To(gomega.Equal(expectedOpts.GetTaskIdleTimeoutSecs()))
+			g.Expect(opts.GetWarmPoolSize()).To(gomega.Equal(expectedOpts.GetWarmPoolSize()))
+			g.Expect(opts.GetVolumeMounts()).To(gomega.Equal(expectedOpts.GetVolumeMounts()))
+			g.Expect(opts.GetTargetConcurrentInputs()).To(gomega.Equal(expectedOpts.GetTargetConcurrentInputs()))
+			g.Expect(opts.GetReplaceVolumeMounts()).To(gomega.Equal(expectedOpts.GetReplaceVolumeMounts()))
+			g.Expect(opts.GetReplaceSecretIds()).To(gomega.Equal(expectedOpts.GetReplaceSecretIds()))
+			g.Expect(opts.GetBufferContainers()).To(gomega.Equal(expectedOpts.GetBufferContainers()))
+			g.Expect(opts.GetMaxConcurrentInputs()).To(gomega.Equal(expectedOpts.GetMaxConcurrentInputs()))
+			g.Expect(opts.GetBatchMaxSize()).To(gomega.Equal(expectedOpts.GetBatchMaxSize()))
+			g.Expect(opts.GetBatchLingerMs()).To(gomega.Equal(expectedOpts.GetBatchLingerMs()))
+			g.Expect(opts.GetSchedulerPlacement()).To(gomega.Equal(expectedOpts.GetSchedulerPlacement()))
+			g.Expect(opts.GetCloudProviderStr()).To(gomega.Equal(expectedOpts.GetCloudProviderStr()))
+			g.Expect(opts.GetReplaceCloudBucketMounts()).To(gomega.Equal(expectedOpts.GetReplaceCloudBucketMounts()))
+			g.Expect(opts.GetCloudBucketMounts()).To(gomega.Equal(expectedOpts.GetCloudBucketMounts()))
+
+			respBuilder := pb.FunctionBindParamsResponse_builder{}
+			respBuilder.BoundFunctionId = "fid-bound"
+
+			return respBuilder.Build(), nil
+		},
+	)
+
+	fn, err := mock.Functions.FromName(ctx, "libmodal-test-support", "echo_string", nil)
+	g.Expect(err).To(gomega.BeNil())
+
+	maxContainers := 1
+	batchMaxSize := 1
+
+	options := modal.FunctionWithOptionsParams{
+		MaxContainers: &maxContainers,
+	}
+
+	batch := modal.FunctionWithBatchingParams{
+		MaxBatchSize: batchMaxSize,
+	}
+
+	_, err = fn.WithOptions(&options).WithBatching(&batch).Instance(ctx)
+	g.Expect(err).To(gomega.BeNil())
+}
+
+func TestEmptyInstance(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	ctx := context.Background()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock,
+		"FunctionGet",
+		func(req *pb.FunctionGetRequest) (*pb.FunctionGetResponse, error) {
+			return pb.FunctionGetResponse_builder{
+				FunctionId: "fid-test",
+			}.Build(), nil
+		},
+	)
+
+	// goal is to NOT send FunctionBindParams RPC if there is no configuration
+
+	echo, err := mock.Functions.FromName(ctx, "libmodal-test-support", "echo_string", nil)
+	if err != nil {
+		t.Fatalf("Failed to get Function: %v", err)
+	}
+
+	instance, err := echo.Instance(ctx)
+	g.Expect(err).To(gomega.BeNil())
+
+	g.Expect(instance.FunctionID).To(gomega.Equal(echo.FunctionID))
 }

@@ -56,13 +56,18 @@ type Function struct {
 	FunctionID     string
 	handleMetadata *pb.FunctionHandleMetadata
 
-	client *Client
+	client  *Client
+	options *functionOptions
 }
 
 // FunctionFromNameParams are options for client.Functions.FromName.
 type FunctionFromNameParams struct {
 	Environment     string
 	CreateIfMissing bool
+}
+
+func hasOptions(o *functionOptions) bool {
+	return o != nil && *o != (functionOptions{})
 }
 
 // FromName references a Function from a deployed App by its name.
@@ -96,7 +101,13 @@ func (s *functionServiceImpl) FromName(ctx context.Context, appName string, name
 		"function_id", resp.GetFunctionId(),
 		"app_name", appName,
 		"function_name", name)
-	return &Function{FunctionID: resp.GetFunctionId(), handleMetadata: handleMetadata, client: s.client}, nil
+
+	return &Function{
+		FunctionID:     resp.GetFunctionId(),
+		handleMetadata: handleMetadata,
+		client:         s.client,
+		options:        &functionOptions{},
+	}, nil
 }
 
 // pickleSerialize serializes Go data types to the Python pickle format.
@@ -254,6 +265,429 @@ func (f *Function) checkNoWebURL(fnName string) error {
 		)}
 	}
 	return nil
+}
+
+// FunctionWithOptionsParams represents runtime options for a Modal Function.
+type FunctionWithOptionsParams struct {
+	CPU              *float64
+	CPULimit         *float64
+	MemoryMiB        *int
+	MemoryLimitMiB   *int
+	GPU              *string
+	Env              map[string]string
+	Secrets          []*Secret
+	Volumes          map[string]*Volume
+	Retries          *Retries
+	MaxContainers    *int
+	BufferContainers *int
+	ScaledownWindow  *time.Duration
+	Timeout          *time.Duration
+}
+
+// FunctionWithConcurrencyParams represents concurrency configuration for a Modal Function.
+type FunctionWithConcurrencyParams struct {
+	MaxInputs    int
+	TargetInputs *int
+}
+
+// FunctionWithBatchingParams represents batching configuration for a Modal Function.
+type FunctionWithBatchingParams struct {
+	MaxBatchSize int
+	Wait         time.Duration
+}
+
+type functionOptions struct {
+	cpu                    *float64
+	cpuLimit               *float64
+	memoryMiB              *int
+	memoryLimitMiB         *int
+	gpu                    *string
+	env                    *map[string]string
+	secrets                *[]*Secret
+	volumes                *map[string]*Volume
+	retries                *Retries
+	maxContainers          *int
+	bufferContainers       *int
+	scaledownWindow        *time.Duration
+	timeout                *time.Duration
+	maxConcurrentInputs    *int
+	targetConcurrentInputs *int
+	batchMaxSize           *int
+	batchWait              *time.Duration
+}
+
+func mergeFunctionOptions(base, new *functionOptions) *functionOptions {
+	if base == nil {
+		return new
+	}
+	if new == nil {
+		return base
+	}
+
+	merged := &functionOptions{
+		cpu:                    base.cpu,
+		cpuLimit:               base.cpuLimit,
+		memoryMiB:              base.memoryMiB,
+		memoryLimitMiB:         base.memoryLimitMiB,
+		gpu:                    base.gpu,
+		env:                    base.env,
+		secrets:                base.secrets,
+		volumes:                base.volumes,
+		retries:                base.retries,
+		maxContainers:          base.maxContainers,
+		bufferContainers:       base.bufferContainers,
+		scaledownWindow:        base.scaledownWindow,
+		timeout:                base.timeout,
+		maxConcurrentInputs:    base.maxConcurrentInputs,
+		targetConcurrentInputs: base.targetConcurrentInputs,
+		batchMaxSize:           base.batchMaxSize,
+		batchWait:              base.batchWait,
+	}
+
+	if new.cpu != nil {
+		merged.cpu = new.cpu
+	}
+	if new.cpuLimit != nil {
+		merged.cpuLimit = new.cpuLimit
+	}
+	if new.memoryMiB != nil {
+		merged.memoryMiB = new.memoryMiB
+	}
+	if new.memoryLimitMiB != nil {
+		merged.memoryLimitMiB = new.memoryLimitMiB
+	}
+	if new.gpu != nil {
+		merged.gpu = new.gpu
+	}
+	if new.env != nil {
+		merged.env = new.env
+	}
+	if new.secrets != nil {
+		merged.secrets = new.secrets
+	}
+	if new.volumes != nil {
+		merged.volumes = new.volumes
+	}
+	if new.retries != nil {
+		merged.retries = new.retries
+	}
+	if new.maxContainers != nil {
+		merged.maxContainers = new.maxContainers
+	}
+	if new.bufferContainers != nil {
+		merged.bufferContainers = new.bufferContainers
+	}
+	if new.scaledownWindow != nil {
+		merged.scaledownWindow = new.scaledownWindow
+	}
+	if new.timeout != nil {
+		merged.timeout = new.timeout
+	}
+	if new.maxConcurrentInputs != nil {
+		merged.maxConcurrentInputs = new.maxConcurrentInputs
+	}
+	if new.targetConcurrentInputs != nil {
+		merged.targetConcurrentInputs = new.targetConcurrentInputs
+	}
+	if new.batchMaxSize != nil {
+		merged.batchMaxSize = new.batchMaxSize
+	}
+	if new.batchWait != nil {
+		merged.batchWait = new.batchWait
+	}
+
+	return merged
+}
+
+func buildFunctionOptionsProto(options *functionOptions) (*pb.FunctionOptions, error) {
+	if !hasOptions(options) {
+		return nil, nil
+	}
+
+	builder := pb.FunctionOptions_builder{}
+
+	if options.cpu != nil || options.cpuLimit != nil || options.memoryMiB != nil || options.memoryLimitMiB != nil || options.gpu != nil {
+		resBuilder := pb.Resources_builder{}
+
+		if options.cpu == nil && options.cpuLimit != nil {
+			return nil, fmt.Errorf("must also specify non-zero CPU request when CPULimit is specified")
+		}
+		if options.cpu != nil {
+			if *options.cpu <= 0 {
+				return nil, fmt.Errorf("the CPU request (%f) must be a positive number", *options.cpu)
+			}
+			resBuilder.MilliCpu = uint32(*options.cpu * 1000)
+			if options.cpuLimit != nil {
+				if *options.cpuLimit < *options.cpu {
+					return nil, fmt.Errorf("the CPU request (%f) cannot be higher than CPULimit (%f)", *options.cpu, *options.cpuLimit)
+				}
+				resBuilder.MilliCpuMax = uint32(*options.cpuLimit * 1000)
+			}
+		}
+
+		if options.memoryMiB == nil && options.memoryLimitMiB != nil {
+			return nil, fmt.Errorf("must also specify non-zero MemoryMiB request when MemoryLimitMiB is specified")
+		}
+		if options.memoryMiB != nil {
+			if *options.memoryMiB <= 0 {
+				return nil, fmt.Errorf("the MemoryMiB request (%d) must be a positive number", *options.memoryMiB)
+			}
+			resBuilder.MemoryMb = uint32(*options.memoryMiB)
+			if options.memoryLimitMiB != nil {
+				if *options.memoryLimitMiB < *options.memoryMiB {
+					return nil, fmt.Errorf("the MemoryMiB request (%d) cannot be higher than MemoryLimitMiB (%d)", *options.memoryMiB, *options.memoryLimitMiB)
+				}
+				resBuilder.MemoryMbMax = uint32(*options.memoryLimitMiB)
+			}
+		}
+
+		if options.gpu != nil {
+			gpuConfig, err := parseGPUConfig(*options.gpu)
+			if err != nil {
+				return nil, err
+			}
+			resBuilder.GpuConfig = gpuConfig
+		}
+		builder.Resources = resBuilder.Build()
+	}
+
+	secretIds := []string{}
+	if options.secrets != nil {
+		for _, secret := range *options.secrets {
+			if secret != nil {
+				secretIds = append(secretIds, secret.SecretID)
+			}
+		}
+	}
+
+	builder.SecretIds = secretIds
+	if len(secretIds) > 0 {
+		builder.ReplaceSecretIds = true
+	}
+
+	if options.volumes != nil {
+		volumeMounts := []*pb.VolumeMount{}
+		for mountPath, volume := range *options.volumes {
+			if volume != nil {
+				volumeMounts = append(volumeMounts, volumeToMountProto(mountPath, volume))
+			}
+		}
+		builder.VolumeMounts = volumeMounts
+		if len(volumeMounts) > 0 {
+			builder.ReplaceVolumeMounts = true
+		}
+	}
+
+	if options.retries != nil {
+		builder.RetryPolicy = pb.FunctionRetryPolicy_builder{
+			Retries:            uint32(options.retries.MaxRetries),
+			BackoffCoefficient: options.retries.BackoffCoefficient,
+			InitialDelayMs:     uint32(options.retries.InitialDelay / time.Millisecond),
+			MaxDelayMs:         uint32(options.retries.MaxDelay / time.Millisecond),
+		}.Build()
+	}
+
+	if options.maxContainers != nil {
+		v := uint32(*options.maxContainers)
+		builder.ConcurrencyLimit = &v
+	}
+	if options.bufferContainers != nil {
+		v := uint32(*options.bufferContainers)
+		builder.BufferContainers = &v
+	}
+
+	if options.scaledownWindow != nil {
+		if *options.scaledownWindow < time.Second {
+			return nil, fmt.Errorf("scaledownWindow must be at least 1 second, got %v", *options.scaledownWindow)
+		}
+		if (*options.scaledownWindow)%time.Second != 0 {
+			return nil, fmt.Errorf("scaledownWindow must be a whole number of seconds, got %v", *options.scaledownWindow)
+		}
+		v := uint32((*options.scaledownWindow) / time.Second)
+		builder.TaskIdleTimeoutSecs = &v
+	}
+	if options.timeout != nil {
+		if *options.timeout < time.Second {
+			return nil, fmt.Errorf("timeout must be at least 1 second, got %v", *options.timeout)
+		}
+		if (*options.timeout)%time.Second != 0 {
+			return nil, fmt.Errorf("timeout must be a whole number of seconds, got %v", *options.timeout)
+		}
+		v := uint32((*options.timeout) / time.Second)
+		builder.TimeoutSecs = &v
+	}
+
+	if options.maxConcurrentInputs != nil {
+		v := uint32(*options.maxConcurrentInputs)
+		builder.MaxConcurrentInputs = &v
+	}
+	if options.targetConcurrentInputs != nil {
+		v := uint32(*options.targetConcurrentInputs)
+		builder.TargetConcurrentInputs = &v
+	}
+
+	if options.batchMaxSize != nil {
+		v := uint32(*options.batchMaxSize)
+		builder.BatchMaxSize = &v
+	}
+	if options.batchWait != nil {
+		v := uint64((*options.batchWait) / time.Millisecond)
+		builder.BatchLingerMs = &v
+	}
+
+	return builder.Build(), nil
+}
+
+// bindParameters processes the parameters and binds them to the function.
+func bindParameters(
+	ctx context.Context,
+	client *Client,
+	functionID string,
+	options *functionOptions,
+	schema []*pb.ClassParameterSpec,
+	parameters map[string]any,
+) (string, error) {
+	if options == nil {
+		options = &functionOptions{}
+	}
+
+	mergedSecrets, err := mergeEnvIntoSecrets(ctx, client, options.env, options.secrets)
+	if err != nil {
+		return "", err
+	}
+
+	mergedOptions := mergeFunctionOptions(options, &functionOptions{
+		secrets: &mergedSecrets,
+		env:     nil, // nil'ing env just to clarify it's not needed anymore
+	})
+
+	serializedParams, err := encodeParameterSet(schema, parameters)
+	if err != nil {
+		return "", fmt.Errorf("failed to serialize parameters: %w", err)
+	}
+
+	functionOptions, err := buildFunctionOptionsProto(mergedOptions)
+	if err != nil {
+		return "", fmt.Errorf("failed to build function options: %w", err)
+	}
+
+	bindResp, err := client.cpClient.FunctionBindParams(ctx, pb.FunctionBindParamsRequest_builder{
+		FunctionId:       functionID,
+		SerializedParams: serializedParams,
+		FunctionOptions:  functionOptions,
+		EnvironmentName:  environmentName("", client.profile),
+	}.Build())
+
+	if err != nil {
+		return "", fmt.Errorf("failed to bind parameters: %w", err)
+	}
+
+	return bindResp.GetBoundFunctionId(), nil
+}
+
+func (f *Function) WithOptions(options *FunctionWithOptionsParams) *Function {
+	if options == nil {
+		options = &FunctionWithOptionsParams{}
+	}
+
+	var secretsPtr *[]*Secret
+	if options.Secrets != nil {
+		s := options.Secrets
+		secretsPtr = &s
+	}
+	var volumesPtr *map[string]*Volume
+	if options.Volumes != nil {
+		v := options.Volumes
+		volumesPtr = &v
+	}
+	var envPtr *map[string]string
+	if options.Env != nil {
+		e := options.Env
+		envPtr = &e
+	}
+
+	merged := mergeFunctionOptions(f.options, &functionOptions{
+		cpu:              options.CPU,
+		cpuLimit:         options.CPULimit,
+		memoryMiB:        options.MemoryMiB,
+		memoryLimitMiB:   options.MemoryLimitMiB,
+		gpu:              options.GPU,
+		env:              envPtr,
+		secrets:          secretsPtr,
+		volumes:          volumesPtr,
+		retries:          options.Retries,
+		maxContainers:    options.MaxContainers,
+		bufferContainers: options.BufferContainers,
+		scaledownWindow:  options.ScaledownWindow,
+		timeout:          options.Timeout,
+	})
+
+	return &Function{
+		FunctionID:     f.FunctionID,
+		handleMetadata: f.handleMetadata,
+		client:         f.client,
+		options:        merged,
+	}
+}
+
+func (f *Function) WithConcurrency(params *FunctionWithConcurrencyParams) *Function {
+	if params == nil {
+		params = &FunctionWithConcurrencyParams{}
+	}
+
+	merged := mergeFunctionOptions(f.options, &functionOptions{
+		maxConcurrentInputs:    &params.MaxInputs,
+		targetConcurrentInputs: params.TargetInputs,
+	})
+
+	return &Function{
+		FunctionID:     f.FunctionID,
+		handleMetadata: f.handleMetadata,
+		client:         f.client,
+		options:        merged,
+	}
+}
+
+func (f *Function) WithBatching(params *FunctionWithBatchingParams) *Function {
+	if params == nil {
+		params = &FunctionWithBatchingParams{}
+	}
+
+	merged := mergeFunctionOptions(f.options, &functionOptions{
+		batchMaxSize: &params.MaxBatchSize,
+		batchWait:    &params.Wait,
+	})
+
+	return &Function{
+		FunctionID:     f.FunctionID,
+		handleMetadata: f.handleMetadata,
+		client:         f.client,
+		options:        merged,
+	}
+}
+
+func (f *Function) Instance(ctx context.Context) (*Function, error) {
+	if f == nil {
+		return nil, fmt.Errorf("failed to dereference function")
+	}
+
+	boundFnID := f.FunctionID
+
+	if hasOptions(f.options) {
+		fnID, err := bindParameters(ctx, f.client, f.FunctionID, f.options, []*pb.ClassParameterSpec{}, map[string]any{})
+		if err != nil {
+			return nil, err
+		}
+
+		boundFnID = fnID
+	}
+
+	return &Function{
+		FunctionID:     boundFnID,
+		handleMetadata: f.handleMetadata,
+		client:         f.client,
+		options:        &functionOptions{},
+	}, nil
 }
 
 // FunctionGetCurrentStatsParams are options for Function.GetCurrentStats.
