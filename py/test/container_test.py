@@ -42,7 +42,7 @@ from modal._utils.blob_utils import (
     blob_download as _blob_download,
     blob_upload as _blob_upload,
 )
-from modal.exception import InvalidError
+from modal.exception import DeserializationError, InvalidError
 from modal_proto import api_pb2
 
 from .container_test_helpers import (
@@ -78,6 +78,42 @@ blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
 
 DEFAULT_APP_LAYOUT_SENTINEL: Any = object()
+
+
+def _deserialized_function_should_not_run(*args, **kwargs):
+    raise AssertionError("deserialized function should not run")
+
+
+class _DeserializedClassShouldNotRun:
+    @modal.method()
+    def method(self):
+        raise AssertionError("deserialized class should not run")
+
+
+def _run_app_while_deserializing(kind: str):
+    from modal.app import _App
+
+    nested_app = modal.App(include_source=False)
+    try:
+        with nested_app.run():
+            pass
+    finally:
+        _App._all_apps.clear()
+
+    if kind == "function":
+        return _deserialized_function_should_not_run
+    elif kind == "class":
+        return _DeserializedClassShouldNotRun
+    else:
+        raise ValueError(kind)
+
+
+class _RunAppWhileDeserializing:
+    def __init__(self, kind: str):
+        self.kind = kind
+
+    def __reduce__(self):
+        return (_run_app_while_deserializing, (self.kind,))
 
 
 @pytest.fixture(scope="module")
@@ -375,6 +411,64 @@ def test_serialized_function(servicer, deployed_support_function_definitions):
         deployed_support_function_definitions,
     )
     assert _unwrap_scalar(ret) == 3 * 42
+
+
+@skip_github_non_linux
+@pytest.mark.parametrize(
+    ("is_class", "function_name", "serialized_kwargs"),
+    [
+        (False, "serialized_bad_payload", {"function_serialized": b"not a pickle"}),
+        (True, "SerializedBadPayload.*", {"class_serialized": b"not a pickle"}),
+    ],
+)
+def test_serialized_deserialization_failure_is_task_result(servicer, is_class, function_name, serialized_kwargs):
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        function_name,
+        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        is_class=is_class,
+        **serialized_kwargs,
+    )
+
+    assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert ret.items == []
+    exc = deserialize(ret.task_result.data, None)
+    assert isinstance(exc, DeserializationError)
+    assert "Encountered an error when deserializing an object in the remote environment" in str(exc)
+
+
+@skip_github_non_linux
+@pytest.mark.parametrize(
+    ("is_class", "function_name", "serialized_kwargs"),
+    [
+        (
+            False,
+            "serialized_app_run",
+            {"function_serialized": pickle.dumps(_RunAppWhileDeserializing("function"))},
+        ),
+        (
+            True,
+            "SerializedAppRun.*",
+            {"class_serialized": pickle.dumps(_RunAppWhileDeserializing("class"))},
+        ),
+    ],
+)
+def test_serialized_loading_rejects_app_run(servicer, is_class, function_name, serialized_kwargs):
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        function_name,
+        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        is_class=is_class,
+        **serialized_kwargs,
+    )
+
+    assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert ret.items == []
+    exc = deserialize(ret.task_result.data, None)
+    assert isinstance(exc, DeserializationError)
+    assert "Can not run an app in global scope within a container" in str(exc)
 
 
 @skip_github_non_linux
