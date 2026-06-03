@@ -3129,6 +3129,8 @@ message Sandbox {
 message SandboxCreateConnectTokenRequest {
   string sandbox_id = 1;
   string user_metadata = 2;
+  // Uses port 8080 if unspecified.
+  optional uint32 port = 3;
 }
 
 message SandboxCreateConnectTokenResponse {
