@@ -14,7 +14,6 @@ if telemetry_socket:
     from ._runtime.telemetry import instrument_imports
 
     instrument_imports(telemetry_socket)
-
 import asyncio
 import queue
 import signal
@@ -41,10 +40,11 @@ from ._runtime.container_io_manager import (
     ContainerIOManager,
     IOContext,
 )
-from ._runtime.task_lifecycle_manager import UserException
+from ._runtime.task_lifecycle_manager import TaskLifecycleManager, UserException
 
 if TYPE_CHECKING:
     import modal._runtime.container_io_manager
+    import modal._runtime.task_lifecycle_manager
     import modal._runtime.user_code_imports
 
 
@@ -287,12 +287,118 @@ def get_serialized_user_class_and_function(
     return ser_usr_cls, ser_fun
 
 
-def main(container_args: api_pb2.ContainerArguments, client: Client):
-    # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
-    # At some point, we should fix that by having built-in support for running "user code"
-    container_io_manager = ContainerIOManager(container_args, client)
+def get_server_service(
+    container_args: api_pb2.ContainerArguments, function_def: api_pb2.Function, _client: _Client, client: Client
+) -> Service:
+    ser_usr_cls, ser_fun = get_serialized_user_class_and_function(function_def, _client)
+    service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
+    service_function_hydration_data = [
+        o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
+    ][0]
+    service = import_server_service(
+        function_def,
+        service_function_hydration_data,
+        client,
+        ser_usr_cls,
+    )
+    return service
+
+
+def get_class_service(
+    container_args: api_pb2.ContainerArguments, function_def: api_pb2.Function, _client: _Client, client: Client
+) -> Service:
+    ser_usr_cls, ser_fun = get_serialized_user_class_and_function(function_def, _client)
+    if container_args.serialized_params:
+        param_args, param_kwargs = deserialize_params(container_args.serialized_params, function_def, _client)
+    else:
+        param_args = ()
+        param_kwargs = {}
+    # this is a bit ugly - match the function and class based on function name to get metadata
+    # This metadata is required in order to hydrate the class in case it's not globally
+    # decorated (or serialized)
+    service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
+    service_function_hydration_data = [
+        o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
+    ][0]
+    class_id = container_args.app_layout.class_ids[function_def.function_name.removesuffix(".*")]
+
+    service = import_class_service(
+        function_def,
+        service_function_hydration_data,
+        class_id,
+        client,
+        ser_usr_cls,
+        param_args,
+        param_kwargs,
+    )
+    return service
+
+
+def get_function_service(function_def: api_pb2.Function, _client: _Client) -> Service:
+    ser_usr_cls, ser_fun = get_serialized_user_class_and_function(function_def, _client)
+    assert ser_usr_cls is None
+    service = import_single_function_service(
+        function_def,
+        ser_fun,
+    )
+    return service
+
+
+def hydrate_function(
+    container_args: api_pb2.ContainerArguments,
+    task_lifecycle_manager: TaskLifecycleManager,
+    function_def: api_pb2.Function,
+    _client: _Client,
+    client: Client,
+) -> Service:
     active_app: _App
     service: Service
+    with task_lifecycle_manager.handle_task_lifecycle_exception():
+        with execution_context._import_context():
+            if function_def.is_server:
+                service = get_server_service(container_args, function_def, _client, client)
+            elif function_def.is_class:
+                service = get_class_service(container_args, function_def, _client, client)
+            else:
+                service = get_function_service(function_def, _client)
+
+        active_app = service.app
+
+    # Get ids and metadata for objects (primarily functions and classes) on the app
+    container_app: RunningApp = running_app_from_layout(container_args.app_id, container_args.app_layout)
+
+    # Initialize objects on the app.
+    # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
+    app: App = cast(App, synchronizer._translate_out(active_app))
+    app._init_container(client, container_app)
+
+    # Hydrate all function dependencies.
+    # TODO(erikbern): we an remove this once we
+    # 1. Enable lazy hydration for all objects
+    # 2. Fully deprecate .new() objects
+    if service.service_deps is not None:  # this is not set for serialized or non-global scope functions
+        dep_object_ids: list[str] = [dep.object_id for dep in function_def.object_dependencies]
+        if len(service.service_deps) != len(dep_object_ids):
+            raise ExecutionError(
+                f"Function has {len(service.service_deps)} dependencies"
+                f" but container got {len(dep_object_ids)} object ids.\n"
+                f"Code deps: {service.service_deps}\n"
+                f"Object ids: {dep_object_ids}\n"
+                "\n"
+                "This can happen if you are defining Modal objects under a conditional statement "
+                "that evaluates differently in the local and remote environments."
+            )
+        for object_id, obj in zip(dep_object_ids, service.service_deps):
+            metadata: Message | None = container_app.object_handle_metadata[object_id]
+            obj._hydrate(object_id, _client, metadata)
+
+    return service
+
+
+def run_function(container_args: api_pb2.ContainerArguments, client: Client):
+    # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
+    # At some point, we should fix that by having built-in support for running "user code"
+    container_io_manager: Any = ContainerIOManager(container_args, client)
     function_def = container_args.function_def
     # The worker sets this flag to "1" for snapshot and restore tasks. Otherwise, this flag is unset,
     # in which case snapshots should be disabled.
@@ -306,92 +412,17 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     container_io_manager.hello()
 
     with container_io_manager.heartbeats(is_snapshotting_function), UserCodeEventLoop() as event_loop:
-        # If this is a serialized function, fetch the definition from the server
-        ser_usr_cls, ser_fun = get_serialized_user_class_and_function(function_def, _client)
-
         # Initialize the function, importing user code.
-        with container_io_manager.get_task_lifecycle_manager().handle_task_lifecycle_exception():
-            if container_args.serialized_params:
-                param_args, param_kwargs = deserialize_params(container_args.serialized_params, function_def, _client)
-            else:
-                param_args = ()
-                param_kwargs = {}
-
-            with execution_context._import_context():
-                if function_def.is_server:
-                    service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
-                    service_function_hydration_data = [
-                        o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
-                    ][0]
-                    service = import_server_service(
-                        function_def,
-                        service_function_hydration_data,
-                        client,
-                        ser_usr_cls,
-                    )
-                elif function_def.is_class:
-                    # this is a bit ugly - match the function and class based on function name to get metadata
-                    # This metadata is required in order to hydrate the class in case it's not globally
-                    # decorated (or serialized)
-                    service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
-                    service_function_hydration_data = [
-                        o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
-                    ][0]
-                    class_id = container_args.app_layout.class_ids[function_def.function_name.removesuffix(".*")]
-
-                    service = import_class_service(
-                        function_def,
-                        service_function_hydration_data,
-                        class_id,
-                        client,
-                        ser_usr_cls,
-                        param_args,
-                        param_kwargs,
-                    )
-                else:
-                    assert ser_usr_cls is None
-                    service = import_single_function_service(
-                        function_def,
-                        ser_fun,
-                    )
-
-            active_app = service.app
-
-            if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-                # Concurrency and batching doesn't apply for `modal shell`.
-                batch_max_size = 0
-                batch_wait_ms = 0
-            else:
-                batch_max_size = function_def.batch_max_size or 0
-                batch_wait_ms = function_def.batch_linger_ms or 0
-
-        # Get ids and metadata for objects (primarily functions and classes) on the app
-        container_app: RunningApp = running_app_from_layout(container_args.app_id, container_args.app_layout)
-
-        # Initialize objects on the app.
-        # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
-        app: App = cast(App, synchronizer._translate_out(active_app))
-        app._init_container(client, container_app)
-
-        # Hydrate all function dependencies.
-        # TODO(erikbern): we an remove this once we
-        # 1. Enable lazy hydration for all objects
-        # 2. Fully deprecate .new() objects
-        if service.service_deps is not None:  # this is not set for serialized or non-global scope functions
-            dep_object_ids: list[str] = [dep.object_id for dep in function_def.object_dependencies]
-            if len(service.service_deps) != len(dep_object_ids):
-                raise ExecutionError(
-                    f"Function has {len(service.service_deps)} dependencies"
-                    f" but container got {len(dep_object_ids)} object ids.\n"
-                    f"Code deps: {service.service_deps}\n"
-                    f"Object ids: {dep_object_ids}\n"
-                    "\n"
-                    "This can happen if you are defining Modal objects under a conditional statement "
-                    "that evaluates differently in the local and remote environments."
-                )
-            for object_id, obj in zip(dep_object_ids, service.service_deps):
-                metadata: Message | None = container_app.object_handle_metadata[object_id]
-                obj._hydrate(object_id, _client, metadata)
+        service: Service = hydrate_function(
+            container_args, container_io_manager.get_task_lifecycle_manager(), function_def, _client, client
+        )
+        if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
+            # Concurrency and batching doesn't apply for `modal shell`.
+            batch_max_size = 0
+            batch_wait_ms = 0
+        else:
+            batch_max_size = function_def.batch_max_size or 0
+            batch_wait_ms = function_def.batch_linger_ms or 0
 
         # Initialize clustered functions.
         if function_def._experimental_group_size > 0:
@@ -411,6 +442,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 call_server(event_loop)
             else:
                 call_function(event_loop, container_io_manager, finalized_functions, batch_max_size, batch_wait_ms)
+
+
+def main(container_args: api_pb2.ContainerArguments, client: Client):
+    run_function(container_args, client)
 
 
 if __name__ == "__main__":
