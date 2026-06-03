@@ -1486,6 +1486,7 @@ message EndpointStopResponse {}
 message EnvironmentCreateRequest {
   string name = 1;
   bool is_managed = 2;
+  EnvironmentSettings settings = 3;
 }
 
 message EnvironmentDeleteRequest {
@@ -1565,6 +1566,8 @@ message EnvironmentSetManagedRequest {
 message EnvironmentSettings {
   string image_builder_version = 1;
   string webhook_suffix = 2;
+  optional int32 max_concurrent_gpus = 3;
+  optional int32 max_concurrent_tasks = 4;
 }
 
 message EnvironmentUpdateRequest {
