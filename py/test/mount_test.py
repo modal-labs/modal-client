@@ -150,10 +150,10 @@ def test_add_local_python_source(servicer, client, test_dir, monkeypatch):
         assert "/root/pkg_c/j/k.py" not in files
 
 
-def test_chained_entries(test_dir):
+def test_chained_entries(tmp_path):
     # TODO: remove when public Mount is deprecated
-    a_txt = str(test_dir / "a.txt")
-    b_txt = str(test_dir / "b.txt")
+    a_txt = str(tmp_path / "a.txt")
+    b_txt = str(tmp_path / "b.txt")
     with open(a_txt, "w") as f:
         f.write("A")
     with open(b_txt, "w") as f:
