@@ -153,7 +153,10 @@ class CustomProtoStatusDetailsCodec(StatusDetailsCodecBase):
         if details is not None:
             for detail in details:
                 detail_container = details_proto.details.add()
-                detail_container.Pack(detail)
+                if detail.DESCRIPTOR.full_name.startswith("modal."):
+                    detail_container.Pack(detail, type_url_prefix="type.modal.com/")
+                else:
+                    detail_container.Pack(detail)
         return details_proto.SerializeToString()
 
     def decode(

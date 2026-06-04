@@ -165,10 +165,26 @@ def test_CustomProtoStatusDetailsCodec_round_trip():
     decoded_status = api_pb2.RPCStatus.FromString(encoded_msg)
     assert decoded_status.message == "this-is-a-message"
     assert decoded_status.code == Status.CANCELLED.value
+    for detail in decoded_status.details:
+        assert detail.type_url.startswith("type.modal.com/")
 
     decoded_msg = codec.decode(Status.CANCELLED, None, encoded_msg)
     assert len(decoded_msg) == 2
     assert decoded_msg == msgs
+
+
+def test_CustomProtoStatusDetailsCodec_type_url_scoping():
+    from google.protobuf.duration_pb2 import Duration
+
+    modal_msg = api_pb2.RPCRetryPolicy(retry_after_secs=1.0)
+    non_modal_msg = Duration(seconds=5)
+
+    codec = CustomProtoStatusDetailsCodec()
+    encoded = codec.encode(Status.INTERNAL, "test", [modal_msg, non_modal_msg])
+    decoded_status = api_pb2.RPCStatus.FromString(encoded)
+
+    assert decoded_status.details[0].type_url == "type.modal.com/modal.client.RPCRetryPolicy"
+    assert decoded_status.details[1].type_url == "type.googleapis.com/google.protobuf.Duration"
 
 
 def test_CustomProtoStatusDetailsCodec_unknown():
