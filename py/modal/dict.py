@@ -23,7 +23,6 @@ from ._object import (
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.deprecation import deprecation_warning
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -481,26 +480,6 @@ class _Dict(_Object, type_prefix="di"):
             hydrate_lazily=True,
             load_context_overrides=LoadContext(client=client),
         )
-
-    @staticmethod
-    async def delete(
-        name: str,
-        *,
-        client: _Client | None = None,
-        environment_name: str | None = None,
-    ):
-        """mdmd:hidden
-        Delete a named Dict object.
-
-        Warning: This deletes an *entire Dict*, not just a specific key.
-        Deletion is irreversible and will affect any Apps currently using the Dict.
-
-        DEPRECATED: This method is deprecated; we recommend using `modal.Dict.objects.delete` instead.
-        """
-        deprecation_warning(
-            (2025, 8, 6), "`modal.Dict.delete` is deprecated; we recommend using `modal.Dict.objects.delete` instead."
-        )
-        await _Dict.objects.delete(name, environment_name=environment_name, client=client)
 
     @live_method
     async def info(self) -> DictInfo:

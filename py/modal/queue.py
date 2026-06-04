@@ -26,7 +26,6 @@ from ._object import (
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
-from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import Retry
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
@@ -471,23 +470,6 @@ class _Queue(_Object, type_prefix="qu"):
             hydrate_lazily=True,
             load_context_overrides=LoadContext(client=client),
         )
-
-    @staticmethod
-    async def delete(name: str, *, client: _Client | None = None, environment_name: str | None = None):
-        """mdmd:hidden
-        Delete a named Queue.
-
-        Warning: This deletes an *entire Queue*, not just a specific entry or partition.
-        Deletion is irreversible and will affect any Apps currently using the Queue.
-
-        DEPRECATED: This method is deprecated; we recommend using `modal.Queue.objects.delete` instead.
-
-        """
-        deprecation_warning(
-            (2025, 8, 6),
-            "`modal.Queue.delete` is deprecated; we recommend using `modal.Queue.objects.delete` instead.",
-        )
-        await _Queue.objects.delete(name, environment_name=environment_name, client=client)
 
     @live_method
     async def info(self) -> QueueInfo:

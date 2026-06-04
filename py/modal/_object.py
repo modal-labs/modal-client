@@ -14,7 +14,6 @@ from modal._traceback import suppress_tb_frame
 from ._load_context import LoadContext
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing
-from ._utils.deprecation import deprecation_warning
 from .client import _Client
 from .config import config, logger
 from .exception import ExecutionError, InvalidError
@@ -195,23 +194,6 @@ class _Object:
             raise ExecutionError(
                 f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
             )
-
-    def clone(self) -> Self:
-        """mdmd:hidden Clone a given hydrated object.
-
-        Note: This is not intended to be public API and has no public use. It will be removed in a future release.
-        """
-        object_class = self.__class__.__name__.strip("_")
-        deprecation_warning(
-            (2025, 6, 30),
-            f"{object_class}.clone() is not intended to be public API and will be removed in a future release.",
-        )
-
-        # Object to clone must already be hydrated, otherwise from_loader is more suitable.
-        self._validate_is_hydrated()
-        obj = type(self).__new__(type(self))
-        obj._initialize_from_other(self)
-        return obj
 
     @classmethod
     def _from_loader(

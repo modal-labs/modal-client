@@ -14,7 +14,6 @@ from ._object import _get_environment_name, _Object, live_method
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import deprecation_warning
 from ._utils.name_utils import check_object_name
 from ._utils.time_utils import as_timestamp, timestamp_to_localized_dt
 from .client import _Client
@@ -447,23 +446,6 @@ class _Secret(_Object, type_prefix="st"):
             load_context_overrides=LoadContext(environment_name=environment_name, client=client),
             skip_reload=True,
         )
-
-    @staticmethod
-    async def create_deployed(
-        deployment_name: str,
-        env_dict: dict[str, str],
-        namespace=None,  # mdmd:line-hidden
-        client: _Client | None = None,
-        environment_name: str | None = None,
-        overwrite: bool = False,
-    ) -> str:
-        """mdmd:hidden"""
-        deprecation_warning(
-            (2025, 8, 13),
-            "The undocumented `modal.Secret.create_deployed` method is deprecated and will be removed "
-            "in a future release. It can be replaced with `modal.Secret.objects.create`.",
-        )
-        return await _Secret._create_deployed(deployment_name, env_dict, namespace, client, environment_name, overwrite)
 
     @staticmethod
     async def _create_deployed(

@@ -66,7 +66,6 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
-from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import Retry
 from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
@@ -734,42 +733,6 @@ class _Volume(_Object, type_prefix="vo"):
                 rep="modal.Volume.ephemeral()",
             )
 
-    @staticmethod
-    async def create_deployed(
-        deployment_name: str,
-        namespace=None,  # mdmd:line-hidden
-        client: _Client | None = None,
-        environment_name: str | None = None,
-        version: "modal_proto.api_pb2.VolumeFsVersion.ValueType | None" = None,
-    ) -> str:
-        """mdmd:hidden"""
-        deprecation_warning(
-            (2025, 8, 13),
-            "The undocumented `modal.Volume.create_deployed` method is deprecated and will be removed "
-            "in a future release. It can be replaced with `modal.Volume.objects.create`.",
-        )
-        return await _Volume._create_deployed(deployment_name, namespace, client, environment_name, version)
-
-    @staticmethod
-    async def _create_deployed(
-        deployment_name: str,
-        client: _Client | None = None,
-        environment_name: str | None = None,
-        version: "modal_proto.api_pb2.VolumeFsVersion.ValueType | None" = None,
-    ) -> str:
-        """mdmd:hidden"""
-        check_object_name(deployment_name, "Volume")
-        if client is None:
-            client = await _Client.from_env()
-        request = api_pb2.VolumeGetOrCreateRequest(
-            deployment_name=deployment_name,
-            environment_name=_get_environment_name(environment_name),
-            object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
-            version=version,
-        )
-        resp = await client.stub.VolumeGetOrCreate(request)
-        return resp.volume_id
-
     @live_method
     async def info(self) -> VolumeInfo:
         """Return information about the Volume object."""
@@ -1099,23 +1062,6 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def _instance_delete(self):
         await self._client.stub.VolumeDelete(api_pb2.VolumeDeleteRequest(volume_id=self.object_id))
-
-    @staticmethod
-    async def delete(name: str, client: _Client | None = None, environment_name: str | None = None):
-        """mdmd:hidden
-        Delete a named Volume.
-
-        Warning: This deletes an *entire Volume*, not just a specific file.
-        Deletion is irreversible and will affect any Apps currently using the Volume.
-
-        DEPRECATED: This method is deprecated; we recommend using `modal.Volume.objects.delete` instead.
-
-        """
-        deprecation_warning(
-            (2025, 8, 6),
-            "`modal.Volume.delete` is deprecated; we recommend using `modal.Volume.objects.delete` instead.",
-        )
-        await _Volume.objects.delete(name, environment_name=environment_name, client=client)
 
     @staticmethod
     async def rename(
