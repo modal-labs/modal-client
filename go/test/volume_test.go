@@ -30,20 +30,6 @@ func TestVolumeFromName(t *testing.T) {
 	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("Volume 'missing-volume' not found")))
 }
 
-func TestVolumeReadOnlyDeprecated(t *testing.T) {
-	t.Parallel()
-	g := gomega.NewWithT(t)
-	volume := &modal.Volume{VolumeID: "vo-test", Name: "libmodal-test-volume"}
-
-	// ReadOnly() and IsReadOnly() are deprecated in favor of WithMountOptions, but
-	// must keep working for backwards compatibility.
-	readOnlyVolume := volume.ReadOnly()                       //nolint:staticcheck // testing deprecated API
-	g.Expect(readOnlyVolume.IsReadOnly()).To(gomega.BeTrue()) //nolint:staticcheck // testing deprecated API
-	g.Expect(readOnlyVolume.VolumeID).To(gomega.Equal(volume.VolumeID))
-	g.Expect(readOnlyVolume.Name).To(gomega.Equal(volume.Name))
-	g.Expect(volume.IsReadOnly()).To(gomega.BeFalse()) //nolint:staticcheck // testing deprecated API
-}
-
 func TestVolumeEphemeral(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
@@ -54,8 +40,6 @@ func TestVolumeEphemeral(t *testing.T) {
 	defer volume.CloseEphemeral()
 	g.Expect(volume.Name).To(gomega.BeEmpty())
 	g.Expect(volume.VolumeID).Should(gomega.HavePrefix("vo-"))
-	trueVal := true
-	g.Expect(volume.WithMountOptions(&modal.VolumeMountOptions{ReadOnly: &trueVal}).IsReadOnly()).To(gomega.BeTrue()) //nolint:staticcheck // IsReadOnly is the most direct way to inspect configured state
 }
 
 func TestVolumeDeleteSuccess(t *testing.T) {

@@ -85,14 +85,6 @@ func (s *volumeServiceImpl) FromName(ctx context.Context, name string, params *V
 	return &Volume{VolumeID: resp.GetVolumeId(), Name: name, cancelEphemeral: nil}, nil
 }
 
-// ReadOnly configures Volume to mount as read-only.
-//
-// Deprecated: use WithMountOptions(&VolumeMountOptions{ReadOnly: &t}) instead.
-func (v *Volume) ReadOnly() *Volume {
-	t := true
-	return v.WithMountOptions(&VolumeMountOptions{ReadOnly: &t})
-}
-
 // WithMountOptions configures how a Volume is mounted. Fields left as nil on options preserve
 // the corresponding value from any previous WithMountOptions call on the same Volume (stacking).
 func (v *Volume) WithMountOptions(options *VolumeMountOptions) *Volume {
@@ -115,14 +107,6 @@ func (v *Volume) WithMountOptions(options *VolumeMountOptions) *Volume {
 		mountOptions:    merged,
 		cancelEphemeral: v.cancelEphemeral,
 	}
-}
-
-// IsReadOnly returns true if the Volume is configured to mount as read-only.
-//
-// Deprecated: inspect mount configuration at the call site that configured it instead.
-// Future versions of this SDK may remove direct mount-option accessors on Volume.
-func (v *Volume) IsReadOnly() bool {
-	return v.mountOptions.readOnly
 }
 
 // VolumeEphemeralParams are options for client.Volumes.Ephemeral.

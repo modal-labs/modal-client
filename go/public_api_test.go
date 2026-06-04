@@ -37,10 +37,8 @@ var skipMethods = map[string]string{
 
 	// Simple value accessors.
 	"Function.GetWebURL": "returns cached URL string",
-	"Volume.IsReadOnly":  "mount option accessor",
 
 	// Returns a copy with straightforward mount options.
-	"Volume.ReadOnly":         "creates a read-only copy, no config options needed",
 	"Volume.WithMountOptions": "creates a copy with mount options, no config options needed",
 
 	// Lifecycle / cleanup signals; configuration-free by design.

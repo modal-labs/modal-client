@@ -211,8 +211,6 @@ test("SandboxWithReadOnlyVolume", async () => {
   });
 
   const readOnlyVolume = volume.withMountOptions({ readOnly: true });
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- inspect configured mount state
-  expect(readOnlyVolume.isReadOnly).toBe(true);
 
   const sb = await tc.sandboxes.create(app, image, {
     command: ["sh", "-c", "echo 'test' > /mnt/test/test.txt"],

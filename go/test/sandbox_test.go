@@ -263,7 +263,6 @@ func TestSandboxWithReadOnlyVolume(t *testing.T) {
 
 	trueVal := true
 	readOnlyVolume := volume.WithMountOptions(&modal.VolumeMountOptions{ReadOnly: &trueVal})
-	g.Expect(readOnlyVolume.IsReadOnly()).To(gomega.BeTrue()) //nolint:staticcheck // IsReadOnly is the most direct way to inspect configured state
 
 	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
 		Command: []string{"sh", "-c", "echo 'test' > /mnt/test/test.txt"},

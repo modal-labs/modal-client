@@ -160,15 +160,6 @@ export class Volume {
   }
 
   /**
-   * Configure Volume to mount as read-only.
-   *
-   * @deprecated Use {@link withMountOptions} with `{ readOnly: true }` instead.
-   */
-  readOnly(): Volume {
-    return this.withMountOptions({ readOnly: true });
-  }
-
-  /**
    * Configure options used when mounting this Volume. Fields left undefined preserve their value
    * from any previous withMountOptions call on the same Volume (stacking).
    */
@@ -186,14 +177,6 @@ export class Volume {
       },
       this.#ephemeralHbManager,
     );
-  }
-
-  /**
-   * @deprecated Inspect mount configuration at the call site that configured it instead.
-   * Future versions of this SDK may remove direct mount-option accessors on Volume.
-   */
-  get isReadOnly(): boolean {
-    return this._mountOptions.readOnly;
   }
 
   /** Delete the ephemeral Volume. Only usable with emphemeral Volumes. */
