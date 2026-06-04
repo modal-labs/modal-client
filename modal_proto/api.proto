@@ -4114,6 +4114,7 @@ message WorkspaceMembersListItem {
   IdentityProviderType identity_provider_type = 9;
   string email = 10;
   string avatar_url = 11;
+  string idp_external_id = 12;
 }
 
 message WorkspaceMembersListResponse {
