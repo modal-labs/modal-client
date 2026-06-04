@@ -1000,10 +1000,6 @@ func TestSandboxGetTaskIdPolling(t *testing.T) {
 	ctx := t.Context()
 	mock := newGRPCMockClient(t)
 
-	grpcmock.HandleUnary(mock, "SandboxWait",
-		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
-			return pb.SandboxWaitResponse_builder{}.Build(), nil
-		})
 	grpcmock.HandleUnary(mock, "SandboxGetTaskId",
 		func(req *pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
 			return pb.SandboxGetTaskIdResponse_builder{}.Build(), nil
@@ -1031,10 +1027,6 @@ func TestSandboxGetTaskIdTerminated(t *testing.T) {
 	ctx := t.Context()
 	mock := newGRPCMockClient(t)
 
-	grpcmock.HandleUnary(mock, "SandboxWait",
-		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
-			return pb.SandboxWaitResponse_builder{}.Build(), nil
-		})
 	grpcmock.HandleUnary(mock, "SandboxGetTaskId",
 		func(req *pb.SandboxGetTaskIdRequest) (*pb.SandboxGetTaskIdResponse, error) {
 			return pb.SandboxGetTaskIdResponse_builder{
@@ -1065,12 +1057,6 @@ func TestSandboxFromIDRoutesV1(t *testing.T) {
 		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
 			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
 			g.Expect(req.GetTimeout()).To(gomega.Equal(float32(0)))
-			return pb.SandboxWaitResponse_builder{}.Build(), nil
-		})
-	grpcmock.HandleUnary(mock, "SandboxWait",
-		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
-			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
-			g.Expect(req.GetTimeout()).To(gomega.Equal(float32(0)))
 			return pb.SandboxWaitResponse_builder{
 				Result: pb.GenericResult_builder{
 					Status:   pb.GenericResult_GENERIC_STATUS_SUCCESS,
@@ -1097,12 +1083,6 @@ func TestSandboxFromIDRoutesV2(t *testing.T) {
 	mock := newGRPCMockClient(t)
 	sandboxID := validV2SandboxID
 
-	grpcmock.HandleUnary(mock, "SandboxWaitV2",
-		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
-			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
-			g.Expect(req.GetTimeout()).To(gomega.Equal(float32(0)))
-			return pb.SandboxWaitResponse_builder{}.Build(), nil
-		})
 	grpcmock.HandleUnary(mock, "SandboxTerminateV2",
 		func(req *pb.SandboxTerminateRequest) (*pb.SandboxTerminateResponse, error) {
 			g.Expect(req.GetSandboxId()).To(gomega.Equal(sandboxID))
@@ -1148,12 +1128,6 @@ func TestSandboxWaitUntilReady(t *testing.T) {
 	ctx := t.Context()
 	mock := newGRPCMockClient(t)
 
-	// FromID performs a zero-timeout SandboxWait to verify the sandbox exists.
-	grpcmock.HandleUnary(mock, "SandboxWait",
-		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
-			return pb.SandboxWaitResponse_builder{}.Build(), nil
-		})
-
 	var seenReq *pb.SandboxWaitUntilReadyRequest
 	grpcmock.HandleUnary(mock, "SandboxWaitUntilReady",
 		func(req *pb.SandboxWaitUntilReadyRequest) (*pb.SandboxWaitUntilReadyResponse, error) {
@@ -1181,12 +1155,6 @@ func TestSandboxWaitUntilReadyRetriesDeadlineExceeded(t *testing.T) {
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	mock := newGRPCMockClient(t)
-
-	// FromID performs a zero-timeout SandboxWait to verify the sandbox exists.
-	grpcmock.HandleUnary(mock, "SandboxWait",
-		func(req *pb.SandboxWaitRequest) (*pb.SandboxWaitResponse, error) {
-			return pb.SandboxWaitResponse_builder{}.Build(), nil
-		})
 
 	calls := 0
 	grpcmock.HandleUnary(mock, "SandboxWaitUntilReady",

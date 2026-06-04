@@ -1164,11 +1164,6 @@ test("client.sandboxes.fromId routes V1 IDs to SandboxWait", async () => {
   mock.handleUnary("/SandboxWait", (req: any) => {
     expect(req.sandboxId).toBe(sandboxId);
     expect(req.timeout).toBe(0);
-    return {};
-  });
-  mock.handleUnary("/SandboxWait", (req: any) => {
-    expect(req.sandboxId).toBe(sandboxId);
-    expect(req.timeout).toBe(0);
     return {
       result: {
         status: GenericResult_GenericStatus.GENERIC_STATUS_SUCCESS,
@@ -1187,11 +1182,6 @@ test("client.sandboxes.fromId routes V2 IDs to SandboxWaitV2", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
   const sandboxId = V2_SANDBOX_ID;
 
-  mock.handleUnary("/SandboxWaitV2", (req: any) => {
-    expect(req.sandboxId).toBe(sandboxId);
-    expect(req.timeout).toBe(0);
-    return {};
-  });
   mock.handleUnary("/SandboxTerminateV2", (req: any) => {
     expect(req.sandboxId).toBe(sandboxId);
     return {};
@@ -1225,7 +1215,6 @@ test("client.sandboxes.fromId rejects invalid IDs before RPC", async () => {
 test("SandboxGetTaskIdPolling", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
-  mock.handleUnary("/SandboxWait", () => ({}));
   mock.handleUnary("/SandboxGetTaskId", () => ({}));
   mock.handleUnary("/SandboxGetTaskId", () => ({ taskId: "ta-123" }));
 
@@ -1238,7 +1227,6 @@ test("SandboxGetTaskIdPolling", async () => {
 test("SandboxGetTaskIdTerminated", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
-  mock.handleUnary("/SandboxWait", () => ({}));
   mock.handleUnary("/SandboxGetTaskId", () => ({
     taskResult: { status: 3 },
   }));
@@ -1252,7 +1240,6 @@ test("SandboxGetTaskIdTerminated", async () => {
 test("SandboxWaitUntilReady", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
-  mock.handleUnary("/SandboxWait", () => ({}));
   let seenReq: any = undefined;
   mock.handleUnary("/SandboxWaitUntilReady", (req: any) => {
     seenReq = req;
@@ -1271,7 +1258,6 @@ test("SandboxWaitUntilReady", async () => {
 test("SandboxWaitUntilReady retries empty readyAt", async () => {
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
-  mock.handleUnary("/SandboxWait", () => ({}));
   mock.handleUnary("/SandboxWaitUntilReady", () => ({ readyAt: 0 }));
   mock.handleUnary("/SandboxWaitUntilReady", () => ({ readyAt: 123.456 }));
 

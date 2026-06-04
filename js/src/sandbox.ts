@@ -790,19 +790,6 @@ export class SandboxService {
   async fromId(sandboxId: string): Promise<Sandbox> {
     const sandboxVersion = getSandboxVersion(sandboxId);
     const isV2 = sandboxVersion === SandboxVersion.V2;
-    const req = { sandboxId, timeout: 0 };
-    try {
-      if (isV2) {
-        await this.#client.cpClient.sandboxWaitV2(req);
-      } else {
-        await this.#client.cpClient.sandboxWait(req);
-      }
-    } catch (err) {
-      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
-        throw new NotFoundError(`Sandbox with id: '${sandboxId}' not found`);
-      throw err;
-    }
-
     return new Sandbox(this.#client, sandboxId, { isV2 });
   }
 

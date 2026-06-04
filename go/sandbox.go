@@ -768,21 +768,6 @@ func (s *sandboxServiceImpl) FromID(ctx context.Context, sandboxID string, param
 		return nil, err
 	}
 	isV2 := version == sandboxVersionV2
-	req := pb.SandboxWaitRequest_builder{
-		SandboxId: sandboxID,
-		Timeout:   0,
-	}.Build()
-	if isV2 {
-		_, err = s.client.cpClient.SandboxWaitV2(ctx, req)
-	} else {
-		_, err = s.client.cpClient.SandboxWait(ctx, req)
-	}
-	if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
-		return nil, NotFoundError{fmt.Sprintf("Sandbox with id: '%s' not found", sandboxID)}
-	}
-	if err != nil {
-		return nil, err
-	}
 	if isV2 {
 		return newSandboxV2(s.client, sandboxID, ""), nil
 	}
