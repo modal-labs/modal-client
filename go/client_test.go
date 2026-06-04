@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -17,6 +18,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestClientWithLogger(t *testing.T) {
@@ -97,15 +100,38 @@ func TestClientWithCustomInterceptors(t *testing.T) {
 	mu.Unlock()
 }
 
-// makeThrottleError builds a gRPC RESOURCE_EXHAUSTED error carrying an RPCRetryPolicy detail.
+// makeThrottleError builds a gRPC RESOURCE_EXHAUSTED error carrying an RPCRetryPolicy detail
+// using the type.modal.com/ type URL prefix (matching the server-side encoding).
 func makeThrottleError(t *testing.T, delaySecs float32) error {
 	t.Helper()
 	policy := pb.RPCRetryPolicy_builder{RetryAfterSecs: delaySecs}.Build()
-	st, err := status.New(codes.ResourceExhausted, "server throttled").WithDetails(policy)
+	st := status.New(codes.ResourceExhausted, "server throttled")
+	withDetails, err := statusWithDetails(st, policy)
 	if err != nil {
-		t.Fatalf("failed to attach RPCRetryPolicy to status: %v", err)
+		t.Fatalf("statusWithDetails: %v", err)
 	}
-	return st.Err()
+	return withDetails.Err()
+}
+
+// statusWithDetails is like status.Status.WithDetails but uses type.modal.com/
+// as the type URL prefix instead of the default type.googleapis.com/.
+func statusWithDetails(s *status.Status, details ...proto.Message) (*status.Status, error) {
+	if s.Code() == codes.OK {
+		return nil, fmt.Errorf("no error details for status with code OK")
+	}
+	p := s.Proto()
+	for _, detail := range details {
+		b, err := proto.Marshal(detail)
+		if err != nil {
+			return nil, fmt.Errorf("proto.Marshal: %w", err)
+		}
+		fullName := string(detail.ProtoReflect().Descriptor().FullName())
+		p.Details = append(p.Details, &anypb.Any{
+			TypeUrl: "type.modal.com/" + fullName,
+			Value:   b,
+		})
+	}
+	return status.FromProto(p), nil
 }
 
 func TestGetServerRetryPolicy(t *testing.T) {
