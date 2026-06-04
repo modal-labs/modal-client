@@ -60,6 +60,7 @@ from .secret import _Secret
 from .volume import _Volume, _volume_to_mount_proto
 
 if typing.TYPE_CHECKING:
+    import modal
     import modal._functions
     import modal.client
 
@@ -531,7 +532,7 @@ class _Image(_Object, type_prefix="im"):
 
         for secret in secrets:
             if not isinstance(secret, _Secret):
-                raise InvalidError("All secrets of an image needs to be modal.Secret/AioSecret instances")
+                raise InvalidError("All secrets of an Image need to be modal.Secret instances.")
 
         if build_function and len(base_images) != 1:
             raise InvalidError("Cannot run a build function with multiple base images!")
@@ -2763,7 +2764,7 @@ class _Image(_Object, type_prefix="im"):
 
     def pipe(
         self,
-        func: Callable[Concatenate["_Image", P], "_Image"],
+        func: Callable[Concatenate["modal.Image", P], "modal.Image"],
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> "_Image":
@@ -2785,7 +2786,11 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        return func(self, *args, **kwargs)
+        # Typing here is complicated because user callables accept the public
+        # Image type, but `self` is an instance of the internal _Image type.
+        self_ = synchronizer._translate_out(self)
+        res = func(self_, *args, **kwargs)  # type: ignore[reportUnknownReturnType]
+        return typing.cast(_Image, synchronizer._translate_in(res))
 
     # Live handle methods
 

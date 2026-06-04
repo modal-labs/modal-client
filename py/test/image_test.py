@@ -552,6 +552,18 @@ def test_pipe(builder_version, servicer, client):
     assert "ENV FOO=bar" in commands
 
 
+def test_pipe_with_secret_build_step(builder_version, servicer, client):
+    def add_secret_command(image: Image) -> Image:
+        return image.run_commands("echo $TOKEN", secrets=[Secret.from_dict({"TOKEN": "piped"})])
+
+    image = Image.debian_slim().pipe(add_secret_command)
+    build_image(image, client)
+
+    layers = get_image_layers(image.object_id, servicer)
+    assert len(layers[0].secret_ids) == 1
+    assert "RUN echo $TOKEN" in layers[0].dockerfile_commands
+
+
 def test_run_commands_with_volume(servicer, client):
     vol = modal.Volume.from_name("xyz", create_if_missing=True)
     image = modal.Image.debian_slim().run_commands("echo 'Hello Modal'", volumes={"/root/foo": vol})
