@@ -65,11 +65,11 @@ func writeRemoteFile(ctx context.Context, sb *Sandbox, path string, data []byte)
 	defer cp.Stderr.Close()
 	if _, err := cp.Stdin.Write(data); err != nil {
 		_ = cp.Stdin.Close()
-		_, _ = cp.Wait(ctx)
+		_, _ = cp.Wait(ctx, nil)
 		return fmt.Errorf("writeRemoteFile write: %w", err)
 	}
 	_ = cp.Stdin.Close()
-	rc, err := cp.Wait(ctx)
+	rc, err := cp.Wait(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func readRemoteFile(ctx context.Context, sb *Sandbox, path string) ([]byte, erro
 		return nil, err
 	}
 	defer cp.Stderr.Close()
-	rc, err := cp.Wait(ctx)
+	rc, err := cp.Wait(ctx, nil)
 	stdout, _ := io.ReadAll(cp.Stdout)
 	if err != nil {
 		return nil, err
@@ -107,7 +107,7 @@ func pathExists(ctx context.Context, sb *Sandbox, path string) (bool, error) {
 	}
 	defer cp.Stdout.Close()
 	defer cp.Stderr.Close()
-	rc, err := cp.Wait(ctx)
+	rc, err := cp.Wait(ctx, nil)
 	return rc == 0, err
 }
 
@@ -118,7 +118,7 @@ func isDirRemote(ctx context.Context, sb *Sandbox, path string) (bool, error) {
 	}
 	defer cp.Stdout.Close()
 	defer cp.Stderr.Close()
-	rc, err := cp.Wait(ctx)
+	rc, err := cp.Wait(ctx, nil)
 	return rc == 0, err
 }
 
@@ -145,7 +145,7 @@ func statRemoteFile(ctx context.Context, sb *Sandbox, path string) (remoteStatRe
 		return remoteStatResult{}, err
 	}
 	defer cp.Stderr.Close()
-	rc, err := cp.Wait(ctx)
+	rc, err := cp.Wait(ctx, nil)
 	stdout, _ := io.ReadAll(cp.Stdout)
 	if err != nil {
 		return remoteStatResult{}, err
@@ -180,7 +180,7 @@ func execRc(ctx context.Context, sb *Sandbox, args []string) error {
 	}
 	defer cp.Stdout.Close()
 	defer cp.Stderr.Close()
-	rc, err := cp.Wait(ctx)
+	rc, err := cp.Wait(ctx, nil)
 	if err != nil {
 		return err
 	}
