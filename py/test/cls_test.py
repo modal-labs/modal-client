@@ -1654,3 +1654,21 @@ def test_cls_with_batching_creates_new_options_instance(client, servicer):
     child_options_after = synchronizer._translate_in(ChildClass)._options  # type: ignore
     assert child_options_after.batch_max_size == 10, "with_batching options should be preserved after hydration"
     assert child_options_after.batch_wait_ms == 100, "with_batching options should be preserved after hydration"
+
+
+def test_cls_version(client, servicer):
+    C = modal.Cls.from_name("dummy-app", "MyClass", version=1, client=client)
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(),
+            ),
+        )
+        C.hydrate()
+
+    request: api_pb2.FunctionGetRequest = ctx.pop_request("FunctionGet")
+    assert request.app_version == 1

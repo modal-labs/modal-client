@@ -1208,6 +1208,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         app_name: str,
         name: str,
         *,
+        version: int | None = None,
         load_context_overrides: LoadContext,
     ):
         # internal function lookup implementation that allows lookup of class "service functions"
@@ -1219,6 +1220,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 app_name=app_name,
                 object_tag=name,
                 environment_name=load_context.environment_name,
+                app_version=version or 0,
             )
             try:
                 response = await load_context.client.stub.FunctionGet(request)
@@ -1251,6 +1253,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         app_name: str,
         name: str,
         *,
+        version: int | None = None,
         environment_name: str | None = None,
         client: _Client | None = None,
     ) -> "_Function":
@@ -1273,6 +1276,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             ```python
             f = modal.Function.from_name("other-app", "function")
             ```
+
+            The `version` parameter allows you to invoke a version-pinned function:
+
+            ```python
+            f_v3 = modal.Function.from_name("other-app", "function", version=3)
+            ```
         """
         if "." in name:
             raise InvalidError(
@@ -1281,7 +1290,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
 
         return cls._from_name(
-            app_name, name, load_context_overrides=LoadContext(environment_name=environment_name, client=client)
+            app_name,
+            name,
+            load_context_overrides=LoadContext(environment_name=environment_name, client=client),
+            version=version,
         )
 
     @property

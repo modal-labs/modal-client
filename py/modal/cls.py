@@ -641,6 +641,7 @@ More information on class parameterization can be found here: https://modal.com/
         app_name: str,
         name: str,
         *,
+        version: int | None = None,
         environment_name: str | None = None,
         client: "_Client | None" = None,
     ) -> "_Cls":
@@ -662,6 +663,12 @@ More information on class parameterization can be found here: https://modal.com/
         Examples:
             ```python
             Model = modal.Cls.from_name("other-app", "Model")
+            ```
+
+            The `version` parameter constructs a version-pinned Cls:
+
+            ```python
+            Modelv3 = modal.Cls.from_name("other-app", "Model", version=3)
             ```
         """
 
@@ -705,6 +712,7 @@ More information on class parameterization can be found here: https://modal.com/
             app_name,
             class_service_name,
             load_context_overrides=load_context_overrides,
+            version=version,
         )
         cls._name = name
         return cls

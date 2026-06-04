@@ -2501,3 +2501,15 @@ def test_function_duplicate_volume_mounts(client, servicer):
     with pytest.raises(InvalidError, match="same.*[Vv]olume.*multiple"):
         with test_app.run(client=client):
             pass  # Error should occur during function load
+
+
+def test_function_from_name_version(client, servicer):
+    f = Function.from_name("dummy-app", "func", version=1, client=client)
+    function_id = "fu-1"
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("FunctionGet", api_pb2.FunctionGetResponse(function_id=function_id))
+        f.hydrate()
+
+    req: api_pb2.FunctionGetRequest = ctx.pop_request("FunctionGet")
+    assert req.app_version == 1
