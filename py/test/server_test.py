@@ -3,12 +3,14 @@ import contextlib
 import pytest
 import re
 import subprocess
+from typing import cast
 from unittest import mock
 
 import modal
 import modal.experimental
 from modal._serialization import deserialize
 from modal._server import _Server
+from modal._utils.async_utils import synchronizer
 from modal.exception import InvalidError, NotFoundError
 from modal.server import Server
 from modal_proto import api_pb2
@@ -180,6 +182,7 @@ def test_run_server_normalizes_empty_checkpoint_id(client):
 def test_run_server_operation_order(client):
     import modal._container_entrypoint as container_entrypoint
 
+    _client = cast(modal.client._Client, synchronizer._translate_in(client))
     events = []
     function_def = api_pb2.Function(is_server=True, function_name="OrderedServer")
     container_args = api_pb2.ContainerArguments(
@@ -207,7 +210,7 @@ def test_run_server_operation_order(client):
         assert args[0] is container_args
         assert args[1] is task_lifecycle_manager
         assert args[2] == container_args.function_def
-        assert args[4] is client
+        assert args[3] is _client
         return service
 
     def user_code_event_loop_factory():

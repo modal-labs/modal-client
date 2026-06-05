@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2024
+from typing import cast
 from unittest.mock import MagicMock
 
 from modal._image import _Image
 from modal._runtime import user_code_imports
 from modal._utils.async_utils import synchronizer
+from modal.client import _Client
 from modal_proto import api_pb2
 
 
@@ -57,6 +59,7 @@ def test_import_function_undecorated(monkeypatch, supports_on_path):
 
 
 def test_import_class(monkeypatch, supports_dir, client):
+    _client = cast(_Client, synchronizer._translate_in(client))
     monkeypatch.syspath_prepend(supports_dir)
     function_def = api_pb2.Function(
         module_name="user_code_import_samples.cls",
@@ -69,7 +72,7 @@ def test_import_class(monkeypatch, supports_dir, client):
             object_id="fu-123",
         ),
         class_id="cs-123",
-        client=client,
+        _client=_client,
         ser_user_cls=None,
         cls_args=(),
         cls_kwargs={},
@@ -107,6 +110,7 @@ def test_import_class(monkeypatch, supports_dir, client):
 
 
 def test_import_server(monkeypatch, supports_dir, client):
+    _client = cast(_Client, synchronizer._translate_in(client))
     monkeypatch.syspath_prepend(supports_dir)
     function_def = api_pb2.Function(
         module_name="user_code_import_samples.server",
@@ -118,11 +122,9 @@ def test_import_server(monkeypatch, supports_dir, client):
         service_function_hydration_data=api_pb2.Object(
             object_id="fu-123",
         ),
-        client=client,
+        _client=_client,
         ser_user_cls=None,
     )
-
-    print(service)
 
     assert service.app is not None
     assert service.user_cls_instance is not None

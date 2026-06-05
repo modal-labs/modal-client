@@ -28,7 +28,7 @@ from modal._clustered_functions import initialize_clustered_function
 from modal._runtime.user_code_event_loop import UserCodeEventLoop
 from modal._serialization import deserialize, deserialize_params
 from modal._utils.async_utils import TaskContext, aclosing, synchronizer
-from modal.app import App, _App
+from modal.app import _App
 from modal.client import Client, _Client
 from modal.config import logger
 from modal.exception import ExecutionError, InputCancellation
@@ -288,7 +288,7 @@ def get_serialized_user_class_and_function(
 
 
 def get_server_service(
-    container_args: api_pb2.ContainerArguments, function_def: api_pb2.Function, _client: _Client, client: Client
+    container_args: api_pb2.ContainerArguments, function_def: api_pb2.Function, _client: _Client
 ) -> Service:
     ser_usr_cls, ser_fun = get_serialized_user_class_and_function(function_def, _client)
     service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
@@ -298,14 +298,14 @@ def get_server_service(
     service = import_server_service(
         function_def,
         service_function_hydration_data,
-        client,
+        _client,
         ser_usr_cls,
     )
     return service
 
 
 def get_class_service(
-    container_args: api_pb2.ContainerArguments, function_def: api_pb2.Function, _client: _Client, client: Client
+    container_args: api_pb2.ContainerArguments, function_def: api_pb2.Function, _client: _Client
 ) -> Service:
     ser_usr_cls, ser_fun = get_serialized_user_class_and_function(function_def, _client)
     if container_args.serialized_params:
@@ -326,7 +326,7 @@ def get_class_service(
         function_def,
         service_function_hydration_data,
         class_id,
-        client,
+        _client,
         ser_usr_cls,
         param_args,
         param_kwargs,
@@ -349,16 +349,15 @@ def hydrate_function(
     task_lifecycle_manager: TaskLifecycleManager,
     function_def: api_pb2.Function,
     _client: _Client,
-    client: Client,
 ) -> Service:
     active_app: _App
     service: Service
     with task_lifecycle_manager.handle_task_lifecycle_exception():
         with execution_context._import_context():
             if function_def.is_server:
-                service = get_server_service(container_args, function_def, _client, client)
+                service = get_server_service(container_args, function_def, _client)
             elif function_def.is_class:
-                service = get_class_service(container_args, function_def, _client, client)
+                service = get_class_service(container_args, function_def, _client)
             else:
                 service = get_function_service(function_def, _client)
 
@@ -369,8 +368,7 @@ def hydrate_function(
 
     # Initialize objects on the app.
     # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
-    app: App = cast(App, synchronizer._translate_out(active_app))
-    app._init_container(client, container_app)
+    active_app._init_container(_client, container_app)
 
     # Hydrate all function dependencies.
     # TODO(erikbern): we an remove this once we
@@ -406,7 +404,7 @@ def run_server(container_args: api_pb2.ContainerArguments, client: Client):
         client,
     )
 
-    service: Service = hydrate_function(container_args, task_lifecycle_manager, function_def, _client, client)
+    service: Service = hydrate_function(container_args, task_lifecycle_manager, function_def, _client)
     # Initialize clustered functions.
     if function_def._experimental_group_size > 0:
         initialize_clustered_function(
@@ -442,7 +440,7 @@ def run_function(container_args: api_pb2.ContainerArguments, client: Client):
     with container_io_manager.heartbeats(is_snapshotting_function), UserCodeEventLoop() as event_loop:
         # Initialize the function, importing user code.
         service: Service = hydrate_function(
-            container_args, container_io_manager.get_task_lifecycle_manager(), function_def, _client, client
+            container_args, container_io_manager.get_task_lifecycle_manager(), function_def, _client
         )
         if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
             # Concurrency and batching doesn't apply for `modal shell`.

@@ -571,7 +571,7 @@ def import_class_service(
     function_def: api_pb2.Function,
     service_function_hydration_data: api_pb2.Object,
     class_id: str,
-    client: "modal.client.Client",
+    _client: "modal.client._Client",
     ser_user_cls: type | None,
     cls_args,
     cls_kwargs,
@@ -599,7 +599,6 @@ def import_class_service(
         # Undecorated user class (serialized or local scope-decoration).
         service_deps = None  # we can't infer service deps for now
         active_app = get_active_app_fallback(function_def)
-        _client = typing.cast("modal.client._Client", synchronizer._translate_in(client))
         _service_function: modal._functions._Function[Any, Any, Any] = modal._functions._Function._new_hydrated(
             service_function_hydration_data.object_id,
             _client,
@@ -627,7 +626,7 @@ def import_class_service(
 def import_server_service(
     function_def: api_pb2.Function,
     service_function_hydration_data: api_pb2.Object,
-    client: "modal.client.Client",
+    _client: "modal.client._Client",
     ser_user_cls: type | None,
 ) -> Service:
     """
@@ -654,7 +653,6 @@ def import_server_service(
         # Undecorated user class (serialized or local scope-decoration).
         service_deps = None  # we can't infer service deps for now
         active_app = get_active_app_fallback(function_def)
-        _client = typing.cast("modal.client._Client", synchronizer._translate_in(client))
         _service_function: modal._functions._Function[Any, Any, Any] = modal._functions._Function._new_hydrated(
             service_function_hydration_data.object_id,
             _client,
