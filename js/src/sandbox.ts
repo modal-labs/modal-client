@@ -32,11 +32,6 @@ import {
 import { TaskCommandRouterClientImpl } from "./task_command_router_client";
 import { v4 as uuidv4 } from "uuid";
 import { type ModalClient, isRetryableGrpc, ModalGrpcClient } from "./client";
-import {
-  runFilesystemExec,
-  SandboxFile,
-  SandboxFileMode,
-} from "./sandbox_filesystem";
 import { SandboxFilesystem } from "./sandbox_fs";
 import {
   type ModalReadStream,
@@ -1219,32 +1214,6 @@ export class Sandbox {
       tags[tag.tagName] = tag.tagValue;
     }
     return tags;
-  }
-
-  /**
-   * Open a file in the Sandbox filesystem.
-   *
-   * @deprecated Use {@link SandboxFilesystem} methods: `sandbox.filesystem.readBytes()`,
-   * `writeBytes()`, or `copyToLocal()` instead for improved reliability.
-   *
-   * @param path - Path to the file to open
-   * @param mode - File open mode (r, w, a, r+, w+, a+)
-   * @returns Promise that resolves to a {@link SandboxFile}
-   */
-  async open(path: string, mode: SandboxFileMode = "r"): Promise<SandboxFile> {
-    this.#ensureAttached();
-    this.#ensureV1("open");
-    const taskId = await this.#getTaskId();
-    const resp = await runFilesystemExec(this.#client.cpClient, {
-      fileOpenRequest: {
-        path,
-        mode,
-      },
-      taskId,
-    });
-    // For Open request, the file descriptor is always set
-    const fileDescriptor = resp.response.fileDescriptor as string;
-    return new SandboxFile(this.#client, fileDescriptor, taskId);
   }
 
   async exec(

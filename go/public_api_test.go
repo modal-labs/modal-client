@@ -29,12 +29,6 @@ import (
 // *XxxParams rule. These implement standard interfaces or are simple accessors
 // that would gain no benefit from an options struct.
 var skipMethods = map[string]string{
-	// SandboxFile implements io.Reader, io.Writer, and io.Closer.
-	"SandboxFile.Read":  "implements io.Reader",
-	"SandboxFile.Write": "implements io.Writer",
-	"SandboxFile.Flush": "file flush signal, no config needed",
-	"SandboxFile.Close": "implements io.Closer",
-
 	// Simple value accessors.
 	"Function.GetWebURL": "returns cached URL string",
 
@@ -45,7 +39,6 @@ var skipMethods = map[string]string{
 	"Volume.CloseEphemeral": "lifecycle signal, no config needed",
 	"Queue.CloseEphemeral":  "lifecycle signal, no config needed",
 	"Sandbox.Detach":        "disconnects from sandbox, no config needed",
-	"Sandbox.Open":          "implements os.OpenFile-like interface, no SDK options needed",
 
 	// Namespace accessor: returns a sub-object, no config options.
 	"Sandbox.Filesystem": "returns the SandboxFilesystem namespace, no config needed",
@@ -106,7 +99,6 @@ var typeRegistry = []typeEntry{
 	{name: "Image", typ: reflect.TypeOf((*Image)(nil)), isInterface: false},
 	{name: "Queue", typ: reflect.TypeOf((*Queue)(nil)), isInterface: false},
 	{name: "Sandbox", typ: reflect.TypeOf((*Sandbox)(nil)), isInterface: false},
-	{name: "SandboxFile", typ: reflect.TypeOf((*SandboxFile)(nil)), isInterface: false},
 	{name: "Volume", typ: reflect.TypeOf((*Volume)(nil)), isInterface: false},
 	{name: "Tunnel", typ: reflect.TypeOf((*Tunnel)(nil)), isInterface: false},
 	{name: "SandboxFilesystem", typ: reflect.TypeOf((*SandboxFilesystem)(nil)), isInterface: false},

@@ -1034,42 +1034,6 @@ func (sb *Sandbox) Filesystem() *SandboxFilesystem {
 	return sb.filesystem
 }
 
-// Open opens a file in the Sandbox filesystem.
-// The mode parameter follows the same conventions as os.OpenFile:
-// "r" for read-only, "w" for write-only (truncates), "a" for append, etc.
-//
-// Deprecated: Use [Sandbox.Filesystem] for whole-file operations instead.
-func (sb *Sandbox) Open(ctx context.Context, path, mode string) (*SandboxFile, error) {
-	if err := sb.ensureAttached(); err != nil {
-		return nil, err
-	}
-	if err := sb.ensureV1("Open"); err != nil {
-		return nil, err
-	}
-
-	if err := sb.ensureTaskID(ctx); err != nil {
-		return nil, err
-	}
-
-	_, resp, err := runFilesystemExec(ctx, sb.client.cpClient, pb.ContainerFilesystemExecRequest_builder{
-		FileOpenRequest: pb.ContainerFileOpenRequest_builder{
-			Path: path,
-			Mode: mode,
-		}.Build(),
-		TaskId: sb.taskID,
-	}.Build(), nil)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &SandboxFile{
-		fileDescriptor: resp.GetFileDescriptor(),
-		taskID:         sb.taskID,
-		cpClient:       sb.client.cpClient,
-	}, nil
-}
-
 const maxGetTaskIDAttempts = 600 // 5 minutes at 500ms intervals
 
 func (sb *Sandbox) ensureTaskID(ctx context.Context) error {

@@ -1014,7 +1014,7 @@ func TestSandboxGetTaskIdPolling(t *testing.T) {
 	sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	_, err = sb.Open(ctx, "/test", "r") //nolint:staticcheck
+	_, err = sb.Exec(ctx, []string{"echo", "hello"}, nil)
 	g.Expect(err).Should(gomega.HaveOccurred())
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
@@ -1283,10 +1283,6 @@ func TestSandboxDetachForbidsAllOperations(t *testing.T) {
 	g.Expect(err.Error()).To(gomega.ContainSubstring(errorMsg))
 
 	_, err = sb.CreateConnectToken(ctx, nil)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring(errorMsg))
-
-	_, err = sb.Open(ctx, "/abc.txt", "r") //nolint:staticcheck
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(errorMsg))
 

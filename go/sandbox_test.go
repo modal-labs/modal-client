@@ -191,10 +191,6 @@ func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
-	_, err = sb.Open(ctx, "/tmp/file", "r")
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
-
 	err = sb.MountImage(ctx, "/mnt", nil, nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))

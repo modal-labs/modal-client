@@ -88,7 +88,6 @@ export {
   type SecretFromObjectParams,
   type SecretDeleteParams,
 } from "./secret";
-export { SandboxFile, type SandboxFileMode } from "./sandbox_filesystem";
 export { SandboxFilesystem, type FileInfo, type FileType } from "./sandbox_fs";
 export {
   Volume,
