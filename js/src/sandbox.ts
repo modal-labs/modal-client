@@ -461,20 +461,18 @@ export async function buildSandboxCreateRequestProto(
         "inboundCidrAllowlist cannot be used when blockNetwork is enabled",
       );
     }
-    networkAccess = {
+    networkAccess = NetworkAccess.create({
       networkAccessType: NetworkAccess_NetworkAccessType.BLOCKED,
-      allowedCidrs: [],
-    };
+    });
   } else if (resolvedOutboundCidrAllowlist) {
-    networkAccess = {
+    networkAccess = NetworkAccess.create({
       networkAccessType: NetworkAccess_NetworkAccessType.ALLOWLIST,
       allowedCidrs: resolvedOutboundCidrAllowlist,
-    };
+    });
   } else {
-    networkAccess = {
+    networkAccess = NetworkAccess.create({
       networkAccessType: NetworkAccess_NetworkAccessType.OPEN,
-      allowedCidrs: [],
-    };
+    });
   }
 
   const schedulerPlacement: SchedulerPlacement | undefined = params.regions
