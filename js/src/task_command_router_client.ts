@@ -11,6 +11,15 @@ import {
 } from "nice-grpc";
 import {
   TaskCommandRouterDefinition,
+  TaskContainerCreateRequest,
+  TaskContainerCreateResponse,
+  TaskContainerGetRequest,
+  TaskContainerGetResponse,
+  TaskContainerListRequest,
+  TaskContainerListResponse,
+  TaskContainerTerminateRequest,
+  TaskContainerWaitRequest,
+  TaskContainerWaitResponse,
   TaskExecPollRequest,
   TaskExecPollResponse,
   TaskExecStartRequest,
@@ -301,17 +310,52 @@ export class TaskCommandRouterClientImpl {
     this.channel.close();
   }
 
+  /** Run a unary RPC against the command router with the default retry policy. */
+  private async callUnary<T>(fn: () => Promise<T>): Promise<T> {
+    return await callWithRetriesOnTransientErrors(
+      () => this.callWithAuthRetry(fn),
+      10, // baseDelayMs
+      2, // delayFactor
+      10, // maxRetries
+      null, // no overall deadline
+      () => this.closed,
+    );
+  }
+
   async execStart(
     request: TaskExecStartRequest,
   ): Promise<TaskExecStartResponse> {
-    return await callWithRetriesOnTransientErrors(
-      () => this.callWithAuthRetry(() => this.stub.taskExecStart(request)),
-      10,
-      2,
-      10,
-      null,
-      () => this.closed,
-    );
+    return await this.callUnary(() => this.stub.taskExecStart(request));
+  }
+
+  async containerCreate(
+    request: TaskContainerCreateRequest,
+  ): Promise<TaskContainerCreateResponse> {
+    return await this.callUnary(() => this.stub.taskContainerCreate(request));
+  }
+
+  async containerGet(
+    request: TaskContainerGetRequest,
+  ): Promise<TaskContainerGetResponse> {
+    return await this.callUnary(() => this.stub.taskContainerGet(request));
+  }
+
+  async containerList(
+    request: TaskContainerListRequest,
+  ): Promise<TaskContainerListResponse> {
+    return await this.callUnary(() => this.stub.taskContainerList(request));
+  }
+
+  async containerTerminate(
+    request: TaskContainerTerminateRequest,
+  ): Promise<void> {
+    await this.callUnary(() => this.stub.taskContainerTerminate(request));
+  }
+
+  async containerWait(
+    request: TaskContainerWaitRequest,
+  ): Promise<TaskContainerWaitResponse> {
+    return await this.callUnary(() => this.stub.taskContainerWait(request));
   }
 
   async *execStdioRead(
@@ -351,14 +395,7 @@ export class TaskCommandRouterClientImpl {
       data,
       eof,
     });
-    return await callWithRetriesOnTransientErrors(
-      () => this.callWithAuthRetry(() => this.stub.taskExecStdinWrite(request)),
-      10,
-      2,
-      10,
-      null,
-      () => this.closed,
-    );
+    return await this.callUnary(() => this.stub.taskExecStdinWrite(request));
   }
 
   async execPoll(
@@ -425,14 +462,7 @@ export class TaskCommandRouterClientImpl {
   }
 
   async mountDirectory(request: TaskMountDirectoryRequest): Promise<void> {
-    await callWithRetriesOnTransientErrors(
-      () => this.callWithAuthRetry(() => this.stub.taskMountDirectory(request)),
-      10,
-      2,
-      10,
-      null,
-      () => this.closed,
-    );
+    await this.callUnary(() => this.stub.taskMountDirectory(request));
   }
 
   async snapshotDirectory(
@@ -527,15 +557,7 @@ export class TaskCommandRouterClientImpl {
   }
 
   async unmountDirectory(request: TaskUnmountDirectoryRequest): Promise<void> {
-    await callWithRetriesOnTransientErrors(
-      () =>
-        this.callWithAuthRetry(() => this.stub.taskUnmountDirectory(request)),
-      10,
-      2,
-      10,
-      null,
-      () => this.closed,
-    );
+    await this.callUnary(() => this.stub.taskUnmountDirectory(request));
   }
 
   private async refreshJwt(): Promise<void> {

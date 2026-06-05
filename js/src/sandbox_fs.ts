@@ -6,7 +6,7 @@ import { dirname } from "node:path";
 
 import { ClientError, Status } from "nice-grpc";
 
-import type { Sandbox } from "./sandbox";
+import type { ContainerProcess, SandboxExecParams } from "./sandbox";
 import {
   SANDBOX_FS_TOOLS_PATH,
   makeListFilesCommand,
@@ -86,7 +86,12 @@ function toUint8Array(data: Uint8Array | ArrayBuffer | Buffer): Uint8Array {
 /** Namespace for Sandbox filesystem APIs. */
 export class SandboxFilesystem {
   /** @ignore */
-  constructor(private readonly sandbox: Sandbox) {}
+  constructor(
+    private readonly exec: (
+      command: string[],
+      params?: SandboxExecParams,
+    ) => Promise<ContainerProcess>,
+  ) {}
 
   /**
    * Copy a local file into the Sandbox.
@@ -105,7 +110,7 @@ export class SandboxFilesystem {
     validateAbsoluteRemotePath(remotePath, "copyFromLocal");
 
     await translateExecErrors("copyFromLocal", remotePath, async () => {
-      const process = await this.sandbox.exec(
+      const process = await this.exec(
         [SANDBOX_FS_TOOLS_PATH, makeWriteFileCommand(remotePath)],
         { mode: "binary" },
       );
@@ -165,7 +170,7 @@ export class SandboxFilesystem {
 
     try {
       await translateExecErrors("copyToLocal", remotePath, async () => {
-        const process = await this.sandbox.exec(
+        const process = await this.exec(
           [SANDBOX_FS_TOOLS_PATH, makeReadFileCommand(remotePath)],
           { mode: "binary" },
         );
@@ -207,7 +212,7 @@ export class SandboxFilesystem {
       "listFiles",
       remotePath,
       async () => {
-        const process = await this.sandbox.exec(
+        const process = await this.exec(
           [SANDBOX_FS_TOOLS_PATH, makeListFilesCommand(remotePath)],
           { mode: "text" },
         );
@@ -249,7 +254,7 @@ export class SandboxFilesystem {
     const createParents = options?.createParents ?? true;
 
     await translateExecErrors("makeDirectory", remotePath, async () => {
-      const process = await this.sandbox.exec(
+      const process = await this.exec(
         [
           SANDBOX_FS_TOOLS_PATH,
           makeMakeDirectoryCommand(remotePath, createParents),
@@ -280,7 +285,7 @@ export class SandboxFilesystem {
     validateAbsoluteRemotePath(remotePath, "readBytes");
 
     return translateExecErrors("readBytes", remotePath, async () => {
-      const process = await this.sandbox.exec(
+      const process = await this.exec(
         [SANDBOX_FS_TOOLS_PATH, makeReadFileCommand(remotePath)],
         { mode: "binary" },
       );
@@ -309,7 +314,7 @@ export class SandboxFilesystem {
     validateAbsoluteRemotePath(remotePath, "readText");
 
     return translateExecErrors("readText", remotePath, async () => {
-      const process = await this.sandbox.exec(
+      const process = await this.exec(
         [SANDBOX_FS_TOOLS_PATH, makeReadFileCommand(remotePath)],
         { mode: "text" },
       );
@@ -346,7 +351,7 @@ export class SandboxFilesystem {
     const recursive = options?.recursive ?? false;
 
     await translateExecErrors("remove", remotePath, async () => {
-      const process = await this.sandbox.exec(
+      const process = await this.exec(
         [SANDBOX_FS_TOOLS_PATH, makeRemoveCommand(remotePath, recursive)],
         { mode: "binary" },
       );
@@ -375,7 +380,7 @@ export class SandboxFilesystem {
     validateAbsoluteRemotePath(remotePath, "stat");
 
     const stdout = await translateExecErrors("stat", remotePath, async () => {
-      const process = await this.sandbox.exec(
+      const process = await this.exec(
         [SANDBOX_FS_TOOLS_PATH, makeStatCommand(remotePath)],
         { mode: "text" },
       );
@@ -411,7 +416,7 @@ export class SandboxFilesystem {
     const bytes = toUint8Array(data);
 
     await translateExecErrors("writeBytes", remotePath, async () => {
-      const process = await this.sandbox.exec(
+      const process = await this.exec(
         [SANDBOX_FS_TOOLS_PATH, makeWriteFileCommand(remotePath)],
         { mode: "binary" },
       );

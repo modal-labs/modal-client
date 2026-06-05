@@ -80,6 +80,14 @@ export type {
   SandboxCreateParams,
 } from "./sandbox";
 export { ContainerProcess, Probe, Sandbox, SandboxService } from "./sandbox";
+export { SidecarService, SidecarContainer } from "./sandbox_sidecar";
+export type {
+  SidecarCreateParams,
+  SidecarGetParams,
+  SidecarListParams,
+  SidecarExecParams,
+  SidecarTerminateParams,
+} from "./sandbox_sidecar";
 export type { ModalReadStream, ModalWriteStream } from "./streams";
 export {
   Secret,

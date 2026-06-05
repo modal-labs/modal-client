@@ -3,13 +3,14 @@ import { expect, test } from "vitest";
 
 import { InvalidError } from "../src/errors";
 import { SandboxFilesystem } from "../src/sandbox_fs";
-import type { Sandbox } from "../src/sandbox";
 
 // ---------------------------------------------------------------------------
 // Unit tests that throw before exec
 // ---------------------------------------------------------------------------
 
-const fs = new SandboxFilesystem(null as unknown as Sandbox);
+const fs = new SandboxFilesystem(async () => {
+  throw new Error("Unexpected exec call");
+});
 
 test("SandboxFsCopyFromLocalErrorsOnRelativeRemotePath", async () => {
   await expect(

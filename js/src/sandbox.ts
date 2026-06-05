@@ -33,6 +33,7 @@ import { TaskCommandRouterClientImpl } from "./task_command_router_client";
 import { v4 as uuidv4 } from "uuid";
 import { type ModalClient, isRetryableGrpc, ModalGrpcClient } from "./client";
 import { SandboxFilesystem } from "./sandbox_fs";
+import { SidecarService } from "./sandbox_sidecar";
 import {
   type ModalReadStream,
   type ModalWriteStream,
@@ -995,11 +996,40 @@ export function validateExecArgs(args: string[]): void {
   }
 }
 
+export function validateWorkdir(workdir: string | undefined): void {
+  if (workdir !== undefined && !workdir.startsWith("/")) {
+    throw new InvalidError(`workdir must be an absolute path, got: ${workdir}`);
+  }
+}
+
+export function getReturnCode(
+  result: GenericResult | undefined,
+): number | null {
+  if (
+    result === undefined ||
+    result.status === GenericResult_GenericStatus.GENERIC_STATUS_UNSPECIFIED
+  ) {
+    return null;
+  }
+
+  // Statuses are converted to exitcodes so we can conform to subprocess API.
+  if (result.status === GenericResult_GenericStatus.GENERIC_STATUS_TIMEOUT) {
+    return 124;
+  } else if (
+    result.status === GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED
+  ) {
+    return 137;
+  } else {
+    return result.exitcode;
+  }
+}
+
 export function buildTaskExecStartRequestProto(
   taskId: string,
   execId: string,
   command: string[],
   params?: SandboxExecParams,
+  containerId?: string,
 ): TaskExecStartRequest {
   checkForRenamedParams(params, { timeout: "timeoutMs" });
 
@@ -1011,6 +1041,7 @@ export function buildTaskExecStartRequestProto(
       `timeoutMs must be a multiple of 1000ms, got ${params.timeoutMs}`,
     );
   }
+  validateWorkdir(params?.workdir);
 
   const secretIds = (params?.secrets || []).map((secret) => secret.secretId);
 
@@ -1052,6 +1083,7 @@ export function buildTaskExecStartRequestProto(
     env: params?.env ?? {},
     ptyInfo,
     runtimeDebug: false,
+    containerId: containerId ?? "",
   });
 }
 
@@ -1073,6 +1105,7 @@ export class Sandbox {
   #commandRouterClientPromise: Promise<TaskCommandRouterClientImpl> | undefined;
   #attached: boolean = true;
   #filesystem?: SandboxFilesystem;
+  #sidecars?: SidecarService;
 
   /** @ignore */
   constructor(
@@ -1144,9 +1177,29 @@ export class Sandbox {
   get filesystem(): SandboxFilesystem {
     this.#ensureAttached();
     if (!this.#filesystem) {
-      this.#filesystem = new SandboxFilesystem(this);
+      this.#filesystem = new SandboxFilesystem((command, params) =>
+        this.#execInternal(command, params),
+      );
     }
     return this.#filesystem;
+  }
+
+  /**
+   * Operations for managing sidecar containers that run alongside the
+   * Sandbox's main container.
+   *
+   * EXPERIMENTAL: the API is subject to change.
+   */
+  get experimentalSidecars(): SidecarService {
+    this.#ensureAttached();
+    if (!this.#sidecars) {
+      this.#sidecars = new SidecarService({
+        exec: (command, params, containerId) =>
+          this.#execInternal(command, params, containerId),
+        commandRouter: () => this.#getCommandRouter(),
+      });
+    }
+    return this.#sidecars;
   }
 
   /** Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in {@link SandboxService#list client.sandboxes.list}. */
@@ -1208,12 +1261,17 @@ export class Sandbox {
     command: string[],
     params?: SandboxExecParams,
   ): Promise<ContainerProcess> {
+    return this.#execInternal(command, params);
+  }
+
+  async #execInternal(
+    command: string[],
+    params: SandboxExecParams | undefined,
+    containerId?: string,
+  ): Promise<ContainerProcess> {
     this.#ensureAttached();
     validateExecArgs(command);
-    const taskId = await this.#getTaskId();
-
-    const commandRouterClient =
-      await this.#getOrCreateCommandRouterClient(taskId);
+    const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
     const execId = uuidv4();
     const request = buildTaskExecStartRequestProto(
@@ -1221,6 +1279,7 @@ export class Sandbox {
       execId,
       command,
       params,
+      containerId,
     );
 
     await commandRouterClient.execStart(request);
@@ -1231,6 +1290,8 @@ export class Sandbox {
       execId,
       "sandbox_id",
       this.sandboxId,
+      "container_id",
+      containerId ?? "",
       "command",
       command,
     );
@@ -1244,6 +1305,13 @@ export class Sandbox {
       params,
       deadline,
     );
+  }
+
+  async #getCommandRouter(): Promise<[string, TaskCommandRouterClientImpl]> {
+    this.#ensureAttached();
+    const taskId = await this.#getTaskId();
+    const client = await this.#getOrCreateCommandRouterClient(taskId);
+    return [taskId, client];
   }
 
   #ensureAttached(): void {
@@ -1416,7 +1484,7 @@ export class Sandbox {
     while (true) {
       const resp = await this.#sandboxWait(10);
       if (resp.result) {
-        const returnCode = Sandbox.#getReturnCode(resp.result)!;
+        const returnCode = getReturnCode(resp.result)!;
         this.#client.logger.debug(
           "Sandbox wait completed",
           "sandbox_id",
@@ -1526,9 +1594,7 @@ export class Sandbox {
     // Treat both undefined and 0 as "use default", matching the Go
     // `Timeout time.Duration` zero-value convention on SandboxSnapshotFilesystemParams.
     const timeoutMs = params?.timeoutMs || 55000;
-    const taskId = await this.#getTaskId();
-    const commandRouterClient =
-      await this.#getOrCreateCommandRouterClient(taskId);
+    const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
     const request = TaskSnapshotFilesystemRequest.create({
       taskId,
@@ -1556,9 +1622,7 @@ export class Sandbox {
   async mountImage(path: string, image?: Image): Promise<void> {
     this.#ensureAttached();
     this.#ensureV1("mountImage");
-    const taskId = await this.#getTaskId();
-    const commandRouterClient =
-      await this.#getOrCreateCommandRouterClient(taskId);
+    const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
     if (image && !image.imageId) {
       throw new Error(
@@ -1584,9 +1648,7 @@ export class Sandbox {
   async unmountImage(path: string): Promise<void> {
     this.#ensureAttached();
     this.#ensureV1("unmountImage");
-    const taskId = await this.#getTaskId();
-    const commandRouterClient =
-      await this.#getOrCreateCommandRouterClient(taskId);
+    const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
     const pathBytes = new TextEncoder().encode(path);
     const request = TaskUnmountDirectoryRequest.create({
@@ -1621,9 +1683,7 @@ export class Sandbox {
     // Treat both undefined and 0 as "use default", matching the Go
     // `Timeout time.Duration` zero-value convention on SandboxSnapshotDirectoryParams.
     const timeoutMs = params?.timeoutMs || 55000;
-    const taskId = await this.#getTaskId();
-    const commandRouterClient =
-      await this.#getOrCreateCommandRouterClient(taskId);
+    const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
     const pathBytes = new TextEncoder().encode(path);
     // snapshotId guarantees idempotency under retries.
@@ -1653,27 +1713,7 @@ export class Sandbox {
     this.#ensureAttached();
     const resp = await this.#sandboxWait(0);
 
-    return Sandbox.#getReturnCode(resp.result);
-  }
-
-  static #getReturnCode(result: GenericResult | undefined): number | null {
-    if (
-      result === undefined ||
-      result.status === GenericResult_GenericStatus.GENERIC_STATUS_UNSPECIFIED
-    ) {
-      return null;
-    }
-
-    // Statuses are converted to exitcodes so we can conform to subprocess API.
-    if (result.status === GenericResult_GenericStatus.GENERIC_STATUS_TIMEOUT) {
-      return 124;
-    } else if (
-      result.status === GenericResult_GenericStatus.GENERIC_STATUS_TERMINATED
-    ) {
-      return 137;
-    } else {
-      return result.exitcode;
-    }
+    return getReturnCode(resp.result);
   }
 }
 

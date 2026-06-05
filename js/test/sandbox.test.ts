@@ -1327,6 +1327,34 @@ test("buildTaskExecStartRequestProto with workdir", () => {
   expect(req.workdir).toBe("/tmp");
 });
 
+test("buildTaskExecStartRequestProto rejects relative workdir", () => {
+  expect(() =>
+    buildTaskExecStartRequestProto("task-123", "exec-456", ["pwd"], {
+      workdir: "tmp",
+    }),
+  ).toThrow("workdir must be an absolute path");
+});
+
+test("buildTaskExecStartRequestProto rejects empty workdir", () => {
+  expect(() =>
+    buildTaskExecStartRequestProto("task-123", "exec-456", ["pwd"], {
+      workdir: "",
+    }),
+  ).toThrow("workdir must be an absolute path");
+});
+
+test("buildTaskExecStartRequestProto with containerId", () => {
+  const req = buildTaskExecStartRequestProto(
+    "task-123",
+    "exec-456",
+    ["pwd"],
+    undefined,
+    "ctr-123",
+  );
+
+  expect(req.containerId).toBe("ctr-123");
+});
+
 test("buildTaskExecStartRequestProto with timeoutMs", () => {
   const req = buildTaskExecStartRequestProto(
     "task-123",
