@@ -305,6 +305,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         network_file_systems: dict[str | os.PathLike, _NetworkFileSystem] = {},
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
+        outbound_domain_allowlist: Sequence[str] | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
@@ -385,21 +386,24 @@ class _Sandbox(_Object, type_prefix="sb"):
             if block_network:
                 if outbound_cidr_allowlist is not None:
                     raise InvalidError("`outbound_cidr_allowlist` cannot be used when `block_network` is enabled")
+                if outbound_domain_allowlist is not None:
+                    raise InvalidError("`outbound_domain_allowlist` cannot be used when `block_network` is enabled")
                 if inbound_cidr_allowlist is not None:
                     raise InvalidError("`inbound_cidr_allowlist` cannot be used when `block_network` is enabled")
                 network_access = api_pb2.NetworkAccess(
                     network_access_type=api_pb2.NetworkAccess.NetworkAccessType.BLOCKED,
                 )
-            elif outbound_cidr_allowlist is None:
-                # If the allowlist is empty, we allow all network access.
-                network_access = api_pb2.NetworkAccess(
-                    network_access_type=api_pb2.NetworkAccess.NetworkAccessType.OPEN,
-                )
             else:
-                network_access = api_pb2.NetworkAccess(
-                    network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
-                    allowed_cidrs=outbound_cidr_allowlist,
-                )
+                if outbound_domain_allowlist is None and outbound_cidr_allowlist is None:
+                    network_access = api_pb2.NetworkAccess(
+                        network_access_type=api_pb2.NetworkAccess.NetworkAccessType.OPEN,
+                    )
+                else:
+                    network_access = api_pb2.NetworkAccess(
+                        network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
+                        allowed_cidrs=list(outbound_cidr_allowlist or []),
+                        allowed_domains=list(outbound_domain_allowlist or []),
+                    )
 
             ephemeral_disk = None  # Ephemeral disk requests not supported on Sandboxes.
             definition = api_pb2.Sandbox(
@@ -466,6 +470,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         memory: int | tuple[int, int] | None = None,
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
+        outbound_domain_allowlist: Sequence[str] | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
@@ -513,6 +518,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 additionally specify a hard limit in MiB.
             block_network: Whether to block network access.
             outbound_cidr_allowlist: List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
+            outbound_domain_allowlist: List of domain names the sandbox is allowed to access. Supports
+                wildcard prefixes (``*.``).
             inbound_cidr_allowlist:
                 List of CIDRs allowed to connect inbound to the sandbox (tunnels and connection tokens). If None,
                 all CIDRs are allowed.
@@ -596,6 +603,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             memory=memory,
             block_network=block_network,
             outbound_cidr_allowlist=outbound_cidr_allowlist,
+            outbound_domain_allowlist=outbound_domain_allowlist,
             inbound_cidr_allowlist=inbound_cidr_allowlist,
             volumes=volumes,
             pty=pty,
@@ -635,6 +643,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         memory: int | tuple[int, int] | None = None,
         block_network: bool = False,
         outbound_cidr_allowlist: Sequence[str] | None = None,
+        outbound_domain_allowlist: Sequence[str] | None = None,
         inbound_cidr_allowlist: Sequence[str] | None = None,
         volumes: dict[str | os.PathLike, _Volume | _CloudBucketMount] = {},
         pty: bool = False,
@@ -688,6 +697,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             network_file_systems=network_file_systems,
             block_network=block_network,
             outbound_cidr_allowlist=outbound_cidr_allowlist,
+            outbound_domain_allowlist=outbound_domain_allowlist,
             inbound_cidr_allowlist=inbound_cidr_allowlist,
             volumes=volumes,
             pty=pty,

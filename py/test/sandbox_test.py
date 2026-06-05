@@ -607,6 +607,30 @@ def test_sandbox_network_access(app, servicer):
         Sandbox.create("echo", "test", cidr_allowlist=["10.0.0.0/8"], outbound_cidr_allowlist=["10.0.0.0/8"], app=app)
 
 
+def test_sandbox_outbound_domain_allowlist(app, servicer):
+    # Cannot combine with block_network
+    with pytest.raises(InvalidError, match="`outbound_domain_allowlist` cannot be used when `block_network`"):
+        Sandbox.create("echo", "test", block_network=True, outbound_domain_allowlist=["example.com"], app=app)
+
+    # Domain allowlist maps to an ALLOWLIST with allowed_domains set.
+    sb = Sandbox.create("echo", "test", outbound_domain_allowlist=["example.com", "*.modal.com"], app=app)
+    net = servicer.sandbox_defs[0].network_access
+    assert net.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    assert list(net.allowed_domains) == ["example.com", "*.modal.com"]
+    assert len(net.allowed_cidrs) == 0
+    sb.terminate()
+
+    # A CIDR allowlist combined with domains becomes the additional IP allowlist.
+    sb = Sandbox.create(
+        "echo", "test", outbound_domain_allowlist=["example.com"], outbound_cidr_allowlist=["8.8.8.8/32"], app=app
+    )
+    net = servicer.sandbox_defs[1].network_access
+    assert net.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    assert list(net.allowed_domains) == ["example.com"]
+    assert list(net.allowed_cidrs) == ["8.8.8.8/32"]
+    sb.terminate()
+
+
 @skip_non_subprocess
 def test_sandbox_inbound_cidr_allowlist(app, servicer):
     # Cannot combine with block_network
