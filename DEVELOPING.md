@@ -22,16 +22,16 @@ folder for details.
 
 ## modal-js development
 
-Clone the repo, including submodules, and run:
+Navigate to the `client/js` folder and install dependencies:
 
 ```bash
+cd client/js
 npm install
 ```
 
 Run a script:
 
 ```bash
-cd modal-js
 node --import tsx examples/sandbox.ts
 ```
 
@@ -55,16 +55,15 @@ bundled library is not a huge issue.
 
 ## modal-go development
 
-Clone the repository, including submodules. You should be all set to run an
-example:
+Navigate to the `client/go` folder and you should be all set to run an example:
 
 ```bash
-cd modal-go
-go run ./examples/sandbox
+cd client/go
+go run examples/sandbox/main.go
 ```
 
-Whenever you need a new version of the protobufs, check out the desired version
-of the `modal-client` submodule and regenerate the protobuf files with:
+Whenever you need a new version of the protobufs, regenerate the protobuf files
+with:
 
 ```bash
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
@@ -88,3 +87,20 @@ We use [goleak](https://github.com/uber-go/goleak) for goroutine leak detection.
 To identify which specific test is leaking, use
 [goleaks recommended method to find them](https://github.com/uber-go/goleak/?tab=readme-ov-file#determine-source-of-package-leaks),
 then use `go test -run` to run individual tests.
+
+## Releasing the Go/JS SDK
+
+1. Navigate to the client directory and run `inv update-version-go-js`:
+
+```bash
+cd client
+# For major release
+inv update-version-go-js --patch major
+# For minor release
+inv update-version-go-js --patch minor
+# For patch release
+inv update-version-go-js --patch patch
+```
+
+2. You can change the wording or order of items in `client/CHANGELOG_GO_JS.md`
+3. Open PR with your changes.
