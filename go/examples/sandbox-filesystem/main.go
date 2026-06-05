@@ -35,12 +35,12 @@ func main() {
 	}()
 
 	// Write a file
-	if err := sb.Filesystem().WriteText(ctx, "Hello, Modal filesystem!\n", "/tmp/example.txt", nil); err != nil {
+	if err := sb.Filesystem.WriteText(ctx, "Hello, Modal filesystem!\n", "/tmp/example.txt", nil); err != nil {
 		log.Fatalf("Failed to write file: %v", err)
 	}
 
 	// Read the file
-	content, err := sb.Filesystem().ReadText(ctx, "/tmp/example.txt", nil)
+	content, err := sb.Filesystem.ReadText(ctx, "/tmp/example.txt", nil)
 	if err != nil {
 		log.Fatalf("Failed to read file: %v", err)
 	}

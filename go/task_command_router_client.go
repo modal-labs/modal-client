@@ -373,23 +373,25 @@ func callWithAuthRetry[T any](ctx context.Context, c retryableClient, fn func(co
 	return resp, err
 }
 
+func callCommandRouterUnary[T any](ctx context.Context, c *taskCommandRouterClient, fn func(context.Context) (*T, error)) (*T, error) {
+	return callWithRetriesOnTransientErrors(ctx, func() (*T, error) {
+		return callWithAuthRetry(ctx, c, fn)
+	}, defaultRetryOptions(), &c.closed)
+}
+
 // MountDirectory mounts an image at a directory in the container.
 func (c *taskCommandRouterClient) MountDirectory(ctx context.Context, request *pb.TaskMountDirectoryRequest) error {
-	_, err := callWithRetriesOnTransientErrors(ctx, func() (*emptypb.Empty, error) {
-		return callWithAuthRetry(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {
-			return c.stub.TaskMountDirectory(authCtx, request)
-		})
-	}, defaultRetryOptions(), &c.closed)
+	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {
+		return c.stub.TaskMountDirectory(authCtx, request)
+	})
 	return err
 }
 
 // UnmountDirectory unmounts a directory in the container.
 func (c *taskCommandRouterClient) UnmountDirectory(ctx context.Context, request *pb.TaskUnmountDirectoryRequest) error {
-	_, err := callWithRetriesOnTransientErrors(ctx, func() (*emptypb.Empty, error) {
-		return callWithAuthRetry(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {
-			return c.stub.TaskUnmountDirectory(authCtx, request)
-		})
-	}, defaultRetryOptions(), &c.closed)
+	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*emptypb.Empty, error) {
+		return c.stub.TaskUnmountDirectory(authCtx, request)
+	})
 	return err
 }
 
@@ -456,13 +458,47 @@ func (c *taskCommandRouterClient) SnapshotFilesystem(ctx context.Context, reques
 	return resp, err
 }
 
+// ContainerCreate creates an additional container in the task.
+func (c *taskCommandRouterClient) ContainerCreate(ctx context.Context, request *pb.TaskContainerCreateRequest) (*pb.TaskContainerCreateResponse, error) {
+	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerCreateResponse, error) {
+		return c.stub.TaskContainerCreate(authCtx, request)
+	})
+}
+
+// ContainerGet returns the latest container associated with a logical name.
+func (c *taskCommandRouterClient) ContainerGet(ctx context.Context, request *pb.TaskContainerGetRequest) (*pb.TaskContainerGetResponse, error) {
+	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerGetResponse, error) {
+		return c.stub.TaskContainerGet(authCtx, request)
+	})
+}
+
+// ContainerList lists containers associated with the task.
+func (c *taskCommandRouterClient) ContainerList(ctx context.Context, request *pb.TaskContainerListRequest) (*pb.TaskContainerListResponse, error) {
+	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerListResponse, error) {
+		return c.stub.TaskContainerList(authCtx, request)
+	})
+}
+
+// ContainerTerminate terminates a tracked container.
+func (c *taskCommandRouterClient) ContainerTerminate(ctx context.Context, request *pb.TaskContainerTerminateRequest) error {
+	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerTerminateResponse, error) {
+		return c.stub.TaskContainerTerminate(authCtx, request)
+	})
+	return err
+}
+
+// ContainerWait waits for a tracked container to reach a terminal result.
+func (c *taskCommandRouterClient) ContainerWait(ctx context.Context, request *pb.TaskContainerWaitRequest) (*pb.TaskContainerWaitResponse, error) {
+	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerWaitResponse, error) {
+		return c.stub.TaskContainerWait(authCtx, request)
+	})
+}
+
 // ExecStart starts a command execution.
 func (c *taskCommandRouterClient) ExecStart(ctx context.Context, request *pb.TaskExecStartRequest) (*pb.TaskExecStartResponse, error) {
-	return callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskExecStartResponse, error) {
-		return callWithAuthRetry(ctx, c, func(authCtx context.Context) (*pb.TaskExecStartResponse, error) {
-			return c.stub.TaskExecStart(authCtx, request)
-		})
-	}, defaultRetryOptions(), &c.closed)
+	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStartResponse, error) {
+		return c.stub.TaskExecStart(authCtx, request)
+	})
 }
 
 // ExecStdinWrite writes data to stdin of an exec.
@@ -475,11 +511,9 @@ func (c *taskCommandRouterClient) ExecStdinWrite(ctx context.Context, taskID, ex
 		Eof:    eof,
 	}.Build()
 
-	_, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.TaskExecStdinWriteResponse, error) {
-		return callWithAuthRetry(ctx, c, func(authCtx context.Context) (*pb.TaskExecStdinWriteResponse, error) {
-			return c.stub.TaskExecStdinWrite(authCtx, request)
-		})
-	}, defaultRetryOptions(), &c.closed)
+	_, err := callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskExecStdinWriteResponse, error) {
+		return c.stub.TaskExecStdinWrite(authCtx, request)
+	})
 	return err
 }
 

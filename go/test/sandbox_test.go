@@ -651,7 +651,7 @@ func TestSandboxWithWorkdir(t *testing.T) {
 		Workdir: "relative/path",
 	})
 	g.Expect(err).Should(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("the Workdir value must be an absolute path"))
+	g.Expect(err.Error()).To(gomega.ContainSubstring("workdir must be an absolute path"))
 }
 
 func TestSandboxSetTagsAndList(t *testing.T) {

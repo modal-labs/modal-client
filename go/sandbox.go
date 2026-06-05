@@ -222,8 +222,8 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 		return nil, err
 	}
 
-	if params.Workdir != "" && !strings.HasPrefix(params.Workdir, "/") {
-		return nil, fmt.Errorf("the Workdir value must be an absolute path, got: %s", params.Workdir)
+	if err := validateWorkdir(params.Workdir); err != nil {
+		return nil, err
 	}
 
 	var volumeMounts []*pb.VolumeMount
@@ -276,11 +276,9 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 		Ports: openPorts,
 	}.Build()
 
-	secretIds := []string{}
-	for _, secret := range params.Secrets {
-		if secret != nil {
-			secretIds = append(secretIds, secret.SecretID)
-		}
+	secretIds, err := collectSecretIDs(params.Secrets)
+	if err != nil {
+		return nil, err
 	}
 
 	var networkAccess *pb.NetworkAccess
@@ -640,6 +638,14 @@ type Sandbox struct {
 	Stdout    io.ReadCloser
 	Stderr    io.ReadCloser
 
+	// Filesystem provides high-level filesystem operations for this Sandbox.
+	Filesystem *SandboxFilesystem
+
+	// ExperimentalSidecars provides operations on Sandbox Sidecar containers.
+	//
+	// EXPERIMENTAL: the API is subject to change.
+	ExperimentalSidecars SidecarService
+
 	taskID  string
 	tunnels map[int]*Tunnel
 	isV2    bool
@@ -648,9 +654,6 @@ type Sandbox struct {
 
 	commandRouterClient   *taskCommandRouterClient
 	commandRouterClientMu sync.Mutex
-
-	filesystem     *SandboxFilesystem
-	filesystemOnce sync.Once
 
 	attached atomic.Bool
 }
@@ -670,6 +673,8 @@ func defaultSandboxPTYInfo() *pb.PTYInfo {
 // newSandbox creates a new Sandbox object from ID.
 func newSandbox(client *Client, sandboxID string) *Sandbox {
 	sb := &Sandbox{SandboxID: sandboxID, client: client}
+	sb.Filesystem = &SandboxFilesystem{sandbox: sb, logger: client.logger}
+	sb.ExperimentalSidecars = &sandboxSidecarServiceImpl{sandbox: sb}
 	sb.attached.Store(true)
 	sb.Stdin = inputStreamSb(client.cpClient, sandboxID)
 	sb.Stdout = &lazyStreamReader{
@@ -878,20 +883,40 @@ func ValidateExecArgs(args []string) error {
 	return nil
 }
 
+func validateWorkdir(workdir string) error {
+	if workdir != "" && !strings.HasPrefix(workdir, "/") {
+		return InvalidError{Exception: fmt.Sprintf("workdir must be an absolute path, got: %q", workdir)}
+	}
+	return nil
+}
+
+func collectSecretIDs(secrets []*Secret) ([]string, error) {
+	secretIds := make([]string, 0, len(secrets))
+	for i, secret := range secrets {
+		if secret == nil {
+			return nil, InvalidError{Exception: fmt.Sprintf("secret at index %d must not be nil", i)}
+		}
+		secretIds = append(secretIds, secret.SecretID)
+	}
+	return secretIds, nil
+}
+
 // buildTaskExecStartRequestProto builds a TaskExecStartRequest proto from command and options.
-func buildTaskExecStartRequestProto(taskID, execID string, command []string, params SandboxExecParams) (*pb.TaskExecStartRequest, error) {
+// containerID, if non-empty, routes the exec to a sidecar container instead of the main container.
+func buildTaskExecStartRequestProto(taskID, execID string, command []string, params SandboxExecParams, containerID string) (*pb.TaskExecStartRequest, error) {
 	if params.Timeout < 0 {
 		return nil, fmt.Errorf("timeout must be non-negative, got %v", params.Timeout)
 	}
 	if params.Timeout != 0 && params.Timeout%time.Second != 0 {
 		return nil, fmt.Errorf("timeout must be a whole number of seconds, got %v", params.Timeout)
 	}
+	if err := validateWorkdir(params.Workdir); err != nil {
+		return nil, err
+	}
 
-	secretIds := []string{}
-	for _, secret := range params.Secrets {
-		if secret != nil {
-			secretIds = append(secretIds, secret.SecretID)
-		}
+	secretIds, err := collectSecretIDs(params.Secrets)
+	if err != nil {
+		return nil, err
 	}
 
 	var stdoutConfig pb.TaskExecStdoutConfig
@@ -930,6 +955,7 @@ func buildTaskExecStartRequestProto(taskID, execID string, command []string, par
 		PtyInfo:      ptyInfo,
 		RuntimeDebug: false,
 		Env:          params.Env,
+		ContainerId:  containerID,
 	}
 
 	if params.Workdir != "" {
@@ -944,12 +970,19 @@ func buildTaskExecStartRequestProto(taskID, execID string, command []string, par
 	return builder.Build(), nil
 }
 
-// Exec runs a command in the Sandbox and returns text streams.
+// Exec runs a command in the Sandbox and returns the process handle.
 func (sb *Sandbox) Exec(ctx context.Context, command []string, params *SandboxExecParams) (*ContainerProcess, error) {
-	if err := sb.ensureAttached(); err != nil {
-		return nil, err
-	}
+	return sb.execInternal(ctx, command, params, "")
+}
 
+// execForFilesystem satisfies the sandboxForFilesystem interface for Sandbox.
+func (sb *Sandbox) execForFilesystem(ctx context.Context, command []string, params *SandboxExecParams) (*ContainerProcess, error) {
+	return sb.execInternal(ctx, command, params, "")
+}
+
+// execInternal is the shared implementation behind Sandbox.Exec and
+// SidecarContainer.Exec.
+func (sb *Sandbox) execInternal(ctx context.Context, command []string, params *SandboxExecParams, containerID string) (*ContainerProcess, error) {
 	if params == nil {
 		params = &SandboxExecParams{}
 	}
@@ -958,17 +991,13 @@ func (sb *Sandbox) Exec(ctx context.Context, command []string, params *SandboxEx
 		return nil, err
 	}
 
-	if err := sb.ensureTaskID(ctx); err != nil {
-		return nil, err
-	}
-
-	commandRouterClient, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
+	taskID, commandRouterClient, err := sb.getCommandRouter(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	execID := uuid.New().String()
-	req, err := buildTaskExecStartRequestProto(sb.taskID, execID, command, *params)
+	req, err := buildTaskExecStartRequestProto(taskID, execID, command, *params, containerID)
 	if err != nil {
 		return nil, err
 	}
@@ -981,6 +1010,7 @@ func (sb *Sandbox) Exec(ctx context.Context, command []string, params *SandboxEx
 	sb.client.logger.DebugContext(ctx, "Created ContainerProcess",
 		"exec_id", execID,
 		"sandbox_id", sb.SandboxID,
+		"container_id", containerID,
 		"command", command)
 
 	var deadline *time.Time
@@ -989,7 +1019,7 @@ func (sb *Sandbox) Exec(ctx context.Context, command []string, params *SandboxEx
 		deadline = &d
 	}
 
-	return newContainerProcess(commandRouterClient, sb.client.logger, sb.taskID, execID, *params, deadline), nil
+	return newContainerProcess(commandRouterClient, sb.client.logger, taskID, execID, *params, deadline), nil
 }
 
 // SandboxCreateConnectTokenParams are optional parameters for CreateConnectToken.
@@ -1026,14 +1056,6 @@ func (sb *Sandbox) CreateConnectToken(ctx context.Context, params *SandboxCreate
 	return &SandboxCreateConnectCredentials{URL: resp.GetUrl(), Token: resp.GetToken()}, nil
 }
 
-// Filesystem returns the high-level filesystem namespace for this Sandbox.
-func (sb *Sandbox) Filesystem() *SandboxFilesystem {
-	sb.filesystemOnce.Do(func() {
-		sb.filesystem = &SandboxFilesystem{sandbox: sb, logger: sb.client.logger}
-	})
-	return sb.filesystem
-}
-
 const maxGetTaskIDAttempts = 600 // 5 minutes at 500ms intervals
 
 func (sb *Sandbox) ensureTaskID(ctx context.Context) error {
@@ -1059,6 +1081,20 @@ func (sb *Sandbox) ensureTaskID(ctx context.Context) error {
 		}
 	}
 	return fmt.Errorf("timed out waiting for task ID for Sandbox %s", sb.SandboxID)
+}
+
+func (sb *Sandbox) getCommandRouter(ctx context.Context) (string, *taskCommandRouterClient, error) {
+	if err := sb.ensureAttached(); err != nil {
+		return "", nil, err
+	}
+	if err := sb.ensureTaskID(ctx); err != nil {
+		return "", nil, err
+	}
+	client, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
+	if err != nil {
+		return "", nil, err
+	}
+	return sb.taskID, client, nil
 }
 
 func (sb *Sandbox) getOrCreateCommandRouterClient(ctx context.Context, taskID string) (*taskCommandRouterClient, error) {
@@ -1119,10 +1155,9 @@ func (sb *Sandbox) Detach() error {
 	return nil
 }
 
-// SandboxTerminateParams are options for Terminate. If Wait is true, then `Terminate`
-// will wait for the Sandbox to terminate and return the exit code.
+// SandboxTerminateParams are options for Terminate.
 type SandboxTerminateParams struct {
-	Wait bool
+	Wait bool // Wait, when true, will wait for the Sandbox to terminate and return the exit code.
 }
 
 // Terminate stops the Sandbox.
@@ -1159,7 +1194,7 @@ func (sb *Sandbox) Terminate(ctx context.Context, params *SandboxTerminateParams
 	return returnCode, nil
 }
 
-// Wait blocks until the Sandbox exits.
+// Wait blocks until the Sandbox exits, and returns its exit code.
 func (sb *Sandbox) Wait(ctx context.Context, params *SandboxWaitParams) (int, error) {
 	for {
 		if err := ctx.Err(); err != nil {
@@ -1325,9 +1360,6 @@ func resolveTTL(ttl time.Duration) (int64, error) {
 // cutoff measured from creation, and the call has a 55-second timeout.
 // See [SandboxSnapshotFilesystemParams] for control over both.
 func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapshotFilesystemParams) (*Image, error) {
-	if err := sb.ensureAttached(); err != nil {
-		return nil, err
-	}
 	var ttl time.Duration
 	timeout := 55 * time.Second
 	if params != nil {
@@ -1340,17 +1372,14 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapsh
 	if err != nil {
 		return nil, err
 	}
-	if err := sb.ensureTaskID(ctx); err != nil {
-		return nil, err
-	}
 
-	crClient, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
+	taskID, crClient, err := sb.getCommandRouter(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	request := pb.TaskSnapshotFilesystemRequest_builder{
-		TaskId:     sb.taskID,
+		TaskId:     taskID,
 		SnapshotId: uuid.NewString(),
 		TtlSeconds: &wireTTL,
 	}.Build()
@@ -1371,17 +1400,11 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapsh
 //
 // If image is nil, mounts an empty directory.
 func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image, params *SandboxMountImageParams) error {
-	if err := sb.ensureAttached(); err != nil {
-		return err
-	}
 	if err := sb.ensureV1("MountImage"); err != nil {
 		return err
 	}
-	if err := sb.ensureTaskID(ctx); err != nil {
-		return err
-	}
 
-	crClient, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
+	taskID, crClient, err := sb.getCommandRouter(ctx)
 	if err != nil {
 		return err
 	}
@@ -1395,7 +1418,7 @@ func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image, pa
 	}
 
 	request := pb.TaskMountDirectoryRequest_builder{
-		TaskId:  sb.taskID,
+		TaskId:  taskID,
 		Path:    []byte(path),
 		ImageId: imageID,
 	}.Build()
@@ -1405,23 +1428,17 @@ func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image, pa
 
 // UnmountImage removes an image mount from a path in the Sandbox filesystem.
 func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *SandboxUnmountImageParams) error {
-	if err := sb.ensureAttached(); err != nil {
-		return err
-	}
 	if err := sb.ensureV1("UnmountImage"); err != nil {
 		return err
 	}
-	if err := sb.ensureTaskID(ctx); err != nil {
-		return err
-	}
 
-	crClient, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
+	taskID, crClient, err := sb.getCommandRouter(ctx)
 	if err != nil {
 		return err
 	}
 
 	request := pb.TaskUnmountDirectoryRequest_builder{
-		TaskId: sb.taskID,
+		TaskId: taskID,
 		Path:   []byte(path),
 	}.Build()
 
@@ -1434,9 +1451,6 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *Sandbo
 // cutoff measured from creation, and the call has a 55-second timeout.
 // See [SandboxSnapshotDirectoryParams] for control over both.
 func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *SandboxSnapshotDirectoryParams) (*Image, error) {
-	if err := sb.ensureAttached(); err != nil {
-		return nil, err
-	}
 	if err := sb.ensureV1("SnapshotDirectory"); err != nil {
 		return nil, err
 	}
@@ -1452,18 +1466,15 @@ func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *S
 	if err != nil {
 		return nil, err
 	}
-	if err := sb.ensureTaskID(ctx); err != nil {
-		return nil, err
-	}
 
-	crClient, err := sb.getOrCreateCommandRouterClient(ctx, sb.taskID)
+	taskID, crClient, err := sb.getCommandRouter(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// SnapshotId guarantees idempotency under retries.
 	request := pb.TaskSnapshotDirectoryRequest_builder{
-		TaskId:     sb.taskID,
+		TaskId:     taskID,
 		Path:       []byte(path),
 		SnapshotId: uuid.NewString(),
 		TtlSeconds: &wireTTL,

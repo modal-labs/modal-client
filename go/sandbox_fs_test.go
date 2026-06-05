@@ -8,11 +8,11 @@ import (
 	"github.com/onsi/gomega"
 )
 
-// This satisfies sandboxForFilesystem and panics if Exec is ever called.
+// This satisfies sandboxForFilesystem and panics if exec is ever called.
 type panicSandbox struct{}
 
-func (panicSandbox) Exec(context.Context, []string, *SandboxExecParams) (*ContainerProcess, error) {
-	panic("Exec must not be called when path validation fails")
+func (panicSandbox) execForFilesystem(context.Context, []string, *SandboxExecParams) (*ContainerProcess, error) {
+	panic("exec must not be called when path validation fails")
 }
 
 func newValidationFilesystem() *SandboxFilesystem {

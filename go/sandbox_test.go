@@ -344,7 +344,7 @@ func TestSandboxCreateRequestProto_WithReadinessProbeExec(t *testing.T) {
 
 func TestTaskExecStartProto_WithoutPTY(t *testing.T) {
 	g := gomega.NewWithT(t)
-	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"bash"}, SandboxExecParams{})
+	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"bash"}, SandboxExecParams{}, "")
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	ptyInfo := req.GetPtyInfo()
@@ -355,7 +355,7 @@ func TestTaskExecStartProto_WithPTY(t *testing.T) {
 	g := gomega.NewWithT(t)
 	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"bash"}, SandboxExecParams{
 		PTY: true,
-	})
+	}, "")
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	ptyInfo := req.GetPtyInfo()
@@ -372,7 +372,7 @@ func TestTaskExecStartProto_WithPTY(t *testing.T) {
 func TestTaskExecStartRequestProto_DefaultValues(t *testing.T) {
 	g := gomega.NewWithT(t)
 
-	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"bash"}, SandboxExecParams{})
+	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"bash"}, SandboxExecParams{}, "")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	g.Expect(req.GetWorkdir()).To(gomega.BeEmpty())
@@ -389,7 +389,7 @@ func TestTaskExecStartRequestProto_WithStdoutIgnore(t *testing.T) {
 
 	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"bash"}, SandboxExecParams{
 		Stdout: Ignore,
-	})
+	}, "")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	g.Expect(req.GetStdoutConfig()).To(gomega.Equal(pb.TaskExecStdoutConfig_TASK_EXEC_STDOUT_CONFIG_DEVNULL))
@@ -401,7 +401,7 @@ func TestTaskExecStartRequestProto_WithStderrIgnore(t *testing.T) {
 
 	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"bash"}, SandboxExecParams{
 		Stderr: Ignore,
-	})
+	}, "")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	g.Expect(req.GetStdoutConfig()).To(gomega.Equal(pb.TaskExecStdoutConfig_TASK_EXEC_STDOUT_CONFIG_PIPE))
@@ -409,14 +409,41 @@ func TestTaskExecStartRequestProto_WithStderrIgnore(t *testing.T) {
 }
 
 func TestTaskExecStartRequestProto_WithWorkdir(t *testing.T) {
-	g := gomega.NewWithT(t)
+	tests := []struct {
+		name        string
+		workdir     string
+		expected    string
+		expectedErr string
+	}{
+		{
+			name:     "absolute",
+			workdir:  "/tmp",
+			expected: "/tmp",
+		},
+		{
+			name:        "relative",
+			workdir:     "tmp",
+			expectedErr: "workdir must be an absolute path",
+		},
+	}
 
-	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"pwd"}, SandboxExecParams{
-		Workdir: "/tmp",
-	})
-	g.Expect(err).ToNot(gomega.HaveOccurred())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := gomega.NewWithT(t)
 
-	g.Expect(req.GetWorkdir()).To(gomega.Equal("/tmp"))
+			req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"pwd"}, SandboxExecParams{
+				Workdir: tt.workdir,
+			}, "")
+			if tt.expectedErr != "" {
+				g.Expect(err).To(gomega.HaveOccurred())
+				g.Expect(err.Error()).To(gomega.ContainSubstring(tt.expectedErr))
+				return
+			}
+
+			g.Expect(err).ToNot(gomega.HaveOccurred())
+			g.Expect(req.GetWorkdir()).To(gomega.Equal(tt.expected))
+		})
+	}
 }
 
 func TestTaskExecStartRequestProto_WithTimeout(t *testing.T) {
@@ -425,7 +452,7 @@ func TestTaskExecStartRequestProto_WithTimeout(t *testing.T) {
 
 	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"sleep", "10"}, SandboxExecParams{
 		Timeout: timeout,
-	})
+	}, "")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	g.Expect(req.HasTimeoutSecs()).To(gomega.BeTrue())
@@ -437,7 +464,7 @@ func TestTaskExecStartRequestProto_WithEnv(t *testing.T) {
 
 	req, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"env"}, SandboxExecParams{
 		Env: map[string]string{"FOO": "bar"},
-	})
+	}, "")
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 
 	g.Expect(req.GetEnv()).To(gomega.Equal(map[string]string{"FOO": "bar"}))
@@ -448,7 +475,7 @@ func TestTaskExecStartRequestProto_InvalidTimeoutNegative(t *testing.T) {
 
 	_, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"echo", "hi"}, SandboxExecParams{
 		Timeout: -1 * time.Second,
-	})
+	}, "")
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("must be non-negative"))
 }
@@ -458,7 +485,7 @@ func TestTaskExecStartRequestProto_InvalidTimeoutNotWholeSeconds(t *testing.T) {
 
 	_, err := buildTaskExecStartRequestProto("task-123", "exec-456", []string{"echo", "hi"}, SandboxExecParams{
 		Timeout: 1500 * time.Millisecond,
-	})
+	}, "")
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("whole number of seconds"))
 }

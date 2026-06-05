@@ -51,10 +51,12 @@ type FileInfo struct {
 	SymlinkTarget *string  `json:"symlink_target"`
 }
 
-// This is the narrow exec interface SandboxFilesystem needs, and is satisfied
-// directly by *Sandbox in production or by panicSandbox for unit tests.
+// This is the narrow exec interface SandboxFilesystem needs, satisfied by
+// *Sandbox and *SidecarContainer in production via an unexported adapter
+// method, or by panicSandbox in unit tests. The method is unexported so that
+// the two public Exec surfaces are free to take different param types.
 type sandboxForFilesystem interface {
-	Exec(ctx context.Context, command []string, params *SandboxExecParams) (*ContainerProcess, error)
+	execForFilesystem(ctx context.Context, command []string, params *SandboxExecParams) (*ContainerProcess, error)
 }
 
 // SandboxFilesystem provides high-level filesystem operations for a running Sandbox.
@@ -125,7 +127,7 @@ func (fsys *SandboxFilesystem) CopyFromLocal(ctx context.Context, localPath, rem
 	execCtx, cancelExec := context.WithCancel(ctx)
 	defer cancelExec()
 
-	cp, err := fsys.sandbox.Exec(execCtx, []string{sandboxFsToolsPath, makeWriteFileCommand(remotePath)}, nil)
+	cp, err := fsys.sandbox.execForFilesystem(execCtx, []string{sandboxFsToolsPath, makeWriteFileCommand(remotePath)}, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, "CopyFromLocal", remotePath, err)
 	}
@@ -201,7 +203,7 @@ func (fsys *SandboxFilesystem) CopyToLocal(ctx context.Context, remotePath, loca
 		return err
 	}
 
-	cp, err := fsys.sandbox.Exec(ctx, []string{sandboxFsToolsPath, makeReadFileCommand(remotePath)}, nil)
+	cp, err := fsys.sandbox.execForFilesystem(ctx, []string{sandboxFsToolsPath, makeReadFileCommand(remotePath)}, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, "CopyToLocal", remotePath, err)
 	}
@@ -258,7 +260,7 @@ func (fsys *SandboxFilesystem) ListFiles(ctx context.Context, remotePath string,
 	if err := validateAbsoluteRemotePath(remotePath, "ListFiles"); err != nil {
 		return nil, err
 	}
-	cp, err := fsys.sandbox.Exec(ctx, []string{sandboxFsToolsPath, makeListFilesCommand(remotePath)}, nil)
+	cp, err := fsys.sandbox.execForFilesystem(ctx, []string{sandboxFsToolsPath, makeListFilesCommand(remotePath)}, nil)
 	if err != nil {
 		return nil, translateExecError(ctx, fsys.logger, "ListFiles", remotePath, err)
 	}
@@ -305,7 +307,7 @@ func (fsys *SandboxFilesystem) MakeDirectory(ctx context.Context, remotePath str
 		return err
 	}
 	createParents := params == nil || params.CreateParents == nil || *params.CreateParents
-	cp, err := fsys.sandbox.Exec(ctx, []string{sandboxFsToolsPath, makeMakeDirectoryCommand(remotePath, createParents)}, nil)
+	cp, err := fsys.sandbox.execForFilesystem(ctx, []string{sandboxFsToolsPath, makeMakeDirectoryCommand(remotePath, createParents)}, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, "MakeDirectory", remotePath, err)
 	}
@@ -330,7 +332,7 @@ func (fsys *SandboxFilesystem) MakeDirectory(ctx context.Context, remotePath str
 }
 
 func (fsys *SandboxFilesystem) readFile(ctx context.Context, operation, remotePath string, _ *SandboxFilesystemReadParams) ([]byte, error) {
-	cp, err := fsys.sandbox.Exec(ctx, []string{sandboxFsToolsPath, makeReadFileCommand(remotePath)}, nil)
+	cp, err := fsys.sandbox.execForFilesystem(ctx, []string{sandboxFsToolsPath, makeReadFileCommand(remotePath)}, nil)
 	if err != nil {
 		return nil, translateExecError(ctx, fsys.logger, operation, remotePath, err)
 	}
@@ -402,7 +404,7 @@ func (fsys *SandboxFilesystem) Remove(ctx context.Context, remotePath string, pa
 	if params == nil {
 		params = &SandboxFilesystemRemoveParams{}
 	}
-	cp, err := fsys.sandbox.Exec(ctx, []string{sandboxFsToolsPath, makeRemoveCommand(remotePath, params.Recursive)}, nil)
+	cp, err := fsys.sandbox.execForFilesystem(ctx, []string{sandboxFsToolsPath, makeRemoveCommand(remotePath, params.Recursive)}, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, "Remove", remotePath, err)
 	}
@@ -440,7 +442,7 @@ func (fsys *SandboxFilesystem) Stat(ctx context.Context, remotePath string, para
 	if err := validateAbsoluteRemotePath(remotePath, "Stat"); err != nil {
 		return nil, err
 	}
-	cp, err := fsys.sandbox.Exec(ctx, []string{sandboxFsToolsPath, makeStatCommand(remotePath)}, nil)
+	cp, err := fsys.sandbox.execForFilesystem(ctx, []string{sandboxFsToolsPath, makeStatCommand(remotePath)}, nil)
 	if err != nil {
 		return nil, translateExecError(ctx, fsys.logger, "Stat", remotePath, err)
 	}
@@ -468,7 +470,7 @@ func (fsys *SandboxFilesystem) Stat(ctx context.Context, remotePath string, para
 }
 
 func (fsys *SandboxFilesystem) writeFile(ctx context.Context, operation string, data []byte, remotePath string, _ *SandboxFilesystemWriteParams) error {
-	cp, err := fsys.sandbox.Exec(ctx, []string{sandboxFsToolsPath, makeWriteFileCommand(remotePath)}, nil)
+	cp, err := fsys.sandbox.execForFilesystem(ctx, []string{sandboxFsToolsPath, makeWriteFileCommand(remotePath)}, nil)
 	if err != nil {
 		return translateExecError(ctx, fsys.logger, operation, remotePath, err)
 	}

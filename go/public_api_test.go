@@ -40,9 +40,6 @@ var skipMethods = map[string]string{
 	"Queue.CloseEphemeral":  "lifecycle signal, no config needed",
 	"Sandbox.Detach":        "disconnects from sandbox, no config needed",
 
-	// Namespace accessor: returns a sub-object, no config options.
-	"Sandbox.Filesystem": "returns the SandboxFilesystem namespace, no config needed",
-
 	// Tunnel accessors: return structured data derived from the Tunnel's fields.
 	"Tunnel.URL":       "returns computed URL string",
 	"Tunnel.TLSSocket": "returns (host, port) pair",
@@ -77,7 +74,7 @@ type typeEntry struct {
 // When adding a new exported type that has public methods, add it here.
 // If the type has no public methods to check, add it to excludedTypes instead.
 var typeRegistry = []typeEntry{
-	// Service interfaces accessed through Client fields.
+	// Service interfaces accessed through Client or Sandbox fields.
 	{name: "AppService", typ: reflect.TypeOf((*AppService)(nil)).Elem(), isInterface: true},
 	{name: "CloudBucketMountService", typ: reflect.TypeOf((*CloudBucketMountService)(nil)).Elem(), isInterface: true},
 	{name: "ClsService", typ: reflect.TypeOf((*ClsService)(nil)).Elem(), isInterface: true},
@@ -87,6 +84,7 @@ var typeRegistry = []typeEntry{
 	{name: "ProxyService", typ: reflect.TypeOf((*ProxyService)(nil)).Elem(), isInterface: true},
 	{name: "QueueService", typ: reflect.TypeOf((*QueueService)(nil)).Elem(), isInterface: true},
 	{name: "SandboxService", typ: reflect.TypeOf((*SandboxService)(nil)).Elem(), isInterface: true},
+	{name: "SidecarService", typ: reflect.TypeOf((*SidecarService)(nil)).Elem(), isInterface: true},
 	{name: "SecretService", typ: reflect.TypeOf((*SecretService)(nil)).Elem(), isInterface: true},
 	{name: "VolumeService", typ: reflect.TypeOf((*VolumeService)(nil)).Elem(), isInterface: true},
 
@@ -102,6 +100,7 @@ var typeRegistry = []typeEntry{
 	{name: "Volume", typ: reflect.TypeOf((*Volume)(nil)), isInterface: false},
 	{name: "Tunnel", typ: reflect.TypeOf((*Tunnel)(nil)), isInterface: false},
 	{name: "SandboxFilesystem", typ: reflect.TypeOf((*SandboxFilesystem)(nil)), isInterface: false},
+	{name: "SidecarContainer", typ: reflect.TypeOf((*SidecarContainer)(nil)), isInterface: false},
 }
 
 // excludedTypes lists exported types that are intentionally absent from

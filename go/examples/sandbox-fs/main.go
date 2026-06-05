@@ -1,4 +1,4 @@
-// Example demonstrating the Sandbox.Filesystem() namespace API.
+// Example demonstrating the Sandbox.Filesystem namespace API.
 //
 // This example shows how to:
 //   - Write and read text files
@@ -45,11 +45,11 @@ func main() {
 		}
 	}()
 
-	fs := sb.Filesystem()
+	fs := sb.Filesystem
 
 	// ── write & read text ─────────────────────────────────────────────────
 
-	if err := fs.WriteText(ctx, "Hello from Sandbox.Filesystem()!\n", "/tmp/hello.txt", nil); err != nil {
+	if err := fs.WriteText(ctx, "Hello from Sandbox.Filesystem!\n", "/tmp/hello.txt", nil); err != nil {
 		log.Fatalf("WriteText: %v", err)
 	}
 
