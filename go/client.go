@@ -79,6 +79,7 @@ type Client struct {
 	additionalUnaryInterceptors  []grpc.UnaryClientInterceptor
 	additionalStreamInterceptors []grpc.StreamClientInterceptor
 	mu                           sync.RWMutex
+	environmentManager           *environmentManager
 }
 
 // NewClient generates a new client with the default profile configuration read from environment variables and ~/.modal.toml.
@@ -183,6 +184,7 @@ func NewClientWithOptions(params *ClientParams) (*Client, error) {
 	}
 
 	c.authTokenManager = NewAuthTokenManager(c.cpClient, c.logger)
+	c.environmentManager = newEnvironmentManager(c.cpClient, c.logger)
 
 	logger.DebugContext(ctx, "Modal client initialized successfully")
 
@@ -227,6 +229,15 @@ func (c *Client) ipClient(ctx context.Context, serverURL string) (pb.ModalClient
 	}
 	c.ipClients[serverURL] = &clientWithConn{ModalClientClient: client, conn: conn}
 	return c.ipClients[serverURL], nil
+}
+
+// getImageBuilderVersion returns the image builder version by querying the server where the local profile takes
+// precedence.
+func (c *Client) getImageBuilderVersion(ctx context.Context, environmentName string) (string, error) {
+	if c.profile.ImageBuilderVersion != "" {
+		return c.profile.ImageBuilderVersion, nil
+	}
+	return c.environmentManager.GetImageBuilderVersion(ctx, firstNonEmpty(environmentName, c.profile.Environment))
 }
 
 // Close closes all gRPC connections.

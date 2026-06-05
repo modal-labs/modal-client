@@ -243,6 +243,12 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 	}
 
 	var currentImageID string
+	imageBuilderVersion, err := image.client.getImageBuilderVersion(ctx, app.Environment)
+	if err != nil {
+		return nil, err
+	}
+
+	image.client.logger.DebugContext(ctx, "Image build", "app_id", app.AppID, "image_builder_version", imageBuilderVersion, "environment_name", app.Environment)
 
 	for i, currentLayer := range image.layers {
 		if err := ctx.Err(); err != nil {
@@ -294,7 +300,7 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 					ContextFiles:        []*pb.ImageContextFile{},
 					BaseImages:          baseImages,
 				}.Build(),
-				BuilderVersion: imageBuilderVersion("", image.client.profile),
+				BuilderVersion: imageBuilderVersion,
 				ForceBuild:     currentLayer.forceBuild,
 			}.Build(),
 		)

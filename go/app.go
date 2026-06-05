@@ -20,8 +20,9 @@ type appServiceImpl struct{ client *Client }
 
 // App references a deployed Modal App.
 type App struct {
-	AppID string
-	Name  string
+	AppID       string
+	Name        string
+	Environment string
 }
 
 // parseGPUConfig parses a GPU configuration string into a GPUConfig object.
@@ -71,7 +72,7 @@ func (s *appServiceImpl) FromName(ctx context.Context, name string, params *AppF
 
 	resp, err := s.client.cpClient.AppGetOrCreate(ctx, pb.AppGetOrCreateRequest_builder{
 		AppName:            name,
-		EnvironmentName:    environmentName(params.Environment, s.client.profile),
+		EnvironmentName:    firstNonEmpty(params.Environment, s.client.profile.Environment),
 		ObjectCreationType: creationType,
 	}.Build())
 
@@ -83,5 +84,9 @@ func (s *appServiceImpl) FromName(ctx context.Context, name string, params *AppF
 	}
 
 	s.client.logger.DebugContext(ctx, "Retrieved App", "app_id", resp.GetAppId(), "app_name", name)
-	return &App{AppID: resp.GetAppId(), Name: name}, nil
+	return &App{
+		AppID:       resp.GetAppId(),
+		Name:        name,
+		Environment: firstNonEmpty(params.Environment, s.client.profile.Environment),
+	}, nil
 }

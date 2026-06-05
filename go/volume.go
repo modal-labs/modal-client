@@ -70,7 +70,7 @@ func (s *volumeServiceImpl) FromName(ctx context.Context, name string, params *V
 
 	resp, err := s.client.cpClient.VolumeGetOrCreate(ctx, pb.VolumeGetOrCreateRequest_builder{
 		DeploymentName:     name,
-		EnvironmentName:    environmentName(params.Environment, s.client.profile),
+		EnvironmentName:    firstNonEmpty(params.Environment, s.client.profile.Environment),
 		ObjectCreationType: creationType,
 	}.Build())
 
@@ -128,7 +128,7 @@ func (s *volumeServiceImpl) Ephemeral(ctx context.Context, params *VolumeEphemer
 
 	resp, err := s.client.cpClient.VolumeGetOrCreate(ctx, pb.VolumeGetOrCreateRequest_builder{
 		ObjectCreationType: pb.ObjectCreationType_OBJECT_CREATION_TYPE_EPHEMERAL,
-		EnvironmentName:    environmentName(params.Environment, s.client.profile),
+		EnvironmentName:    firstNonEmpty(params.Environment, s.client.profile.Environment),
 	}.Build())
 	if err != nil {
 		return nil, err

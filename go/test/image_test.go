@@ -50,7 +50,10 @@ func TestImageFromRegistryWithSecret(t *testing.T) {
 	// https://cloud.google.com/artifact-registry/docs/docker/authentication#json-key
 	// So we use GCP Artifact Registry to test this too.
 
-	t.Parallel()
+	// Original image was built with 2024.10, so we set `MODAL_IMAGE_BUILDER_VERSION` to not trigger
+	// the image builder.
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "2024.10")
+
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	tc := newTestClient(t)
@@ -69,7 +72,10 @@ func TestImageFromRegistryWithSecret(t *testing.T) {
 }
 
 func TestImageFromAwsEcr(t *testing.T) {
-	t.Parallel()
+	// Original image was built with 2024.10, so we set `MODAL_IMAGE_BUILDER_VERSION` to not trigger
+	// the image builder.
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "2024.10")
+
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	tc := newTestClient(t)
@@ -88,7 +94,10 @@ func TestImageFromAwsEcr(t *testing.T) {
 }
 
 func TestImageFromGcpArtifactRegistry(t *testing.T) {
-	t.Parallel()
+	// Original image was built with 2024.10, so we set `MODAL_IMAGE_BUILDER_VERSION` to not trigger
+	// the image builder.
+
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "2024.10")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 	tc := newTestClient(t)
@@ -277,7 +286,9 @@ func TestDockerfileCommandsCopyCommandValidation(t *testing.T) {
 }
 
 func TestDockerfileCommandsWithOptions(t *testing.T) {
-	t.Parallel()
+
+	// Unset `MODAL_IMAGE_BUILDER_VERSION` so that this test uses the image builder version from `EnvironmentGetOrCreate`.
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
 	ctx := t.Context()
 
@@ -356,6 +367,21 @@ func TestDockerfileCommandsWithOptions(t *testing.T) {
 			return pb.ImageGetOrCreateResponse_builder{
 				ImageId: "im-layer3",
 				Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+			}.Build(), nil
+		},
+	)
+
+	grpcmock.HandleUnary(
+		mock, "EnvironmentGetOrCreate",
+		func(req *pb.EnvironmentGetOrCreateRequest) (*pb.EnvironmentGetOrCreateResponse, error) {
+			return pb.EnvironmentGetOrCreateResponse_builder{
+				EnvironmentId: "en-dev",
+				Metadata: pb.EnvironmentMetadata_builder{
+					Name: "dev",
+					Settings: pb.EnvironmentSettings_builder{
+						ImageBuilderVersion: "2025.06",
+					}.Build(),
+				}.Build(),
 			}.Build(), nil
 		},
 	)

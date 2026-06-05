@@ -34,7 +34,7 @@ func (s *proxyServiceImpl) FromName(ctx context.Context, name string, params *Pr
 
 	resp, err := s.client.cpClient.ProxyGet(ctx, pb.ProxyGetRequest_builder{
 		Name:            name,
-		EnvironmentName: environmentName(params.Environment, s.client.profile),
+		EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
 	}.Build())
 
 	if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {

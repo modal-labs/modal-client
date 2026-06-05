@@ -38,7 +38,7 @@ func (s *secretServiceImpl) FromName(ctx context.Context, name string, params *S
 
 	resp, err := s.client.cpClient.SecretGetOrCreate(ctx, pb.SecretGetOrCreateRequest_builder{
 		DeploymentName:  name,
-		EnvironmentName: environmentName(params.Environment, s.client.profile),
+		EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
 		RequiredKeys:    params.RequiredKeys,
 	}.Build())
 
@@ -73,7 +73,7 @@ func (s *secretServiceImpl) FromMap(ctx context.Context, keyValuePairs map[strin
 	resp, err := s.client.cpClient.SecretGetOrCreate(ctx, pb.SecretGetOrCreateRequest_builder{
 		ObjectCreationType: pb.ObjectCreationType_OBJECT_CREATION_TYPE_EPHEMERAL,
 		EnvDict:            keyValuePairs,
-		EnvironmentName:    environmentName(params.Environment, s.client.profile),
+		EnvironmentName:    firstNonEmpty(params.Environment, s.client.profile.Environment),
 	}.Build())
 	if err != nil {
 		return nil, err

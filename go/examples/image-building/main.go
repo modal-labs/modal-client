@@ -22,7 +22,7 @@ func main() {
 	}
 
 	secret, err := mc.Secrets.FromMap(ctx, map[string]string{
-		"CURL_VERSION": "8.12.1-r1",
+		"CURL_VERSION": "8.14.1-r2",
 	}, nil)
 	if err != nil {
 		log.Fatal(err)

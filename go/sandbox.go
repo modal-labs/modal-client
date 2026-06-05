@@ -826,7 +826,7 @@ func (s *sandboxServiceImpl) FromName(ctx context.Context, appName, name string,
 	resp, err := s.client.cpClient.SandboxGetFromName(ctx, pb.SandboxGetFromNameRequest_builder{
 		SandboxName:     name,
 		AppName:         appName,
-		EnvironmentName: environmentName(params.Environment, s.client.profile),
+		EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
 	}.Build())
 	if err != nil {
 		if status, ok := status.FromError(err); ok && status.Code() == codes.NotFound {
@@ -1519,7 +1519,7 @@ func (sb *Sandbox) SetTags(ctx context.Context, tags map[string]string, params *
 		tagsList = append(tagsList, pb.SandboxTag_builder{TagName: k, TagValue: v}.Build())
 	}
 	_, err := sb.client.cpClient.SandboxTagsSet(ctx, pb.SandboxTagsSetRequest_builder{
-		EnvironmentName: environmentName("", sb.client.profile),
+		EnvironmentName: sb.client.profile.Environment,
 		SandboxId:       sb.SandboxID,
 		Tags:            tagsList,
 	}.Build())
@@ -1580,7 +1580,7 @@ func (s *sandboxServiceImpl) List(ctx context.Context, params *SandboxListParams
 			resp, err := s.client.cpClient.SandboxList(ctx, pb.SandboxListRequest_builder{
 				AppId:           params.AppID,
 				BeforeTimestamp: before,
-				EnvironmentName: environmentName(params.Environment, s.client.profile),
+				EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
 				IncludeFinished: false,
 				Tags:            tagsList,
 			}.Build())

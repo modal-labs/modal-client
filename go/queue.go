@@ -58,7 +58,7 @@ func (s *queueServiceImpl) Ephemeral(ctx context.Context, params *QueueEphemeral
 
 	resp, err := s.client.cpClient.QueueGetOrCreate(ctx, pb.QueueGetOrCreateRequest_builder{
 		ObjectCreationType: pb.ObjectCreationType_OBJECT_CREATION_TYPE_EPHEMERAL,
-		EnvironmentName:    environmentName(params.Environment, s.client.profile),
+		EnvironmentName:    firstNonEmpty(params.Environment, s.client.profile.Environment),
 	}.Build())
 	if err != nil {
 		return nil, err
@@ -113,7 +113,7 @@ func (s *queueServiceImpl) FromName(ctx context.Context, name string, params *Qu
 
 	resp, err := s.client.cpClient.QueueGetOrCreate(ctx, pb.QueueGetOrCreateRequest_builder{
 		DeploymentName:     name,
-		EnvironmentName:    environmentName(params.Environment, s.client.profile),
+		EnvironmentName:    firstNonEmpty(params.Environment, s.client.profile.Environment),
 		ObjectCreationType: creationType,
 	}.Build())
 

@@ -943,7 +943,8 @@ func TestSandboxExperimentalDockerNotBool(t *testing.T) {
 }
 
 func TestSandboxExperimentalDockerMock(t *testing.T) {
-	t.Parallel()
+	// Unset `MODAL_IMAGE_BUILDER_VERSION` so that this test uses the image builder version from `EnvironmentGetOrCreate`.
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "")
 	g := gomega.NewWithT(t)
 
 	options := map[string]any{"enable_docker": true}
@@ -975,6 +976,20 @@ func TestSandboxExperimentalDockerMock(t *testing.T) {
 				ImageId: "im-123",
 				Result: pb.GenericResult_builder{
 					Status: pb.GenericResult_GENERIC_STATUS_SUCCESS,
+				}.Build(),
+			}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(
+		mock, "EnvironmentGetOrCreate",
+		func(req *pb.EnvironmentGetOrCreateRequest) (*pb.EnvironmentGetOrCreateResponse, error) {
+			return pb.EnvironmentGetOrCreateResponse_builder{
+				EnvironmentId: "en-test",
+				Metadata: pb.EnvironmentMetadata_builder{
+					Name: "test",
+					Settings: pb.EnvironmentSettings_builder{
+						ImageBuilderVersion: "2025.06",
+					}.Build(),
 				}.Build(),
 			}.Build(), nil
 		},

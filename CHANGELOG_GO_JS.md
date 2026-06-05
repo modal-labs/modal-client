@@ -45,7 +45,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
   - `Sandbox.SetTags` → `SetTags(ctx, tags, *SandboxSetTagsParams)`
   - `Sandbox.GetTags` → `GetTags(ctx, *SandboxGetTagsParams)`
 
-- **Breaking:** The JS SDK now read the [Image Builder Version](https://modal.com/docs/guide/images#image-builder-updates) from your Modal account settings, like the Python SDK (see Image Config in Settings in the web UI). Previously they used version `2024.10`. If your account version is newer, your Images will rebuild once (then be cached as usual), so beware that the first run after upgrading may take longer than usual.
+- **Breaking:** The Go/JS SDK now read the [Image Builder Version](https://modal.com/docs/guide/images#image-builder-updates) from your Modal account settings, like the Python SDK (see Image Config in Settings in the web UI). Previously they used version `2024.10`. If your account version is newer, your Images will rebuild once (then be cached as usual), so beware that the first run after upgrading may take longer than usual.
 - **Breaking:** `ModalClient.imageBuilderVersion` (JS) was removed in favor of `ModalClient.getImageBuilderVersion`.
 - Added dynamic function configuration:
   - (Go) `Function.WithOptions`, `Function.WithConcurrency`, `Function.WithBatching`, `Function.Instance`
