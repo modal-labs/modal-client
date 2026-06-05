@@ -2428,6 +2428,16 @@ message ImageFromIdResponse {
   ImageMetadata metadata = 2;
 }
 
+message ImageGetByTagRequest {
+  // Full "name:tag" string. Must be non-empty.
+  string tag = 1;
+  string environment_name = 2;
+}
+
+message ImageGetByTagResponse {
+  string image_id = 1;
+}
+
 message ImageGetOrCreateRequest {
   Image image = 2;
   string app_id = 4;
@@ -2489,6 +2499,20 @@ message ImageMetadata {
   optional string image_builder_version = 5;
 }
 
+
+message ImagePublishRequest {
+  string image_id = 1;
+  // Full "name:tag" string. Must be non-empty. Each ImagePublish RPC writes exactly one tag.
+  string tag = 2;
+  string environment_name = 3;
+  // Publishes this tag publicly when enabled.
+  bool is_public = 4;
+}
+
+message ImagePublishResponse {
+  string image_id = 1;
+  string revision_id = 2;
+}
 
 message ImageRegistryConfig {
   RegistryAuthType registry_auth_type = 1;
@@ -4259,8 +4283,10 @@ service ModalClient {
   // Images
   rpc ImageDelete(ImageDeleteRequest) returns (google.protobuf.Empty);
   rpc ImageFromId(ImageFromIdRequest) returns (ImageFromIdResponse);
+  rpc ImageGetByTag(ImageGetByTagRequest) returns (ImageGetByTagResponse);
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
+  rpc ImagePublish(ImagePublishRequest) returns (ImagePublishResponse);
 
   // Input Plane Map
   rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
