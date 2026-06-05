@@ -1953,7 +1953,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     ):
         """[Alpha] Open a file in the Sandbox and return a FileIO handle.
 
-        **Deprecated (2026-03-09):** Use the `Sandbox.filesystem` APIs instead.
+        **Deprecated (2026-03-09):** Use the `Sandbox.filesystem` APIs instead for improved reliability.
 
         See the [`FileIO`](https://modal.com/docs/reference/modal.file_io#modalfile_iofileio) docs for more information.
 
@@ -1975,7 +1975,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._ensure_v1("open")
         deprecation_warning(
             (2026, 3, 9),
-            "`Sandbox.open()` is deprecated. Use the `Sandbox.filesystem` APIs instead.",
+            "`Sandbox.open()` is deprecated. Use the `Sandbox.filesystem` APIs instead for improved reliability.",
         )
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
@@ -1983,7 +1983,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def ls(self, path: str) -> builtins.list[str]:
         """[Alpha] List the contents of a directory in the Sandbox.
 
-        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.list_files()` instead.
+        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.list_files()` instead for improved reliability.
 
         Args:
             path: Absolute directory path inside the sandbox.
@@ -1994,7 +1994,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self._ensure_v1("ls")
         deprecation_warning(
             (2026, 4, 15),
-            "`Sandbox.ls()` is deprecated. Use `Sandbox.filesystem.list_files()` instead.",
+            "`Sandbox.ls()` is deprecated. Use `Sandbox.filesystem.list_files()` instead for improved reliability.",
         )
         task_id = await self._get_task_id()
         return await ls(path, self._client, task_id)
@@ -2002,12 +2002,13 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def mkdir(self, path: str, parents: bool = False) -> None:
         """[Alpha] Create a new directory in the Sandbox.
 
-        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.make_directory()` instead.
+        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.make_directory()` instead for improved reliability.
         """
         self._ensure_v1("mkdir")
         deprecation_warning(
             (2026, 4, 15),
-            "`Sandbox.mkdir()` is deprecated. Use `Sandbox.filesystem.make_directory()` instead.",
+            "`Sandbox.mkdir()` is deprecated. Use `Sandbox.filesystem.make_directory()` instead for improved "
+            "reliability.",
         )
         task_id = await self._get_task_id()
         return await mkdir(path, self._client, task_id, parents)
@@ -2015,12 +2016,12 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def rm(self, path: str, recursive: bool = False) -> None:
         """[Alpha] Remove a file or directory in the Sandbox.
 
-        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.remove()` instead.
+        **Deprecated (2026-04-15):** Use `Sandbox.filesystem.remove()` instead for improved reliability.
         """
         self._ensure_v1("rm")
         deprecation_warning(
             (2026, 4, 15),
-            "`Sandbox.rm()` is deprecated. Use `Sandbox.filesystem.remove()` instead.",
+            "`Sandbox.rm()` is deprecated. Use `Sandbox.filesystem.remove()` instead for improved reliability.",
         )
         task_id = await self._get_task_id()
         return await rm(path, self._client, task_id, recursive)
@@ -2034,6 +2035,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> AsyncIterator[FileWatchEvent]:
         """[Alpha] Watch a file or directory in the Sandbox for changes.
 
+        **Deprecated (2026-05-08):** Use `Sandbox.filesystem.watch()` instead for improved reliability.
+
         Args:
             path: Absolute path to watch.
             filter: Optional list of event types to include.
@@ -2044,6 +2047,10 @@ class _Sandbox(_Object, type_prefix="sb"):
             An async iterator of `FileWatchEvent` values.
         """
         self._ensure_v1("watch")
+        deprecation_warning(
+            (2026, 5, 8),
+            "`Sandbox.watch()` is deprecated. Use `Sandbox.filesystem.watch()` instead for improved reliability.",
+        )
         task_id = await self._get_task_id()
         async for event in watch(path, self._client, task_id, filter, recursive, timeout):
             yield event

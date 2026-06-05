@@ -1,10 +1,8 @@
 # Copyright Modal Labs 2024
 import asyncio
-import enum
 import io
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Generic, Optional, TypeVar, Union, cast
 
 if TYPE_CHECKING:
     import _typeshed
@@ -15,6 +13,7 @@ from grpclib.exceptions import StreamTerminatedError
 
 from modal._utils.async_utils import TaskContext
 from modal.exception import ClientClosed
+from modal.sandbox_fs import FileWatchEvent, FileWatchEventType
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
@@ -60,21 +59,7 @@ async def _replace_bytes(file: "_FileIO", data: bytes, start: int | None = None,
     deprecation_error((2025, 12, 3), "replace_bytes has been removed.")
 
 
-class FileWatchEventType(enum.Enum):
-    Unknown = "Unknown"
-    Access = "Access"
-    Create = "Create"
-    Modify = "Modify"
-    Remove = "Remove"
-
-
-@dataclass
-class FileWatchEvent:
-    paths: list[str]
-    type: FileWatchEventType
-
-
-async def _consume_output(client: _Client, exec_id: str) -> AsyncIterator[bytes | None | Exception]:
+async def _consume_output(client: _Client, exec_id: str) -> AsyncIterator[Optional[bytes] | Exception]:
     req = api_pb2.ContainerFilesystemExecGetOutputRequest(
         exec_id=exec_id,
         timeout=55,
@@ -424,7 +409,7 @@ class _FileIO(Generic[T]):
     ) -> AsyncIterator[FileWatchEvent]:
         deprecation_warning(
             (2026, 3, 9),
-            "`FileIO.watch()` is deprecated. Use `Sandbox.watch()` instead.",
+            "`FileIO.watch()` is deprecated. Use `Sandbox.filesystem.watch()` instead.",
         )
         async for event in watch(path, client, task_id, filter, recursive, timeout):
             yield event

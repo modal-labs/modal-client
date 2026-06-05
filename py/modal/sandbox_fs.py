@@ -9,7 +9,7 @@ import time
 import weakref
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Union, cast
+from typing import TYPE_CHECKING, AsyncIterator, Optional, Union, cast
 
 if TYPE_CHECKING:
     import modal.sandbox
@@ -22,12 +22,14 @@ from ._utils.sandbox_fs_utils import (
     make_read_file_command,
     make_remove_command,
     make_stat_command,
+    make_watch_command,
     make_write_file_command,
     raise_list_files_error,
     raise_make_directory_error,
     raise_read_file_error,
     raise_remove_error,
     raise_stat_error,
+    raise_watch_error,
     raise_write_file_error,
     translate_exec_errors,
     validate_absolute_remote_path,
@@ -72,6 +74,31 @@ class FileInfo:
         return self.type == FileType.SYMLINK
 
 
+class FileWatchEventType(enum.Enum):
+    """Type of a filesystem watch event reported by `Sandbox.filesystem.watch()`."""
+
+    Unknown = "Unknown"
+    Access = "Access"
+    Create = "Create"
+    Modify = "Modify"
+    Remove = "Remove"
+
+
+@dataclass
+class FileWatchEvent:
+    """A filesystem change event reported by `Sandbox.filesystem.watch()`.
+
+    `paths` contains the absolute path(s) affected by the event. For most
+    event types it holds a single entry. Rename operations are reported as
+    `Modify` events: when both the source and destination fall within the
+    watched scope, `paths` holds `[source, destination]`; when only one
+    side of the rename is visible, `paths` holds that single path.
+    """
+
+    paths: list[str]
+    type: FileWatchEventType
+
+
 _SANDBOX_FS_TOOLS_PATH = "/__modal/.bin/modal-sandbox-fs-tools"
 
 _BYTES_PER_MIB = 1024 * 1024
@@ -81,6 +108,24 @@ def _log_throughput(op: str, size_bytes: int, dur_s: float) -> None:
     size_mib = size_bytes / _BYTES_PER_MIB
     throughput_mib_s = size_mib / dur_s
     logger.debug(f"sandbox {op}: {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s, total {dur_s:.2f}s)")
+
+
+# Rust rename variants that all collapse to Python FileWatchEventType.Modify.
+_RUST_RENAME_VARIANTS = ("Rename", "RenameFrom", "RenameTo")
+
+
+def _expand_watch_filter(filter: list[FileWatchEventType]) -> list[str]:
+    """Expand a Python filter list into modal-sandbox-fs-tools event type strings.
+
+    FileWatchEventType.Modify covers fs tool's Rename/RenameFrom/RenameTo variants,
+    so those must be included when the caller filters for Modify events.
+    """
+    result: list[str] = []
+    for event_type in filter:
+        result.append(event_type.value)
+        if event_type == FileWatchEventType.Modify:
+            result.extend(_RUST_RENAME_VARIANTS)
+    return result
 
 
 class _SandboxFilesystem:
@@ -495,6 +540,101 @@ class _SandboxFilesystem:
         dur_s = max(time.monotonic() - t0, 0.001)
         logger.debug(f"sandbox stat {remote_path}: ({dur_s:.2f}s)")
         return result
+
+    async def watch(
+        self,
+        remote_path: str,
+        *,
+        filter: Optional[list[FileWatchEventType]] = None,
+        recursive: bool = False,
+        timeout: Optional[int] = None,
+    ) -> AsyncIterator[FileWatchEvent]:
+        """Watch a path in the Sandbox for filesystem changes.
+
+        `remote_path` must be an absolute path in the Sandbox. If it points
+        to a file, events for that file are reported. If it points to a
+        directory, events for entries directly inside it are reported. Set
+        `recursive=True` to also receive events for all nested subdirectories.
+        If `remote_path` is a symlink, it is followed and events reference
+        paths under the resolved target.
+
+        Yields `FileWatchEvent` objects as changes occur, until either
+        `timeout` seconds elapse, the iterator is closed, or the Sandbox
+        is terminated.
+
+        Optionally restrict the kinds of events emitted to those included
+        in `filter`. The default filter `None` permits all event types.
+
+        `timeout` is in seconds. `None` means watch indefinitely. When
+        `timeout` elapses, the iterator stops without raising an exception.
+
+        **Raises**
+
+        - `SandboxFilesystemNotFoundError`: `remote_path` does not exist.
+        - `SandboxFilesystemPermissionError`: watch access is denied.
+        - `InvalidError`: the filesystem at `remote_path` does not support
+          watching.
+        - `SandboxFilesystemError`: the command fails for any other reason.
+
+        **Usage**
+
+        ```python notest
+        for event in sandbox.filesystem.watch(
+            "/tmp/foo",
+            recursive=True,
+            filter=[FileWatchEventType.Create],
+            timeout=60,
+        ):
+            if any(p.endswith(".done") for p in event.paths):
+                break
+        ```
+        """
+        validate_absolute_remote_path(remote_path, "watch")
+
+        with translate_exec_errors("watch", remote_path):
+            process = await self._container.exec(
+                _SANDBOX_FS_TOOLS_PATH,
+                make_watch_command(
+                    remote_path,
+                    recursive=recursive,
+                    filter=_expand_watch_filter(filter) if filter is not None else None,
+                    timeout=timeout,
+                ),
+                bufsize=1,  # Read process.stdout one JSON event per line.
+            )
+
+            try:
+                async for line in process.stdout:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        paths = data.get("paths")
+                        if not paths:
+                            continue
+                        raw_type = data["event_type"]
+                        # Collapse all Rename variants from fs tools binary to Modify.
+                        if raw_type in _RUST_RENAME_VARIANTS:
+                            raw_type = "Modify"
+                        yield FileWatchEvent(
+                            type=FileWatchEventType(raw_type),
+                            paths=paths,
+                        )
+                    except (json.JSONDecodeError, KeyError, ValueError):
+                        # Skip invalid events.
+                        pass
+            finally:
+                # Close stdin first so the fs tools binary detects EOF and exits, before any other await.
+                try:
+                    process.stdin.write_eof()
+                    await process.stdin.drain()
+                except Exception:
+                    pass
+                stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
+
+        if returncode != 0:
+            raise_watch_error(returncode, stderr, remote_path)
 
     async def write_bytes(self, data: bytes | bytearray | memoryview, remote_path: str) -> None:
         """Write binary content to a file in the Sandbox.

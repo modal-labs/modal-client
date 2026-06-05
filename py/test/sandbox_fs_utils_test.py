@@ -6,6 +6,7 @@ from modal._utils.sandbox_fs_utils import (
     ErrorPayload,
     make_list_files_command,
     make_stat_command,
+    make_watch_command,
     translate_exec_errors,
     translate_exec_unexpected_error,
     try_parse_error_payload,
@@ -117,3 +118,27 @@ def test_make_stat_command_handles_path_with_special_characters():
     result = make_stat_command("/tmp/my dir/with spaces/file.txt")
     parsed = json.loads(result)
     assert parsed == {"Stat": {"path": "/tmp/my dir/with spaces/file.txt"}}
+
+
+def test_make_watch_command_produces_correct_json():
+    result = make_watch_command(
+        "/tmp/dir",
+        recursive=False,
+        filter=None,
+        timeout=None,
+    )
+    parsed = json.loads(result)
+    assert parsed == {"Watch": {"path": "/tmp/dir", "recursive": False, "filter": None, "timeout_secs": None}}
+
+
+def test_make_watch_command_serializes_filter_and_timeout():
+    result = make_watch_command(
+        "/tmp/dir",
+        recursive=True,
+        filter=["Create", "Remove"],
+        timeout=30,
+    )
+    parsed = json.loads(result)
+    assert parsed == {
+        "Watch": {"path": "/tmp/dir", "recursive": True, "filter": ["Create", "Remove"], "timeout_secs": 30}
+    }

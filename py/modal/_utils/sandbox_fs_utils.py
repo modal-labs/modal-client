@@ -285,6 +285,53 @@ def make_stat_command(remote_path: str) -> str:
     return json.dumps({"Stat": {"path": remote_path}})
 
 
+def raise_watch_error(returncode: int, stderr: str | bytes, remote_path: str) -> NoReturn:
+    if payload := try_parse_error_payload(stderr):
+        logger.debug(
+            f"sandbox-fs-tools watch error: path={remote_path}, "
+            f"error_kind={payload.error_kind}, message={payload.message}, detail={payload.detail}"
+        )
+        if payload.error_kind == "NotFound":
+            raise SandboxFilesystemNotFoundError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "PermissionDenied":
+            raise SandboxFilesystemPermissionError(f"{payload.message}: {remote_path}")
+        if payload.error_kind == "NotSupported":
+            raise InvalidError(
+                f"{payload.message}: {remote_path} - this operation is not supported for CloudBucketMounts"
+            )
+        raise SandboxFilesystemError(payload.message)
+
+    if stderr_text := _stderr_to_text(stderr):
+        logger.debug(f"Unstructured modal-sandbox-fs-tools stderr: {stderr_text}")
+    raise SandboxFilesystemError(f"Operation on '{remote_path}' failed with exit code {returncode}")
+
+
+def make_watch_command(
+    remote_path: str,
+    *,
+    recursive: bool,
+    filter: list[str] | None,
+    timeout: int | None,
+) -> str:
+    """Build the JSON command string for a Watch operation.
+
+    The returned JSON must match the `Command` enum in the modal-sandbox-fs-tools
+    Rust crate (crates/modal-sandbox-fs-tools/src/lib.rs). Treat changes to
+    this schema like protobuf changes: fields must not be removed or renamed,
+    only added with backwards-compatible defaults.
+    """
+    return json.dumps(
+        {
+            "Watch": {
+                "path": remote_path,
+                "recursive": recursive,
+                "filter": filter,
+                "timeout_secs": timeout,
+            }
+        }
+    )
+
+
 def validate_absolute_remote_path(remote_path: str, operation: str) -> None:
     if not PurePosixPath(remote_path).is_absolute():
         raise InvalidError(f"Sandbox.filesystem.{operation}() currently only supports absolute remote_path values")

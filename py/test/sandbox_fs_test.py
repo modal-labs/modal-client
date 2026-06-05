@@ -2,6 +2,9 @@
 import pathlib
 import pytest
 import random
+import threading
+import time
+from typing import Callable, Optional
 from unittest import mock
 
 from modal import App, Sandbox
@@ -19,7 +22,7 @@ from modal.exception import (
 # types, so mypy cannot see this plain module-level constant. We suppress the
 # error here rather than defining a separate constant we'd have to keep in sync.
 from modal.io_streams import TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE  # type: ignore[attr-defined]
-from modal.sandbox_fs import FileInfo, FileType
+from modal.sandbox_fs import FileInfo, FileType, FileWatchEvent, FileWatchEventType
 
 from .supports.skip import skip_windows
 
@@ -1209,6 +1212,316 @@ def test_sandbox_fs_stat_errors_when_ancestor_is_a_file(servicer, client, sandbo
 
     with pytest.raises(SandboxFilesystemNotADirectoryError):
         sandbox.filesystem.stat(str(blocker / "child"))
+
+
+# ---------------------------------------------------------------------------
+# watch
+# ---------------------------------------------------------------------------
+
+
+def _run_watch_with_trigger(
+    sandbox: Sandbox,
+    path: str,
+    trigger: Callable[[int], None],
+    *,
+    recursive: bool = False,
+    filter: Optional[list[FileWatchEventType]] = None,
+    timeout: int = 2,
+) -> list[FileWatchEvent]:
+    """Run watch() while trigger(i) fires every 50ms in the background."""
+    stop = threading.Event()
+
+    def _runner():
+        i = 0
+        while not stop.is_set():
+            try:
+                trigger(i)
+            except Exception:
+                pass
+            i += 1
+            stop.wait(0.05)
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    try:
+        return list(sandbox.filesystem.watch(path, recursive=recursive, filter=filter, timeout=timeout))
+    finally:
+        stop.set()
+        thread.join(timeout=2)
+
+
+@skip_non_subprocess
+def test_sandbox_fs_watch_errors_on_relative_remote_path(servicer, client, sandbox):
+    with pytest.raises(InvalidError, match="absolute remote_path values"):
+        for _ in sandbox.filesystem.watch("relative/path"):
+            pass
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_watch_errors_when_path_does_not_exist(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    missing = str(tmp_path / "watch-missing")
+
+    with pytest.raises(SandboxFilesystemNotFoundError):
+        for _ in sandbox.filesystem.watch(missing, recursive=recursive, timeout=2):
+            pass
+
+
+@skip_non_subprocess
+def test_sandbox_fs_watch_returns_immediately_on_zero_timeout(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
+    """timeout=0 must return without yielding any events."""
+    watch_dir = tmp_path / "watch-zero-timeout-dir"
+    watch_dir.mkdir()
+
+    start = time.monotonic()
+    events = list(sandbox.filesystem.watch(str(watch_dir), timeout=0))
+    elapsed = time.monotonic() - start
+
+    assert events == []
+    assert elapsed < 5, f"timeout=0 did not return quickly: {elapsed:.2f}s"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_watch_emits_create_event_for_new_file(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    watch_dir = tmp_path / "watch-create-dir"
+    watch_dir.mkdir()
+
+    def trigger(i: int) -> None:
+        (watch_dir / f"trigger-{i}.txt").write_text("hello", encoding="utf-8")
+
+    events = _run_watch_with_trigger(sandbox, str(watch_dir), trigger, recursive=recursive)
+
+    assert any(e.type == FileWatchEventType.Create for e in events), f"no Create event in: {events}"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_watch_emits_modify_event_for_existing_file(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    watch_dir = tmp_path / "watch-modify-dir"
+    watch_dir.mkdir()
+    target = watch_dir / "existing.txt"
+    target.write_bytes(b"initial")
+
+    def trigger(i: int) -> None:
+        target.write_text(f"v{i}", encoding="utf-8")
+
+    events = _run_watch_with_trigger(sandbox, str(watch_dir), trigger, recursive=recursive)
+
+    assert any(e.type == FileWatchEventType.Modify for e in events), f"no Modify event in: {events}"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_watch_emits_remove_event_for_deleted_file(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    watch_dir = tmp_path / "watch-remove-dir"
+    watch_dir.mkdir()
+
+    def trigger(i: int) -> None:
+        # Create a fresh file each iteration and remove the previous one.
+        # Splitting create and remove across iterations gives the watcher
+        # time to observe both transitions instead of seeing nothing.
+        (watch_dir / f"f-{i}.txt").write_text("hi", encoding="utf-8")
+        if i >= 1:
+            (watch_dir / f"f-{i - 1}.txt").unlink(missing_ok=True)
+
+    events = _run_watch_with_trigger(sandbox, str(watch_dir), trigger, recursive=recursive)
+
+    assert any(e.type == FileWatchEventType.Remove for e in events), f"no Remove event in: {events}"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_watch_emits_rename_event_for_renamed_file(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    watch_dir = tmp_path / "watch-rename-dir"
+    watch_dir.mkdir()
+    # Pre-create so the file is already in the mock's initial snapshot.
+    (watch_dir / "before.txt").write_text("content", encoding="utf-8")
+
+    def trigger(i: int) -> None:
+        before = watch_dir / "before.txt"
+        after = watch_dir / "after.txt"
+        if before.exists():
+            before.rename(after)
+        elif after.exists():
+            after.rename(before)
+
+    events = _run_watch_with_trigger(sandbox, str(watch_dir), trigger, recursive=recursive)
+
+    assert any(e.type == FileWatchEventType.Modify for e in events), f"no Modify event in: {events}"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_watch_rename_event_includes_both_paths(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    watch_dir = tmp_path / "watch-rename-paths-dir"
+    watch_dir.mkdir()
+    # Pre-create so the file is already in the mock's initial snapshot.
+    (watch_dir / "before.txt").write_text("content", encoding="utf-8")
+
+    def trigger(i: int) -> None:
+        before = watch_dir / "before.txt"
+        after = watch_dir / "after.txt"
+        if before.exists():
+            before.rename(after)
+        elif after.exists():
+            after.rename(before)
+
+    events = _run_watch_with_trigger(sandbox, str(watch_dir), trigger, recursive=recursive)
+
+    modify_events = [e for e in events if e.type == FileWatchEventType.Modify]
+    assert modify_events, f"no Modify events in: {events}"
+
+    all_paths = {p for e in modify_events for p in e.paths}
+    assert any("before" in p for p in all_paths), f"expected source path in rename events; got paths: {all_paths}"
+    assert any("after" in p for p in all_paths), f"expected destination path in rename events; got paths: {all_paths}"
+
+
+@skip_non_subprocess
+def test_sandbox_fs_watch_emits_event_when_path_is_a_file(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
+    target = tmp_path / "watched.txt"
+    target.write_bytes(b"initial")
+
+    def trigger(i: int) -> None:
+        target.write_text(f"v{i}", encoding="utf-8")
+
+    events = _run_watch_with_trigger(sandbox, str(target), trigger)
+
+    assert any(e.type == FileWatchEventType.Modify for e in events), f"no Modify event in: {events}"
+
+
+@skip_non_subprocess
+def test_sandbox_fs_watch_recursive_observes_events_in_subdirectory(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
+):
+    watch_dir = tmp_path / "watch-recursive-dir"
+    watch_dir.mkdir()
+    subdir = watch_dir / "nested"
+    subdir.mkdir()
+
+    def trigger(i: int) -> None:
+        (subdir / f"deep-{i}.txt").write_text("hi", encoding="utf-8")
+
+    events = _run_watch_with_trigger(sandbox, str(watch_dir), trigger, recursive=True)
+
+    assert any(p.startswith(str(subdir)) for e in events for p in e.paths), (
+        f"expected at least one event under {subdir}; got: {events}"
+    )
+
+
+@skip_non_subprocess
+def test_sandbox_fs_watch_nonrecursive_ignores_events_in_subdirectory(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools
+):
+    watch_dir = tmp_path / "watch-nonrecursive-dir"
+    watch_dir.mkdir()
+    subdir = watch_dir / "nested"
+    subdir.mkdir()
+
+    def trigger(i: int) -> None:
+        (subdir / f"deep-{i}.txt").write_text("hi", encoding="utf-8")
+
+    events = _run_watch_with_trigger(sandbox, str(watch_dir), trigger, recursive=False)
+
+    assert events == [], f"non-recursive watch should ignore subdirectory events; got: {events}"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_watch_filter_drops_unmatched_events(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    watch_dir = tmp_path / "watch-filter-drops-dir"
+    watch_dir.mkdir()
+
+    def trigger(i: int) -> None:
+        (watch_dir / f"f-{i}.txt").write_text("hi", encoding="utf-8")
+
+    events = _run_watch_with_trigger(
+        sandbox,
+        str(watch_dir),
+        trigger,
+        filter=[FileWatchEventType.Remove],
+        recursive=recursive,
+    )
+
+    assert events == [], f"filter=[REMOVE] should drop Create events; got: {events}"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize(
+    "allowed",
+    [
+        [FileWatchEventType.Create],
+        [FileWatchEventType.Create, FileWatchEventType.Remove],
+    ],
+)
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_watch_filter_keeps_only_matching_events(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, allowed, recursive
+):
+    watch_dir = tmp_path / "watch-filter-keeps-dir"
+    watch_dir.mkdir()
+
+    def trigger(i: int) -> None:
+        (watch_dir / f"f-{i}.txt").write_text("hi", encoding="utf-8")
+        if i >= 1:
+            (watch_dir / f"f-{i - 1}.txt").unlink(missing_ok=True)
+
+    events = _run_watch_with_trigger(sandbox, str(watch_dir), trigger, filter=allowed, recursive=recursive)
+
+    assert events, "expected at least one event"
+    seen_types = {e.type for e in events}
+    for t in allowed:
+        assert t in seen_types, f"expected {t} in events; got: {seen_types}"
+    assert seen_types <= set(allowed), f"unexpected event types: {seen_types - set(allowed)}"
+
+
+@skip_non_subprocess
+@pytest.mark.parametrize("recursive", [False, True])
+def test_sandbox_fs_watch_empty_filter_yields_no_events(
+    servicer, client, sandbox, tmp_path, sandbox_fs_tools, recursive
+):
+    watch_dir = tmp_path / "watch-empty-filter-dir"
+    watch_dir.mkdir()
+
+    def trigger(i: int) -> None:
+        (watch_dir / f"f-{i}.txt").write_text("hi", encoding="utf-8")
+
+    events = _run_watch_with_trigger(sandbox, str(watch_dir), trigger, filter=[], recursive=recursive)
+
+    assert events == [], f"empty filter should drop all events; got: {events}"
+
+
+@skip_non_subprocess
+def test_sandbox_fs_watch_break_returns_quickly(servicer, client, sandbox, tmp_path, sandbox_fs_tools):
+    watch_dir = tmp_path / "watch-break-dir"
+    watch_dir.mkdir()
+
+    def _writer():
+        time.sleep(0.2)
+        (watch_dir / "trigger.txt").write_text("hello", encoding="utf-8")
+
+    threading.Thread(target=_writer, daemon=True).start()
+
+    start = time.monotonic()
+    for _ in sandbox.filesystem.watch(str(watch_dir), timeout=60):
+        break
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 5, f"break did not terminate quickly: {elapsed:.2f}s"
 
 
 # ---------------------------------------------------------------------------

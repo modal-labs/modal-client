@@ -6,12 +6,16 @@ Emulates the Rust binary's behavior for ReadFile and WriteFile, including
 structured JSON error payloads on stderr. Accepts a single JSON argument.
 """
 
+import errno
 import grp
 import json
 import os
 import pwd
+import select
+import shutil
 import stat
 import sys
+import time
 
 
 def _error_payload(error_kind, message, detail=None):
@@ -137,16 +141,12 @@ if "Remove" in command:
         if os.path.islink(target) or not os.path.isdir(target):
             os.remove(target)
         elif recursive:
-            import shutil
-
             shutil.rmtree(target)
         else:
             os.rmdir(target)
     except PermissionError:
         _error_payload("PermissionDenied", "permission denied")
     except OSError as e:
-        import errno
-
         if e.errno == errno.ENOTEMPTY:
             _error_payload("DirectoryNotEmpty", "directory is not empty")
         else:
@@ -168,6 +168,109 @@ if "Stat" in command:
     name = os.path.basename(target.rstrip("/"))
     sys.stdout.write(json.dumps(_build_file_entry(name, target, st)))
     sys.stdout.flush()
+    raise SystemExit(0)
+
+if "Watch" in command:
+    watch_args = command["Watch"]
+    target = watch_args["path"]
+    recursive = bool(watch_args.get("recursive", False))
+    filter_types = watch_args.get("filter")  # None or list of variant-name strings
+    timeout_secs = watch_args.get("timeout_secs")  # None or int
+
+    if not os.path.lexists(target):
+        _error_payload("NotFound", "path does not exist")
+
+    def _snapshot(root, recursive):
+        """path -> (mtime, size, is_dir, inode) for everything under root."""
+        result = {}
+        if not os.path.isdir(root):
+            try:
+                st = os.lstat(root)
+                result[root] = (st.st_mtime, st.st_size, stat.S_ISDIR(st.st_mode), st.st_ino)
+            except OSError:
+                pass
+            return result
+        if recursive:
+            for dirpath, dirnames, filenames in os.walk(root):
+                for name in dirnames + filenames:
+                    full = os.path.join(dirpath, name)
+                    try:
+                        st = os.lstat(full)
+                        result[full] = (st.st_mtime, st.st_size, stat.S_ISDIR(st.st_mode), st.st_ino)
+                    except OSError:
+                        pass
+        else:
+            try:
+                for name in os.listdir(root):
+                    full = os.path.join(root, name)
+                    try:
+                        st = os.lstat(full)
+                        result[full] = (st.st_mtime, st.st_size, stat.S_ISDIR(st.st_mode), st.st_ino)
+                    except OSError:
+                        pass
+            except PermissionError:
+                pass
+        return result
+
+    def _emit(event_type, paths):
+        if filter_types is not None and event_type not in filter_types:
+            return
+        try:
+            sys.stdout.write(json.dumps({"event_type": event_type, "paths": paths}) + "\n")
+            sys.stdout.flush()
+        except BrokenPipeError:
+            # The SDK closed the read end; exit cleanly.
+            raise SystemExit(0)
+
+    deadline = time.monotonic() + timeout_secs if timeout_secs is not None else None
+    poll_interval = 0.05
+    stdin_fd = sys.stdin.fileno()
+    prev = _snapshot(target, recursive)
+    try:
+        while True:
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            # Wait up to poll_interval for stdin activity. The SDK signals
+            # termination by closing stdin, which select reports as readable
+            # with a zero-byte read.
+            readable, _, _ = select.select([stdin_fd], [], [], poll_interval)
+            if readable and os.read(stdin_fd, 256) == b"":
+                break
+            curr = _snapshot(target, recursive)
+
+            disappeared = {p: info for p, info in prev.items() if p not in curr}
+            appeared = {p: info for p, info in curr.items() if p not in prev}
+
+            # Match disappeared and appeared entries by inode to detect renames.
+            appeared_by_inode: dict[int, list[str]] = {}
+            for p, info in appeared.items():
+                appeared_by_inode.setdefault(info[3], []).append(p)
+
+            renamed_src: set = set()
+            renamed_dst: set = set()
+            for src, src_info in disappeared.items():
+                dsts = appeared_by_inode.get(src_info[3], [])
+                if dsts:
+                    rename_dst = dsts.pop(0)
+                    renamed_src.add(src)
+                    renamed_dst.add(rename_dst)
+                    _emit("Rename", [src, rename_dst])
+
+            for path, info in curr.items():
+                if path in appeared and path not in renamed_dst:
+                    _emit("Create", [path])
+                elif path in prev and info != prev[path] and not info[2]:
+                    # Skip Modify on directory entries: inotify/notify do not
+                    # surface mtime bumps from child writes.
+                    _emit("Modify", [path])
+
+            for path in disappeared:
+                if path not in renamed_src:
+                    _emit("Remove", [path])
+
+            prev = curr
+    except KeyboardInterrupt:
+        pass
     raise SystemExit(0)
 
 if "WriteFile" in command:
