@@ -185,6 +185,48 @@ class _FunctionOptions:
         )
 
 
+async def _function_bind_params_cached(
+    base_function: "_Function",
+    req: api_pb2.FunctionBindParamsRequest,
+) -> api_pb2.FunctionBindParamsResponse:
+    """Cache layer for FunctionBindParams RPCs, scoped to a base Function handle.
+
+    We have this because users probably do not realize that Function invocations structured as
+
+        res = f.with_options(...).remote(...)
+
+    would always need to do two sequential RPCs (bind params / call function variant).
+
+    The bound Function ID from FunctionBindParams is deterministic with respect to the full request,
+    so we can avoid the unnecessary call and hydrate the new instance from a cached response.
+
+    The cache is stored on the base Function handle so that the variant cache behaves similarly to
+    the local reference to the base Function metadata.
+
+    """
+    cache = base_function._bind_params_cache
+    cache_key = req.SerializeToString(deterministic=True)
+
+    cached_response = cache.get(cache_key)
+    if cached_response is not None:
+        cache.move_to_end(cache_key)
+        response = api_pb2.FunctionBindParamsResponse()
+        response.ParseFromString(cached_response)
+        return response
+
+    assert base_function._client and base_function._client.stub
+    response = await base_function._client.stub.FunctionBindParams(req)
+
+    cache[cache_key] = response.SerializeToString(deterministic=True)
+    cache.move_to_end(cache_key)
+
+    max_cache_size = 32
+    while len(cache) > max_cache_size:
+        cache.popitem(last=False)
+
+    return response
+
+
 def _make_function_variant(
     base_function: "_Function",
     options: _FunctionOptions | None,
@@ -229,7 +271,7 @@ def _make_function_variant(
             or "",  # TODO: investigate shouldn't environment name always be specified here?
         )
 
-        response = await base_function._client.stub.FunctionBindParams(req)
+        response = await _function_bind_params_cached(base_function, req)
         function_variant._hydrate(response.bound_function_id, base_function._client, response.handle_metadata)
 
     def _deps():

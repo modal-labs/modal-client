@@ -162,6 +162,41 @@ def test_function_multiple_dynamic_config_methods(client, servicer):
         assert bind_req.function_options.target_concurrent_inputs == 50
 
 
+def test_function_dynamic_config_bind_params_cached(client, servicer):
+    optioned_1 = foo.with_options(cpu=4)
+    optioned_2 = foo.with_options(cpu=4)
+
+    with servicer.intercept() as ctx, app.run(client=client):
+        assert optioned_1.remote(2, 4) == 20
+        assert optioned_2.remote(2, 4) == 20
+
+        assert len(ctx.get_requests("FunctionBindParams")) == 1
+
+
+def test_function_dynamic_config_bind_params_cache_key_includes_options(client, servicer):
+    optioned_1 = foo.with_options(cpu=4)
+    optioned_2 = foo.with_options(cpu=8)
+
+    with servicer.intercept() as ctx, app.run(client=client):
+        assert optioned_1.remote(2, 4) == 20
+        assert optioned_2.remote(2, 4) == 20
+
+        bind_reqs = ctx.get_requests("FunctionBindParams")
+        assert len(bind_reqs) == 2
+        assert bind_reqs[0].function_options.resources.milli_cpu == 4000
+        assert bind_reqs[1].function_options.resources.milli_cpu == 8000
+
+
+def test_function_dynamic_config_bind_params_cache_cleared_by_rehydration(client, servicer):
+    with servicer.intercept() as ctx, app.run(client=client):
+        assert foo.with_options(cpu=4).remote(2, 4) == 20
+        assert len(ctx.get_requests("FunctionBindParams")) == 1
+
+    with servicer.intercept() as ctx, app.run(client=client):
+        assert foo.with_options(cpu=4).remote(2, 4) == 20
+        assert len(ctx.get_requests("FunctionBindParams")) == 1
+
+
 def test_function_dynamic_config_validation():
     with pytest.raises(InvalidError, match="CPU limit lower than request"):
         foo.with_options(cpu=(2, 1))

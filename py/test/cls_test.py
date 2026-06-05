@@ -362,6 +362,17 @@ def test_call_cls_remote_sync(client):
         assert ret == 64  # Mock servicer just squares the argument
 
 
+def test_call_cls_remote_bind_params_cached(client, servicer):
+    with servicer.intercept() as ctx, app_remote.run(client=client):
+        foo_remote_1: FooRemote = FooRemote(x=3, y="hello")
+        foo_remote_2: FooRemote = FooRemote(x=3, y="hello")
+
+        assert foo_remote_1.bar.remote(8) == 64
+        assert foo_remote_2.bar.remote(8) == 64
+
+        assert len(ctx.get_requests("FunctionBindParams")) == 1
+
+
 def test_call_cls_remote_invalid_type(client):
     with app_remote.run(client=client):
 

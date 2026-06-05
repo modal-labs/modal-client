@@ -5,6 +5,7 @@ import inspect
 import time
 import typing
 import warnings
+from collections import OrderedDict
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -1354,6 +1355,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._options = _FunctionOptions()
         self._base_function = None
 
+        # An OrderedDict[bytes, bytes] LRU of FunctionBindParams responses for
+        # variants derived from this base Function. Omitted from class-level annotations because
+        # Synchronicity doesn't understand OrderedDict as a type hint.
+        self._bind_params_cache = OrderedDict()
+
     def _hydrate_metadata(self, metadata: Message | None):
         # Overridden concrete implementation of base class method
         assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata), (
@@ -1381,6 +1387,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             metadata.max_object_size_bytes if metadata.HasField("max_object_size_bytes") else MAX_OBJECT_SIZE_BYTES
         )
         self._experimental_flash_urls = metadata._experimental_flash_urls
+
+        # Invalidate the Function variant cache when we load new metadata, since the base Function handle
+        # is now in sync with the server but any previously-cached variants may be stale.
+        self._bind_params_cache.clear()
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method

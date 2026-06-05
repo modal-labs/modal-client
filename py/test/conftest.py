@@ -752,7 +752,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.precreated_functions = set()
 
         self.app_functions: FunctionsRegistry = FunctionsRegistry()
-        self.bound_functions: dict[tuple[str, bytes], str] = {}
+        self.bound_functions: dict[bytes, str] = {}
         self.function_params: dict[str, tuple[tuple, dict[str, Any]]] = {}
         self.function_options: dict[str, api_pb2.FunctionOptions] = {}
         self.function_call_num_inputs: dict[str, int] = {}
@@ -1732,7 +1732,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
             # Backwards compatibility: Cls() always sends serialized empty args/kwargs
             # even when it is not parameterized. True Function variants will not have this debt.
             assert request.serialized_params
-        existing_func_id = self.bound_functions.get((request.function_id, request.serialized_params), None)
+        bind_params_key = request.SerializeToString(deterministic=True)
+        existing_func_id = self.bound_functions.get(bind_params_key, None)
         if existing_func_id:
             function_id = existing_func_id
         else:
@@ -1744,7 +1745,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             bound_func.CopyFrom(base_function)
             self.app_functions[function_id] = bound_func
             self.function_id_to_definition_id[function_id] = self.function_id_to_definition_id[request.function_id]
-            self.bound_functions[(request.function_id, request.serialized_params)] = function_id
+            self.bound_functions[bind_params_key] = function_id
             self.function_params[function_id] = deserialize_params(request.serialized_params, bound_func, None)
             self.function_options[function_id] = request.function_options
 
