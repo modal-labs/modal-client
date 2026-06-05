@@ -11,6 +11,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 - **Breaking:** (Go) `Sandbox.Filesystem` is now a field rather than a method. Migrate `sb.Filesystem().ReadText(...)` to `sb.Filesystem.ReadText(...)`.
 - (Go) `Sandbox.Exec` now rejects a relative `Workdir` client-side with `InvalidError`.
 - (Go) `Sandbox.Create` and `Sandbox.Exec` now return an `InvalidError` if any `Secrets` entry is nil.
+- **Breaking:** (JS) Removed the deprecated `cidrAllowlist` parameter from `sandboxes.create`. Use `outboundCidrAllowlist` instead.
 - Added retry logic with exponential backoff for blob uploads and downloads in both Go and JS SDKs, improving resilience to transient HTTP errors (e.g., 502 Bad Gateway).
 - Fixed a bug in Go where `blobDownload` would silently treat HTTP error response bodies as valid blob data instead of failing.
 - **Breaking:** `Sandbox.SnapshotFilesystem` (Go) / `Sandbox.snapshotFilesystem` (JS) no longer takes a positional `timeout` / `timeoutMs` argument. The timeout now lives on the params struct as `Timeout time.Duration` (Go) / `timeoutMs?: number` (JS), bringing the method to parity with `Sandbox.SnapshotDirectory`. Migrate `sb.SnapshotFilesystem(ctx, 30*time.Second, params)` to `sb.SnapshotFilesystem(ctx, &SandboxSnapshotFilesystemParams{Timeout: 30*time.Second, ...})`, and `sb.snapshotFilesystem(30000, params)` to `sb.snapshotFilesystem({ timeoutMs: 30000, ...params })`.

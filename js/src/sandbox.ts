@@ -307,11 +307,6 @@ export type SandboxCreateParams = {
   /** List of CIDRs the Sandbox is allowed to access. If not set, all CIDRs are allowed. Cannot be used with blockNetwork. */
   outboundCidrAllowlist?: string[];
 
-  /**
-   * @deprecated Use {@link outboundCidrAllowlist} instead.
-   */
-  cidrAllowlist?: string[];
-
   /** List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If not set, all IPs are allowed. Cannot be used with blockNetwork. */
   inboundCidrAllowlist?: string[];
 
@@ -358,6 +353,7 @@ export async function buildSandboxCreateRequestProto(
     memoryLimit: "memoryLimitMiB",
     timeout: "timeoutMs",
     idleTimeout: "idleTimeoutMs",
+    cidrAllowlist: "outboundCidrAllowlist",
   });
 
   const gpuConfig = parseGpuConfig(params.gpu);
@@ -433,25 +429,9 @@ export async function buildSandboxCreateRequestProto(
 
   const secretIds = (params.secrets || []).map((secret) => secret.secretId);
 
-  let resolvedOutboundCidrAllowlist = params.outboundCidrAllowlist;
-  // eslint-disable-next-line @typescript-eslint/no-deprecated
-  if (params.cidrAllowlist) {
-    if (params.outboundCidrAllowlist) {
-      throw new Error(
-        "Cannot specify both cidrAllowlist and outboundCidrAllowlist.",
-      );
-    }
-    process.emitWarning(
-      "cidrAllowlist is deprecated; use outboundCidrAllowlist instead.",
-      "DeprecationWarning",
-    );
-    // eslint-disable-next-line @typescript-eslint/no-deprecated
-    resolvedOutboundCidrAllowlist = params.cidrAllowlist;
-  }
-
   let networkAccess: NetworkAccess;
   if (params.blockNetwork) {
-    if (resolvedOutboundCidrAllowlist) {
+    if (params.outboundCidrAllowlist) {
       throw new Error(
         "outboundCidrAllowlist cannot be used when blockNetwork is enabled",
       );
@@ -464,10 +444,10 @@ export async function buildSandboxCreateRequestProto(
     networkAccess = NetworkAccess.create({
       networkAccessType: NetworkAccess_NetworkAccessType.BLOCKED,
     });
-  } else if (resolvedOutboundCidrAllowlist) {
+  } else if (params.outboundCidrAllowlist) {
     networkAccess = NetworkAccess.create({
       networkAccessType: NetworkAccess_NetworkAccessType.ALLOWLIST,
-      allowedCidrs: resolvedOutboundCidrAllowlist,
+      allowedCidrs: params.outboundCidrAllowlist,
     });
   } else {
     networkAccess = NetworkAccess.create({

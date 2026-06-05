@@ -343,15 +343,6 @@ test("CreateSandboxWithNetworkAccessParams", async () => {
   ).rejects.toThrow(
     "outboundCidrAllowlist cannot be used when blockNetwork is enabled",
   );
-
-  // Backward compat: deprecated cidrAllowlist still works.
-  const sbDeprecated = await tc.sandboxes.create(app, image, {
-    command: ["echo", "hello, deprecated"],
-    blockNetwork: false,
-    cidrAllowlist: ["10.0.0.0/8"],
-  });
-  onTestFinished(async () => await sbDeprecated.terminate());
-  expect(sbDeprecated.sandboxId).toMatch(/^sb-/);
 });
 
 test("CreateSandboxWithInboundCidrAllowlist", async () => {
@@ -390,6 +381,18 @@ test("CreateSandboxWithInboundCidrAllowlist", async () => {
   });
   onTestFinished(async () => await sb.terminate());
   expect(await sb.wait()).toBe(0);
+});
+
+test("buildSandboxCreateRequestProto rejects removed cidrAllowlist", async () => {
+  // The deprecated `cidrAllowlist` must throw rather than be silently
+  // ignored, which would downgrade ALLOWLIST to OPEN network access.
+  await expect(
+    buildSandboxCreateRequestProto("app-123", "img-456", {
+      cidrAllowlist: ["10.0.0.0/8"],
+    } as any),
+  ).rejects.toThrow(
+    "Parameter 'cidrAllowlist' has been renamed to 'outboundCidrAllowlist'.",
+  );
 });
 
 test("SandboxPollAndReturnCode", async () => {
