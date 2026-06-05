@@ -3,4 +3,8 @@ from ._billing import WorkspaceBillingReportItem, _workspace_billing_report
 from ._utils.async_utils import synchronize_api
 
 workspace_billing_report = synchronize_api(_workspace_billing_report)
-assert WorkspaceBillingReportItem
+
+__all__ = [
+    "workspace_billing_report",
+    "WorkspaceBillingReportItem",
+]
