@@ -1,5 +1,6 @@
 import { tc } from "../test-support/test-client";
-import { expect, onTestFinished, test } from "vitest";
+import { ModalClient } from "../src/client";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { Secret } from "../src/secret";
 import { App } from "../src/app";
@@ -34,6 +35,15 @@ test("ImageFromRegistryWithSecret", async () => {
   // https://cloud.google.com/artifact-registry/docs/docker/authentication#json-key
   // So we use GCP Artifact Registry to test this too.
 
+  // Original image was built with 2024.10, so we set `MODAL_IMAGE_BUILDER_VERSION` to not trigger
+  // the image builder.
+  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  // Use a new client to pull in MODAL_IMAGE_BUILDER_VERSION
+  const tc = new ModalClient();
+
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
   });
@@ -51,6 +61,15 @@ test("ImageFromRegistryWithSecret", async () => {
 });
 
 test("ImageFromAwsEcr", async () => {
+  // Original image was built with 2024.10, so we set `MODAL_IMAGE_BUILDER_VERSION` to not trigger
+  // the image builder.
+  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+
+  // Use a new client to pull in MODAL_IMAGE_BUILDER_VERSION
+  const tc = new ModalClient();
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
   });
@@ -68,6 +87,15 @@ test("ImageFromAwsEcr", async () => {
 });
 
 test("ImageFromGcpArtifactRegistry", { timeout: 30_000 }, async () => {
+  // Original image was built with 2024.10, so we set `MODAL_IMAGE_BUILDER_VERSION` to not trigger
+  // the image builder.
+  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  // Use a new client to pull in MODAL_IMAGE_BUILDER_VERSION
+  const tc = new ModalClient();
+
   const app = await tc.apps.fromName("libmodal-test", {
     createIfMissing: true,
   });
@@ -204,6 +232,11 @@ test("DockerfileCommandsCopyCommandValidation", () => {
 });
 
 test("DockerfileCommandsWithOptions", async () => {
+  // Original image was built with 2024.10, so we set `MODAL_IMAGE_BUILDER_VERSION` to use local image builder version.
+  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   mock.handleUnary("/ImageGetOrCreate", (req: any) => {

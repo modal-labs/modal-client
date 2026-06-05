@@ -23,10 +23,11 @@ export class AppService {
    * Reference a deployed {@link App} by name, or create if it does not exist.
    */
   async fromName(name: string, params: AppFromNameParams = {}): Promise<App> {
+    const environmentName = this.#client.environmentName(params.environment);
     try {
       const resp = await this.#client.cpClient.appGetOrCreate({
         appName: name,
-        environmentName: this.#client.environmentName(params.environment),
+        environmentName,
         objectCreationType: params.createIfMissing
           ? ObjectCreationType.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
           : ObjectCreationType.OBJECT_CREATION_TYPE_UNSPECIFIED,
@@ -38,7 +39,7 @@ export class AppService {
         "app_name",
         name,
       );
-      return new App(resp.appId, name);
+      return new App(resp.appId, name, environmentName);
     } catch (err) {
       if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(`App '${name}' not found`);
@@ -87,10 +88,12 @@ export function parseGpuConfig(gpu: string | undefined): GPUConfig {
 export class App {
   readonly appId: string;
   readonly name?: string;
+  readonly environmentName?: string;
 
   /** @ignore */
-  constructor(appId: string, name?: string) {
+  constructor(appId: string, name?: string, environmentName?: string) {
     this.appId = appId;
     this.name = name;
+    this.environmentName = environmentName;
   }
 }

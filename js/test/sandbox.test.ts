@@ -940,6 +940,15 @@ test("testSandboxExperimentalDockerNotBool", async () => {
 });
 
 test("testSandboxExperimentalDockerMock", async () => {
+  const origImageBuilderVersion = process.env["MODAL_IMAGE_BUILDER_VERSION"];
+  delete process.env["MODAL_IMAGE_BUILDER_VERSION"];
+  onTestFinished(() => {
+    if (origImageBuilderVersion !== undefined) {
+      process.env["MODAL_IMAGE_BUILDER_VERSION"] = origImageBuilderVersion;
+    } else {
+      delete process.env["MODAL_IMAGE_BUILDER_VERSION"];
+    }
+  });
   const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
 
   const options = { enable_docker: true };
@@ -969,6 +978,19 @@ test("testSandboxExperimentalDockerMock", async () => {
         propagationReason: "",
       },
       metadata: undefined,
+    };
+  });
+
+  mock.handleUnary("/EnvironmentGetOrCreate", () => {
+    return {
+      environmentId: "en-main-123",
+      metadata: {
+        name: "main",
+        settings: {
+          imageBuilderVersion: "2025.06",
+          webhookSuffix: "modal.run",
+        },
+      },
     };
   });
 
@@ -1100,6 +1122,18 @@ test("ExperimentalCreate routes lifecycle calls to V2 RPCs", async () => {
   mock.handleUnary("/SandboxTerminateV2", (req: any) => {
     expect(req.sandboxId).toBe(V2_SANDBOX_ID);
     return {};
+  });
+  mock.handleUnary("/EnvironmentGetOrCreate", () => {
+    return {
+      environmentId: "en-main-123",
+      metadata: {
+        name: "main",
+        settings: {
+          imageBuilderVersion: "2025.06",
+          webhookSuffix: "modal.run",
+        },
+      },
+    };
   });
 
   const app = await mc.apps.fromName("libmodal-test", {

@@ -29,6 +29,7 @@ import { AuthTokenManager } from "./auth_token_manager";
 import { getSDKVersion } from "./version";
 import { checkForRenamedParams } from "./validation";
 import { createLogger, type Logger, type LogLevel } from "./logger";
+import { EnvironmentManager } from "./environment";
 
 export interface ModalClientParams {
   tokenId?: string;
@@ -98,6 +99,7 @@ export class ModalClient {
   private ipClients: Map<string, ModalGrpcClient>;
   private authTokenManager: AuthTokenManager | null = null;
   private customMiddleware: ClientMiddleware[];
+  private environmentManager: EnvironmentManager;
 
   constructor(params?: ModalClientParams) {
     checkForRenamedParams(params, { timeout: "timeoutMs" });
@@ -140,14 +142,34 @@ export class ModalClient {
     this.sandboxes = new SandboxService(this);
     this.secrets = new SecretService(this);
     this.volumes = new VolumeService(this);
+    this.environmentManager = new EnvironmentManager(
+      this.cpClient,
+      this.logger,
+    );
   }
 
   environmentName(environment?: string): string {
     return environment || this.profile.environment || "";
   }
 
-  imageBuilderVersion(version?: string): string {
-    return version || this.profile.imageBuilderVersion || "2024.10";
+  /**
+   * Returns the image builder version by querying the server where the local profile takes
+   * precedence.
+   *
+   * The image builder version is an environment-scoped server setting, so pass the environment
+   * the image will be built in (e.g. an App's environment) to fetch the correct version. When
+   * omitted, the profile's default environment is used.
+   */
+  async getImageBuilderVersion(environmentName?: string): Promise<string> {
+    if (
+      this.profile.imageBuilderVersion != null &&
+      this.profile.imageBuilderVersion !== ""
+    ) {
+      return this.profile.imageBuilderVersion;
+    }
+    return this.environmentManager.getImageBuilderVersion(
+      environmentName ?? this.profile.environment,
+    );
   }
 
   /** @ignore */

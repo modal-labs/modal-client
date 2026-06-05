@@ -263,6 +263,9 @@ export class Image {
     this.#client.logger.debug("Building image", "app_id", app.appId);
 
     let baseImageId: string | undefined;
+    const imageBuilderVersion = await this.#client.getImageBuilderVersion(
+      app.environmentName,
+    );
 
     for (let i = 0; i < this.#layers.length; i++) {
       const layer = this.#layers[i];
@@ -297,7 +300,7 @@ export class Image {
           contextFiles: [],
           baseImages,
         }),
-        builderVersion: this.#client.imageBuilderVersion(),
+        builderVersion: imageBuilderVersion,
         forceBuild: layer.forceBuild || false,
       });
 
