@@ -40,6 +40,7 @@ from ._utils.docker_utils import (
 )
 from ._utils.function_utils import FunctionInfo, parse_gpu_config
 from ._utils.mount_utils import validate_only_modal_volumes, validate_volumes_by_object_id
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
@@ -101,6 +102,27 @@ See https://modal.com/docs/guide/modal-1-0-migration for more details.
 """
 
 P = typing_extensions.ParamSpec("P")
+
+
+def _validate_image_name(name: str) -> None:
+    check_object_name(name, "Image")
+    # Reserve the "im-" prefix for image IDs so CLI args can be parsed
+    # unambiguously as either an image ID or an image name.
+    if name.startswith("im-"):
+        raise InvalidError("Image name cannot start with 'im-' (reserved for image IDs).")
+
+
+def _validate_image_tag(tag: str) -> None:
+    check_object_name(tag, "Image tag")
+
+
+def _parse_named_image_ref(name: str) -> str:
+    image_name, sep, tag = name.partition(":")
+    if not sep:
+        tag = "latest"
+    _validate_image_name(image_name)
+    _validate_image_tag(tag)
+    return f"{image_name}:{tag}"
 
 
 def _validate_python_version(
@@ -2843,6 +2865,86 @@ class _Image(_Object, type_prefix="im"):
             for task_log in response.task_logs:
                 if task_log.data:
                     yield task_log.data
+
+    @staticmethod
+    def from_name(
+        name: str,
+        *,
+        environment_name: str | None = None,
+        client: _Client | None = None,
+    ) -> "_Image":
+        """Reference a named Image that was previously published with `.publish()`.
+
+        Names can contain an optional `:tag` part - if no tag part is included `":latest"` is used,
+        matching Docker conventions.
+
+        ```python notest
+        image = modal.Image.from_name("my-image")     # references my-image:latest
+        image_v1 = modal.Image.from_name("my-image:v1")
+
+        @app.function(image=image)
+        def run():
+            ...
+        ```
+        """
+        tag = _parse_named_image_ref(name)
+
+        async def _load(self: _Image, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
+            req = api_pb2.ImageGetByTagRequest(
+                tag=tag,
+                environment_name=load_context.environment_name,
+            )
+            response = await load_context.client.stub.ImageGetByTag(req)
+            self._hydrate(response.image_id, load_context.client, None)
+
+        rep = _Image._repr(tag, environment_name)
+        return _Image._from_loader(
+            _load,
+            rep,
+            hydrate_lazily=True,
+            skip_reload=True,
+            load_context_overrides=LoadContext(environment_name=environment_name, client=client),
+        )
+
+    async def publish(
+        self,
+        name: str,
+        *,
+        environment_name: str | None = None,
+        client: _Client | None = None,
+    ) -> None:
+        """Publish this image under the given name
+
+        The Image must already be created (typically by calling `image.build()` or `sandbox.snapshot_filesystem()`).
+
+        Image names can contain an explicit tag designation (using the `name:tag`). If no tag is included in the name,
+        `":latest"` is used, matching Docker conventions. To publish multiple tags, call `.publish()` once per tag.
+
+        ```python notest
+        image = modal.Image.debian_slim().pip_install("numpy")
+        image.build(app)
+        image.publish("my-image-with-numpy")     # my-image-with-numpy:latest
+        image.publish("my-image-with-numpy:v1")
+        ```
+        """
+        tag = _parse_named_image_ref(name)
+
+        if not self.is_hydrated:
+            raise InvalidError("Cannot publish an image that has not been created yet. Call `.build()` first.")
+
+        _client = client or self._client
+        assert _client is not None
+
+        resolved_env = environment_name or config.get("environment") or ""
+
+        await _client.stub.ImagePublish(
+            api_pb2.ImagePublishRequest(
+                image_id=self.object_id,
+                environment_name=resolved_env,
+                is_public=False,
+                tag=tag,
+            )
+        )
 
     async def hydrate(self, client: _Client | None = None) -> Self:
         """mdmd:hidden"""

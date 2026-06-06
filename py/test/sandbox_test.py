@@ -1252,6 +1252,24 @@ def test_sandbox_create_with_snapshot_directory_image(servicer, client, app):
     assert servicer.sandbox_defs[-1].image_id == "im-snapshot-123"
 
 
+def test_publish_sandbox_snapshot_images(servicer, client, app):
+    sb = Sandbox.create(app=app)
+    with servicer.task_command_router.intercept():
+        filesystem_image = sb.snapshot_filesystem()
+        directory_image = sb.snapshot_directory("/tmp")
+    sb.terminate()
+
+    snapshot_images = {
+        "sandbox-filesystem-snapshot": filesystem_image,
+        "sandbox-directory-snapshot": directory_image,
+    }
+    for name, image in snapshot_images.items():
+        assert image.is_hydrated
+        servicer.images[image.object_id] = api_pb2.Image()
+        image.publish(name, client=client)
+        assert servicer.image_tags[f"{name}:latest"] == image.object_id
+
+
 def test_unmount_image(servicer, client, app):
     """Test unmounting an image from a path in the sandbox."""
     sb = Sandbox.create(app=app)

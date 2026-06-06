@@ -2140,3 +2140,123 @@ def test_image_duplicate_volumes(client, servicer):
     with pytest.raises(InvalidError, match="same.*[Vv]olume.*multiple"):
         with app.run(client=client):
             image.build(app)
+
+
+### Named image tests
+
+
+def test_image_publish(client, servicer):
+    image = Image.debian_slim()
+    build_image(image, client)
+    image.publish("my-image", client=client)
+    # Default tag is "latest".
+    assert servicer.image_tags["my-image:latest"] == image.object_id
+
+
+def test_image_publish_with_tag(client, servicer):
+    image = Image.debian_slim()
+    build_image(image, client)
+    image.publish("my-image:v1", client=client)
+    assert servicer.image_tags["my-image:v1"] == image.object_id
+
+
+def test_image_publish_requires_hydrated(client):
+    image = Image.debian_slim()
+    with pytest.raises(InvalidError, match="has not been created"):
+        image.publish("my-image", client=client)
+
+
+@pytest.mark.parametrize("bad_name", ["my/image", "name with spaces", "a" * 65, "ap-" + "a" * 22, ":latest"])
+def test_image_publish_rejects_invalid_names(client, servicer, bad_name):
+    image = Image.debian_slim()
+    build_image(image, client)
+    with pytest.raises(InvalidError, match="Invalid Image name"):
+        image.publish(bad_name, client=client)
+
+
+def test_image_publish_rejects_im_prefix(client, servicer):
+    image = Image.debian_slim()
+    build_image(image, client)
+    with pytest.raises(InvalidError, match="cannot start with 'im-'"):
+        image.publish("im-looks-like-an-id", client=client)
+
+
+@pytest.mark.parametrize("bad_tag", ["v1:beta", "with/slash", "tag with spaces", "a" * 65, "ap-" + "a" * 22])
+def test_image_publish_rejects_invalid_tag(client, servicer, bad_tag):
+    image = Image.debian_slim()
+    build_image(image, client)
+    with pytest.raises(InvalidError, match="Invalid Image tag name"):
+        image.publish(f"my-image:{bad_tag}", client=client)
+
+
+def test_image_publish_rejects_empty_tag(client, servicer):
+    image = Image.debian_slim()
+    build_image(image, client)
+    with pytest.raises(InvalidError, match="Invalid Image tag name"):
+        image.publish("my-image:", client=client)
+
+
+def test_image_publish_tag_can_start_with_im_prefix(client, servicer):
+    """The 'im-' rule applies only to names, not tags."""
+    image = Image.debian_slim()
+    build_image(image, client)
+    image.publish("my-image:im-build-1", client=client)
+    assert servicer.image_tags["my-image:im-build-1"] == image.object_id
+
+
+def test_image_from_name(client, servicer):
+    # First build and publish an image
+    image = Image.debian_slim()
+    build_image(image, client)
+    original_id = image.object_id
+    image.publish("my-image", client=client)
+
+    # Now look it up by name (defaults to tag="latest")
+    retrieved = Image.from_name("my-image", client=client)
+    build_image(retrieved, client)
+    assert retrieved.object_id == original_id
+
+
+def test_image_from_name_with_tag(client, servicer):
+    """Lookup with an explicit tag resolves only that tag."""
+    image = Image.debian_slim()
+    build_image(image, client)
+    image.publish("my-image:v1", client=client)
+    image.publish("my-image:v2", client=client)
+
+    retrieved_v1 = Image.from_name("my-image:v1", client=client)
+    build_image(retrieved_v1, client)
+    assert retrieved_v1.object_id == image.object_id
+
+    # An unpublished tag should fail.
+    retrieved_missing = Image.from_name("my-image:nonexistent", client=client)
+    with pytest.raises(Exception):
+        build_image(retrieved_missing, client)
+
+
+def test_image_from_name_not_found(client, servicer):
+    retrieved = Image.from_name("nonexistent-image", client=client)
+    with pytest.raises(Exception):
+        build_image(retrieved, client)
+
+
+@pytest.mark.parametrize("bad_name", ["my/image", "name with spaces", "a" * 65, "ap-" + "a" * 22, ":latest"])
+def test_image_from_name_rejects_invalid_names(bad_name):
+    with pytest.raises(InvalidError, match="Invalid Image name"):
+        Image.from_name(bad_name)
+
+
+def test_image_from_name_rejects_im_prefix():
+    with pytest.raises(InvalidError, match="cannot start with 'im-'"):
+        Image.from_name("im-looks-like-an-id")
+
+
+@pytest.mark.parametrize("bad_tag", ["v1:beta", "with/slash", "tag with spaces", "a" * 65, "ap-" + "a" * 22])
+def test_image_from_name_rejects_invalid_tag(bad_tag):
+    with pytest.raises(InvalidError, match="Invalid Image tag name"):
+        Image.from_name(f"my-image:{bad_tag}")
+
+
+def test_image_from_name_rejects_empty_tag():
+    with pytest.raises(InvalidError, match="Invalid Image tag name"):
+        Image.from_name("my-image:")

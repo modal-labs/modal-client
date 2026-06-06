@@ -745,6 +745,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.image_build_function_ids = {}
         self.image_builder_versions = {}
         self.force_built_images = []
+        self.image_tags: dict[str, str] = {}  # full name:tag -> image_id
+        self.image_tag_revision_count = 0
+        self.image_tag_revision_ids: dict[str, str] = {}
         self.fail_blob_create = []
         self.blob_create_metadata = None
         self.blob_multipart_threshold = 10_000_000
@@ -2220,6 +2223,36 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.force_built_images.remove(request.image_id)
 
         await stream.send_message(Empty())
+
+    async def ImageGetByTag(self, stream):
+        request: api_pb2.ImageGetByTagRequest = await stream.recv_message()
+        if not request.tag:
+            raise GRPCError(Status.INVALID_ARGUMENT, "Image tag cannot be empty")
+        image_id = self.image_tags.get(request.tag)
+        if image_id is None:
+            raise GRPCError(Status.NOT_FOUND, f"Image {request.tag!r} not found")
+        await stream.send_message(api_pb2.ImageGetByTagResponse(image_id=image_id))
+
+    async def ImagePublish(self, stream):
+        request: api_pb2.ImagePublishRequest = await stream.recv_message()
+        if request.image_id not in self.images:
+            raise GRPCError(Status.NOT_FOUND, f"Image {request.image_id} not found")
+        if not request.tag:
+            raise GRPCError(Status.INVALID_ARGUMENT, "Image tag cannot be empty")
+        key = request.tag
+        if self.image_tags.get(key) == request.image_id:
+            revision_id = self.image_tag_revision_ids[key]
+        else:
+            self.image_tag_revision_count += 1
+            revision_id = f"ir-01KBN09R2V7DSJ1TWS6M5{self.image_tag_revision_count:05d}"
+            self.image_tags[key] = request.image_id
+            self.image_tag_revision_ids[key] = revision_id
+        await stream.send_message(
+            api_pb2.ImagePublishResponse(
+                image_id=request.image_id,
+                revision_id=revision_id,
+            )
+        )
 
     ### Mount
 
