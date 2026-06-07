@@ -1447,6 +1447,7 @@ message EndpointListItem {
   double updated_at = 5;
   EndpointMetadata metadata = 6;
   AppState app_state = 7;
+  string function_id = 8;
 }
 
 message EndpointListRequest {
