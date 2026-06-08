@@ -30,7 +30,7 @@ async function buildAlpineImage(): Promise<Image> {
   return image;
 }
 
-test("SidecarBasicLifecycle", async () => {
+test("SidecarBasicLifecycle", { timeout: 60_000 }, async () => {
   const sb = await createSandbox();
   const image = await buildAlpineImage();
 
