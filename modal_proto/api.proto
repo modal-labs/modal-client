@@ -135,6 +135,14 @@ enum EndpointInputModality {
   ENDPOINT_INPUT_MODALITY_AUDIO = 3;
 }
 
+enum EndpointProvisioningStatus {
+  ENDPOINT_PROVISIONING_STATUS_UNSPECIFIED = 0;
+  ENDPOINT_PROVISIONING_STATUS_PENDING = 1;
+  ENDPOINT_PROVISIONING_STATUS_RUNNING = 2;
+  ENDPOINT_PROVISIONING_STATUS_SUCCEEDED = 3;
+  ENDPOINT_PROVISIONING_STATUS_FAILED = 4;
+}
+
 enum EndpointStopSource {
   ENDPOINT_STOP_SOURCE_UNSPECIFIED = 0;
   ENDPOINT_STOP_SOURCE_CLI = 1;
@@ -1449,6 +1457,7 @@ message EndpointListItem {
   AppState app_state = 7;
   string function_id = 8;
   string created_by_avatar_url = 9;
+  EndpointProvisioningStatus provisioning_status = 10;
 }
 
 message EndpointListRequest {
