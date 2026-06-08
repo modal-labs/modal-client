@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import inspect
+import re
 import sys
 from pathlib import Path
 from typing import cast
@@ -7,6 +8,11 @@ from typing import cast
 from click import Command, Context, Group
 
 from modal.cli.entry_point import entrypoint_cli
+
+
+def _escape_svelte(text: str) -> str:
+    """Wrap {placeholder} patterns in backticks so mdsvex/Svelte won't interpret them as expressions."""
+    return re.sub(r"(?<!`)\{([a-z_]+)\}(?!`)", r"`{\1}`", text)
 
 
 # Adapted from typer_cli for generating CLI docs from click commands
@@ -26,7 +32,7 @@ def get_docs_for_click(
     title = f"`{command_name}`" if command_name else "CLI"
     docs += f" {title}\n\n"
     if obj.help:
-        docs += f"{inspect.cleandoc(obj.help)}\n\n"
+        docs += f"{_escape_svelte(inspect.cleandoc(obj.help))}\n\n"
     usage_pieces = obj.collect_usage_pieces(ctx)
     if usage_pieces:
         docs += "**Usage**:\n\n"
@@ -51,7 +57,7 @@ def get_docs_for_click(
         for arg_name, arg_help in args:
             docs += f"* `{arg_name}`"
             if arg_help:
-                docs += f": {arg_help}"
+                docs += f": {_escape_svelte(arg_help)}"
             docs += "\n"
         docs += "\n"
     if opts:
@@ -59,11 +65,11 @@ def get_docs_for_click(
         for opt_name, opt_help in opts:
             docs += f"* `{opt_name}`"
             if opt_help:
-                docs += f": {opt_help}"
+                docs += f": {_escape_svelte(opt_help)}"
             docs += "\n"
         docs += "\n"
     if obj.epilog:
-        docs += f"{obj.epilog}\n\n"
+        docs += f"{_escape_svelte(obj.epilog)}\n\n"
     if isinstance(obj, Group):
         group: Group = cast(Group, obj)
         commands = group.list_commands(ctx)
@@ -77,7 +83,7 @@ def get_docs_for_click(
                 docs += f"* `{command_obj.name}`"
                 command_help = command_obj.get_short_help_str(limit=250)
                 if command_help:
-                    docs += f": {command_help}"
+                    docs += f": {_escape_svelte(command_help)}"
                 docs += "\n"
             docs += "\n"
         for command in commands:
