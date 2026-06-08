@@ -2477,6 +2477,28 @@ message ImageJoinStreamingResponse {
   ImageMetadata metadata = 5;  // set on success
 }
 
+message ImageListTagsItem {
+  string tag = 1;
+  string image_id = 2;
+  string revision_id = 3;
+  double created_at = 4;
+  double updated_at = 5;
+}
+
+message ImageListTagsRequest {
+  string environment_name = 1;
+  // Prefix search over full "name:tag" strings.
+  string tag_prefix = 2;
+  // Defaults to 100. Values above 100 are rejected by the server.
+  uint32 max_objects = 3;
+  string page_token = 4;
+}
+
+message ImageListTagsResponse {
+  repeated ImageListTagsItem items = 1;
+  string next_page_token = 2;
+  string environment_name = 3;
+}
 
 message ImageMetadata {
   // The output of `python -VV. Not set if missing
@@ -2506,7 +2528,7 @@ message ImagePublishRequest {
   // Full "name:tag" string. Must be non-empty. Each ImagePublish RPC writes exactly one tag.
   string tag = 2;
   string environment_name = 3;
-  // Publishes this tag publicly when enabled.
+  // Marks the published tag as public. Public read protocol is defined separately.
   bool is_public = 4;
 }
 
@@ -2518,6 +2540,28 @@ message ImagePublishResponse {
 message ImageRegistryConfig {
   RegistryAuthType registry_auth_type = 1;
   string secret_id = 2;
+}
+
+message ImageTagRevisionsItem {
+  string image_id = 1;
+  string revision_id = 2;
+  double created_at = 3;
+}
+
+message ImageTagRevisionsRequest {
+  // Full "name:tag" string. Must be non-empty.
+  string tag = 1;
+  string environment_name = 2;
+  // Defaults to 100. Values above 100 are rejected by the server.
+  uint32 max_objects = 3;
+  string page_token = 4;
+}
+
+message ImageTagRevisionsResponse {
+  repeated ImageTagRevisionsItem items = 1;
+  string next_page_token = 2;
+  string tag = 3;
+  string environment_name = 4;
 }
 
 message InputCallGraphInfo {
@@ -4287,7 +4331,9 @@ service ModalClient {
   rpc ImageGetByTag(ImageGetByTagRequest) returns (ImageGetByTagResponse);
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
+  rpc ImageListTags(ImageListTagsRequest) returns (ImageListTagsResponse);
   rpc ImagePublish(ImagePublishRequest) returns (ImagePublishResponse);
+  rpc ImageTagRevisions(ImageTagRevisionsRequest) returns (ImageTagRevisionsResponse);
 
   // Input Plane Map
   rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);

@@ -19,6 +19,7 @@ from .container import container_cli
 from .dashboard import dashboard
 from .dict import dict_cli
 from .environment import environment_cli
+from .image import image_cli
 from .launch import launch_cli
 from .logo import print_logo
 from .network_file_system import nfs_cli
@@ -106,6 +107,7 @@ entrypoint_cli.add_command(container_cli, panel="Deployments")
 # cluster is hidden while multi-node is in beta/experimental
 entrypoint_cli.add_command(cluster_cli, panel="Deployments", hidden=True)
 
+entrypoint_cli.add_command(image_cli, panel="Storage")
 entrypoint_cli.add_command(dict_cli, panel="Storage")
 entrypoint_cli.add_command(nfs_cli, panel="Storage")
 entrypoint_cli.add_command(secret_cli, panel="Storage")

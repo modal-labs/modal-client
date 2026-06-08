@@ -100,6 +100,97 @@ def test_secret_create_list_delete(servicer, set_env_client):
     assert "foo" not in run_cli_command(["secret", "list"]).stdout
 
 
+def test_image_cli_list(servicer, set_env_client, monkeypatch):
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(delay: float):
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr("modal.cli.image.asyncio.sleep", fake_sleep)
+
+    def add_image_tag(tag: str, image_id: str, revision_id: str, created_at: float, updated_at: float) -> None:
+        servicer.image_tags[tag] = image_id
+        servicer.image_tag_metadata[tag] = (revision_id, created_at, updated_at)
+
+    servicer.images["im-named-a"] = api_pb2.Image()
+    servicer.images["im-named-b"] = api_pb2.Image()
+    now = time.time()
+    add_image_tag("demo-image:latest", "im-named-b", "ir-0001", now - 60, now)
+    add_image_tag("demo-image:v1", "im-named-a", "ir-0002", now - 120, now - 30)
+
+    listed = json.loads(run_cli_command(["image", "registry", "list", "--prefix", "demo", "--json"]).stdout)
+    assert [(item["tag"], item["image_id"]) for item in listed] == [
+        ("demo-image:latest", "im-named-b"),
+        ("demo-image:v1", "im-named-a"),
+    ]
+    assert all(item["created_at"] and item["updated_at"] for item in listed)
+    assert all("next_page_token" not in item for item in listed)
+    assert all("more_available" not in item for item in listed)
+    assert all("too_many_results" not in item for item in listed)
+
+    list_table = run_cli_command(["image", "registry", "list", "--prefix", "demo"]).stdout
+    assert "demo-image:latest" in list_table
+    assert "demo-image:v1" in list_table
+    assert "Showing 2 results" in list_table
+    assert "Next page" not in list_table
+
+    servicer.image_list_tags_requests.clear()
+    sleep_calls.clear()
+
+    for index in range(201):
+        add_image_tag(
+            f"many-{index:04d}:latest",
+            "im-named-a",
+            f"ir-{index:04d}",
+            now + index,
+            now + index,
+        )
+
+    paginated = json.loads(run_cli_command(["image", "registry", "list", "--prefix", "many", "--json"]).stdout)
+    assert len(paginated) == 201
+    assert paginated[0]["tag"] == "many-0000:latest"
+    assert paginated[-1]["tag"] == "many-0200:latest"
+    assert all("next_page_token" not in item for item in paginated)
+    assert all("more_available" not in item for item in paginated)
+    assert all("too_many_results" not in item for item in paginated)
+    assert [request.max_objects for request in servicer.image_list_tags_requests] == [100, 100, 100]
+    assert [request.page_token for request in servicer.image_list_tags_requests] == ["", "100", "200"]
+    assert sleep_calls == [1.0, 1.0]
+
+    servicer.image_list_tags_requests.clear()
+    sleep_calls.clear()
+
+    paginated_table = run_cli_command(["image", "registry", "list", "--prefix", "many"]).stdout
+    assert "Showing 201 results" in paginated_table
+    assert "more available" not in paginated_table
+    assert "Too many results" not in paginated_table
+    assert "Next page" not in paginated_table
+    assert [request.max_objects for request in servicer.image_list_tags_requests] == [100, 100, 100]
+    assert sleep_calls == [1.0, 1.0]
+
+    help_text = run_cli_command(["image", "--help"]).stdout
+    assert "registry" in help_text
+    assert "list" not in help_text
+    assert "history" not in help_text
+    assert "publish" not in help_text
+
+    registry_help_text = run_cli_command(["image", "registry", "--help"]).stdout
+    assert "list" in registry_help_text
+
+    list_help_text = run_cli_command(["image", "registry", "list", "--help"]).stdout
+    assert "--prefix" in list_help_text
+    assert "--limit" not in list_help_text
+    assert "--page-token" not in list_help_text
+
+    run_cli_command(["image", "list"], expected_exit_code=2, expected_stderr="No such command")
+    run_cli_command(["image", "history", "demo-image"], expected_exit_code=2, expected_stderr="No such command")
+    run_cli_command(
+        ["image", "publish", "demo-image", "im-named-a"],
+        expected_exit_code=2,
+        expected_stderr="No such command",
+    )
+
+
 @pytest.mark.parametrize(
     ("env_content", "expected_exit_code", "expected_stderr"),
     [

@@ -746,8 +746,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.image_builder_versions = {}
         self.force_built_images = []
         self.image_tags: dict[str, str] = {}  # full name:tag -> image_id
+        self.image_list_tags_requests: list[api_pb2.ImageListTagsRequest] = []
         self.image_tag_revision_count = 0
         self.image_tag_revision_ids: dict[str, str] = {}
+        self.image_tag_metadata: dict[str, tuple[str, float, float]] = {}
+        self.image_tag_revisions: dict[str, list[tuple[str, str, float]]] = {}
         self.fail_blob_create = []
         self.blob_create_metadata = None
         self.blob_multipart_threshold = 10_000_000
@@ -2233,6 +2236,40 @@ class MockClientServicer(api_grpc.ModalClientBase):
             raise GRPCError(Status.NOT_FOUND, f"Image {request.tag!r} not found")
         await stream.send_message(api_pb2.ImageGetByTagResponse(image_id=image_id))
 
+    async def ImageListTags(self, stream):
+        request: api_pb2.ImageListTagsRequest = await stream.recv_message()
+        self.image_list_tags_requests.append(
+            api_pb2.ImageListTagsRequest(
+                environment_name=request.environment_name,
+                tag_prefix=request.tag_prefix,
+                max_objects=request.max_objects,
+                page_token=request.page_token,
+            )
+        )
+        max_objects = request.max_objects or 100
+        start = int(request.page_token or "0")
+        matching_keys = sorted(key for key in self.image_tags if key.startswith(request.tag_prefix))
+        page_keys = matching_keys[start : start + max_objects]
+        next_offset = start + len(page_keys)
+        next_page_token = str(next_offset) if next_offset < len(matching_keys) else ""
+
+        items = []
+        for key in page_keys:
+            revision_id, created_at, updated_at = self.image_tag_metadata[key]
+            items.append(
+                api_pb2.ImageListTagsItem(
+                    tag=key,
+                    image_id=self.image_tags[key],
+                    revision_id=revision_id,
+                    created_at=created_at,
+                    updated_at=updated_at,
+                )
+            )
+
+        await stream.send_message(
+            api_pb2.ImageListTagsResponse(items=items, next_page_token=next_page_token, environment_name="main")
+        )
+
     async def ImagePublish(self, stream):
         request: api_pb2.ImagePublishRequest = await stream.recv_message()
         if request.image_id not in self.images:
@@ -2240,17 +2277,44 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if not request.tag:
             raise GRPCError(Status.INVALID_ARGUMENT, "Image tag cannot be empty")
         key = request.tag
-        if self.image_tags.get(key) == request.image_id:
-            revision_id = self.image_tag_revision_ids[key]
+        current_image_id = self.image_tags.get(key)
+        if current_image_id == request.image_id:
+            revision_id, _, _ = self.image_tag_metadata[key]
         else:
             self.image_tag_revision_count += 1
             revision_id = f"ir-01KBN09R2V7DSJ1TWS6M5{self.image_tag_revision_count:05d}"
+            now = time.time()
+            created_at = self.image_tag_metadata[key][1] if key in self.image_tag_metadata else now
             self.image_tags[key] = request.image_id
             self.image_tag_revision_ids[key] = revision_id
+            self.image_tag_metadata[key] = (revision_id, created_at, now)
+            self.image_tag_revisions.setdefault(key, []).append((revision_id, request.image_id, now))
         await stream.send_message(
             api_pb2.ImagePublishResponse(
                 image_id=request.image_id,
                 revision_id=revision_id,
+            )
+        )
+
+    async def ImageTagRevisions(self, stream):
+        request: api_pb2.ImageTagRevisionsRequest = await stream.recv_message()
+        if not request.tag:
+            raise GRPCError(Status.INVALID_ARGUMENT, "Image tag cannot be empty")
+        max_objects = request.max_objects or 100
+        start = int(request.page_token or "0")
+        history = list(reversed(self.image_tag_revisions.get(request.tag, [])))
+        page_items = history[start : start + max_objects]
+        next_offset = start + len(page_items)
+        next_page_token = str(next_offset) if next_offset < len(history) else ""
+        await stream.send_message(
+            api_pb2.ImageTagRevisionsResponse(
+                items=[
+                    api_pb2.ImageTagRevisionsItem(image_id=image_id, revision_id=revision_id, created_at=created_at)
+                    for revision_id, image_id, created_at in page_items
+                ],
+                next_page_token=next_page_token,
+                tag=request.tag,
+                environment_name="main",
             )
         )
 
