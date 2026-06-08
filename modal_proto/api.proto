@@ -1875,7 +1875,7 @@ message FunctionCallGetDataRequest {
     string attempt_token = 3;
   }
   uint64 last_index = 2;
-  bool use_gapless_read = 4;
+  reserved 4; // use_gapless_read
 }
 
 message FunctionCallInfo {
