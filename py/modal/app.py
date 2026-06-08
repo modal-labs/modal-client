@@ -1291,7 +1291,7 @@ class _App:
         exit_grace_period: int = 0,  # Grace period for in-flight requests on shutdown
         routing_regions: list[str] = ["us-east"],  # Required: Regions to deploy proxy endpoints
         h2_enabled: bool = False,  # Enable HTTP/2
-        target_concurrency: int | None = None,  # Target concurrency for the server
+        target_concurrency: int | None = None,  # Target concurrency for the server; 0 disables autoscaling
         cloud: str | None = None,  # Cloud provider (aws, gcp, oci, auto)
         region: str | Sequence[str] | None = None,  # Region(s) to run on
         nonpreemptible: bool = False,  # Whether to use non-preemptible instances
@@ -1333,7 +1333,7 @@ class _App:
             exit_grace_period: Grace period for in-flight requests on shutdown.
             routing_regions: Regions to deploy proxy endpoints.
             h2_enabled: Enable HTTP/2.
-            target_concurrency: Target concurrency for the server.
+            target_concurrency: Target concurrency for the server; 0 disables autoscaling.
             cloud: Cloud provider (aws, gcp, oci, auto).
             region: Region(s) to run on.
             nonpreemptible: Whether to use non-preemptible instances.
@@ -1368,8 +1368,8 @@ class _App:
         )
 
         if target_concurrency is not None:
-            if not isinstance(target_concurrency, int) or target_concurrency < 1:
-                raise InvalidError("The `target_concurrency` argument must be a positive integer.")
+            if not isinstance(target_concurrency, int) or target_concurrency < 0:
+                raise InvalidError("The `target_concurrency` argument must be a non-negative integer.")
 
         http_config = api_pb2.HTTPConfig(
             port=port,

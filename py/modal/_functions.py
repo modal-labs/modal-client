@@ -1149,6 +1149,28 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         return obj
 
+    async def _update_autoscaler(
+        self,
+        *,
+        min_containers: int | None = None,
+        max_containers: int | None = None,
+        buffer_containers: int | None = None,
+        scaledown_window: int | None = None,
+        target_concurrency: int | None = None,
+    ) -> None:
+        settings = api_pb2.AutoscalerSettings(
+            min_containers=min_containers,
+            max_containers=max_containers,
+            buffer_containers=buffer_containers,
+            scaledown_window=scaledown_window,
+            target_concurrency=target_concurrency,
+        )
+        request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=self.object_id, settings=settings)
+        await self.client.stub.FunctionUpdateSchedulingParams(request)
+
+        # One idea would be for FunctionUpdateScheduleParams to return the current (coalesced) settings
+        # and then we could return them here (would need some ad hoc dataclass, which I don't love)
+
     @live_method
     async def update_autoscaler(
         self,
@@ -1184,24 +1206,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             # Extend the scaledown window to increase the amount of time that idle containers stay alive
             f.update_autoscaler(scaledown_window=300)
-
-            ```
+        ```
 
         """
+        # Assert .update_autoscaler() is not called on a method as opposed to the Object. Applicable for Cls only.
         if self._is_method:
             raise InvalidError("Cannot call .update_autoscaler() on a method. Call it on the class instance instead.")
 
-        settings = api_pb2.AutoscalerSettings(
+        await self._update_autoscaler(
             min_containers=min_containers,
             max_containers=max_containers,
             buffer_containers=buffer_containers,
             scaledown_window=scaledown_window,
         )
-        request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=self.object_id, settings=settings)
-        await self.client.stub.FunctionUpdateSchedulingParams(request)
-
-        # One idea would be for FunctionUpdateScheduleParams to return the current (coalesced) settings
-        # and then we could return them here (would need some ad hoc dataclass, which I don't love)
 
     @classmethod
     def _from_name(

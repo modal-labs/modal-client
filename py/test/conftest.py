@@ -2160,6 +2160,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         fn_definition.concurrency_limit = fn_definition.autoscaler_settings.max_containers
         fn_definition._experimental_buffer_containers = fn_definition.autoscaler_settings.buffer_containers
         fn_definition.task_idle_timeout_secs = fn_definition.autoscaler_settings.scaledown_window
+        if req.settings.HasField("target_concurrency"):
+            fn_definition.target_concurrent_inputs = req.settings.target_concurrency
 
         await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
 

@@ -611,11 +611,21 @@ def test_server_update_autoscaler(client, servicer):
 
     with app.run(client=client):
         # This should not raise AttributeError: '_Server' object has no attribute 'hydrate'
-        AutoscaleServer.update_autoscaler(min_containers=1, max_containers=5)  # type: ignore[attr-defined]
         function_id = AutoscaleServer._get_service_function().object_id  # type: ignore[attr-defined]
+        assert servicer.app_functions[function_id].target_concurrent_inputs == 0
+
+        update_autoscaler = AutoscaleServer.update_autoscaler  # type: ignore[attr-defined]
+        update_autoscaler(min_containers=1, max_containers=5, target_concurrency=20)  # type: ignore[call-arg]
+        assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency == 20
+        assert servicer.app_functions[function_id].target_concurrent_inputs == 20
+
+        update_autoscaler(target_concurrency=0)  # type: ignore[call-arg]
 
     assert servicer.app_functions[function_id].autoscaler_settings.min_containers == 1
     assert servicer.app_functions[function_id].autoscaler_settings.max_containers == 5
+    assert servicer.app_functions[function_id].autoscaler_settings.HasField("target_concurrency")
+    assert servicer.app_functions[function_id].autoscaler_settings.target_concurrency == 0
+    assert servicer.app_functions[function_id].target_concurrent_inputs == 0
 
 
 # =============================================================================
@@ -670,6 +680,33 @@ def test_server_target_concurrency(client, servicer):
         function_def = servicer.app_functions[function_id]
 
         assert function_def.target_concurrent_inputs == 50
+
+
+def test_server_target_concurrency_zero(client, servicer):
+    """Test that target_concurrency=0 disables the server target."""
+    app = modal.App("server-zero-target-concurrency-test", include_source=False)
+
+    @app._experimental_server(port=8000, routing_regions=["us-east"], target_concurrency=0, serialized=True)
+    class ZeroConcurrencyServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        service_function = ZeroConcurrencyServer._get_service_function()  # type: ignore[attr-defined]
+        function_id = service_function.object_id
+        function_def = servicer.app_functions[function_id]
+
+        assert function_def.target_concurrent_inputs == 0
+
+
+def test_server_rejects_negative_target_concurrency():
+    with pytest.raises(InvalidError, match="must be a non-negative integer"):
+        app = modal.App("server-negative-target-concurrency-test", include_source=False)
+
+        @app._experimental_server(port=8000, routing_regions=["us-east"], target_concurrency=-1, serialized=True)
+        class NegativeConcurrencyServer:
+            pass
 
 
 def test_server_with_volumes(client, servicer):

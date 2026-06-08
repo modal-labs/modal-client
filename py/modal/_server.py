@@ -100,6 +100,7 @@ class _Server:
         max_containers: int | None = None,
         buffer_containers: int | None = None,
         scaledown_window: int | None = None,
+        target_concurrency: int | None = None,
     ) -> None:
         """Override the current autoscaler behavior for this Server.
 
@@ -114,14 +115,21 @@ class _Server:
 
             # Limit this Server to avoid spinning up more than 5 containers
             server.update_autoscaler(max_containers=5)
-            ```
+
+            # Adjust Server autoscaling to target 20 concurrent requests per replica
+            server.update_autoscaler(target_concurrency=20)
+
+            # Disable the Server autoscaling by setting target_concurrency to 0
+            server.update_autoscaler(target_concurrency=0)
+        ```
 
         """
-        return await self._get_service_function().update_autoscaler(
+        return await self._get_service_function()._update_autoscaler(
             min_containers=min_containers,
             max_containers=max_containers,
             scaledown_window=scaledown_window,
             buffer_containers=buffer_containers,
+            target_concurrency=target_concurrency,
         )
 
     # ============ Hydration ============
