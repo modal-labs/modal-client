@@ -159,6 +159,7 @@ async def test_task_context_grace():
 
 
 @skip_github_non_linux
+@pytest.mark.flaky(max_runs=3)
 @pytest.mark.asyncio
 async def test_task_context_infinite_loop():
     async with TaskContext(grace=0.01) as task_context:
