@@ -934,7 +934,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 if app and app.name:
                     app_name = app.name
 
-                # on builder > 2024.10 we mount client dependencies at runtime
+                # TODO: client-side `mount_client_dependencies` can be removed after 2026-06-15
+                #       Kept so that the function definition proto stays identical across deploys
+                #       (removing it would change the proto, creating a new app version)
                 mount_client_dependencies = False
                 if image._metadata is not None:
                     mount_client_dependencies = image._metadata.image_builder_version > "2024.10"

@@ -1798,8 +1798,8 @@ message Function {
   // On the server, it's necessary to convert back to the most natural type (e.g. int) when relevant.
   map<string, string> experimental_options = 81;
 
-  // If set, client deps will be mounted into the container, and are
-  // no longer expected to exist in the image itself.
+  // Deprecated: still set by client but ignored by server. The scheduler
+  // derives this from the image's builder_version directly.
   bool mount_client_dependencies = 82;
 
   repeated string flash_service_urls = 83;
