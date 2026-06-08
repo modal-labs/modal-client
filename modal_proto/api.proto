@@ -1448,6 +1448,7 @@ message EndpointListItem {
   EndpointMetadata metadata = 6;
   AppState app_state = 7;
   string function_id = 8;
+  string created_by_avatar_url = 9;
 }
 
 message EndpointListRequest {
