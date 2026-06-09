@@ -9,3 +9,4 @@
 - `Sandbox.snapshot_directory` now also accepts a `timeout` keyword argument (default `55` seconds), bringing it to parity with `snapshot_filesystem`. If the snapshot does not return within that window, `modal.exception.TimeoutError` is raised. The timeout can be set arbitrarily high to preserve the old behavior of not timing out.
 - `sandbox.filesystem.watch(path)` watches a remote path in the Sandbox for filesystem changes. This replaces the alpha `modal.Sandbox.watch` method.
 - Added version-pinned lookups in `modal.Function.from_name` and `modal.Cls.from_name` via the version parameter. Function invocations made from within a version-pinned function call now use the caller’s version.
+- CLI `--json` output now uses snake_case keys (e.g. `"created_at"` instead of `"Created at"`) for programmatic consumption.

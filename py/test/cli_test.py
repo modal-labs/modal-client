@@ -1287,8 +1287,8 @@ def test_volume_ls(servicer, set_env_client):
     res_dict = json.loads(res.stdout)
     assert len(res_dict) == len(fnames)
     for entry, fname in zip(res_dict, fnames):
-        assert entry["Filename"] == f"data/{fname}.txt"
-        assert entry["Type"] == "file"
+        assert entry["filename"] == f"data/{fname}.txt"
+        assert entry["type"] == "file"
 
 
 def test_volume_create_delete(servicer, server_url_env, set_env_client):
@@ -1556,8 +1556,8 @@ def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
     assert "..." not in res.stdout
 
     res = run_cli_command(["dict", "items", "baz-dict", "--json"])
-    assert '"Key": "a"' in res.stdout
-    assert '"Value": 123' in res.stdout
+    assert '"key": "a"' in res.stdout
+    assert '"value": 123' in res.stdout
     assert "..." not in res.stdout
 
     assert run_cli_command(["dict", "get", "baz-dict", "a"]).stdout == "123\n"
@@ -1912,12 +1912,12 @@ def test_billing_report(servicer, set_env_client):
     res = run_cli_command(["billing", "report", "--start", "2025-01-01", "--json"])
     json_data = json.loads(res.stdout)
     assert len(json_data) == 1
-    assert json_data[0]["Object ID"] == "ap-123"
-    assert json_data[0]["Description"] == "app1"
-    assert json_data[0]["Environment"] == "test"
-    assert json_data[0]["Cost"] == "100.123456"
+    assert json_data[0]["object_id"] == "ap-123"
+    assert json_data[0]["description"] == "app1"
+    assert json_data[0]["environment"] == "test"
+    assert json_data[0]["cost"] == "100.123456"
     # JSON output should have full ISO format
-    assert "2025-01-01T00:00:00" in json_data[0]["Interval Start"]
+    assert "2025-01-01T00:00:00" in json_data[0]["interval_start"]
 
     # Test CSV output
     res = run_cli_command(["billing", "report", "--start", "2025-01-01", "--csv"])

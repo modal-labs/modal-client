@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import io
+import re
 import sys
 from collections.abc import Sequence
 from contextlib import nullcontext
@@ -126,6 +127,11 @@ def _plain(text: Text | str) -> str:
     return text.plain if isinstance(text, Text) else text
 
 
+def _col_name_to_json_key(name: str) -> str:
+    """Convert a display column name like "App ID" to a snake_case JSON key like "app_id"."""
+    return re.sub(r"[^a-zA-Z0-9]+", "_", name).lower().strip("_")
+
+
 def is_tty() -> bool:
     return OutputManager.get().is_terminal
 
@@ -145,7 +151,8 @@ def display_table(
 
     output = OutputManager.get()
     if json:
-        json_data = [{col_to_str(col): _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
+        json_keys = [_col_name_to_json_key(col_to_str(col)) for col in columns]
+        json_data = [{json_keys[i]: _plain(row[i]) for i in range(len(columns))} for row in rows]
         output.print_json(dumps(json_data))
     elif csv:
         csv_buffer = io.StringIO()
