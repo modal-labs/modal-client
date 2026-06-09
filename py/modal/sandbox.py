@@ -3,12 +3,13 @@ import asyncio
 import builtins
 import enum
 import json
+import logging
 import os
 import time
 import typing
 import uuid
 import weakref
-from collections.abc import AsyncGenerator, AsyncIterator, Collection, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, Union, overload
@@ -69,6 +70,42 @@ from .snapshot import _SandboxSnapshot
 from .stream_type import StreamType
 
 _default_image: _Image = _Image.debian_slim()
+
+
+async def _gather_load_with_timings(
+    load_coros: Sequence[Awaitable[Any]],
+) -> list[tuple[str, float]]:
+    """Await all loader coroutines concurrently and return [(object_id, elapsed_seconds)] per load."""
+    timings: list[tuple[str, float]] = []
+
+    async def timed(coro: Awaitable[Any]) -> None:
+        start = time.monotonic()
+        obj = await coro
+        timings.append((obj.object_id, time.monotonic() - start))
+
+    await asyncio.gather(*(timed(c) for c in load_coros))
+    return timings
+
+
+def _format_sandbox_create_timing_log(
+    sandbox_id: str,
+    total_seconds: float,
+    rpc_seconds: float,
+    dep_timings: Sequence[tuple[str, float]],
+) -> str:
+    """Format the Sandbox create debug log line, listing the slowest deps first."""
+    if dep_timings:
+        deps_sorted = sorted(dep_timings, key=lambda t: t[1], reverse=True)
+        shown = deps_sorted[:10]
+        dep_summary = ", ".join(f"{label}: {elapsed:.2f}s" for label, elapsed in shown)
+        if len(deps_sorted) > 10:
+            dep_summary += f", +{len(deps_sorted) - 10} more"
+    else:
+        dep_summary = "none"
+    return (
+        f"Sandbox {sandbox_id} created in {total_seconds:.2f}s "
+        f"(create rpc: {rpc_seconds:.2f}s; dependencies: {dep_summary})"
+    )
 
 
 # The maximum number of bytes that can be passed to an exec on Linux.
@@ -349,6 +386,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             pty_info = _Sandbox._default_pty_info()
 
         async def _load(self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: str | None):
+            load_start = time.monotonic()
             # An already-hydrated image (e.g. one returned by
             # `Sandbox.snapshot_directory`) is skipped — there's nothing to load.
             dep_tasks: list = []
@@ -365,8 +403,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     dep_tasks.append(resolver.load(cloud_bucket_mount.secret, load_context))
             if proxy:
                 dep_tasks.append(resolver.load(proxy, load_context))
-            if dep_tasks:
-                await asyncio.gather(*dep_tasks)
+            dep_timings = await _gather_load_with_timings(dep_tasks) if dep_tasks else []
 
             # Validate that the same volume (by object_id) isn't mounted at multiple paths
             validate_volumes_by_object_id(validated_volumes)
@@ -444,9 +481,15 @@ class _Sandbox(_Object, type_prefix="sb"):
             create_req = api_pb2.SandboxCreateRequest(
                 app_id=load_context.app_id, definition=definition, tags=tag_protos
             )
+            rpc_start = time.monotonic()
             create_resp = await load_context.client.stub.SandboxCreate(create_req)
+            rpc_elapsed = time.monotonic() - rpc_start
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, None)
+
+            if logger.isEnabledFor(logging.DEBUG):
+                total_elapsed = time.monotonic() - load_start
+                logger.debug(_format_sandbox_create_timing_log(sandbox_id, total_elapsed, rpc_elapsed, dep_timings))
 
         return _Sandbox._from_loader(_load, "Sandbox()", load_context_overrides=LoadContext.empty())
 
@@ -864,6 +907,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
         async def _load(self: _Sandbox, resolver: Resolver, load_context: LoadContext, _existing_object_id: str | None):
+            load_start = time.monotonic()
             dep_tasks: list = []
             if not image._is_hydrated:
                 dep_tasks.append(resolver.load(image, load_context))
@@ -874,8 +918,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             for _, cloud_bucket_mount in cloud_bucket_mounts:
                 if cloud_bucket_mount.secret:
                     dep_tasks.append(resolver.load(cloud_bucket_mount.secret, load_context))
-            if dep_tasks:
-                await asyncio.gather(*dep_tasks)
+            dep_timings = await _gather_load_with_timings(dep_tasks) if dep_tasks else []
 
             validate_volumes_by_object_id(validated_volumes)
 
@@ -909,9 +952,11 @@ class _Sandbox(_Object, type_prefix="sb"):
             create_req = api_pb2.SandboxCreateV2Request(app_id=load_context.app_id, definition=definition)
             assert load_context.client._auth_token_manager
             auth_token = await load_context.client._auth_token_manager.get_token()
+            rpc_start = time.monotonic()
             create_resp = await load_context.client.stub.SandboxCreateV2(
                 create_req, metadata=[("x-modal-auth-token", auth_token)]
             )
+            rpc_elapsed = time.monotonic() - rpc_start
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, load_context.client, None)
             self._is_v2 = True
@@ -921,6 +966,10 @@ class _Sandbox(_Object, type_prefix="sb"):
                 t.container_port: Tunnel(t.host, t.port, t.unencrypted_host, t.unencrypted_port)
                 for t in create_resp.tunnels
             }
+
+            if logger.isEnabledFor(logging.DEBUG):
+                total_elapsed = time.monotonic() - load_start
+                logger.debug(_format_sandbox_create_timing_log(sandbox_id, total_elapsed, rpc_elapsed, dep_timings))
 
         obj = _Sandbox._from_loader(_load, "Sandbox()", load_context_overrides=LoadContext.empty())
 

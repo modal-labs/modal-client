@@ -1646,3 +1646,61 @@ def test_sandbox_wait_until_ready_retries_empty_ready_at(app, servicer):
         assert len(requests) == 2
 
     sb.terminate()
+
+
+def test_sandbox_create_timing_log_caps_dependency_list():
+    """The formatter caps the per-dep list at 10 entries (slowest first) and
+    appends a `+N more` suffix for the remainder."""
+    from modal.sandbox import _format_sandbox_create_timing_log
+
+    deps = [(f"im-{i:03d}", float(i)) for i in range(15)]
+    line = _format_sandbox_create_timing_log("sb-abc", 12.34, 0.5, deps)
+
+    assert "+5 more" in line
+    assert "im-014: 14.00s" in line
+    assert "im-005: 5.00s" in line
+    assert "im-004" not in line
+
+
+def test_sandbox_create_logs_per_dependency_timing(app, servicer, caplog):
+    """V1 Sandbox.create emits a debug log with the sandbox id, total + RPC
+    elapsed, and per-dependency object_id timings.
+    """
+    import logging
+
+    image = Image.debian_slim().add_local_python_source("modal", copy=True)
+    secret = Secret.from_dict({"FOO": "bar"})
+
+    with caplog.at_level(logging.DEBUG, logger="modal-client"):
+        sb = Sandbox.create("echo", "hi", app=app, image=image, secrets=[secret])
+
+    matching = [r for r in caplog.records if "created in" in r.message and "dependencies:" in r.message]
+    assert matching, f"expected a sandbox-create debug log, got: {[r.message for r in caplog.records]}"
+    msg = matching[-1].message
+    assert sb.object_id in msg
+    assert "create rpc:" in msg
+    assert image.object_id in msg
+    assert secret.object_id in msg
+
+    sb.terminate()
+
+
+def test_experimental_sandbox_create_logs_per_dependency_timing(app, servicer, caplog):
+    """V2 Sandbox._experimental_create emits the same per-dependency debug log."""
+    import logging
+
+    image = Image.debian_slim().add_local_python_source("modal", copy=True)
+    secret = Secret.from_dict({"FOO": "bar"})
+
+    with caplog.at_level(logging.DEBUG, logger="modal-client"):
+        sb = Sandbox._experimental_create("echo", "hi", app=app, image=image, secrets=[secret])
+
+    matching = [r for r in caplog.records if "created in" in r.message and "dependencies:" in r.message]
+    assert matching, f"expected a sandbox-create debug log, got: {[r.message for r in caplog.records]}"
+    msg = matching[-1].message
+    assert sb.object_id in msg
+    assert "create rpc:" in msg
+    assert image.object_id in msg
+    assert secret.object_id in msg
+
+    sb.terminate()
