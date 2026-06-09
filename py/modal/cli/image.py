@@ -19,12 +19,12 @@ from modal_proto import api_pb2
 
 from ._help import ModalGroup
 
-IMAGE_REGISTRY_LIST_PAGE_SIZE = 100
-IMAGE_REGISTRY_LIST_PAGE_DELAY_SECONDS = 1.0
+IMAGE_NAMES_LIST_PAGE_SIZE = 100
+IMAGE_NAMES_LIST_PAGE_DELAY_SECONDS = 1.0
 
 image_cli = ModalGroup(name="image", help="Manage Images.")
-image_registry_cli = ModalGroup(name="registry", help="Manage the Modal Image name/tag registry.")
-image_cli.add_command(image_registry_cli)
+image_names_cli = ModalGroup(name="names", help="Manage Modal Image names.")
+image_cli.add_command(image_names_cli)
 
 
 def _print_result_summary(count: int) -> None:
@@ -60,7 +60,7 @@ async def _iter_tag_pages(
             api_pb2.ImageListTagsRequest(
                 environment_name=env,
                 tag_prefix=prefix,
-                max_objects=IMAGE_REGISTRY_LIST_PAGE_SIZE,
+                max_objects=IMAGE_NAMES_LIST_PAGE_SIZE,
                 page_token=page_token,
             )
         )
@@ -70,10 +70,10 @@ async def _iter_tag_pages(
         page_token = response.next_page_token
         if not page_token:
             return
-        await asyncio.sleep(IMAGE_REGISTRY_LIST_PAGE_DELAY_SECONDS)
+        await asyncio.sleep(IMAGE_NAMES_LIST_PAGE_DELAY_SECONDS)
 
 
-@image_registry_cli.command("list", help="List named Images.")
+@image_names_cli.command("list", help="List named Images.")
 @env_option
 @click.option("--prefix", default="", help="Only include named image tags that start with this prefix.")
 @click.option("--json", is_flag=True, default=False)

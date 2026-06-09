@@ -118,7 +118,7 @@ def test_image_cli_list(servicer, set_env_client, monkeypatch):
     add_image_tag("demo-image:latest", "im-named-b", "ir-0001", now - 60, now)
     add_image_tag("demo-image:v1", "im-named-a", "ir-0002", now - 120, now - 30)
 
-    listed = json.loads(run_cli_command(["image", "registry", "list", "--prefix", "demo", "--json"]).stdout)
+    listed = json.loads(run_cli_command(["image", "names", "list", "--prefix", "demo", "--json"]).stdout)
     assert [(item["tag"], item["image_id"]) for item in listed] == [
         ("demo-image:latest", "im-named-b"),
         ("demo-image:v1", "im-named-a"),
@@ -128,7 +128,7 @@ def test_image_cli_list(servicer, set_env_client, monkeypatch):
     assert all("more_available" not in item for item in listed)
     assert all("too_many_results" not in item for item in listed)
 
-    list_table = run_cli_command(["image", "registry", "list", "--prefix", "demo"]).stdout
+    list_table = run_cli_command(["image", "names", "list", "--prefix", "demo"]).stdout
     assert "demo-image:latest" in list_table
     assert "demo-image:v1" in list_table
     assert "Showing 2 results" in list_table
@@ -146,7 +146,7 @@ def test_image_cli_list(servicer, set_env_client, monkeypatch):
             now + index,
         )
 
-    paginated = json.loads(run_cli_command(["image", "registry", "list", "--prefix", "many", "--json"]).stdout)
+    paginated = json.loads(run_cli_command(["image", "names", "list", "--prefix", "many", "--json"]).stdout)
     assert len(paginated) == 201
     assert paginated[0]["tag"] == "many-0000:latest"
     assert paginated[-1]["tag"] == "many-0200:latest"
@@ -160,7 +160,7 @@ def test_image_cli_list(servicer, set_env_client, monkeypatch):
     servicer.image_list_tags_requests.clear()
     sleep_calls.clear()
 
-    paginated_table = run_cli_command(["image", "registry", "list", "--prefix", "many"]).stdout
+    paginated_table = run_cli_command(["image", "names", "list", "--prefix", "many"]).stdout
     assert "Showing 201 results" in paginated_table
     assert "more available" not in paginated_table
     assert "Too many results" not in paginated_table
@@ -169,15 +169,15 @@ def test_image_cli_list(servicer, set_env_client, monkeypatch):
     assert sleep_calls == [1.0, 1.0]
 
     help_text = run_cli_command(["image", "--help"]).stdout
-    assert "registry" in help_text
+    assert "names" in help_text
     assert "list" not in help_text
     assert "history" not in help_text
     assert "publish" not in help_text
 
-    registry_help_text = run_cli_command(["image", "registry", "--help"]).stdout
-    assert "list" in registry_help_text
+    names_help_text = run_cli_command(["image", "names", "--help"]).stdout
+    assert "list" in names_help_text
 
-    list_help_text = run_cli_command(["image", "registry", "list", "--help"]).stdout
+    list_help_text = run_cli_command(["image", "names", "list", "--help"]).stdout
     assert "--prefix" in list_help_text
     assert "--limit" not in list_help_text
     assert "--page-token" not in list_help_text
