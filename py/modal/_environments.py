@@ -104,7 +104,7 @@ class _EnvironmentManager:
 MemberRole = Literal["viewer", "contributor"]
 
 
-def _role_to_proto(role: str) -> api_pb2.EnvironmentRole.ValueType:
+def _role_to_proto(role: str) -> "api_pb2.EnvironmentRole.ValueType":
     match role:
         case "viewer":
             return api_pb2.ENVIRONMENT_ROLE_VIEWER

@@ -4,6 +4,27 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 ## Latest
 
+### 1.5.0 (2026-06-09)
+
+This is a major release that includes several new features (named Images, version-pinned Function lookups, Sandbox domain allowlists), a new `modal skills` CLI, and a small number of breaking changes.
+
+- We're introducing a "named Image" concept, akin to a Modal-native Image registry. This feature allows you to decouple Image builds from App deployment or Sandbox creation, and it simplifies the process of sharing a canonical Image across a large number of unrelated Apps.
+  - The new SDK method `modal.Image.publish()` assigns a name to an existing Image. Names can optionally include a "tag" suffix (`"{name}:{tag}"`) to specify variants of an Image, e.g. to apply a versioning system.
+  - The new SDK method `modal.Image.from_name()` refers directly to that Image by its name. Unlike with Image methods that specify parts of a build recipe, the `modal.Image.from_name()` lookup will either succeed or fail with a `modal.exception.NotFoundError` error, but it will never trigger a build.
+  - The new `modal image names` CLI can be used to see the current name assignments.
+- We're introducing a "version-pinning" concept for Function lookups. By passing `version=` to `modal.Function.from_name()` or `modal.Cls.from_name()`, you can retrieve an instance that will send all inputs to the same version of the Function, even after a subsequent redeployment of its App. Additionally, any transitive invocations of other Functions in the same App will also be pinned on that version. This feature makes it easy to execute workflows that involve multiple Functions when those Functions might change in incompatible ways across deployments.
+- It's now possible to restrict the *domains* that processes inside of a Sandbox can connect to. When you provide a list of domains to `outbound_domain_allowlist=[...]` in `modal.Sandbox.create()`, requests outside of the allowlist will be blocked by Modal infrastructure, and the denial will be recorded in the App logs.
+- We've added a new `modal skills` CLI for installing a foundational Modal agent skill (`modal skills install`) and keeping it up to date over time (`modal skills update`). Please help us improve it by sharing any feedback you have about its impact on agentic development with Modal.
+- We've added a new `modal.Workspace` object for programmatic interaction with your Workspace configuration. The initial release offers a `workspace.members.list()` method; expect more features soon.
+- The `modal` CLI now normalizes the keys of its `--json` output by lowercasing and substituting underscores for non-alphanumeric characters.
+- We've added a new `sandbox.filesystem.watch()` method to the Sandbox Filesystem API, and we've deprecated the alpha `modal.Sandbox.watch()` method. The new method has a different implementation and offers significantly improved latency and reliability.
+- We've made two small breaking changes around Sandbox snapshots:
+  - `modal.Sandbox.snapshot_filesystem()` and `modal.Sandbox.snapshot_directory()` now accept an explicit `ttl=` keyword argument that configures a retention interval (in seconds) for the resulting Image. Both methods default to 30 days (`ttl=30 * 24 * 3600`). **Note:** this alters the default behavior of these methods, because snapshot Images were previously persisted indefinitely. Pass an explicit `ttl=None` to retain the previous behavior.
+  - `modal.Sandbox.snapshot_directory()` now also accepts a `timeout=` keyword argument (defaulting to `55` seconds), which brings it to parity with `modal.Sandbox.snapshot_filesystem()`. If the snapshot does not return before the deadline, a `modal.exception.TimeoutError` will be raised. **Note:** this alters the default behavior, which previously waited indefinitely, but you can set an arbitrarily long timeout.
+- We've removed several deprecated static methods (`.delete()` and `.create_deployed()`) on Modal storage objects (`modal.Volume`, etc.). Use the `.objects.delete()` and `.objects.create()` methods instead.
+
+## 1.4
+
 ### 1.4.3 (2026-05-18)
 
 - This release introduces a new ["regional routing"](https://modal.com/docs/guide/region-selection#regional-routing) concept for Function inputs, which is now in Public Beta. By setting `routing_region="..."` in the `@app.function()` or `@app.cls()` decorators, you can configure the Function to route its inputs through servers in `us-west`, `eu-west`, or `ap-south` instead of `us-east`. This can reduce network latency and help you meet data residency obligations. While in Beta, this feature has a few constraints:
