@@ -926,17 +926,17 @@ class BasicServer:
             self.process.terminate()
 
 
-@server_app._experimental_server(port=8002, routing_regions=["us-east"], enable_memory_snapshot=True)
+@server_app._experimental_server(port=8002, routing_region="us-east", enable_memory_snapshot=True)
 class ServerWithEnter(BasicServer):
     pass
 
 
-@server_app._experimental_server(port=8002, routing_regions=["us-east"], serialized=True, enable_memory_snapshot=True)
+@server_app._experimental_server(port=8002, routing_region="us-east", serialized=True, enable_memory_snapshot=True)
 class SerializedServerWithEnter(BasicServer):
     pass
 
 
-@server_app._experimental_server(port=8003, routing_regions=["us-east"], serialized=True, enable_memory_snapshot=True)
+@server_app._experimental_server(port=8003, routing_region="us-east", serialized=True, enable_memory_snapshot=True)
 class ServerWithExitSignals:
     @modal.enter(snap=True)
     def enter(self):

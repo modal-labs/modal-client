@@ -1289,7 +1289,7 @@ class _App:
         port: int = 8000,  # Port the HTTP server listens on
         startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: int = 0,  # Grace period for in-flight requests on shutdown
-        routing_regions: list[str] = ["us-east"],  # Required: Regions to deploy proxy endpoints
+        routing_region: str = "us-east",  # Region to route Server requests through
         h2_enabled: bool = False,  # Enable HTTP/2
         target_concurrency: int | None = None,  # Target concurrency for the server; 0 disables autoscaling
         cloud: str | None = None,  # Cloud provider (aws, gcp, oci, auto)
@@ -1331,7 +1331,7 @@ class _App:
             port: Port the HTTP server listens on.
             startup_timeout: Maximum startup time in seconds.
             exit_grace_period: Grace period for in-flight requests on shutdown.
-            routing_regions: Regions to deploy proxy endpoints.
+            routing_region: Region to route Server requests through.
             h2_enabled: Enable HTTP/2.
             target_concurrency: Target concurrency for the server; 0 disables autoscaling.
             cloud: Cloud provider (aws, gcp, oci, auto).
@@ -1344,7 +1344,7 @@ class _App:
 
         Examples:
             ```python
-            @app._experimental_server(port=8000, routing_regions=["us-east"])
+            @app._experimental_server(port=8000, routing_region="us-east")
             class MyServer:
                 @modal.enter()
                 def start(self):
@@ -1361,7 +1361,7 @@ class _App:
         # Validate HTTP server config
         validate_http_server_config(
             port=port,
-            proxy_regions=routing_regions,
+            proxy_regions=[routing_region],
             startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
             is_server=True,
@@ -1373,7 +1373,7 @@ class _App:
 
         http_config = api_pb2.HTTPConfig(
             port=port,
-            proxy_regions=routing_regions,
+            proxy_regions=[routing_region],
             startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
             h2_enabled=h2_enabled,

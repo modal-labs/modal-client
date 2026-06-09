@@ -254,7 +254,7 @@ def test_list_cli_commands():
         def web_method(self):
             pass
 
-    @app._experimental_server(port=8000, routing_regions=["us-east"], serialized=True)
+    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
     class SimpleServer:
         @modal.enter()
         def start(self):
