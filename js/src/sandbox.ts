@@ -1634,7 +1634,6 @@ export class Sandbox {
    */
   async mountImage(path: string, image?: Image): Promise<void> {
     this.#ensureAttached();
-    this.#ensureV1("mountImage");
     const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
     if (image && !image.imageId) {
@@ -1660,7 +1659,6 @@ export class Sandbox {
    */
   async unmountImage(path: string): Promise<void> {
     this.#ensureAttached();
-    this.#ensureV1("unmountImage");
     const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
     const pathBytes = new TextEncoder().encode(path);
@@ -1691,7 +1689,6 @@ export class Sandbox {
     params?: SandboxSnapshotDirectoryParams,
   ): Promise<Image> {
     this.#ensureAttached();
-    this.#ensureV1("snapshotDirectory");
     const wireTtlSeconds = resolveTtlSeconds(params?.ttlMs);
     // Treat both undefined and 0 as "use default", matching the Go
     // `Timeout time.Duration` zero-value convention on SandboxSnapshotDirectoryParams.

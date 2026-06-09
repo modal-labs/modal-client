@@ -1407,10 +1407,6 @@ func (sb *Sandbox) SnapshotFilesystem(ctx context.Context, params *SandboxSnapsh
 //
 // If image is nil, mounts an empty directory.
 func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image, params *SandboxMountImageParams) error {
-	if err := sb.ensureV1("MountImage"); err != nil {
-		return err
-	}
-
 	taskID, crClient, err := sb.getCommandRouter(ctx)
 	if err != nil {
 		return err
@@ -1435,10 +1431,6 @@ func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image, pa
 
 // UnmountImage removes an image mount from a path in the Sandbox filesystem.
 func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *SandboxUnmountImageParams) error {
-	if err := sb.ensureV1("UnmountImage"); err != nil {
-		return err
-	}
-
 	taskID, crClient, err := sb.getCommandRouter(ctx)
 	if err != nil {
 		return err
@@ -1458,9 +1450,6 @@ func (sb *Sandbox) UnmountImage(ctx context.Context, path string, params *Sandbo
 // cutoff measured from creation, and the call has a 55-second timeout.
 // See [SandboxSnapshotDirectoryParams] for control over both.
 func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *SandboxSnapshotDirectoryParams) (*Image, error) {
-	if err := sb.ensureV1("SnapshotDirectory"); err != nil {
-		return nil, err
-	}
 	var ttl time.Duration
 	timeout := 55 * time.Second
 	if params != nil {

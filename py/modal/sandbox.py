@@ -1296,8 +1296,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             sandbox_session_2.filesystem.list_files("/user_project")
             ```
         """
-        self._ensure_v1("mount_image")
-
         if not isinstance(image, _Image):
             raise TypeError(f"Sandbox.mount_image(image=...) expects an Image object, got {image!r}")
 
@@ -1348,8 +1346,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             path: Absolute mount point directory to unmount.
 
         """
-        self._ensure_v1("unmount_image")
-
         task_id = await self._get_task_id()
         command_router_client = await self._get_command_router_client(task_id)
 
@@ -1393,8 +1389,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             sandbox_session_2.filesystem.list_files("/user_project")
             ```
         """
-        self._ensure_v1("snapshot_directory")
-
         wire_ttl_seconds = _ttl_to_wire_ttl(ttl)
 
         task_id = await self._get_task_id()

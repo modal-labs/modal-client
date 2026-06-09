@@ -191,18 +191,6 @@ func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
 
-	err = sb.MountImage(ctx, "/mnt", nil, nil)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
-
-	err = sb.UnmountImage(ctx, "/mnt", nil)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
-
-	_, err = sb.SnapshotDirectory(ctx, "/mnt", nil)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
-
 	err = sb.SetTags(ctx, map[string]string{}, nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
