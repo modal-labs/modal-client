@@ -202,6 +202,7 @@ type SandboxCreateParams struct {
 	UnencryptedPorts         []int                        // List of ports to tunnel into the Sandbox without encryption.
 	BlockNetwork             bool                         // Whether to block all network access from the Sandbox.
 	OutboundCIDRAllowlist    []string                     // List of CIDRs the Sandbox is allowed to access. Cannot be used with BlockNetwork.
+	OutboundDomainAllowlist  []string                     // List of domain names the Sandbox is allowed to access. Supports wildcard prefixes (*.example.com). Cannot be used with BlockNetwork.
 	InboundCIDRAllowlist     []string                     // List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If empty, all IPs are allowed.
 	Cloud                    string                       // Cloud provider to run the Sandbox on.
 	Regions                  []string                     // Region(s) to run the Sandbox on.
@@ -286,22 +287,28 @@ func buildSandboxCreateRequestProto(appID, imageID string, params SandboxCreateP
 		if len(params.OutboundCIDRAllowlist) > 0 {
 			return nil, fmt.Errorf("OutboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
 		}
+		if len(params.OutboundDomainAllowlist) > 0 {
+			return nil, fmt.Errorf("OutboundDomainAllowlist cannot be used when BlockNetwork is enabled")
+		}
 		if len(params.InboundCIDRAllowlist) > 0 {
 			return nil, fmt.Errorf("InboundCIDRAllowlist cannot be used when BlockNetwork is enabled")
 		}
 		networkAccess = pb.NetworkAccess_builder{
 			NetworkAccessType: pb.NetworkAccess_BLOCKED,
 			AllowedCidrs:      []string{},
+			AllowedDomains:    []string{},
 		}.Build()
-	} else if len(params.OutboundCIDRAllowlist) > 0 {
+	} else if len(params.OutboundCIDRAllowlist) > 0 || len(params.OutboundDomainAllowlist) > 0 {
 		networkAccess = pb.NetworkAccess_builder{
 			NetworkAccessType: pb.NetworkAccess_ALLOWLIST,
 			AllowedCidrs:      params.OutboundCIDRAllowlist,
+			AllowedDomains:    params.OutboundDomainAllowlist,
 		}.Build()
 	} else {
 		networkAccess = pb.NetworkAccess_builder{
 			NetworkAccessType: pb.NetworkAccess_OPEN,
 			AllowedCidrs:      []string{},
+			AllowedDomains:    []string{},
 		}.Build()
 	}
 

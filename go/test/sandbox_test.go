@@ -513,6 +513,62 @@ func TestCreateSandboxWithNetworkAccessParams(t *testing.T) {
 
 }
 
+func TestCreateSandboxWithDomainAllowlist(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{
+		CreateIfMissing: true,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	image := tc.Images.FromRegistry("alpine:3.21", nil)
+
+	// Domain-only allowlist.
+	sb, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Command:                 []string{"echo", "hello, domain allowlist"},
+		OutboundDomainAllowlist: []string{"example.com", "*.github.com"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb)
+
+	g.Expect(sb).ShouldNot(gomega.BeNil())
+	g.Expect(sb.SandboxID).Should(gomega.HavePrefix("sb-"))
+
+	exitCode, err := sb.Wait(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(exitCode).Should(gomega.Equal(0))
+
+	// Domain + CIDR combined.
+	sb2, err := tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		Command:                 []string{"echo", "hello, domain+cidr"},
+		OutboundDomainAllowlist: []string{"api.example.com"},
+		OutboundCIDRAllowlist:   []string{"10.0.0.0/8"},
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb2)
+
+	exitCode2, err := sb2.Wait(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(exitCode2).Should(gomega.Equal(0))
+
+	// Cannot combine with BlockNetwork.
+	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		BlockNetwork:            true,
+		OutboundDomainAllowlist: []string{"example.com"},
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+	g.Expect(err.Error()).Should(gomega.ContainSubstring("OutboundDomainAllowlist cannot be used when BlockNetwork is enabled"))
+
+	// Invalid domain triggers server-side validation error.
+	_, err = tc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
+		OutboundDomainAllowlist: []string{"not a valid domain!"},
+	})
+	g.Expect(err).Should(gomega.HaveOccurred())
+}
+
 func TestSandboxExecSecret(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
