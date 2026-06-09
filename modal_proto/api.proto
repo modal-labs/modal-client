@@ -3172,8 +3172,11 @@ message Sandbox {
   // If set, the sandbox will be created with a name.
   optional string name = 30;
 
+  // Deprecated: use experimental_options_v2 instead.
+  map<string, bool> experimental_options = 31 [deprecated = true];
+
   // Experimental options
-  map<string, bool> experimental_options = 31;
+  map<string, string> experimental_options_v2 = 41;
 
   repeated string preload_path_prefixes = 32; // Internal use only.
 
