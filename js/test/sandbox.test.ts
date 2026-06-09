@@ -383,6 +383,64 @@ test("CreateSandboxWithInboundCidrAllowlist", async () => {
   expect(await sb.wait()).toBe(0);
 });
 
+test("CreateSandboxWithDomainAllowlist", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = tc.images.fromRegistry("alpine:3.21");
+
+  // Domain-only allowlist: ALLOWLIST with allowedDomains populated.
+  const req = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    outboundDomainAllowlist: ["example.com", "*.github.com"],
+  });
+  expect(req.definition?.networkAccess?.networkAccessType).toBe(
+    NetworkAccess_NetworkAccessType.ALLOWLIST,
+  );
+  expect(req.definition?.networkAccess?.allowedDomains).toEqual([
+    "example.com",
+    "*.github.com",
+  ]);
+  expect(req.definition?.networkAccess?.allowedCidrs).toEqual([]);
+
+  // Domain + CIDR combined: both lists are populated.
+  const req2 = await buildSandboxCreateRequestProto("app-123", "img-456", {
+    outboundDomainAllowlist: ["api.example.com"],
+    outboundCidrAllowlist: ["10.0.0.0/8"],
+  });
+  expect(req2.definition?.networkAccess?.networkAccessType).toBe(
+    NetworkAccess_NetworkAccessType.ALLOWLIST,
+  );
+  expect(req2.definition?.networkAccess?.allowedDomains).toEqual([
+    "api.example.com",
+  ]);
+  expect(req2.definition?.networkAccess?.allowedCidrs).toEqual(["10.0.0.0/8"]);
+
+  // Cannot be combined with blockNetwork.
+  await expect(
+    buildSandboxCreateRequestProto("app-123", "img-456", {
+      blockNetwork: true,
+      outboundDomainAllowlist: ["example.com"],
+    }),
+  ).rejects.toThrow(
+    "outboundDomainAllowlist cannot be used when blockNetwork is enabled",
+  );
+
+  // Invalid domain triggers server-side validation error.
+  await expect(
+    tc.sandboxes.create(app, image, {
+      outboundDomainAllowlist: ["not a valid domain!"],
+    }),
+  ).rejects.toThrow();
+
+  // End-to-end: sandbox is created successfully with the param.
+  const sb = await tc.sandboxes.create(app, image, {
+    command: ["echo", "hello, domain allowlist"],
+    outboundDomainAllowlist: ["example.com", "*.github.com"],
+  });
+  onTestFinished(async () => await sb.terminate());
+  expect(await sb.wait()).toBe(0);
+});
+
 test("buildSandboxCreateRequestProto rejects removed cidrAllowlist", async () => {
   // The deprecated `cidrAllowlist` must throw rather than be silently
   // ignored, which would downgrade ALLOWLIST to OPEN network access.

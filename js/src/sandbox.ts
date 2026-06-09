@@ -308,6 +308,9 @@ export type SandboxCreateParams = {
   /** List of CIDRs the Sandbox is allowed to access. If not set, all CIDRs are allowed. Cannot be used with blockNetwork. */
   outboundCidrAllowlist?: string[];
 
+  /** List of domain names the Sandbox is allowed to access. Supports wildcard prefixes (`*.example.com`). Cannot be used with blockNetwork. */
+  outboundDomainAllowlist?: string[];
+
   /** List of CIDRs allowed to connect inbound to the Sandbox (tunnels and connection tokens). If not set, all IPs are allowed. Cannot be used with blockNetwork. */
   inboundCidrAllowlist?: string[];
 
@@ -437,6 +440,11 @@ export async function buildSandboxCreateRequestProto(
         "outboundCidrAllowlist cannot be used when blockNetwork is enabled",
       );
     }
+    if (params.outboundDomainAllowlist) {
+      throw new Error(
+        "outboundDomainAllowlist cannot be used when blockNetwork is enabled",
+      );
+    }
     if (params.inboundCidrAllowlist) {
       throw new Error(
         "inboundCidrAllowlist cannot be used when blockNetwork is enabled",
@@ -444,15 +452,20 @@ export async function buildSandboxCreateRequestProto(
     }
     networkAccess = NetworkAccess.create({
       networkAccessType: NetworkAccess_NetworkAccessType.BLOCKED,
+      allowedCidrs: [],
+      allowedDomains: [],
     });
-  } else if (params.outboundCidrAllowlist) {
+  } else if (params.outboundCidrAllowlist || params.outboundDomainAllowlist) {
     networkAccess = NetworkAccess.create({
       networkAccessType: NetworkAccess_NetworkAccessType.ALLOWLIST,
-      allowedCidrs: params.outboundCidrAllowlist,
+      allowedCidrs: params.outboundCidrAllowlist || [],
+      allowedDomains: params.outboundDomainAllowlist || [],
     });
   } else {
     networkAccess = NetworkAccess.create({
       networkAccessType: NetworkAccess_NetworkAccessType.OPEN,
+      allowedCidrs: [],
+      allowedDomains: [],
     });
   }
 
