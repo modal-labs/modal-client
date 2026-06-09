@@ -30,6 +30,47 @@ func TestImageFromId(t *testing.T) {
 	g.Expect(err).Should(gomega.HaveOccurred())
 }
 
+func TestImageFromName(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock,
+		"ImageGetByTag",
+		func(req *pb.ImageGetByTagRequest) (*pb.ImageGetByTagResponse, error) {
+			g.Expect(req.GetEnvironmentName()).To(gomega.Equal("dev"))
+			g.Expect(req.GetTag()).To(gomega.Equal("analytics-runtime:v1"))
+			return pb.ImageGetByTagResponse_builder{ImageId: "im-tagged"}.Build(), nil
+		},
+	)
+
+	image, err := mock.Images.FromName(ctx, "analytics-runtime:v1", &modal.ImageFromNameParams{
+		Environment: "dev",
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(image.ImageID).To(gomega.Equal("im-tagged"))
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestImageNamedRefsRejectImageIDNames(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	_, err := mock.Images.FromName(ctx, "im-looks-like-an-id", nil)
+	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("cannot start with 'im-'")))
+
+	image := mock.Images.FromRegistry("alpine:3.21", nil)
+	image.ImageID = "im-built"
+	err = image.Publish(ctx, "im-looks-like-an-id", nil)
+	g.Expect(err).Should(gomega.MatchError(gomega.ContainSubstring("cannot start with 'im-'")))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
 func TestImageFromRegistry(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)
@@ -42,6 +83,48 @@ func TestImageFromRegistry(t *testing.T) {
 	image, err := tc.Images.FromRegistry("alpine:3.21", nil).Build(ctx, app, nil)
 	g.Expect(err).ShouldNot(gomega.HaveOccurred())
 	g.Expect(image.ImageID).Should(gomega.HavePrefix("im-"))
+}
+
+func TestImagePublish(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock,
+		"ImagePublish",
+		func(req *pb.ImagePublishRequest) (*pb.ImagePublishResponse, error) {
+			g.Expect(req.GetImageId()).To(gomega.Equal("im-built"))
+			g.Expect(req.GetEnvironmentName()).To(gomega.Equal("dev"))
+			g.Expect(req.GetIsPublic()).To(gomega.BeFalse())
+			g.Expect(req.GetTag()).To(gomega.Equal("analytics-runtime:v1"))
+			return pb.ImagePublishResponse_builder{
+				ImageId:    req.GetImageId(),
+				RevisionId: "ir-01H00000000000000000000000",
+			}.Build(), nil
+		},
+	)
+
+	image := mock.Images.FromRegistry("alpine:3.21", nil)
+	image.ImageID = "im-built"
+	err := image.Publish(ctx, "analytics-runtime:v1", &modal.ImagePublishParams{
+		Environment: "dev",
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestImagePublishRequiresBuiltImage(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	image := mock.Images.FromRegistry("alpine:3.21", nil)
+	err := image.Publish(ctx, "analytics-runtime", nil)
+	g.Expect(err).Should(gomega.BeAssignableToTypeOf(modal.InvalidError{}))
 }
 
 func TestImageFromRegistryWithSecret(t *testing.T) {
@@ -198,6 +281,108 @@ func TestDockerfileCommandsEmptyArrayNoOp(t *testing.T) {
 	image1 := tc.Images.FromRegistry("alpine:3.21", nil)
 	image2 := image1.DockerfileCommands([]string{}, nil)
 	g.Expect(image2).Should(gomega.BeIdenticalTo(image1))
+}
+
+func TestDockerfileCommandsFromNameUsesResolvedImageAsBase(t *testing.T) {
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "2024.10")
+
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock,
+		"ImageGetByTag",
+		func(req *pb.ImageGetByTagRequest) (*pb.ImageGetByTagResponse, error) {
+			g.Expect(req.GetTag()).To(gomega.Equal("analytics-runtime:latest"))
+			return pb.ImageGetByTagResponse_builder{ImageId: "im-tagged"}.Build(), nil
+		},
+	)
+
+	grpcmock.HandleUnary(
+		mock,
+		"ImageGetOrCreate",
+		func(req *pb.ImageGetOrCreateRequest) (*pb.ImageGetOrCreateResponse, error) {
+			image := req.GetImage()
+			g.Expect(image.GetDockerfileCommands()).To(gomega.Equal([]string{"FROM base", "RUN echo layer"}))
+			g.Expect(image.GetBaseImages()).To(gomega.HaveLen(1))
+			g.Expect(image.GetBaseImages()[0].GetDockerTag()).To(gomega.Equal("base"))
+			g.Expect(image.GetBaseImages()[0].GetImageId()).To(gomega.Equal("im-tagged"))
+
+			return pb.ImageGetOrCreateResponse_builder{
+				ImageId: "im-layer",
+				Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+			}.Build(), nil
+		},
+	)
+
+	image, err := mock.Images.FromName(ctx, "analytics-runtime", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	builtImage, err := image.DockerfileCommands([]string{"RUN echo layer"}, nil).
+		Build(ctx, &modal.App{AppID: "ap-test"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(builtImage.ImageID).To(gomega.Equal("im-layer"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestDockerfileCommandsFromBuiltRegistryImageDropsRegistryConfig(t *testing.T) {
+	t.Setenv("MODAL_IMAGE_BUILDER_VERSION", "2024.10")
+
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock,
+		"ImageGetOrCreate",
+		func(req *pb.ImageGetOrCreateRequest) (*pb.ImageGetOrCreateResponse, error) {
+			image := req.GetImage()
+			g.Expect(image.GetDockerfileCommands()).To(gomega.Equal([]string{"FROM private.example.com/app:latest"}))
+			g.Expect(image.GetBaseImages()).To(gomega.BeEmpty())
+			g.Expect(image.HasImageRegistryConfig()).To(gomega.BeTrue())
+			g.Expect(image.GetImageRegistryConfig().GetRegistryAuthType()).To(gomega.Equal(pb.RegistryAuthType_REGISTRY_AUTH_TYPE_STATIC_CREDS))
+			g.Expect(image.GetImageRegistryConfig().GetSecretId()).To(gomega.Equal("sc-registry"))
+
+			return pb.ImageGetOrCreateResponse_builder{
+				ImageId: "im-private-base",
+				Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+			}.Build(), nil
+		},
+	)
+
+	grpcmock.HandleUnary(
+		mock,
+		"ImageGetOrCreate",
+		func(req *pb.ImageGetOrCreateRequest) (*pb.ImageGetOrCreateResponse, error) {
+			image := req.GetImage()
+			g.Expect(image.GetDockerfileCommands()).To(gomega.Equal([]string{"FROM base", "RUN echo layer"}))
+			g.Expect(image.GetBaseImages()).To(gomega.HaveLen(1))
+			g.Expect(image.GetBaseImages()[0].GetDockerTag()).To(gomega.Equal("base"))
+			g.Expect(image.GetBaseImages()[0].GetImageId()).To(gomega.Equal("im-private-base"))
+			g.Expect(image.HasImageRegistryConfig()).To(gomega.BeFalse())
+
+			return pb.ImageGetOrCreateResponse_builder{
+				ImageId: "im-layer",
+				Result:  pb.GenericResult_builder{Status: pb.GenericResult_GENERIC_STATUS_SUCCESS}.Build(),
+			}.Build(), nil
+		},
+	)
+
+	app := &modal.App{AppID: "ap-test"}
+	registrySecret := &modal.Secret{SecretID: "sc-registry"}
+	baseImage, err := mock.Images.FromRegistry(
+		"private.example.com/app:latest",
+		&modal.ImageFromRegistryParams{Secret: registrySecret},
+	).Build(ctx, app, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	builtImage, err := baseImage.DockerfileCommands([]string{"RUN echo layer"}, nil).Build(ctx, app, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(builtImage.ImageID).To(gomega.Equal("im-layer"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
 func TestDockerfileCommandsChaining(t *testing.T) {

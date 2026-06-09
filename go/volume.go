@@ -42,12 +42,17 @@ type VolumeMountOptions struct {
 
 // volumeToMountProto builds the VolumeMount proto from a Volume's mount configuration.
 func volumeToMountProto(mountPath string, volume *Volume) *pb.VolumeMount {
+	var subPath *string
+	if volume.mountOptions.subPath != "" {
+		subPath = &volume.mountOptions.subPath
+	}
+
 	return pb.VolumeMount_builder{
 		VolumeId:               volume.VolumeID,
 		MountPath:              mountPath,
 		AllowBackgroundCommits: true,
 		ReadOnly:               volume.mountOptions.readOnly,
-		SubPath:                volume.mountOptions.subPath,
+		SubPath:                subPath,
 	}.Build()
 }
 

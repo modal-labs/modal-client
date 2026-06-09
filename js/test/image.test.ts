@@ -4,6 +4,7 @@ import { expect, onTestFinished, test, vi } from "vitest";
 import { createMockModalClients } from "../test-support/grpc_mock";
 import { Secret } from "../src/secret";
 import { App } from "../src/app";
+import { Image } from "modal";
 
 test("ImageFromId", async () => {
   const app = await tc.apps.fromName("libmodal-test", {
@@ -17,6 +18,40 @@ test("ImageFromId", async () => {
   expect(imageFromId.imageId).toBe(image.imageId);
 
   await expect(tc.images.fromId("im-nonexistent")).rejects.toThrow();
+});
+
+test("ImageFromName", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/ImageGetByTag", (req: any) => {
+    expect(req).toMatchObject({
+      environmentName: "dev",
+      tag: "analytics-runtime:v1",
+    });
+    return { imageId: "im-tagged" };
+  });
+
+  const image = await mc.images.fromName("analytics-runtime:v1", {
+    environment: "dev",
+  });
+  expect(image.imageId).toBe("im-tagged");
+
+  mock.assertExhausted();
+});
+
+test("ImageNamedRefsRejectImageIDNames", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  await expect(mc.images.fromName("im-looks-like-an-id")).rejects.toThrow(
+    "cannot start with 'im-'",
+  );
+
+  const image = new Image(mc, "im-built", "");
+  await expect(image.publish("im-looks-like-an-id")).rejects.toThrow(
+    "cannot start with 'im-'",
+  );
+
+  mock.assertExhausted();
 });
 
 test("ImageFromRegistry", async () => {
@@ -58,6 +93,39 @@ test("ImageFromRegistryWithSecret", async () => {
     .build(app);
   expect(image.imageId).toBeTruthy();
   expect(image.imageId).toMatch(/^im-/);
+});
+
+test("ImagePublish", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+  const image = new Image(mc, "im-built", "");
+
+  mock.handleUnary("/ImagePublish", (req: any) => {
+    expect(req).toMatchObject({
+      imageId: "im-built",
+      environmentName: "dev",
+      isPublic: false,
+      tag: "analytics-runtime:v1",
+    });
+    return {
+      imageId: "im-built",
+      revisionId: "ir-01H00000000000000000000000",
+    };
+  });
+
+  await image.publish("analytics-runtime:v1", {
+    environment: "dev",
+  });
+
+  mock.assertExhausted();
+});
+
+test("ImagePublishRequiresBuiltImage", async () => {
+  const { mockClient: mc } = createMockModalClients();
+  const image = new Image(mc, "", "alpine:3.21");
+
+  await expect(image.publish("analytics-runtime")).rejects.toThrow(
+    "Cannot publish an image that has not been built yet",
+  );
 });
 
 test("ImageFromAwsEcr", async () => {
@@ -166,6 +234,87 @@ test("DockerfileCommandsEmptyArrayNoOp", () => {
   const image1 = tc.images.fromRegistry("alpine:3.21");
   const image2 = image1.dockerfileCommands([]);
   expect(image2).toBe(image1);
+});
+
+test("DockerfileCommandsFromNameUsesResolvedImageAsBase", async () => {
+  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/ImageGetByTag", (req: any) => {
+    expect(req).toMatchObject({
+      tag: "analytics-runtime:latest",
+    });
+    return { imageId: "im-tagged" };
+  });
+
+  mock.handleUnary("/ImageGetOrCreate", (req: any) => {
+    expect(req).toMatchObject({
+      appId: "ap-test",
+      image: {
+        dockerfileCommands: ["FROM base", "RUN echo layer"],
+        baseImages: [{ dockerTag: "base", imageId: "im-tagged" }],
+      },
+    });
+    return { imageId: "im-layer", result: { status: 1 } };
+  });
+
+  const image = await mc.images.fromName("analytics-runtime");
+  const builtImage = await image
+    .dockerfileCommands(["RUN echo layer"])
+    .build(new App("ap-test", "libmodal-test"));
+
+  expect(builtImage.imageId).toBe("im-layer");
+  mock.assertExhausted();
+});
+
+test("DockerfileCommandsFromBuiltRegistryImageDropsRegistryConfig", async () => {
+  vi.stubEnv("MODAL_IMAGE_BUILDER_VERSION", "2024.10");
+  onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/ImageGetOrCreate", (req: any) => {
+    expect(req).toMatchObject({
+      appId: "ap-test",
+      image: {
+        dockerfileCommands: ["FROM private.example.com/app:latest"],
+        baseImages: [],
+        imageRegistryConfig: {
+          secretId: "sc-registry",
+        },
+      },
+    });
+    return { imageId: "im-private-base", result: { status: 1 } };
+  });
+
+  mock.handleUnary("/ImageGetOrCreate", (req: any) => {
+    expect(req).toMatchObject({
+      appId: "ap-test",
+      image: {
+        dockerfileCommands: ["FROM base", "RUN echo layer"],
+        baseImages: [{ dockerTag: "base", imageId: "im-private-base" }],
+      },
+    });
+    expect(req.image.imageRegistryConfig).toBeUndefined();
+    return { imageId: "im-layer", result: { status: 1 } };
+  });
+
+  const baseImage = await mc.images
+    .fromRegistry(
+      "private.example.com/app:latest",
+      new Secret("sc-registry", "registry"),
+    )
+    .build(new App("ap-test", "libmodal-test"));
+  const builtImage = await baseImage
+    .dockerfileCommands(["RUN echo layer"])
+    .build(new App("ap-test", "libmodal-test"));
+
+  expect(builtImage.imageId).toBe("im-layer");
+  mock.assertExhausted();
 });
 
 test("DockerfileCommandsChaining", async () => {

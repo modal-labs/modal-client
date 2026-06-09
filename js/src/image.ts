@@ -13,6 +13,44 @@ import { ClientError } from "nice-grpc";
 import { Status } from "nice-grpc";
 import { NotFoundError, InvalidError } from "./errors";
 
+const DEFAULT_IMAGE_TAG = "latest";
+
+function validateImageName(name: string): void {
+  if (name === "") {
+    throw new InvalidError("Image name must be non-empty.");
+  }
+  if (name.startsWith("im-")) {
+    throw new InvalidError(
+      "Image name cannot start with 'im-' (reserved for image IDs).",
+    );
+  }
+}
+
+function validateImageTag(tag: string): void {
+  if (tag === "") {
+    throw new InvalidError("Image tag must be non-empty.");
+  }
+}
+
+function parseNamedImageRef(value: string): string {
+  const separatorIndex = value.indexOf(":");
+  if (separatorIndex === -1) {
+    validateImageName(value);
+    return `${value}:${DEFAULT_IMAGE_TAG}`;
+  }
+  const name = value.slice(0, separatorIndex);
+  const tag = value.slice(separatorIndex + 1);
+  validateImageName(name);
+  validateImageTag(tag);
+  return `${name}:${tag}`;
+}
+
+/** Optional parameters for {@link ImageService#fromName client.images.fromName()}. */
+export type ImageFromNameParams = {
+  /** Modal Environment to resolve the named Image in. */
+  environment?: string;
+};
+
 /**
  * Service for managing {@link Image}s.
  *
@@ -45,6 +83,32 @@ export class ImageService {
         err.code === Status.FAILED_PRECONDITION &&
         err.details.includes("Could not find image with ID")
       )
+        throw new NotFoundError(err.details);
+      throw err;
+    }
+  }
+
+  /**
+   * Reference a named {@link Image} that was previously published.
+   *
+   * @param name - Name of the published Image, optionally including a tag as `name:tag`.
+   * If no tag is included, `:latest` is used.
+   * @param params - Optional environment.
+   */
+  async fromName(
+    name: string,
+    params: ImageFromNameParams = {},
+  ): Promise<Image> {
+    const tag = parseNamedImageRef(name);
+
+    try {
+      const resp = await this.#client.cpClient.imageGetByTag({
+        environmentName: this.#client.environmentName(params.environment),
+        tag,
+      });
+      return new Image(this.#client, resp.imageId, "");
+    } catch (err) {
+      if (err instanceof ClientError && err.code === Status.NOT_FOUND)
         throw new NotFoundError(err.details);
       throw err;
     }
@@ -146,6 +210,12 @@ export class ImageService {
 /** Optional parameters for {@link ImageService#delete client.images.delete()}. */
 export type ImageDeleteParams = Record<never, never>;
 
+/** Optional parameters for {@link Image#publish Image.publish()}. */
+export type ImagePublishParams = {
+  /** Modal Environment to publish the named Image in. */
+  environment?: string;
+};
+
 /** Optional parameters for {@link Image#dockerfileCommands Image.dockerfileCommands()}. */
 export type ImageDockerfileCommandsParams = {
   /** Environment variables to set in the build environment. */
@@ -175,6 +245,8 @@ export class Image {
   #client: ModalClient;
   #imageId: string;
   #tag: string;
+  // Image ID of the parent image layer to use as `FROM base`.
+  #baseImageId: string;
   #imageRegistryConfig?: ImageRegistryConfig;
   #layers: Layer[];
 
@@ -185,10 +257,12 @@ export class Image {
     tag: string,
     imageRegistryConfig?: ImageRegistryConfig,
     layers?: Layer[],
+    baseImageId?: string,
   ) {
     this.#client = client;
     this.#imageId = imageId;
     this.#tag = tag;
+    this.#baseImageId = baseImageId || "";
     this.#imageRegistryConfig = imageRegistryConfig;
     this.#layers = layers || [
       {
@@ -243,10 +317,17 @@ export class Image {
       forceBuild: params?.forceBuild,
     };
 
-    return new Image(this.#client, "", this.#tag, this.#imageRegistryConfig, [
-      ...this.#layers,
-      newLayer,
-    ]);
+    const baseImageId = this.#imageId || this.#baseImageId;
+    const layers = this.#imageId === "" ? this.#layers : [];
+
+    return new Image(
+      this.#client,
+      "",
+      this.#tag,
+      this.#imageRegistryConfig,
+      [...layers, newLayer],
+      baseImageId,
+    );
   }
 
   /**
@@ -262,7 +343,7 @@ export class Image {
 
     this.#client.logger.debug("Building image", "app_id", app.appId);
 
-    let baseImageId: string | undefined;
+    let baseImageId: string | undefined = this.#baseImageId || undefined;
     const imageBuilderVersion = await this.#client.getImageBuilderVersion(
       app.environmentName,
     );
@@ -282,7 +363,10 @@ export class Image {
       let dockerfileCommands: string[];
       let baseImages: Array<{ dockerTag: string; imageId: string }>;
 
-      if (i === 0) {
+      if (i === 0 && baseImageId) {
+        dockerfileCommands = ["FROM base", ...layer.commands];
+        baseImages = [{ dockerTag: "base", imageId: baseImageId }];
+      } else if (i === 0) {
         dockerfileCommands = [`FROM ${this.#tag}`, ...layer.commands];
         baseImages = [];
       } else {
@@ -290,11 +374,14 @@ export class Image {
         baseImages = [{ dockerTag: "base", imageId: baseImageId! }];
       }
 
+      const imageRegistryConfig =
+        i === 0 && !baseImageId ? this.#imageRegistryConfig : undefined;
+
       const resp = await this.#client.cpClient.imageGetOrCreate({
         appId: app.appId,
         image: ImageProto.create({
           dockerfileCommands,
-          imageRegistryConfig: this.#imageRegistryConfig,
+          imageRegistryConfig,
           secretIds,
           gpuConfig,
           contextFiles: [],
@@ -362,5 +449,30 @@ export class Image {
     this.#imageId = baseImageId!;
     this.#client.logger.debug("Image build completed", "image_id", baseImageId);
     return this;
+  }
+
+  /**
+   * Publish this built Image under a stable name and tag.
+   *
+   * @param name - Name to publish the Image under, optionally including a tag as `name:tag`.
+   * If no tag is included, `:latest` is used.
+   * @param params - Optional environment.
+   */
+  async publish(name: string, params: ImagePublishParams = {}): Promise<void> {
+    const tag = parseNamedImageRef(name);
+
+    if (this.#imageId === "") {
+      throw new InvalidError(
+        "Cannot publish an image that has not been built yet. Call build() first.",
+      );
+    }
+
+    const environmentName = this.#client.environmentName(params.environment);
+    await this.#client.cpClient.imagePublish({
+      imageId: this.#imageId,
+      environmentName,
+      isPublic: false,
+      tag,
+    });
   }
 }

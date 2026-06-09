@@ -17,10 +17,50 @@ type ImageService interface {
 	FromAwsEcr(tag string, secret *Secret, params *ImageFromAwsEcrParams) *Image
 	FromGcpArtifactRegistry(tag string, secret *Secret, params *ImageFromGcpArtifactRegistryParams) *Image
 	FromID(ctx context.Context, imageID string, params *ImageFromIDParams) (*Image, error)
+	FromName(ctx context.Context, name string, params *ImageFromNameParams) (*Image, error)
 	Delete(ctx context.Context, imageID string, params *ImageDeleteParams) error
 }
 
 type imageServiceImpl struct{ client *Client }
+
+const defaultImageTag = "latest"
+
+func validateImageName(name string) error {
+	if name == "" {
+		return InvalidError{Exception: "Image name must be non-empty."}
+	}
+	if strings.HasPrefix(name, "im-") {
+		return InvalidError{Exception: "Image name cannot start with 'im-' (reserved for image IDs)."}
+	}
+	return nil
+}
+
+func validateImageTag(tag string) error {
+	if tag == "" {
+		return InvalidError{Exception: "Image tag must be non-empty."}
+	}
+	return nil
+}
+
+func parseNamedImageRef(value string) (string, error) {
+	separatorIndex := strings.Index(value, ":")
+	if separatorIndex == -1 {
+		if err := validateImageName(value); err != nil {
+			return "", err
+		}
+		return value + ":" + defaultImageTag, nil
+	}
+
+	name := value[:separatorIndex]
+	tag := value[separatorIndex+1:]
+	if err := validateImageName(name); err != nil {
+		return "", err
+	}
+	if err := validateImageTag(tag); err != nil {
+		return "", err
+	}
+	return name + ":" + tag, nil
+}
 
 // ImageDockerfileCommandsParams are options for Image.DockerfileCommands().
 type ImageDockerfileCommandsParams struct {
@@ -52,7 +92,9 @@ type Image struct {
 
 	imageRegistryConfig *pb.ImageRegistryConfig
 	tag                 string
-	layers              []layer
+	// baseImageID is the image ID of the parent image layer to use as FROM base.
+	baseImageID string
+	layers      []layer
 
 	client *Client
 }
@@ -71,8 +113,18 @@ type ImageFromGcpArtifactRegistryParams struct{}
 // ImageFromIDParams are options for ImageService.FromID.
 type ImageFromIDParams struct{}
 
+// ImageFromNameParams are options for ImageService.FromName.
+type ImageFromNameParams struct {
+	Environment string
+}
+
 // ImageBuildParams are options for Image.Build.
 type ImageBuildParams struct{}
+
+// ImagePublishParams are options for Image.Publish.
+type ImagePublishParams struct {
+	Environment string
+}
 
 // FromRegistry builds a Modal Image from a public or private image registry without any changes.
 func (s *imageServiceImpl) FromRegistry(tag string, params *ImageFromRegistryParams) *Image {
@@ -146,6 +198,35 @@ func (s *imageServiceImpl) FromID(ctx context.Context, imageID string, params *I
 	}, nil
 }
 
+// FromName references a named Image that was previously published.
+// The name may include a tag as name:tag; if no tag is included, :latest is used.
+func (s *imageServiceImpl) FromName(ctx context.Context, name string, params *ImageFromNameParams) (*Image, error) {
+	if params == nil {
+		params = &ImageFromNameParams{}
+	}
+	tag, err := parseNamedImageRef(name)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := s.client.cpClient.ImageGetByTag(ctx, pb.ImageGetByTagRequest_builder{
+		EnvironmentName: firstNonEmpty(params.Environment, s.client.profile.Environment),
+		Tag:             tag,
+	}.Build())
+	if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+		return nil, NotFoundError{fmt.Sprintf("Image '%s' not found", tag)}
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &Image{
+		ImageID: resp.GetImageId(),
+		layers:  []layer{{}},
+		client:  s.client,
+	}, nil
+}
+
 // DockerfileCommands extends an image with arbitrary Dockerfile-like commands.
 //
 // Each call creates a new Image layer that will be built sequentially.
@@ -167,12 +248,18 @@ func (image *Image) DockerfileCommands(commands []string, params *ImageDockerfil
 		forceBuild: params.ForceBuild,
 	}
 
+	baseImageID := image.baseImageID
 	newLayers := append([]layer{}, image.layers...)
+	if image.ImageID != "" {
+		baseImageID = image.ImageID
+		newLayers = []layer{}
+	}
 	newLayers = append(newLayers, newLayer)
 
 	return &Image{
 		ImageID:             "",
 		tag:                 image.tag,
+		baseImageID:         baseImageID,
 		imageRegistryConfig: image.imageRegistryConfig,
 		layers:              newLayers,
 		client:              image.client,
@@ -242,7 +329,7 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 		}
 	}
 
-	var currentImageID string
+	currentImageID := image.baseImageID
 	imageBuilderVersion, err := image.client.getImageBuilderVersion(ctx, app.Environment)
 	if err != nil {
 		return nil, err
@@ -277,7 +364,13 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 		var dockerfileCommands []string
 		var baseImages []*pb.BaseImage
 
-		if i == 0 {
+		if i == 0 && currentImageID != "" {
+			dockerfileCommands = append([]string{"FROM base"}, currentLayer.commands...)
+			baseImages = []*pb.BaseImage{pb.BaseImage_builder{
+				DockerTag: "base",
+				ImageId:   currentImageID,
+			}.Build()}
+		} else if i == 0 {
 			dockerfileCommands = append([]string{fmt.Sprintf("FROM %s", image.tag)}, currentLayer.commands...)
 			baseImages = []*pb.BaseImage{}
 		} else {
@@ -288,13 +381,18 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 			}.Build()}
 		}
 
+		var imageRegistryConfig *pb.ImageRegistryConfig
+		if i == 0 && currentImageID == "" {
+			imageRegistryConfig = image.imageRegistryConfig
+		}
+
 		resp, err := image.client.cpClient.ImageGetOrCreate(
 			ctx,
 			pb.ImageGetOrCreateRequest_builder{
 				AppId: app.AppID,
 				Image: pb.Image_builder{
 					DockerfileCommands:  dockerfileCommands,
-					ImageRegistryConfig: image.imageRegistryConfig,
+					ImageRegistryConfig: imageRegistryConfig,
 					SecretIds:           secretIds,
 					GpuConfig:           gpuConfig,
 					ContextFiles:        []*pb.ImageContextFile{},
@@ -346,6 +444,29 @@ func (image *Image) Build(ctx context.Context, app *App, params *ImageBuildParam
 	image.ImageID = currentImageID
 	image.client.logger.DebugContext(ctx, "Image build completed", "image_id", currentImageID)
 	return image, nil
+}
+
+// Publish publishes this built Image under a stable name and tag.
+// The name may include a tag as name:tag; if no tag is included, :latest is used.
+func (image *Image) Publish(ctx context.Context, name string, params *ImagePublishParams) error {
+	if params == nil {
+		params = &ImagePublishParams{}
+	}
+	tag, err := parseNamedImageRef(name)
+	if err != nil {
+		return err
+	}
+	if image.ImageID == "" {
+		return InvalidError{Exception: "Cannot publish an image that has not been built yet. Call Build() first."}
+	}
+
+	_, err = image.client.cpClient.ImagePublish(ctx, pb.ImagePublishRequest_builder{
+		ImageId:         image.ImageID,
+		EnvironmentName: firstNonEmpty(params.Environment, image.client.profile.Environment),
+		IsPublic:        false,
+		Tag:             tag,
+	}.Build())
+	return err
 }
 
 // ImageDeleteParams are options for deleting an Image.

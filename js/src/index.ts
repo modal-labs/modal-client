@@ -62,6 +62,8 @@ export {
   ImageService,
   type ImageDeleteParams,
   type ImageDockerfileCommandsParams,
+  type ImageFromNameParams,
+  type ImagePublishParams,
 } from "./image";
 export { Retries } from "./retries";
 export type {

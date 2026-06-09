@@ -39,4 +39,6 @@
 //
 // For additional examples and language-parity tests, see
 // https://github.com/modal-labs/modal-client/tree/main/go.
+//
+//go:generate bash scripts/gen-proto.sh
 package modal
