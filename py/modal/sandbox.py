@@ -1517,15 +1517,17 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._tunnels
 
     async def create_connect_token(
-        self, user_metadata: str | dict[str, Any] | None = None
+        self, user_metadata: str | dict[str, Any] | None = None, port: int = 8080
     ) -> SandboxConnectCredentials:
         """Create a token for making HTTP connections to the Sandbox.
 
-        Also accepts an optional user_metadata string or dict to associate with the token. This metadata
+        Accepts an optional user_metadata string or dict to associate with the token. This metadata
         will be added to the headers by the proxy when forwarding requests to the Sandbox.
+        Also accepts a port that requests will be routed to.
 
         Args:
             user_metadata: Optional JSON-serializable metadata or string stored with the connect token.
+            port: Optional container port that requests are routed to when using this token.
 
         Returns:
             URL and token credentials for connecting to the sandbox over HTTP.
@@ -1537,7 +1539,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             except Exception as e:
                 raise InvalidError(f"Failed to serialize user_metadata: {e}")
 
-        req = api_pb2.SandboxCreateConnectTokenRequest(sandbox_id=self.object_id, user_metadata=user_metadata)
+        if not isinstance(port, int) or not (1 <= port <= 65535):
+            raise InvalidError("port must be between 1 and 65535")
+
+        req = api_pb2.SandboxCreateConnectTokenRequest(
+            sandbox_id=self.object_id, user_metadata=user_metadata, port=port
+        )
         resp = await self._client.stub.SandboxCreateConnectToken(req)
         return SandboxConnectCredentials(resp.url, resp.token)
 

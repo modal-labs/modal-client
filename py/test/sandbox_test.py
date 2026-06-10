@@ -82,6 +82,35 @@ def test_probe_rejects_invalid_raw_configuration(kwargs, match):
         modal.Probe(**kwargs)
 
 
+@pytest.mark.parametrize("port", ["8080", 0, 65536, -1, 8080.0])
+def test_create_connect_token_bad_port_raises(app, servicer, port):
+    sb = Sandbox.create(app=app)
+    with pytest.raises(InvalidError, match="port must be between 1 and 65535"):
+        sb.create_connect_token(port=port)
+
+
+@pytest.mark.parametrize("port", [1, 8080, 9000, 65535])
+def test_create_connect_token_sends_port(app, servicer, port):
+    sb = Sandbox.create(app=app)
+    with servicer.intercept() as ctx:
+        creds = sb.create_connect_token(port=port)
+        req = ctx.pop_request("SandboxCreateConnectToken")
+
+    assert req.sandbox_id == sb.object_id
+    assert req.port == port
+    assert creds.token == f"token-{port}"
+
+
+def test_create_connect_token_defaults_to_8080(app, servicer):
+    sb = Sandbox.create(app=app)
+    with servicer.intercept() as ctx:
+        creds = sb.create_connect_token()
+        req = ctx.pop_request("SandboxCreateConnectToken")
+
+    assert req.port == 8080
+    assert creds.token == "token-8080"
+
+
 @skip_non_subprocess
 def test_sandbox(app, servicer, sandbox_subprocess):
     sb = Sandbox.create("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600, app=app)
