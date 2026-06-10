@@ -470,6 +470,25 @@ def test_server_rejects_parametrization_with_default():
                 pass
 
 
+def test_server_rejects_parametrized_invocation():
+    """Test that a server cannot be parametrized like a Cls (e.g. `MyServer(x=1)`).
+
+    Servers only expose HTTP endpoints, so unlike `@app.cls()` classes they cannot
+    be instantiated/parametrized at the call site.
+    """
+    app = modal.App("server-parametrized-call-test", include_source=False)
+
+    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    class ParametrizedCallServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    assert isinstance(ParametrizedCallServer, Server)
+    with pytest.raises(TypeError, match="not callable"):
+        ParametrizedCallServer(model_name="gpt-4")  # type: ignore[operator]
+
+
 def test_server_rejects_concurrent_decorator():
     """Test that @modal.concurrent() cannot be used on server classes."""
     with pytest.raises(
@@ -495,6 +514,48 @@ def test_server_rejects_http_server_decorator():
         @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
         @modal.experimental.http_server(port=9000, proxy_regions=["us-east"])  # type: ignore
         class HttpServerDecoratorServer:
+            @modal.enter()
+            def start(self):
+                pass
+
+
+def test_server_rejects_batched_decorator():
+    """Test that @modal.batched() cannot be stacked on server classes."""
+    with pytest.raises(
+        InvalidError,
+        match=re.escape("Cannot apply `@modal.batched` to a class."),
+    ):
+        app = modal.App("server-batched-test", include_source=False)
+
+        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+        @modal.batched(max_batch_size=4, wait_ms=1000)  # type: ignore
+        class BatchedServer:
+            @modal.enter()
+            def start(self):
+                pass
+
+
+def test_server_rejects_schedule():
+    """Test that a schedule (via @app.function) cannot be stacked on server classes."""
+    with pytest.raises(TypeError, match="cannot be used on a class"):
+        app = modal.App("server-schedule-test", include_source=False)
+
+        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)  # type: ignore[arg-type]
+        @app.function(schedule=modal.Period(seconds=10))
+        class ScheduledServer:
+            @modal.enter()
+            def start(self):
+                pass
+
+
+def test_server_rejects_cron():
+    """Test that a cron job (via @app.function) cannot be stacked on server classes."""
+    with pytest.raises(TypeError, match="cannot be used on a class"):
+        app = modal.App("server-cron-test", include_source=False)
+
+        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)  # type: ignore[arg-type]
+        @app.function(schedule=modal.Cron("* * * * *"))
+        class CronServer:
             @modal.enter()
             def start(self):
                 pass
@@ -538,6 +599,30 @@ def test_server_with_clustered_decorator(client, servicer):
 
         # Verify cluster settings were applied
         assert function_def._experimental_group_size == 2
+
+
+def test_server_with_proxy(client, servicer):
+    """Test that @app._experimental_server() can be configured with a Modal Proxy."""
+    app = modal.App("server-proxy-test", include_source=False)
+
+    @app._experimental_server(
+        port=8000,
+        routing_region="us-east",
+        proxy=modal.Proxy.from_name("my-proxy"),
+        serialized=True,
+    )
+    class ProxyServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        assert isinstance(ProxyServer, Server)
+        service_function = ProxyServer._get_service_function()  # type: ignore[attr-defined]
+        function_id = service_function.object_id
+        function_def = servicer.app_functions[function_id]
+
+        assert function_def.proxy_id == "pr-123"
 
 
 # =============================================================================
