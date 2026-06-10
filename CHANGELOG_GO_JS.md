@@ -4,26 +4,36 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
-- (Go, JS) Added `OutboundDomainAllowlist` / `outboundDomainAllowlist` to `SandboxCreateParams` / `Sandbox.create()`, restricting outbound network access to a set of domain names. Supports wildcard prefixes (`*.example.com`). When used together with `OutboundCIDRAllowlist` / `outboundCidrAllowlist`, the union of both lists is enforced.
-- **Breaking:** Removed the deprecated low-level file-handle API: `Sandbox.Open` / `SandboxFile` (Go), and `sandbox.open` / `SandboxFile` (JS). Use the Sandbox Filesystem API instead — `sandbox.Filesystem()` (Go) / `sandbox.filesystem` (JS).
-- **Breaking:** (JS) Removed the deprecated v0.5.0 backwards-compatibility surface. Removed: the global `initializeClient()` / `close()` functions and the `ClientOptions` type; the deprecated static factories `App.lookup`, `Function_.lookup`, `Cls.lookup`, `Queue.lookup` / `Queue.ephemeral` / `Queue.delete`, `Volume.fromName` / `Volume.ephemeral`, `Secret.fromName` / `Secret.fromObject`, `Sandbox.fromId` / `Sandbox.fromName` / `Sandbox.list`, `Image.fromId` / `Image.fromRegistry` / `Image.fromAwsEcr` / `Image.fromGcpArtifactRegistry` / `Image.delete`, `Proxy.fromName`, and `FunctionCall.fromId`. the instance shims `app.createSandbox`, `app.imageFromRegistry` / `imageFromAwsEcr` / `imageFromGcpArtifactRegistry`, the public `CloudBucketMount` constructor, and the deprecated `LookupOptions` / `DeleteOptions` / `EphemeralOptions` type aliases. See [`MIGRATION-GUIDE.md`](./MIGRATION-GUIDE.md).
-- **Breaking:** Removed the deprecated `Volume.ReadOnly` / `Volume.IsReadOnly` (Go) and `volume.readOnly` / `volume.isReadOnly` (JS). Use `WithMountOptions(&VolumeMountOptions{ReadOnly: &t})` / `withMountOptions({ readOnly: true })` instead.
-- **Breaking:** (Go) `Sandbox.Filesystem` is now a field rather than a method. Migrate `sb.Filesystem().ReadText(...)` to `sb.Filesystem.ReadText(...)`.
-- (Go) `Sandbox.Exec` now rejects a relative `Workdir` client-side with `InvalidError`.
-- Added an **experimental** Sandbox sidecar API in the JS and Go SDKs via `sandbox.ExperimentalSidecars` (Go) / `sandbox.experimentalSidecars` (JS), for managing additional named containers that run alongside the Sandbox's main container. The API is subject to change.
-- `Sandbox.exec` (JS) / `Sandbox.Exec` (Go) now rejects a relative `Workdir` client-side with `InvalidError`. In JS, an empty-string `workdir` is also rejected (pass `undefined` to use the image default).
-- (Go) `Sandbox.Create` and `Sandbox.Exec` now return an `InvalidError` if any `Secrets` entry is nil.
-- **Breaking:** (JS) Removed the deprecated `cidrAllowlist` parameter from `sandboxes.create`. Use `outboundCidrAllowlist` instead.
-- Added retry logic with exponential backoff for blob uploads and downloads in both Go and JS SDKs, improving resilience to transient HTTP errors (e.g., 502 Bad Gateway).
-- Fixed a bug in Go where `blobDownload` would silently treat HTTP error response bodies as valid blob data instead of failing.
-- Fixed a bug where adding Dockerfile commands to an Image loaded with `Image.FromID` (Go) / `Image.fromId` (JS) could fail to use the resolved Image as the base.
-- **Breaking:** `Sandbox.SnapshotFilesystem` (Go) / `Sandbox.snapshotFilesystem` (JS) no longer takes a positional `timeout` / `timeoutMs` argument. The timeout now lives on the params struct as `Timeout time.Duration` (Go) / `timeoutMs?: number` (JS), bringing the method to parity with `Sandbox.SnapshotDirectory`. Migrate `sb.SnapshotFilesystem(ctx, 30*time.Second, params)` to `sb.SnapshotFilesystem(ctx, &SandboxSnapshotFilesystemParams{Timeout: 30*time.Second, ...})`, and `sb.snapshotFilesystem(30000, params)` to `sb.snapshotFilesystem({ timeoutMs: 30000, ...params })`.
-- **Breaking:** `Sandbox.FromID` (Go) / `Sandbox.fromId` (JS) no longer checks if the sandbox ID exists. You can run `Poll` (Go) or `poll` (JS) to get the status of your sandbox.
-- `Sandbox.SnapshotFilesystem` (Go) / `Sandbox.snapshotFilesystem` (JS) and `Sandbox.SnapshotDirectory` (Go) / `Sandbox.snapshotDirectory` (JS) now accept an explicit `TTL` (Go, a `time.Duration`) / `ttlMs` (JS, in milliseconds) field on their params struct, controlling how long the resulting Image is retained. Both methods default to 30 days. This is a change of default for `snapshotFilesystem` which previously kept Images indefinitely. Pass `TTL: modal.NoExpiryTTL` (Go) or `ttlMs: null` (JS) to opt out of expiry.
-- `Sandbox.SnapshotDirectory` (Go) / `Sandbox.snapshotDirectory` (JS) now also accepts a `Timeout` (Go) / `timeoutMs` (JS) field on its params struct (default 55 s), bringing it to parity with `snapshotFilesystem`. If the snapshot does not return within that window, a `TimeoutError` is raised. The timeout can be set arbitrarily high to preserve the old behavior of not timing out.
+No unreleased changes.
 
-- (Go) All public methods now end with a `*XxxParams` pointer argument, enabling
-  forward-compatible options without future signature churn. Pass `nil` to accept
+## js/v0.8.0, go/v0.8.0
+
+This release primarily contains a number of breaking changes as we continue working towards 1.0 in the JS and Go SDKs.
+
+- Added support for named Images, akin to a Modal-native Image registry, decoupling Image builds from App deployment or Sandbox creation:
+  - (Go) `Image.Publish` and `Image.FromName`
+  - (JS) `Image.publish` and  `Image.fromName`
+- Added support for restricting the *domains* that processes inside of a Sandbox can connect to:
+  - (Go) `OutboundDomainAllowlist` in `SandboxCreateParams`
+  - (JS) `outboundDomainAllowlist` in `Sandbox.create`
+- Added support for dynamic configuration of Functions:
+  - (Go) `Function.WithOptions`, `Function.WithConcurrency`, `Function.WithBatching`, `Function.Instance`
+  - (JS) `Function_.withOptions`, `Function_.withConcurrency`, `Function_.withBatching`, `Function_.instance`
+- Improved reliability when uploading or downloading large data payloads for Function calls.
+- Fixed a bug where adding Dockerfile commands to an Image loaded with `Image.FromID` (Go) / `Image.fromId` (JS) could fail to use the resolved Image as the base.
+- `Sandbox.exec` (JS) / `Sandbox.Exec` (Go) now reject a relative `Workdir` client-side with `InvalidError`. In JS, an empty-string `workdir` is also rejected (pass `undefined` to use the image default).
+- (Go) `Sandbox.Create` and `Sandbox.Exec` now return an `InvalidError` if any `Secrets` entry is nil.
+- **Breaking:** The Go and JS SDKs now read the [Image Builder Version](https://modal.com/docs/guide/images#image-builder-updates) from your [Modal workspace settings](https://modal.com/settings/image-config), like the Python SDK. Previously, the Go and JS SDKs were hardcoded to use version `2024.10`. If your workspace configuration uses a different version, your Images will rebuild once (then be cached as usual), so beware that the first run after upgrading may take longer than usual. Note that version `2025.06` has a number of improvements that are specifically oriented towards Sandbox workflows. Accordingly, the fixed `ModalClient.imageBuilderVersion` (JS) attribute has been removed in favor of `ModalClient.getImageBuilderVersion`.
+- **Breaking:** `Sandbox.SnapshotFilesystem` (Go) / `Sandbox.snapshotFilesystem` (JS) no longer take a positional `timeout` / `timeoutMs` argument. The timeout now lives on the params structs as `Timeout time.Duration` (Go) / `timeoutMs?: number` (JS), bringing the methods to parity with `Sandbox.SnapshotDirectory`. Migrate `sb.SnapshotFilesystem(ctx, 30*time.Second, params)` to `sb.SnapshotFilesystem(ctx, &SandboxSnapshotFilesystemParams{Timeout: 30*time.Second, ...})`, and `sb.snapshotFilesystem(30000, params)` to `sb.snapshotFilesystem({ timeoutMs: 30000, ...params })`.
+- **Breaking:** `Sandbox.SnapshotFilesystem` (Go) / `Sandbox.snapshotFilesystem` (JS) and `Sandbox.SnapshotDirectory` (Go) / `Sandbox.snapshotDirectory` (JS) now accept an explicit `TTL` (Go, a `time.Duration`) / `ttlMs` (JS, in milliseconds) field on their params struct, controlling how long the resulting Image is retained. Both methods default to 30 days. This is a change of default for `snapshotFilesystem` which previously kept Images indefinitely. Pass `TTL: modal.NoExpiryTTL` (Go) or `ttlMs: null` (JS) to opt out of expiry.
+- **Breaking:** `Sandbox.SnapshotDirectory` (Go) / `Sandbox.snapshotDirectory` (JS) now also have a `Timeout` (Go) / `timeoutMs` (JS) field on their params structs with a default of 55s, which brings them to parity with filesystem snapshots. If the snapshot does not return within that window, a `TimeoutError` is raised. The timeout can be set arbitrarily high to preserve the old behavior of not timing out.
+- **Breaking:** (Go) `Sandbox.Filesystem` is now a field rather than a method. Migrate `sb.Filesystem().ReadText(...)` to `sb.Filesystem.ReadText(...)`.
+- **Breaking:** `Sandbox.FromID` (Go) / `Sandbox.fromId` (JS) no longer checks if the sandbox ID exists. You can run `Poll` (Go) or `poll` (JS) to get the status of your sandbox.
+- **Breaking:** Removed the deprecated low-level file-handle API: `Sandbox.Open` / `SandboxFile` (Go), and `sandbox.open` / `SandboxFile` (JS). Use the Sandbox Filesystem API instead: `sandbox.Filesystem()` (Go) / `sandbox.filesystem` (JS).
+- **Breaking:** Removed the deprecated `Volume.ReadOnly` / `Volume.IsReadOnly` (Go) and `volume.readOnly` / `volume.isReadOnly` (JS). Use `WithMountOptions(&VolumeMountOptions{ReadOnly: &t})` / `withMountOptions({ readOnly: true })` instead.
+- **Breaking:** (JS) Removed the deprecated `cidrAllowlist` parameter from `sandboxes.create`. Use `outboundCidrAllowlist` instead.
+- **Breaking:** (JS) Removed the entire deprecated v0.5.0 backwards-compatibility surface: the global `initializeClient()` / `close()` functions and the `ClientOptions` type; the deprecated static factories `App.lookup`, `Function_.lookup`, `Cls.lookup`, `Queue.lookup` / `Queue.ephemeral` / `Queue.delete`, `Volume.fromName` / `Volume.ephemeral`, `Secret.fromName` / `Secret.fromObject`, `Sandbox.fromId` / `Sandbox.fromName` / `Sandbox.list`, `Image.fromId` / `Image.fromRegistry` / `Image.fromAwsEcr` / `Image.fromGcpArtifactRegistry` / `Image.delete`, `Proxy.fromName`, and `FunctionCall.fromId`. the instance shims `app.createSandbox`, `app.imageFromRegistry` / `imageFromAwsEcr` / `imageFromGcpArtifactRegistry`, the public `CloudBucketMount` constructor, and the deprecated `LookupOptions` / `DeleteOptions` / `EphemeralOptions` type aliases. See [`MIGRATION-GUIDE.md`](./MIGRATION-GUIDE.md).
+- **Breaking:** (Go) All public methods now end with a `*XxxParams` pointer argument, enabling forward-compatibility for future options without additional signature churn. Pass `nil` to accept
   defaults. Affected methods:
   - `FunctionCall.FromID` → `FromID(ctx, id, *FunctionCallFromIDParams)`
   - `Image.FromID` → `FromID(ctx, id, *ImageFromIDParams)`
@@ -46,12 +56,6 @@ Both client libraries are pre-1.0, and they have separate versioning.
   - `Sandbox.Poll` → `Poll(ctx, *SandboxPollParams)`
   - `Sandbox.SetTags` → `SetTags(ctx, tags, *SandboxSetTagsParams)`
   - `Sandbox.GetTags` → `GetTags(ctx, *SandboxGetTagsParams)`
-
-- **Breaking:** The Go/JS SDK now read the [Image Builder Version](https://modal.com/docs/guide/images#image-builder-updates) from your Modal account settings, like the Python SDK (see Image Config in Settings in the web UI). Previously they used version `2024.10`. If your account version is newer, your Images will rebuild once (then be cached as usual), so beware that the first run after upgrading may take longer than usual.
-- **Breaking:** `ModalClient.imageBuilderVersion` (JS) was removed in favor of `ModalClient.getImageBuilderVersion`.
-- Added dynamic function configuration:
-  - (Go) `Function.WithOptions`, `Function.WithConcurrency`, `Function.WithBatching`, `Function.Instance`
-  - (JS) `Function_.withOptions`, `Function_.withConcurrency`, `Function_.withBatching`, `Function_.instance`
 
 ## js/v0.7.6, go/v0.7.6
 
