@@ -83,14 +83,12 @@ class _Server:
     # ============ Live Methods ============
 
     @live_method
-    async def get_urls(self) -> dict[str, str] | None:
-        def _extract_region_from_url(url: str) -> str:
-            return url.split(".")[-3].removeprefix("modal-")
-
-        return {
-            _extract_region_from_url(url): url
-            for url in await self._get_service_function()._experimental_get_flash_urls() or []
-        }
+    async def get_url(self) -> str | None:
+        urls = await self._get_service_function()._experimental_get_flash_urls()
+        # Return the first URL if it exists. Servers should only have one URL
+        # since they only have one region.
+        url = urls[0] if urls else None
+        return url
 
     @live_method
     async def update_autoscaler(
