@@ -4,7 +4,7 @@ Both client libraries are pre-1.0, and they have separate versioning.
 
 ## Unreleased
 
-No unreleased changes.
+- (Go, JS) `Sandbox.CreateConnectToken` (Go) / `Sandbox.createConnectToken` (JS) now accept an optional `Port` / `port` parameter on their params struct, controlling which container port requests are routed to when using the token. Defaults to 8080.
 
 ## js/v0.8.0, go/v0.8.0
 

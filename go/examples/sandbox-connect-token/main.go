@@ -25,9 +25,10 @@ func main() {
 	// Create a Sandbox with Python's built-in HTTP server
 	image := mc.Images.FromRegistry("python:3.12-alpine", nil)
 
-	// To use Sandbox Connect Tokens, the server must listen on port 8080.
+	// Connect Tokens route requests to port 8080 by default.
+	// Pass `Port` to route to a different container port.
 	sb, err := mc.Sandboxes.Create(ctx, app, image, &modal.SandboxCreateParams{
-		Command: []string{"python3", "-m", "http.server", "8080"},
+		Command: []string{"python3", "-m", "http.server", "8000"},
 	})
 	if err != nil {
 		log.Fatalf("Failed to create Sandbox: %v", err)
@@ -38,7 +39,7 @@ func main() {
 		}
 	}()
 
-	creds, err := sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{UserMetadata: "abc"})
+	creds, err := sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{UserMetadata: "abc", Port: 8000})
 	if err != nil {
 		log.Fatalf("Failed to create connect token: %v", err)
 	}

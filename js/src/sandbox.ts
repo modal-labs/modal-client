@@ -892,7 +892,7 @@ export type SandboxExecParams = {
   pty?: boolean;
 };
 
-/** Optional parameters for {@link Sandbox#createConnectToken Sandbox.createConnectToken()}. */
+/** Optional parameters for {@link Sandbox#terminate Sandbox.terminate()}. */
 export type SandboxTerminateParams = {
   /** If true, wait for the Sandbox to finish and return the exit code. */
   wait?: boolean;
@@ -930,9 +930,12 @@ export type SandboxSnapshotDirectoryParams = {
   ttlMs?: number | null;
 };
 
+/** Optional parameters for {@link Sandbox#createConnectToken Sandbox.createConnectToken()}. */
 export type SandboxCreateConnectTokenParams = {
   /** Optional user-provided metadata string that will be added to the headers by the proxy when forwarding requests to the Sandbox. */
   userMetadata?: string;
+  /** Container port that requests are routed to when using this token. Defaults to 8080. */
+  port?: number;
 };
 
 /** Credentials returned by {@link Sandbox#createConnectToken Sandbox.createConnectToken()}. */
@@ -1458,9 +1461,16 @@ export class Sandbox {
   ): Promise<SandboxCreateConnectCredentials> {
     this.#ensureAttached();
     this.#ensureV1("createConnectToken");
+    const port = params?.port ?? 8080;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new InvalidError(
+        `createConnectToken() expects \`port\` in [1, 65535], got ${port}`,
+      );
+    }
     const resp = await this.#client.cpClient.sandboxCreateConnectToken({
       sandboxId: this.sandboxId,
       userMetadata: params?.userMetadata,
+      port,
     });
     return { url: resp.url, token: resp.token };
   }

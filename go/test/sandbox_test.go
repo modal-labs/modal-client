@@ -905,6 +905,79 @@ func TestConnectToken(t *testing.T) {
 	g.Expect(creds.URL).ShouldNot(gomega.BeEmpty())
 }
 
+func TestCreateConnectTokenSendsPort(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(mock, "SandboxCreateConnectToken",
+		func(req *pb.SandboxCreateConnectTokenRequest) (*pb.SandboxCreateConnectTokenResponse, error) {
+			g.Expect(req.GetSandboxId()).To(gomega.Equal(validV1SandboxID))
+			g.Expect(req.HasPort()).To(gomega.BeTrue())
+			g.Expect(req.GetPort()).To(gomega.Equal(uint32(9000)))
+			return pb.SandboxCreateConnectTokenResponse_builder{
+				Token: "token-9000",
+			}.Build(), nil
+		})
+
+	sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	creds, err := sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{Port: 9000})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(creds.Token).To(gomega.Equal("token-9000"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestCreateConnectTokenDefaultsTo8080(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(mock, "SandboxCreateConnectToken",
+		func(req *pb.SandboxCreateConnectTokenRequest) (*pb.SandboxCreateConnectTokenResponse, error) {
+			g.Expect(req.HasPort()).To(gomega.BeTrue())
+			g.Expect(req.GetPort()).To(gomega.Equal(uint32(8080)))
+			return pb.SandboxCreateConnectTokenResponse_builder{
+				Token: "token",
+			}.Build(), nil
+		})
+
+	sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	creds, err := sb.CreateConnectToken(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(creds.Token).To(gomega.Equal("token"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestCreateConnectTokenRejectsInvalidPort(t *testing.T) {
+	t.Parallel()
+
+	for _, port := range []int{-1, 65536} {
+		t.Run(fmt.Sprintf("port=%d", port), func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			ctx := t.Context()
+			mock := newGRPCMockClient(t)
+
+			sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID, nil)
+			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+			_, err = sb.CreateConnectToken(ctx, &modal.SandboxCreateConnectTokenParams{Port: port})
+			g.Expect(err).Should(gomega.HaveOccurred())
+			g.Expect(err.Error()).To(gomega.ContainSubstring("expects Port in [1, 65535]"))
+
+			g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+		})
+	}
+}
+
 func TestSandboxInvalidTimeouts(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

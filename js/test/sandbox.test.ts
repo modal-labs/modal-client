@@ -884,6 +884,51 @@ test("ConnectToken", async () => {
   expect(creds.url).toBeTruthy();
 });
 
+test("createConnectToken sends port", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxCreateConnectToken", (req: any) => {
+    expect(req.sandboxId).toBe(V1_SANDBOX_ID);
+    expect(req.port).toBe(9000);
+    return { token: "token-9000" };
+  });
+
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+  const creds = await sb.createConnectToken({ port: 9000 });
+  expect(creds.token).toBe("token-9000");
+
+  mock.assertExhausted();
+});
+
+test("createConnectToken defaults to port 8080", async () => {
+  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+  mock.handleUnary("/SandboxCreateConnectToken", (req: any) => {
+    expect(req.port).toBe(8080);
+    return { token: "token" };
+  });
+
+  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+  const creds = await sb.createConnectToken();
+  expect(creds.token).toBe("token");
+
+  mock.assertExhausted();
+});
+
+test.each([0, -1, 65536, 8080.5, NaN])(
+  "createConnectToken rejects invalid port %s",
+  async (port) => {
+    const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+
+    const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
+    await expect(sb.createConnectToken({ port })).rejects.toThrow(
+      "expects `port` in [1, 65535]",
+    );
+
+    mock.assertExhausted();
+  },
+);
+
 test("buildSandboxCreateRequestProto_defaults", async () => {
   const req = await buildSandboxCreateRequestProto("app-123", "img-456");
   const def = req.definition!;

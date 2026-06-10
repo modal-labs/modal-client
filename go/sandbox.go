@@ -1033,6 +1033,8 @@ func (sb *Sandbox) execInternal(ctx context.Context, command []string, params *S
 type SandboxCreateConnectTokenParams struct {
 	// Optional user-provided metadata string that will be added to the headers by the proxy when forwarding requests to the Sandbox.
 	UserMetadata string
+	// Container port that requests are routed to when using this token. Defaults to 8080.
+	Port int
 }
 
 // SandboxCreateConnectCredentials contains the URL and token for connecting to a Sandbox.
@@ -1053,9 +1055,17 @@ func (sb *Sandbox) CreateConnectToken(ctx context.Context, params *SandboxCreate
 	if params == nil {
 		params = &SandboxCreateConnectTokenParams{}
 	}
+	if params.Port < 0 || params.Port > 65535 {
+		return nil, InvalidError{Exception: fmt.Sprintf("CreateConnectToken expects Port in [1, 65535], got %d", params.Port)}
+	}
+	if params.Port == 0 {
+		params.Port = 8080
+	}
+	port := uint32(params.Port)
 	resp, err := sb.client.cpClient.SandboxCreateConnectToken(ctx, pb.SandboxCreateConnectTokenRequest_builder{
 		SandboxId:    sb.SandboxID,
 		UserMetadata: params.UserMetadata,
+		Port:         &port,
 	}.Build())
 	if err != nil {
 		return nil, err

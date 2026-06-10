@@ -6,14 +6,15 @@ const app = await modal.apps.fromName("libmodal-example", {
   createIfMissing: true,
 });
 
-// Create a Sandbox with Python's built-in HTTP server
+// Create a Sandbox with Python's built-in HTTP server.
 const image = modal.images.fromRegistry("python:3.12-alpine");
-// To use Sandbox Connect Tokens, the server must listen on port 8080.
+// Connect Tokens route requests to port 8080 by default.
+// Pass `port` to route to a different container port.
 const sb = await modal.sandboxes.create(app, image, {
-  command: ["python3", "-m", "http.server", "8080"],
+  command: ["python3", "-m", "http.server", "8000"],
 });
 
-const creds = await sb.createConnectToken({ userMetadata: "abc" });
+const creds = await sb.createConnectToken({ userMetadata: "abc", port: 8000 });
 console.log(`Got url: ${creds.url}, credentials: ${creds.token}`);
 
 console.log("\nConnecting to HTTP server...");
