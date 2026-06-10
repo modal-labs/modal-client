@@ -56,6 +56,15 @@ message SandboxStdioReadV2Response {
   uint64 starting_offset = 2;
 }
 
+message SandboxWaitUntilReadyRequest {
+  string task_id = 1;
+  float timeout = 2;
+}
+
+message SandboxWaitUntilReadyResponse {
+  double ready_at = 1;
+}
+
 message TaskContainerCreateRequest {
   string task_id = 1;
   // Logical container name.
@@ -325,6 +334,7 @@ message TaskUnmountDirectoryRequest {
 service TaskCommandRouter {
   rpc SandboxStdinWriteV2(SandboxStdinWriteV2Request) returns (SandboxStdinWriteV2Response);
   rpc SandboxStdioReadV2(SandboxStdioReadV2Request) returns (stream SandboxStdioReadV2Response);
+  rpc SandboxWaitUntilReady(SandboxWaitUntilReadyRequest) returns (SandboxWaitUntilReadyResponse);
   // Create an additional container for a task.
   rpc TaskContainerCreate(TaskContainerCreateRequest) returns (TaskContainerCreateResponse);
   // Get the latest container associated with a logical name.

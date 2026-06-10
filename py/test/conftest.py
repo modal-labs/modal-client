@@ -101,6 +101,10 @@ class MockTaskCommandRouterServicer(task_command_router_grpc.TaskCommandRouterBa
         await stream.recv_message()
         raise GRPCError(Status.UNIMPLEMENTED, "SandboxStdioReadV2 not implemented in mock task command router")
 
+    async def SandboxWaitUntilReady(self, stream) -> None:
+        await stream.recv_message()
+        raise GRPCError(Status.UNIMPLEMENTED, "SandboxWaitUntilReady not implemented in mock task command router")
+
     async def TaskExecStart(self, stream) -> None:
         request: sr_pb2.TaskExecStartRequest = await stream.recv_message()
         # Mimic task_command_router behavior - we should remove this proto variant though.
