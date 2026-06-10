@@ -72,6 +72,10 @@ class _Server:
     def _get_service_function(self) -> _Function:
         return self._service_function
 
+    @property
+    def object_id(self) -> str:
+        return self._service_function.object_id
+
     @staticmethod
     def _extract_user_cls(wrapped_user_cls: "type | _PartialFunction") -> type:
         if isinstance(wrapped_user_cls, _PartialFunction):

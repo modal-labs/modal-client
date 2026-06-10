@@ -56,6 +56,15 @@ def test_basic_server_registration(client, servicer):
         assert http_config.port == 8000
 
 
+def test_server_object_id_matches_service_function(client, servicer):
+    """Test that Server.object_id returns the underlying service function's object_id."""
+    with server_app.run(client=client):
+        assert isinstance(BasicServer, Server)
+        service_function = BasicServer._get_service_function()
+        assert BasicServer.object_id == service_function.object_id
+        assert BasicServer.object_id.startswith("fu-")
+
+
 def test_server_with_gpu_and_autoscaler_settings(client, servicer):
     """Test that @app._experimental_server() accepts GPU configuration and autoscaler settings."""
     app = modal.App("server-gpu-test", include_source=False)
@@ -636,6 +645,17 @@ def test_server_from_name(client, servicer):
     assert not my_server._get_service_function().is_hydrated
     url = my_server.get_url()
     assert url == "https://modal-labs--basicserver.modal-us-east.modal.direct"
+
+
+def test_server_from_name_object_id_matches_created(client, servicer):
+    """Test that a Server resolved via from_name() has the same object_id as the deployed Server."""
+    server_app.deploy(client=client)
+    assert isinstance(BasicServer, Server)
+    created_object_id = BasicServer.object_id
+
+    my_server = Server.from_name("server-test-app", "BasicServer", client=client)
+    my_server.hydrate(client=client)
+    assert my_server.object_id == created_object_id
 
 
 def test_server_from_name_failed_lookup_error(client, servicer):
