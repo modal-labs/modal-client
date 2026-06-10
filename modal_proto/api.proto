@@ -803,7 +803,7 @@ message AutoscalerSettings {
   // Target concurrent inputs per replica for Flash autoscaling.
   optional uint32 target_concurrency = 7;
   // Maximum number of containers that can be scaled down per minute for Flash autoscaling.
-  optional uint32 max_scaledowns_per_minute = 8;
+  optional uint32 scaledown_rate_limit = 8;
 }
 
 // Used for flash autoscaling
