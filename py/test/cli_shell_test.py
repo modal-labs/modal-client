@@ -201,15 +201,14 @@ def test_passed_forbidden_args_with_predicate():
 
 
 def test_parse_experimental_options():
-    assert _parse_experimental_options(["sparkle_mode=true", "waffle_fs=false", "foo=1", "bar=0"]) == {
-        "sparkle_mode": True,
-        "waffle_fs": False,
-        "foo": True,
-        "bar": False,
+    assert _parse_experimental_options(["sparkle_mode=true", "waffle_fs=false", "foo=bar"]) == {
+        "sparkle_mode": "true",
+        "waffle_fs": "false",
+        "foo": "bar",
     }
 
 
-@pytest.mark.parametrize("option", ["sparkle_mode", "=true", "foo=maybe"])
+@pytest.mark.parametrize("option", ["sparkle_mode", "=true"])
 def test_parse_experimental_options_rejects_invalid_values(option):
     with pytest.raises(click.BadParameter):
         _parse_experimental_options([option])
@@ -344,7 +343,7 @@ def test_shell_experimental_options_with_function_ref(servicer, set_env_client, 
     )
 
     call = mock_shell_routing["start_from_function_spec"].call_args
-    assert call.args[-1] == {"sparkle_mode": True, "waffle_fs": False}
+    assert call.args[-1] == {"sparkle_mode": "true", "waffle_fs": "false"}
 
 
 @skip_windows("modal shell is not supported on Windows.")
@@ -352,7 +351,7 @@ def test_shell_experimental_options_with_image(servicer, set_env_client, mock_sh
     run_cli_command(["shell", "--experimental-option", "sparkle_mode=true"])
 
     call = mock_shell_routing["start_from_image"].call_args
-    assert call.args[-1] == {"sparkle_mode": True}
+    assert call.args[-1] == {"sparkle_mode": "true"}
 
 
 @skip_windows("modal shell is not supported on Windows.")

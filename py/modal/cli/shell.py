@@ -60,20 +60,13 @@ def _passed_forbidden_args(
     return passed_forbidden
 
 
-def _parse_experimental_options(options: Iterable[str]) -> dict[str, bool]:
-    parsed: dict[str, bool] = {}
+def _parse_experimental_options(options: Iterable[str]) -> dict[str, str]:
+    parsed: dict[str, str] = {}
     for option in options:
         key, sep, raw_value = option.partition("=")
         if not key or not sep:
             raise click.BadParameter("must use KEY=VALUE")
-
-        value = raw_value.lower()
-        if value in {"1", "true"}:
-            parsed[key] = True
-        elif value in {"0", "false"}:
-            parsed[key] = False
-        else:
-            raise click.BadParameter("BOOL must be one of true, false, 1, or 0")
+        parsed[key] = raw_value
     return parsed
 
 
@@ -200,7 +193,7 @@ def _start_shell_from_function_spec(
     timeout: int,
     function_spec: _FunctionSpec,
     pty: bool,
-    experimental_options: dict[str, bool],
+    experimental_options: dict[str, str],
 ) -> None:
     interactive_shell(
         app,
@@ -238,7 +231,7 @@ def _start_shell_from_image(
     cloud: str | None,
     region: str | None,
     pty: bool,
-    experimental_options: dict[str, bool],
+    experimental_options: dict[str, str],
 ) -> None:
     volumes = {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
     secrets = [Secret.from_name(s) for s in secret]
