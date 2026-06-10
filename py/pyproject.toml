@@ -72,11 +72,7 @@ dev = [
     "synchronicity[compile]~=0.12.3",
     "python-json-logger==2.0.7",
     "build~=1.3.0",
-    # ddtrace 2.18.1 only ships wheels for Python <=3.12 and its sdist won't
-    # build on 3.13+ (Cython sources reference removed CPython API symbols).
-    # internal_common pins 2.18.1, so we match for compatible Pythons; on
-    # 3.13+ ddtrace is simply not a client dev dep until a coordinated bump.
-    "ddtrace==2.18.1; python_version<'3.13'",
+    "ddtrace==4.8.4",
 
     "mypy-protobuf",
     "grpcio-tools",
