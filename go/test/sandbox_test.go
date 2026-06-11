@@ -1083,7 +1083,7 @@ func TestSandboxExperimentalDockerMock(t *testing.T) {
 	grpcmock.HandleUnary(
 		mock, "SandboxCreate",
 		func(req *pb.SandboxCreateRequest) (*pb.SandboxCreateResponse, error) {
-			g.Expect(req.GetDefinition().GetExperimentalOptions()).Should(gomega.Equal(expectedOptoins))
+			g.Expect(req.GetDefinition().GetExperimentalOptions()).Should(gomega.Equal(expectedOptoins)) //nolint:staticcheck // testing deprecated field
 			return pb.SandboxCreateResponse_builder{
 				SandboxId: validV1SandboxID,
 			}.Build(), nil
