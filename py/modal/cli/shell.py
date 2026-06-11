@@ -78,7 +78,7 @@ def _is_valid_modal_id(ref: str, prefix: str) -> bool:
 def _parse_sandbox_container_ref(ref: str) -> tuple[str, str | None]:
     """Parse a sandbox:container reference into (sandbox_id, container_name).
 
-    Supports the pattern `sb-xyz:container_name` for accessing sandbox containers.
+    Supports the pattern `sb-xyz:container_name` for accessing sandbox sidecars.
     Returns (ref, None) if no container name is specified.
     """
     if _is_valid_modal_id(ref, "sb-"):
