@@ -75,6 +75,8 @@ message TaskContainerCreateRequest {
   string workdir = 7;
   // Secret IDs to inject into the container as environment variables.
   repeated string secret_ids = 8;
+  // Volumes to mount into the container.
+  repeated modal.client.VolumeMount volume_mounts = 9;
 }
 
 message TaskContainerCreateResponse {
