@@ -810,6 +810,24 @@ def test_server_rejects_negative_target_concurrency():
             pass
 
 
+def test_server_rejects_negative_exit_grace_period():
+    with pytest.raises(InvalidError, match="must be non-negative"):
+        app = modal.App("server-negative-exit-grace-period-test", include_source=False)
+
+        @app._experimental_server(port=8000, routing_region="us-east", exit_grace_period=-1, serialized=True)
+        class NegativeExitGracePeriodServer:
+            pass
+
+
+def test_server_rejects_too_large_exit_grace_period():
+    with pytest.raises(InvalidError, match="must not exceed 3600 seconds"):
+        app = modal.App("server-large-exit-grace-period-test", include_source=False)
+
+        @app._experimental_server(port=8000, routing_region="us-east", exit_grace_period=3601, serialized=True)
+        class LargeExitGracePeriodServer:
+            pass
+
+
 def test_server_with_volumes(client, servicer):
     """Test that servers can mount volumes."""
     app = modal.App("server-volumes-test", include_source=False)
