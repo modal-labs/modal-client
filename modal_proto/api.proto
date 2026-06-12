@@ -4171,6 +4171,7 @@ message WorkspaceBillingReportItem {
   google.protobuf.Timestamp interval = 4;
   string cost = 5;
   map<string, string> tags = 6;
+  map<string, double> cost_by_resource = 7;
 }
 
 message WorkspaceBillingReportRequest {
@@ -4179,6 +4180,9 @@ message WorkspaceBillingReportRequest {
   google.protobuf.Timestamp end_timestamp = 2;
   string resolution = 3;  // e.g. 'd' or 'h'; server defines what we accept
   repeated string tag_names = 4;
+
+  repeated string environment_ids = 5;
+  repeated string app_ids = 6;
 }
 
 message WorkspaceDashboardUrlRequest {
