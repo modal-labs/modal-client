@@ -46776,6 +46776,7 @@ type TaskClusterHelloRequest struct {
 	state                  protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_TaskId      string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
 	xxx_hidden_ContainerIp string                 `protobuf:"bytes,2,opt,name=container_ip,json=containerIp,proto3"`
+	xxx_hidden_ImexHostIp  string                 `protobuf:"bytes,3,opt,name=imex_host_ip,json=imexHostIp,proto3"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -46819,6 +46820,13 @@ func (x *TaskClusterHelloRequest) GetContainerIp() string {
 	return ""
 }
 
+func (x *TaskClusterHelloRequest) GetImexHostIp() string {
+	if x != nil {
+		return x.xxx_hidden_ImexHostIp
+	}
+	return ""
+}
+
 func (x *TaskClusterHelloRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -46827,11 +46835,16 @@ func (x *TaskClusterHelloRequest) SetContainerIp(v string) {
 	x.xxx_hidden_ContainerIp = v
 }
 
+func (x *TaskClusterHelloRequest) SetImexHostIp(v string) {
+	x.xxx_hidden_ImexHostIp = v
+}
+
 type TaskClusterHelloRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	TaskId      string
 	ContainerIp string
+	ImexHostIp  string
 }
 
 func (b0 TaskClusterHelloRequest_builder) Build() *TaskClusterHelloRequest {
@@ -46840,6 +46853,7 @@ func (b0 TaskClusterHelloRequest_builder) Build() *TaskClusterHelloRequest {
 	_, _ = b, x
 	x.xxx_hidden_TaskId = b.TaskId
 	x.xxx_hidden_ContainerIp = b.ContainerIp
+	x.xxx_hidden_ImexHostIp = b.ImexHostIp
 	return m0
 }
 
@@ -46849,6 +46863,7 @@ type TaskClusterHelloResponse struct {
 	xxx_hidden_ClusterRank      uint32                 `protobuf:"varint,2,opt,name=cluster_rank,json=clusterRank,proto3"`
 	xxx_hidden_ContainerIps     []string               `protobuf:"bytes,3,rep,name=container_ips,json=containerIps,proto3"`
 	xxx_hidden_ContainerIpv4Ips []string               `protobuf:"bytes,4,rep,name=container_ipv4_ips,json=containerIpv4Ips,proto3"`
+	xxx_hidden_ImexPeerIps      []string               `protobuf:"bytes,5,rep,name=imex_peer_ips,json=imexPeerIps,proto3"`
 	unknownFields               protoimpl.UnknownFields
 	sizeCache                   protoimpl.SizeCache
 }
@@ -46906,6 +46921,13 @@ func (x *TaskClusterHelloResponse) GetContainerIpv4Ips() []string {
 	return nil
 }
 
+func (x *TaskClusterHelloResponse) GetImexPeerIps() []string {
+	if x != nil {
+		return x.xxx_hidden_ImexPeerIps
+	}
+	return nil
+}
+
 func (x *TaskClusterHelloResponse) SetClusterId(v string) {
 	x.xxx_hidden_ClusterId = v
 }
@@ -46922,6 +46944,10 @@ func (x *TaskClusterHelloResponse) SetContainerIpv4Ips(v []string) {
 	x.xxx_hidden_ContainerIpv4Ips = v
 }
 
+func (x *TaskClusterHelloResponse) SetImexPeerIps(v []string) {
+	x.xxx_hidden_ImexPeerIps = v
+}
+
 type TaskClusterHelloResponse_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -46930,6 +46956,9 @@ type TaskClusterHelloResponse_builder struct {
 	// All IPv6 addresses in cluster, ordered by cluster rank
 	ContainerIps     []string
 	ContainerIpv4Ips []string
+	// Host IPs of every gang member's nvidia-imex daemon, ordered by cluster rank,
+	// and otherwise absent on non-NVL72 systems
+	ImexPeerIps []string
 }
 
 func (b0 TaskClusterHelloResponse_builder) Build() *TaskClusterHelloResponse {
@@ -46940,6 +46969,7 @@ func (b0 TaskClusterHelloResponse_builder) Build() *TaskClusterHelloResponse {
 	x.xxx_hidden_ClusterRank = b.ClusterRank
 	x.xxx_hidden_ContainerIps = b.ContainerIps
 	x.xxx_hidden_ContainerIpv4Ips = b.ContainerIpv4Ips
+	x.xxx_hidden_ImexPeerIps = b.ImexPeerIps
 	return m0
 }
 
@@ -59959,16 +59989,19 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x12SystemErrorMessage\x12<\n" +
 	"\n" +
 	"error_code\x18\x01 \x01(\x0e2\x1d.modal.client.SystemErrorCodeR\terrorCode\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"U\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"w\n" +
 	"\x17TaskClusterHelloRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12!\n" +
-	"\fcontainer_ip\x18\x02 \x01(\tR\vcontainerIp\"\xaf\x01\n" +
+	"\fcontainer_ip\x18\x02 \x01(\tR\vcontainerIp\x12 \n" +
+	"\fimex_host_ip\x18\x03 \x01(\tR\n" +
+	"imexHostIp\"\xd3\x01\n" +
 	"\x18TaskClusterHelloResponse\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x01 \x01(\tR\tclusterId\x12!\n" +
 	"\fcluster_rank\x18\x02 \x01(\rR\vclusterRank\x12#\n" +
 	"\rcontainer_ips\x18\x03 \x03(\tR\fcontainerIps\x12,\n" +
-	"\x12container_ipv4_ips\x18\x04 \x03(\tR\x10containerIpv4Ips\"8\n" +
+	"\x12container_ipv4_ips\x18\x04 \x03(\tR\x10containerIpv4Ips\x12\"\n" +
+	"\rimex_peer_ips\x18\x05 \x03(\tR\vimexPeerIps\"8\n" +
 	"\x19TaskCurrentInputsResponse\x12\x1b\n" +
 	"\tinput_ids\x18\x01 \x03(\tR\binputIds\"<\n" +
 	"!TaskGetCommandRouterAccessRequest\x12\x17\n" +
