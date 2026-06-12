@@ -661,6 +661,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         min_containers: int | None = None,
         max_containers: int | None = None,
         buffer_containers: int | None = None,
+        scaleup_window: int | None = None,
         scaledown_window: int | None = None,
         max_concurrent_inputs: int | None = None,
         target_concurrent_inputs: int | None = None,
@@ -766,6 +767,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             min_containers=min_containers,
             max_containers=max_containers,
             buffer_containers=buffer_containers,
+            scaleup_window=scaleup_window,
             scaledown_window=scaledown_window,
         )
 
@@ -1157,6 +1159,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         min_containers: int | None = None,
         max_containers: int | None = None,
         buffer_containers: int | None = None,
+        scaleup_window: int | None = None,
         scaledown_window: int | None = None,
         target_concurrency: int | None = None,
     ) -> None:
@@ -1164,6 +1167,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             min_containers=min_containers,
             max_containers=max_containers,
             buffer_containers=buffer_containers,
+            scaleup_window=scaleup_window,
             scaledown_window=scaledown_window,
             target_concurrency=target_concurrency,
         )

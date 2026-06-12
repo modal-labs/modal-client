@@ -101,6 +101,7 @@ class _Server:
         min_containers: int | None = None,
         max_containers: int | None = None,
         buffer_containers: int | None = None,
+        scaleup_window: int | None = None,
         scaledown_window: int | None = None,
         target_concurrency: int | None = None,
     ) -> None:
@@ -118,6 +119,9 @@ class _Server:
             # Limit this Server to avoid spinning up more than 5 containers
             server.update_autoscaler(max_containers=5)
 
+            # Require 30 seconds of sustained demand before scaling up
+            server.update_autoscaler(scaleup_window=30)
+
             # Adjust Server autoscaling to target 20 concurrent requests per replica
             server.update_autoscaler(target_concurrency=20)
 
@@ -129,6 +133,7 @@ class _Server:
         return await self._get_service_function()._update_autoscaler(
             min_containers=min_containers,
             max_containers=max_containers,
+            scaleup_window=scaleup_window,
             scaledown_window=scaledown_window,
             buffer_containers=buffer_containers,
             target_concurrency=target_concurrency,

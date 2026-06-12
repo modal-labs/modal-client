@@ -1284,6 +1284,7 @@ class _App:
         min_containers: int | None = None,  # Minimum number of containers to keep warm
         max_containers: int | None = None,  # Maximum number of containers
         buffer_containers: int | None = None,  # Additional idle containers under active load
+        scaleup_window: int | None = None,  # Stabilization window (seconds) of sustained demand before scaling up
         scaledown_window: int | None = None,  # Max idle time before scaling down (seconds)
         proxy: _Proxy | None = None,  # Modal Proxy to use in front of this server
         port: int = 8000,  # Port the HTTP server listens on
@@ -1326,6 +1327,7 @@ class _App:
             min_containers: Minimum number of containers to keep warm.
             max_containers: Maximum number of containers.
             buffer_containers: Additional idle containers under active load.
+            scaleup_window: Stabilization window (seconds) of sustained demand before scaling up, defaults to 1 second.
             scaledown_window: Max idle time before scaling down (seconds).
             proxy: Modal Proxy to use in front of this server.
             port: Port the HTTP server listens on.
@@ -1370,6 +1372,9 @@ class _App:
         if target_concurrency is not None:
             if not isinstance(target_concurrency, int) or target_concurrency < 0:
                 raise InvalidError("The `target_concurrency` argument must be a non-negative integer.")
+
+        if scaleup_window is not None and scaleup_window <= 0:
+            raise InvalidError("`scaleup_window` must be > 0")
 
         http_config = api_pb2.HTTPConfig(
             port=port,
@@ -1420,6 +1425,7 @@ class _App:
                 min_containers=min_containers,
                 max_containers=max_containers,
                 buffer_containers=buffer_containers,
+                scaleup_window=scaleup_window,
                 scaledown_window=scaledown_window,
                 proxy=proxy,
                 retries=None,  # No support for Server level retries
