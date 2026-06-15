@@ -3235,6 +3235,7 @@ message SandboxCreateResponse {
 message SandboxCreateV2Request {
   string app_id = 1;
   Sandbox definition = 2;
+  StringMap ephemeral_secrets = 3;
 }
 
 message SandboxCreateV2Response {
