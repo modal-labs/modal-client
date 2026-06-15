@@ -180,29 +180,66 @@ class _SandboxFilesystem:
                 process = await self._container.exec(_SANDBOX_FS_TOOLS_PATH, make_write_file_command(remote_path))
                 try:
                     while True:
+                        logger.debug(
+                            f"sandbox copy_from_local('{local_path}', '{remote_path}'): reading "
+                            f"{TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE} bytes from {local_path} at offset {total_bytes}"
+                        )
                         # TODO(saltzm): If this fails, the ContainerProcess will remain alive indefinitely since
                         # stdin will remain open. Unfortunately we can't just call write_eof either, since that
                         # would lead to a partially written file being persisted. We should catch exceptions
                         # from this and kill the ContainerProcess when we have a way to do this.
                         chunk = file_obj.read(TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE)
                         if not chunk:
+                            logger.debug(
+                                f"sandbox copy_from_local('{local_path}', '{remote_path}'): read no data from "
+                                f"{local_path}, finished reading file"
+                            )
                             break
                         total_bytes += len(chunk)
+                        logger.debug(
+                            f"sandbox copy_from_local('{local_path}', '{remote_path}'): writing {len(chunk)} bytes "
+                            f"from {local_path} to remote {remote_path}"
+                        )
                         process.stdin.write(chunk)
                         await process.stdin.drain()
+                        logger.debug(
+                            f"sandbox copy_from_local('{local_path}', '{remote_path}'): finished writing "
+                            f"{len(chunk)} bytes from {local_path} to remote {remote_path}"
+                        )
+                    logger.debug(
+                        f"sandbox copy_from_local('{local_path}', '{remote_path}'): writing eof to remote {remote_path}"
+                    )
                     process.stdin.write_eof()
                     await process.stdin.drain()
+                    logger.debug(
+                        f"sandbox copy_from_local('{local_path}', '{remote_path}'): finished writing eof to remote "
+                        f"{remote_path}"
+                    )
                 # When the FS tools binary exits early on an error, the worker
                 # reports the dropped stdin write as ConflictError.
                 except ConflictError:
                     pass
-                stderr, returncode = await asyncio.gather(process.stderr.read(), process.wait())
+
+                async def read_stderr():
+                    stderr = await process.stderr.read()
+                    logger.debug(f"sandbox copy_from_local('{local_path}', '{remote_path}'): finished reading stderr")
+                    return stderr
+
+                async def wait_for_process_completion():
+                    returncode = await process.wait()
+                    logger.debug(
+                        f"sandbox copy_from_local('{local_path}', '{remote_path}'): finished waiting for process "
+                        "completion"
+                    )
+                    return returncode
+
+                stderr, returncode = await asyncio.gather(read_stderr(), wait_for_process_completion())
 
             if returncode != 0:
                 raise_write_file_error(returncode, stderr, remote_path)
 
         dur_s = max(time.monotonic() - t0, 0.001)
-        _log_throughput(f"copy_from_local {local_path} -> {remote_path}", total_bytes, dur_s)
+        _log_throughput(f"copy_from_local('{local_path}', '{remote_path}')", total_bytes, dur_s)
 
     async def copy_to_local(self, remote_path: str, local_path: str | os.PathLike) -> None:
         """Copy a file from the Sandbox to a local path.
