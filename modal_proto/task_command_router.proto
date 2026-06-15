@@ -281,6 +281,15 @@ message TaskMountDirectoryRequest {
   optional bytes customer_supplied_encryption_key = 4;
 }
 
+message TaskSetNetworkAccessRequest {
+  string task_id = 1;
+  // Replaces the task's network access policy. Only ALLOWLIST is currently
+  // supported; open access is expressed as an allow-all allowlist.
+  modal.client.NetworkAccess network_access = 2;
+}
+
+message TaskSetNetworkAccessResponse {}
+
 message TaskSnapshotDirectoryRequest {
   string task_id = 1;
   bytes path = 2;
@@ -365,6 +374,8 @@ service TaskCommandRouter {
   rpc TaskExecWait(TaskExecWaitRequest) returns (TaskExecWaitResponse);
   // Mount an image at a directory in the container.
   rpc TaskMountDirectory(TaskMountDirectoryRequest) returns (google.protobuf.Empty);
+  // Replace the task's outbound network allowlist (domains + CIDRs).
+  rpc TaskSetNetworkAccess(TaskSetNetworkAccessRequest) returns (TaskSetNetworkAccessResponse);
   // Snapshot a directory with a mounted image, including any local changes, into a new image.
   rpc TaskSnapshotDirectory(TaskSnapshotDirectoryRequest) returns (TaskSnapshotDirectoryResponse);
   // Snapshot the full task filesystem into a new image.
