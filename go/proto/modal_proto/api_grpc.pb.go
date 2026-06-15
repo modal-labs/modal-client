@@ -85,10 +85,12 @@ const (
 	ModalClient_EndpointStop_FullMethodName                     = "/modal.client.ModalClient/EndpointStop"
 	ModalClient_EnvironmentCreate_FullMethodName                = "/modal.client.ModalClient/EnvironmentCreate"
 	ModalClient_EnvironmentDelete_FullMethodName                = "/modal.client.ModalClient/EnvironmentDelete"
+	ModalClient_EnvironmentGetBudget_FullMethodName             = "/modal.client.ModalClient/EnvironmentGetBudget"
 	ModalClient_EnvironmentGetManaged_FullMethodName            = "/modal.client.ModalClient/EnvironmentGetManaged"
 	ModalClient_EnvironmentGetOrCreate_FullMethodName           = "/modal.client.ModalClient/EnvironmentGetOrCreate"
 	ModalClient_EnvironmentList_FullMethodName                  = "/modal.client.ModalClient/EnvironmentList"
 	ModalClient_EnvironmentRoleSet_FullMethodName               = "/modal.client.ModalClient/EnvironmentRoleSet"
+	ModalClient_EnvironmentSetBudget_FullMethodName             = "/modal.client.ModalClient/EnvironmentSetBudget"
 	ModalClient_EnvironmentSetManaged_FullMethodName            = "/modal.client.ModalClient/EnvironmentSetManaged"
 	ModalClient_EnvironmentUpdate_FullMethodName                = "/modal.client.ModalClient/EnvironmentUpdate"
 	ModalClient_FlashContainerDeregister_FullMethodName         = "/modal.client.ModalClient/FlashContainerDeregister"
@@ -309,10 +311,12 @@ type ModalClientClient interface {
 	// Environments
 	EnvironmentCreate(ctx context.Context, in *EnvironmentCreateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnvironmentDelete(ctx context.Context, in *EnvironmentDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EnvironmentGetBudget(ctx context.Context, in *EnvironmentGetBudgetRequest, opts ...grpc.CallOption) (*EnvironmentGetBudgetResponse, error)
 	EnvironmentGetManaged(ctx context.Context, in *EnvironmentGetManagedRequest, opts ...grpc.CallOption) (*EnvironmentGetManagedResponse, error)
 	EnvironmentGetOrCreate(ctx context.Context, in *EnvironmentGetOrCreateRequest, opts ...grpc.CallOption) (*EnvironmentGetOrCreateResponse, error)
 	EnvironmentList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*EnvironmentListResponse, error)
 	EnvironmentRoleSet(ctx context.Context, in *EnvironmentRoleSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EnvironmentSetBudget(ctx context.Context, in *EnvironmentSetBudgetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnvironmentSetManaged(ctx context.Context, in *EnvironmentSetManagedRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EnvironmentUpdate(ctx context.Context, in *EnvironmentUpdateRequest, opts ...grpc.CallOption) (*EnvironmentListItem, error)
 	// Modal Flash (experimental)
@@ -1164,6 +1168,16 @@ func (c *modalClientClient) EnvironmentDelete(ctx context.Context, in *Environme
 	return out, nil
 }
 
+func (c *modalClientClient) EnvironmentGetBudget(ctx context.Context, in *EnvironmentGetBudgetRequest, opts ...grpc.CallOption) (*EnvironmentGetBudgetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EnvironmentGetBudgetResponse)
+	err := c.cc.Invoke(ctx, ModalClient_EnvironmentGetBudget_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) EnvironmentGetManaged(ctx context.Context, in *EnvironmentGetManagedRequest, opts ...grpc.CallOption) (*EnvironmentGetManagedResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EnvironmentGetManagedResponse)
@@ -1198,6 +1212,16 @@ func (c *modalClientClient) EnvironmentRoleSet(ctx context.Context, in *Environm
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, ModalClient_EnvironmentRoleSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) EnvironmentSetBudget(ctx context.Context, in *EnvironmentSetBudgetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_EnvironmentSetBudget_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2727,10 +2751,12 @@ type ModalClientServer interface {
 	// Environments
 	EnvironmentCreate(context.Context, *EnvironmentCreateRequest) (*emptypb.Empty, error)
 	EnvironmentDelete(context.Context, *EnvironmentDeleteRequest) (*emptypb.Empty, error)
+	EnvironmentGetBudget(context.Context, *EnvironmentGetBudgetRequest) (*EnvironmentGetBudgetResponse, error)
 	EnvironmentGetManaged(context.Context, *EnvironmentGetManagedRequest) (*EnvironmentGetManagedResponse, error)
 	EnvironmentGetOrCreate(context.Context, *EnvironmentGetOrCreateRequest) (*EnvironmentGetOrCreateResponse, error)
 	EnvironmentList(context.Context, *emptypb.Empty) (*EnvironmentListResponse, error)
 	EnvironmentRoleSet(context.Context, *EnvironmentRoleSetRequest) (*emptypb.Empty, error)
+	EnvironmentSetBudget(context.Context, *EnvironmentSetBudgetRequest) (*emptypb.Empty, error)
 	EnvironmentSetManaged(context.Context, *EnvironmentSetManagedRequest) (*emptypb.Empty, error)
 	EnvironmentUpdate(context.Context, *EnvironmentUpdateRequest) (*EnvironmentListItem, error)
 	// Modal Flash (experimental)
@@ -3091,6 +3117,9 @@ func (UnimplementedModalClientServer) EnvironmentCreate(context.Context, *Enviro
 func (UnimplementedModalClientServer) EnvironmentDelete(context.Context, *EnvironmentDeleteRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnvironmentDelete not implemented")
 }
+func (UnimplementedModalClientServer) EnvironmentGetBudget(context.Context, *EnvironmentGetBudgetRequest) (*EnvironmentGetBudgetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EnvironmentGetBudget not implemented")
+}
 func (UnimplementedModalClientServer) EnvironmentGetManaged(context.Context, *EnvironmentGetManagedRequest) (*EnvironmentGetManagedResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnvironmentGetManaged not implemented")
 }
@@ -3102,6 +3131,9 @@ func (UnimplementedModalClientServer) EnvironmentList(context.Context, *emptypb.
 }
 func (UnimplementedModalClientServer) EnvironmentRoleSet(context.Context, *EnvironmentRoleSetRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnvironmentRoleSet not implemented")
+}
+func (UnimplementedModalClientServer) EnvironmentSetBudget(context.Context, *EnvironmentSetBudgetRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method EnvironmentSetBudget not implemented")
 }
 func (UnimplementedModalClientServer) EnvironmentSetManaged(context.Context, *EnvironmentSetManagedRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnvironmentSetManaged not implemented")
@@ -4677,6 +4709,24 @@ func _ModalClient_EnvironmentDelete_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_EnvironmentGetBudget_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnvironmentGetBudgetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).EnvironmentGetBudget(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_EnvironmentGetBudget_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).EnvironmentGetBudget(ctx, req.(*EnvironmentGetBudgetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_EnvironmentGetManaged_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(EnvironmentGetManagedRequest)
 	if err := dec(in); err != nil {
@@ -4745,6 +4795,24 @@ func _ModalClient_EnvironmentRoleSet_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).EnvironmentRoleSet(ctx, req.(*EnvironmentRoleSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_EnvironmentSetBudget_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnvironmentSetBudgetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).EnvironmentSetBudget(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_EnvironmentSetBudget_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).EnvironmentSetBudget(ctx, req.(*EnvironmentSetBudgetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -7411,6 +7479,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ModalClient_EnvironmentDelete_Handler,
 		},
 		{
+			MethodName: "EnvironmentGetBudget",
+			Handler:    _ModalClient_EnvironmentGetBudget_Handler,
+		},
+		{
 			MethodName: "EnvironmentGetManaged",
 			Handler:    _ModalClient_EnvironmentGetManaged_Handler,
 		},
@@ -7425,6 +7497,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EnvironmentRoleSet",
 			Handler:    _ModalClient_EnvironmentRoleSet_Handler,
+		},
+		{
+			MethodName: "EnvironmentSetBudget",
+			Handler:    _ModalClient_EnvironmentSetBudget_Handler,
 		},
 		{
 			MethodName: "EnvironmentSetManaged",

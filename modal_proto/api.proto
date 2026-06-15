@@ -1504,6 +1504,17 @@ message EnvironmentDeleteRequest {
   string name = 1;
 }
 
+message EnvironmentGetBudgetRequest {
+  string environment_id = 1;
+}
+
+message EnvironmentGetBudgetResponse {
+  optional double cycle_budget_dollars = 1;
+  double effective_cycle_spend_limit = 2;
+  double current_cycle_usage = 3;
+  bool spend_limit_reached = 4;
+}
+
 message EnvironmentGetManagedRequest {
   string environment_id = 1;
 }
@@ -1548,6 +1559,10 @@ message EnvironmentListItem {
   optional int32 max_concurrent_gpus = 8;
   int32 current_concurrent_tasks = 9;
   int32 current_concurrent_gpus = 10;
+  optional double cycle_budget_dollars = 11; // manager-set
+  double effective_cycle_spend_limit = 12;
+  double current_cycle_usage = 13;
+  bool spend_limit_reached = 14;
 }
 
 message EnvironmentListResponse {
@@ -1564,6 +1579,12 @@ message EnvironmentRoleSetRequest {
   string user_id = 2;
   string service_user_id = 3;
   EnvironmentRole role = 4;
+}
+
+message EnvironmentSetBudgetRequest {
+  string environment_id = 1;
+  optional double cycle_budget_dollars = 2;
+  bool clear_budget = 3;
 }
 
 message EnvironmentSetManagedRequest {
@@ -4308,10 +4329,12 @@ service ModalClient {
   // Environments
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
   rpc EnvironmentDelete(EnvironmentDeleteRequest) returns (google.protobuf.Empty);
+  rpc EnvironmentGetBudget(EnvironmentGetBudgetRequest) returns (EnvironmentGetBudgetResponse);
   rpc EnvironmentGetManaged(EnvironmentGetManagedRequest) returns (EnvironmentGetManagedResponse);
   rpc EnvironmentGetOrCreate(EnvironmentGetOrCreateRequest) returns (EnvironmentGetOrCreateResponse);
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
   rpc EnvironmentRoleSet(EnvironmentRoleSetRequest) returns (google.protobuf.Empty);
+  rpc EnvironmentSetBudget(EnvironmentSetBudgetRequest) returns (google.protobuf.Empty);
   rpc EnvironmentSetManaged(EnvironmentSetManagedRequest) returns (google.protobuf.Empty);
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
 

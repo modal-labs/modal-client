@@ -22,6 +22,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	TaskCommandRouter_SandboxStdinWriteV2_FullMethodName      = "/modal.task_command_router.TaskCommandRouter/SandboxStdinWriteV2"
 	TaskCommandRouter_SandboxStdioReadV2_FullMethodName       = "/modal.task_command_router.TaskCommandRouter/SandboxStdioReadV2"
+	TaskCommandRouter_SandboxWaitUntilReady_FullMethodName    = "/modal.task_command_router.TaskCommandRouter/SandboxWaitUntilReady"
 	TaskCommandRouter_TaskContainerCreate_FullMethodName      = "/modal.task_command_router.TaskCommandRouter/TaskContainerCreate"
 	TaskCommandRouter_TaskContainerGet_FullMethodName         = "/modal.task_command_router.TaskCommandRouter/TaskContainerGet"
 	TaskCommandRouter_TaskContainerList_FullMethodName        = "/modal.task_command_router.TaskCommandRouter/TaskContainerList"
@@ -35,6 +36,7 @@ const (
 	TaskCommandRouter_TaskExecStdioRead_FullMethodName        = "/modal.task_command_router.TaskCommandRouter/TaskExecStdioRead"
 	TaskCommandRouter_TaskExecWait_FullMethodName             = "/modal.task_command_router.TaskCommandRouter/TaskExecWait"
 	TaskCommandRouter_TaskMountDirectory_FullMethodName       = "/modal.task_command_router.TaskCommandRouter/TaskMountDirectory"
+	TaskCommandRouter_TaskSetNetworkAccess_FullMethodName     = "/modal.task_command_router.TaskCommandRouter/TaskSetNetworkAccess"
 	TaskCommandRouter_TaskSnapshotDirectory_FullMethodName    = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotDirectory"
 	TaskCommandRouter_TaskSnapshotFilesystem_FullMethodName   = "/modal.task_command_router.TaskCommandRouter/TaskSnapshotFilesystem"
 	TaskCommandRouter_TaskUnmountDirectory_FullMethodName     = "/modal.task_command_router.TaskCommandRouter/TaskUnmountDirectory"
@@ -46,6 +48,7 @@ const (
 type TaskCommandRouterClient interface {
 	SandboxStdinWriteV2(ctx context.Context, in *SandboxStdinWriteV2Request, opts ...grpc.CallOption) (*SandboxStdinWriteV2Response, error)
 	SandboxStdioReadV2(ctx context.Context, in *SandboxStdioReadV2Request, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SandboxStdioReadV2Response], error)
+	SandboxWaitUntilReady(ctx context.Context, in *SandboxWaitUntilReadyTcrRequest, opts ...grpc.CallOption) (*SandboxWaitUntilReadyTcrResponse, error)
 	// Create an additional container for a task.
 	TaskContainerCreate(ctx context.Context, in *TaskContainerCreateRequest, opts ...grpc.CallOption) (*TaskContainerCreateResponse, error)
 	// Get the latest container associated with a logical name.
@@ -74,6 +77,8 @@ type TaskCommandRouterClient interface {
 	TaskExecWait(ctx context.Context, in *TaskExecWaitRequest, opts ...grpc.CallOption) (*TaskExecWaitResponse, error)
 	// Mount an image at a directory in the container.
 	TaskMountDirectory(ctx context.Context, in *TaskMountDirectoryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Replace the task's outbound network allowlist (domains + CIDRs).
+	TaskSetNetworkAccess(ctx context.Context, in *TaskSetNetworkAccessRequest, opts ...grpc.CallOption) (*TaskSetNetworkAccessResponse, error)
 	// Snapshot a directory with a mounted image, including any local changes, into a new image.
 	TaskSnapshotDirectory(ctx context.Context, in *TaskSnapshotDirectoryRequest, opts ...grpc.CallOption) (*TaskSnapshotDirectoryResponse, error)
 	// Snapshot the full task filesystem into a new image.
@@ -118,6 +123,16 @@ func (c *taskCommandRouterClient) SandboxStdioReadV2(ctx context.Context, in *Sa
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type TaskCommandRouter_SandboxStdioReadV2Client = grpc.ServerStreamingClient[SandboxStdioReadV2Response]
+
+func (c *taskCommandRouterClient) SandboxWaitUntilReady(ctx context.Context, in *SandboxWaitUntilReadyTcrRequest, opts ...grpc.CallOption) (*SandboxWaitUntilReadyTcrResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxWaitUntilReadyTcrResponse)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_SandboxWaitUntilReady_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *taskCommandRouterClient) TaskContainerCreate(ctx context.Context, in *TaskContainerCreateRequest, opts ...grpc.CallOption) (*TaskContainerCreateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -261,6 +276,16 @@ func (c *taskCommandRouterClient) TaskMountDirectory(ctx context.Context, in *Ta
 	return out, nil
 }
 
+func (c *taskCommandRouterClient) TaskSetNetworkAccess(ctx context.Context, in *TaskSetNetworkAccessRequest, opts ...grpc.CallOption) (*TaskSetNetworkAccessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskSetNetworkAccessResponse)
+	err := c.cc.Invoke(ctx, TaskCommandRouter_TaskSetNetworkAccess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *taskCommandRouterClient) TaskSnapshotDirectory(ctx context.Context, in *TaskSnapshotDirectoryRequest, opts ...grpc.CallOption) (*TaskSnapshotDirectoryResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TaskSnapshotDirectoryResponse)
@@ -297,6 +322,7 @@ func (c *taskCommandRouterClient) TaskUnmountDirectory(ctx context.Context, in *
 type TaskCommandRouterServer interface {
 	SandboxStdinWriteV2(context.Context, *SandboxStdinWriteV2Request) (*SandboxStdinWriteV2Response, error)
 	SandboxStdioReadV2(*SandboxStdioReadV2Request, grpc.ServerStreamingServer[SandboxStdioReadV2Response]) error
+	SandboxWaitUntilReady(context.Context, *SandboxWaitUntilReadyTcrRequest) (*SandboxWaitUntilReadyTcrResponse, error)
 	// Create an additional container for a task.
 	TaskContainerCreate(context.Context, *TaskContainerCreateRequest) (*TaskContainerCreateResponse, error)
 	// Get the latest container associated with a logical name.
@@ -325,6 +351,8 @@ type TaskCommandRouterServer interface {
 	TaskExecWait(context.Context, *TaskExecWaitRequest) (*TaskExecWaitResponse, error)
 	// Mount an image at a directory in the container.
 	TaskMountDirectory(context.Context, *TaskMountDirectoryRequest) (*emptypb.Empty, error)
+	// Replace the task's outbound network allowlist (domains + CIDRs).
+	TaskSetNetworkAccess(context.Context, *TaskSetNetworkAccessRequest) (*TaskSetNetworkAccessResponse, error)
 	// Snapshot a directory with a mounted image, including any local changes, into a new image.
 	TaskSnapshotDirectory(context.Context, *TaskSnapshotDirectoryRequest) (*TaskSnapshotDirectoryResponse, error)
 	// Snapshot the full task filesystem into a new image.
@@ -346,6 +374,9 @@ func (UnimplementedTaskCommandRouterServer) SandboxStdinWriteV2(context.Context,
 }
 func (UnimplementedTaskCommandRouterServer) SandboxStdioReadV2(*SandboxStdioReadV2Request, grpc.ServerStreamingServer[SandboxStdioReadV2Response]) error {
 	return status.Error(codes.Unimplemented, "method SandboxStdioReadV2 not implemented")
+}
+func (UnimplementedTaskCommandRouterServer) SandboxWaitUntilReady(context.Context, *SandboxWaitUntilReadyTcrRequest) (*SandboxWaitUntilReadyTcrResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SandboxWaitUntilReady not implemented")
 }
 func (UnimplementedTaskCommandRouterServer) TaskContainerCreate(context.Context, *TaskContainerCreateRequest) (*TaskContainerCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskContainerCreate not implemented")
@@ -385,6 +416,9 @@ func (UnimplementedTaskCommandRouterServer) TaskExecWait(context.Context, *TaskE
 }
 func (UnimplementedTaskCommandRouterServer) TaskMountDirectory(context.Context, *TaskMountDirectoryRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskMountDirectory not implemented")
+}
+func (UnimplementedTaskCommandRouterServer) TaskSetNetworkAccess(context.Context, *TaskSetNetworkAccessRequest) (*TaskSetNetworkAccessResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TaskSetNetworkAccess not implemented")
 }
 func (UnimplementedTaskCommandRouterServer) TaskSnapshotDirectory(context.Context, *TaskSnapshotDirectoryRequest) (*TaskSnapshotDirectoryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TaskSnapshotDirectory not implemented")
@@ -444,6 +478,24 @@ func _TaskCommandRouter_SandboxStdioReadV2_Handler(srv interface{}, stream grpc.
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type TaskCommandRouter_SandboxStdioReadV2Server = grpc.ServerStreamingServer[SandboxStdioReadV2Response]
+
+func _TaskCommandRouter_SandboxWaitUntilReady_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxWaitUntilReadyTcrRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).SandboxWaitUntilReady(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_SandboxWaitUntilReady_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).SandboxWaitUntilReady(ctx, req.(*SandboxWaitUntilReadyTcrRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _TaskCommandRouter_TaskContainerCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TaskContainerCreateRequest)
@@ -661,6 +713,24 @@ func _TaskCommandRouter_TaskMountDirectory_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TaskCommandRouter_TaskSetNetworkAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TaskSetNetworkAccessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskCommandRouterServer).TaskSetNetworkAccess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskCommandRouter_TaskSetNetworkAccess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskCommandRouterServer).TaskSetNetworkAccess(ctx, req.(*TaskSetNetworkAccessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _TaskCommandRouter_TaskSnapshotDirectory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TaskSnapshotDirectoryRequest)
 	if err := dec(in); err != nil {
@@ -727,6 +797,10 @@ var TaskCommandRouter_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _TaskCommandRouter_SandboxStdinWriteV2_Handler,
 		},
 		{
+			MethodName: "SandboxWaitUntilReady",
+			Handler:    _TaskCommandRouter_SandboxWaitUntilReady_Handler,
+		},
+		{
 			MethodName: "TaskContainerCreate",
 			Handler:    _TaskCommandRouter_TaskContainerCreate_Handler,
 		},
@@ -769,6 +843,10 @@ var TaskCommandRouter_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TaskMountDirectory",
 			Handler:    _TaskCommandRouter_TaskMountDirectory_Handler,
+		},
+		{
+			MethodName: "TaskSetNetworkAccess",
+			Handler:    _TaskCommandRouter_TaskSetNetworkAccess_Handler,
 		},
 		{
 			MethodName: "TaskSnapshotDirectory",

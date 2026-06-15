@@ -500,6 +500,134 @@ func (b0 SandboxStdioReadV2Response_builder) Build() *SandboxStdioReadV2Response
 	return m0
 }
 
+type SandboxWaitUntilReadyTcrRequest struct {
+	state              protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_TaskId  string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_Timeout float32                `protobuf:"fixed32,2,opt,name=timeout,proto3"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *SandboxWaitUntilReadyTcrRequest) Reset() {
+	*x = SandboxWaitUntilReadyTcrRequest{}
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SandboxWaitUntilReadyTcrRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SandboxWaitUntilReadyTcrRequest) ProtoMessage() {}
+
+func (x *SandboxWaitUntilReadyTcrRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *SandboxWaitUntilReadyTcrRequest) GetTaskId() string {
+	if x != nil {
+		return x.xxx_hidden_TaskId
+	}
+	return ""
+}
+
+func (x *SandboxWaitUntilReadyTcrRequest) GetTimeout() float32 {
+	if x != nil {
+		return x.xxx_hidden_Timeout
+	}
+	return 0
+}
+
+func (x *SandboxWaitUntilReadyTcrRequest) SetTaskId(v string) {
+	x.xxx_hidden_TaskId = v
+}
+
+func (x *SandboxWaitUntilReadyTcrRequest) SetTimeout(v float32) {
+	x.xxx_hidden_Timeout = v
+}
+
+type SandboxWaitUntilReadyTcrRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	TaskId  string
+	Timeout float32
+}
+
+func (b0 SandboxWaitUntilReadyTcrRequest_builder) Build() *SandboxWaitUntilReadyTcrRequest {
+	m0 := &SandboxWaitUntilReadyTcrRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_TaskId = b.TaskId
+	x.xxx_hidden_Timeout = b.Timeout
+	return m0
+}
+
+type SandboxWaitUntilReadyTcrResponse struct {
+	state              protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_ReadyAt float64                `protobuf:"fixed64,1,opt,name=ready_at,json=readyAt,proto3"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *SandboxWaitUntilReadyTcrResponse) Reset() {
+	*x = SandboxWaitUntilReadyTcrResponse{}
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SandboxWaitUntilReadyTcrResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SandboxWaitUntilReadyTcrResponse) ProtoMessage() {}
+
+func (x *SandboxWaitUntilReadyTcrResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *SandboxWaitUntilReadyTcrResponse) GetReadyAt() float64 {
+	if x != nil {
+		return x.xxx_hidden_ReadyAt
+	}
+	return 0
+}
+
+func (x *SandboxWaitUntilReadyTcrResponse) SetReadyAt(v float64) {
+	x.xxx_hidden_ReadyAt = v
+}
+
+type SandboxWaitUntilReadyTcrResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	ReadyAt float64
+}
+
+func (b0 SandboxWaitUntilReadyTcrResponse_builder) Build() *SandboxWaitUntilReadyTcrResponse {
+	m0 := &SandboxWaitUntilReadyTcrResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_ReadyAt = b.ReadyAt
+	return m0
+}
+
 type TaskContainerCreateRequest struct {
 	state                    protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
@@ -509,13 +637,14 @@ type TaskContainerCreateRequest struct {
 	xxx_hidden_Env           map[string]string      `protobuf:"bytes,6,rep,name=env,proto3" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	xxx_hidden_Workdir       string                 `protobuf:"bytes,7,opt,name=workdir,proto3"`
 	xxx_hidden_SecretIds     []string               `protobuf:"bytes,8,rep,name=secret_ids,json=secretIds,proto3"`
+	xxx_hidden_VolumeMounts  *[]*VolumeMount        `protobuf:"bytes,9,rep,name=volume_mounts,json=volumeMounts,proto3"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
 
 func (x *TaskContainerCreateRequest) Reset() {
 	*x = TaskContainerCreateRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[4]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -527,7 +656,7 @@ func (x *TaskContainerCreateRequest) String() string {
 func (*TaskContainerCreateRequest) ProtoMessage() {}
 
 func (x *TaskContainerCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[4]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -587,6 +716,15 @@ func (x *TaskContainerCreateRequest) GetSecretIds() []string {
 	return nil
 }
 
+func (x *TaskContainerCreateRequest) GetVolumeMounts() []*VolumeMount {
+	if x != nil {
+		if x.xxx_hidden_VolumeMounts != nil {
+			return *x.xxx_hidden_VolumeMounts
+		}
+	}
+	return nil
+}
+
 func (x *TaskContainerCreateRequest) SetTaskId(v string) {
 	x.xxx_hidden_TaskId = v
 }
@@ -615,6 +753,10 @@ func (x *TaskContainerCreateRequest) SetSecretIds(v []string) {
 	x.xxx_hidden_SecretIds = v
 }
 
+func (x *TaskContainerCreateRequest) SetVolumeMounts(v []*VolumeMount) {
+	x.xxx_hidden_VolumeMounts = &v
+}
+
 type TaskContainerCreateRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -627,6 +769,8 @@ type TaskContainerCreateRequest_builder struct {
 	Workdir       string
 	// Secret IDs to inject into the container as environment variables.
 	SecretIds []string
+	// Volumes to mount into the container.
+	VolumeMounts []*VolumeMount
 }
 
 func (b0 TaskContainerCreateRequest_builder) Build() *TaskContainerCreateRequest {
@@ -640,6 +784,7 @@ func (b0 TaskContainerCreateRequest_builder) Build() *TaskContainerCreateRequest
 	x.xxx_hidden_Env = b.Env
 	x.xxx_hidden_Workdir = b.Workdir
 	x.xxx_hidden_SecretIds = b.SecretIds
+	x.xxx_hidden_VolumeMounts = &b.VolumeMounts
 	return m0
 }
 
@@ -653,7 +798,7 @@ type TaskContainerCreateResponse struct {
 
 func (x *TaskContainerCreateResponse) Reset() {
 	*x = TaskContainerCreateResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[5]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -665,7 +810,7 @@ func (x *TaskContainerCreateResponse) String() string {
 func (*TaskContainerCreateResponse) ProtoMessage() {}
 
 func (x *TaskContainerCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[5]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -727,7 +872,7 @@ type TaskContainerGetRequest struct {
 
 func (x *TaskContainerGetRequest) Reset() {
 	*x = TaskContainerGetRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[6]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -739,7 +884,7 @@ func (x *TaskContainerGetRequest) String() string {
 func (*TaskContainerGetRequest) ProtoMessage() {}
 
 func (x *TaskContainerGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[6]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -811,7 +956,7 @@ type TaskContainerGetResponse struct {
 
 func (x *TaskContainerGetResponse) Reset() {
 	*x = TaskContainerGetResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[7]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -823,7 +968,7 @@ func (x *TaskContainerGetResponse) String() string {
 func (*TaskContainerGetResponse) ProtoMessage() {}
 
 func (x *TaskContainerGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[7]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -882,7 +1027,7 @@ type TaskContainerInfo struct {
 
 func (x *TaskContainerInfo) Reset() {
 	*x = TaskContainerInfo{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[8]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -894,7 +1039,7 @@ func (x *TaskContainerInfo) String() string {
 func (*TaskContainerInfo) ProtoMessage() {}
 
 func (x *TaskContainerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[8]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +1135,7 @@ type TaskContainerListRequest struct {
 
 func (x *TaskContainerListRequest) Reset() {
 	*x = TaskContainerListRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[9]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1002,7 +1147,7 @@ func (x *TaskContainerListRequest) String() string {
 func (*TaskContainerListRequest) ProtoMessage() {}
 
 func (x *TaskContainerListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[9]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1061,7 +1206,7 @@ type TaskContainerListResponse struct {
 
 func (x *TaskContainerListResponse) Reset() {
 	*x = TaskContainerListResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[10]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1073,7 +1218,7 @@ func (x *TaskContainerListResponse) String() string {
 func (*TaskContainerListResponse) ProtoMessage() {}
 
 func (x *TaskContainerListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[10]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1121,7 +1266,7 @@ type TaskContainerTerminateRequest struct {
 
 func (x *TaskContainerTerminateRequest) Reset() {
 	*x = TaskContainerTerminateRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[11]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1133,7 +1278,7 @@ func (x *TaskContainerTerminateRequest) String() string {
 func (*TaskContainerTerminateRequest) ProtoMessage() {}
 
 func (x *TaskContainerTerminateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[11]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1190,7 +1335,7 @@ type TaskContainerTerminateResponse struct {
 
 func (x *TaskContainerTerminateResponse) Reset() {
 	*x = TaskContainerTerminateResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[12]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1202,7 +1347,7 @@ func (x *TaskContainerTerminateResponse) String() string {
 func (*TaskContainerTerminateResponse) ProtoMessage() {}
 
 func (x *TaskContainerTerminateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[12]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1236,7 +1381,7 @@ type TaskContainerWaitRequest struct {
 
 func (x *TaskContainerWaitRequest) Reset() {
 	*x = TaskContainerWaitRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[13]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1248,7 +1393,7 @@ func (x *TaskContainerWaitRequest) String() string {
 func (*TaskContainerWaitRequest) ProtoMessage() {}
 
 func (x *TaskContainerWaitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[13]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1319,7 +1464,7 @@ type TaskContainerWaitResponse struct {
 
 func (x *TaskContainerWaitResponse) Reset() {
 	*x = TaskContainerWaitResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[14]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1331,7 +1476,7 @@ func (x *TaskContainerWaitResponse) String() string {
 func (*TaskContainerWaitResponse) ProtoMessage() {}
 
 func (x *TaskContainerWaitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[14]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1388,7 +1533,7 @@ type TaskExecPollRequest struct {
 
 func (x *TaskExecPollRequest) Reset() {
 	*x = TaskExecPollRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[15]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1400,7 +1545,7 @@ func (x *TaskExecPollRequest) String() string {
 func (*TaskExecPollRequest) ProtoMessage() {}
 
 func (x *TaskExecPollRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[15]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1462,7 +1607,7 @@ type TaskExecPollResponse struct {
 
 func (x *TaskExecPollResponse) Reset() {
 	*x = TaskExecPollResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[16]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1474,7 +1619,7 @@ func (x *TaskExecPollResponse) String() string {
 func (*TaskExecPollResponse) ProtoMessage() {}
 
 func (x *TaskExecPollResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[16]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1595,7 +1740,7 @@ func (b0 TaskExecPollResponse_builder) Build() *TaskExecPollResponse {
 type case_TaskExecPollResponse_ExitStatus protoreflect.FieldNumber
 
 func (x case_TaskExecPollResponse_ExitStatus) String() string {
-	md := file_modal_proto_task_command_router_proto_msgTypes[16].Descriptor()
+	md := file_modal_proto_task_command_router_proto_msgTypes[18].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -1642,7 +1787,7 @@ type TaskExecStartRequest struct {
 
 func (x *TaskExecStartRequest) Reset() {
 	*x = TaskExecStartRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[17]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1654,7 +1799,7 @@ func (x *TaskExecStartRequest) String() string {
 func (*TaskExecStartRequest) ProtoMessage() {}
 
 func (x *TaskExecStartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[17]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1903,7 +2048,7 @@ type TaskExecStartResponse struct {
 
 func (x *TaskExecStartResponse) Reset() {
 	*x = TaskExecStartResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[18]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1915,7 +2060,7 @@ func (x *TaskExecStartResponse) String() string {
 func (*TaskExecStartResponse) ProtoMessage() {}
 
 func (x *TaskExecStartResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[18]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1948,7 +2093,7 @@ type TaskExecStdinStatusRequest struct {
 
 func (x *TaskExecStdinStatusRequest) Reset() {
 	*x = TaskExecStdinStatusRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[19]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1960,7 +2105,7 @@ func (x *TaskExecStdinStatusRequest) String() string {
 func (*TaskExecStdinStatusRequest) ProtoMessage() {}
 
 func (x *TaskExecStdinStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[19]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2021,7 +2166,7 @@ type TaskExecStdinStatusResponse struct {
 
 func (x *TaskExecStdinStatusResponse) Reset() {
 	*x = TaskExecStdinStatusResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[20]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2033,7 +2178,7 @@ func (x *TaskExecStdinStatusResponse) String() string {
 func (*TaskExecStdinStatusResponse) ProtoMessage() {}
 
 func (x *TaskExecStdinStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[20]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2099,7 +2244,7 @@ type TaskExecStdinWriteRequest struct {
 
 func (x *TaskExecStdinWriteRequest) Reset() {
 	*x = TaskExecStdinWriteRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[21]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2111,7 +2256,7 @@ func (x *TaskExecStdinWriteRequest) String() string {
 func (*TaskExecStdinWriteRequest) ProtoMessage() {}
 
 func (x *TaskExecStdinWriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[21]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2216,7 +2361,7 @@ type TaskExecStdinWriteResponse struct {
 
 func (x *TaskExecStdinWriteResponse) Reset() {
 	*x = TaskExecStdinWriteResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[22]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2228,7 +2373,7 @@ func (x *TaskExecStdinWriteResponse) String() string {
 func (*TaskExecStdinWriteResponse) ProtoMessage() {}
 
 func (x *TaskExecStdinWriteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[22]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2260,7 +2405,7 @@ type TaskExecStdinWriteStreamRequest struct {
 
 func (x *TaskExecStdinWriteStreamRequest) Reset() {
 	*x = TaskExecStdinWriteStreamRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[23]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2272,7 +2417,7 @@ func (x *TaskExecStdinWriteStreamRequest) String() string {
 func (*TaskExecStdinWriteStreamRequest) ProtoMessage() {}
 
 func (x *TaskExecStdinWriteStreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[23]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2402,7 +2547,7 @@ func (b0 TaskExecStdinWriteStreamRequest_builder) Build() *TaskExecStdinWriteStr
 type case_TaskExecStdinWriteStreamRequest_Payload protoreflect.FieldNumber
 
 func (x case_TaskExecStdinWriteStreamRequest_Payload) String() string {
-	md := file_modal_proto_task_command_router_proto_msgTypes[23].Descriptor()
+	md := file_modal_proto_task_command_router_proto_msgTypes[25].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -2435,7 +2580,7 @@ type TaskExecStdinWriteStreamResponse struct {
 
 func (x *TaskExecStdinWriteStreamResponse) Reset() {
 	*x = TaskExecStdinWriteStreamResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[24]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2447,7 +2592,7 @@ func (x *TaskExecStdinWriteStreamResponse) String() string {
 func (*TaskExecStdinWriteStreamResponse) ProtoMessage() {}
 
 func (x *TaskExecStdinWriteStreamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[24]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2481,7 +2626,7 @@ type TaskExecStdinWriteStreamStart struct {
 
 func (x *TaskExecStdinWriteStreamStart) Reset() {
 	*x = TaskExecStdinWriteStreamStart{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[25]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2493,7 +2638,7 @@ func (x *TaskExecStdinWriteStreamStart) String() string {
 func (*TaskExecStdinWriteStreamStart) ProtoMessage() {}
 
 func (x *TaskExecStdinWriteStreamStart) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[25]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2570,7 +2715,7 @@ type TaskExecStdioReadRequest struct {
 
 func (x *TaskExecStdioReadRequest) Reset() {
 	*x = TaskExecStdioReadRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[26]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2582,7 +2727,7 @@ func (x *TaskExecStdioReadRequest) String() string {
 func (*TaskExecStdioReadRequest) ProtoMessage() {}
 
 func (x *TaskExecStdioReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[26]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2671,7 +2816,7 @@ type TaskExecStdioReadResponse struct {
 
 func (x *TaskExecStdioReadResponse) Reset() {
 	*x = TaskExecStdioReadResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[27]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2683,7 +2828,7 @@ func (x *TaskExecStdioReadResponse) String() string {
 func (*TaskExecStdioReadResponse) ProtoMessage() {}
 
 func (x *TaskExecStdioReadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[27]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2733,7 +2878,7 @@ type TaskExecWaitRequest struct {
 
 func (x *TaskExecWaitRequest) Reset() {
 	*x = TaskExecWaitRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[28]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2745,7 +2890,7 @@ func (x *TaskExecWaitRequest) String() string {
 func (*TaskExecWaitRequest) ProtoMessage() {}
 
 func (x *TaskExecWaitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[28]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2805,7 +2950,7 @@ type TaskExecWaitResponse struct {
 
 func (x *TaskExecWaitResponse) Reset() {
 	*x = TaskExecWaitResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[29]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2817,7 +2962,7 @@ func (x *TaskExecWaitResponse) String() string {
 func (*TaskExecWaitResponse) ProtoMessage() {}
 
 func (x *TaskExecWaitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[29]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2938,7 +3083,7 @@ func (b0 TaskExecWaitResponse_builder) Build() *TaskExecWaitResponse {
 type case_TaskExecWaitResponse_ExitStatus protoreflect.FieldNumber
 
 func (x case_TaskExecWaitResponse_ExitStatus) String() string {
-	md := file_modal_proto_task_command_router_proto_msgTypes[29].Descriptor()
+	md := file_modal_proto_task_command_router_proto_msgTypes[31].Descriptor()
 	if x == 0 {
 		return "not set"
 	}
@@ -2977,7 +3122,7 @@ type TaskMountDirectoryRequest struct {
 
 func (x *TaskMountDirectoryRequest) Reset() {
 	*x = TaskMountDirectoryRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[30]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2989,7 +3134,7 @@ func (x *TaskMountDirectoryRequest) String() string {
 func (*TaskMountDirectoryRequest) ProtoMessage() {}
 
 func (x *TaskMountDirectoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[30]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3088,6 +3233,133 @@ func (b0 TaskMountDirectoryRequest_builder) Build() *TaskMountDirectoryRequest {
 	return m0
 }
 
+type TaskSetNetworkAccessRequest struct {
+	state                    protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
+	xxx_hidden_NetworkAccess *NetworkAccess         `protobuf:"bytes,2,opt,name=network_access,json=networkAccess,proto3"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *TaskSetNetworkAccessRequest) Reset() {
+	*x = TaskSetNetworkAccessRequest{}
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskSetNetworkAccessRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskSetNetworkAccessRequest) ProtoMessage() {}
+
+func (x *TaskSetNetworkAccessRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *TaskSetNetworkAccessRequest) GetTaskId() string {
+	if x != nil {
+		return x.xxx_hidden_TaskId
+	}
+	return ""
+}
+
+func (x *TaskSetNetworkAccessRequest) GetNetworkAccess() *NetworkAccess {
+	if x != nil {
+		return x.xxx_hidden_NetworkAccess
+	}
+	return nil
+}
+
+func (x *TaskSetNetworkAccessRequest) SetTaskId(v string) {
+	x.xxx_hidden_TaskId = v
+}
+
+func (x *TaskSetNetworkAccessRequest) SetNetworkAccess(v *NetworkAccess) {
+	x.xxx_hidden_NetworkAccess = v
+}
+
+func (x *TaskSetNetworkAccessRequest) HasNetworkAccess() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_NetworkAccess != nil
+}
+
+func (x *TaskSetNetworkAccessRequest) ClearNetworkAccess() {
+	x.xxx_hidden_NetworkAccess = nil
+}
+
+type TaskSetNetworkAccessRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	TaskId string
+	// Replaces the task's network access policy. Only ALLOWLIST is currently
+	// supported; open access is expressed as an allow-all allowlist.
+	NetworkAccess *NetworkAccess
+}
+
+func (b0 TaskSetNetworkAccessRequest_builder) Build() *TaskSetNetworkAccessRequest {
+	m0 := &TaskSetNetworkAccessRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_TaskId = b.TaskId
+	x.xxx_hidden_NetworkAccess = b.NetworkAccess
+	return m0
+}
+
+type TaskSetNetworkAccessResponse struct {
+	state         protoimpl.MessageState `protogen:"opaque.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TaskSetNetworkAccessResponse) Reset() {
+	*x = TaskSetNetworkAccessResponse{}
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskSetNetworkAccessResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskSetNetworkAccessResponse) ProtoMessage() {}
+
+func (x *TaskSetNetworkAccessResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+type TaskSetNetworkAccessResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+}
+
+func (b0 TaskSetNetworkAccessResponse_builder) Build() *TaskSetNetworkAccessResponse {
+	m0 := &TaskSetNetworkAccessResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	return m0
+}
+
 type TaskSnapshotDirectoryRequest struct {
 	state                                    protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_TaskId                        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3"`
@@ -3103,7 +3375,7 @@ type TaskSnapshotDirectoryRequest struct {
 
 func (x *TaskSnapshotDirectoryRequest) Reset() {
 	*x = TaskSnapshotDirectoryRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[31]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3115,7 +3387,7 @@ func (x *TaskSnapshotDirectoryRequest) String() string {
 func (*TaskSnapshotDirectoryRequest) ProtoMessage() {}
 
 func (x *TaskSnapshotDirectoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[31]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3264,7 +3536,7 @@ type TaskSnapshotDirectoryResponse struct {
 
 func (x *TaskSnapshotDirectoryResponse) Reset() {
 	*x = TaskSnapshotDirectoryResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[32]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3276,7 +3548,7 @@ func (x *TaskSnapshotDirectoryResponse) String() string {
 func (*TaskSnapshotDirectoryResponse) ProtoMessage() {}
 
 func (x *TaskSnapshotDirectoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[32]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3326,7 +3598,7 @@ type TaskSnapshotFilesystemRequest struct {
 
 func (x *TaskSnapshotFilesystemRequest) Reset() {
 	*x = TaskSnapshotFilesystemRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[33]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3338,7 +3610,7 @@ func (x *TaskSnapshotFilesystemRequest) String() string {
 func (*TaskSnapshotFilesystemRequest) ProtoMessage() {}
 
 func (x *TaskSnapshotFilesystemRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[33]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3467,7 +3739,7 @@ type TaskSnapshotFilesystemResponse struct {
 
 func (x *TaskSnapshotFilesystemResponse) Reset() {
 	*x = TaskSnapshotFilesystemResponse{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[34]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3479,7 +3751,7 @@ func (x *TaskSnapshotFilesystemResponse) String() string {
 func (*TaskSnapshotFilesystemResponse) ProtoMessage() {}
 
 func (x *TaskSnapshotFilesystemResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[34]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3525,7 +3797,7 @@ type TaskUnmountDirectoryRequest struct {
 
 func (x *TaskUnmountDirectoryRequest) Reset() {
 	*x = TaskUnmountDirectoryRequest{}
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[35]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3537,7 +3809,7 @@ func (x *TaskUnmountDirectoryRequest) String() string {
 func (*TaskUnmountDirectoryRequest) ProtoMessage() {}
 
 func (x *TaskUnmountDirectoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_modal_proto_task_command_router_proto_msgTypes[35]
+	mi := &file_modal_proto_task_command_router_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3606,7 +3878,12 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x0ffile_descriptor\x18\x03 \x01(\x0e25.modal.task_command_router.SandboxStdioFileDescriptorR\x0efileDescriptor\"Y\n" +
 	"\x1aSandboxStdioReadV2Response\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12'\n" +
-	"\x0fstarting_offset\x18\x02 \x01(\x04R\x0estartingOffset\"\xce\x02\n" +
+	"\x0fstarting_offset\x18\x02 \x01(\x04R\x0estartingOffset\"T\n" +
+	"\x1fSandboxWaitUntilReadyTcrRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x18\n" +
+	"\atimeout\x18\x02 \x01(\x02R\atimeout\"=\n" +
+	" SandboxWaitUntilReadyTcrResponse\x12\x19\n" +
+	"\bready_at\x18\x01 \x01(\x01R\areadyAt\"\x8e\x03\n" +
 	"\x1aTaskContainerCreateRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12%\n" +
 	"\x0econtainer_name\x18\x02 \x01(\tR\rcontainerName\x12\x19\n" +
@@ -3615,7 +3892,8 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x03env\x18\x06 \x03(\v2>.modal.task_command_router.TaskContainerCreateRequest.EnvEntryR\x03env\x12\x18\n" +
 	"\aworkdir\x18\a \x01(\tR\aworkdir\x12\x1d\n" +
 	"\n" +
-	"secret_ids\x18\b \x03(\tR\tsecretIds\x1a6\n" +
+	"secret_ids\x18\b \x03(\tR\tsecretIds\x12>\n" +
+	"\rvolume_mounts\x18\t \x03(\v2\x19.modal.client.VolumeMountR\fvolumeMounts\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"g\n" +
@@ -3721,7 +3999,11 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x04path\x18\x02 \x01(\fR\x04path\x12\x19\n" +
 	"\bimage_id\x18\x03 \x01(\tR\aimageId\x12L\n" +
 	" customer_supplied_encryption_key\x18\x04 \x01(\fH\x00R\x1dcustomerSuppliedEncryptionKey\x88\x01\x01B#\n" +
-	"!_customer_supplied_encryption_key\"\x95\x02\n" +
+	"!_customer_supplied_encryption_key\"z\n" +
+	"\x1bTaskSetNetworkAccessRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12B\n" +
+	"\x0enetwork_access\x18\x02 \x01(\v2\x1b.modal.client.NetworkAccessR\rnetworkAccess\"\x1e\n" +
+	"\x1cTaskSetNetworkAccessResponse\"\x95\x02\n" +
 	"\x1cTaskSnapshotDirectoryRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\fR\x04path\x12\x1f\n" +
@@ -3760,10 +4042,11 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"&TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR\x10\x01*]\n" +
 	"\x14TaskExecStdoutConfig\x12#\n" +
 	"\x1fTASK_EXEC_STDOUT_CONFIG_DEVNULL\x10\x00\x12 \n" +
-	"\x1cTASK_EXEC_STDOUT_CONFIG_PIPE\x10\x012\x99\x12\n" +
+	"\x1cTASK_EXEC_STDOUT_CONFIG_PIPE\x10\x012\xb6\x14\n" +
 	"\x11TaskCommandRouter\x12\x84\x01\n" +
 	"\x13SandboxStdinWriteV2\x125.modal.task_command_router.SandboxStdinWriteV2Request\x1a6.modal.task_command_router.SandboxStdinWriteV2Response\x12\x83\x01\n" +
-	"\x12SandboxStdioReadV2\x124.modal.task_command_router.SandboxStdioReadV2Request\x1a5.modal.task_command_router.SandboxStdioReadV2Response0\x01\x12\x84\x01\n" +
+	"\x12SandboxStdioReadV2\x124.modal.task_command_router.SandboxStdioReadV2Request\x1a5.modal.task_command_router.SandboxStdioReadV2Response0\x01\x12\x90\x01\n" +
+	"\x15SandboxWaitUntilReady\x12:.modal.task_command_router.SandboxWaitUntilReadyTcrRequest\x1a;.modal.task_command_router.SandboxWaitUntilReadyTcrResponse\x12\x84\x01\n" +
 	"\x13TaskContainerCreate\x125.modal.task_command_router.TaskContainerCreateRequest\x1a6.modal.task_command_router.TaskContainerCreateResponse\x12{\n" +
 	"\x10TaskContainerGet\x122.modal.task_command_router.TaskContainerGetRequest\x1a3.modal.task_command_router.TaskContainerGetResponse\x12~\n" +
 	"\x11TaskContainerList\x123.modal.task_command_router.TaskContainerListRequest\x1a4.modal.task_command_router.TaskContainerListResponse\x12\x8d\x01\n" +
@@ -3776,13 +4059,14 @@ const file_modal_proto_task_command_router_proto_rawDesc = "" +
 	"\x18TaskExecStdinWriteStream\x12:.modal.task_command_router.TaskExecStdinWriteStreamRequest\x1a;.modal.task_command_router.TaskExecStdinWriteStreamResponse(\x01\x12\x80\x01\n" +
 	"\x11TaskExecStdioRead\x123.modal.task_command_router.TaskExecStdioReadRequest\x1a4.modal.task_command_router.TaskExecStdioReadResponse0\x01\x12o\n" +
 	"\fTaskExecWait\x12..modal.task_command_router.TaskExecWaitRequest\x1a/.modal.task_command_router.TaskExecWaitResponse\x12b\n" +
-	"\x12TaskMountDirectory\x124.modal.task_command_router.TaskMountDirectoryRequest\x1a\x16.google.protobuf.Empty\x12\x8a\x01\n" +
+	"\x12TaskMountDirectory\x124.modal.task_command_router.TaskMountDirectoryRequest\x1a\x16.google.protobuf.Empty\x12\x87\x01\n" +
+	"\x14TaskSetNetworkAccess\x126.modal.task_command_router.TaskSetNetworkAccessRequest\x1a7.modal.task_command_router.TaskSetNetworkAccessResponse\x12\x8a\x01\n" +
 	"\x15TaskSnapshotDirectory\x127.modal.task_command_router.TaskSnapshotDirectoryRequest\x1a8.modal.task_command_router.TaskSnapshotDirectoryResponse\x12\x8d\x01\n" +
 	"\x16TaskSnapshotFilesystem\x128.modal.task_command_router.TaskSnapshotFilesystemRequest\x1a9.modal.task_command_router.TaskSnapshotFilesystemResponse\x12f\n" +
 	"\x14TaskUnmountDirectory\x126.modal.task_command_router.TaskUnmountDirectoryRequest\x1a\x16.google.protobuf.EmptyB&Z$github.com/modal-labs/modal/go/protob\x06proto3"
 
 var file_modal_proto_task_command_router_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_modal_proto_task_command_router_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
+var file_modal_proto_task_command_router_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
 var file_modal_proto_task_command_router_proto_goTypes = []any{
 	(SandboxStdioFileDescriptor)(0),          // 0: modal.task_command_router.SandboxStdioFileDescriptor
 	(TaskExecStderrConfig)(0),                // 1: modal.task_command_router.TaskExecStderrConfig
@@ -3792,98 +4076,110 @@ var file_modal_proto_task_command_router_proto_goTypes = []any{
 	(*SandboxStdinWriteV2Response)(nil),      // 5: modal.task_command_router.SandboxStdinWriteV2Response
 	(*SandboxStdioReadV2Request)(nil),        // 6: modal.task_command_router.SandboxStdioReadV2Request
 	(*SandboxStdioReadV2Response)(nil),       // 7: modal.task_command_router.SandboxStdioReadV2Response
-	(*TaskContainerCreateRequest)(nil),       // 8: modal.task_command_router.TaskContainerCreateRequest
-	(*TaskContainerCreateResponse)(nil),      // 9: modal.task_command_router.TaskContainerCreateResponse
-	(*TaskContainerGetRequest)(nil),          // 10: modal.task_command_router.TaskContainerGetRequest
-	(*TaskContainerGetResponse)(nil),         // 11: modal.task_command_router.TaskContainerGetResponse
-	(*TaskContainerInfo)(nil),                // 12: modal.task_command_router.TaskContainerInfo
-	(*TaskContainerListRequest)(nil),         // 13: modal.task_command_router.TaskContainerListRequest
-	(*TaskContainerListResponse)(nil),        // 14: modal.task_command_router.TaskContainerListResponse
-	(*TaskContainerTerminateRequest)(nil),    // 15: modal.task_command_router.TaskContainerTerminateRequest
-	(*TaskContainerTerminateResponse)(nil),   // 16: modal.task_command_router.TaskContainerTerminateResponse
-	(*TaskContainerWaitRequest)(nil),         // 17: modal.task_command_router.TaskContainerWaitRequest
-	(*TaskContainerWaitResponse)(nil),        // 18: modal.task_command_router.TaskContainerWaitResponse
-	(*TaskExecPollRequest)(nil),              // 19: modal.task_command_router.TaskExecPollRequest
-	(*TaskExecPollResponse)(nil),             // 20: modal.task_command_router.TaskExecPollResponse
-	(*TaskExecStartRequest)(nil),             // 21: modal.task_command_router.TaskExecStartRequest
-	(*TaskExecStartResponse)(nil),            // 22: modal.task_command_router.TaskExecStartResponse
-	(*TaskExecStdinStatusRequest)(nil),       // 23: modal.task_command_router.TaskExecStdinStatusRequest
-	(*TaskExecStdinStatusResponse)(nil),      // 24: modal.task_command_router.TaskExecStdinStatusResponse
-	(*TaskExecStdinWriteRequest)(nil),        // 25: modal.task_command_router.TaskExecStdinWriteRequest
-	(*TaskExecStdinWriteResponse)(nil),       // 26: modal.task_command_router.TaskExecStdinWriteResponse
-	(*TaskExecStdinWriteStreamRequest)(nil),  // 27: modal.task_command_router.TaskExecStdinWriteStreamRequest
-	(*TaskExecStdinWriteStreamResponse)(nil), // 28: modal.task_command_router.TaskExecStdinWriteStreamResponse
-	(*TaskExecStdinWriteStreamStart)(nil),    // 29: modal.task_command_router.TaskExecStdinWriteStreamStart
-	(*TaskExecStdioReadRequest)(nil),         // 30: modal.task_command_router.TaskExecStdioReadRequest
-	(*TaskExecStdioReadResponse)(nil),        // 31: modal.task_command_router.TaskExecStdioReadResponse
-	(*TaskExecWaitRequest)(nil),              // 32: modal.task_command_router.TaskExecWaitRequest
-	(*TaskExecWaitResponse)(nil),             // 33: modal.task_command_router.TaskExecWaitResponse
-	(*TaskMountDirectoryRequest)(nil),        // 34: modal.task_command_router.TaskMountDirectoryRequest
-	(*TaskSnapshotDirectoryRequest)(nil),     // 35: modal.task_command_router.TaskSnapshotDirectoryRequest
-	(*TaskSnapshotDirectoryResponse)(nil),    // 36: modal.task_command_router.TaskSnapshotDirectoryResponse
-	(*TaskSnapshotFilesystemRequest)(nil),    // 37: modal.task_command_router.TaskSnapshotFilesystemRequest
-	(*TaskSnapshotFilesystemResponse)(nil),   // 38: modal.task_command_router.TaskSnapshotFilesystemResponse
-	(*TaskUnmountDirectoryRequest)(nil),      // 39: modal.task_command_router.TaskUnmountDirectoryRequest
-	nil,                                      // 40: modal.task_command_router.TaskContainerCreateRequest.EnvEntry
-	nil,                                      // 41: modal.task_command_router.TaskExecStartRequest.EnvEntry
-	(*GenericResult)(nil),                    // 42: modal.client.GenericResult
-	(*PTYInfo)(nil),                          // 43: modal.client.PTYInfo
-	(*emptypb.Empty)(nil),                    // 44: google.protobuf.Empty
+	(*SandboxWaitUntilReadyTcrRequest)(nil),  // 8: modal.task_command_router.SandboxWaitUntilReadyTcrRequest
+	(*SandboxWaitUntilReadyTcrResponse)(nil), // 9: modal.task_command_router.SandboxWaitUntilReadyTcrResponse
+	(*TaskContainerCreateRequest)(nil),       // 10: modal.task_command_router.TaskContainerCreateRequest
+	(*TaskContainerCreateResponse)(nil),      // 11: modal.task_command_router.TaskContainerCreateResponse
+	(*TaskContainerGetRequest)(nil),          // 12: modal.task_command_router.TaskContainerGetRequest
+	(*TaskContainerGetResponse)(nil),         // 13: modal.task_command_router.TaskContainerGetResponse
+	(*TaskContainerInfo)(nil),                // 14: modal.task_command_router.TaskContainerInfo
+	(*TaskContainerListRequest)(nil),         // 15: modal.task_command_router.TaskContainerListRequest
+	(*TaskContainerListResponse)(nil),        // 16: modal.task_command_router.TaskContainerListResponse
+	(*TaskContainerTerminateRequest)(nil),    // 17: modal.task_command_router.TaskContainerTerminateRequest
+	(*TaskContainerTerminateResponse)(nil),   // 18: modal.task_command_router.TaskContainerTerminateResponse
+	(*TaskContainerWaitRequest)(nil),         // 19: modal.task_command_router.TaskContainerWaitRequest
+	(*TaskContainerWaitResponse)(nil),        // 20: modal.task_command_router.TaskContainerWaitResponse
+	(*TaskExecPollRequest)(nil),              // 21: modal.task_command_router.TaskExecPollRequest
+	(*TaskExecPollResponse)(nil),             // 22: modal.task_command_router.TaskExecPollResponse
+	(*TaskExecStartRequest)(nil),             // 23: modal.task_command_router.TaskExecStartRequest
+	(*TaskExecStartResponse)(nil),            // 24: modal.task_command_router.TaskExecStartResponse
+	(*TaskExecStdinStatusRequest)(nil),       // 25: modal.task_command_router.TaskExecStdinStatusRequest
+	(*TaskExecStdinStatusResponse)(nil),      // 26: modal.task_command_router.TaskExecStdinStatusResponse
+	(*TaskExecStdinWriteRequest)(nil),        // 27: modal.task_command_router.TaskExecStdinWriteRequest
+	(*TaskExecStdinWriteResponse)(nil),       // 28: modal.task_command_router.TaskExecStdinWriteResponse
+	(*TaskExecStdinWriteStreamRequest)(nil),  // 29: modal.task_command_router.TaskExecStdinWriteStreamRequest
+	(*TaskExecStdinWriteStreamResponse)(nil), // 30: modal.task_command_router.TaskExecStdinWriteStreamResponse
+	(*TaskExecStdinWriteStreamStart)(nil),    // 31: modal.task_command_router.TaskExecStdinWriteStreamStart
+	(*TaskExecStdioReadRequest)(nil),         // 32: modal.task_command_router.TaskExecStdioReadRequest
+	(*TaskExecStdioReadResponse)(nil),        // 33: modal.task_command_router.TaskExecStdioReadResponse
+	(*TaskExecWaitRequest)(nil),              // 34: modal.task_command_router.TaskExecWaitRequest
+	(*TaskExecWaitResponse)(nil),             // 35: modal.task_command_router.TaskExecWaitResponse
+	(*TaskMountDirectoryRequest)(nil),        // 36: modal.task_command_router.TaskMountDirectoryRequest
+	(*TaskSetNetworkAccessRequest)(nil),      // 37: modal.task_command_router.TaskSetNetworkAccessRequest
+	(*TaskSetNetworkAccessResponse)(nil),     // 38: modal.task_command_router.TaskSetNetworkAccessResponse
+	(*TaskSnapshotDirectoryRequest)(nil),     // 39: modal.task_command_router.TaskSnapshotDirectoryRequest
+	(*TaskSnapshotDirectoryResponse)(nil),    // 40: modal.task_command_router.TaskSnapshotDirectoryResponse
+	(*TaskSnapshotFilesystemRequest)(nil),    // 41: modal.task_command_router.TaskSnapshotFilesystemRequest
+	(*TaskSnapshotFilesystemResponse)(nil),   // 42: modal.task_command_router.TaskSnapshotFilesystemResponse
+	(*TaskUnmountDirectoryRequest)(nil),      // 43: modal.task_command_router.TaskUnmountDirectoryRequest
+	nil,                                      // 44: modal.task_command_router.TaskContainerCreateRequest.EnvEntry
+	nil,                                      // 45: modal.task_command_router.TaskExecStartRequest.EnvEntry
+	(*VolumeMount)(nil),                      // 46: modal.client.VolumeMount
+	(*GenericResult)(nil),                    // 47: modal.client.GenericResult
+	(*PTYInfo)(nil),                          // 48: modal.client.PTYInfo
+	(*NetworkAccess)(nil),                    // 49: modal.client.NetworkAccess
+	(*emptypb.Empty)(nil),                    // 50: google.protobuf.Empty
 }
 var file_modal_proto_task_command_router_proto_depIdxs = []int32{
 	0,  // 0: modal.task_command_router.SandboxStdioReadV2Request.file_descriptor:type_name -> modal.task_command_router.SandboxStdioFileDescriptor
-	40, // 1: modal.task_command_router.TaskContainerCreateRequest.env:type_name -> modal.task_command_router.TaskContainerCreateRequest.EnvEntry
-	12, // 2: modal.task_command_router.TaskContainerGetResponse.container:type_name -> modal.task_command_router.TaskContainerInfo
-	42, // 3: modal.task_command_router.TaskContainerInfo.result:type_name -> modal.client.GenericResult
-	12, // 4: modal.task_command_router.TaskContainerListResponse.containers:type_name -> modal.task_command_router.TaskContainerInfo
-	42, // 5: modal.task_command_router.TaskContainerWaitResponse.result:type_name -> modal.client.GenericResult
-	3,  // 6: modal.task_command_router.TaskExecStartRequest.stdout_config:type_name -> modal.task_command_router.TaskExecStdoutConfig
-	1,  // 7: modal.task_command_router.TaskExecStartRequest.stderr_config:type_name -> modal.task_command_router.TaskExecStderrConfig
-	43, // 8: modal.task_command_router.TaskExecStartRequest.pty_info:type_name -> modal.client.PTYInfo
-	41, // 9: modal.task_command_router.TaskExecStartRequest.env:type_name -> modal.task_command_router.TaskExecStartRequest.EnvEntry
-	29, // 10: modal.task_command_router.TaskExecStdinWriteStreamRequest.start:type_name -> modal.task_command_router.TaskExecStdinWriteStreamStart
-	2,  // 11: modal.task_command_router.TaskExecStdioReadRequest.file_descriptor:type_name -> modal.task_command_router.TaskExecStdioFileDescriptor
-	4,  // 12: modal.task_command_router.TaskCommandRouter.SandboxStdinWriteV2:input_type -> modal.task_command_router.SandboxStdinWriteV2Request
-	6,  // 13: modal.task_command_router.TaskCommandRouter.SandboxStdioReadV2:input_type -> modal.task_command_router.SandboxStdioReadV2Request
-	8,  // 14: modal.task_command_router.TaskCommandRouter.TaskContainerCreate:input_type -> modal.task_command_router.TaskContainerCreateRequest
-	10, // 15: modal.task_command_router.TaskCommandRouter.TaskContainerGet:input_type -> modal.task_command_router.TaskContainerGetRequest
-	13, // 16: modal.task_command_router.TaskCommandRouter.TaskContainerList:input_type -> modal.task_command_router.TaskContainerListRequest
-	15, // 17: modal.task_command_router.TaskCommandRouter.TaskContainerTerminate:input_type -> modal.task_command_router.TaskContainerTerminateRequest
-	17, // 18: modal.task_command_router.TaskCommandRouter.TaskContainerWait:input_type -> modal.task_command_router.TaskContainerWaitRequest
-	19, // 19: modal.task_command_router.TaskCommandRouter.TaskExecPoll:input_type -> modal.task_command_router.TaskExecPollRequest
-	21, // 20: modal.task_command_router.TaskCommandRouter.TaskExecStart:input_type -> modal.task_command_router.TaskExecStartRequest
-	23, // 21: modal.task_command_router.TaskCommandRouter.TaskExecStdinStatus:input_type -> modal.task_command_router.TaskExecStdinStatusRequest
-	25, // 22: modal.task_command_router.TaskCommandRouter.TaskExecStdinWrite:input_type -> modal.task_command_router.TaskExecStdinWriteRequest
-	27, // 23: modal.task_command_router.TaskCommandRouter.TaskExecStdinWriteStream:input_type -> modal.task_command_router.TaskExecStdinWriteStreamRequest
-	30, // 24: modal.task_command_router.TaskCommandRouter.TaskExecStdioRead:input_type -> modal.task_command_router.TaskExecStdioReadRequest
-	32, // 25: modal.task_command_router.TaskCommandRouter.TaskExecWait:input_type -> modal.task_command_router.TaskExecWaitRequest
-	34, // 26: modal.task_command_router.TaskCommandRouter.TaskMountDirectory:input_type -> modal.task_command_router.TaskMountDirectoryRequest
-	35, // 27: modal.task_command_router.TaskCommandRouter.TaskSnapshotDirectory:input_type -> modal.task_command_router.TaskSnapshotDirectoryRequest
-	37, // 28: modal.task_command_router.TaskCommandRouter.TaskSnapshotFilesystem:input_type -> modal.task_command_router.TaskSnapshotFilesystemRequest
-	39, // 29: modal.task_command_router.TaskCommandRouter.TaskUnmountDirectory:input_type -> modal.task_command_router.TaskUnmountDirectoryRequest
-	5,  // 30: modal.task_command_router.TaskCommandRouter.SandboxStdinWriteV2:output_type -> modal.task_command_router.SandboxStdinWriteV2Response
-	7,  // 31: modal.task_command_router.TaskCommandRouter.SandboxStdioReadV2:output_type -> modal.task_command_router.SandboxStdioReadV2Response
-	9,  // 32: modal.task_command_router.TaskCommandRouter.TaskContainerCreate:output_type -> modal.task_command_router.TaskContainerCreateResponse
-	11, // 33: modal.task_command_router.TaskCommandRouter.TaskContainerGet:output_type -> modal.task_command_router.TaskContainerGetResponse
-	14, // 34: modal.task_command_router.TaskCommandRouter.TaskContainerList:output_type -> modal.task_command_router.TaskContainerListResponse
-	16, // 35: modal.task_command_router.TaskCommandRouter.TaskContainerTerminate:output_type -> modal.task_command_router.TaskContainerTerminateResponse
-	18, // 36: modal.task_command_router.TaskCommandRouter.TaskContainerWait:output_type -> modal.task_command_router.TaskContainerWaitResponse
-	20, // 37: modal.task_command_router.TaskCommandRouter.TaskExecPoll:output_type -> modal.task_command_router.TaskExecPollResponse
-	22, // 38: modal.task_command_router.TaskCommandRouter.TaskExecStart:output_type -> modal.task_command_router.TaskExecStartResponse
-	24, // 39: modal.task_command_router.TaskCommandRouter.TaskExecStdinStatus:output_type -> modal.task_command_router.TaskExecStdinStatusResponse
-	26, // 40: modal.task_command_router.TaskCommandRouter.TaskExecStdinWrite:output_type -> modal.task_command_router.TaskExecStdinWriteResponse
-	28, // 41: modal.task_command_router.TaskCommandRouter.TaskExecStdinWriteStream:output_type -> modal.task_command_router.TaskExecStdinWriteStreamResponse
-	31, // 42: modal.task_command_router.TaskCommandRouter.TaskExecStdioRead:output_type -> modal.task_command_router.TaskExecStdioReadResponse
-	33, // 43: modal.task_command_router.TaskCommandRouter.TaskExecWait:output_type -> modal.task_command_router.TaskExecWaitResponse
-	44, // 44: modal.task_command_router.TaskCommandRouter.TaskMountDirectory:output_type -> google.protobuf.Empty
-	36, // 45: modal.task_command_router.TaskCommandRouter.TaskSnapshotDirectory:output_type -> modal.task_command_router.TaskSnapshotDirectoryResponse
-	38, // 46: modal.task_command_router.TaskCommandRouter.TaskSnapshotFilesystem:output_type -> modal.task_command_router.TaskSnapshotFilesystemResponse
-	44, // 47: modal.task_command_router.TaskCommandRouter.TaskUnmountDirectory:output_type -> google.protobuf.Empty
-	30, // [30:48] is the sub-list for method output_type
-	12, // [12:30] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	44, // 1: modal.task_command_router.TaskContainerCreateRequest.env:type_name -> modal.task_command_router.TaskContainerCreateRequest.EnvEntry
+	46, // 2: modal.task_command_router.TaskContainerCreateRequest.volume_mounts:type_name -> modal.client.VolumeMount
+	14, // 3: modal.task_command_router.TaskContainerGetResponse.container:type_name -> modal.task_command_router.TaskContainerInfo
+	47, // 4: modal.task_command_router.TaskContainerInfo.result:type_name -> modal.client.GenericResult
+	14, // 5: modal.task_command_router.TaskContainerListResponse.containers:type_name -> modal.task_command_router.TaskContainerInfo
+	47, // 6: modal.task_command_router.TaskContainerWaitResponse.result:type_name -> modal.client.GenericResult
+	3,  // 7: modal.task_command_router.TaskExecStartRequest.stdout_config:type_name -> modal.task_command_router.TaskExecStdoutConfig
+	1,  // 8: modal.task_command_router.TaskExecStartRequest.stderr_config:type_name -> modal.task_command_router.TaskExecStderrConfig
+	48, // 9: modal.task_command_router.TaskExecStartRequest.pty_info:type_name -> modal.client.PTYInfo
+	45, // 10: modal.task_command_router.TaskExecStartRequest.env:type_name -> modal.task_command_router.TaskExecStartRequest.EnvEntry
+	31, // 11: modal.task_command_router.TaskExecStdinWriteStreamRequest.start:type_name -> modal.task_command_router.TaskExecStdinWriteStreamStart
+	2,  // 12: modal.task_command_router.TaskExecStdioReadRequest.file_descriptor:type_name -> modal.task_command_router.TaskExecStdioFileDescriptor
+	49, // 13: modal.task_command_router.TaskSetNetworkAccessRequest.network_access:type_name -> modal.client.NetworkAccess
+	4,  // 14: modal.task_command_router.TaskCommandRouter.SandboxStdinWriteV2:input_type -> modal.task_command_router.SandboxStdinWriteV2Request
+	6,  // 15: modal.task_command_router.TaskCommandRouter.SandboxStdioReadV2:input_type -> modal.task_command_router.SandboxStdioReadV2Request
+	8,  // 16: modal.task_command_router.TaskCommandRouter.SandboxWaitUntilReady:input_type -> modal.task_command_router.SandboxWaitUntilReadyTcrRequest
+	10, // 17: modal.task_command_router.TaskCommandRouter.TaskContainerCreate:input_type -> modal.task_command_router.TaskContainerCreateRequest
+	12, // 18: modal.task_command_router.TaskCommandRouter.TaskContainerGet:input_type -> modal.task_command_router.TaskContainerGetRequest
+	15, // 19: modal.task_command_router.TaskCommandRouter.TaskContainerList:input_type -> modal.task_command_router.TaskContainerListRequest
+	17, // 20: modal.task_command_router.TaskCommandRouter.TaskContainerTerminate:input_type -> modal.task_command_router.TaskContainerTerminateRequest
+	19, // 21: modal.task_command_router.TaskCommandRouter.TaskContainerWait:input_type -> modal.task_command_router.TaskContainerWaitRequest
+	21, // 22: modal.task_command_router.TaskCommandRouter.TaskExecPoll:input_type -> modal.task_command_router.TaskExecPollRequest
+	23, // 23: modal.task_command_router.TaskCommandRouter.TaskExecStart:input_type -> modal.task_command_router.TaskExecStartRequest
+	25, // 24: modal.task_command_router.TaskCommandRouter.TaskExecStdinStatus:input_type -> modal.task_command_router.TaskExecStdinStatusRequest
+	27, // 25: modal.task_command_router.TaskCommandRouter.TaskExecStdinWrite:input_type -> modal.task_command_router.TaskExecStdinWriteRequest
+	29, // 26: modal.task_command_router.TaskCommandRouter.TaskExecStdinWriteStream:input_type -> modal.task_command_router.TaskExecStdinWriteStreamRequest
+	32, // 27: modal.task_command_router.TaskCommandRouter.TaskExecStdioRead:input_type -> modal.task_command_router.TaskExecStdioReadRequest
+	34, // 28: modal.task_command_router.TaskCommandRouter.TaskExecWait:input_type -> modal.task_command_router.TaskExecWaitRequest
+	36, // 29: modal.task_command_router.TaskCommandRouter.TaskMountDirectory:input_type -> modal.task_command_router.TaskMountDirectoryRequest
+	37, // 30: modal.task_command_router.TaskCommandRouter.TaskSetNetworkAccess:input_type -> modal.task_command_router.TaskSetNetworkAccessRequest
+	39, // 31: modal.task_command_router.TaskCommandRouter.TaskSnapshotDirectory:input_type -> modal.task_command_router.TaskSnapshotDirectoryRequest
+	41, // 32: modal.task_command_router.TaskCommandRouter.TaskSnapshotFilesystem:input_type -> modal.task_command_router.TaskSnapshotFilesystemRequest
+	43, // 33: modal.task_command_router.TaskCommandRouter.TaskUnmountDirectory:input_type -> modal.task_command_router.TaskUnmountDirectoryRequest
+	5,  // 34: modal.task_command_router.TaskCommandRouter.SandboxStdinWriteV2:output_type -> modal.task_command_router.SandboxStdinWriteV2Response
+	7,  // 35: modal.task_command_router.TaskCommandRouter.SandboxStdioReadV2:output_type -> modal.task_command_router.SandboxStdioReadV2Response
+	9,  // 36: modal.task_command_router.TaskCommandRouter.SandboxWaitUntilReady:output_type -> modal.task_command_router.SandboxWaitUntilReadyTcrResponse
+	11, // 37: modal.task_command_router.TaskCommandRouter.TaskContainerCreate:output_type -> modal.task_command_router.TaskContainerCreateResponse
+	13, // 38: modal.task_command_router.TaskCommandRouter.TaskContainerGet:output_type -> modal.task_command_router.TaskContainerGetResponse
+	16, // 39: modal.task_command_router.TaskCommandRouter.TaskContainerList:output_type -> modal.task_command_router.TaskContainerListResponse
+	18, // 40: modal.task_command_router.TaskCommandRouter.TaskContainerTerminate:output_type -> modal.task_command_router.TaskContainerTerminateResponse
+	20, // 41: modal.task_command_router.TaskCommandRouter.TaskContainerWait:output_type -> modal.task_command_router.TaskContainerWaitResponse
+	22, // 42: modal.task_command_router.TaskCommandRouter.TaskExecPoll:output_type -> modal.task_command_router.TaskExecPollResponse
+	24, // 43: modal.task_command_router.TaskCommandRouter.TaskExecStart:output_type -> modal.task_command_router.TaskExecStartResponse
+	26, // 44: modal.task_command_router.TaskCommandRouter.TaskExecStdinStatus:output_type -> modal.task_command_router.TaskExecStdinStatusResponse
+	28, // 45: modal.task_command_router.TaskCommandRouter.TaskExecStdinWrite:output_type -> modal.task_command_router.TaskExecStdinWriteResponse
+	30, // 46: modal.task_command_router.TaskCommandRouter.TaskExecStdinWriteStream:output_type -> modal.task_command_router.TaskExecStdinWriteStreamResponse
+	33, // 47: modal.task_command_router.TaskCommandRouter.TaskExecStdioRead:output_type -> modal.task_command_router.TaskExecStdioReadResponse
+	35, // 48: modal.task_command_router.TaskCommandRouter.TaskExecWait:output_type -> modal.task_command_router.TaskExecWaitResponse
+	50, // 49: modal.task_command_router.TaskCommandRouter.TaskMountDirectory:output_type -> google.protobuf.Empty
+	38, // 50: modal.task_command_router.TaskCommandRouter.TaskSetNetworkAccess:output_type -> modal.task_command_router.TaskSetNetworkAccessResponse
+	40, // 51: modal.task_command_router.TaskCommandRouter.TaskSnapshotDirectory:output_type -> modal.task_command_router.TaskSnapshotDirectoryResponse
+	42, // 52: modal.task_command_router.TaskCommandRouter.TaskSnapshotFilesystem:output_type -> modal.task_command_router.TaskSnapshotFilesystemResponse
+	50, // 53: modal.task_command_router.TaskCommandRouter.TaskUnmountDirectory:output_type -> google.protobuf.Empty
+	34, // [34:54] is the sub-list for method output_type
+	14, // [14:34] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_modal_proto_task_command_router_proto_init() }
@@ -3892,29 +4188,29 @@ func file_modal_proto_task_command_router_proto_init() {
 		return
 	}
 	file_modal_proto_api_proto_init()
-	file_modal_proto_task_command_router_proto_msgTypes[16].OneofWrappers = []any{
+	file_modal_proto_task_command_router_proto_msgTypes[18].OneofWrappers = []any{
 		(*taskExecPollResponse_Code)(nil),
 		(*taskExecPollResponse_Signal)(nil),
 	}
-	file_modal_proto_task_command_router_proto_msgTypes[17].OneofWrappers = []any{}
-	file_modal_proto_task_command_router_proto_msgTypes[23].OneofWrappers = []any{
+	file_modal_proto_task_command_router_proto_msgTypes[19].OneofWrappers = []any{}
+	file_modal_proto_task_command_router_proto_msgTypes[25].OneofWrappers = []any{
 		(*taskExecStdinWriteStreamRequest_Start)(nil),
 		(*taskExecStdinWriteStreamRequest_Data)(nil),
 	}
-	file_modal_proto_task_command_router_proto_msgTypes[29].OneofWrappers = []any{
+	file_modal_proto_task_command_router_proto_msgTypes[31].OneofWrappers = []any{
 		(*taskExecWaitResponse_Code)(nil),
 		(*taskExecWaitResponse_Signal)(nil),
 	}
-	file_modal_proto_task_command_router_proto_msgTypes[30].OneofWrappers = []any{}
-	file_modal_proto_task_command_router_proto_msgTypes[31].OneofWrappers = []any{}
-	file_modal_proto_task_command_router_proto_msgTypes[33].OneofWrappers = []any{}
+	file_modal_proto_task_command_router_proto_msgTypes[32].OneofWrappers = []any{}
+	file_modal_proto_task_command_router_proto_msgTypes[35].OneofWrappers = []any{}
+	file_modal_proto_task_command_router_proto_msgTypes[37].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_modal_proto_task_command_router_proto_rawDesc), len(file_modal_proto_task_command_router_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   38,
+			NumMessages:   42,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
