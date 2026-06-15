@@ -756,7 +756,7 @@ func (f *Function) Spawn(ctx context.Context, args []any, kwargs map[string]any)
 	if err != nil {
 		return nil, err
 	}
-	invocation, err := createControlPlaneInvocation(ctx, f.client.cpClient, f.client.logger, f.FunctionID, input, pb.FunctionCallInvocationType_FUNCTION_CALL_INVOCATION_TYPE_SYNC)
+	invocation, err := createControlPlaneInvocation(ctx, f.client.cpClient, f.client.logger, f.FunctionID, input, pb.FunctionCallInvocationType_FUNCTION_CALL_INVOCATION_TYPE_ASYNC)
 	if err != nil {
 		return nil, err
 	}

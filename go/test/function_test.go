@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	modal "github.com/modal-labs/modal-client/go"
 	"github.com/modal-labs/modal-client/go/internal/grpcmock"
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
@@ -325,6 +326,107 @@ func TestWebEndpointSpawnCallError(t *testing.T) {
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err).Should(gomega.BeAssignableToTypeOf(modal.InvalidError{}))
 	g.Expect(err.Error()).Should(gomega.ContainSubstring("A webhook Function cannot be invoked for remote execution with 'Spawn'"))
+}
+
+func mockFunctionGetSupportingCbor(mock *grpcmock.MockClient, functionID string) {
+	grpcmock.HandleUnary(
+		mock, "/FunctionGet",
+		func(req *pb.FunctionGetRequest) (*pb.FunctionGetResponse, error) {
+			return pb.FunctionGetResponse_builder{
+				FunctionId: functionID,
+				HandleMetadata: pb.FunctionHandleMetadata_builder{
+					SupportedInputFormats: []pb.DataFormat{pb.DataFormat_DATA_FORMAT_CBOR},
+				}.Build(),
+			}.Build(), nil
+		},
+	)
+}
+
+func mockFunctionMapExpectingInvocationType(
+	mock *grpcmock.MockClient,
+	g *gomega.WithT,
+	invocationType pb.FunctionCallInvocationType,
+	functionCallID string,
+) {
+	grpcmock.HandleUnary(
+		mock, "/FunctionMap",
+		func(req *pb.FunctionMapRequest) (*pb.FunctionMapResponse, error) {
+			g.Expect(req.GetFunctionCallInvocationType()).To(gomega.Equal(invocationType))
+			g.Expect(req.GetFunctionCallType()).To(gomega.Equal(pb.FunctionCallType_FUNCTION_CALL_TYPE_UNARY))
+			g.Expect(req.GetPipelinedInputs()).To(gomega.HaveLen(1))
+			return pb.FunctionMapResponse_builder{
+				FunctionCallId:  functionCallID,
+				FunctionCallJwt: "fc-jwt",
+				PipelinedInputs: []*pb.FunctionPutInputsResponseItem{
+					pb.FunctionPutInputsResponseItem_builder{InputJwt: "input-jwt"}.Build(),
+				},
+			}.Build(), nil
+		},
+	)
+}
+
+func TestFunctionSpawnSendsAsyncInvocationType(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mock := newGRPCMockClient(t)
+	mockFunctionGetSupportingCbor(mock, "fid-spawn")
+
+	f, err := mock.Functions.FromName(ctx, "test-app", "test-function", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	mockFunctionMapExpectingInvocationType(
+		mock, g, pb.FunctionCallInvocationType_FUNCTION_CALL_INVOCATION_TYPE_ASYNC, "fc-spawn")
+
+	fc, err := f.Spawn(ctx, []any{"hello"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(fc.FunctionCallID).To(gomega.Equal("fc-spawn"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestFunctionRemoteSendsSyncInvocationType(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+
+	mock := newGRPCMockClient(t)
+	mockFunctionGetSupportingCbor(mock, "fid-remote")
+
+	f, err := mock.Functions.FromName(ctx, "test-app", "test-function", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	mockFunctionMapExpectingInvocationType(
+		mock, g, pb.FunctionCallInvocationType_FUNCTION_CALL_INVOCATION_TYPE_SYNC, "fc-remote")
+
+	grpcmock.HandleUnary(
+		mock, "/FunctionGetOutputs",
+		func(req *pb.FunctionGetOutputsRequest) (*pb.FunctionGetOutputsResponse, error) {
+			g.Expect(req.GetFunctionCallId()).To(gomega.Equal("fc-remote"))
+			data, err := cbor.Marshal("output: hello")
+			if err != nil {
+				return nil, err
+			}
+			return pb.FunctionGetOutputsResponse_builder{
+				Outputs: []*pb.FunctionGetOutputsItem{
+					pb.FunctionGetOutputsItem_builder{
+						Result: pb.GenericResult_builder{
+							Status: pb.GenericResult_GENERIC_STATUS_SUCCESS,
+							Data:   data,
+						}.Build(),
+						DataFormat: pb.DataFormat_DATA_FORMAT_CBOR,
+					}.Build(),
+				},
+			}.Build(), nil
+		},
+	)
+
+	result, err := f.Remote(ctx, []any{"hello"}, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(result).To(gomega.Equal("output: hello"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
 
 // compareFlexible compares two values with flexible type handling
