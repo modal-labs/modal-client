@@ -1266,7 +1266,10 @@ class _App:
 
         return wrapper
 
-    def _experimental_server(
+    def _experimental_server(self, **kwargs):
+        return self.server(**kwargs)
+
+    def server(
         self,
         _warn_parentheses_missing=None,  # mdmd:line-hidden
         *,
@@ -1334,7 +1337,7 @@ class _App:
             startup_timeout: Maximum startup time in seconds.
             exit_grace_period: Grace period for in-flight requests on shutdown.
             routing_region: Region to route Server requests through.
-            h2_enabled: Enable HTTP/2.
+            h2_enabled: Enable HTTP/2 in the container.
             target_concurrency: Target concurrency for the server; 0 disables autoscaling.
             cloud: Cloud provider (aws, gcp, oci, auto).
             region: Region(s) to run on.
@@ -1346,7 +1349,7 @@ class _App:
 
         Examples:
             ```python
-            @app._experimental_server(port=8000, routing_region="us-east")
+            @app.server(port=8000, routing_region="us-east")
             class MyServer:
                 @modal.enter()
                 def start(self):
@@ -1358,7 +1361,7 @@ class _App:
             ```
         """
         if _warn_parentheses_missing:
-            raise InvalidError("Did you forget parentheses? Suggestion: `@app._experimental_server()`.")
+            raise InvalidError("Did you forget parentheses? Suggestion: `@app.server()`.")
 
         # Validate HTTP server config
         validate_http_server_config(

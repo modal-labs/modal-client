@@ -35,7 +35,7 @@ async def test_servicer_factory_uses_kernel_selected_tcp_ports(blob_server, cred
 server_app = modal.App("server-test-app", include_source=False)
 
 
-@server_app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+@server_app.server(port=8000, routing_region="us-east", serialized=True)
 class BasicServer:
     @modal.enter()
     def start(self):
@@ -43,7 +43,7 @@ class BasicServer:
 
 
 def test_basic_server_registration(client, servicer):
-    """Test that @app._experimental_server() registers a server with the correct config."""
+    """Test that @app.server() registers a server with the correct config."""
     with server_app.run(client=client):
         assert isinstance(BasicServer, Server)
         service_function = BasicServer._get_service_function()
@@ -66,12 +66,10 @@ def test_server_object_id_matches_service_function(client, servicer):
 
 
 def test_server_with_gpu_and_autoscaler_settings(client, servicer):
-    """Test that @app._experimental_server() accepts GPU configuration and autoscaler settings."""
+    """Test that @app.server() accepts GPU configuration and autoscaler settings."""
     app = modal.App("server-gpu-test", include_source=False)
 
-    @app._experimental_server(
-        port=8000, min_containers=2, max_containers=10, routing_region="us-east", gpu="A10G", serialized=True
-    )
+    @app.server(port=8000, min_containers=2, max_containers=10, routing_region="us-east", gpu="A10G", serialized=True)
     class GPUServer:
         @modal.enter()
         def start(self):
@@ -92,7 +90,7 @@ def test_server_with_gpu_and_autoscaler_settings(client, servicer):
 flash_app_default = modal.App("flash-app-default")
 
 
-@flash_app_default._experimental_server(
+@flash_app_default.server(
     port=8080,
     routing_region="us-east",
     exit_grace_period=10,
@@ -107,7 +105,7 @@ class FlashClassDefault:
 app = modal.App("flash-app-2")
 
 
-@app._experimental_server(
+@app.server(
     port=8080,
     routing_region="us-east",
     startup_timeout=10,
@@ -369,7 +367,7 @@ def test_server_lifecycle_context_operation_order(monkeypatch):
 flash_params_override_app = modal.App("flash-params-override")
 
 
-@flash_params_override_app._experimental_server(
+@flash_params_override_app.server(
     port=8080,
     routing_region="us-west",
     target_concurrency=11,
@@ -430,7 +428,7 @@ def test_server_rejects_method_decorator():
     ):
         app = modal.App("server-method-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+        @app.server(port=8000, routing_region="us-east", serialized=True)
         class ServerWithMethod:
             @modal.enter()
             def start(self):
@@ -442,11 +440,11 @@ def test_server_rejects_method_decorator():
 
 
 def test_server_rejects_empty_routing_region():
-    """Test that @app._experimental_server() requires a non-empty routing_region parameter."""
+    """Test that @app.server() requires a non-empty routing_region parameter."""
     with pytest.raises(InvalidError, match="The `routing_region` argument must be passed."):
         app = modal.App("server-empty-proxy-regions-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="", serialized=True)
+        @app.server(port=8000, routing_region="", serialized=True)
         class EmptyProxyRegionsServer:
             pass
 
@@ -456,7 +454,7 @@ def test_server_rejects_parametrization():
     with pytest.raises(InvalidError, match="cannot use modal.parameter"):
         app = modal.App("server-param-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+        @app.server(port=8000, routing_region="us-east", serialized=True)
         class ParameterizedServer:
             model_name: str = modal.parameter()
 
@@ -470,7 +468,7 @@ def test_server_rejects_parametrization_with_default():
     with pytest.raises(InvalidError, match="cannot use modal.parameter"):
         app = modal.App("server-param-default-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+        @app.server(port=8000, routing_region="us-east", serialized=True)
         class ParameterizedServerWithDefault:
             model_name: str = modal.parameter(default="gpt-4")
 
@@ -487,7 +485,7 @@ def test_server_rejects_parametrized_invocation():
     """
     app = modal.App("server-parametrized-call-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    @app.server(port=8000, routing_region="us-east", serialized=True)
     class ParametrizedCallServer:
         @modal.enter()
         def start(self):
@@ -507,7 +505,7 @@ def test_server_rejects_concurrent_decorator():
     ):
         app = modal.App("server-concurrent-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+        @app.server(port=8000, routing_region="us-east", serialized=True)
         @modal.concurrent(max_inputs=10)  # type: ignore
         class ConcurrentServer:
             @modal.enter()
@@ -520,7 +518,7 @@ def test_server_rejects_http_server_decorator():
     with pytest.raises(InvalidError, match=r"cannot have @modal\.experimental\.http_server\(\)"):
         app = modal.App("server-http-server-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+        @app.server(port=8000, routing_region="us-east", serialized=True)
         @modal.experimental.http_server(port=9000, proxy_regions=["us-east"])  # type: ignore
         class HttpServerDecoratorServer:
             @modal.enter()
@@ -536,7 +534,7 @@ def test_server_rejects_batched_decorator():
     ):
         app = modal.App("server-batched-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+        @app.server(port=8000, routing_region="us-east", serialized=True)
         @modal.batched(max_batch_size=4, wait_ms=1000)  # type: ignore
         class BatchedServer:
             @modal.enter()
@@ -549,7 +547,7 @@ def test_server_rejects_schedule():
     with pytest.raises(TypeError, match="cannot be used on a class"):
         app = modal.App("server-schedule-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)  # type: ignore[arg-type]
+        @app.server(port=8000, routing_region="us-east", serialized=True)  # type: ignore[arg-type]
         @app.function(schedule=modal.Period(seconds=10))
         class ScheduledServer:
             @modal.enter()
@@ -562,7 +560,7 @@ def test_server_rejects_cron():
     with pytest.raises(TypeError, match="cannot be used on a class"):
         app = modal.App("server-cron-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)  # type: ignore[arg-type]
+        @app.server(port=8000, routing_region="us-east", serialized=True)  # type: ignore[arg-type]
         @app.function(schedule=modal.Cron("* * * * *"))
         class CronServer:
             @modal.enter()
@@ -575,7 +573,7 @@ def test_server_snap_without_enable_memory_snapshot():
     with pytest.raises(InvalidError, match="enable_memory_snapshot=True"):
         app = modal.App("server-snap-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+        @app.server(port=8000, routing_region="us-east", serialized=True)
         class SnapServer:
             @modal.enter(snap=True)
             def pre_snapshot(self):
@@ -586,14 +584,14 @@ def test_server_snap_without_enable_memory_snapshot():
 
 
 def test_server_with_clustered_decorator(client, servicer):
-    """Test that @modal.experimental.clustered() works with @app._experimental_server().
+    """Test that @modal.experimental.clustered() works with @app.server().
 
     Regression test: @modal.clustered() wraps the class in a _PartialFunction,
     which caused validate_wrapped_user_cls_decorators to fail on inspect.isclass().
     """
     app = modal.App("server-clustered-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    @app.server(port=8000, routing_region="us-east", serialized=True)
     @modal.experimental.clustered(size=2)  # type: ignore
     class ClusteredServer:
         @modal.enter()
@@ -611,10 +609,10 @@ def test_server_with_clustered_decorator(client, servicer):
 
 
 def test_server_with_proxy(client, servicer):
-    """Test that @app._experimental_server() can be configured with a Modal Proxy."""
+    """Test that @app.server() can be configured with a Modal Proxy."""
     app = modal.App("server-proxy-test", include_source=False)
 
-    @app._experimental_server(
+    @app.server(
         port=8000,
         routing_region="us-east",
         proxy=modal.Proxy.from_name("my-proxy"),
@@ -683,7 +681,7 @@ def test_server_get_url(client, servicer):
     """
     app = modal.App("server-get-urls-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    @app.server(port=8000, routing_region="us-east", serialized=True)
     class URLServer:
         @modal.enter()
         def start(self):
@@ -704,7 +702,7 @@ def test_server_update_autoscaler(client, servicer):
     """
     app = modal.App("server-update-autoscaler-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    @app.server(port=8000, routing_region="us-east", serialized=True)
     class AutoscaleServer:
         @modal.enter()
         def start(self):
@@ -738,7 +736,7 @@ def test_server_http_config_parameters(client, servicer):
     """Test that HTTP config parameters are passed correctly."""
     app = modal.App("server-http-config-test", include_source=False)
 
-    @app._experimental_server(
+    @app.server(
         port=9000,
         routing_region="us-east",
         serialized=True,
@@ -769,7 +767,7 @@ def test_server_target_concurrency(client, servicer):
     """Test that target_concurrency parameter is passed correctly."""
     app = modal.App("server-target-concurrency-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", target_concurrency=50, serialized=True)
+    @app.server(port=8000, routing_region="us-east", target_concurrency=50, serialized=True)
     class ConcurrencyServer:
         @modal.enter()
         def start(self):
@@ -787,7 +785,7 @@ def test_server_target_concurrency_zero(client, servicer):
     """Test that target_concurrency=0 disables the server target."""
     app = modal.App("server-zero-target-concurrency-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", target_concurrency=0, serialized=True)
+    @app.server(port=8000, routing_region="us-east", target_concurrency=0, serialized=True)
     class ZeroConcurrencyServer:
         @modal.enter()
         def start(self):
@@ -805,7 +803,7 @@ def test_server_rejects_negative_target_concurrency():
     with pytest.raises(InvalidError, match="must be a non-negative integer"):
         app = modal.App("server-negative-target-concurrency-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", target_concurrency=-1, serialized=True)
+        @app.server(port=8000, routing_region="us-east", target_concurrency=-1, serialized=True)
         class NegativeConcurrencyServer:
             pass
 
@@ -814,7 +812,7 @@ def test_server_rejects_negative_exit_grace_period():
     with pytest.raises(InvalidError, match="must be non-negative"):
         app = modal.App("server-negative-exit-grace-period-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", exit_grace_period=-1, serialized=True)
+        @app.server(port=8000, routing_region="us-east", exit_grace_period=-1, serialized=True)
         class NegativeExitGracePeriodServer:
             pass
 
@@ -823,7 +821,7 @@ def test_server_rejects_too_large_exit_grace_period():
     with pytest.raises(InvalidError, match="must not exceed 3600 seconds"):
         app = modal.App("server-large-exit-grace-period-test", include_source=False)
 
-        @app._experimental_server(port=8000, routing_region="us-east", exit_grace_period=3601, serialized=True)
+        @app.server(port=8000, routing_region="us-east", exit_grace_period=3601, serialized=True)
         class LargeExitGracePeriodServer:
             pass
 
@@ -833,7 +831,7 @@ def test_server_with_volumes(client, servicer):
     app = modal.App("server-volumes-test", include_source=False)
     vol = modal.Volume.from_name("test-volume", create_if_missing=True)
 
-    @app._experimental_server(port=8000, routing_region="us-east", volumes={"/data": vol}, serialized=True)
+    @app.server(port=8000, routing_region="us-east", volumes={"/data": vol}, serialized=True)
     class VolumeServer:
         @modal.enter()
         def start(self):
@@ -853,7 +851,7 @@ def test_server_with_secrets(client, servicer):
     app = modal.App("server-secrets-test", include_source=False)
     secret = modal.Secret.from_dict({"API_KEY": "test-key"})
 
-    @app._experimental_server(port=8000, routing_region="us-east", secrets=[secret], serialized=True)
+    @app.server(port=8000, routing_region="us-east", secrets=[secret], serialized=True)
     class SecretServer:
         @modal.enter()
         def start(self):
@@ -872,7 +870,7 @@ def test_server_with_image(client, servicer):
     app = modal.App("server-image-test", include_source=False)
     custom_image = modal.Image.debian_slim().pip_install("flask")
 
-    @app._experimental_server(port=8000, routing_region="us-east", image=custom_image, serialized=True)
+    @app.server(port=8000, routing_region="us-east", image=custom_image, serialized=True)
     class ImageServer:
         @modal.enter()
         def start(self):
@@ -896,7 +894,7 @@ def test_server_with_memory_and_cpu(client, servicer):
     """Test that memory and cpu parameters are passed correctly."""
     app = modal.App("server-resources-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", memory=2048, cpu=4.0, serialized=True)
+    @app.server(port=8000, routing_region="us-east", memory=2048, cpu=4.0, serialized=True)
     class ResourceServer:
         @modal.enter()
         def start(self):
@@ -915,7 +913,7 @@ def test_server_routing_region(client, servicer):
     """Test that servers configure a single proxy region."""
     app = modal.App("server-routing-region-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    @app.server(port=8000, routing_region="us-east", serialized=True)
     class RoutingRegionServer:
         @modal.enter()
         def start(self):
@@ -938,7 +936,7 @@ def test_server_creates_class_object(client, servicer):
     """Test that deploying a server creates the expected objects."""
     app = modal.App("server-objects-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    @app.server(port=8000, routing_region="us-east", serialized=True)
     class ObjectsServer:
         @modal.enter()
         def start(self):
@@ -964,7 +962,7 @@ def test_server_with_inheritance(client, servicer):
         def base_enter(self):
             self.base_entered = True
 
-    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    @app.server(port=8000, routing_region="us-east", serialized=True)
     class DerivedServer(BaseServer):
         @modal.enter()
         def derived_enter(self):
@@ -991,7 +989,7 @@ def test_server_serialization_roundtrip(client, servicer):
     """Test that server class can be serialized and deserialized correctly."""
     app = modal.App("server-serialization-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    @app.server(port=8000, routing_region="us-east", serialized=True)
     class SerializedServer:
         @modal.enter()
         def start(self):
@@ -1025,7 +1023,7 @@ def test_server_has_user_server_with_mro():
 
     app = modal.App("server-mro-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    @app.server(port=8000, routing_region="us-east", serialized=True)
     class ServerWithLifecycle:
         @modal.enter()
         def on_start(self):
@@ -1052,7 +1050,7 @@ def test_server_has_user_server_with_mro():
 def test_server_user_class_instantiation():
     app = modal.App("server-instance-test", include_source=False)
 
-    @app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+    @app.server(port=8000, routing_region="us-east", serialized=True)
     class SimpleServer:
         @modal.enter()
         def start(self):

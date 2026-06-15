@@ -22,7 +22,7 @@ class C:
         pass
 
 
-@app._experimental_server(port=8000, routing_region="us-east", serialized=True)
+@app.server(port=8000, routing_region="us-east", serialized=True)
 class SimpleServer:
     @modal.enter()
     def start(self):
