@@ -3921,6 +3921,11 @@ message VolumeCommitRequest {
   // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
   // a volume mount.
   string volume_id = 1;
+
+  // Set by the runtime when committing a volume mounted in a sandbox
+  // sidecar container (used for runtime-driven commit-on-exit).
+  // Unset targets the task's main container.
+  optional string container_id = 2;
 }
 
 message VolumeCommitResponse {

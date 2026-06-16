@@ -50291,10 +50291,13 @@ func (b0 UserIdentity_builder) Build() *UserIdentity {
 }
 
 type VolumeCommitRequest struct {
-	state               protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_VolumeId string                 `protobuf:"bytes,1,opt,name=volume_id,json=volumeId,proto3"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_VolumeId    string                 `protobuf:"bytes,1,opt,name=volume_id,json=volumeId,proto3"`
+	xxx_hidden_ContainerId *string                `protobuf:"bytes,2,opt,name=container_id,json=containerId,proto3,oneof"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *VolumeCommitRequest) Reset() {
@@ -50329,8 +50332,35 @@ func (x *VolumeCommitRequest) GetVolumeId() string {
 	return ""
 }
 
+func (x *VolumeCommitRequest) GetContainerId() string {
+	if x != nil {
+		if x.xxx_hidden_ContainerId != nil {
+			return *x.xxx_hidden_ContainerId
+		}
+		return ""
+	}
+	return ""
+}
+
 func (x *VolumeCommitRequest) SetVolumeId(v string) {
 	x.xxx_hidden_VolumeId = v
+}
+
+func (x *VolumeCommitRequest) SetContainerId(v string) {
+	x.xxx_hidden_ContainerId = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 2)
+}
+
+func (x *VolumeCommitRequest) HasContainerId() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *VolumeCommitRequest) ClearContainerId() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_ContainerId = nil
 }
 
 type VolumeCommitRequest_builder struct {
@@ -50339,6 +50369,10 @@ type VolumeCommitRequest_builder struct {
 	// NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
 	// a volume mount.
 	VolumeId string
+	// Set by the runtime when committing a volume mounted in a sandbox
+	// sidecar container (used for runtime-driven commit-on-exit).
+	// Unset targets the task's main container.
+	ContainerId *string
 }
 
 func (b0 VolumeCommitRequest_builder) Build() *VolumeCommitRequest {
@@ -50346,6 +50380,10 @@ func (b0 VolumeCommitRequest_builder) Build() *VolumeCommitRequest {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_VolumeId = b.VolumeId
+	if b.ContainerId != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 2)
+		x.xxx_hidden_ContainerId = b.ContainerId
+	}
 	return m0
 }
 
@@ -60593,9 +60631,11 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\ttimestamp\x18\x02 \x01(\x01R\ttimestamp\"C\n" +
 	"\fUserIdentity\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1a\n" +
-	"\busername\x18\x02 \x01(\tR\busername\"2\n" +
+	"\busername\x18\x02 \x01(\tR\busername\"k\n" +
 	"\x13VolumeCommitRequest\x12\x1b\n" +
-	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"7\n" +
+	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\x12&\n" +
+	"\fcontainer_id\x18\x02 \x01(\tH\x00R\vcontainerId\x88\x01\x01B\x0f\n" +
+	"\r_container_id\"7\n" +
 	"\x14VolumeCommitResponse\x12\x1f\n" +
 	"\vskip_reload\x18\x01 \x01(\bR\n" +
 	"skipReload\"\x8c\x01\n" +
@@ -62952,6 +62992,7 @@ func file_modal_proto_api_proto_init() {
 	file_modal_proto_api_proto_msgTypes[437].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[438].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[439].OneofWrappers = []any{}
+	file_modal_proto_api_proto_msgTypes[445].OneofWrappers = []any{}
 	file_modal_proto_api_proto_msgTypes[455].OneofWrappers = []any{
 		(*volumeGetFileResponse_Data)(nil),
 		(*volumeGetFileResponse_DataBlobId)(nil),
