@@ -1144,10 +1144,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         rollback_history = self.app_deployment_history[request.app_id][rollback_version - 1]
         rollback_client = rollback_history["client_version"]
+        deployed_at = datetime.datetime.now().timestamp()
         self.app_deployment_history[request.app_id].append(
             {
                 "app_id": request.app_id,
-                "deployed_at": datetime.datetime.now().timestamp(),
+                "deployed_at": deployed_at,
                 "version": current_version + 1,
                 "client_version": rollback_client,
                 "deployed_by": "foo-user",
@@ -1160,7 +1161,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
-        await stream.send_message(Empty())
+        response = api_pb2.AppRollbackResponse(
+            url="http://test.modal.com/foo/bar",
+            server_warnings=[],
+            deployed_at=deployed_at,
+        )
+        await stream.send_message(response)
 
     async def AppRollover(self, stream):
         request: api_pb2.AppRolloverRequest = await stream.recv_message()

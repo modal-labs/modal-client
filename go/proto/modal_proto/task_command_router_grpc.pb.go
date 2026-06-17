@@ -64,12 +64,14 @@ type TaskCommandRouterClient interface {
 	// Execute a command in the task.
 	TaskExecStart(ctx context.Context, in *TaskExecStartRequest, opts ...grpc.CallOption) (*TaskExecStartResponse, error)
 	// Get the current stdin write status for an exec'd command. Used to resume
-	// a TaskExecStdinWriteStream after a stream failure.
+	// a TaskExecStdinWriteStream after a stream failure. Evicts any in-flight
+	// TaskExecStdinWriteStream for this exec, so it is not safe to call for
+	// read-only observability.
 	TaskExecStdinStatus(ctx context.Context, in *TaskExecStdinStatusRequest, opts ...grpc.CallOption) (*TaskExecStdinStatusResponse, error)
 	// Write to the stdin stream of an exec'd command.
 	TaskExecStdinWrite(ctx context.Context, in *TaskExecStdinWriteRequest, opts ...grpc.CallOption) (*TaskExecStdinWriteResponse, error)
 	// Stream stdin bytes to an exec'd command. First message carries the
-	// start envelope (task_id, exec_id, offset); subsequent messages carry data.
+	// start message (task_id, exec_id, offset); subsequent messages carry data.
 	TaskExecStdinWriteStream(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[TaskExecStdinWriteStreamRequest, TaskExecStdinWriteStreamResponse], error)
 	// Get a stream of output from the stdout or stderr stream of an exec'd command.
 	TaskExecStdioRead(ctx context.Context, in *TaskExecStdioReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskExecStdioReadResponse], error)
@@ -338,12 +340,14 @@ type TaskCommandRouterServer interface {
 	// Execute a command in the task.
 	TaskExecStart(context.Context, *TaskExecStartRequest) (*TaskExecStartResponse, error)
 	// Get the current stdin write status for an exec'd command. Used to resume
-	// a TaskExecStdinWriteStream after a stream failure.
+	// a TaskExecStdinWriteStream after a stream failure. Evicts any in-flight
+	// TaskExecStdinWriteStream for this exec, so it is not safe to call for
+	// read-only observability.
 	TaskExecStdinStatus(context.Context, *TaskExecStdinStatusRequest) (*TaskExecStdinStatusResponse, error)
 	// Write to the stdin stream of an exec'd command.
 	TaskExecStdinWrite(context.Context, *TaskExecStdinWriteRequest) (*TaskExecStdinWriteResponse, error)
 	// Stream stdin bytes to an exec'd command. First message carries the
-	// start envelope (task_id, exec_id, offset); subsequent messages carry data.
+	// start message (task_id, exec_id, offset); subsequent messages carry data.
 	TaskExecStdinWriteStream(grpc.ClientStreamingServer[TaskExecStdinWriteStreamRequest, TaskExecStdinWriteStreamResponse]) error
 	// Get a stream of output from the stdout or stderr stream of an exec'd command.
 	TaskExecStdioRead(*TaskExecStdioReadRequest, grpc.ServerStreamingServer[TaskExecStdioReadResponse]) error

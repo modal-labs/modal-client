@@ -252,7 +252,7 @@ type ModalClientClient interface {
 	AppList(ctx context.Context, in *AppListRequest, opts ...grpc.CallOption) (*AppListResponse, error)
 	AppLookup(ctx context.Context, in *AppLookupRequest, opts ...grpc.CallOption) (*AppLookupResponse, error)
 	AppPublish(ctx context.Context, in *AppPublishRequest, opts ...grpc.CallOption) (*AppPublishResponse, error)
-	AppRollback(ctx context.Context, in *AppRollbackRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	AppRollback(ctx context.Context, in *AppRollbackRequest, opts ...grpc.CallOption) (*AppRollbackResponse, error)
 	AppRollover(ctx context.Context, in *AppRolloverRequest, opts ...grpc.CallOption) (*AppRolloverResponse, error)
 	AppSetObjects(ctx context.Context, in *AppSetObjectsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AppSetTags(ctx context.Context, in *AppSetTagsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -661,9 +661,9 @@ func (c *modalClientClient) AppPublish(ctx context.Context, in *AppPublishReques
 	return out, nil
 }
 
-func (c *modalClientClient) AppRollback(ctx context.Context, in *AppRollbackRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *modalClientClient) AppRollback(ctx context.Context, in *AppRollbackRequest, opts ...grpc.CallOption) (*AppRollbackResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(AppRollbackResponse)
 	err := c.cc.Invoke(ctx, ModalClient_AppRollback_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -2692,7 +2692,7 @@ type ModalClientServer interface {
 	AppList(context.Context, *AppListRequest) (*AppListResponse, error)
 	AppLookup(context.Context, *AppLookupRequest) (*AppLookupResponse, error)
 	AppPublish(context.Context, *AppPublishRequest) (*AppPublishResponse, error)
-	AppRollback(context.Context, *AppRollbackRequest) (*emptypb.Empty, error)
+	AppRollback(context.Context, *AppRollbackRequest) (*AppRollbackResponse, error)
 	AppRollover(context.Context, *AppRolloverRequest) (*AppRolloverResponse, error)
 	AppSetObjects(context.Context, *AppSetObjectsRequest) (*emptypb.Empty, error)
 	AppSetTags(context.Context, *AppSetTagsRequest) (*emptypb.Empty, error)
@@ -2973,7 +2973,7 @@ func (UnimplementedModalClientServer) AppLookup(context.Context, *AppLookupReque
 func (UnimplementedModalClientServer) AppPublish(context.Context, *AppPublishRequest) (*AppPublishResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppPublish not implemented")
 }
-func (UnimplementedModalClientServer) AppRollback(context.Context, *AppRollbackRequest) (*emptypb.Empty, error) {
+func (UnimplementedModalClientServer) AppRollback(context.Context, *AppRollbackRequest) (*AppRollbackResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppRollback not implemented")
 }
 func (UnimplementedModalClientServer) AppRollover(context.Context, *AppRolloverRequest) (*AppRolloverResponse, error) {
