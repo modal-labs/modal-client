@@ -37,6 +37,11 @@ const (
 )
 
 const (
+	customerSuppliedEncryptionKeyMinLength = 16
+	customerSuppliedEncryptionKeyMaxLength = 512
+)
+
+const (
 	v1SandboxIDAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	ulidAlphabet        = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 )
@@ -804,7 +809,11 @@ type SandboxWaitUntilReadyParams struct{}
 type SandboxTunnelsParams struct{}
 
 // SandboxMountImageParams are options for Sandbox.MountImage.
-type SandboxMountImageParams struct{}
+type SandboxMountImageParams struct {
+	// ExperimentalEncryptionKey is a customer-supplied encryption key used to decrypt the image.
+	// Use the same key that encrypted the snapshot.
+	ExperimentalEncryptionKey []byte
+}
 
 // SandboxUnmountImageParams are options for Sandbox.UnmountImage.
 type SandboxUnmountImageParams struct{}
@@ -1350,6 +1359,58 @@ type SandboxSnapshotDirectoryParams struct {
 	//
 	// See [NoExpiryTTL].
 	TTL time.Duration
+	// ExperimentalEncryptionKey is a customer-supplied encryption key used to
+	// encrypt the resulting snapshot. The same key is required when mounting the image.
+	// Modal does not persist the key.
+	ExperimentalEncryptionKey []byte
+}
+
+func validateExperimentalEncryptionKey(key []byte) ([]byte, error) {
+	if key == nil {
+		return nil, nil
+	}
+	if len(key) < customerSuppliedEncryptionKeyMinLength || len(key) > customerSuppliedEncryptionKeyMaxLength {
+		return nil, InvalidError{Exception: fmt.Sprintf(
+			"experimental encryption key must be between %d and %d bytes, got %d bytes",
+			customerSuppliedEncryptionKeyMinLength,
+			customerSuppliedEncryptionKeyMaxLength,
+			len(key),
+		)}
+	}
+	return key, nil
+}
+
+func buildTaskMountDirectoryRequestProto(taskID, path, imageID string, params *SandboxMountImageParams) (*pb.TaskMountDirectoryRequest, error) {
+	if params == nil {
+		params = &SandboxMountImageParams{}
+	}
+	encryptionKey, err := validateExperimentalEncryptionKey(params.ExperimentalEncryptionKey)
+	if err != nil {
+		return nil, err
+	}
+	return pb.TaskMountDirectoryRequest_builder{
+		TaskId:                        taskID,
+		Path:                          []byte(path),
+		ImageId:                       imageID,
+		CustomerSuppliedEncryptionKey: encryptionKey,
+	}.Build(), nil
+}
+
+func buildTaskSnapshotDirectoryRequestProto(taskID, path, snapshotID string, ttlSeconds int64, params *SandboxSnapshotDirectoryParams) (*pb.TaskSnapshotDirectoryRequest, error) {
+	if params == nil {
+		params = &SandboxSnapshotDirectoryParams{}
+	}
+	encryptionKey, err := validateExperimentalEncryptionKey(params.ExperimentalEncryptionKey)
+	if err != nil {
+		return nil, err
+	}
+	return pb.TaskSnapshotDirectoryRequest_builder{
+		TaskId:                        taskID,
+		Path:                          []byte(path),
+		SnapshotId:                    snapshotID,
+		TtlSeconds:                    &ttlSeconds,
+		CustomerSuppliedEncryptionKey: encryptionKey,
+	}.Build(), nil
 }
 
 // resolveTTL converts a user-facing [time.Duration] to the wire-format
@@ -1430,11 +1491,10 @@ func (sb *Sandbox) MountImage(ctx context.Context, path string, image *Image, pa
 		imageID = image.ImageID
 	}
 
-	request := pb.TaskMountDirectoryRequest_builder{
-		TaskId:  taskID,
-		Path:    []byte(path),
-		ImageId: imageID,
-	}.Build()
+	request, err := buildTaskMountDirectoryRequestProto(taskID, path, imageID, params)
+	if err != nil {
+		return err
+	}
 
 	return crClient.MountDirectory(ctx, request)
 }
@@ -1479,12 +1539,10 @@ func (sb *Sandbox) SnapshotDirectory(ctx context.Context, path string, params *S
 	}
 
 	// SnapshotId guarantees idempotency under retries.
-	request := pb.TaskSnapshotDirectoryRequest_builder{
-		TaskId:     taskID,
-		Path:       []byte(path),
-		SnapshotId: uuid.NewString(),
-		TtlSeconds: &wireTTL,
-	}.Build()
+	request, err := buildTaskSnapshotDirectoryRequestProto(taskID, path, uuid.NewString(), wireTTL, params)
+	if err != nil {
+		return nil, err
+	}
 
 	response, err := crClient.SnapshotDirectory(ctx, request, timeout)
 	if err != nil {

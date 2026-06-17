@@ -495,6 +495,69 @@ func TestValidateExecArgsWithArgsExceedingArgMax(t *testing.T) {
 	g.Expect(err.Error()).To(gomega.ContainSubstring("Total length of CMD arguments must be less than"))
 }
 
+func TestValidateExperimentalEncryptionKey(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	key := bytes.Repeat([]byte{7}, 16)
+	validatedKey, err := validateExperimentalEncryptionKey(key)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(validatedKey).To(gomega.Equal(key))
+
+	validatedKey, err = validateExperimentalEncryptionKey(nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(validatedKey).To(gomega.BeNil())
+
+	for _, keyLength := range []int{0, 15, 513} {
+		_, err = validateExperimentalEncryptionKey(bytes.Repeat([]byte{1}, keyLength))
+		g.Expect(err).To(gomega.HaveOccurred())
+		g.Expect(err.Error()).To(gomega.ContainSubstring("between 16 and 512 bytes"))
+		var invalidErr InvalidError
+		g.Expect(errors.As(err, &invalidErr)).To(gomega.BeTrue())
+	}
+}
+
+func TestTaskMountDirectoryRequestProtoWithExperimentalEncryptionKey(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	key := bytes.Repeat([]byte{1}, 16)
+
+	req, err := buildTaskMountDirectoryRequestProto("ta-123", "/mnt/data", "im-123", &SandboxMountImageParams{
+		ExperimentalEncryptionKey: key,
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(req.GetTaskId()).To(gomega.Equal("ta-123"))
+	g.Expect(req.GetPath()).To(gomega.Equal([]byte("/mnt/data")))
+	g.Expect(req.GetImageId()).To(gomega.Equal("im-123"))
+	g.Expect(req.GetCustomerSuppliedEncryptionKey()).To(gomega.Equal(key))
+	g.Expect(req.HasCustomerSuppliedEncryptionKey()).To(gomega.BeTrue())
+
+	req, err = buildTaskMountDirectoryRequestProto("ta-123", "/mnt/data", "im-123", nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(req.HasCustomerSuppliedEncryptionKey()).To(gomega.BeFalse())
+}
+
+func TestTaskSnapshotDirectoryRequestProtoWithExperimentalEncryptionKey(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	key := bytes.Repeat([]byte{2}, 32)
+
+	req, err := buildTaskSnapshotDirectoryRequestProto("ta-123", "/mnt/data", "snapshot-123", 3600, &SandboxSnapshotDirectoryParams{
+		ExperimentalEncryptionKey: key,
+	})
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(req.GetTaskId()).To(gomega.Equal("ta-123"))
+	g.Expect(req.GetPath()).To(gomega.Equal([]byte("/mnt/data")))
+	g.Expect(req.GetSnapshotId()).To(gomega.Equal("snapshot-123"))
+	g.Expect(req.GetTtlSeconds()).To(gomega.Equal(int64(3600)))
+	g.Expect(req.GetCustomerSuppliedEncryptionKey()).To(gomega.Equal(key))
+	g.Expect(req.HasCustomerSuppliedEncryptionKey()).To(gomega.BeTrue())
+
+	req, err = buildTaskSnapshotDirectoryRequestProto("ta-123", "/mnt/data", "snapshot-123", 3600, nil)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(req.HasCustomerSuppliedEncryptionKey()).To(gomega.BeFalse())
+}
+
 func TestSandboxCreateRequestProto_WithCPUAndCPULimit(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

@@ -190,6 +190,87 @@ func TestSandboxSnapshotDirectory(t *testing.T) {
 	g.Expect(string(output)).To(gomega.Equal("snapshot test content"))
 }
 
+func TestSandboxDirectorySnapshotCustomerSuppliedEncryptionKeyTransitions(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := t.Context()
+	tc := newTestClient(t)
+	csek1 := []byte("first customer-supplied encryption key")
+	csek2 := []byte("second customer-supplied encryption key")
+
+	app, err := tc.Apps.FromName(ctx, "libmodal-test", &modal.AppFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	baseImage := tc.Images.FromRegistry("debian:12-slim", nil)
+
+	sb1, err := tc.Sandboxes.Create(ctx, app, baseImage, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb1)
+
+	g.Expect(writeRemoteFile(ctx, sb1, "/tmp/csek-state/source.txt", []byte("source"))).To(gomega.Succeed())
+	csekSnapshot, err := sb1.SnapshotDirectory(ctx, "/tmp/csek-state", &modal.SandboxSnapshotDirectoryParams{
+		ExperimentalEncryptionKey: csek1,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(csekSnapshot.ImageID).To(gomega.MatchRegexp(`^im-`))
+
+	sb2, err := tc.Sandboxes.Create(ctx, app, baseImage, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb2)
+
+	g.Expect(writeRemoteFile(ctx, sb2, "/mnt/csek-state/.keep", []byte{})).To(gomega.Succeed())
+	err = sb2.MountImage(ctx, "/mnt/csek-state", csekSnapshot, &modal.SandboxMountImageParams{
+		ExperimentalEncryptionKey: csek1,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	source, err := readRemoteFile(ctx, sb2, "/mnt/csek-state/source.txt")
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(string(source)).To(gomega.Equal("source"))
+	g.Expect(writeRemoteFile(ctx, sb2, "/mnt/csek-state/from-csek-base.txt", []byte("csek base overlay"))).To(gomega.Succeed())
+	modalManagedSnapshot, err := sb2.SnapshotDirectory(ctx, "/mnt/csek-state", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(modalManagedSnapshot.ImageID).To(gomega.MatchRegexp(`^im-`))
+
+	sb3, err := tc.Sandboxes.Create(ctx, app, baseImage, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb3)
+
+	g.Expect(writeRemoteFile(ctx, sb3, "/mnt/modal-managed/.keep", []byte{})).To(gomega.Succeed())
+	err = sb3.MountImage(ctx, "/mnt/modal-managed", modalManagedSnapshot, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	source, err = readRemoteFile(ctx, sb3, "/mnt/modal-managed/source.txt")
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(string(source)).To(gomega.Equal("source"))
+	csekBase, err := readRemoteFile(ctx, sb3, "/mnt/modal-managed/from-csek-base.txt")
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(string(csekBase)).To(gomega.Equal("csek base overlay"))
+	g.Expect(writeRemoteFile(ctx, sb3, "/mnt/modal-managed/from-modal-base.txt", []byte("modal base overlay"))).To(gomega.Succeed())
+	csekSnapshot2, err := sb3.SnapshotDirectory(ctx, "/mnt/modal-managed", &modal.SandboxSnapshotDirectoryParams{
+		ExperimentalEncryptionKey: csek2,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(csekSnapshot2.ImageID).To(gomega.MatchRegexp(`^im-`))
+
+	sb4, err := tc.Sandboxes.Create(ctx, app, baseImage, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer terminateSandbox(g, sb4)
+
+	g.Expect(writeRemoteFile(ctx, sb4, "/mnt/csek-state-2/.keep", []byte{})).To(gomega.Succeed())
+	err = sb4.MountImage(ctx, "/mnt/csek-state-2", csekSnapshot2, &modal.SandboxMountImageParams{
+		ExperimentalEncryptionKey: csek2,
+	})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	source, err = readRemoteFile(ctx, sb4, "/mnt/csek-state-2/source.txt")
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(string(source)).To(gomega.Equal("source"))
+	csekBase, err = readRemoteFile(ctx, sb4, "/mnt/csek-state-2/from-csek-base.txt")
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(string(csekBase)).To(gomega.Equal("csek base overlay"))
+	modalBase, err := readRemoteFile(ctx, sb4, "/mnt/csek-state-2/from-modal-base.txt")
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(string(modalBase)).To(gomega.Equal("modal base overlay"))
+}
+
 func TestSandboxSnapshotRejectsInvalidTtl(t *testing.T) {
 	t.Parallel()
 	g := gomega.NewWithT(t)

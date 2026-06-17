@@ -73,6 +73,7 @@ export type {
   SandboxTerminateParams,
   SandboxCreateConnectCredentials,
   SandboxCreateConnectTokenParams,
+  SandboxMountImageParams,
   SandboxSnapshotDirectoryParams,
   SandboxSnapshotFilesystemParams,
   StdioBehavior,

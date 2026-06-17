@@ -71,6 +71,7 @@ We also provide a number of examples:
 - [Create a Sandbox using a private image from AWS ECR](./examples/sandbox-private-image/main.go)
 - [Take a snapshot of the filesystem of a Sandbox](./examples/sandbox-filesystem-snapshot/main.go)
 - [Snapshot a directory, and mount it in a running Sandbox](./examples/sandbox-directory-snapshot/main.go)
+- [Snapshot and restore a directory with a customer-supplied encryption key](./examples/sandbox-directory-snapshot-csek/main.go)
 - [Execute Sandbox commands](./examples/sandbox-exec/main.go)
 - [Running a coding agent in a Sandbox](./examples/sandbox-agent/main.go)
 - [Check the status and exit code of a Sandbox](./examples/sandbox-poll/main.go)

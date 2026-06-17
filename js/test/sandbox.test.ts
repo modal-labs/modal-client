@@ -3,9 +3,12 @@ import { parseGpuConfig } from "../src/app";
 import {
   buildSandboxCreateRequestProto,
   buildSandboxCreateV2RequestProto,
+  buildTaskMountDirectoryRequestProto,
   buildTaskExecStartRequestProto,
+  buildTaskSnapshotDirectoryRequestProto,
   getSandboxVersion,
   SandboxVersion,
+  validateExperimentalEncryptionKey,
   validateExecArgs,
   Probe,
   Sandbox,
@@ -1411,6 +1414,74 @@ test("validateExecArgs with args exceeding ARG_MAX", () => {
   expect(() => validateExecArgs(args)).toThrow(
     "Total length of CMD arguments must be less than",
   );
+});
+
+test("validateExperimentalEncryptionKey", () => {
+  const key = new Uint8Array(16).fill(7);
+  expect(validateExperimentalEncryptionKey(undefined)).toBeUndefined();
+  expect(validateExperimentalEncryptionKey(key)).toBe(key);
+
+  expect(() => validateExperimentalEncryptionKey("not bytes" as any)).toThrow(
+    TypeError,
+  );
+  expect(() => validateExperimentalEncryptionKey(new Uint8Array(0))).toThrow(
+    "between 16 and 512 bytes",
+  );
+  expect(() => validateExperimentalEncryptionKey(new Uint8Array(15))).toThrow(
+    "between 16 and 512 bytes",
+  );
+  expect(() => validateExperimentalEncryptionKey(new Uint8Array(513))).toThrow(
+    "between 16 and 512 bytes",
+  );
+});
+
+test("TaskMountDirectoryRequest carries experimental encryption key", () => {
+  const key = new Uint8Array(16).fill(1);
+
+  const req = buildTaskMountDirectoryRequestProto(
+    "ta-123",
+    "/mnt/data",
+    "im-123",
+    {
+      experimentalEncryptionKey: key,
+    },
+  );
+  expect(req.taskId).toBe("ta-123");
+  expect(req.path).toEqual(new TextEncoder().encode("/mnt/data"));
+  expect(req.imageId).toBe("im-123");
+  expect(req.customerSuppliedEncryptionKey).toEqual(key);
+
+  const reqWithoutKey = buildTaskMountDirectoryRequestProto(
+    "ta-123",
+    "/mnt/data",
+    "im-123",
+  );
+  expect(reqWithoutKey.customerSuppliedEncryptionKey).toBeUndefined();
+});
+
+test("TaskSnapshotDirectoryRequest carries experimental encryption key", () => {
+  const key = new Uint8Array(32).fill(2);
+
+  const req = buildTaskSnapshotDirectoryRequestProto(
+    "ta-123",
+    "/mnt/data",
+    "snapshot-123",
+    3600,
+    { experimentalEncryptionKey: key },
+  );
+  expect(req.taskId).toBe("ta-123");
+  expect(req.path).toEqual(new TextEncoder().encode("/mnt/data"));
+  expect(req.snapshotId).toBe("snapshot-123");
+  expect(req.ttlSeconds).toBe(3600);
+  expect(req.customerSuppliedEncryptionKey).toEqual(key);
+
+  const reqWithoutKey = buildTaskSnapshotDirectoryRequestProto(
+    "ta-123",
+    "/mnt/data",
+    "snapshot-123",
+    3600,
+  );
+  expect(reqWithoutKey.customerSuppliedEncryptionKey).toBeUndefined();
 });
 
 test("buildTaskExecStartRequestProto defaults", () => {

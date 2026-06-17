@@ -64,6 +64,8 @@ const SB_LOGS_DELAY_FACTOR = 2;
 const SB_LOGS_MAX_RETRIES = 10;
 
 const TTL_NO_EXPIRY_SENTINEL = -1;
+const CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH = 16;
+const CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MAX_LENGTH = 512;
 
 /**
  * Resolve the caller-facing `ttlMs` field on snapshot params into the
@@ -89,6 +91,31 @@ function resolveTtlSeconds(ttlMs: number | null | undefined): number {
     throw new InvalidError(`ttlMs must be a multiple of 1000ms, got ${ttlMs}`);
   }
   return ttlMs / 1000;
+}
+
+/**
+ * @internal
+ * @hidden
+ */
+export function validateExperimentalEncryptionKey(
+  key: Uint8Array | undefined,
+): Uint8Array | undefined {
+  if (key === undefined) {
+    return undefined;
+  }
+  if (!(key instanceof Uint8Array)) {
+    throw new TypeError("experimentalEncryptionKey must be a Uint8Array");
+  }
+  if (
+    key.length < CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH ||
+    key.length > CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MAX_LENGTH
+  ) {
+    throw new InvalidError(
+      `experimentalEncryptionKey must be between ${CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MIN_LENGTH} and ` +
+        `${CUSTOMER_SUPPLIED_ENCRYPTION_KEY_MAX_LENGTH} bytes, got ${key.length} bytes`,
+    );
+  }
+  return key;
 }
 
 const V1_SANDBOX_ID_ALPHABET = new Set(
@@ -928,6 +955,21 @@ export type SandboxSnapshotDirectoryParams = {
    * the image indefinitely.
    */
   ttlMs?: number | null;
+  /**
+   * Experimental customer-supplied encryption key used to encrypt the
+   * resulting snapshot. The same key is required when mounting the image.
+   * Modal does not persist the key.
+   */
+  experimentalEncryptionKey?: Uint8Array;
+};
+
+/** Optional parameters for {@link Sandbox#mountImage Sandbox.mountImage()}. */
+export type SandboxMountImageParams = {
+  /**
+   * Experimental customer-supplied encryption key used to decrypt the image.
+   * Use the same key that encrypted the snapshot.
+   */
+  experimentalEncryptionKey?: Uint8Array;
 };
 
 /** Optional parameters for {@link Sandbox#createConnectToken Sandbox.createConnectToken()}. */
@@ -1100,6 +1142,42 @@ export function buildTaskExecStartRequestProto(
     ptyInfo,
     runtimeDebug: false,
     containerId: containerId ?? "",
+  });
+}
+
+/** @ignore */
+export function buildTaskMountDirectoryRequestProto(
+  taskId: string,
+  path: string,
+  imageId: string,
+  params?: SandboxMountImageParams,
+): TaskMountDirectoryRequest {
+  return TaskMountDirectoryRequest.create({
+    taskId,
+    path: new TextEncoder().encode(path),
+    imageId,
+    customerSuppliedEncryptionKey: validateExperimentalEncryptionKey(
+      params?.experimentalEncryptionKey,
+    ),
+  });
+}
+
+/** @ignore */
+export function buildTaskSnapshotDirectoryRequestProto(
+  taskId: string,
+  path: string,
+  snapshotId: string,
+  ttlSeconds: number,
+  params?: SandboxSnapshotDirectoryParams,
+): TaskSnapshotDirectoryRequest {
+  return TaskSnapshotDirectoryRequest.create({
+    taskId,
+    path: new TextEncoder().encode(path),
+    snapshotId,
+    ttlSeconds,
+    customerSuppliedEncryptionKey: validateExperimentalEncryptionKey(
+      params?.experimentalEncryptionKey,
+    ),
   });
 }
 
@@ -1641,8 +1719,13 @@ export class Sandbox {
    *
    * @param path - The path where the directory should be mounted
    * @param image - Optional {@link Image} to mount. If undefined, mounts an empty directory.
+   * @param params - Optional parameters; see {@link SandboxMountImageParams}.
    */
-  async mountImage(path: string, image?: Image): Promise<void> {
+  async mountImage(
+    path: string,
+    image?: Image,
+    params?: SandboxMountImageParams,
+  ): Promise<void> {
     this.#ensureAttached();
     const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
@@ -1652,13 +1735,13 @@ export class Sandbox {
       );
     }
 
-    const pathBytes = new TextEncoder().encode(path);
     const imageId = image?.imageId ?? "";
-    const request = TaskMountDirectoryRequest.create({
+    const request = buildTaskMountDirectoryRequestProto(
       taskId,
-      path: pathBytes,
+      path,
       imageId,
-    });
+      params,
+    );
     await commandRouterClient.mountDirectory(request);
   }
 
@@ -1705,14 +1788,14 @@ export class Sandbox {
     const timeoutMs = params?.timeoutMs || 55000;
     const [taskId, commandRouterClient] = await this.#getCommandRouter();
 
-    const pathBytes = new TextEncoder().encode(path);
     // snapshotId guarantees idempotency under retries.
-    const request = TaskSnapshotDirectoryRequest.create({
+    const request = buildTaskSnapshotDirectoryRequestProto(
       taskId,
-      path: pathBytes,
-      snapshotId: uuidv4(),
-      ttlSeconds: wireTtlSeconds,
-    });
+      path,
+      uuidv4(),
+      wireTtlSeconds,
+      params,
+    );
     const response = await commandRouterClient.snapshotDirectory(request, {
       timeoutMs,
     });
