@@ -3,6 +3,7 @@ from ._environments import (
     _create_environment,
     _delete_environment,
     _Environment,
+    _EnvironmentBillingManager,
     _EnvironmentManager,
     _EnvironmentMembersManager,
     _list_environments,
@@ -12,6 +13,7 @@ from ._utils.async_utils import synchronize_api, synchronizer
 
 EnvironmentManager = synchronize_api(_EnvironmentManager, target_module=__name__)
 EnvironmentMembersManager = synchronize_api(_EnvironmentMembersManager, target_module=__name__)
+EnvironmentBillingManager = synchronize_api(_EnvironmentBillingManager, target_module=__name__)
 Environment = synchronize_api(_Environment, target_module=__name__)
 
 # These functions are structurally internal (they deal in protobuf types) but users have come

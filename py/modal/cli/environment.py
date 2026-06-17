@@ -7,8 +7,11 @@ from click import UsageError
 from rich.text import Text
 
 from modal import environments
-from modal._environments import MemberRole
+from modal._environments import MemberRole, _Environment
+from modal._utils.async_utils import synchronizer
 from modal._utils.name_utils import check_environment_name
+from modal._utils.time_utils import format_interval
+from modal.cli.billing import DATE_HELP, _validate_and_parse_interval
 from modal.cli.utils import confirm_or_suggest_yes, display_table, yes_option
 from modal.config import config
 from modal.environments import Environment
@@ -177,3 +180,139 @@ def members_remove(environment: str, member: str, service_user: bool = False):
         env.members.remove(users=[member])
     kind = "service user" if service_user else "user"
     rich.print(f"[green]✓[/green] Removed {kind} {member!r} from environment {environment!r}")
+
+
+billing_cli = ModalGroup(name="billing", help="View billing and usage info for the given Environment.")
+environment_cli.add_command(billing_cli)
+
+
+@billing_cli.command("report", no_args_is_help=True)
+@click.option(
+    "-n",
+    "--environment-name",
+    default=None,
+    help="Name of the environment to build a report for. If no argument is provided, uses the current default.",
+)
+@click.option("--start", default=None, help=f"Start date. {DATE_HELP}")
+@click.option("--end", default=None, help=f"End date. {DATE_HELP} Defaults to now.")
+@click.option(
+    "--for",
+    "for_",
+    default=None,
+    help="Convenience range: today, yesterday, this week, last week, this month, last month.",
+)
+@click.option("-r", "--resolution", default="d", help="Time resolution: 'd' (daily) or 'h' (hourly).")
+@click.option(
+    "--tz",
+    default=None,
+    help="Timezone for date interpretation: 'local', offset (5, -4, +05:30), or IANA name. Requires hourly resolution.",
+)
+@click.option("-t", "--tag-names", default=None, help="Comma-separated list of tag names to include.")
+@click.option("--show-resources", is_flag=True, default=False, help="Further break down usage by resource type.")
+@click.option("--json", "json", is_flag=True, default=False, help="Output as JSON.")
+@click.option("--csv", "csv", is_flag=True, default=False, help="Output as CSV.")
+@synchronizer.create_blocking
+async def environment_billing(
+    environment_name: str | None,
+    start: str | None,
+    end: str | None,
+    for_: str | None,
+    resolution: str,
+    tz: str | None,
+    tag_names: str | None,
+    show_resources: bool,
+    json: bool,
+    csv: bool,
+):
+    """Generate a billing report for the specified Environment.
+
+    The report range can be provided by setting `--start` / `--end` dates (`--end` defaults to 'now')
+    or by requesting a date range using `--for` (e.g., `--for today`, `--for 'last month'`).
+
+    This command provides a CLI frontend for the
+    [`Environment.billing.report`](https://modal.com/docs/reference/modal.Environment#billingreport) API.
+
+    Note that, as with the API, the start date is inclusive and the end date is exclusive.
+    Data will be reported for full intervals only. Using `--for` is a convenient way to define a
+    complete interval.
+
+    In addition, the `--show-resources` option further breaks the cost in each bucket by the resource
+    that generated it (CPU, Memory, specific GPU types, etc.). Note that the specific resource types
+    included in the report are subject to change as Modal's billing model evolves.
+
+    Examples:
+
+        ```bash
+        modal environment billing report -n env1 --start 2025-12-01 --end 2026-01-01
+
+        modal environment billing report -n env2 --for "last month" --tag-names team,project
+
+        modal environment billing report -n test_env --for today --resolution h
+
+        modal environment billing report -n test_env --for "this month" --show-resources
+
+        modal environment billing report -n prod_env --for yesterday -r h --tz local
+
+        modal environment billing report -n main_env --for "last month" --csv > report.csv
+
+        modal environment billing report -n main_env --start 2025-12-01 --json > report.json
+        ```
+
+    """
+    if json and csv:
+        raise click.UsageError("--json and --csv are mutually exclusive")
+
+    interval = _validate_and_parse_interval(start, end, for_, tz, resolution)
+
+    tags = [t.strip() for t in tag_names.split(",")] if tag_names else None
+
+    if environment_name is None:
+        env = _Environment.from_context()
+    else:
+        env = _Environment.from_name(environment_name)
+
+    rows_data = await env.billing.report(
+        start=interval.start,
+        end=interval.end,
+        resolution=resolution,
+        tag_names=tags,
+    )
+
+    columns = [
+        "Object ID",
+        "Description",
+        "Environment",
+        "Interval Start",
+        *(["Resource"] if show_resources else []),
+        "Cost",
+        *(["Tags"] if tags else []),
+    ]
+
+    rows = []
+    for item in rows_data:
+        row_base = [
+            item.object_id,
+            item.description,
+            item.environment_name,
+            format_interval(
+                item.interval_start,
+                tz=interval.tz,
+                isoformat=json or csv,
+                show_date_only=resolution == "d",
+            ),
+        ]
+
+        row_set: list[list[str]] = []
+        if show_resources:
+            for resource, cost in item.cost_by_resource.items():
+                row_set.append([*row_base, resource, str(cost)])
+        else:
+            row_set.append([*row_base, str(item.cost)])
+
+        if tags:
+            for row in row_set:
+                row.append(json_mod.dumps(item.tags))
+
+        rows.extend(row_set)
+
+    display_table(columns, rows, json=json, csv=csv)

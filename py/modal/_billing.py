@@ -1,12 +1,31 @@
 # Copyright Modal Labs 2025
+from dataclasses import FrozenInstanceError, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TypedDict
+from typing import Any, Iterable, TypedDict
 
 from modal_proto import api_pb2
 
+from ._utils.deprecation import deprecation_warning
 from .client import _Client
-from .exception import InvalidError
+
+BILLING_DOCSTRING = """
+            The `start` and `end` parameters are required to either have a UTC timezone or to be
+            timezone-naive (which will be interpreted as UTC times). The timestamps in the result will
+            be in UTC. Cost will be reported for full intervals, even if the provided `start` or `end`
+            parameters are partial: `start` will be rounded to the beginning of its interval, while
+            partial `end` intervals will be excluded.
+
+            Additional user-provided metadata can be included in the report if the objects have tags
+            and `tag_names` (i.e., keys) are specified in the request. Alternatively, pass `tag_names=["*"]`
+            to include all tags in the report. Note that tags will be attributed to the entire interval even
+            if they were added or removed at some point within it. If the tag name was not in use during an
+            interval, it will be absent from the tags dictionary in that output row.
+
+            In most cases, billing data will be available in the database that this API queries within
+            minutes, although there may be collection delays. If completeness is important for your use
+            case, we recommend leaving a buffer after the end of the query interval.
+"""
 
 
 class WorkspaceBillingReportItem(TypedDict):
@@ -16,6 +35,54 @@ class WorkspaceBillingReportItem(TypedDict):
     interval_start: datetime
     cost: Decimal
     tags: dict[str, str]
+
+
+@dataclass(slots=True, frozen=True)
+class BillingReportItem:
+    object_id: str
+    description: str
+    environment_name: str
+    interval_start: datetime
+    cost: Decimal
+    cost_by_resource: dict[str, Decimal]
+    tags: dict[str, str]
+
+    def __getitem__(self, key: str) -> Any:
+        """mdmd:ignore"""
+        if key not in self.__slots__:
+            raise KeyError(key)
+
+        return getattr(self, key)
+
+    def __setitem__(self, key: str, _: Any):
+        """mdmd:ignore"""
+        raise FrozenInstanceError(f"cannot assign to field {key!r}")
+
+    def keys(self) -> Iterable[str]:
+        """mdmd:ignore"""
+        yield from self.__slots__
+
+    def values(self) -> Iterable[Any]:
+        """mdmd:ignore"""
+        for k in self.__slots__:
+            yield getattr(self, k)
+
+    def items(self) -> Iterable[tuple[str, Any]]:
+        """mdmd:ignore"""
+        for k in self.__slots__:
+            yield k, getattr(self, k)
+
+    @classmethod
+    def _from_proto(cls, pb_item: api_pb2.WorkspaceBillingReportItem) -> "BillingReportItem":
+        return cls(
+            object_id=pb_item.object_id,
+            description=pb_item.description,
+            environment_name=pb_item.environment_name,
+            interval_start=pb_item.interval.ToDatetime().replace(tzinfo=timezone.utc),
+            cost=Decimal(pb_item.cost),
+            cost_by_resource={k: Decimal(str(v)) for k, v in pb_item.cost_by_resource.items()},
+            tags=dict(pb_item.tags),
+        )
 
 
 async def _workspace_billing_report(
@@ -31,7 +98,10 @@ async def _workspace_billing_report(
     The result will be a list of dictionaries for each interval (determined by `resolution`)
     between the `start` and `end` limits. The dictionary represents a single Modal object
     that billing can be attributed to (e.g., an App) along with metadata (including user-defined
-    tags) for identifying that object.
+    tags) for identifying that object. The dictionary also contains a breakdown of the cost value
+    attributed to individual resources (for an App, this can be CPU, Memory, specific GPU types,
+    etc.). The specific resource types included in the breakdown are subject to change as
+    Modal's billing model evolves.
 
     The `start` and `end` parameters are required to either have a UTC timezone or to be
     timezone-naive (which will be interpreted as UTC times). The timestamps in the result will
@@ -54,41 +124,32 @@ async def _workspace_billing_report(
     has a few convenience features for generating reports across relative time ranges.
 
     """
-    if client is None:
-        client = await _Client.from_env()
 
-    tag_names = tag_names or []
+    deprecation_warning(
+        (2026, 6, 18),
+        "`workspace_billing_report()` is deprecated. Use `Workspace.billing.report()` instead.",
+    )
 
-    if end is None:
-        end = datetime.now(timezone.utc)
+    from ._workspace import _Workspace
 
-    if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
-    elif start.tzinfo != timezone.utc:
-        raise InvalidError("Timezone-aware 'start' parameter must be in UTC.")
-
-    if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
-    elif end.tzinfo != timezone.utc:
-        raise InvalidError("Timezone-aware 'end' parameter must be in UTC.")
-
-    request = api_pb2.WorkspaceBillingReportRequest(
+    data = await _Workspace.from_context(client=client).billing.report(
+        start=start,
+        end=end,
         resolution=resolution,
         tag_names=tag_names,
     )
-    request.start_timestamp.FromDatetime(start)
-    request.end_timestamp.FromDatetime(end)
 
-    rows = []
-    async for pb_item in client.stub.WorkspaceBillingReport.unary_stream(request):
+    res: list[WorkspaceBillingReportItem] = []
+    for datum in data:
         item: WorkspaceBillingReportItem = {
-            "object_id": pb_item.object_id,
-            "description": pb_item.description,
-            "environment_name": pb_item.environment_name,
-            "interval_start": pb_item.interval.ToDatetime().replace(tzinfo=timezone.utc),
-            "cost": Decimal(pb_item.cost),
-            "tags": dict(pb_item.tags),
+            "object_id": datum.object_id,
+            "description": datum.description,
+            "environment_name": datum.environment_name,
+            "interval_start": datum.interval_start,
+            "cost": Decimal(datum.cost),
+            "tags": dict(datum.tags),
         }
-        rows.append(item)
 
-    return rows
+        res.append(item)
+
+    return res

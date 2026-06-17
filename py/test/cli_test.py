@@ -1911,10 +1911,10 @@ def test_billing_report(servicer, set_env_client):
     # Test JSON output - should include full ISO format
     res = run_cli_command(["billing", "report", "--start", "2025-01-01", "--json"])
     json_data = json.loads(res.stdout)
-    assert len(json_data) == 1
+    assert len(json_data) == 2
     assert json_data[0]["object_id"] == "ap-123"
     assert json_data[0]["description"] == "app1"
-    assert json_data[0]["environment"] == "test"
+    assert json_data[0]["environment"] == "main"
     assert json_data[0]["cost"] == "100.123456"
     # JSON output should have full ISO format
     assert "2025-01-01T00:00:00" in json_data[0]["interval_start"]
@@ -1931,6 +1931,12 @@ def test_billing_report(servicer, set_env_client):
     assert "ap-123" in res.stdout
     # Tags column should be present (may be JSON formatted)
     assert "team" in res.stdout or "eng" in res.stdout
+
+    # Test --show-resources
+    res = run_cli_command(["billing", "report", "--start", "2025-01-01", "--show-resources"])
+    assert "ap-123" in res.stdout
+    assert "CPU" in res.stdout
+    assert "Memory" in res.stdout
 
     # Test mutually exclusive output options
     res = run_cli_command(
@@ -2030,6 +2036,35 @@ def test_billing_report(servicer, set_env_client):
         expected_exit_code=2,
         expected_stderr="Unknown timezone",
     )
+
+
+def test_environment_billing_report(servicer, set_env_client):
+    # Test default table output with daily resolution
+    res = run_cli_command(["environment", "billing", "report", "--start", "2025-01-01"])
+
+    assert "ap-123" in res.stdout
+    assert "app1" in res.stdout
+    assert "main" in res.stdout
+    assert "100.123456" in res.stdout
+    # Daily resolution should show date only (YYYY-MM-DD)
+    assert "2025-01-01" in res.stdout
+    # Should NOT include time component in table for daily resolution
+    assert "2025-01-01T00:00:00" not in res.stdout
+
+    # Test with tag names
+    res = run_cli_command(
+        ["environment", "billing", "report", "-n", "main", "--start", "2025-01-01", "--tag-names", "team,project"]
+    )
+    assert "ap-123" in res.stdout
+    # Tags column should be present (may be JSON formatted)
+    assert "team" in res.stdout or "eng" in res.stdout
+
+    # test environment does not exist
+
+    res = run_cli_command(
+        ["environment", "billing", "report", "-n", "does-not-exist", "--start", "2025-01-01"], expected_exit_code=1
+    )
+    assert str(res.exception) == "Environment 'does-not-exist' not found"
 
 
 def test_rollover_recreate(servicer, mock_dir, set_env_client, monkeypatch):

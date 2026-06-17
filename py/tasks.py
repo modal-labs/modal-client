@@ -171,7 +171,7 @@ def type_stubs(ctx):
         os.remove(path)
         print(f"Removed {path}")
 
-    def find_modal_modules(root: str = "modal"):
+    def find_modal_modules(root: str = "modal") -> list[str]:
         modules = []
         path = importlib.import_module(root).__path__
         for _, name, is_pkg in pkgutil.iter_modules(path):

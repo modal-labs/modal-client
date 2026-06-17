@@ -256,3 +256,26 @@ def timestamp_to_localized_str(ts: float, isotz: bool = True) -> str | None:
             return f"{dt:%Y-%m-%d %H:%M %Z}"
     else:
         return None
+
+
+def format_interval(
+    dt: datetime,
+    *,
+    tz: tzinfo | None = None,
+    isoformat: bool = False,
+    show_date_only: bool = False,
+) -> str:
+    if tz is not None:
+        dt = dt.astimezone(tz)
+    else:
+        # Strip UTC tzinfo so isoformat() doesn't append +00:00
+        dt = dt.replace(tzinfo=None)
+    if isoformat:
+        # Full ISO format for machine-readable output
+        return dt.isoformat()
+    elif show_date_only:
+        # Just the date for daily resolution
+        return dt.strftime("%Y-%m-%d")
+    else:
+        # Date and time without seconds for hourly resolution
+        return dt.strftime("%Y-%m-%dT%H:%M")

@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2025
 from collections.abc import Collection, Mapping
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, overload
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Generic, Literal, TypeVar, overload
 
 import grpclib.client
 from google.protobuf.message import Message
@@ -178,9 +178,9 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
 
     async def unary_stream(
         self,
-        request,
+        request: RequestType,
         metadata: Any | None = None,
-    ):
+    ) -> AsyncGenerator[ResponseType, None]:
         from .client import _Client
 
         if self.client._snapshotted:
