@@ -1290,6 +1290,7 @@ class _App:
         scaleup_window: int | None = None,  # Stabilization window (seconds) of sustained demand before scaling up
         scaledown_window: int | None = None,  # Max idle time before scaling down (seconds)
         proxy: _Proxy | None = None,  # Modal Proxy to use in front of this server
+        open_endpoint: bool = True,  # Modal-Key and Modal-Secret HTTP Headers are required on requests by default.
         port: int = 8000,  # Port the HTTP server listens on
         startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: int = 0,  # Grace period for in-flight requests on shutdown
@@ -1334,6 +1335,7 @@ class _App:
             scaledown_window: Max idle time before scaling down (seconds).
             proxy: Modal Proxy to use in front of this server.
             port: Port the HTTP server listens on.
+            open_endpoint: Modal-Key and Modal-Secret HTTP Headers on requests required by default.
             startup_timeout: Maximum startup time in seconds.
             exit_grace_period: Grace period for in-flight requests on shutdown.
             routing_region: Region to route Server requests through.
@@ -1385,6 +1387,7 @@ class _App:
             startup_timeout=startup_timeout,
             exit_grace_period=exit_grace_period,
             h2_enabled=h2_enabled,
+            open_endpoint=open_endpoint,
         )
 
         # Build secrets list
