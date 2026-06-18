@@ -4217,7 +4217,8 @@ message WorkspaceBillingReportItem {
   google.protobuf.Timestamp interval = 4;
   string cost = 5;
   map<string, string> tags = 6;
-  map<string, double> cost_by_resource = 7;
+  map<string, double> cost_by_resource_float = 7; // old field to be removed
+  map<string, string> cost_by_resource = 8;
 }
 
 message WorkspaceBillingReportRequest {

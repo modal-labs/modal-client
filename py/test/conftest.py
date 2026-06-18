@@ -2894,7 +2894,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 environment_name="main",
                 cost="100.123456",
                 tags={"team": "eng", "project": "p7r"},
-                cost_by_resource={"CPU": 100, "Memory": 0.123456},
+                cost_by_resource={"CPU": "100", "Memory": "0.123456"},
             )
         ]
         if len(request.environment_ids) == 0:
@@ -2905,7 +2905,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     environment_name="test",
                     cost="100.123456",
                     tags={"team": "eng", "project": "p7r"},
-                    cost_by_resource={"CPU": 100, "Memory": 0.123456},
+                    cost_by_resource={"CPU": "100", "Memory": "0.123456"},
                 )
             )
 

@@ -80,7 +80,7 @@ class BillingReportItem:
             environment_name=pb_item.environment_name,
             interval_start=pb_item.interval.ToDatetime().replace(tzinfo=timezone.utc),
             cost=Decimal(pb_item.cost),
-            cost_by_resource={k: Decimal(str(v)) for k, v in pb_item.cost_by_resource.items()},
+            cost_by_resource={k: Decimal(v) for k, v in pb_item.cost_by_resource.items()},
             tags=dict(pb_item.tags),
         )
 
