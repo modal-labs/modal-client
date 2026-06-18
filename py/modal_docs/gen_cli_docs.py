@@ -7,12 +7,56 @@ from typing import cast
 
 from click import Command, Context, Group
 
+from modal.cli._help import group_commands_by_panel
 from modal.cli.entry_point import entrypoint_cli
 
 
 def _escape_svelte(text: str) -> str:
     """Wrap {placeholder} patterns in backticks so mdsvex/Svelte won't interpret them as expressions."""
     return re.sub(r"(?<!`)\{([a-z_]+)\}(?!`)", r"`{\1}`", text)
+
+
+# Editorial copy that isn't derivable from the CLI source. The command groupings and
+# one-line summaries below are generated from the live panel structure so they stay in
+# sync with `modal --help`.
+_INTRO_FRONTMATTER = (
+    "---\n"
+    "description: Complete reference for the Modal command-line interface. "
+    "Documentation for run, deploy, serve, shell, and all modal CLI commands.\n"
+    "---\n"
+)
+
+_INTRO_PREAMBLE = """\
+# CLI Reference
+
+This is the reference for the `modal` command-line interface, installed
+alongside the [`modal`](https://pypi.org/project/modal/) Python package.
+
+"""
+
+
+def _escape_table_cell(text: str) -> str:
+    """Escape text destined for a Markdown table cell."""
+    return _escape_svelte(text).replace("|", "\\|")
+
+
+def get_intro_docs() -> str:
+    """Render the CLI reference index from the entrypoint's command panels.
+
+    Each panel becomes a section whose table links to the per-command pages and
+    shows the same short help that `modal --help` displays. Hidden commands are
+    omitted, matching the terminal output.
+    """
+    entrypoint: Group = cast(Group, entrypoint_cli)
+    sections = [f"{_INTRO_FRONTMATTER}\n{_INTRO_PREAMBLE}"]
+    for panel_name, items in group_commands_by_panel(entrypoint).items():
+        rows = ["|  |  |", "| --- | --- |"]
+        for name, command in items:
+            link = f"[`modal {name}`](/docs/cli/latest/{name})"
+            short_help = _escape_table_cell(command.get_short_help_str(limit=250))
+            rows.append(f"| {link} | {short_help} |")
+        sections.append(f"## {panel_name}\n\n" + "\n".join(rows) + "\n")
+    return "\n".join(sections)
 
 
 # Adapted from typer_cli for generating CLI docs from click commands
@@ -103,16 +147,18 @@ def run(output_dirname: str | None) -> None:
     ctx = Context(entrypoint)
     commands = entrypoint.list_commands(ctx)
 
+    pages = {"intro": get_intro_docs()}
     for command in commands:
         command_obj = entrypoint.get_command(ctx, command)
         if command_obj.hidden:
             continue
-        docs = get_docs_for_click(obj=command_obj, ctx=ctx, call_prefix="modal")
+        pages[command] = get_docs_for_click(obj=command_obj, ctx=ctx, call_prefix="modal")
 
+    for name, docs in pages.items():
         if output_dirname:
             output_dir = Path(output_dirname)
             output_dir.mkdir(parents=True, exist_ok=True)
-            output_file = output_dir / f"{command}.md"
+            output_file = output_dir / f"{name}.md"
             output_file.write_text(docs)
         else:
             print(docs)

@@ -47,7 +47,7 @@ UserCodeException = synchronicity.exceptions.UserCodeException  # Deprecated typ
 
 class Error(Exception):
     """
-    Base class for all Modal errors. See [`modal.exception`](https://modal.com/docs/reference/modal.exception)
+    Base class for all Modal errors. See [`modal.exception`](https://modal.com/docs/sdk/py/latest/modal.exception)
     for the specialized error classes.
 
     Examples:

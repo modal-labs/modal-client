@@ -446,10 +446,10 @@ Obj = synchronize_api(_Obj)
 class _Cls(_Object, type_prefix="cs"):
     """
     Cls adds method pooling and [lifecycle hook](https://modal.com/docs/guide/lifecycle-functions) behavior
-    to [modal.Function](https://modal.com/docs/reference/modal.Function).
+    to [modal.Function](https://modal.com/docs/sdk/py/latest/modal.Function).
 
     Generally, you will not construct a Cls directly.
-    Instead, use the [`@app.cls()`](https://modal.com/docs/reference/modal.App#cls) decorator on the App object.
+    Instead, use the [`@app.cls()`](https://modal.com/docs/sdk/py/latest/modal.App#cls) decorator on the App object.
     """
 
     _class_service_function: _Function | None  # The _Function (read "service") serving *all* methods of the class

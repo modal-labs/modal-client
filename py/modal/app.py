@@ -710,7 +710,7 @@ class _App:
         Modal functions can also be used as CLI entrypoints, but unlike `local_entrypoint`,
         those functions are executed remotely directly.
 
-        Note that an explicit [`app.run()`](https://modal.com/docs/reference/modal.App#run) is not needed, as an
+        Note that an explicit [`app.run()`](https://modal.com/docs/sdk/py/latest/modal.App#run) is not needed, as an
         [app](https://modal.com/docs/guide/apps) is automatically created for you.
 
         Args:
@@ -1066,7 +1066,7 @@ class _App:
         max_inputs: int | None = None,
     ) -> Callable[[CLS_T | _PartialFunction], CLS_T]:
         """
-        Decorator to register a new Modal [Cls](https://modal.com/docs/reference/modal.Cls) with this App.
+        Decorator to register a new Modal [Cls](https://modal.com/docs/sdk/py/latest/modal.Cls) with this App.
 
         Args:
             image: The image to run as the container for the class service.

@@ -1232,7 +1232,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 the image indefinitely.
 
         Returns:
-            An [`Image`](https://modal.com/docs/reference/modal.Image) object which can be used to spawn a new
+            An [`Image`](https://modal.com/docs/sdk/py/latest/modal.Image) object which can be used to spawn a new
             Sandbox with the same filesystem.
         """
         if os.environ.get("MODAL_USE_LEGACY_FILESYSTEM_SNAPSHOT") == "1" and not self._is_v2:
@@ -1482,7 +1482,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def tunnels(self, timeout: int = 50) -> dict[int, Tunnel]:
         """Get Tunnel metadata for the sandbox.
 
-        NOTE: Previous to client [v0.64.153](https://modal.com/docs/reference/changelog#064153-2024-09-30), this
+        NOTE: Previous to client [v0.64.153](https://modal.com/docs/sdk/py/changelog#064153-2024-09-30), this
         returned a list of `TunnelData` objects.
 
         Args:
@@ -1714,7 +1714,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     ):
         """Execute a command in the Sandbox and return a ContainerProcess handle.
 
-        See the [`ContainerProcess`](https://modal.com/docs/reference/modal.container_process#modalcontainer_processcontainerprocess)
+        See the [`ContainerProcess`](https://modal.com/docs/sdk/py/latest/modal.container_process#modalcontainer_processcontainerprocess)
         docs for more information.
 
         Args:
@@ -2007,7 +2007,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         **Deprecated (2026-03-09):** Use the `Sandbox.filesystem` APIs instead for improved reliability.
 
-        See the [`FileIO`](https://modal.com/docs/reference/modal.file_io#modalfile_iofileio) docs for more information.
+        See the [`FileIO`](https://modal.com/docs/sdk/py/latest/modal.file_io#modalfile_iofileio)
+        docs for more information.
 
         Args:
             path: Absolute path of the file inside the sandbox.
@@ -2110,7 +2111,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdout(self) -> _StreamReader[str]:
         """
-        [`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader)
+        [`StreamReader`](https://modal.com/docs/sdk/py/latest/modal.io_streams#modalio_streamsstreamreader)
         for the sandbox's stdout stream.
 
         Returns:
@@ -2122,7 +2123,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stderr(self) -> _StreamReader[str]:
         """
-        [`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader)
+        [`StreamReader`](https://modal.com/docs/sdk/py/latest/modal.io_streams#modalio_streamsstreamreader)
         for the Sandbox's stderr stream.
 
         Returns:
@@ -2134,7 +2135,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdin(self) -> _StreamWriter:
         """
-        [`StreamWriter`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamwriter)
+        [`StreamWriter`](https://modal.com/docs/sdk/py/latest/modal.io_streams#modalio_streamsstreamwriter)
         for the Sandbox's stdin stream.
 
         Returns:

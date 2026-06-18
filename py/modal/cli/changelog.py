@@ -10,7 +10,7 @@ from modal._vendor.version import Version
 
 from ._help import ModalCommand
 
-CHANGELOG_URL = "https://modal.com/docs/reference/changelog.md"
+CHANGELOG_URL = "https://modal.com/docs/sdk/py/changelog.md"
 
 
 @dataclass

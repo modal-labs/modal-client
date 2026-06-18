@@ -98,7 +98,7 @@ def _build_epilog(cmd: click.Command) -> RenderableType | None:
     return Text(cmd.epilog)
 
 
-def _group_commands_by_panel(group: click.Group) -> dict[str, list[tuple[str, click.Command]]]:
+def group_commands_by_panel(group: click.Group) -> dict[str, list[tuple[str, click.Command]]]:
     """Bucket visible subcommands, preserving registration order."""
     panels: dict[str, list[tuple[str, click.Command]]] = {}
     for name, sub in group.commands.items():
@@ -109,7 +109,7 @@ def _group_commands_by_panel(group: click.Group) -> dict[str, list[tuple[str, cl
 
 
 def _build_commands(group: click.Group, available_width: int) -> RenderableType | None:
-    panels = _group_commands_by_panel(group)
+    panels = group_commands_by_panel(group)
     if not panels:
         return None
 
@@ -229,7 +229,7 @@ class ModalGroup(click.Group):
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         # Replaces click's single flat "Commands:" section with one section per
         # panel so the simple-style help output still preserves grouping.
-        for panel_name, items in _group_commands_by_panel(self).items():
+        for panel_name, items in group_commands_by_panel(self).items():
             rows = [(name, sub.get_short_help_str(limit=80)) for name, sub in items]
             with formatter.section(panel_name):
                 formatter.write_dl(rows)

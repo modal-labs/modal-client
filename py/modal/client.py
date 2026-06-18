@@ -235,7 +235,7 @@ class _Client:
             else:
                 raise AuthError(
                     "Token missing. Could not authenticate client."
-                    " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
+                    " If you have token credentials, see modal.com/docs/sdk/py/latest/modal.config for setup help."
                     " If you are a new user, register an account at modal.com, then run `modal token new`."
                 )
 

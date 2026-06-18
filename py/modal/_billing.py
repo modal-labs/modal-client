@@ -120,7 +120,7 @@ async def _workspace_billing_report(
     case, we recommend leaving a buffer after the end of the query interval.
 
     It's also possible to generate reports using the
-    [`modal billing report`](https://modal.com/docs/reference/cli/billing) CLI command. The CLI
+    [`modal billing report`](https://modal.com/docs/cli/latest/billing) CLI command. The CLI
     has a few convenience features for generating reports across relative time ranges.
 
     """

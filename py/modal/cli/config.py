@@ -14,7 +14,7 @@ config_cli = ModalGroup(
     help="""
     Manage client configuration for the current profile.
 
-    Refer to https://modal.com/docs/reference/modal.config for a full explanation
+    Refer to https://modal.com/docs/sdk/py/latest/modal.config for a full explanation
     of what these options mean, and how to set them.
     """,
 )

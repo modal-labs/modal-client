@@ -36,7 +36,7 @@ If you intend for this commit to trigger a full release to PyPI, please ensure t
 If relevant, include a brief user-facing description of what's new in this version.
 
 Format the changelog updates using bullet points.
-See https://modal.com/docs/reference/changelog for examples and try to use a consistent style.
+See https://modal.com/docs/sdk/py/changelog for examples and try to use a consistent style.
 
 Provide short code examples, indented under the relevant bullet point, if they would be helpful.
 Cross-linking to relevant documentation is also encouraged.

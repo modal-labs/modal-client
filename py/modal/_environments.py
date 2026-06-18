@@ -428,8 +428,9 @@ class _EnvironmentBillingManager:
             Modal's billing model evolves.
 
             It's also possible to generate reports using the
-            [`modal environment billing report`](https://modal.com/docs/reference/cli/environment) CLI command.
-            The CLI has a few convenience features for generating reports across relative time ranges.
+            [`modal environment billing report`](https://modal.com/docs/cli/latest/environment#modal-environment-billing-report)
+            CLI command.  The CLI has a few convenience features for generating
+            reports across relative time ranges.
 
             """
             + BILLING_DOCSTRING

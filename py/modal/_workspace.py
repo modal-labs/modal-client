@@ -151,8 +151,9 @@ class _WorkspaceBillingManager:
             Modal's billing model evolves.
 
             It's also possible to generate reports using the
-            [`modal billing report`](https://modal.com/docs/reference/cli/billing) CLI command. The CLI
-            has a few convenience features for generating reports across relative time ranges.
+            [`modal billing report`](https://modal.com/docs/cli/latest/billing#modal-billing-report)
+            CLI command. The CLI has a few convenience features for generating reports across relative
+            time ranges.
 
             """
             + BILLING_DOCSTRING

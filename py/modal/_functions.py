@@ -1912,9 +1912,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             **kwargs: Keyword arguments forwarded to the remote function.
 
         Returns:
-            A [`modal.FunctionCall`](https://modal.com/docs/reference/modal.FunctionCall) object
+            A [`modal.FunctionCall`](https://modal.com/docs/sdk/py/latest/modal.FunctionCall) object
             that can later be polled or waited for using
-            [`.get(timeout=...)`](https://modal.com/docs/reference/modal.FunctionCall#get).
+            [`.get(timeout=...)`](https://modal.com/docs/sdk/py/latest/modal.FunctionCall#get).
         """
         self._check_no_web_url("spawn")
         if self._is_generator:
@@ -2065,7 +2065,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         """Returns a structure representing the call graph from a given root
         call ID, along with the status of execution for each node.
 
-        See [`modal.call_graph`](https://modal.com/docs/reference/modal.call_graph) reference page
+        See [`modal.call_graph`](https://modal.com/docs/sdk/py/latest/modal.call_graph) reference page
         for documentation on the structure of the returned `InputInfo` items.
 
         Returns:
@@ -2083,7 +2083,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         terminate_containers: bool = False,
     ):
         """Cancels the function call, which will stop its execution and mark its inputs as
-        [`TERMINATED`](https://modal.com/docs/reference/modal.call_graph#modalcall_graphinputstatus).
+        [`TERMINATED`](https://modal.com/docs/sdk/py/latest/modal.call_graph#modalcall_graphinputstatus).
 
         If `terminate_containers=True` - the containers running the cancelled inputs are all terminated
         causing any non-cancelled inputs on those containers to be rescheduled in new containers.

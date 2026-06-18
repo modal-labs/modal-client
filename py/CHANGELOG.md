@@ -199,7 +199,7 @@ We are adding experimental support for detecting cases where Modal's blocking AP
 
 This release also includes a small number of deprecations and behavioral changes:
 
-- The Modal SDK will no longer propagate `grpclib.GRPCError` types out to the user; our own `modal.Error` subtypes will be used instead. To avoid disrupting user code that has relied on `GRPCError` exceptions for control flow, we are temporarily making some exception types inherit from `GRPCError` so that they will also be caught by `except grpclib.GRPCError` statements. Accessing the `.status` attribute of the exception will issue a deprecation warning, but warnings cannot be issued if the exception object is only caught and there is no other interaction with it. We advise proactively migrating any exception handling to use Modal types, as we will remove the dependency on `grpclib` types entirely in the future. See the [`modal.exception`](https://modal.com/docs/reference/modal.exception) docs for the mapping from gRPC status codes to Modal exception types.
+- The Modal SDK will no longer propagate `grpclib.GRPCError` types out to the user; our own `modal.Error` subtypes will be used instead. To avoid disrupting user code that has relied on `GRPCError` exceptions for control flow, we are temporarily making some exception types inherit from `GRPCError` so that they will also be caught by `except grpclib.GRPCError` statements. Accessing the `.status` attribute of the exception will issue a deprecation warning, but warnings cannot be issued if the exception object is only caught and there is no other interaction with it. We advise proactively migrating any exception handling to use Modal types, as we will remove the dependency on `grpclib` types entirely in the future. See the [`modal.exception`](https://modal.com/docs/sdk/py/latest/modal.exception) docs for the mapping from gRPC status codes to Modal exception types.
 - The `max_inputs` parameter in the `@app.function()` and `@app.cls` decorators has been renamed to `single_use_containers` and now takes a boolean value rather than an integer. Note that only `max_inputs=1` has been supported, so this has no functional implications. This change is being made to reduce confusion with `@modal.concurrent(max_inputs=...)` and so that Modal's autoscaler can provide better performance for Functions with single-use containers.
 - The async (`.aio`) interface has been deprecated from `modal.FunctionCall.from_id`, `modal.Image.from_id`, and `modal.SandboxSnapshot.from_id`, because these methods do not perform I/O.
 - The `replace_bytes` and `delete_bytes` methods have been removed from the `modal.file_io` filesystem interface.
@@ -346,15 +346,15 @@ Finally, some functionality that began issuing deprecation warnings prior to v0.
 
 We're introducing a new API pattern for imperative management of Modal resource types (`modal.Volume`, `modal.Secret`, `modal.Dict`, and `modal.Queue`). The API is accessible through the `.objects` namespace on each class. The object management namespace has methods for the following operations:
 
-- `.objects.create(name)` creates an object on our backend. E.g., with [`modal.Volume.objects.create`](https://modal.com/docs/reference/modal.Volume#create):
+- `.objects.create(name)` creates an object on our backend. E.g., with [`modal.Volume.objects.create`](https://modal.com/docs/sdk/py/latest/modal.Volume#create):
   ```python notest
   modal.Volume.objects.create("huggingface-cache", environment_name="dev")
   ```
-- `.objects.delete(name)` deletes the object with that name. E.g., with [`modal.Secret.objects.delete`](https://modal.com/docs/reference/modal.Secret#delete):
+- `.objects.delete(name)` deletes the object with that name. E.g., with [`modal.Secret.objects.delete`](https://modal.com/docs/sdk/py/latest/modal.Secret#delete):
   ```python notest
   modal.Secret.objects.delete("aws-token")
   ```
-- `.objects.list()` returns a list of object instances. E.g., with [`modal.Queue.objects.list`](https://modal.com/docs/reference/modal.Queue#list):
+- `.objects.list()` returns a list of object instances. E.g., with [`modal.Queue.objects.list`](https://modal.com/docs/sdk/py/latest/modal.Queue#list):
   ```python notest
   for queue in modal.Queue.objects.list():
       queue_info = queue.info()
@@ -387,7 +387,7 @@ Other changes:
 
 This release introduces support for the `2025.06` [Image Builder Version](https://modal.com/docs/guide/images#image-builder-updates), which is in a "preview" state. The new image builder includes several major changes to how the Modal client dependencies are included in Modal Images. These improvements should greatly reduce the risk of conflicts with user code dependencies. They also allow Modal Sandboxes to easily be used with existing Images or Dockerfiles that are not themselves compatible with the Modal client library. You can see more details and update your Workspace on its [Image Config](https://modal.com/settings/image-config) page. Please share any issues that you encounter as we work to make the version stable.
 
-We're also introducing first-class support for building Modal Images with the [uv package manager](https://docs.astral.sh/uv/) through the new [`modal.Image.uv_pip_install`](https://modal.com/docs/reference/modal.Image#uv_pip_install) and [`modal.Image.uv_sync`](https://modal.com/docs/reference/modal.Image#uv_sync) methods:
+We're also introducing first-class support for building Modal Images with the [uv package manager](https://docs.astral.sh/uv/) through the new [`modal.Image.uv_pip_install`](https://modal.com/docs/sdk/py/latest/modal.Image#uv_pip_install) and [`modal.Image.uv_sync`](https://modal.com/docs/sdk/py/latest/modal.Image#uv_sync) methods:
 
 ```python
 import modal
@@ -406,7 +406,7 @@ This release also includes a number of other new features and bug fixes:
 
 - Optimized handling of the `ignore` parameter in `Image.add_local_dir` and similar methods for cases where entire directories are ignored.
 - Added a `poetry_version` parameter to `modal.Image.poetry_install_from_file`, which supports installing a specific version of `poetry`. It's also possible to set `poetry_version=None` to skip the install step, i.e. when poetry is already available in the Image.
-- Added a [`modal.Sandbox.reload_volumes`](https://modal.com/docs/reference/modal.Sandbox#reload_volumes) method, which triggers a reload of all Volumes currently mounted inside a running Sandbox.
+- Added a [`modal.Sandbox.reload_volumes`](https://modal.com/docs/sdk/py/latest/modal.Sandbox#reload_volumes) method, which triggers a reload of all Volumes currently mounted inside a running Sandbox.
 - Added a `build_args` parameter to `modal.Image.from_dockerfile` for passing arguments through to `ARG` instructions in the Dockerfile.
 - It's now possible to use `@modal.experimental.clustered` and `i6pn` networking with `modal.Cls`.
 - Fixed a bug where `Cls.with_options` would fail when provided with a `modal.Secret` object that was already hydrated.
@@ -424,7 +424,7 @@ Finally, this release introduces a small number of deprecations and potentially-
 
 ### 1.0.5 (2025-06-27)
 
-- Added a [`modal.Volume.read_only`](/docs/reference/modal.Volume#read_only) method, which will configure a Volume instance to disallow writes:
+- Added a [`modal.Volume.read_only`](/docs/sdk/py/latest/modal.Volume#read_only) method, which will configure a Volume instance to disallow writes:
 
   ```python notest
   vol = modal.Volume.from_name("models")
