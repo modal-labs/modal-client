@@ -8,9 +8,11 @@ import time
 
 from grpclib import GRPCError, Status
 
-from modal import App, Image, Secret, Volume, enable_output, fastapi_endpoint
+from modal import App, Image, Secret, Volume, enable_output, fastapi_endpoint, method
+from modal._functions import _Function
 from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
+from modal.cls import _Cls
 from modal.exception import ExecutionError, InternalError, InvalidError, NotFoundError
 from modal.runner import run_app
 from modal_proto import api_pb2
@@ -235,6 +237,32 @@ def test_redeploy_delete_objects(servicer, client):
 
     # Make sure d1 is deleted
     assert set(servicer.app_objects[app.app_id].keys()) == {"d2", "d3"}
+
+
+def test_redeploy_reuse_name_for_different_type(servicer, client):
+    # Deploy an app where the tag "Foo" names a Function
+    app = App()
+    app.function(name="Foo", serialized=True)(dummy)
+    app.deploy(name="xyz", client=client)
+    assert _Function._is_id_type(servicer.app_objects[app.app_id]["Foo"])
+
+    # Redeploy the same app where "Foo" now names a Cls. The function id can't be
+    # reused for a class, so the object gets a fresh class id instead of failing.
+    app = App()
+
+    @app.cls(serialized=True)
+    class Foo:
+        @method()
+        def bar(self): ...
+
+    app.deploy(name="xyz", client=client)
+    assert _Cls._is_id_type(servicer.app_objects[app.app_id]["Foo"])
+
+    # Redeploy once more, swapping the tag back to a Function
+    app = App()
+    app.function(name="Foo", serialized=True)(dummy)
+    app.deploy(name="xyz", client=client)
+    assert _Function._is_id_type(servicer.app_objects[app.app_id]["Foo"])
 
 
 @pytest.mark.asyncio

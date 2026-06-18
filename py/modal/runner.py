@@ -149,8 +149,22 @@ async def _create_all_objects(
     resolver = Resolver()
     output_mgr = OutputManager.get()
     with output_mgr.display_object_tree():
-        # Get current objects, and reset all objects
-        tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
+        # Get current objects, and reset all objects.
+        # Only reuse an existing object id when its type matches the object now being
+        # deployed under that tag. The server tracks function and class ids separately,
+        # so a tag that previously named a Function (fu-) but now names a Cls (cs-), or
+        # vice versa, finds no match here and gets a fresh id instead of failing. The old
+        # object is no longer referenced and is cleaned up when the new layout is published.
+        tag_to_object_id = {}
+        for tag, obj in indexed_objects.items():
+            if isinstance(obj, _Function):
+                existing_object_id = running_app.function_ids.get(tag)
+            elif isinstance(obj, _Cls):
+                existing_object_id = running_app.class_ids.get(tag)
+            else:
+                existing_object_id = None
+            if existing_object_id is not None:
+                tag_to_object_id[tag] = existing_object_id
         running_app.function_ids = {}
         running_app.class_ids = {}
 
@@ -170,16 +184,6 @@ async def _create_all_objects(
             # Note: preload only currently implemented for Functions, returns None otherwise
             # this is to ensure that directly referenced functions from the global scope has
             # ids associated with them when they are serialized into other functions
-            if existing_object_id is not None and not obj._is_id_type(existing_object_id):
-                expected_type = obj.__class__.__name__.strip("_")
-                expected_prefix = getattr(obj.__class__, "_type_prefix", None)
-                prefix_hint = f" (expected prefix {expected_prefix}-)" if expected_prefix else ""
-                raise InvalidError(
-                    f"Existing object id {existing_object_id} is not a {expected_type} id{prefix_hint}. "
-                    "This usually means the object name was previously used for a different type. "
-                    "Rename the object/app or stop the previous deployment and redeploy."
-                )
-
             await resolver.preload(obj, load_context, existing_object_id)
             if obj.is_hydrated:
                 tag_to_object_id[tag] = obj.object_id
