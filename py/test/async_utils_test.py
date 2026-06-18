@@ -1363,13 +1363,27 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
 
     p.send_ctrl_c()
     print("sent ctrl-C")
+
+    # Drain any "res N" lines that were emitted before the signal landed.
     while (nextline := line()).startswith("res"):
         pass
-    assert nextline == "cancel"
-    assert line() == "bye"
-    assert line() == "KeyboardInterrupt"
+
+    # A graceful Ctrl-C shutdown must do three things: run the async generator's
+    # finally cleanup ("cancel" then "bye") and let the top-level handler catch
+    # the KeyboardInterrupt. Whether "KeyboardInterrupt" is printed before or
+    # after the generator cleanup is timing-dependent -- the finalizer may run
+    # while the asend task is being cancelled or later when the event loop is
+    # torn down -- so we assert that all expected output appears (with cleanup
+    # keeping its "cancel" -> "bye" order) rather than a fixed interleaving.
+    tail = [nextline]
+    while (raw := p.stdout.readline()) != "":
+        s = raw.rstrip("\n")
+        if s:
+            tail.append(s)
+
+    assert set(tail) == {"cancel", "bye", "KeyboardInterrupt"}, tail
+    assert tail.index("cancel") < tail.index("bye"), tail
     assert p.wait() == 0
-    assert p.stdout.read() == ""
     assert p.stderr.read() == ""
 
 
