@@ -1290,7 +1290,7 @@ class _App:
         scaleup_window: int | None = None,  # Stabilization window (seconds) of sustained demand before scaling up
         scaledown_window: int | None = None,  # Max idle time before scaling down (seconds)
         proxy: _Proxy | None = None,  # Modal Proxy to use in front of this server
-        open_endpoint: bool = True,  # Modal-Key and Modal-Secret HTTP Headers are required on requests by default.
+        open_endpoint: bool = False,  # Modal-Key and Modal-Secret HTTP Headers are required on requests by default.
         port: int = 8000,  # Port the HTTP server listens on
         startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: int = 0,  # Grace period for in-flight requests on shutdown
