@@ -45,13 +45,11 @@ from .container_process import _ContainerProcess
 from .exception import (
     ClientClosed,
     ConflictError,
-    Error,
     ExecutionError,
     InvalidError,
     NotFoundError,
     SandboxTerminatedError,
     SandboxTimeoutError,
-    TimeoutError,
 )
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO, ls, mkdir, rm, watch
 from .io_streams import (
@@ -1536,19 +1534,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         if timeout <= 0:
             raise InvalidError(f"`timeout` must be positive, got: {timeout}")
 
-        deadline = time.monotonic() + timeout
-        remaining_timeout = deadline - time.monotonic()
-        while remaining_timeout > 0:
-            req = api_pb2.SandboxWaitUntilReadyRequest(
-                sandbox_id=self.object_id,
-                timeout=min(remaining_timeout, 50.0),
-            )
-            resp = await self._client.stub.SandboxWaitUntilReady(req)
-            if resp.ready_at > 0:
-                return
-
-            remaining_timeout = deadline - time.monotonic()
-        raise TimeoutError()
+        # Route to the task command router for both V1 and V2 sandboxes.
+        task_id = await self._get_task_id(raise_if_task_complete=True)
+        try:
+            command_router_client = await self._get_command_router_client(task_id)
+        except NotFoundError as e:
+            # We do this to maintain backwards compatibility within wait_until_ready.
+            # The V1 implementation would raise ConflictError instead of NotFoundError
+            # if the sandbox was terminated, so we do the same for V2.
+            raise ConflictError(str(e)) from e
+        await command_router_client.sandbox_wait_until_ready(task_id, timeout=timeout)
 
     async def tunnels(self, timeout: int = 50) -> dict[int, Tunnel]:
         """Get Tunnel metadata for the sandbox.
@@ -1709,7 +1704,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 resp = await stub.SandboxGetTaskId(req)
             if not resp.task_id and raise_if_task_complete and resp.HasField("task_result"):
                 msg = resp.task_result.exception or "Sandbox already finished"
-                raise Error(msg)
+                raise ConflictError(msg)
             self._task_id = resp.task_id
             if not self._task_id:
                 await asyncio.sleep(0.5)

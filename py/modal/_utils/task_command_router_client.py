@@ -491,6 +491,27 @@ class TaskCommandRouterClient:
                 lambda: self._call_with_auth_retry(self._stub.SandboxStdinWriteV2, request)
             )
 
+    async def sandbox_wait_until_ready(self, task_id: str, timeout: float) -> sr_pb2.SandboxWaitUntilReadyTcrResponse:
+        """Wait until the sandbox's readiness probe reports ready.
+
+        Args:
+            task_id: The task ID hosting the sandbox.
+            timeout: Maximum time in seconds for the worker to wait.
+        Raises:
+            TimeoutError: If the sandbox does not become ready within `timeout`.
+        """
+        request = sr_pb2.SandboxWaitUntilReadyTcrRequest(task_id=task_id, timeout=timeout)
+        with grpc_error_converter():
+            try:
+                return await asyncio.wait_for(
+                    call_with_retries_on_transient_errors(
+                        lambda: self._call_with_auth_retry(self._stub.SandboxWaitUntilReady, request, timeout=timeout),
+                    ),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                raise ModalTimeoutError("Timeout expired")
+
     async def exec_poll(self, task_id: str, exec_id: str, deadline: float | None = None) -> sr_pb2.TaskExecPollResponse:
         """Poll for the exit status of an exec'd command, properly retrying on transient errors.
 
