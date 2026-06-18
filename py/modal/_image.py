@@ -9,6 +9,7 @@ import typing
 import warnings
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
+from functools import wraps
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import (
@@ -424,6 +425,20 @@ async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.I
     return result_response
 
 
+def _requires_image_instance(method):
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if not isinstance(self, _Image):
+            raise InvalidError(
+                "Image has not been constructed yet. "
+                f"Use one of the static factory methods prior to calling {method.__name__} "
+                "like `modal.Image.debian_slim`, `modal.Image.from_registry`, or `modal.Image.micromamba`"
+            )
+        return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class _Image(_Object, type_prefix="im"):
     """Base class for container images to run functions in.
 
@@ -755,6 +770,7 @@ class _Image(_Object, type_prefix="im"):
             context_mount_function=lambda: mount,
         )
 
+    @_requires_image_instance
     def add_local_file(self, local_path: str | Path, remote_path: str, *, copy: bool = False) -> "_Image":
         """Adds a local file to the image at `remote_path` within the container.
 
@@ -791,6 +807,7 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount._from_local_file(local_path, remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
+    @_requires_image_instance
     def add_local_dir(
         self,
         local_path: str | Path,
@@ -869,6 +886,7 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount._add_local_dir(Path(local_path), PurePosixPath(remote_path), ignore=_ignore_fn(ignore))
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
+    @_requires_image_instance
     def add_local_python_source(
         self, *modules: str, copy: bool = False, ignore: Sequence[str] | Callable[[Path], bool] = NON_PYTHON_FILES
     ) -> "_Image":
@@ -1012,6 +1030,7 @@ class _Image(_Object, type_prefix="im"):
             await resolver.load(self, load_context)
         return self
 
+    @_requires_image_instance
     def pip_install(
         self,
         *packages: str | list[str],
@@ -1098,6 +1117,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+    @_requires_image_instance
     def pip_install_private_repos(
         self,
         *repositories: str,
@@ -1218,6 +1238,7 @@ class _Image(_Object, type_prefix="im"):
             force_build=self.force_build or force_build,
         )
 
+    @_requires_image_instance
     def pip_install_from_requirements(
         self,
         requirements_txt: str,
@@ -1279,6 +1300,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+    @_requires_image_instance
     def pip_install_from_pyproject(
         self,
         pyproject_toml: str,
@@ -1362,6 +1384,7 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
+    @_requires_image_instance
     def uv_pip_install(
         self,
         *packages: str | list[str],
@@ -1493,6 +1516,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+    @_requires_image_instance
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
@@ -1602,6 +1626,7 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
+    @_requires_image_instance
     def uv_sync(
         self,
         uv_project_dir: str = "./",
@@ -1785,6 +1810,7 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
+    @_requires_image_instance
     def dockerfile_commands(
         self,
         *dockerfile_commands: str | list[str],
@@ -1873,6 +1899,7 @@ class _Image(_Object, type_prefix="im"):
             build_args=build_args,
         )
 
+    @_requires_image_instance
     def entrypoint(
         self,
         entrypoint_commands: list[str],
@@ -1893,6 +1920,7 @@ class _Image(_Object, type_prefix="im"):
 
         return self.dockerfile_commands(dockerfile_cmd)
 
+    @_requires_image_instance
     def shell(
         self,
         shell_commands: list[str],
@@ -1913,6 +1941,7 @@ class _Image(_Object, type_prefix="im"):
 
         return self.dockerfile_commands(dockerfile_cmd)
 
+    @_requires_image_instance
     def run_commands(
         self,
         *commands: str | list[str],
@@ -1997,6 +2026,7 @@ class _Image(_Object, type_prefix="im"):
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
+    @_requires_image_instance
     def micromamba_install(
         self,
         *packages: str | list[str],
@@ -2528,6 +2558,7 @@ class _Image(_Object, type_prefix="im"):
             _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
+    @_requires_image_instance
     def apt_install(
         self,
         *packages: str | list[str],
@@ -2579,6 +2610,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+    @_requires_image_instance
     def run_function(
         self,
         raw_f: Callable[..., Any],
@@ -2697,6 +2729,7 @@ class _Image(_Object, type_prefix="im"):
             force_build=self.force_build or force_build,
         )
 
+    @_requires_image_instance
     def env(self, vars: dict[str, str]) -> "_Image":
         """Sets the environment variables in an Image.
 
@@ -2727,6 +2760,7 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
         )
 
+    @_requires_image_instance
     def workdir(self, path: str | PurePosixPath) -> "_Image":
         """Set the working directory for subsequent image build steps and function execution.
 
@@ -2756,6 +2790,7 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
         )
 
+    @_requires_image_instance
     def cmd(self, cmd: list[str]) -> "_Image":
         """Set the default command (`CMD`) to run when a container is started.
 
@@ -2784,6 +2819,7 @@ class _Image(_Object, type_prefix="im"):
 
         return self.dockerfile_commands(dockerfile_cmd)
 
+    @_requires_image_instance
     def pipe(
         self,
         func: Callable[Concatenate["modal.Image", P], "modal.Image"],

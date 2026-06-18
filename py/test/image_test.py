@@ -27,7 +27,13 @@ from modal._image import (
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
-from modal.exception import ExecutionError, InvalidError, ModuleNotMountable, NotFoundError, VersionError
+from modal.exception import (
+    ExecutionError,
+    InvalidError,
+    ModuleNotMountable,
+    NotFoundError,
+    VersionError,
+)
 from modal.file_pattern_matcher import FilePatternMatcher
 from modal.mount import PYTHON_STANDALONE_VERSIONS
 from modal.runner import deploy_app
@@ -344,6 +350,23 @@ def test_wrong_type(builder_version, servicer, client):
             m([3])  # type: ignore
         with pytest.raises(InvalidError):
             m([["double-nested-package"]])  # type: ignore
+
+
+def test_image_construction_error_on_class_call():
+    # Calling an instance method directly on the Image class (instead of on a constructed
+    # image instance) should raise a clear error rather than the obscure AttributeError
+    # that synchronicity's proxy would otherwise produce.
+    with pytest.raises(InvalidError, match="factory"):
+        Image.pip_install("pandas")  # type: ignore
+
+    with pytest.raises(InvalidError, match="factory"):
+        Image.add_local_file("local.txt", "/remote.txt")  # type: ignore
+
+    with pytest.raises(TypeError, match="self"):
+        Image.micromamba_install()  # type: ignore
+
+    with pytest.raises(InvalidError, match="factory"):
+        Image.micromamba_install("foo")  # type: ignore
 
 
 def assert_metadata(image, expected_metadata):
