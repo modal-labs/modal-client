@@ -1058,6 +1058,60 @@ def test_experimental_sandbox_create_cloud_bucket_mount(app, servicer):
         assert req.definition.cloud_bucket_mounts[0].bucket_type == api_pb2.CloudBucketMount.BucketType.S3
 
 
+def test_experimental_sandbox_create_env_uses_ephemeral_secrets(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar", "BAZ": "qux"})
+        req = ctx.pop_request("SandboxCreateV2")
+
+    assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar", "BAZ": "qux"}
+    assert ctx.get_requests("SecretGetOrCreate") == []
+    assert list(req.definition.secret_ids) == []
+
+
+def test_experimental_sandbox_create_env_drops_none_values(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar", "SKIP": None})
+        req = ctx.pop_request("SandboxCreateV2")
+
+    assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar"}
+
+
+def test_experimental_sandbox_create_env_and_secrets_coexist(app, servicer):
+    secret = Secret.from_dict({"DB_PASSWORD": "hunter2"})
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar"}, secrets=[secret])
+        req = ctx.pop_request("SandboxCreateV2")
+
+    assert dict(req.ephemeral_secrets.contents) == {"FOO": "bar"}
+    assert len(req.definition.secret_ids) == 1
+
+
+def test_experimental_sandbox_create_no_env_omits_ephemeral_secrets(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app)
+        req = ctx.pop_request("SandboxCreateV2")
+
+    assert not req.HasField("ephemeral_secrets")
+
+
+@pytest.mark.parametrize("bad_key", ["MY KEY", "1FOO", "FOO-BAR", "FOO$"])
+def test_experimental_sandbox_create_env_rejects_invalid_key(app, servicer, bad_key):
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="invalid for environment variables"):
+            Sandbox._experimental_create("echo", "hi", app=app, env={bad_key: "value"})
+        assert ctx.get_requests("SandboxCreateV2") == []
+
+
+def test_experimental_sandbox_create_env_rejects_empty_key(app, servicer):
+    with pytest.raises(InvalidError, match="cannot be empty"):
+        Sandbox._experimental_create("echo", "hi", app=app, env={"": "value"})
+
+
+def test_experimental_sandbox_create_env_rejects_value_too_long(app, servicer):
+    with pytest.raises(InvalidError, match="is too long"):
+        Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "x" * (2**15 + 1)})
+
+
 @skip_non_subprocess
 def test_sandbox_exec_pty(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)

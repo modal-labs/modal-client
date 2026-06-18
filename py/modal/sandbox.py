@@ -5,6 +5,8 @@ import enum
 import json
 import logging
 import os
+import re
+import textwrap
 import time
 import typing
 import uuid
@@ -117,6 +119,28 @@ def _format_sandbox_create_timing_log(
 # e.g. 'runsc exec ...'. So we use 2**16 as the limit.
 ARG_MAX_BYTES = 2**16
 TTL_NO_EXPIRY_SENTINEL = -1
+
+
+_SECRET_KEYNAME_REGEX = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+_SECRET_KEYNAME_MAX_LEN = 2**14
+_SECRET_VALUE_MAX_LEN = 2**15
+
+
+def _validate_sandbox_env(env: dict[str, str]) -> None:
+    for key, value in env.items():
+        if not key:
+            raise InvalidError("Secret key name cannot be empty")
+        if len(key) > _SECRET_KEYNAME_MAX_LEN:
+            shortkey = textwrap.shorten(key, width=32)
+            raise InvalidError(f"Secret key name {shortkey!r} is too long (max {_SECRET_KEYNAME_MAX_LEN})")
+        if len(value) > _SECRET_VALUE_MAX_LEN:
+            shortkey = textwrap.shorten(key, width=32)
+            raise InvalidError(f"Secret value for key {shortkey!r} is too long (max {_SECRET_VALUE_MAX_LEN})")
+        if not _SECRET_KEYNAME_REGEX.match(key):
+            raise InvalidError(
+                f"Secret key name {key!r} is invalid for environment variables. "
+                "Only letters, numbers, and underscores are allowed."
+            )
 
 
 def _ttl_to_wire_ttl(ttl: int | None) -> int:
@@ -871,8 +895,17 @@ class _Sandbox(_Object, type_prefix="sb"):
                 )
 
         secrets = secrets or []
+        ephemeral_env: dict[str, str] = {}
         if env:
-            secrets = [*secrets, _Secret.from_dict(env)]
+            env_type_err = "the env argument to Sandbox must be a dict[str, str | None]"
+            if not isinstance(env, dict):
+                raise InvalidError(env_type_err)
+            ephemeral_env = {k: v for k, v in env.items() if v is not None}
+            if not all(isinstance(k, str) for k in ephemeral_env) or not all(
+                isinstance(v, str) for v in ephemeral_env.values()
+            ):
+                raise InvalidError(env_type_err)
+            _validate_sandbox_env(ephemeral_env)
 
         image = image or _default_image
 
@@ -952,7 +985,11 @@ class _Sandbox(_Object, type_prefix="sb"):
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
             )
 
-            create_req = api_pb2.SandboxCreateV2Request(app_id=load_context.app_id, definition=definition)
+            create_req = api_pb2.SandboxCreateV2Request(
+                app_id=load_context.app_id,
+                definition=definition,
+                ephemeral_secrets=api_pb2.StringMap(contents=ephemeral_env) if ephemeral_env else None,
+            )
             assert load_context.client._auth_token_manager
             auth_token = await load_context.client._auth_token_manager.get_token()
             rpc_start = time.monotonic()
