@@ -1,6 +1,7 @@
 #!/bin/bash
+set -o errexit
 
-rm -rf proto && mkdir -p proto
+mkdir -p proto && find proto -type f -name '*.go' -delete
 
 protoc \
   --go_out=paths=source_relative:proto \
