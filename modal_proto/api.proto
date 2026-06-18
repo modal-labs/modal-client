@@ -1449,6 +1449,16 @@ message EndpointCustomModelSource {
   }
 }
 
+message EndpointGetByNameRequest {
+  string name = 1;
+  string environment_name = 2;
+}
+
+message EndpointGetByNameResponse {
+  string endpoint_id = 1;
+  string environment_name = 2;
+}
+
 message EndpointHuggingFaceModelSource {
   string repo_id = 1;
   string revision = 2;
@@ -4337,6 +4347,7 @@ service ModalClient {
 
   // Endpoints
   rpc EndpointCreate(EndpointCreateRequest) returns (EndpointCreateResponse);
+  rpc EndpointGetByName(EndpointGetByNameRequest) returns (EndpointGetByNameResponse);
   rpc EndpointList(EndpointListRequest) returns (EndpointListResponse);
   rpc EndpointStop(EndpointStopRequest) returns (EndpointStopResponse);
 

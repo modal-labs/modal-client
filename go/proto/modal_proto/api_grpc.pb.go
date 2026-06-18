@@ -81,6 +81,7 @@ const (
 	ModalClient_DomainCreate_FullMethodName                     = "/modal.client.ModalClient/DomainCreate"
 	ModalClient_DomainList_FullMethodName                       = "/modal.client.ModalClient/DomainList"
 	ModalClient_EndpointCreate_FullMethodName                   = "/modal.client.ModalClient/EndpointCreate"
+	ModalClient_EndpointGetByName_FullMethodName                = "/modal.client.ModalClient/EndpointGetByName"
 	ModalClient_EndpointList_FullMethodName                     = "/modal.client.ModalClient/EndpointList"
 	ModalClient_EndpointStop_FullMethodName                     = "/modal.client.ModalClient/EndpointStop"
 	ModalClient_EnvironmentCreate_FullMethodName                = "/modal.client.ModalClient/EnvironmentCreate"
@@ -306,6 +307,7 @@ type ModalClientClient interface {
 	DomainList(ctx context.Context, in *DomainListRequest, opts ...grpc.CallOption) (*DomainListResponse, error)
 	// Endpoints
 	EndpointCreate(ctx context.Context, in *EndpointCreateRequest, opts ...grpc.CallOption) (*EndpointCreateResponse, error)
+	EndpointGetByName(ctx context.Context, in *EndpointGetByNameRequest, opts ...grpc.CallOption) (*EndpointGetByNameResponse, error)
 	EndpointList(ctx context.Context, in *EndpointListRequest, opts ...grpc.CallOption) (*EndpointListResponse, error)
 	EndpointStop(ctx context.Context, in *EndpointStopRequest, opts ...grpc.CallOption) (*EndpointStopResponse, error)
 	// Environments
@@ -1122,6 +1124,16 @@ func (c *modalClientClient) EndpointCreate(ctx context.Context, in *EndpointCrea
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EndpointCreateResponse)
 	err := c.cc.Invoke(ctx, ModalClient_EndpointCreate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) EndpointGetByName(ctx context.Context, in *EndpointGetByNameRequest, opts ...grpc.CallOption) (*EndpointGetByNameResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EndpointGetByNameResponse)
+	err := c.cc.Invoke(ctx, ModalClient_EndpointGetByName_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2746,6 +2758,7 @@ type ModalClientServer interface {
 	DomainList(context.Context, *DomainListRequest) (*DomainListResponse, error)
 	// Endpoints
 	EndpointCreate(context.Context, *EndpointCreateRequest) (*EndpointCreateResponse, error)
+	EndpointGetByName(context.Context, *EndpointGetByNameRequest) (*EndpointGetByNameResponse, error)
 	EndpointList(context.Context, *EndpointListRequest) (*EndpointListResponse, error)
 	EndpointStop(context.Context, *EndpointStopRequest) (*EndpointStopResponse, error)
 	// Environments
@@ -3104,6 +3117,9 @@ func (UnimplementedModalClientServer) DomainList(context.Context, *DomainListReq
 }
 func (UnimplementedModalClientServer) EndpointCreate(context.Context, *EndpointCreateRequest) (*EndpointCreateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EndpointCreate not implemented")
+}
+func (UnimplementedModalClientServer) EndpointGetByName(context.Context, *EndpointGetByNameRequest) (*EndpointGetByNameResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EndpointGetByName not implemented")
 }
 func (UnimplementedModalClientServer) EndpointList(context.Context, *EndpointListRequest) (*EndpointListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EndpointList not implemented")
@@ -4633,6 +4649,24 @@ func _ModalClient_EndpointCreate_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).EndpointCreate(ctx, req.(*EndpointCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_EndpointGetByName_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndpointGetByNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).EndpointGetByName(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_EndpointGetByName_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).EndpointGetByName(ctx, req.(*EndpointGetByNameRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -7461,6 +7495,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EndpointCreate",
 			Handler:    _ModalClient_EndpointCreate_Handler,
+		},
+		{
+			MethodName: "EndpointGetByName",
+			Handler:    _ModalClient_EndpointGetByName_Handler,
 		},
 		{
 			MethodName: "EndpointList",
