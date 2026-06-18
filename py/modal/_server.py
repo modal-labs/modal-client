@@ -52,7 +52,7 @@ class _Server:
     Instead, use the [`@app.server()`](https://modal.com/docs/sdk/py/latest/modal.App#server) decorator.
 
     ```python notest
-    @app.server(port=8000, routing_region="us-east")
+    @app.server(port=8080, routing_region="us-east")
     class MyServer:
         @modal.enter()
         def start_server(self):
