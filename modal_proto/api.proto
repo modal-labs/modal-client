@@ -2429,7 +2429,7 @@ message HTTPConfig {
   uint32 exit_grace_period = 4;
   bool h2_enabled = 5;
   uint32 target_concurrency = 6;
-  bool open_endpoint = 7;
+  bool unauthenticated = 7;
 }
 
 message Image {

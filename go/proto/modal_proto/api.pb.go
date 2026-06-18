@@ -30451,7 +30451,7 @@ type HTTPConfig struct {
 	xxx_hidden_ExitGracePeriod   uint32                 `protobuf:"varint,4,opt,name=exit_grace_period,json=exitGracePeriod,proto3"`
 	xxx_hidden_H2Enabled         bool                   `protobuf:"varint,5,opt,name=h2_enabled,json=h2Enabled,proto3"`
 	xxx_hidden_TargetConcurrency uint32                 `protobuf:"varint,6,opt,name=target_concurrency,json=targetConcurrency,proto3"`
-	xxx_hidden_OpenEndpoint      bool                   `protobuf:"varint,7,opt,name=open_endpoint,json=openEndpoint,proto3"`
+	xxx_hidden_Unauthenticated   bool                   `protobuf:"varint,7,opt,name=unauthenticated,proto3"`
 	unknownFields                protoimpl.UnknownFields
 	sizeCache                    protoimpl.SizeCache
 }
@@ -30523,9 +30523,9 @@ func (x *HTTPConfig) GetTargetConcurrency() uint32 {
 	return 0
 }
 
-func (x *HTTPConfig) GetOpenEndpoint() bool {
+func (x *HTTPConfig) GetUnauthenticated() bool {
 	if x != nil {
-		return x.xxx_hidden_OpenEndpoint
+		return x.xxx_hidden_Unauthenticated
 	}
 	return false
 }
@@ -30554,8 +30554,8 @@ func (x *HTTPConfig) SetTargetConcurrency(v uint32) {
 	x.xxx_hidden_TargetConcurrency = v
 }
 
-func (x *HTTPConfig) SetOpenEndpoint(v bool) {
-	x.xxx_hidden_OpenEndpoint = v
+func (x *HTTPConfig) SetUnauthenticated(v bool) {
+	x.xxx_hidden_Unauthenticated = v
 }
 
 type HTTPConfig_builder struct {
@@ -30567,7 +30567,7 @@ type HTTPConfig_builder struct {
 	ExitGracePeriod   uint32
 	H2Enabled         bool
 	TargetConcurrency uint32
-	OpenEndpoint      bool
+	Unauthenticated   bool
 }
 
 func (b0 HTTPConfig_builder) Build() *HTTPConfig {
@@ -30580,7 +30580,7 @@ func (b0 HTTPConfig_builder) Build() *HTTPConfig {
 	x.xxx_hidden_ExitGracePeriod = b.ExitGracePeriod
 	x.xxx_hidden_H2Enabled = b.H2Enabled
 	x.xxx_hidden_TargetConcurrency = b.TargetConcurrency
-	x.xxx_hidden_OpenEndpoint = b.OpenEndpoint
+	x.xxx_hidden_Unauthenticated = b.Unauthenticated
 	return m0
 }
 
@@ -59795,7 +59795,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x1fGENERIC_STATUS_INTERNAL_FAILURE\x10\x06\x12\x1f\n" +
 	"\x1bGENERIC_STATUS_IDLE_TIMEOUT\x10\aB\f\n" +
 	"\n" +
-	"data_oneof\"\x8d\x02\n" +
+	"data_oneof\"\x92\x02\n" +
 	"\n" +
 	"HTTPConfig\x12\x12\n" +
 	"\x04port\x18\x01 \x01(\rR\x04port\x12#\n" +
@@ -59804,8 +59804,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x11exit_grace_period\x18\x04 \x01(\rR\x0fexitGracePeriod\x12\x1d\n" +
 	"\n" +
 	"h2_enabled\x18\x05 \x01(\bR\th2Enabled\x12-\n" +
-	"\x12target_concurrency\x18\x06 \x01(\rR\x11targetConcurrency\x12#\n" +
-	"\ropen_endpoint\x18\a \x01(\bR\fopenEndpoint\"\xd1\x06\n" +
+	"\x12target_concurrency\x18\x06 \x01(\rR\x11targetConcurrency\x12(\n" +
+	"\x0funauthenticated\x18\a \x01(\bR\x0funauthenticated\"\xd1\x06\n" +
 	"\x05Image\x128\n" +
 	"\vbase_images\x18\x05 \x03(\v2\x17.modal.client.BaseImageR\n" +
 	"baseImages\x12/\n" +
