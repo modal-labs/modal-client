@@ -784,6 +784,12 @@ class TaskCommandRouterClient:
                 lambda: self._call_with_auth_retry(self._stub.TaskUnmountDirectory, request)
             )
 
+    async def set_network_access(self, request: sr_pb2.TaskSetNetworkAccessRequest):
+        with grpc_error_converter():
+            return await call_with_retries_on_transient_errors(
+                lambda: self._call_with_auth_retry(self._stub.TaskSetNetworkAccess, request)
+            )
+
     async def _snapshot_with_deadline(self, rpc, request, *, timeout: float, **kwargs):
         # helper method for snapshot_directory and snapshot_filesystem to handle grpc
         # deadlines in a consistent way, converting any error to TimeoutError after passing

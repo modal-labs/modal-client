@@ -564,7 +564,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             block_network: Whether to block network access.
             outbound_cidr_allowlist: List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
             outbound_domain_allowlist: List of domain names the sandbox is allowed to access. Supports
-                wildcard prefixes (``*.``).
+                wildcard prefixes (``*.``); a bare ``"*"`` allows all domains. The outbound policy
+                can be replaced later via `Sandbox._experimental_set_outbound_network_policy`.
             inbound_cidr_allowlist:
                 List of CIDRs allowed to connect inbound to the sandbox (tunnels and connection tokens). If None,
                 all CIDRs are allowed.
@@ -1214,6 +1215,39 @@ class _Sandbox(_Object, type_prefix="sb"):
             tags=tags_list,
         )
         await self._client.stub.SandboxTagsSet(req)
+
+    async def _experimental_set_outbound_network_policy(
+        self,
+        *,
+        outbound_cidr_allowlist: Sequence[str] | None = None,
+        outbound_domain_allowlist: Sequence[str] | None = None,
+    ) -> None:
+        """Replace the outbound network policy of a running Sandbox.
+
+        Established connections that the new policy no longer permits are
+        terminated.
+
+        Args:
+            outbound_cidr_allowlist: List of CIDRs the Sandbox is allowed to access. If None, all CIDRs are allowed.
+            outbound_domain_allowlist: List of domain names the Sandbox is allowed to access. Supports
+                wildcard prefixes (``*.``); a bare ``"*"`` allows all domains.
+        """
+        self._ensure_v1("_experimental_set_outbound_network_policy")
+        task_id = await self._get_task_id()
+        command_router_client = await self._get_command_router_client(task_id)
+
+        if outbound_cidr_allowlist is not None or outbound_domain_allowlist is not None:
+            network_access = api_pb2.NetworkAccess(
+                network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
+                allowed_cidrs=list(outbound_cidr_allowlist or []),
+                allowed_domains=list(outbound_domain_allowlist or []),
+            )
+        else:
+            network_access = api_pb2.NetworkAccess(
+                network_access_type=api_pb2.NetworkAccess.NetworkAccessType.OPEN,
+            )
+        req = sr_pb2.TaskSetNetworkAccessRequest(task_id=task_id, network_access=network_access)
+        await command_router_client.set_network_access(req)
 
     async def snapshot_filesystem(
         self,

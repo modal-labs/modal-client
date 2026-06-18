@@ -660,6 +660,30 @@ def test_sandbox_outbound_domain_allowlist(app, servicer):
     sb.terminate()
 
 
+def test_sandbox__experimental_set_outbound_network_policy(app, servicer):
+    sb = Sandbox.create("echo", "test", outbound_domain_allowlist=[], app=app)
+
+    # Allowlist mode
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_set_outbound_network_policy(
+            outbound_domain_allowlist=["example.com"], outbound_cidr_allowlist=["8.8.8.8/32"]
+        )
+        (req,) = tcr_ctx.get_requests("TaskSetNetworkAccess")
+
+    net = req.network_access
+    assert net.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    assert list(net.allowed_domains) == ["example.com"]
+    assert list(net.allowed_cidrs) == ["8.8.8.8/32"]
+
+    # No arguments sends OPEN type (server may reject this currently).
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        sb._experimental_set_outbound_network_policy()
+        (req,) = tcr_ctx.get_requests("TaskSetNetworkAccess")
+    assert req.network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
+
+    sb.terminate()
+
+
 @skip_non_subprocess
 def test_sandbox_inbound_cidr_allowlist(app, servicer):
     # Cannot combine with block_network
@@ -1339,6 +1363,9 @@ def test_exec_on_terminate_sandbox_raises(servicer, client, app):
 detach_error_funcs = {
     "get_tags": lambda sb: sb.get_tags(),
     "set_tags": lambda sb: sb.set_tags({"hello": "world"}),
+    "_experimental_set_outbound_network_policy": lambda sb: sb._experimental_set_outbound_network_policy(
+        outbound_domain_allowlist=[], outbound_cidr_allowlist=[]
+    ),
     "snapshot_filesystem": lambda sb: sb.snapshot_filesystem(),
     "snapshot_directory": lambda sb: sb.snapshot_directory("/tmp"),
     "tunnels": lambda sb: sb.tunnels(),
