@@ -3847,6 +3847,15 @@ message TemplateListResponse {
   repeated TemplateListItem items = 1;
 }
 
+message TokenCreateResponse {
+  string token_id = 1;
+  string token_secret = 2;
+}
+
+message TokenDeleteRequest {
+  string token_id = 2;
+}
+
 message TokenFlowCreateRequest {
   string utm_source = 3;
   int32 localhost_port = 4;
@@ -4210,6 +4219,42 @@ message WebhookConfig {
   string ephemeral_suffix = 11;  // Additional URL suffix added for ephemeral Apps
 }
 
+message WebhookToken {
+  string token_id = 1;
+  double created_at = 2;
+  bool scoped = 3;
+}
+
+message WebhookTokenCreateRequest {
+  bool scoped = 1;
+}
+
+message WebhookTokenEnvironmentAddRequest {
+  string token_id = 1;
+  string environment_id = 2;
+}
+
+message WebhookTokenEnvironmentListRequest {
+  string token_id = 1;
+}
+
+message WebhookTokenEnvironmentListResponse {
+  repeated string environment_ids = 1;
+}
+
+message WebhookTokenEnvironmentRemoveRequest {
+  string token_id = 1;
+  string environment_id = 2;
+}
+
+message WebhookTokenListForEnvironmentRequest {
+  string environment_name = 1;
+}
+
+message WebhookTokenListResponse {
+  repeated WebhookToken tokens = 1;
+}
+
 message WorkspaceBillingReportItem {
   string object_id = 1;
   string description = 2;
@@ -4528,6 +4573,15 @@ service ModalClient {
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile2(VolumeRemoveFile2Request) returns (google.protobuf.Empty);
   rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);
+
+  // Webhook tokens (proxy auth tokens)
+  rpc WebhookTokenCreate(WebhookTokenCreateRequest) returns (TokenCreateResponse);
+  rpc WebhookTokenDelete(TokenDeleteRequest) returns (google.protobuf.Empty);
+  rpc WebhookTokenEnvironmentAdd(WebhookTokenEnvironmentAddRequest) returns (google.protobuf.Empty);
+  rpc WebhookTokenEnvironmentList(WebhookTokenEnvironmentListRequest) returns (WebhookTokenEnvironmentListResponse);
+  rpc WebhookTokenEnvironmentRemove(WebhookTokenEnvironmentRemoveRequest) returns (google.protobuf.Empty);
+  rpc WebhookTokenList(google.protobuf.Empty) returns (WebhookTokenListResponse);
+  rpc WebhookTokenListForEnvironment(WebhookTokenListForEnvironmentRequest) returns (WebhookTokenListResponse);
 
   // Workspaces
   rpc WorkspaceBillingReport(WorkspaceBillingReportRequest) returns (stream WorkspaceBillingReportItem);

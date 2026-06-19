@@ -225,6 +225,13 @@ const (
 	ModalClient_VolumeRemoveFile_FullMethodName                 = "/modal.client.ModalClient/VolumeRemoveFile"
 	ModalClient_VolumeRemoveFile2_FullMethodName                = "/modal.client.ModalClient/VolumeRemoveFile2"
 	ModalClient_VolumeRename_FullMethodName                     = "/modal.client.ModalClient/VolumeRename"
+	ModalClient_WebhookTokenCreate_FullMethodName               = "/modal.client.ModalClient/WebhookTokenCreate"
+	ModalClient_WebhookTokenDelete_FullMethodName               = "/modal.client.ModalClient/WebhookTokenDelete"
+	ModalClient_WebhookTokenEnvironmentAdd_FullMethodName       = "/modal.client.ModalClient/WebhookTokenEnvironmentAdd"
+	ModalClient_WebhookTokenEnvironmentList_FullMethodName      = "/modal.client.ModalClient/WebhookTokenEnvironmentList"
+	ModalClient_WebhookTokenEnvironmentRemove_FullMethodName    = "/modal.client.ModalClient/WebhookTokenEnvironmentRemove"
+	ModalClient_WebhookTokenList_FullMethodName                 = "/modal.client.ModalClient/WebhookTokenList"
+	ModalClient_WebhookTokenListForEnvironment_FullMethodName   = "/modal.client.ModalClient/WebhookTokenListForEnvironment"
 	ModalClient_WorkspaceBillingReport_FullMethodName           = "/modal.client.ModalClient/WorkspaceBillingReport"
 	ModalClient_WorkspaceDashboardUrlGet_FullMethodName         = "/modal.client.ModalClient/WorkspaceDashboardUrlGet"
 	ModalClient_WorkspaceMembersList_FullMethodName             = "/modal.client.ModalClient/WorkspaceMembersList"
@@ -469,6 +476,14 @@ type ModalClientClient interface {
 	VolumeRemoveFile(ctx context.Context, in *VolumeRemoveFileRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	VolumeRemoveFile2(ctx context.Context, in *VolumeRemoveFile2Request, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	VolumeRename(ctx context.Context, in *VolumeRenameRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Webhook tokens (proxy auth tokens)
+	WebhookTokenCreate(ctx context.Context, in *WebhookTokenCreateRequest, opts ...grpc.CallOption) (*TokenCreateResponse, error)
+	WebhookTokenDelete(ctx context.Context, in *TokenDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	WebhookTokenEnvironmentAdd(ctx context.Context, in *WebhookTokenEnvironmentAddRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	WebhookTokenEnvironmentList(ctx context.Context, in *WebhookTokenEnvironmentListRequest, opts ...grpc.CallOption) (*WebhookTokenEnvironmentListResponse, error)
+	WebhookTokenEnvironmentRemove(ctx context.Context, in *WebhookTokenEnvironmentRemoveRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	WebhookTokenList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WebhookTokenListResponse, error)
+	WebhookTokenListForEnvironment(ctx context.Context, in *WebhookTokenListForEnvironmentRequest, opts ...grpc.CallOption) (*WebhookTokenListResponse, error)
 	// Workspaces
 	WorkspaceBillingReport(ctx context.Context, in *WorkspaceBillingReportRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WorkspaceBillingReportItem], error)
 	WorkspaceDashboardUrlGet(ctx context.Context, in *WorkspaceDashboardUrlRequest, opts ...grpc.CallOption) (*WorkspaceDashboardUrlResponse, error)
@@ -2633,6 +2648,76 @@ func (c *modalClientClient) VolumeRename(ctx context.Context, in *VolumeRenameRe
 	return out, nil
 }
 
+func (c *modalClientClient) WebhookTokenCreate(ctx context.Context, in *WebhookTokenCreateRequest, opts ...grpc.CallOption) (*TokenCreateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TokenCreateResponse)
+	err := c.cc.Invoke(ctx, ModalClient_WebhookTokenCreate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) WebhookTokenDelete(ctx context.Context, in *TokenDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_WebhookTokenDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) WebhookTokenEnvironmentAdd(ctx context.Context, in *WebhookTokenEnvironmentAddRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_WebhookTokenEnvironmentAdd_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) WebhookTokenEnvironmentList(ctx context.Context, in *WebhookTokenEnvironmentListRequest, opts ...grpc.CallOption) (*WebhookTokenEnvironmentListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WebhookTokenEnvironmentListResponse)
+	err := c.cc.Invoke(ctx, ModalClient_WebhookTokenEnvironmentList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) WebhookTokenEnvironmentRemove(ctx context.Context, in *WebhookTokenEnvironmentRemoveRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ModalClient_WebhookTokenEnvironmentRemove_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) WebhookTokenList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*WebhookTokenListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WebhookTokenListResponse)
+	err := c.cc.Invoke(ctx, ModalClient_WebhookTokenList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) WebhookTokenListForEnvironment(ctx context.Context, in *WebhookTokenListForEnvironmentRequest, opts ...grpc.CallOption) (*WebhookTokenListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WebhookTokenListResponse)
+	err := c.cc.Invoke(ctx, ModalClient_WebhookTokenListForEnvironment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modalClientClient) WorkspaceBillingReport(ctx context.Context, in *WorkspaceBillingReportRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WorkspaceBillingReportItem], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ModalClient_ServiceDesc.Streams[11], ModalClient_WorkspaceBillingReport_FullMethodName, cOpts...)
@@ -2920,6 +3005,14 @@ type ModalClientServer interface {
 	VolumeRemoveFile(context.Context, *VolumeRemoveFileRequest) (*emptypb.Empty, error)
 	VolumeRemoveFile2(context.Context, *VolumeRemoveFile2Request) (*emptypb.Empty, error)
 	VolumeRename(context.Context, *VolumeRenameRequest) (*emptypb.Empty, error)
+	// Webhook tokens (proxy auth tokens)
+	WebhookTokenCreate(context.Context, *WebhookTokenCreateRequest) (*TokenCreateResponse, error)
+	WebhookTokenDelete(context.Context, *TokenDeleteRequest) (*emptypb.Empty, error)
+	WebhookTokenEnvironmentAdd(context.Context, *WebhookTokenEnvironmentAddRequest) (*emptypb.Empty, error)
+	WebhookTokenEnvironmentList(context.Context, *WebhookTokenEnvironmentListRequest) (*WebhookTokenEnvironmentListResponse, error)
+	WebhookTokenEnvironmentRemove(context.Context, *WebhookTokenEnvironmentRemoveRequest) (*emptypb.Empty, error)
+	WebhookTokenList(context.Context, *emptypb.Empty) (*WebhookTokenListResponse, error)
+	WebhookTokenListForEnvironment(context.Context, *WebhookTokenListForEnvironmentRequest) (*WebhookTokenListResponse, error)
 	// Workspaces
 	WorkspaceBillingReport(*WorkspaceBillingReportRequest, grpc.ServerStreamingServer[WorkspaceBillingReportItem]) error
 	WorkspaceDashboardUrlGet(context.Context, *WorkspaceDashboardUrlRequest) (*WorkspaceDashboardUrlResponse, error)
@@ -3549,6 +3642,27 @@ func (UnimplementedModalClientServer) VolumeRemoveFile2(context.Context, *Volume
 }
 func (UnimplementedModalClientServer) VolumeRename(context.Context, *VolumeRenameRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method VolumeRename not implemented")
+}
+func (UnimplementedModalClientServer) WebhookTokenCreate(context.Context, *WebhookTokenCreateRequest) (*TokenCreateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WebhookTokenCreate not implemented")
+}
+func (UnimplementedModalClientServer) WebhookTokenDelete(context.Context, *TokenDeleteRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method WebhookTokenDelete not implemented")
+}
+func (UnimplementedModalClientServer) WebhookTokenEnvironmentAdd(context.Context, *WebhookTokenEnvironmentAddRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method WebhookTokenEnvironmentAdd not implemented")
+}
+func (UnimplementedModalClientServer) WebhookTokenEnvironmentList(context.Context, *WebhookTokenEnvironmentListRequest) (*WebhookTokenEnvironmentListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WebhookTokenEnvironmentList not implemented")
+}
+func (UnimplementedModalClientServer) WebhookTokenEnvironmentRemove(context.Context, *WebhookTokenEnvironmentRemoveRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method WebhookTokenEnvironmentRemove not implemented")
+}
+func (UnimplementedModalClientServer) WebhookTokenList(context.Context, *emptypb.Empty) (*WebhookTokenListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WebhookTokenList not implemented")
+}
+func (UnimplementedModalClientServer) WebhookTokenListForEnvironment(context.Context, *WebhookTokenListForEnvironmentRequest) (*WebhookTokenListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WebhookTokenListForEnvironment not implemented")
 }
 func (UnimplementedModalClientServer) WorkspaceBillingReport(*WorkspaceBillingReportRequest, grpc.ServerStreamingServer[WorkspaceBillingReportItem]) error {
 	return status.Error(codes.Unimplemented, "method WorkspaceBillingReport not implemented")
@@ -7196,6 +7310,132 @@ func _ModalClient_VolumeRename_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModalClient_WebhookTokenCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WebhookTokenCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WebhookTokenCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WebhookTokenCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WebhookTokenCreate(ctx, req.(*WebhookTokenCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_WebhookTokenDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TokenDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WebhookTokenDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WebhookTokenDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WebhookTokenDelete(ctx, req.(*TokenDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_WebhookTokenEnvironmentAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WebhookTokenEnvironmentAddRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WebhookTokenEnvironmentAdd(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WebhookTokenEnvironmentAdd_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WebhookTokenEnvironmentAdd(ctx, req.(*WebhookTokenEnvironmentAddRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_WebhookTokenEnvironmentList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WebhookTokenEnvironmentListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WebhookTokenEnvironmentList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WebhookTokenEnvironmentList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WebhookTokenEnvironmentList(ctx, req.(*WebhookTokenEnvironmentListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_WebhookTokenEnvironmentRemove_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WebhookTokenEnvironmentRemoveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WebhookTokenEnvironmentRemove(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WebhookTokenEnvironmentRemove_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WebhookTokenEnvironmentRemove(ctx, req.(*WebhookTokenEnvironmentRemoveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_WebhookTokenList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WebhookTokenList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WebhookTokenList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WebhookTokenList(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_WebhookTokenListForEnvironment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WebhookTokenListForEnvironmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).WebhookTokenListForEnvironment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_WebhookTokenListForEnvironment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).WebhookTokenListForEnvironment(ctx, req.(*WebhookTokenListForEnvironmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModalClient_WorkspaceBillingReport_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(WorkspaceBillingReportRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -8043,6 +8283,34 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "VolumeRename",
 			Handler:    _ModalClient_VolumeRename_Handler,
+		},
+		{
+			MethodName: "WebhookTokenCreate",
+			Handler:    _ModalClient_WebhookTokenCreate_Handler,
+		},
+		{
+			MethodName: "WebhookTokenDelete",
+			Handler:    _ModalClient_WebhookTokenDelete_Handler,
+		},
+		{
+			MethodName: "WebhookTokenEnvironmentAdd",
+			Handler:    _ModalClient_WebhookTokenEnvironmentAdd_Handler,
+		},
+		{
+			MethodName: "WebhookTokenEnvironmentList",
+			Handler:    _ModalClient_WebhookTokenEnvironmentList_Handler,
+		},
+		{
+			MethodName: "WebhookTokenEnvironmentRemove",
+			Handler:    _ModalClient_WebhookTokenEnvironmentRemove_Handler,
+		},
+		{
+			MethodName: "WebhookTokenList",
+			Handler:    _ModalClient_WebhookTokenList_Handler,
+		},
+		{
+			MethodName: "WebhookTokenListForEnvironment",
+			Handler:    _ModalClient_WebhookTokenListForEnvironment_Handler,
 		},
 		{
 			MethodName: "WorkspaceDashboardUrlGet",
