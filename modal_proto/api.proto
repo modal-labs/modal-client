@@ -1440,6 +1440,7 @@ message EndpointCreateRequest {
   repeated EndpointApiSurface api_surfaces = 6;
   repeated EndpointInputModality input_modalities = 7;
   string environment_name = 8;
+  bool unauthenticated = 9;
 }
 
 message EndpointCreateResponse {

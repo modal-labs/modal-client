@@ -17502,6 +17502,7 @@ type EndpointCreateRequest struct {
 	xxx_hidden_ApiSurfaces     []EndpointApiSurface       `protobuf:"varint,6,rep,packed,name=api_surfaces,json=apiSurfaces,proto3,enum=modal.client.EndpointApiSurface"`
 	xxx_hidden_InputModalities []EndpointInputModality    `protobuf:"varint,7,rep,packed,name=input_modalities,json=inputModalities,proto3,enum=modal.client.EndpointInputModality"`
 	xxx_hidden_EnvironmentName string                     `protobuf:"bytes,8,opt,name=environment_name,json=environmentName,proto3"`
+	xxx_hidden_Unauthenticated bool                       `protobuf:"varint,9,opt,name=unauthenticated,proto3"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -17587,6 +17588,13 @@ func (x *EndpointCreateRequest) GetEnvironmentName() string {
 	return ""
 }
 
+func (x *EndpointCreateRequest) GetUnauthenticated() bool {
+	if x != nil {
+		return x.xxx_hidden_Unauthenticated
+	}
+	return false
+}
+
 func (x *EndpointCreateRequest) SetName(v string) {
 	x.xxx_hidden_Name = v
 }
@@ -17617,6 +17625,10 @@ func (x *EndpointCreateRequest) SetInputModalities(v []EndpointInputModality) {
 
 func (x *EndpointCreateRequest) SetEnvironmentName(v string) {
 	x.xxx_hidden_EnvironmentName = v
+}
+
+func (x *EndpointCreateRequest) SetUnauthenticated(v bool) {
+	x.xxx_hidden_Unauthenticated = v
 }
 
 func (x *EndpointCreateRequest) HasComputeRegion() bool {
@@ -17652,6 +17664,7 @@ type EndpointCreateRequest_builder struct {
 	ApiSurfaces     []EndpointApiSurface
 	InputModalities []EndpointInputModality
 	EnvironmentName string
+	Unauthenticated bool
 }
 
 func (b0 EndpointCreateRequest_builder) Build() *EndpointCreateRequest {
@@ -17666,6 +17679,7 @@ func (b0 EndpointCreateRequest_builder) Build() *EndpointCreateRequest {
 	x.xxx_hidden_ApiSurfaces = b.ApiSurfaces
 	x.xxx_hidden_InputModalities = b.InputModalities
 	x.xxx_hidden_EnvironmentName = b.EnvironmentName
+	x.xxx_hidden_Unauthenticated = b.Unauthenticated
 	return m0
 }
 
@@ -59962,7 +59976,7 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\bexplicit\x18\x03 \x01(\v27.modal.client.EndpointComputeRegionSpec.ExplicitRegionsH\x00R\bexplicit\x1a+\n" +
 	"\x0fExplicitRegions\x12\x18\n" +
 	"\aregions\x18\x01 \x03(\tR\aregionsB\v\n" +
-	"\tplacement\"\xbb\x03\n" +
+	"\tplacement\"\xe5\x03\n" +
 	"\x15EndpointCreateRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12#\n" +
@@ -59971,7 +59985,8 @@ const file_modal_proto_api_proto_rawDesc = "" +
 	"\x05model\x18\x05 \x01(\v2!.modal.client.EndpointModelSourceR\x05model\x12C\n" +
 	"\fapi_surfaces\x18\x06 \x03(\x0e2 .modal.client.EndpointApiSurfaceR\vapiSurfaces\x12N\n" +
 	"\x10input_modalities\x18\a \x03(\x0e2#.modal.client.EndpointInputModalityR\x0finputModalities\x12)\n" +
-	"\x10environment_name\x18\b \x01(\tR\x0fenvironmentName\"e\n" +
+	"\x10environment_name\x18\b \x01(\tR\x0fenvironmentName\x12(\n" +
+	"\x0funauthenticated\x18\t \x01(\bR\x0funauthenticated\"e\n" +
 	"\x16EndpointCreateResponse\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
 	"endpointId\x12*\n" +
