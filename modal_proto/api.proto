@@ -135,6 +135,12 @@ enum EndpointInputModality {
   ENDPOINT_INPUT_MODALITY_AUDIO = 3;
 }
 
+enum EndpointLifecycleStatus {
+  ENDPOINT_LIFECYCLE_STATUS_UNSPECIFIED = 0;
+  ENDPOINT_LIFECYCLE_STATUS_ACTIVE = 1;
+  ENDPOINT_LIFECYCLE_STATUS_STOPPED = 2;
+}
+
 enum EndpointProvisioningStatus {
   ENDPOINT_PROVISIONING_STATUS_UNSPECIFIED = 0;
   ENDPOINT_PROVISIONING_STATUS_PENDING = 1;
@@ -1459,10 +1465,27 @@ message EndpointGetByNameResponse {
   string environment_name = 2;
 }
 
+message EndpointGetLifecycleRequest {
+  string endpoint_id = 1;
+}
+
+message EndpointGetLifecycleResponse {
+  EndpointLifecycle lifecycle = 1;
+}
+
 message EndpointHuggingFaceModelSource {
   string repo_id = 1;
   string revision = 2;
   string huggingface_token = 3;
+}
+
+message EndpointLifecycle {
+  EndpointLifecycleStatus status = 1;
+  double created_at = 2;
+  string created_by = 3;  // User or service user name
+  double stopped_at = 4;  // Unset when Endpoint is active
+  string stopped_by = 5;  // User or service user name
+  string environment_name = 6;
 }
 
 message EndpointListItem {
@@ -4394,6 +4417,7 @@ service ModalClient {
   // Endpoints
   rpc EndpointCreate(EndpointCreateRequest) returns (EndpointCreateResponse);
   rpc EndpointGetByName(EndpointGetByNameRequest) returns (EndpointGetByNameResponse);
+  rpc EndpointGetLifecycle(EndpointGetLifecycleRequest) returns (EndpointGetLifecycleResponse);
   rpc EndpointList(EndpointListRequest) returns (EndpointListResponse);
   rpc EndpointStop(EndpointStopRequest) returns (EndpointStopResponse);
 
