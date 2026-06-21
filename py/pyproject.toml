@@ -34,6 +34,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
+[project.optional-dependencies]
+api-proxy-support = ["python-socks[asyncio]>=2.5", "aiohttp-socks>=0.8"]
+
 [dependency-groups]
 dev = [
     "fastapi~=0.125",
@@ -91,6 +94,8 @@ dev = [
     # this pip package to load zone keys like ``America/New_York``. Tiny and
     # harmless on other platforms.
     "tzdata",
+    "python-socks[asyncio]>=2.5",
+    "aiohttp-socks>=0.8",
 ]
 
 [tool.uv.extra-build-dependencies]

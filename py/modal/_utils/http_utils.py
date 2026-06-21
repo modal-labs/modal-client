@@ -27,8 +27,27 @@ def _http_client_with_tls(timeout: float | None) -> "ClientSession":
     import certifi
     from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
+    from .proxy_support import get_proxy_url
+
     ssl_context = ssl.create_default_context(cafile=certifi.where())
-    connector = TCPConnector(ssl=ssl_context)
+
+    connector: TCPConnector
+    proxy_url = get_proxy_url(None, use_ssl=True)
+    if proxy_url:
+        try:
+            from aiohttp_socks import ProxyConnector
+        except ImportError:
+            raise ImportError(
+                f"A proxy is configured ({proxy_url}) but the 'aiohttp-socks' package "
+                "is not installed. Install it with: pip install 'modal[api-proxy-support]'"
+            ) from None
+        from .proxy_support import _normalize_proxy_url
+
+        normalized_url, rdns = _normalize_proxy_url(proxy_url)
+        connector = ProxyConnector.from_url(normalized_url, rdns=rdns, ssl=ssl_context)
+    else:
+        connector = TCPConnector(ssl=ssl_context)
+
     return ClientSession(connector=connector, timeout=ClientTimeout(total=timeout))
 
 

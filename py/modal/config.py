@@ -302,6 +302,7 @@ _SETTINGS = {
     "dev_suffix": _Setting("", transform=_enforce_suffix_rules),
     "max_throttle_wait": _Setting(None, transform=lambda x: int(x) if x else None),
     "async_warnings": _Setting(True, transform=_to_boolean),  # Activate synchronicity usage warnings
+    "disable_api_proxy": _Setting(False, transform=_to_boolean),
 }
 
 

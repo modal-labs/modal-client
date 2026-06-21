@@ -23,7 +23,7 @@ from modal_proto import api_pb2, task_command_router_pb2 as sr_pb2
 from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
 from .._grpc_client import grpc_error_converter
-from .._utils.grpc_utils import PermanentCloseableChannel
+from .._utils.grpc_utils import ModalChannel
 from .async_utils import aclosing, retry
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 
@@ -218,7 +218,7 @@ class TaskCommandRouterClient:
         host, _, port_str = o.netloc.partition(":")
         port = int(port_str) if port_str else (443 if o.scheme == "https" else 80)
 
-        channel = PermanentCloseableChannel(
+        channel = ModalChannel(
             host,
             port,
             ssl=ssl_context,

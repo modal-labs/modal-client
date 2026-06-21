@@ -4,6 +4,7 @@ import contextlib
 import os
 import platform
 import socket
+import ssl as ssl_module
 import time
 import typing
 import urllib.parse
@@ -11,7 +12,7 @@ import uuid
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from functools import cache
-from typing import Any, Optional, TypeVar
+from typing import Any, Optional, TypeVar, Union
 
 import grpclib.client
 import grpclib.config
@@ -19,7 +20,8 @@ import grpclib.events
 from google.protobuf.message import Message
 from google.protobuf.symbol_database import SymbolDatabase
 from grpclib import GRPCError, Status
-from grpclib.encoding.base import StatusDetailsCodecBase
+from grpclib.config import Configuration
+from grpclib.encoding.base import CodecBase, StatusDetailsCodecBase
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
@@ -65,16 +67,88 @@ class Subchannel:
         return True
 
 
-class PermanentCloseableChannel(grpclib.client.Channel):
-    def __init__(self, *args, closed_error_message: str, **kwargs):
-        super().__init__(*args, **kwargs)
+class ModalChannel(grpclib.client.Channel):
+    """Channel subclass with proxy support and graceful close guard.
+
+    Proxy support: routes connections through HTTP/SOCKS proxies by reading
+    standard env vars (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY).
+    Disabled when ``MODAL_DISABLE_API_PROXY=1`` is set.
+
+    Close guard: when ``closed_error_message`` is provided, raises
+    ``ClientClosed`` on new connection attempts after ``close()``.
+    """
+
+    def __init__(
+        self,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        *,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+        path: Optional[str] = None,
+        codec: Optional[CodecBase] = None,
+        status_details_codec: Optional[StatusDetailsCodecBase] = None,
+        ssl: Union[None, bool, "ssl_module.SSLContext", "ssl_module.DefaultVerifyPaths"] = None,
+        config: Optional[Configuration] = None,
+        closed_error_message: Optional[str] = None,
+    ):
+        self.__use_unix_socket = path is not None
+        if not self.__use_unix_socket:
+            host = host if host is not None else "127.0.0.1"
+            port = port if port is not None else 50051
+
+        ssl_context: ssl_module.SSLContext | None
+        if ssl is True:
+            ssl_context = self._get_default_ssl_context()
+        elif isinstance(ssl, ssl_module.DefaultVerifyPaths):
+            ssl_context = self._get_default_ssl_context(verify_paths=ssl)
+        elif ssl is False:
+            ssl_context = None
+        else:
+            ssl_context = ssl
+
+        super().__init__(
+            host,
+            port,
+            loop=loop,
+            path=path,
+            codec=codec,
+            status_details_codec=status_details_codec,
+            ssl=ssl_context,
+            config=config,
+        )
+        self.__target_host = host
+        self.__target_port = port
+        self.__ssl_context = ssl_context
         self.__closed = False
         self.__closed_error_message = closed_error_message
 
     async def __connect__(self):
-        if self.__closed:
+        if self.__closed and self.__closed_error_message is not None:
             raise ClientClosed(self.__closed_error_message)
         return await super().__connect__()
+
+    async def _create_connection(self) -> H2Protocol:
+        if self.__use_unix_socket:
+            return await super()._create_connection()
+
+        from .proxy_support import create_proxied_connection, get_proxy_url
+
+        assert self.__target_host is not None
+        assert self.__target_port is not None
+
+        ssl_context = self.__ssl_context
+        proxy_url = get_proxy_url(self.__target_host, use_ssl=ssl_context is not None)
+        if proxy_url is None:
+            return await super()._create_connection()
+
+        protocol = await create_proxied_connection(
+            self._protocol_factory,
+            self.__target_host,
+            self.__target_port,
+            proxy_url=proxy_url,
+            ssl_context=ssl_context,
+        )
+        return protocol
 
     def close(self):
         self.__closed = True
@@ -116,7 +190,10 @@ class ConnectionManager:
 
     async def get_or_create_channel(self, server_url: str) -> grpclib.client.Channel:
         if server_url not in self._channels:
-            self._channels[server_url] = create_channel(server_url, self._metadata)
+            self._channels[server_url] = create_channel(
+                server_url,
+                self._metadata,
+            )
             try:
                 await connect_channel(self._channels[server_url])
             except (OSError, asyncio.TimeoutError) as exc:
@@ -207,7 +284,7 @@ def create_channel(
         ssl = o.scheme.endswith("s")
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 else 443 if ssl else 80
-        channel = grpclib.client.Channel(host, port, ssl=ssl, config=config, status_details_codec=custom_detail_codec)
+        channel = ModalChannel(host, port, ssl=ssl, config=config, status_details_codec=custom_detail_codec)
     else:
         raise Exception(f"Unknown scheme: {o.scheme}")
 

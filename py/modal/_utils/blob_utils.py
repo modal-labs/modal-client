@@ -218,7 +218,9 @@ async def perform_multipart_upload(
 
     expected_multipart_etag = hashlib.md5(b"".join(bin_hash_parts)).hexdigest() + f"-{len(part_etags)}"
     resp = await ClientSessionRegistry.get_session().post(
-        completion_url, data=completion_body.encode("ascii"), skip_auto_headers=["content-type"]
+        completion_url,
+        data=completion_body.encode("ascii"),
+        skip_auto_headers=["content-type"],
     )
     if resp.status != 200:
         try:

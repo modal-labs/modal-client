@@ -11,7 +11,7 @@ from modal import __version__
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
     CustomProtoStatusDetailsCodec,
-    PermanentCloseableChannel,
+    ModalChannel,
     Retry,
     connect_channel,
     create_channel,
@@ -355,7 +355,7 @@ async def test_retry_transient_errors_grpc_no_retries(servicer, client, monkeypa
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
-async def test_PermanentCloseableChannel(servicer):
+async def test_ModalChannel(servicer):
     error_msg = "Sandbox detached"
     metadata = {
         "x-modal-client-type": str(api_pb2.CLIENT_TYPE_CONTAINER),
@@ -364,7 +364,7 @@ async def test_PermanentCloseableChannel(servicer):
     }
     assert servicer.container_addr.startswith("unix://")
     o = urllib.parse.urlparse(servicer.container_addr)
-    channel = PermanentCloseableChannel(path=o.path, closed_error_message=error_msg)
+    channel = ModalChannel(path=o.path, closed_error_message=error_msg)
 
     client_stub = api_grpc.ModalClientStub(channel)
     req = api_pb2.BlobCreateRequest()
