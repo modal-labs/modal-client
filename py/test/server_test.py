@@ -927,6 +927,24 @@ def test_server_routing_region(client, servicer):
         assert list(function_def.http_config.proxy_regions) == ["us-east"]
 
 
+def test_server_compute_region(client, servicer):
+    """Test that `compute_region` configures the scheduler placement regions."""
+    app = modal.App("server-compute-region-test", include_source=False)
+
+    @app.server(port=8000, routing_region="us-east", compute_region=["us-east-1", "us-west-2"], serialized=True)
+    class ComputeRegionServer:
+        @modal.enter()
+        def start(self):
+            pass
+
+    with app.run(client=client):
+        service_function = ComputeRegionServer._get_service_function()  # type: ignore[attr-defined]
+        function_id = service_function.object_id
+        function_def = servicer.app_functions[function_id]
+
+        assert list(function_def.scheduler_placement.regions) == ["us-east-1", "us-west-2"]
+
+
 # =============================================================================
 # Integration Tests
 # =============================================================================

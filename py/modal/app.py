@@ -1284,21 +1284,21 @@ class _App:
         cpu: float | tuple[float, float] | None = None,  # CPU cores to request
         memory: int | tuple[int, int] | None = None,  # Memory in MiB to request
         ephemeral_disk: int | None = None,  # Ephemeral disk size in MiB
+        target_concurrency: int | None = None,  # Target concurrency for the server; 0 disables autoscaling
         min_containers: int | None = None,  # Minimum number of containers to keep warm
         max_containers: int | None = None,  # Maximum number of containers
         buffer_containers: int | None = None,  # Additional idle containers under active load
         scaleup_window: int | None = None,  # Stabilization window (seconds) of sustained demand before scaling up
         scaledown_window: int | None = None,  # Max idle time before scaling down (seconds)
         proxy: _Proxy | None = None,  # Modal Proxy to use in front of this server
-        unauthenticated: bool = False,  # Whether the endpoint requires proxy authentication, required by default.
         port: int = 8000,  # Port the HTTP server listens on
+        unauthenticated: bool = False,  # Whether the endpoint requires proxy authentication, required by default.
+        h2_enabled: bool = False,  # Enable HTTP/2
         startup_timeout: int = 30,  # Maximum startup time in seconds
         exit_grace_period: int = 0,  # Grace period for in-flight requests on shutdown
         routing_region: str = "us-east",  # Region to route Server requests through
-        h2_enabled: bool = False,  # Enable HTTP/2
-        target_concurrency: int | None = None,  # Target concurrency for the server; 0 disables autoscaling
+        compute_region: str | Sequence[str] | None = None,  # Region(s) where containers can be scheduled
         cloud: str | None = None,  # Cloud provider (aws, gcp, oci, auto)
-        region: str | Sequence[str] | None = None,  # Region(s) to run on
         nonpreemptible: bool = False,  # Whether to use non-preemptible instances
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing
         i6pn: bool | None = None,  # Enable IPv6 container networking
@@ -1328,6 +1328,7 @@ class _App:
                 Specify, in MiB, a memory request which is the minimum memory required. Or, pass (request, limit) to
                 additionally specify a hard limit in MiB.
             ephemeral_disk: Specify, in MiB, the ephemeral disk size for the server.
+            target_concurrency: Target concurrency for the server; 0 disables autoscaling.
             min_containers: Minimum number of containers to keep warm.
             max_containers: Maximum number of containers.
             buffer_containers: Additional idle containers under active load.
@@ -1336,13 +1337,12 @@ class _App:
             proxy: Modal Proxy to use in front of this server.
             port: Port the HTTP server listens on.
             unauthenticated: Whether the endpoint requires proxy authentication, required by default.
+            h2_enabled: Enable HTTP/2.
             startup_timeout: Maximum startup time in seconds.
             exit_grace_period: Grace period for in-flight requests on shutdown.
             routing_region: Region to route Server requests through.
-            h2_enabled: Enable HTTP/2.
-            target_concurrency: Target concurrency for the server; 0 disables autoscaling.
+            compute_region: Region(s) where containers can be scheduled.
             cloud: Cloud provider (aws, gcp, oci, auto).
-            region: Region(s) to run on.
             nonpreemptible: Whether to use non-preemptible instances.
             enable_memory_snapshot: Enable memory checkpointing.
             i6pn: Enable IPv6 container networking.
@@ -1441,7 +1441,7 @@ class _App:
                 batch_wait_ms=None,  # No support for Server level batching
                 startup_timeout=startup_timeout,
                 cloud=cloud,
-                region=region,
+                region=compute_region,
                 nonpreemptible=nonpreemptible,
                 enable_memory_snapshot=enable_memory_snapshot,
                 single_use_containers=False,  # No support for single-use server containers

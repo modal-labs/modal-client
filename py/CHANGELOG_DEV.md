@@ -7,3 +7,4 @@
 - Added `Workspace.billing` and `Environment.billing` which both expose a `.report()` method - this returns comprehensive cost data as a list of `BillingReportItem` dataclasses. `*.report()` has the same parameters as `workspace_billing_report`. `EnvironmentBillingManager.report()` returns data that is specifically scoped to the calling environment.
 - Added `modal environment billing report` which wraps `Environment.billing.report()`.
 - Deprecated `modal.billing.workspace_billing_report()`
+- Renamed the `region` parameter of the `@app.server()` decorator to `compute_region`.
