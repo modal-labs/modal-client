@@ -2965,17 +2965,16 @@ class _Image(_Object, type_prefix="im"):
         """
         tag = _parse_named_image_ref(name)
 
-        if not self.is_hydrated:
+        if self._object_id is None:
             raise InvalidError("Cannot publish an image that has not been created yet. Call `.build()` first.")
 
-        _client = client or self._client
-        assert _client is not None
+        _client = client or await _Client.from_env()
 
         resolved_env = environment_name or config.get("environment") or ""
 
         await _client.stub.ImagePublish(
             api_pb2.ImagePublishRequest(
-                image_id=self.object_id,
+                image_id=self._object_id,
                 environment_name=resolved_env,
                 is_public=False,
                 tag=tag,
