@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -390,5 +391,42 @@ func TestSnapshotFilesystemPreemptiveDeadlineReturnsTimeoutError(t *testing.T) {
 
 	_, isTimeout := err.(TimeoutError)
 	g.Expect(isTimeout).To(gomega.BeTrue(),
+		"expected TimeoutError, got %T: %v", err, err)
+}
+
+// mockWaitUntilReadyClientStub embeds pb.TaskCommandRouterClient so unused
+// methods inherit nil stubs. Only SandboxWaitUntilReady is overridden.
+type mockWaitUntilReadyClientStub struct {
+	pb.TaskCommandRouterClient
+	fn func(ctx context.Context, in *pb.SandboxWaitUntilReadyTcrRequest, opts ...grpc.CallOption) (*pb.SandboxWaitUntilReadyTcrResponse, error)
+}
+
+func (m *mockWaitUntilReadyClientStub) SandboxWaitUntilReady(
+	ctx context.Context,
+	in *pb.SandboxWaitUntilReadyTcrRequest,
+	opts ...grpc.CallOption,
+) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+	return m.fn(ctx, in, opts...)
+}
+
+func TestSandboxWaitUntilReadyReturnsTimeoutErrorOnDeadline(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+
+	calls := 0
+	stub := &mockWaitUntilReadyClientStub{
+		fn: func(_ context.Context, _ *pb.SandboxWaitUntilReadyTcrRequest, _ ...grpc.CallOption) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+			calls++
+			return nil, status.Error(codes.DeadlineExceeded, "deadline exceeded")
+		},
+	}
+
+	client := &taskCommandRouterClient{stub: stub}
+	jwt := "fake-jwt"
+	client.jwt.Store(&jwt)
+
+	_, err := client.SandboxWaitUntilReady(context.Background(), "ta-123", 100*time.Millisecond)
+	var timeoutErr TimeoutError
+	g.Expect(errors.As(err, &timeoutErr)).To(gomega.BeTrue(),
 		"expected TimeoutError, got %T: %v", err, err)
 }

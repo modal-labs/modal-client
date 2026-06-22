@@ -458,6 +458,33 @@ func (c *taskCommandRouterClient) SnapshotFilesystem(ctx context.Context, reques
 	return resp, err
 }
 
+// SandboxWaitUntilReady waits until the Sandbox's readiness probe reports ready.
+func (c *taskCommandRouterClient) SandboxWaitUntilReady(ctx context.Context, taskID string, timeout time.Duration) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+	opts := defaultRetryOptions()
+	overallDeadline := time.Now().Add(timeout)
+	opts.Deadline = &overallDeadline
+
+	resp, err := callWithRetriesOnTransientErrors(ctx, func() (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+		remaining := max(time.Until(overallDeadline), time.Millisecond)
+		request := pb.SandboxWaitUntilReadyTcrRequest_builder{
+			TaskId:  taskID,
+			Timeout: float32(remaining.Seconds()),
+		}.Build()
+		callCtx, cancel := context.WithTimeout(ctx, remaining)
+		defer cancel()
+		return callWithAuthRetry(callCtx, c, func(authCtx context.Context) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+			return c.stub.SandboxWaitUntilReady(authCtx, request)
+		})
+	}, opts, &c.closed)
+	if err != nil {
+		if errors.Is(err, errDeadlineExceeded) {
+			return nil, TimeoutError{Exception: "Timeout expired"}
+		}
+		return nil, err
+	}
+	return resp, nil
+}
+
 // ContainerCreate creates an additional container in the task.
 func (c *taskCommandRouterClient) ContainerCreate(ctx context.Context, request *pb.TaskContainerCreateRequest) (*pb.TaskContainerCreateResponse, error) {
 	return callCommandRouterUnary(ctx, c, func(authCtx context.Context) (*pb.TaskContainerCreateResponse, error) {

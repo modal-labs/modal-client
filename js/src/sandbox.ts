@@ -46,7 +46,6 @@ import {
   InvalidError,
   NotFoundError,
   SandboxTimeoutError,
-  TimeoutError,
   AlreadyExistsError,
   ClientClosedError,
 } from "./errors";
@@ -1611,35 +1610,13 @@ export class Sandbox {
    */
   async waitUntilReady(timeoutMs = 300_000): Promise<void> {
     this.#ensureAttached();
-    this.#ensureV1("waitUntilReady");
     if (timeoutMs <= 0) {
       throw new InvalidError(`timeoutMs must be positive, got ${timeoutMs}`);
     }
 
-    const deadline = Date.now() + timeoutMs;
-    while (true) {
-      const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) {
-        throw new TimeoutError("Sandbox operation timed out");
-      }
-      const requestTimeoutMs = Math.min(
-        remainingMs,
-        50_000, // Max request timeout for each gRPC call
-      );
-      try {
-        const resp = await this.#client.cpClient.sandboxWaitUntilReady({
-          sandboxId: this.sandboxId,
-          timeout: requestTimeoutMs / 1000,
-        });
-        if (resp.readyAt > 0) {
-          return;
-        }
-      } catch (err) {
-        if (err instanceof ClientError && err.code === Status.DEADLINE_EXCEEDED)
-          continue;
-        throw err;
-      }
-    }
+    // Route to the task command router for both V1 and V2 sandboxes.
+    const [taskId, commandRouterClient] = await this.#getCommandRouter();
+    await commandRouterClient.sandboxWaitUntilReady(taskId, timeoutMs);
   }
 
   /** Get {@link Tunnel} metadata for the Sandbox.

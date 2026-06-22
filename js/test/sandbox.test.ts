@@ -25,6 +25,7 @@ import {
   SandboxCreateV2Response,
 } from "../proto/modal_proto/api";
 import { createMockModalClients } from "../test-support/grpc_mock";
+import { TimeoutError } from "modal";
 
 const V1_SANDBOX_ID = "sb-nGEijt9WbBMlGrsPH9FOaC";
 const V2_SANDBOX_ID = "sb-01ARZ3NDEKTSV4RRFFQ69G5FAV";
@@ -1271,7 +1272,6 @@ test("V2 Sandbox rejects V1-only runtime methods", async () => {
   await expect(sb.setTags({})).rejects.toThrow(expectedError);
   await expect(sb.getTags()).rejects.toThrow(expectedError);
   await expect(sb.createConnectToken()).rejects.toThrow(expectedError);
-  await expect(sb.waitUntilReady(5000)).rejects.toThrow(expectedError);
 });
 
 test.each([
@@ -1374,33 +1374,35 @@ test("SandboxGetTaskIdTerminated", async () => {
 });
 
 test("SandboxWaitUntilReady", async () => {
-  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
-
-  let seenReq: any = undefined;
-  mock.handleUnary("/SandboxWaitUntilReady", (req: any) => {
-    seenReq = req;
-    return { readyAt: 123.456 };
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
   });
+  const image = tc.images.fromRegistry("python:3.13-alpine");
 
-  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
-  await sb.waitUntilReady(5000);
+  const sb = await tc.sandboxes.create(app, image, {
+    command: ["python", "-m", "http.server", "8080"],
+    readinessProbe: Probe.withTcp(8080),
+  });
+  onTestFinished(async () => await sb.terminate());
 
-  expect(seenReq.sandboxId).toBe(V1_SANDBOX_ID);
-  expect(seenReq.timeout).toBeGreaterThan(0);
-  expect(seenReq.timeout).toBeLessThanOrEqual(5);
-  mock.assertExhausted();
-});
+  await sb.waitUntilReady(60_000);
+}, 60_000);
 
-test("SandboxWaitUntilReady retries empty readyAt", async () => {
-  const { mockClient: mc, mockCpClient: mock } = createMockModalClients();
+test("SandboxWaitUntilReady times out", async () => {
+  const app = await tc.apps.fromName("libmodal-test", {
+    createIfMissing: true,
+  });
+  const image = tc.images.fromRegistry("python:3.13-alpine");
 
-  mock.handleUnary("/SandboxWaitUntilReady", () => ({ readyAt: 0 }));
-  mock.handleUnary("/SandboxWaitUntilReady", () => ({ readyAt: 123.456 }));
+  const sb = await tc.sandboxes.create(app, image, {
+    command: ["python", "-m", "http.server", "8080"],
+    // A readiness probe that always fails, so the sandbox never becomes ready.
+    readinessProbe: Probe.withExec(["sh", "-c", "exit 1"]),
+  });
+  onTestFinished(async () => await sb.terminate());
 
-  const sb = await mc.sandboxes.fromId(V1_SANDBOX_ID);
-  await sb.waitUntilReady(5000);
-  mock.assertExhausted();
-});
+  await expect(sb.waitUntilReady(5_000)).rejects.toThrow(TimeoutError);
+}, 60_000);
 
 test("validateExecArgs with args within limit", () => {
   expect(() => validateExecArgs(["echo", "hello"])).not.toThrow();

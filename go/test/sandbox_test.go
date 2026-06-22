@@ -13,8 +13,6 @@ import (
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -1261,64 +1259,6 @@ func TestSandboxFromIDRejectsInvalidID(t *testing.T) {
 	_, err := mock.Sandboxes.FromID(ctx, "sb-123", nil)
 	g.Expect(err).Should(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring("Invalid Sandbox ID"))
-
-	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
-}
-
-func TestSandboxWaitUntilReady(t *testing.T) {
-	t.Parallel()
-	g := gomega.NewWithT(t)
-	ctx := t.Context()
-	mock := newGRPCMockClient(t)
-
-	var seenReq *pb.SandboxWaitUntilReadyRequest
-	grpcmock.HandleUnary(mock, "SandboxWaitUntilReady",
-		func(req *pb.SandboxWaitUntilReadyRequest) (*pb.SandboxWaitUntilReadyResponse, error) {
-			seenReq = req
-			return pb.SandboxWaitUntilReadyResponse_builder{
-				ReadyAt: 123.456,
-			}.Build(), nil
-		})
-
-	sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID, nil)
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-	err = sb.WaitUntilReady(ctx, 5*time.Second, nil)
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(seenReq).ShouldNot(gomega.BeNil())
-	g.Expect(seenReq.GetSandboxId()).To(gomega.Equal(validV1SandboxID))
-	g.Expect(seenReq.GetTimeout()).To(gomega.BeNumerically(">", 0))
-	g.Expect(seenReq.GetTimeout()).To(gomega.BeNumerically("<=", 5))
-
-	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
-}
-
-func TestSandboxWaitUntilReadyRetriesDeadlineExceeded(t *testing.T) {
-	t.Parallel()
-	g := gomega.NewWithT(t)
-	ctx := t.Context()
-	mock := newGRPCMockClient(t)
-
-	calls := 0
-	grpcmock.HandleUnary(mock, "SandboxWaitUntilReady",
-		func(req *pb.SandboxWaitUntilReadyRequest) (*pb.SandboxWaitUntilReadyResponse, error) {
-			calls++
-			return nil, status.Error(codes.DeadlineExceeded, "deadline exceeded")
-		})
-	grpcmock.HandleUnary(mock, "SandboxWaitUntilReady",
-		func(req *pb.SandboxWaitUntilReadyRequest) (*pb.SandboxWaitUntilReadyResponse, error) {
-			calls++
-			return pb.SandboxWaitUntilReadyResponse_builder{
-				ReadyAt: 456.789,
-			}.Build(), nil
-		})
-
-	sb, err := mock.Sandboxes.FromID(ctx, validV1SandboxID, nil)
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-	err = sb.WaitUntilReady(ctx, 5*time.Second, nil)
-	g.Expect(err).ShouldNot(gomega.HaveOccurred())
-	g.Expect(calls).To(gomega.Equal(2))
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }

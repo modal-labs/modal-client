@@ -2,12 +2,16 @@ package modal
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"testing"
 	"time"
 
 	pb "github.com/modal-labs/modal-client/go/proto/modal_proto"
 	"github.com/onsi/gomega"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -198,10 +202,107 @@ func TestSandboxV2UnsupportedRuntimeMethods(t *testing.T) {
 	_, err = sb.GetTags(ctx, nil)
 	g.Expect(err).To(gomega.HaveOccurred())
 	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+}
 
-	err = sb.WaitUntilReady(ctx, time.Second, nil)
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring(wantErr))
+// mockWaitUntilReadyStub embeds pb.TaskCommandRouterClient so unused methods
+// inherit nil stubs (calling them would panic). Only SandboxWaitUntilReady is
+// overridden.
+type mockWaitUntilReadyStub struct {
+	pb.TaskCommandRouterClient
+	fn func(ctx context.Context, in *pb.SandboxWaitUntilReadyTcrRequest, opts ...grpc.CallOption) (*pb.SandboxWaitUntilReadyTcrResponse, error)
+}
+
+func (m *mockWaitUntilReadyStub) SandboxWaitUntilReady(
+	ctx context.Context,
+	in *pb.SandboxWaitUntilReadyTcrRequest,
+	opts ...grpc.CallOption,
+) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+	return m.fn(ctx, in, opts...)
+}
+
+func newReadinessSandbox(version sandboxVersion, stub pb.TaskCommandRouterClient) *Sandbox {
+	client := &Client{}
+	var sb *Sandbox
+	if version == sandboxVersionV2 {
+		sb = newSandboxV2(client, testV2SandboxID, "ta-wait-123")
+	} else {
+		sb = newSandbox(client, testV1SandboxID)
+		sb.taskID = "ta-wait-123"
+	}
+	crClient := &taskCommandRouterClient{stub: stub}
+	jwt := "fake-jwt"
+	crClient.jwt.Store(&jwt)
+	sb.commandRouterClient = crClient
+	return sb
+}
+
+func TestSandboxWaitUntilReady(t *testing.T) {
+	t.Parallel()
+
+	versions := []struct {
+		name    string
+		version sandboxVersion
+	}{
+		{"v1", sandboxVersionV1},
+		{"v2", sandboxVersionV2},
+	}
+	for _, tc := range versions {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			ctx := t.Context()
+
+			var seenReq *pb.SandboxWaitUntilReadyTcrRequest
+			stub := &mockWaitUntilReadyStub{
+				fn: func(_ context.Context, in *pb.SandboxWaitUntilReadyTcrRequest, _ ...grpc.CallOption) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+					seenReq = in
+					return pb.SandboxWaitUntilReadyTcrResponse_builder{ReadyAt: 123.456}.Build(), nil
+				},
+			}
+			sb := newReadinessSandbox(tc.version, stub)
+
+			err := sb.WaitUntilReady(ctx, 5*time.Second, nil)
+			g.Expect(err).ShouldNot(gomega.HaveOccurred())
+			g.Expect(seenReq).ShouldNot(gomega.BeNil())
+			g.Expect(seenReq.GetTaskId()).To(gomega.Equal("ta-wait-123"))
+			g.Expect(seenReq.GetTimeout()).To(gomega.BeNumerically(">", 0))
+			g.Expect(seenReq.GetTimeout()).To(gomega.BeNumerically("<=", 5))
+		})
+	}
+}
+
+func TestSandboxWaitUntilReadyTimesOut(t *testing.T) {
+	t.Parallel()
+
+	versions := []struct {
+		name    string
+		version sandboxVersion
+	}{
+		{"v1", sandboxVersionV1},
+		{"v2", sandboxVersionV2},
+	}
+	for _, tc := range versions {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			g := gomega.NewWithT(t)
+			ctx := t.Context()
+
+			calls := 0
+			stub := &mockWaitUntilReadyStub{
+				fn: func(_ context.Context, _ *pb.SandboxWaitUntilReadyTcrRequest, _ ...grpc.CallOption) (*pb.SandboxWaitUntilReadyTcrResponse, error) {
+					calls++
+					// The worker signals that the sandbox did not become ready in time.
+					return nil, status.Error(codes.DeadlineExceeded, "deadline exceeded")
+				},
+			}
+			sb := newReadinessSandbox(tc.version, stub)
+
+			err := sb.WaitUntilReady(ctx, 100*time.Millisecond, nil)
+			var timeoutErr TimeoutError
+			g.Expect(errors.As(err, &timeoutErr)).To(gomega.BeTrue(),
+				"expected TimeoutError, got %T: %v", err, err)
+		})
+	}
 }
 
 func TestSandboxV2StdioUnsupported(t *testing.T) {

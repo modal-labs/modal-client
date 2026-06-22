@@ -1250,43 +1250,19 @@ func (sb *Sandbox) WaitUntilReady(ctx context.Context, timeout time.Duration, pa
 	if err := sb.ensureAttached(); err != nil {
 		return err
 	}
-	if err := sb.ensureV1("WaitUntilReady"); err != nil {
-		return err
-	}
 	if timeout <= 0 {
 		return InvalidError{Exception: fmt.Sprintf("timeout must be positive, got %v", timeout)}
 	}
 
-	deadline := time.Now().Add(timeout)
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return TimeoutError{Exception: "Sandbox operation timed out"}
-		}
-
-		requestTimeout := min(
-			remaining,
-			50*time.Second, // Max timeout for a single gRPC call.
-		)
-
-		resp, err := sb.client.cpClient.SandboxWaitUntilReady(ctx, pb.SandboxWaitUntilReadyRequest_builder{
-			SandboxId: sb.SandboxID,
-			Timeout:   float32(requestTimeout.Seconds()),
-		}.Build())
-		if err != nil {
-			if status, ok := status.FromError(err); ok && status.Code() == codes.DeadlineExceeded {
-				continue
-			}
-			return err
-		}
-		if resp.GetReadyAt() > 0 {
-			return nil
-		}
+	// Route to the task command router for both V1 and V2 sandboxes.
+	taskID, commandRouterClient, err := sb.getCommandRouter(ctx)
+	if err != nil {
+		return err
 	}
+	if _, err := commandRouterClient.SandboxWaitUntilReady(ctx, taskID, timeout); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Tunnels gets Tunnel metadata for the Sandbox.

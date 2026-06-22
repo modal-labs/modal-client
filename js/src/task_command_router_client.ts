@@ -37,6 +37,8 @@ import {
   TaskSnapshotFilesystemRequest,
   TaskSnapshotFilesystemResponse,
   TaskUnmountDirectoryRequest,
+  SandboxWaitUntilReadyTcrRequest,
+  SandboxWaitUntilReadyTcrResponse,
 } from "../proto/modal_proto/task_command_router";
 import {
   TaskGetCommandRouterAccessRequest,
@@ -558,6 +560,38 @@ export class TaskCommandRouterClientImpl {
 
   async unmountDirectory(request: TaskUnmountDirectoryRequest): Promise<void> {
     await this.callUnary(() => this.stub.taskUnmountDirectory(request));
+  }
+
+  async sandboxWaitUntilReady(
+    taskId: string,
+    timeoutMs: number,
+  ): Promise<SandboxWaitUntilReadyTcrResponse> {
+    const deadlineMs = Date.now() + timeoutMs;
+    try {
+      return await callWithRetriesOnTransientErrors(
+        () =>
+          this.callWithAuthRetry(() => {
+            const remainingMs = Math.max(1, deadlineMs - Date.now());
+            const request = SandboxWaitUntilReadyTcrRequest.create({
+              taskId,
+              timeout: remainingMs / 1000,
+            });
+            return this.stub.sandboxWaitUntilReady(request, {
+              timeoutMs: remainingMs,
+            } as CallOptions & TimeoutOptions);
+          }),
+        10,
+        2,
+        10,
+        deadlineMs,
+        () => this.closed,
+      );
+    } catch (err) {
+      if (err instanceof RetryDeadlineExceededError) {
+        throw new TimeoutError("Timeout expired");
+      }
+      throw err;
+    }
   }
 
   private async refreshJwt(): Promise<void> {
