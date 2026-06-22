@@ -8,6 +8,8 @@
 - Added `Sandbox._experimental_set_outbound_network_policy(...)` to update a running Sandbox's outbound network access. Accepts `outbound_cidr_allowlist` and `outbound_domain_allowlist` arguments matching `Sandbox.create`.
 - Added `Workspace.billing` and `Environment.billing` which both expose a `.report()` method - this returns comprehensive cost data as a list of `BillingReportItem` dataclasses. `*.report()` has the same parameters as `workspace_billing_report`. `EnvironmentBillingManager.report()` returns data that is specifically scoped to the calling environment.
 - Added `modal environment billing report` which wraps `Environment.billing.report()`.
+- Added `Workspace.proxy_tokens` for managing proxy tokens. It exposes `.create()` (returning a `TokenData` with `token_id` and `token_secret`), `.list(environment_name=None)` (returning `ProxyTokenInfo` dataclasses, optionally filtered to a given environment), `.allow(proxy_token_id, environment_name)` and `.revoke(proxy_token_id, environment_name)` (to manage environment associations), and `.delete(proxy_token_id)`.
+- Added `modal workspace` CLI with `modal workspace proxy-tokens` commands (`create`, `list` [`--environment`], `allow`, `revoke`, `delete`) for managing the current Workspace's proxy tokens, plus `modal workspace members list`. `create` prints the new token's `Modal-Key` and `Modal-Secret` request headers (pass `--json` to emit them as JSON).
 - Deprecated `modal.billing.workspace_billing_report()`
 - Added `--strategy` option to `modal app rollback`. As with `modal app rollover`, there are two strategies for switching between deployments:
   - `--strategy=rolling` (the default) will smoothly migrate traffic from old containers to new containers

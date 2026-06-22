@@ -123,7 +123,7 @@ async def fetch_app_logs(
     await _drain_batches(output_mgr, batches, prefix_fields or [], filters.search_text)
 
 
-def _plain(text: Text | str) -> str:
+def _plain(text: "Text | str | bool | None") -> "str | bool | None":
     return text.plain if isinstance(text, Text) else text
 
 
@@ -138,7 +138,7 @@ def is_tty() -> bool:
 
 def display_table(
     columns: Sequence[Column | str],
-    rows: Sequence[Sequence[Text | str]],
+    rows: Sequence[Sequence["Text | str | bool | None"]],
     json: bool = False,
     csv: bool = False,
     title: str = "",
@@ -164,7 +164,12 @@ def display_table(
     else:
         table = Table(*columns, title=title)
         for row in rows:
-            table.add_row(*row)
+            # rich can't render bare scalars like bools; stringify anything that isn't already
+            # a renderable (str/Text) or None (which rich treats as an empty cell).
+            cells: list[Text | str | None] = [
+                cell if cell is None or isinstance(cell, (str, Text)) else str(cell) for cell in row
+            ]
+            table.add_row(*cells)
         output.print(table)
 
 

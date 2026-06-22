@@ -121,10 +121,154 @@ class _Workspace(_Object, type_prefix="ac"):
     def billing(self) -> "_WorkspaceBillingManager":
         return _WorkspaceBillingManager(self)
 
+    @property
+    def proxy_tokens(self) -> "_WorkspaceProxyTokenManager":
+        return _WorkspaceProxyTokenManager(self)
+
+
+@dataclass(frozen=True)
+class TokenData:
+    """A token ID / secret pair."""
+
+    token_id: str
+    token_secret: str
+
+
+@dataclass(frozen=True)
+class ProxyTokenInfo:
+    """Metadata about a proxy token, not including the token secret."""
+
+    token_id: str
+    created_at: datetime
+    scoped: bool
+
+
+class _WorkspaceProxyTokenManager:
+    """mdmd:namespace
+    Namespace with methods for managing the proxy tokens in a Workspace.
+
+    See [the guide](https://modal.com/docs/guide/webhook-proxy-auth) for more information on proxy tokens.
+    """
+
+    def __init__(self, workspace: "_Workspace"):
+        """mdmd:hidden"""
+        self._workspace = workspace
+
+    async def create(self) -> TokenData:
+        """Create a new proxy token for the Workspace.
+
+        Examples:
+            ```python notest
+            token = modal.Workspace.from_context().proxy_tokens.create()
+            print(token.token_id, token.token_secret)
+            ```
+        """
+        await self._workspace.hydrate()
+        resp = await self._workspace.client.stub.WebhookTokenCreate(api_pb2.WebhookTokenCreateRequest())
+        return TokenData(token_id=resp.token_id, token_secret=resp.token_secret)
+
+    async def list(self, environment_name: Optional[str] = None) -> builtins.list[ProxyTokenInfo]:
+        """List proxy tokens in the Workspace.
+
+        Args:
+            environment_name: When provided, list only the tokens associated with this environment.
+
+        Examples:
+            ```python notest
+            ws = modal.Workspace.from_context()
+
+            # List all proxy tokens in the Workspace
+            tokens = ws.proxy_tokens.list()
+            print([t.token_id for t in tokens])
+
+            # List only the proxy tokens associated with a specific Environment
+            env_tokens = ws.proxy_tokens.list(environment_name="prod")
+            ```
+        """
+        await self._workspace.hydrate()
+        if environment_name is None:
+            resp = await self._workspace.client.stub.WebhookTokenList(Empty())
+        else:
+            resp = await self._workspace.client.stub.WebhookTokenListForEnvironment(
+                api_pb2.WebhookTokenListForEnvironmentRequest(environment_name=environment_name)
+            )
+        return [
+            ProxyTokenInfo(
+                token_id=token.token_id,
+                created_at=timestamp_to_localized_dt(token.created_at),
+                scoped=token.scoped,
+            )
+            for token in resp.tokens
+        ]
+
+    async def allow(self, proxy_token_id: str, environment_name: str) -> None:
+        """Allow a proxy token to authenticate requests to a given Environment.
+
+        Args:
+            proxy_token_id: The token ID (`wk-...`) to operate on.
+            environment_name: The name of the environment to allow access to.
+
+        Examples:
+            ```python notest
+            ws = modal.Workspace.from_context()
+            token = ws.proxy_tokens.create()
+            ws.proxy_tokens.allow(token.token_id, "prod")
+            ```
+        """
+        await self._workspace.hydrate()
+        environment_id = await self._environment_id(environment_name)
+        req = api_pb2.WebhookTokenEnvironmentAddRequest(token_id=proxy_token_id, environment_id=environment_id)
+        await self._workspace.client.stub.WebhookTokenEnvironmentAdd(req)
+
+    async def revoke(self, proxy_token_id: str, environment_name: str) -> None:
+        """Revoke a proxy token's access to a given Environment.
+
+        The proxy token is not deleted, and it will continue to authenticate requests to any
+        other Environments it is associated with.
+
+        Args:
+            proxy_token_id: The token ID (`wk-...`) to operate on.
+            environment_name: The name of the environment to revoke access from.
+
+        Examples:
+            ```python notest
+            ws = modal.Workspace.from_context()
+            ws.proxy_tokens.revoke(token_id, "prod")
+            ```
+        """
+        await self._workspace.hydrate()
+        environment_id = await self._environment_id(environment_name)
+        req = api_pb2.WebhookTokenEnvironmentRemoveRequest(token_id=proxy_token_id, environment_id=environment_id)
+        await self._workspace.client.stub.WebhookTokenEnvironmentRemove(req)
+
+    async def delete(self, proxy_token_id: str) -> None:
+        """Delete a proxy token from the Workspace.
+
+        This cannot be reverted. Any clients currently using the token will immediately
+        lose access to associated resources.
+
+        Args:
+            proxy_token_id: The token ID (`wk-...`) to delete.
+
+        Examples:
+            ```python notest
+            modal.Workspace.from_context().proxy_tokens.delete(token_id)
+            ```
+        """
+        await self._workspace.hydrate()
+        await self._workspace.client.stub.WebhookTokenDelete(api_pb2.TokenDeleteRequest(token_id=proxy_token_id))
+
+    async def _environment_id(self, environment_name: str) -> str:
+        # The environment-association RPCs key on environment ID, so resolve the name first.
+        from ._environments import _Environment
+
+        environment = await _Environment.from_name(environment_name, client=self._workspace.client).hydrate()
+        return environment.object_id
+
 
 class _WorkspaceBillingManager:
     """mdmd:namespace
-    Namespace for Workspace billing APIs
+    Namespace for Workspace billing APIs.
     """
 
     def __init__(self, workspace: _Workspace):

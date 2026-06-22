@@ -100,6 +100,60 @@ def test_secret_create_list_delete(servicer, set_env_client):
     assert "foo" not in run_cli_command(["secret", "list"]).stdout
 
 
+def test_workspace_members_list_cli(servicer, set_env_client):
+    members = json.loads(run_cli_command(["workspace", "members", "list", "--json"]).stdout)
+    # The mock servicer workspace has Alice (owner, active) and Bob (user, never active)
+    by_name = {m["name"]: m for m in members}
+    assert by_name["Alice"]["role"] == "owner"
+    assert by_name["Alice"]["email"] == "alice@example.com"
+    assert by_name["Bob"]["role"] == "user"
+    # Members who have never been active have a null timestamp
+    assert by_name["Bob"]["last_active"] is None
+
+    # Non-JSON output renders the members in a table
+    assert "Alice" in run_cli_command(["workspace", "members", "list"]).stdout
+
+
+def test_workspace_proxy_tokens_cli(servicer, set_env_client):
+    # `create` prints the Modal-Key / Modal-Secret request headers; `--json` emits them as JSON
+    data = json.loads(run_cli_command(["workspace", "proxy-tokens", "create", "--json"]).stdout)
+    assert set(data) == {"Modal-Key", "Modal-Secret"}
+    token_id = data["Modal-Key"]
+    assert token_id in servicer.webhook_tokens
+
+    # `list` shows the token, including its scoped status
+    listed = json.loads(run_cli_command(["workspace", "proxy-tokens", "list", "--json"]).stdout)
+    assert [row["token_id"] for row in listed] == [token_id]
+    # `scoped` is emitted as a real JSON boolean, not a string
+    assert listed[0]["scoped"] is False
+
+    # The non-JSON table also renders (the bool is stringified for rich)
+    assert token_id in run_cli_command(["workspace", "proxy-tokens", "list"]).stdout
+
+    # `delete` removes it (requires confirmation, bypassed with --yes)
+    run_cli_command(["workspace", "proxy-tokens", "delete", token_id, "--yes"])
+    assert token_id not in servicer.webhook_tokens
+    assert json.loads(run_cli_command(["workspace", "proxy-tokens", "list", "--json"]).stdout) == []
+
+
+def test_workspace_proxy_tokens_allow_revoke_cli(servicer, set_env_client):
+    # Seed a scoped token (the kind that can be associated with environments)
+    servicer.webhook_tokens["wt-1"] = {"created_at": 1577836800.0, "scoped": True}
+    servicer.webhook_token_environments["wt-1"] = set()
+
+    # `allow` associates the token with an environment ...
+    run_cli_command(["workspace", "proxy-tokens", "allow", "wt-1", "main"])
+    assert servicer.webhook_token_environments["wt-1"] == {servicer.environments["main"]}
+    # ... and `list -e` filters to the tokens associated with that environment
+    listed = json.loads(run_cli_command(["workspace", "proxy-tokens", "list", "-e", "main", "--json"]).stdout)
+    assert [row["token_id"] for row in listed] == ["wt-1"]
+
+    # `revoke` removes the association
+    run_cli_command(["workspace", "proxy-tokens", "revoke", "wt-1", "main"])
+    assert servicer.webhook_token_environments["wt-1"] == set()
+    assert json.loads(run_cli_command(["workspace", "proxy-tokens", "list", "-e", "main", "--json"]).stdout) == []
+
+
 def test_image_cli_list(servicer, set_env_client, monkeypatch):
     sleep_calls: list[float] = []
 

@@ -727,6 +727,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.workspace_service_users: dict[str, str] = {"sv-1": "alice-bot", "sv-2": "ops-bot"}
         # env_id -> {principal_id: role_proto}
         self.environment_members: dict[str, dict[str, api_pb2.EnvironmentRole.ValueType]] = {}
+        # Proxy auth (webhook) tokens: token_id -> {"created_at": float, "scoped": bool}
+        self.webhook_tokens: dict[str, dict] = {}
+        # token_id -> set of environment_ids the token is associated with
+        self.webhook_token_environments: dict[str, set[str]] = {}
         self.workspace_members: list[api_pb2.WorkspaceMembersListItem] = [
             api_pb2.WorkspaceMembersListItem(
                 user_id="us-1",
@@ -2926,6 +2930,60 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def WorkspaceMembersList(self, stream):
         await stream.recv_message()
         await stream.send_message(api_pb2.WorkspaceMembersListResponse(members=self.workspace_members))
+
+    ### Proxy auth (webhook) tokens
+
+    async def WebhookTokenCreate(self, stream):
+        request: api_pb2.WebhookTokenCreateRequest = await stream.recv_message()
+        token_id = f"wt-{len(self.webhook_tokens) + 1}"
+        self.webhook_tokens[token_id] = {"created_at": 1577836800.0, "scoped": request.scoped}
+        self.webhook_token_environments[token_id] = set()
+        await stream.send_message(api_pb2.TokenCreateResponse(token_id=token_id, token_secret=f"secret-{token_id}"))
+
+    async def WebhookTokenDelete(self, stream):
+        request: api_pb2.TokenDeleteRequest = await stream.recv_message()
+        self.webhook_tokens.pop(request.token_id, None)
+        self.webhook_token_environments.pop(request.token_id, None)
+        await stream.send_message(Empty())
+
+    async def WebhookTokenList(self, stream):
+        await stream.recv_message()
+        tokens = [
+            api_pb2.WebhookToken(token_id=token_id, created_at=data["created_at"], scoped=data["scoped"])
+            for token_id, data in self.webhook_tokens.items()
+        ]
+        await stream.send_message(api_pb2.WebhookTokenListResponse(tokens=tokens))
+
+    async def WebhookTokenEnvironmentAdd(self, stream):
+        request: api_pb2.WebhookTokenEnvironmentAddRequest = await stream.recv_message()
+        if request.token_id not in self.webhook_tokens:
+            raise GRPCError(Status.NOT_FOUND, "Webhook token not found")
+        self.webhook_token_environments.setdefault(request.token_id, set()).add(request.environment_id)
+        await stream.send_message(Empty())
+
+    async def WebhookTokenEnvironmentRemove(self, stream):
+        request: api_pb2.WebhookTokenEnvironmentRemoveRequest = await stream.recv_message()
+        if request.token_id not in self.webhook_tokens:
+            raise GRPCError(Status.NOT_FOUND, "Webhook token not found")
+        self.webhook_token_environments.get(request.token_id, set()).discard(request.environment_id)
+        await stream.send_message(Empty())
+
+    async def WebhookTokenEnvironmentList(self, stream):
+        request: api_pb2.WebhookTokenEnvironmentListRequest = await stream.recv_message()
+        environment_ids = sorted(self.webhook_token_environments.get(request.token_id, set()))
+        await stream.send_message(api_pb2.WebhookTokenEnvironmentListResponse(environment_ids=environment_ids))
+
+    async def WebhookTokenListForEnvironment(self, stream):
+        request: api_pb2.WebhookTokenListForEnvironmentRequest = await stream.recv_message()
+        env_name = request.environment_name or next(iter(self.environments))
+        env_id = self.environments.get(env_name)
+        tokens = [
+            api_pb2.WebhookToken(token_id=token_id, created_at=data["created_at"], scoped=data["scoped"])
+            for token_id, data in self.webhook_tokens.items()
+            # Mirror the server: only scoped tokens with an explicit association are returned
+            if data["scoped"] and env_id in self.webhook_token_environments.get(token_id, set())
+        ]
+        await stream.send_message(api_pb2.WebhookTokenListResponse(tokens=tokens))
 
     ### Tunnel
 
