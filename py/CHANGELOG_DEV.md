@@ -8,4 +8,7 @@
 - Added `Workspace.billing` and `Environment.billing` which both expose a `.report()` method - this returns comprehensive cost data as a list of `BillingReportItem` dataclasses. `*.report()` has the same parameters as `workspace_billing_report`. `EnvironmentBillingManager.report()` returns data that is specifically scoped to the calling environment.
 - Added `modal environment billing report` which wraps `Environment.billing.report()`.
 - Deprecated `modal.billing.workspace_billing_report()`
+- Added `--strategy` option to `modal app rollback`. As with `modal app rollover`, there are two strategies for switching between deployments:
+  - `--strategy=rolling` (the default) will smoothly migrate traffic from old containers to new containers
+  - `--strategy=recreate` will terminate all running containers so that any subsequent inputs will go to new containers
 - Renamed the `region` parameter of the `@app.server()` decorator to `compute_region`.

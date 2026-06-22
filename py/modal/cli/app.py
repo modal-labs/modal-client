@@ -4,7 +4,7 @@ import sys
 import time
 import warnings
 from datetime import datetime, timedelta, timezone
-from typing import get_args
+from typing import Literal, get_args
 
 import click
 import rich
@@ -353,11 +353,18 @@ async def logs(
 @app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})
 @click.argument("app_identifier")
 @click.argument("version", default="")
+@click.option(
+    "--strategy",
+    default="rolling",
+    type=click.Choice(get_args(DEPLOYMENT_STRATEGY_TYPE)),
+    help="Strategy for rollback",
+)
 @env_option
 @synchronizer.create_blocking
 async def rollback(
     app_identifier: str,
     version: str = "",
+    strategy: Literal["recreate", "rolling"] = "rolling",
     *,
     env: str | None = None,
 ):
@@ -403,8 +410,20 @@ async def rollback(
         else:
             raise UsageError(f"Invalid version specifier: {version}")
     req = api_pb2.AppRollbackRequest(app_id=app_id, version=version_number)
-    await client.stub.AppRollback(req)
-    rich.print("[green]✓[/green] Deployment rollback successful!")
+    resp = await client.stub.AppRollback(req)
+    print_server_warnings(resp.server_warnings)
+    output_mgr = OutputManager.get()
+    if strategy == "recreate":
+        try:
+            await _stop_and_wait_for_containers(client, app_id, resp.deployed_at, env)
+        except Exception as exc:
+            warnings.warn(
+                f"App rollback executed successfully, but containers did not all terminate. {exc}", UserWarning
+            )
+            output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
+            sys.exit(1)
+    output_mgr.print("[green]✓[/green] Deployment rollback successful!")
+    output_mgr.print(f"\nView Deployment: [magenta]{resp.url}[/magenta]")
 
 
 @app_cli.command("rollover", no_args_is_help=True)

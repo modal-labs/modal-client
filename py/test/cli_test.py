@@ -2067,7 +2067,8 @@ def test_environment_billing_report(servicer, set_env_client):
     assert str(res.exception) == "Environment 'does-not-exist' not found"
 
 
-def test_rollover_recreate(servicer, mock_dir, set_env_client, monkeypatch):
+@pytest.mark.parametrize("cmd", ["rollover", "rollback"])
+def test_recreate_strategy(cmd, servicer, mock_dir, set_env_client, monkeypatch):
     monkeypatch.setattr(modal.runner, "WAIT_FOR_CONTAINER_STOP_SLEEP_INTERVAL", 0.01)
     task_list_calls = 0
 
@@ -2096,7 +2097,7 @@ def test_rollover_recreate(servicer, mock_dir, set_env_client, monkeypatch):
         with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
             run_cli_command(["deploy", "myapp.py"])
 
-        res = run_cli_command(["app", "rollover", "my_app", "--strategy", "recreate"])
+        res = run_cli_command(["app", cmd, "my_app", "--strategy", "recreate"])
         assert "View Deployment" in res.stdout
         assert task_list_calls == 4
 
@@ -2104,11 +2105,12 @@ def test_rollover_recreate(servicer, mock_dir, set_env_client, monkeypatch):
     assert task_ids == {"ta-123", "ta-321"}
 
 
-def test_rollover_rolling(servicer, mock_dir, set_env_client):
+@pytest.mark.parametrize("cmd", ["rollover", "rollback"])
+def test_rolling_strategy(cmd, servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         run_cli_command(["deploy", "myapp.py"])
 
-    res = run_cli_command(["app", "rollover", "my_app"])
+    res = run_cli_command(["app", cmd, "my_app"])
     assert "View Deployment" in res.stdout
     assert not servicer.task_list_calls
 
