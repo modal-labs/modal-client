@@ -75,11 +75,6 @@ func TestSandboxCreateV2RequestProto_UnsupportedOptions(t *testing.T) {
 			wantErr: "proxies are not supported",
 		},
 		{
-			name:    "readiness probe",
-			params:  SandboxCreateParams{ReadinessProbe: &Probe{}},
-			wantErr: "readiness probes are not supported",
-		},
-		{
 			name:    "include oidc identity token",
 			params:  SandboxCreateParams{IncludeOidcIdentityToken: true},
 			wantErr: "IncludeOidcIdentityToken is not supported",

@@ -843,6 +843,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         encrypted_ports: Sequence[int] = [],
         h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
+        readiness_probe: Probe | None = None,
         include_oidc_identity_token: bool = False,
         verbose: bool = False,
         client: _Client | None = None,
@@ -981,6 +982,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 inbound_cidr_allowlist=list(inbound_cidr_allowlist) if inbound_cidr_allowlist is not None else [],
                 volume_mounts=volume_mounts,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
+                readiness_probe=(readiness_probe._to_proto() if readiness_probe else None),
             )
 
             create_req = api_pb2.SandboxCreateV2Request(

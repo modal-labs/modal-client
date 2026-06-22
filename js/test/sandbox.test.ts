@@ -1137,11 +1137,6 @@ test.each([
     "proxies are not supported",
   ],
   [
-    "readiness probe",
-    { readinessProbe: Probe.withExec(["true"]) },
-    "readiness probes are not supported",
-  ],
-  [
     "includeOidcIdentityToken",
     { includeOidcIdentityToken: true },
     "includeOidcIdentityToken is not supported",

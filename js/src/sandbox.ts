@@ -634,9 +634,6 @@ export async function buildSandboxCreateV2RequestProto(
   if (params.proxy) {
     throw new Error("proxies are not supported by experimentalCreate");
   }
-  if (params.readinessProbe) {
-    throw new Error("readiness probes are not supported by experimentalCreate");
-  }
   // The V2 backend does not propagate oidc_identity_token from server to worker
   // (WorkerSandboxCreateRequest has no such field). Reject inputs that would
   // silently break at sandbox startup so the caller gets a clear error here.
@@ -730,8 +727,8 @@ export class SandboxService {
    * snapshots.
    *
    * Features like tags, memory snapshots, GPUs, custom domains, OIDC identity
-   * tokens (including `oidcAuthRoleArn` on a {@link CloudBucketMount}),
-   * proxies, and readiness probes are not supported.
+   * tokens (including `oidcAuthRoleArn` on a {@link CloudBucketMount}), and
+   * proxies are not supported.
    *
    * V2 sandboxes created with this method are not currently returned by
    * {@link SandboxService#list client.sandboxes.list()} and cannot be looked up
