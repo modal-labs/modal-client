@@ -1058,6 +1058,29 @@ def test_experimental_sandbox_create_cloud_bucket_mount(app, servicer):
         assert req.definition.cloud_bucket_mounts[0].bucket_type == api_pb2.CloudBucketMount.BucketType.S3
 
 
+def test_experimental_sandbox_create_no_oidc_identity_token_by_default(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app)
+        req = ctx.pop_request("SandboxCreateV2")
+        assert req.definition.include_oidc_identity_token is False
+
+
+def test_experimental_sandbox_create_include_oidc_identity_token(app, servicer):
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, include_oidc_identity_token=True)
+        req = ctx.pop_request("SandboxCreateV2")
+        assert req.definition.include_oidc_identity_token is True
+
+
+def test_experimental_sandbox_create_cloud_bucket_mount_oidc_auth_role_arn(app, servicer):
+    cbm = modal.CloudBucketMount(bucket_name="my-bucket", oidc_auth_role_arn="arn:aws:iam::123456789012:role/r")
+    with servicer.intercept() as ctx:
+        Sandbox._experimental_create("echo", "hi", app=app, volumes={"/mnt": cbm})
+        req = ctx.pop_request("SandboxCreateV2")
+        assert len(req.definition.cloud_bucket_mounts) == 1
+        assert req.definition.cloud_bucket_mounts[0].oidc_auth_role_arn == "arn:aws:iam::123456789012:role/r"
+
+
 def test_experimental_sandbox_create_env_uses_ephemeral_secrets(app, servicer):
     with servicer.intercept() as ctx:
         Sandbox._experimental_create("echo", "hi", app=app, env={"FOO": "bar", "BAZ": "qux"})

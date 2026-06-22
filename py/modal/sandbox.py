@@ -854,11 +854,11 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         Supported features include exec, encrypted tunnels, wait/poll/terminate,
         CPU and memory configuration, region placement, volumes, cloud bucket mounts
-        (with static credentials via `secret=...`), and filesystem snapshots.
+        (with static credentials via `secret=...` or `oidc_auth_role_arn`), OIDC
+        identity tokens, and filesystem snapshots.
 
         Features like tags, memory snapshots, network file systems, GPUs, custom
-        domains, OIDC identity tokens (including `oidc_auth_role_arn` on a
-        CloudBucketMount), and proxies are not supported.
+        domains, and proxies are not supported.
 
         V2 sandboxes created with this method are not currently returned by
         `Sandbox.list()` and cannot be looked up with `Sandbox.from_name()`.
@@ -880,20 +880,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
-
-        # The V2 backend does not yet propagate `oidc_identity_token` from server to worker - it is silently dropped
-        # TODO(akshay) add support for OIDC tokens
-        if include_oidc_identity_token:
-            raise InvalidError(
-                "Sandbox._experimental_create does not support include_oidc_identity_token=True. "
-                "Use Sandbox.create instead."
-            )
-        for path, cbm in cloud_bucket_mounts:
-            if cbm.oidc_auth_role_arn:
-                raise InvalidError(
-                    "Sandbox._experimental_create does not support CloudBucketMount with oidc_auth_role_arn "
-                    f"(at mount path {path!r}). Use static credentials via `secret=...`, or use Sandbox.create."
-                )
 
         secrets = secrets or []
         ephemeral_env: dict[str, str] = {}
