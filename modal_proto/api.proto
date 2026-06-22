@@ -1247,6 +1247,14 @@ message CreationInfo {
   string created_by = 2;  // User name or service name
 }
 
+message CurlAuthTokenRequest {
+  string url = 1;
+}
+
+message CurlAuthTokenResponse {
+  string token = 1;
+}
+
 message CustomDomainConfig {
   string name = 1;
 }
@@ -4395,6 +4403,9 @@ service ModalClient {
   rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
   rpc ContainerReloadVolumes(ContainerReloadVolumesRequest) returns (ContainerReloadVolumesResponse);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
+
+  // Curl
+  rpc CurlGetAuthToken(CurlAuthTokenRequest) returns (CurlAuthTokenResponse);
 
   // Dicts
   rpc DictClear(DictClearRequest) returns (google.protobuf.Empty);

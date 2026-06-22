@@ -65,6 +65,7 @@ const (
 	ModalClient_ContainerLog_FullMethodName                     = "/modal.client.ModalClient/ContainerLog"
 	ModalClient_ContainerReloadVolumes_FullMethodName           = "/modal.client.ModalClient/ContainerReloadVolumes"
 	ModalClient_ContainerStop_FullMethodName                    = "/modal.client.ModalClient/ContainerStop"
+	ModalClient_CurlGetAuthToken_FullMethodName                 = "/modal.client.ModalClient/CurlGetAuthToken"
 	ModalClient_DictClear_FullMethodName                        = "/modal.client.ModalClient/DictClear"
 	ModalClient_DictContains_FullMethodName                     = "/modal.client.ModalClient/DictContains"
 	ModalClient_DictContents_FullMethodName                     = "/modal.client.ModalClient/DictContents"
@@ -296,6 +297,8 @@ type ModalClientClient interface {
 	ContainerLog(ctx context.Context, in *ContainerLogRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ContainerReloadVolumes(ctx context.Context, in *ContainerReloadVolumesRequest, opts ...grpc.CallOption) (*ContainerReloadVolumesResponse, error)
 	ContainerStop(ctx context.Context, in *ContainerStopRequest, opts ...grpc.CallOption) (*ContainerStopResponse, error)
+	// Curl
+	CurlGetAuthToken(ctx context.Context, in *CurlAuthTokenRequest, opts ...grpc.CallOption) (*CurlAuthTokenResponse, error)
 	// Dicts
 	DictClear(ctx context.Context, in *DictClearRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DictContains(ctx context.Context, in *DictContainsRequest, opts ...grpc.CallOption) (*DictContainsResponse, error)
@@ -972,6 +975,16 @@ func (c *modalClientClient) ContainerStop(ctx context.Context, in *ContainerStop
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ContainerStopResponse)
 	err := c.cc.Invoke(ctx, ModalClient_ContainerStop_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modalClientClient) CurlGetAuthToken(ctx context.Context, in *CurlAuthTokenRequest, opts ...grpc.CallOption) (*CurlAuthTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CurlAuthTokenResponse)
+	err := c.cc.Invoke(ctx, ModalClient_CurlGetAuthToken_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2836,6 +2849,8 @@ type ModalClientServer interface {
 	ContainerLog(context.Context, *ContainerLogRequest) (*emptypb.Empty, error)
 	ContainerReloadVolumes(context.Context, *ContainerReloadVolumesRequest) (*ContainerReloadVolumesResponse, error)
 	ContainerStop(context.Context, *ContainerStopRequest) (*ContainerStopResponse, error)
+	// Curl
+	CurlGetAuthToken(context.Context, *CurlAuthTokenRequest) (*CurlAuthTokenResponse, error)
 	// Dicts
 	DictClear(context.Context, *DictClearRequest) (*emptypb.Empty, error)
 	DictContains(context.Context, *DictContainsRequest) (*DictContainsResponse, error)
@@ -3175,6 +3190,9 @@ func (UnimplementedModalClientServer) ContainerReloadVolumes(context.Context, *C
 }
 func (UnimplementedModalClientServer) ContainerStop(context.Context, *ContainerStopRequest) (*ContainerStopResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ContainerStop not implemented")
+}
+func (UnimplementedModalClientServer) CurlGetAuthToken(context.Context, *CurlAuthTokenRequest) (*CurlAuthTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CurlGetAuthToken not implemented")
 }
 func (UnimplementedModalClientServer) DictClear(context.Context, *DictClearRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DictClear not implemented")
@@ -4498,6 +4516,24 @@ func _ModalClient_ContainerStop_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModalClientServer).ContainerStop(ctx, req.(*ContainerStopRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModalClient_CurlGetAuthToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CurlAuthTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModalClientServer).CurlGetAuthToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModalClient_CurlGetAuthToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModalClientServer).CurlGetAuthToken(ctx, req.(*CurlAuthTokenRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -7709,6 +7745,10 @@ var ModalClient_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ContainerStop",
 			Handler:    _ModalClient_ContainerStop_Handler,
+		},
+		{
+			MethodName: "CurlGetAuthToken",
+			Handler:    _ModalClient_CurlGetAuthToken_Handler,
 		},
 		{
 			MethodName: "DictClear",
