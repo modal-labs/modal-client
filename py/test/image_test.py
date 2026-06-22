@@ -2183,7 +2183,7 @@ def test_image_publish_with_tag(client, servicer):
     assert servicer.image_tags["my-image:v1"] == image.object_id
 
 
-def test_image_publish_from_id_with_client(client, servicer):
+def test_image_publish_from_id_publish_without_build(client, servicer):
     image_from_id = Image.from_id("im-123")
     with servicer.intercept() as ctx:
         ctx.add_response("ImagePublish", api_pb2.ImagePublishResponse(image_id="im-123", revision_id="ir-123"))
