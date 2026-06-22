@@ -3,6 +3,7 @@ import builtins
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Callable
 
 from google.protobuf.message import Message
 from synchronicity import classproperty
@@ -253,6 +254,7 @@ class _Secret(_Object, type_prefix="st"):
     """
 
     _metadata: api_pb2.SecretMetadata | None = None
+    _load_env_dict: Callable[[], dict[str, str]] | None = None
 
     @classproperty
     @classmethod
@@ -303,12 +305,14 @@ class _Secret(_Object, type_prefix="st"):
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        async def _load(self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
-            await _load_from_env_dict(self, load_context, env_dict_filtered)
+        def _load_env_dict() -> dict[str, str]:
+            return env_dict_filtered
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         # TODO: scoping - these should probably not be lazily hydrated without having an app and/or sandbox association
-        return _Secret._from_loader(_load, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty())
+        return _Secret._from_load_env_dict(
+            _load_env_dict, rep, hydrate_lazily=True, load_context_overrides=LoadContext.empty()
+        )
 
     @staticmethod
     def from_local_environ(
@@ -365,7 +369,7 @@ class _Secret(_Object, type_prefix="st"):
             A lazy `Secret` handle whose values are loaded from the resolved `.env` file.
         """
 
-        async def _load(self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
+        def _load_env_dict() -> dict[str, str]:
             try:
                 from dotenv import dotenv_values, find_dotenv
                 from dotenv.main import _walk_to_root
@@ -389,13 +393,23 @@ class _Secret(_Object, type_prefix="st"):
                 # To simplify this, we just support the cwd and don't do any automatic path inference.
                 dotenv_path = find_dotenv(filename, usecwd=True)
 
-            env_dict = {k: v or "" for k, v in dotenv_values(dotenv_path).items()}
+            return {k: v or "" for k, v in dotenv_values(dotenv_path).items()}
 
-            await _load_from_env_dict(self, load_context, env_dict)
-
-        return _Secret._from_loader(
-            _load, "Secret.from_dotenv()", hydrate_lazily=True, load_context_overrides=LoadContext(client=client)
+        return _Secret._from_load_env_dict(
+            _load_env_dict,
+            "Secret.from_dotenv()",
+            hydrate_lazily=True,
+            load_context_overrides=LoadContext(client=client),
         )
+
+    @classmethod
+    def _from_load_env_dict(cls, load_env_dict: Callable[[], dict[str, str]], *args, **kwargs) -> "_Secret":
+        async def _load(self: _Secret, resolver: Resolver, load_context: LoadContext, existing_object_id: str | None):
+            await _load_from_env_dict(self, load_context, load_env_dict())
+
+        instance = _Secret._from_loader(_load, *args, **kwargs)
+        instance._load_env_dict = load_env_dict
+        return instance
 
     @staticmethod
     def from_name(
@@ -501,6 +515,22 @@ class _Secret(_Object, type_prefix="st"):
         updates = [api_pb2.SecretUpdateRequest.Update(key=k, value=v) for k, v in env_dict.items()]
         req = api_pb2.SecretUpdateRequest(secret_id=self.object_id, updates=updates)
         await self._client.stub.SecretUpdate(req)
+
+
+def _split_env_dict_and_resolvable_secrets(secrets: list[_Secret]) -> tuple[dict[str, str], list[_Secret]]:
+    """Split secrets into secrets that can be resolved locally and secrets that are remote.
+
+    Locally resolvable secrets include: `Secret.from_dict`, `Secret.from_dotenv`
+    Remote secrets include: `Secret.from_name`
+    """
+    env_dict: dict[str, str] = {}
+    resolvable_secrets: list[_Secret] = []
+    for secret in secrets:
+        if secret._load_env_dict:
+            env_dict |= secret._load_env_dict()
+        else:
+            resolvable_secrets.append(secret)
+    return env_dict, resolvable_secrets
 
 
 Secret = synchronize_api(_Secret)

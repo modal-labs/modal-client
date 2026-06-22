@@ -71,6 +71,24 @@ def test_secret_from_dotenv_lazy(client, servicer):
         assert req.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL
 
 
+def test_secret_load_env_dict_from_dict():
+    secret = Secret.from_dict({"FOO": "hello, world", "SKIP": None, "BAR": "1234"})
+    _secret = synchronizer._translate_in(secret)
+    # None values are filtered out
+    assert _secret._load_env_dict() == {"FOO": "hello, world", "BAR": "1234"}
+
+
+@skip_old_py("python-dotenv requires python3.8 or higher", (3, 8))
+def test_secret_load_env_dict_from_dotenv():
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        with open(os.path.join(tmpdirname, ".env"), "w") as f:
+            f.write("# My settings\nUSER=user\nPASSWORD=abc123\n")
+
+        secret = Secret.from_dotenv(tmpdirname)
+        _secret = synchronizer._translate_in(secret)
+        assert _secret._load_env_dict() == {"USER": "user", "PASSWORD": "abc123"}
+
+
 @mock.patch.dict(os.environ, {"FOO": "easy", "BAR": "1234"})
 def test_secret_from_local_environ(servicer, client):
     app = App(include_source=False)

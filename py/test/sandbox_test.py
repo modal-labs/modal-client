@@ -1142,7 +1142,26 @@ def test_sandbox_exec_env_routing(app, servicer):
 
         assert cp.stdout.read() == "value|plain|missing"
     (exec_start_request,) = tcr_ctx.get_requests("TaskExecStart")
-    assert dict(exec_start_request.env) == {"KEEP": "value", "PLAIN": "plain"}
+    assert dict(exec_start_request.env) == {"KEEP": "value", "PLAIN": "plain", "SECRET_ONLY": "present"}
+    assert list(exec_start_request.secret_ids) == []
+
+
+@skip_non_subprocess
+def test_sandbox_exec_env_routing_named_secret(app, servicer, client):
+    # Named secrets are resolved server-side and passed by ID; their env vars are not inlined.
+    Secret.objects.create("my-secret", {"SECRET_ONLY": "present"}, client=client)
+    secret = Secret.from_name("my-secret")
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    with servicer.task_command_router.intercept() as tcr_ctx:
+        cp = sb.exec(
+            "echo",
+            "hello",
+            env={"PLAIN": "plain"},
+            secrets=[secret],
+        )
+    (exec_start_request,) = tcr_ctx.get_requests("TaskExecStart")
+    assert dict(exec_start_request.env) == {"PLAIN": "plain"}
+    # The named secret will be hydreated
     assert list(exec_start_request.secret_ids) == [secret.object_id]
 
 

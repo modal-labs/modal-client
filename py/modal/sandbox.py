@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal, Union, overload
 
+from modal.secret import _split_env_dict_and_resolvable_secrets
+
 from ._output.pty import get_pty_info
 from .config import config, logger
 
@@ -1859,10 +1861,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         _validate_exec_args(args)
 
         secrets = list(secrets or [])
-        env_dict = {k: v for k, v in (env or {}).items() if v is not None}
+        env_dict, resolvable_secrets = _split_env_dict_and_resolvable_secrets(secrets)
+        env_dict |= {k: v for k, v in (env or {}).items() if v is not None}
 
         # Force explicit secret resolution so we can pass the secret IDs to the backend.
-        secret_coros = [secret.hydrate(client=self._client) for secret in secrets]
+        secret_coros = [secret.hydrate(client=self._client) for secret in resolvable_secrets]
         await TaskContext.gather(*secret_coros)
 
         task_id = await self._get_task_id(raise_if_task_complete=True)
@@ -1880,7 +1883,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             stderr=stderr,
             timeout=timeout,
             workdir=workdir,
-            secret_ids=[secret.object_id for secret in secrets],
+            secret_ids=[secret.object_id for secret in resolvable_secrets],
             env=env_dict,
             text=text,
             bufsize=bufsize,
