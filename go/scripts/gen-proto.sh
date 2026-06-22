@@ -10,5 +10,8 @@ protoc \
   --proto_path=../ \
   ../modal_proto/*.proto
 
-# Find all 'package proto' declarations and replace with 'package pb'
-find . -type f -name '*.go' -exec sed -i 's/^package proto$/package pb/' {} +
+# Find all 'package proto' declarations and replace with 'package pb'.
+# Use a backup suffix so the -i flag is portable across GNU and BSD (macOS) sed,
+# then remove the backups.
+find . -type f -name '*.go' -exec sed -i.bak 's/^package proto$/package pb/' {} +
+find . -type f -name '*.go.bak' -delete
