@@ -268,6 +268,7 @@ async def logs(
     ```
 
     """
+    env = ensure_env(env)
 
     if follow and (since or until or tail):
         raise UsageError("--follow cannot be combined with --since, --until, or --tail.")
@@ -645,6 +646,7 @@ async def dashboard(
     modal app dashboard my-app --env dev
     ```
     """
+    env = ensure_env(env)
     client = await _Client.from_env()
     app_id, _, _ = await resolve_app_identifier(app_identifier, env, client)
     url = f"https://modal.com/id/{app_id}"
