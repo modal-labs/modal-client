@@ -187,11 +187,10 @@ environment_cli.add_command(billing_cli)
 
 
 @billing_cli.command("report", no_args_is_help=True)
-@click.option(
-    "-n",
-    "--environment-name",
+@click.argument(
+    "environment_name",
+    required=False,
     default=None,
-    help="Name of the environment to build a report for. If no argument is provided, uses the current default.",
 )
 @click.option("--start", default=None, help=f"Start date. {DATE_HELP}")
 @click.option("--end", default=None, help=f"End date. {DATE_HELP} Defaults to now.")
@@ -244,19 +243,19 @@ async def environment_billing(
     Examples:
 
         ```bash
-        modal environment billing report -n env1 --start 2025-12-01 --end 2026-01-01
+        modal environment billing report --start 2025-12-01 --end 2026-01-01
 
-        modal environment billing report -n env2 --for "last month" --tag-names team,project
+        modal environment billing report --for "last month" --tag-names team,project
 
-        modal environment billing report -n test_env --for today --resolution h
+        modal environment billing report test_env --for today --resolution h
 
-        modal environment billing report -n test_env --for "this month" --show-resources
+        modal environment billing report test_env --for "this month" --show-resources
 
-        modal environment billing report -n prod_env --for yesterday -r h --tz local
+        modal environment billing report prod_env --for yesterday -r h --tz local
 
-        modal environment billing report -n main_env --for "last month" --csv > report.csv
+        modal environment billing report main_env --for "last month" --csv > report.csv
 
-        modal environment billing report -n main_env --start 2025-12-01 --json > report.json
+        modal environment billing report main_env --start 2025-12-01 --json > report.json
         ```
 
     """

@@ -2053,7 +2053,7 @@ def test_environment_billing_report(servicer, set_env_client):
 
     # Test with tag names
     res = run_cli_command(
-        ["environment", "billing", "report", "-n", "main", "--start", "2025-01-01", "--tag-names", "team,project"]
+        ["environment", "billing", "report", "main", "--start", "2025-01-01", "--tag-names", "team,project"]
     )
     assert "ap-123" in res.stdout
     # Tags column should be present (may be JSON formatted)
@@ -2062,7 +2062,7 @@ def test_environment_billing_report(servicer, set_env_client):
     # test environment does not exist
 
     res = run_cli_command(
-        ["environment", "billing", "report", "-n", "does-not-exist", "--start", "2025-01-01"], expected_exit_code=1
+        ["environment", "billing", "report", "does-not-exist", "--start", "2025-01-01"], expected_exit_code=1
     )
     assert str(res.exception) == "Environment 'does-not-exist' not found"
 
