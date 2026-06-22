@@ -17,6 +17,11 @@ from modal.config import config, logger
 
 CUDA_CHECKPOINT_PATH: str = config.get("cuda_checkpoint_path")
 
+# Exit code used to signal to modal-runtime that a GPU memory snapshot restore failed
+# and the task should be retried without a snapshot. This is a sentinel value that must
+# stay in sync with `GPU_SNAPSHOT_RESTORE_FAILED_EXIT_CODE` in runner.rs.
+SNAPSHOT_RESTORE_FAILED_EXIT_CODE: int = 222
+
 # Maximum total duration for each individual `cuda-checkpoint` invocation.
 CUDA_CHECKPOINT_TIMEOUT: float = 3 * 60.0
 

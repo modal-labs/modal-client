@@ -180,10 +180,15 @@ class _TaskLifecycleManager:
         if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
             logger.debug("GPU memory snapshot enabled. Attempting to restore GPU memory.")
 
-            assert self._cuda_checkpoint_session, (
-                "CudaCheckpointSession not found when attempting to restore GPU memory"
-            )
-            self._cuda_checkpoint_session.restore()
+            try:
+                if self._cuda_checkpoint_session is None:
+                    raise gpu_memory_snapshot.CudaCheckpointException("CudaCheckpointSession not found")
+                self._cuda_checkpoint_session.restore()
+            except gpu_memory_snapshot.CudaCheckpointException as exc:
+                logger.warning(f"GPU memory snapshot restore failed; retrying task without snapshot. Error: {exc}")
+                sys.stderr.flush()
+                # Exit with a sentinel code that the runtime will use to retry the task without a snapshot.
+                os._exit(gpu_memory_snapshot.SNAPSHOT_RESTORE_FAILED_EXIT_CODE)
 
         self._client = await _Client.from_env()
 

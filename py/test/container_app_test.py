@@ -12,6 +12,7 @@ from google.protobuf.message import Message
 
 import modal._runtime.container_io_manager as container_io_manager
 from modal import App, interact
+from modal._runtime import gpu_memory_snapshot
 from modal._runtime.container_io_manager import ContainerIOManager, _ContainerIOManager
 from modal._utils.async_utils import synchronize_api, synchronizer
 from modal.exception import InvalidError
@@ -248,6 +249,47 @@ async def test_container_gpu_snapshot_failure_unpauses_heartbeats(servicer, cont
         assert not io_manager._waiting_for_memory_snapshot
         assert not _container_checkpoint_requests(servicer)
         await _wait_for_container_heartbeat(servicer)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["restore_raises", "missing_session"])
+async def test_container_gpu_snapshot_restore_failure_exits_with_sentinel(
+    tmpdir, servicer, container_client, monkeypatch, failure
+):
+    function_def = api_pb2.Function(
+        _experimental_enable_gpu_snapshot=True,
+        resources=api_pb2.Resources(gpu_config=api_pb2.GPUConfig(gpu_type="A100", count=1)),
+    )
+    io_manager = _ContainerIOManager(
+        api_pb2.ContainerArguments(checkpoint_id="ch-123", function_def=function_def),
+        synchronizer._translate_in(container_client),
+    )
+    restore_path = temp_restore_path(tmpdir)
+
+    if failure == "restore_raises":
+        # Simulate a restore that fails to load the checkpoint.
+        checkpoint_session = mock.Mock()
+        checkpoint_session.restore.side_effect = gpu_memory_snapshot.CudaCheckpointException("restore failed")
+        io_manager._task_lifecycle_manager._cuda_checkpoint_session = checkpoint_session
+    else:
+        io_manager._task_lifecycle_manager._cuda_checkpoint_session = None
+
+    class _Exited(Exception):
+        pass
+
+    exit_codes: list[int] = []
+
+    def fake_exit(code):
+        exit_codes.append(code)
+        raise _Exited()
+
+    monkeypatch.setattr("modal._runtime.task_lifecycle_manager.os._exit", fake_exit)
+
+    with set_env_vars(restore_path, servicer.container_addr):
+        with pytest.raises(_Exited):
+            await io_manager._task_lifecycle_manager.memory_restore()
+
+    assert exit_codes == [gpu_memory_snapshot.SNAPSHOT_RESTORE_FAILED_EXIT_CODE]
 
 
 @pytest.mark.asyncio
